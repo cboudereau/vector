@@ -6,6 +6,7 @@ use vrl::event_path;
 
 use super::*;
 use crate::{
+    config::{DataType, SourceOutput},
     event::{Event, LogEvent, Metric, MetricKind, MetricValue, TraceEvent},
     metrics::{self, Controller},
 };
@@ -206,6 +207,82 @@ async fn times_out_send_event_with_timeout() {
     assert_no_metric(&metrics, "component_discarded_events_total");
     assert_counter_metric(&metrics, "component_timed_out_events_total", 1.0);
     assert_counter_metric(&metrics, "component_timed_out_requests_total", 1.0);
+}
+
+/// Verifies that backpressure on one signal type (metrics) does not block
+/// other signal types (logs, traces) from flowing.
+///
+/// This guards the invariant provided by `SourceSender::named_outputs`:
+/// each signal type has an independent channel so a slow consumer on one
+/// cannot stall producers on another.
+#[tokio::test]
+async fn per_signal_backpressure_isolation() {
+    metrics::init_test();
+
+    const BUF: usize = 1;
+    let component_key = "test-source".into();
+
+    // Build a sender with three named outputs (capacity 1 each).
+    let mut builder = SourceSender::builder().with_buffer(BUF);
+
+    let mut log_rx = builder.add_source_output(
+        SourceOutput {
+            port: Some("logs".to_string()),
+            ty: DataType::Log,
+            schema_definition: None,
+        },
+        component_key,
+    );
+    let mut metric_rx = builder.add_source_output(
+        SourceOutput {
+            port: Some("metrics".to_string()),
+            ty: DataType::Metric,
+            schema_definition: None,
+        },
+        "test-source".into(),
+    );
+    let mut trace_rx = builder.add_source_output(
+        SourceOutput {
+            port: Some("traces".to_string()),
+            ty: DataType::Trace,
+            schema_definition: None,
+        },
+        "test-source".into(),
+    );
+
+    let mut sender = builder.build();
+
+    // Fill the metrics channel to capacity (1 item).
+    sender
+        .send_batch_named("metrics", vec![Event::Metric(Metric::new(
+            "fill",
+            MetricKind::Absolute,
+            MetricValue::Gauge { value: 0.0 },
+        ))])
+        .await
+        .expect("first metric send should succeed");
+
+    // With the metrics channel full, logs and traces must still be sendable
+    // without blocking.  We give each a 200 ms budget.
+    let log_future = sender.send_batch_named("logs", vec![Event::Log(LogEvent::from("hello"))]);
+    timeout(StdDuration::from_millis(200), log_future)
+        .await
+        .expect("log send must not block when metric channel is full")
+        .expect("log send must succeed");
+
+    let mut trace = TraceEvent::default();
+    trace.insert(event_path!("msg"), "hi");
+    let trace_future =
+        sender.send_batch_named("traces", vec![Event::Trace(trace)]);
+    timeout(StdDuration::from_millis(200), trace_future)
+        .await
+        .expect("trace send must not block when metric channel is full")
+        .expect("trace send must succeed");
+
+    // Drain all channels so nothing leaks into other tests.
+    assert!(log_rx.next().await.is_some(), "log item must be receivable");
+    assert!(trace_rx.next().await.is_some(), "trace item must be receivable");
+    assert!(metric_rx.next().await.is_some(), "metric item must be receivable");
 }
 
 fn get_component_metrics() -> Vec<Metric> {

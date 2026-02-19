@@ -631,6 +631,11 @@ pub async fn load_configs(
     config::init_log_schema(config.global.log_schema.clone(), true);
     config::init_telemetry(config.global.telemetry.clone(), true);
 
+    // Wire the buffer format toggle before any disk buffer is opened.
+    vector_lib::event::BUFFER_FORMAT.store(config.global.buffer_format);
+    #[cfg(feature = "sources-opentelemetry")]
+    vector_lib::opentelemetry::buffer_codec::init();
+
     if !config.healthchecks.enabled {
         info!("Health checks are disabled.");
     }

@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package otlp_buffer;
+
+import "opentelemetry/proto/collector/logs/v1/logs_service.proto";
+import "opentelemetry/proto/collector/metrics/v1/metrics_service.proto";
+import "opentelemetry/proto/collector/trace/v1/trace_service.proto";
+
+// A single disk-buffer record holding all three OTel signal types.
+//
+// Absent fields encode as zero bytes, so a batch containing only logs occupies
+// the same space as the logs payload alone. The CRC32C in the outer record
+// header covers this entire serialised message.
+message OtlpBufferBatch {
+  opentelemetry.proto.collector.logs.v1.ExportLogsServiceRequest logs = 1;
+  opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceRequest metrics = 2;
+  opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest traces = 3;
+}

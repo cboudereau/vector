@@ -1,3 +1,4 @@
+pub mod buffer_codec;
 pub mod common;
 pub mod logs;
 pub mod metrics;

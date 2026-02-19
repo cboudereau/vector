@@ -35,6 +35,9 @@ pub mod metric;
 pub mod proto;
 mod r#ref;
 mod ser;
+pub mod otlp;
+pub use otlp::{OtlpCodec, register_otlp_codec};
+pub use ser::{BufferFormat, BUFFER_FORMAT};
 #[cfg(test)]
 mod test;
 mod trace;

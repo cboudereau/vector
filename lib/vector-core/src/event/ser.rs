@@ -1,4 +1,5 @@
 use bytes::{Buf, BufMut};
+use crossbeam_utils::atomic::AtomicCell;
 use enumflags2::{BitFlags, FromBitsError, bitflags};
 use prost::Message;
 use snafu::Snafu;
@@ -21,6 +22,26 @@ pub enum DecodeError {
     #[snafu(display("unsupported encoding metadata for this context"))]
     UnsupportedEncodingMetadata,
 }
+/// Controls the on-disk encoding format for new records written to disk buffers.
+///
+/// Set once at process startup from the global config before any buffer is opened.
+/// Defaults to [`BufferFormat::Vector`] so existing deployments are unaffected.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
+pub enum BufferFormat {
+    /// Legacy Vector protobuf encoding (`proto::EventArray`). Default.
+    #[default]
+    Vector,
+    /// OTel protobuf encoding (`OtlpBufferBatch`). Use after migration is complete.
+    Otlp,
+    /// Transition mode: writes OTel records, reads both Vector and OTel records.
+    /// Enables zero-downtime drain of existing Vector-encoded buffers.
+    Migrate,
+}
+
+/// Process-wide buffer format toggle. Read by `get_metadata`, `can_decode`, `encode`, and
+/// `decode`. Must be set before any disk buffer is opened.
+pub static BUFFER_FORMAT: AtomicCell<BufferFormat> = AtomicCell::new(BufferFormat::Vector);
+
 /// Flags for describing the encoding scheme used by our primary event types that flow through buffers.
 ///
 /// # Stability
@@ -36,7 +57,12 @@ pub enum EventEncodableMetadataFlags {
     /// `EventArray`-based architecture.
     ///
     /// All encoding uses the `EventArray` variant, however.
-    DiskBufferV1CompatibilityMode = 0b1,
+    DiskBufferV1CompatibilityMode = 0b01,
+
+    /// Record payload is encoded as OTel protobuf (`OtlpBufferBatch`) rather than the
+    /// Vector-native `proto::EventArray`. Set by [`BufferFormat::Otlp`] and
+    /// [`BufferFormat::Migrate`].
+    OtlpEncoding = 0b10,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -84,11 +110,28 @@ impl Encodable for EventArray {
     type DecodeError = DecodeError;
 
     fn get_metadata() -> Self::Metadata {
-        EventEncodableMetadataFlags::DiskBufferV1CompatibilityMode.into()
+        use EventEncodableMetadataFlags::{DiskBufferV1CompatibilityMode, OtlpEncoding};
+        match BUFFER_FORMAT.load() {
+            BufferFormat::Vector => DiskBufferV1CompatibilityMode.into(),
+            BufferFormat::Otlp | BufferFormat::Migrate => {
+                (DiskBufferV1CompatibilityMode | OtlpEncoding).into()
+            }
+        }
     }
 
     fn can_decode(metadata: Self::Metadata) -> bool {
-        metadata.contains(EventEncodableMetadataFlags::DiskBufferV1CompatibilityMode)
+        use EventEncodableMetadataFlags::{DiskBufferV1CompatibilityMode, OtlpEncoding};
+        match BUFFER_FORMAT.load() {
+            BufferFormat::Vector => {
+                metadata.contains(DiskBufferV1CompatibilityMode)
+                    && !metadata.contains(OtlpEncoding)
+            }
+            BufferFormat::Otlp => metadata.contains(OtlpEncoding),
+            BufferFormat::Migrate => {
+                metadata.contains(DiskBufferV1CompatibilityMode)
+                    || metadata.contains(OtlpEncoding)
+            }
+        }
     }
 
     fn encode<B>(self, buffer: &mut B) -> Result<(), Self::EncodeError>
@@ -115,5 +158,84 @@ impl Encodable for EventArray {
         } else {
             Err(DecodeError::UnsupportedEncodingMetadata)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn reset_buffer_format(format: BufferFormat) {
+        BUFFER_FORMAT.store(format);
+    }
+
+    #[test]
+    fn buffer_format_vector_get_metadata_has_only_v1_flag() {
+        reset_buffer_format(BufferFormat::Vector);
+        let metadata = EventArray::get_metadata();
+        assert!(
+            metadata.contains(EventEncodableMetadataFlags::DiskBufferV1CompatibilityMode),
+            "Vector mode must set DiskBufferV1CompatibilityMode"
+        );
+        assert!(
+            !metadata.contains(EventEncodableMetadataFlags::OtlpEncoding),
+            "Vector mode must not set OtlpEncoding"
+        );
+    }
+
+    #[test]
+    fn buffer_format_otlp_get_metadata_has_otlp_flag() {
+        reset_buffer_format(BufferFormat::Otlp);
+        let metadata = EventArray::get_metadata();
+        assert!(
+            metadata.contains(EventEncodableMetadataFlags::OtlpEncoding),
+            "Otlp mode must set OtlpEncoding"
+        );
+    }
+
+    #[test]
+    fn buffer_format_migrate_get_metadata_has_otlp_flag() {
+        reset_buffer_format(BufferFormat::Migrate);
+        let metadata = EventArray::get_metadata();
+        assert!(
+            metadata.contains(EventEncodableMetadataFlags::OtlpEncoding),
+            "Migrate mode writes OTel records"
+        );
+    }
+
+    #[test]
+    fn buffer_format_vector_can_decode_only_v1_records() {
+        reset_buffer_format(BufferFormat::Vector);
+        let v1_meta: EventEncodableMetadata =
+            EventEncodableMetadataFlags::DiskBufferV1CompatibilityMode.into();
+        let otlp_meta: EventEncodableMetadata =
+            EventEncodableMetadataFlags::OtlpEncoding.into();
+
+        assert!(EventArray::can_decode(v1_meta), "Vector mode must accept V1 records");
+        assert!(!EventArray::can_decode(otlp_meta), "Vector mode must reject OTel records");
+    }
+
+    #[test]
+    fn buffer_format_otlp_can_decode_only_otlp_records() {
+        reset_buffer_format(BufferFormat::Otlp);
+        let v1_meta: EventEncodableMetadata =
+            EventEncodableMetadataFlags::DiskBufferV1CompatibilityMode.into();
+        let otlp_meta: EventEncodableMetadata =
+            EventEncodableMetadataFlags::OtlpEncoding.into();
+
+        assert!(!EventArray::can_decode(v1_meta), "Otlp mode must reject V1 records");
+        assert!(EventArray::can_decode(otlp_meta), "Otlp mode must accept OTel records");
+    }
+
+    #[test]
+    fn buffer_format_migrate_can_decode_both_formats() {
+        reset_buffer_format(BufferFormat::Migrate);
+        let v1_meta: EventEncodableMetadata =
+            EventEncodableMetadataFlags::DiskBufferV1CompatibilityMode.into();
+        let otlp_meta: EventEncodableMetadata =
+            EventEncodableMetadataFlags::OtlpEncoding.into();
+
+        assert!(EventArray::can_decode(v1_meta), "Migrate mode must accept V1 records");
+        assert!(EventArray::can_decode(otlp_meta), "Migrate mode must accept OTel records");
     }
 }

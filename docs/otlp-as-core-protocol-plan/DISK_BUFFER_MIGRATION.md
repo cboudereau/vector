@@ -308,17 +308,23 @@ format each record happens to use.
 
 ## 6. Implementation Checklist
 
-| Task | Location | Notes |
-|---|---|---|
-| Add `OtlpEncoding = 0b10` flag | `lib/vector-core/src/event/ser.rs` | Never remove old flags |
-| Add `BufferFormat` enum and config field | `lib/vector-core/src/config/mod.rs` | `vector` / `otlp` / `migrate` |
-| Add process-wide `BUFFER_FORMAT` atomic | `lib/vector-core/src/event/ser.rs` | Set before any buffer opens |
-| Implement `encode_as_otlp` | `lib/vector-core/src/event/ser.rs` | Via `OtlpBufferBatch` |
-| Implement `decode_from_otlp` | `lib/vector-core/src/event/ser.rs` | Via existing OTel conversions |
-| Define `OtlpBufferBatch` proto | `lib/vector-core/proto/otlp_buffer.proto` | Thin wrapper proto |
-| Wire `buffer_format` to `Encodable` | `lib/vector-core/src/event/ser.rs` | Read atomic in get_metadata / can_decode / encode / decode |
-| Expose `buffer_format` in global config | `src/config/global_options.rs` | Default: `"vector"` until OTel migration complete |
-| Expose `buffer_format` per-component | `lib/vector-buffers/src/config.rs` | Overrides global |
-| Add golden tests for mixed-format decode | `lib/vector-core/src/event/tests/` | Write Vector record, then OTel record, read both |
-| Add integration test for migrate runbook | `tests/` | Simulate restart mid-buffer |
-| Update `vector validate` to warn on `buffer_format = "vector"` post-migration | `src/validate.rs` | Nudge users to migrate |
+| Status | Task | Location | Notes |
+|---|---|---|---|
+| ✅ Done | Add `OtlpEncoding = 0b10` flag | `lib/vector-core/src/event/ser.rs` | Never remove old flags |
+| ✅ Done | Add `BufferFormat` enum | `lib/vector-core/src/event/ser.rs` | `Vector` / `Otlp` / `Migrate` |
+| ✅ Done | Add process-wide `BUFFER_FORMAT` atomic | `lib/vector-core/src/event/ser.rs` | Default `Vector` |
+| ✅ Done | Wire `get_metadata()` to `BUFFER_FORMAT` | `lib/vector-core/src/event/ser.rs` | Stamps correct flags |
+| ✅ Done | Wire `can_decode()` to `BUFFER_FORMAT` | `lib/vector-core/src/event/ser.rs` | Accepts/rejects by flag |
+| ✅ Done | Unit tests for all three modes | `lib/vector-core/src/event/ser.rs` | 6 tests |
+| ⬜ Todo | Define `OtlpBufferBatch` proto | `lib/vector-core/proto/otlp_buffer.proto` | Thin wrapper proto |
+| ⬜ Todo | Add proto to `build.rs` compilation | `lib/vector-core/build.rs` | |
+| ⬜ Todo | Implement `encode_as_otlp` | `lib/vector-core/src/event/ser.rs` | Via `OtlpBufferBatch` |
+| ⬜ Todo | Implement `decode_from_otlp` | `lib/vector-core/src/event/ser.rs` | Via existing OTel conversions |
+| ⬜ Todo | Wire `encode()` to `BUFFER_FORMAT` | `lib/vector-core/src/event/ser.rs` | Currently always `proto::EventArray` |
+| ⬜ Todo | Wire `decode()` to `OtlpEncoding` flag | `lib/vector-core/src/event/ser.rs` | Currently ignores the flag |
+| ⬜ Todo | Add `buffer_format` to `GlobalOptions` | `lib/vector-core/src/config/global_options.rs` | Default `"vector"` |
+| ⬜ Todo | Startup wiring: `BUFFER_FORMAT.store(...)` | startup / `src/app.rs` | Before any buffer opens |
+| ⬜ Todo | Startup guard: force `Migrate` if existing buffer detected with `buffer_format = "otlp"` | startup | Prevents crash on unreadable records |
+| ⬜ Todo | Add golden tests for mixed-format decode | `lib/vector-core/src/event/tests/` | Write Vector record, then OTel, read both |
+| ⬜ Todo | Add integration test for migrate runbook | `tests/` | Simulate restart mid-buffer |
+| ⬜ Todo | Update `vector validate` to warn on `buffer_format = "vector"` post-migration | `src/validate.rs` | Nudge users to migrate |

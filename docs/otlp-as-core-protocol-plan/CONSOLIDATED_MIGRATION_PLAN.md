@@ -14,8 +14,11 @@ Single source of truth for the migration. All other documents in this folder fee
 | `PROTOCOL_GAP_ANALYSIS.md` | Field-by-field gap: Vector native protocol vs OTLP |
 | `PERFORMANCE_AND_TRADEOFFS.md` | Performance analysis and otel-collector-contrib comparison |
 | `DISK_BUFFER_MIGRATION.md` | Zero-downtime buffer format toggle specification (Step 0a) |
-| `TAIL_SAMPLING_BACKPORT.md` | `tail_sample` and `apm_stats` transforms specification |
+| `APM_STATS_OTLP_BACKPORT.md` | `apm_stats` transform — canonical spec (Step 4) |
+| `TAIL_SAMPLING_BACKPORT.md` | `tail_sample` transform specification (Step 4) |
+| `SINK_REMOVAL_STRATEGY.md` | Remove-first strategy rationale and re-integration scope |
 | `VRL_MIGRATION_TOOL.md` | VRL migration tool specification and rewrite rule catalogue |
+| `GAP_ANALYSIS.md` | Code-verified gaps between docs and codebase — read before coding |
 
 ---
 
@@ -382,34 +385,79 @@ is blocked. Step 2 must land before Step 1 can be validated.
 
 ### 0a — Buffer format toggle
 
-**Status: IN PROGRESS**
+**Status: PARTIAL — metadata layer done, I/O layer not started**
 
-Adds a process-wide `BufferFormat` toggle (`Vector` / `Otlp` / `Migrate`) to
-`lib/vector-core/src/event/ser.rs`, backed by `AtomicCell<BufferFormat>`. Default `Vector` =
-zero behaviour change.
+File: `lib/vector-core/src/event/ser.rs`
 
-Already implemented:
-- `OtlpEncoding = 0b10` flag added to `EventEncodableMetadataFlags`
-- `BufferFormat` enum and `BUFFER_FORMAT: AtomicCell<BufferFormat>` static
-- `get_metadata()` and `can_decode()` updated to read the global cell
-- 6 unit tests covering all three modes
+**Done (committed):**
+- `BufferFormat` enum (`Vector` / `Otlp` / `Migrate`) with `#[default] Vector`
+- `BUFFER_FORMAT: AtomicCell<BufferFormat>` process-wide static
+- `OtlpEncoding = 0b10` flag in `EventEncodableMetadataFlags`
+- `get_metadata()` branches on `BUFFER_FORMAT` — stamps correct flags on new records
+- `can_decode()` branches on `BUFFER_FORMAT` — accepts/rejects records by flag
+- 6 unit tests covering all three modes for both `get_metadata` and `can_decode`
 
-Remaining work:
-- `OtlpBufferBatch` proto wrapper (`lib/vector-core/proto/otlp_buffer.proto`): thin wrapper
-  around `ExportLogsServiceRequest`, `ExportMetricsServiceRequest`,
-  `ExportTraceServiceRequest` — absent fields encode as zero bytes
-- `encode_as_otlp(array: EventArray, buffer)` → `OtlpBufferBatch::from(array).encode(buffer)`
-- `decode_from_otlp(buffer)` → `OtlpBufferBatch::decode(buffer)` → `EventArray::from(batch)`
-  using existing `lib/opentelemetry-proto/src/` conversions
-- `buffer_format` field in `src/config/global_options.rs` (default `"vector"`)
-- Integration test: write Vector-proto records, restart in `migrate` mode, assert old records
-  decode and new records use OTel encoding
+**Not done — `encode()` and `decode()` still ignore `BUFFER_FORMAT`:**
+
+Current `encode()` always uses `proto::EventArray` regardless of the toggle:
+```rust
+fn encode<B>(self, buffer: &mut B) -> Result<(), Self::EncodeError> {
+    proto::EventArray::from(self)   // ← always Vector proto
+        .encode(buffer)
+        .map_err(|_| EncodeError::BufferTooSmall)
+}
+```
+
+Current `decode()` never checks for `OtlpEncoding`, always decodes as `proto::EventArray`
+or falls back to `proto::EventWrapper`.
+
+The toggle currently has **no effect on actual I/O** — only the metadata/flag stamping is
+wired. The data path is the remaining work.
+
+**Remaining tasks:**
+
+1. `lib/vector-core/proto/otlp_buffer.proto` — define `OtlpBufferBatch`:
+   ```protobuf
+   message OtlpBufferBatch {
+     opentelemetry.proto.collector.logs.v1.ExportLogsServiceRequest logs = 1;
+     opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceRequest metrics = 2;
+     opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest traces = 3;
+   }
+   ```
+   Add to `lib/vector-core/build.rs` proto compilation list.
+
+2. `EventArray → OtlpBufferBatch` conversion: split by signal type using
+   `EventArray::logs()` / `EventArray::metrics()` / `EventArray::traces()`, convert each
+   using existing `lib/opentelemetry-proto/src/` types in reverse.
+
+3. `OtlpBufferBatch → EventArray` conversion: use existing
+   `ResourceLogs::into_event_iter()` / `ResourceMetrics::into_event_iter()` /
+   `ResourceSpans::into_event_iter()`.
+
+4. Update `encode()` to branch on `BUFFER_FORMAT`:
+   - `Vector` → existing `proto::EventArray::from(self).encode(buffer)`
+   - `Otlp` | `Migrate` → `OtlpBufferBatch::from(self).encode(buffer)`
+
+5. Update `decode()` to branch on `OtlpEncoding` flag:
+   - flag set → `OtlpBufferBatch::decode(buffer)` → `EventArray::from(batch)`
+   - flag not set → existing `proto::EventArray` / `proto::EventWrapper` path
+
+6. `buffer_format` field in `lib/vector-core/src/config/global_options.rs`
+   (default `"vector"`), with startup wiring: `BUFFER_FORMAT.store(config.buffer_format)`.
+
+7. Startup validation: if `buffer_format = "otlp"` and an existing on-disk buffer is
+   detected, force `Migrate` mode and log a warning rather than crashing on unreadable
+   records.
+
+8. Integration test: write Vector-proto records, restart in `migrate` mode, assert old
+   records decode and new records carry `OtlpEncoding` flag.
 
 Full spec: `DISK_BUFFER_MIGRATION.md`.
 
 ### 0b — Per-signal isolation test + span scope fix
 
 **Status: NOT STARTED**
+
 
 **Isolation test:** `SourceSender::named_outputs` provides independent backpressure per signal
 type (confirmed by code audit). Add an integration test: fill metrics channel to capacity,
@@ -497,20 +545,44 @@ After Step 2: `DataType::Log | DataType::Metric | DataType::Trace`.
 **Vector sink** — `src/sinks/vector/` (791 lines total):
 `config.rs` (247), `mod.rs` (259), `service.rs` (164), `sink.rs` (121)
 
+### Prerequisite: `AgentDDSketch::to_aggregated_histogram`
+
+**This method does not exist yet and must be added in this step.**
+
+`SINK_REMOVAL_STRATEGY.md` §5 refers to "the existing `AgentDDSketch::to_histogram()` method"
+— that method does not exist. The only conversion methods on `AgentDDSketch` go the wrong
+direction (histogram → sketch via `transform_to_sketch` / `insert_interpolate_buckets`).
+
+Before deleting the match arms below, add to `lib/vector-core/src/metrics/ddsketch.rs`:
+
+```rust
+/// Approximate conversion to `AggregatedHistogram` using explicit bucket bounds.
+/// Used as a bridge in non-DD sinks between Step 1 (sink removal) and Step 3
+/// (AgentDDSketch leaves core). Precision is bounded by the provided bounds.
+pub fn to_aggregated_histogram(&self, bounds: &[f64]) -> MetricValue {
+    // for each consecutive pair of bounds, query quantile at the midpoint
+    // and accumulate counts. count and sum are exact.
+}
+```
+
+This bridge conversion is intentionally approximate and documented as such. It is deleted
+along with `AgentDDSketch` itself in Step 3.
+
 ### Residual sketch coupling cleaned in this step
 
-After deleting the DD sinks, the following match arms in non-DD sinks become dead code and
-must be deleted (they reference `AgentDDSketch` which still lives in core at this point, but
-the arms are no longer reachable from any real pipeline path):
+After adding the bridge method and deleting the DD sinks, update the match arms in non-DD
+sinks to use `sketch.to_aggregated_histogram(DEFAULT_BOUNDS)` instead of the DD-specific
+quantile calls, then the match arms collapse into the `AggregatedHistogram` path:
 
-| File | What to delete |
-|---|---|
-| `src/sinks/prometheus/collector.rs:184` | `MetricValue::Sketch { sketch } => match sketch { AgentDDSketch(dd) => ... }` |
-| `src/sinks/influxdb/metrics.rs:366` | `MetricValue::Sketch { sketch } => match sketch { ... }` |
-| `src/sinks/greptimedb/metrics/batch.rs:40` | `MetricValue::Sketch { .. } => F64_BYTE_SIZE * ...` |
-| `src/sinks/util/buffer/metrics/split.rs:122` | `MetricValue::Sketch { .. } => { ... }` |
+| File | Current | Change |
+|---|---|---|
+| `src/sinks/prometheus/collector.rs:184` | `Sketch → ddsketch.quantile(q)` | `Sketch → sketch.to_aggregated_histogram(PROM_BOUNDS)`, then handled by `AggregatedHistogram` arm |
+| `src/sinks/influxdb/metrics.rs:366` | `Sketch → ddsketch.avg()/.min()/etc.` | `Sketch → sketch.to_aggregated_histogram(DEFAULT_BOUNDS)` |
+| `src/sinks/greptimedb/metrics/batch.rs:40` | `Sketch { .. } => size_estimate` | `Sketch { .. } => AggregatedHistogram size estimate` |
+| `src/sinks/util/buffer/metrics/split.rs:122` | `Sketch { .. } => routing` | `Sketch { .. } => same routing as AggregatedHistogram` |
 
-**Do not replace with approximations. Delete.**
+**These conversions are explicitly approximate and documented. They are bridge code only,
+deleted in Step 3 when `AgentDDSketch` leaves core.**
 
 ### What is added
 
@@ -603,18 +675,24 @@ They are never part of the core data model.
 
 ### `apm_stats` transform
 
+Full specification: `APM_STATS_OTLP_BACKPORT.md` (canonical). Summary below.
+
 Ports the algorithm from `src/sinks/datadog/traces/apm_stats/` (removed in Step 1) as a
-standalone transform. Consumes OTel `Span` events, emits OTel `Metric` signals:
+standalone transform in `src/transforms/apm_stats/`. Consumes OTel `Span` events, emits
+OTel `Metric` signals per 10-second window:
 
-| Metric | OTel type | Tags |
+| Metric | OTel type | Dimensions |
 |---|---|---|
-| `trace.spans.duration` | `ExponentialHistogram` (scale 7) | `service.name`, `span.name`, `status` |
-| `trace.spans.errors` | `Sum` (monotonic delta) | `service.name`, `span.name` |
-| `trace.spans.total` | `Sum` (monotonic delta) | `service.name`, `span.name` |
-| `trace.traces.completed` | `Sum` (monotonic delta) | — |
+| `spans.hits` | Sum (delta, int) | `span.name`, `span.resource`, `span.type`, `http.status_code` |
+| `spans.top_level_hits` | Sum (delta, int) | `span.name`, `span.resource`, `span.type` |
+| `spans.errors` | Sum (delta, int) | `span.name`, `span.resource`, `span.type`, `http.status_code` |
+| `spans.duration` | Sum (delta) ns | `span.name`, `span.resource`, `span.type` |
+| `spans.duration.ok` | ExponentialHistogram (delta, scale 7) ns | `span.name`, `span.resource`, `span.type` |
+| `spans.duration.error` | ExponentialHistogram (delta, scale 7) ns | `span.name`, `span.resource`, `span.type` |
 
-The `AgentDDSketch` accumulator in `apm_stats/bucket.rs` is replaced by OTel
-`ExponentialHistogram` aggregation at scale 7. No proprietary proto, no MessagePack.
+`AgentDDSketch` accumulator replaced by a ~100-line `ExponentialHistogramAccumulator` at
+scale 7. No DD proto, no MessagePack. Two outputs: `apm_stats.spans` (pass-through) and
+`apm_stats.stats` (metrics).
 
 ### `tail_sample` transform
 
@@ -728,7 +806,7 @@ signal types including span scope assertion (validates Fix A from Step 0b).
 | Q3 | OTel sink — gRPC missing | gRPC added in Step 1. Dual-protocol: gRPC internal, HTTP external. |
 | Q4 | `MetricValue::Distribution` / `Set` — who uses them? | StatsD source only. Conversion at StatsD boundary (Step 3). |
 | Q5 | `datadog_api_key` blast radius | Only DD source/sink + `log_to_metric`. VRL `get_secret` unaffected. |
-| Q6 | APM stats — keep or drop? | Kept. Ported as `apm_stats` OTel transform in Step 4. |
+| Q6 | APM stats — keep or drop? | Kept. Ported as `apm_stats` OTel transform in Step 4. Canonical spec: `APM_STATS_OTLP_BACKPORT.md`. |
 | Q7 | VRL tail sampling ergonomics | `spans_any`/`spans_all` shorthand types added. |
 | Q8 | VRL migration tool coverage | ~91% after SEM-08/SEM-09 and dynamic path heuristic. |
 | Q9 | `NativeDeserializer` external exposure | `publish = false`. Internal only. |
@@ -737,6 +815,12 @@ signal types including span scope assertion (validates Fix A from Step 0b).
 | PC2 | Step 2 ownership | Must be in flight before Step 0 closes. |
 | PC3 | Buffer toggle design | Single process-wide `AtomicCell<BufferFormat>`. |
 | PC4 | Span scope fix timing | Step 0b. Zero-risk, additive. |
+| G1 | `AgentDDSketch::to_histogram()` referenced but missing | Add `to_aggregated_histogram(bounds)` in Step 1 as bridge. Deleted in Step 3. |
+| G2 | `EventArray → OtlpBufferBatch` grouping | Split by signal type via `EventArray::logs/metrics/traces()`. Three export request types per batch. |
+| G3 | `buffer_format = "otlp"` on existing buffer | Startup: auto-detect existing buffer → force `Migrate` mode, log warning, refuse to start in `Otlp` mode if records present. |
+| G4 | VRL `TypeState` after Step 5 | Migration tool uses OTel type schema for TypeState, not Vector schema. Addressed in Step 5 VRL rewrite. |
+| G5 | `ByteSizeOf` / `EventCount` for OTel types | Must be implemented for new OTel `Span`, `LogRecord`, `Metric` types in Step 5. |
+| G6 | Schema definitions after Step 5 | OTel source `outputs()` schema definitions must be rewritten for OTel field paths in Step 5. |
 
 ---
 
@@ -753,6 +837,9 @@ signal types including span scope assertion (validates Fix A from Step 0b).
 | `datadog_events` API has no OTLP equivalent | Low | Low | Documented; covered in Step 7 study |
 | Upstream Vector instances on old protocol pushing to migrated instance | Medium | Medium | Vector source keeps backward-compat reception; only sink removed |
 | `avg` field on AgentDDSketch lost (no OTel equivalent) | Low | Medium | Documented explicitly in DD source adapter code |
+| `buffer_format = "otlp"` set on existing buffer → crash | Medium | High | Startup auto-detect: force `Migrate` if existing buffer detected (G3) |
+| `to_aggregated_histogram` bridge omitted → Prometheus/InfluxDB/GreptimeDB drop sketch metrics silently at Step 1 | Medium | Medium | Must implement before Step 1 PR is merged |
+| VRL migration tool TypeState computed against wrong schema | Low | Medium | Use OTel schema in tool (G4); flagged for Step 5 |
 
 ---
 

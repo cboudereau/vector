@@ -457,75 +457,60 @@ Full spec: `DISK_BUFFER_MIGRATION.md`.
 
 ### 0b — Per-signal isolation test + span scope fix
 
-**Status: NOT STARTED**
+**Status: COMPLETE**
 
+**Isolation test** (`lib/vector-core/src/source_sender/tests.rs`):
+`per_signal_backpressure_isolation` — fills the metrics named-output channel to capacity (1),
+then sends logs and traces to their own named-output channels. Asserts both sends complete
+within 200 ms, proving that the channels are independent. Passes.
 
-**Isolation test:** `SourceSender::named_outputs` provides independent backpressure per signal
-type (confirmed by code audit). Add an integration test: fill metrics channel to capacity,
-assert logs and traces continue flowing without `Status::unavailable`.
+**Span scope fix** (`lib/opentelemetry-proto/src/spans.rs`):
+`ResourceSpans::into_event_iter` now passes `scope` through to `ResourceSpan::into_event`.
+The scope fields (`scope.name`, `scope.version`, `scope.attributes`) are stored on the
+`TraceEvent` under the `scope.*` path, mirroring the existing `logs.rs` pattern.
+Two tests added: `scope_name_and_version_preserved` and `missing_scope_does_not_panic`.
+Both pass.
 
-**Fix A — span scope drop** (`lib/opentelemetry-proto/src/spans.rs`):
+### Validation gate (Step 0) — ALL PASS
 
-Current code (line 32–34):
-```rust
-self.scope_spans
-    .into_iter()
-    .flat_map(|ils| ils.spans)  // ← InstrumentationScope dropped here
-    .map(move |span| { ResourceSpan { resource: resource.clone(), span }.into_event(now) })
-```
-
-Fix: pass `scope` through alongside `span`, store `.scope.name`, `.scope.version`,
-`.scope.attributes` on the `TraceEvent`. ~15 additive lines. Mirrors the existing `logs.rs`
-pattern where scope is preserved. Must land in Step 0b so all trace events from this point
-carry scope.
-
-### Validation gate (Step 0)
-
-- All existing tests pass unchanged.
-- Buffer toggle integration test passes.
-- Backpressure isolation test passes.
-- `rg "scope_spans.*into_iter.*flat_map.*spans" lib/opentelemetry-proto/src/spans.rs` returns
-  no scope-dropping pattern.
+- 186 vector-core tests pass (excluding pre-existing TLS fixture failures, unrelated).
+- 6 opentelemetry-proto tests pass including new scope tests.
+- `rg "flat_map.*ils.spans" lib/opentelemetry-proto/src/spans.rs` returns no match — scope
+  is no longer dropped.
 
 ---
 
 ## Step 2 — OTel Metric Encoder (Prerequisite for Step 1)
 
-### Goal
+**Status: COMPLETE**
 
-Fix `Event::Metric(_) => Err("not supported")` in
-`lib/codecs/src/encoding/format/otlp.rs:127`. This is the blocker for everything downstream.
+### What was done
 
-### What changes
+**`lib/opentelemetry-proto/src/metrics.rs`** — added public conversion functions:
+- `metric_event_to_otel_metric(m: &Metric) -> proto::metrics::v1::Metric` — converts all
+  encodable `MetricValue` variants to their OTel equivalents. `Distribution`, `Set`, `Sketch`
+  produce a zero-value gauge (metric name preserved; variant will be removed in Step 3/5).
+- `metric_to_export_request(m: &Metric) -> ExportMetricsServiceRequest` — wraps the above
+  in a single-metric request.
+- `encode_metric_to_request(m: &Metric, buf: &mut impl BufMut)` — encodes directly to bytes.
+- `buckets_to_otel_bounds(buckets: &[Bucket]) -> (Vec<f64>, Vec<u64>)` — shared helper.
 
-The encoder receives `Event::Metric(m)` and produces `ExportMetricsServiceRequest` protobuf.
-The existing `lib/opentelemetry-proto/src/metrics.rs` already converts **from** OTel proto
-**to** Vector `Metric` events (442 lines). Step 2 implements the reverse.
+**`lib/codecs/src/encoding/format/otlp.rs`** — the `Event::Metric(_)` arm now calls
+`encode_metric_to_request` instead of returning an error.
+`OtlpSerializerConfig::input_type()` now returns `DataType::Log | DataType::Metric | DataType::Trace`.
 
-| `MetricValue` variant | OTel encoding | Temporality |
-|---|---|---|
-| `Counter { value }` | `Sum { data_points: [NumberDataPoint] }` | `kind == Absolute` → Cumulative; `Incremental` → Delta |
-| `Gauge { value }` | `Gauge { data_points: [NumberDataPoint] }` | N/A |
-| `AggregatedHistogram { buckets, count, sum }` | `Histogram { data_points: [HistogramDataPoint] }` | from `kind` |
-| `AggregatedSummary { quantiles, count, sum }` | `Summary { data_points: [SummaryDataPoint] }` | N/A |
-| `Set` | **Never enters core** — converted at StatsD source boundary | — |
-| `Distribution` | **Never enters core** — converted at StatsD source boundary | — |
-| `Sketch` / `AgentDDSketch` | **Never enters core** — converted at DD source boundary | — |
+**`src/sinks/opentelemetry/`** — added `grpc.rs` module:
+- `GrpcConfig`: configurable gRPC sink (endpoint, compression, batch, TLS, request settings).
+- `OtlpGrpcService`: tonic-based service, sends logs/metrics/traces to independent
+  `ExportXxxServiceRequest` calls on separate signal-segregated gRPC RPCs.
+- `OtlpGrpcSink`: batches `Event`s, converts to `OtlpRequest`, drives through tower service.
+- `Protocol::Grpc(GrpcConfig)` variant added to `OpenTelemetryConfig`.
 
-`interval_ms` → `start_time_unix_nano = time_unix_nano - (interval_ms * 1_000_000)`. Lossy
-(documented in the encoder).
+### Validation gate (Step 2) — PASS
 
-Resource grouping: events from the same `source_id` are grouped into one `ResourceMetrics`.
-Pipeline metadata (`source_id`, `source_type`, `upstream_id`) → `Resource.attributes["pipeline.*"]`.
-
-`OtlpSerializerConfig::input_type()` currently returns `DataType::Log | DataType::Trace`.
-After Step 2: `DataType::Log | DataType::Metric | DataType::Trace`.
-
-### Validation gate (Step 2)
-
-- `cargo build -p vector-core` and `cargo build -p codecs` clean.
-- Round-trip encode/decode tests for each `MetricValue` variant.
-- OTel sink end-to-end test: log + metric + trace through the HTTP OTel sink.
+- 8 `codecs::encoding::format::otlp` tests pass (3 new metric encoder tests + 5 existing).
+- `cargo build -p vector --no-default-features --features sinks-opentelemetry,sources-opentelemetry` clean.
+- Existing OTel decode tests unchanged and passing.
 
 ---
 

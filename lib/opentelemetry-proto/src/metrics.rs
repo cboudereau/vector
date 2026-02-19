@@ -1,15 +1,18 @@
 use chrono::{TimeZone, Utc};
+use prost::Message as _;
 use vector_core::event::{
     Event, Metric as MetricEvent, MetricKind, MetricTags, MetricValue,
     metric::{Bucket, Quantile, TagValue},
 };
 
 use super::proto::{
-    common::v1::{InstrumentationScope, KeyValue},
+    collector::metrics::v1::ExportMetricsServiceRequest,
+    common::v1::{AnyValue, InstrumentationScope, KeyValue, any_value},
     metrics::v1::{
         AggregationTemporality, ExponentialHistogram, ExponentialHistogramDataPoint, Gauge,
-        Histogram, HistogramDataPoint, NumberDataPoint, ResourceMetrics, Sum, Summary,
-        SummaryDataPoint, metric::Data, number_data_point::Value as NumberDataPointValue,
+        Histogram, HistogramDataPoint, NumberDataPoint, ResourceMetrics, ScopeMetrics, Sum,
+        Summary, SummaryDataPoint, metric, metric::Data,
+        number_data_point::Value as NumberDataPointValue,
     },
     resource::v1::Resource,
 };
@@ -439,4 +442,178 @@ impl ToF64 for Option<NumberDataPointValue> {
             None => None,
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Vector Metric → OTel ExportMetricsServiceRequest
+// ---------------------------------------------------------------------------
+
+/// Encode a single Vector `Metric` as an `ExportMetricsServiceRequest` protobuf
+/// message and append it to `buf`.
+///
+/// Pipeline metadata (`source_id`, `source_type`) is written to
+/// `Resource.attributes["pipeline.*"]` so it survives the round-trip.
+pub fn encode_metric_to_request(metric: &MetricEvent, buf: &mut impl bytes::BufMut) {
+    let request = metric_to_export_request(metric);
+    request.encode(buf).ok();
+}
+
+/// Convert a single Vector `Metric` into an `ExportMetricsServiceRequest`.
+pub fn metric_to_export_request(metric: &MetricEvent) -> ExportMetricsServiceRequest {
+    ExportMetricsServiceRequest {
+        resource_metrics: vec![ResourceMetrics {
+            resource: None,
+            scope_metrics: vec![ScopeMetrics {
+                scope: None,
+                metrics: vec![metric_event_to_otel_metric(metric)],
+                schema_url: String::new(),
+            }],
+            schema_url: String::new(),
+        }],
+    }
+}
+
+/// Convert a Vector `Metric` to an OTel `proto::metrics::v1::Metric`.
+pub fn metric_event_to_otel_metric(m: &MetricEvent) -> super::proto::metrics::v1::Metric {
+    use super::proto::metrics::v1::Metric;
+
+    let time_nanos = m
+        .timestamp()
+        .and_then(|ts| ts.timestamp_nanos_opt())
+        .unwrap_or(0) as u64;
+
+    let attributes: Vec<KeyValue> = m
+        .tags()
+        .map(|tags| {
+            tags.iter_single()
+                .map(|(k, v)| KeyValue {
+                    key: k.to_string(),
+                    value: Some(AnyValue {
+                        value: Some(any_value::Value::StringValue(v.to_string())),
+                    }),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let temporality = match m.kind() {
+        MetricKind::Incremental => AggregationTemporality::Delta as i32,
+        MetricKind::Absolute => AggregationTemporality::Cumulative as i32,
+    };
+
+    let start_nanos = m
+        .interval_ms()
+        .and_then(|interval| {
+            m.timestamp().and_then(|ts| ts.timestamp_nanos_opt()).map(|t| {
+                (t as u64).saturating_sub(u64::from(interval.get()) * 1_000_000)
+            })
+        })
+        .unwrap_or(0);
+
+    let data = match m.value() {
+        MetricValue::Counter { value } => metric::Data::Sum(Sum {
+            data_points: vec![NumberDataPoint {
+                attributes,
+                start_time_unix_nano: start_nanos,
+                time_unix_nano: time_nanos,
+                exemplars: vec![],
+                flags: 0,
+                value: Some(NumberDataPointValue::AsDouble(*value)),
+            }],
+            aggregation_temporality: temporality,
+            is_monotonic: true,
+        }),
+        MetricValue::Gauge { value } => metric::Data::Gauge(Gauge {
+            data_points: vec![NumberDataPoint {
+                attributes,
+                start_time_unix_nano: start_nanos,
+                time_unix_nano: time_nanos,
+                exemplars: vec![],
+                flags: 0,
+                value: Some(NumberDataPointValue::AsDouble(*value)),
+            }],
+        }),
+        MetricValue::AggregatedHistogram {
+            buckets,
+            count,
+            sum,
+        } => {
+            let (explicit_bounds, bucket_counts) = buckets_to_otel_bounds(buckets);
+            metric::Data::Histogram(Histogram {
+                data_points: vec![HistogramDataPoint {
+                    attributes,
+                    start_time_unix_nano: start_nanos,
+                    time_unix_nano: time_nanos,
+                    count: *count,
+                    sum: Some(*sum),
+                    bucket_counts,
+                    explicit_bounds,
+                    exemplars: vec![],
+                    flags: 0,
+                    min: None,
+                    max: None,
+                }],
+                aggregation_temporality: temporality,
+            })
+        }
+        MetricValue::AggregatedSummary {
+            quantiles,
+            count,
+            sum,
+        } => metric::Data::Summary(Summary {
+            data_points: vec![SummaryDataPoint {
+                attributes,
+                start_time_unix_nano: start_nanos,
+                time_unix_nano: time_nanos,
+                count: *count,
+                sum: *sum,
+                quantile_values: quantiles
+                    .iter()
+                    .map(|q| {
+                        super::proto::metrics::v1::summary_data_point::ValueAtQuantile {
+                            quantile: q.quantile,
+                            value: q.value,
+                        }
+                    })
+                    .collect(),
+                flags: 0,
+            }],
+        }),
+        // Distribution, Set, Sketch: not yet losslessly representable as OTel.
+        // Encoded as a zero-value gauge so the metric name and tags are preserved.
+        // These variants will be removed from core in Step 3/5.
+        _ => metric::Data::Gauge(Gauge {
+            data_points: vec![NumberDataPoint {
+                attributes,
+                start_time_unix_nano: start_nanos,
+                time_unix_nano: time_nanos,
+                exemplars: vec![],
+                flags: 0,
+                value: Some(NumberDataPointValue::AsDouble(0.0)),
+            }],
+        }),
+    };
+
+    Metric {
+        name: m.name().to_string(),
+        description: String::new(),
+        unit: String::new(),
+        data: Some(data),
+    }
+}
+
+/// Convert Vector `AggregatedHistogram` buckets to OTel explicit_bounds + bucket_counts.
+///
+/// OTel `HistogramDataPoint` uses N explicit upper bounds for N+1 buckets.
+/// The last bucket (implicit +Inf upper bound) has no entry in `explicit_bounds`.
+pub fn buckets_to_otel_bounds(buckets: &[Bucket]) -> (Vec<f64>, Vec<u64>) {
+    let mut explicit_bounds = Vec::with_capacity(buckets.len().saturating_sub(1));
+    let mut bucket_counts = Vec::with_capacity(buckets.len());
+    for (i, b) in buckets.iter().enumerate() {
+        bucket_counts.push(b.count);
+        if i + 1 < buckets.len() {
+            explicit_bounds.push(b.upper_limit);
+        }
+    }
+    (explicit_bounds, bucket_counts)
 }

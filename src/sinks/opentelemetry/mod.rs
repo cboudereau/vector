@@ -1,3 +1,5 @@
+mod grpc;
+
 use indoc::indoc;
 use vector_config::component::GenerateConfig;
 use vector_lib::{
@@ -17,25 +19,27 @@ use crate::{
     },
 };
 
+pub use grpc::GrpcConfig;
+
 /// Configuration for the `OpenTelemetry` sink.
-#[configurable_component(sink("opentelemetry", "Deliver OTLP data over HTTP."))]
+#[configurable_component(sink("opentelemetry", "Deliver OTLP data over HTTP or gRPC."))]
 #[derive(Clone, Debug, Default)]
 pub struct OpenTelemetryConfig {
-    /// Protocol configuration
+    /// Protocol configuration.
     #[configurable(derived)]
     protocol: Protocol,
 }
 
-/// The protocol used to send data to OpenTelemetry.
-/// Currently only HTTP is supported, but we plan to support gRPC.
-/// The proto definitions are defined [here](https://github.com/vectordotdev/vector/blob/master/lib/opentelemetry-proto/src/proto/opentelemetry-proto/opentelemetry/proto/README.md).
+/// The transport protocol for the `opentelemetry` sink.
 #[configurable_component]
 #[derive(Clone, Debug)]
 #[serde(rename_all = "snake_case", tag = "type")]
 #[configurable(metadata(docs::enum_tag_description = "The communication protocol."))]
 pub enum Protocol {
-    /// Send data over HTTP.
+    /// Send data over HTTP (default).
     Http(HttpSinkConfig),
+    /// Send data over gRPC (OTLP/gRPC).
+    Grpc(GrpcConfig),
 }
 
 impl Default for Protocol {
@@ -79,18 +83,21 @@ impl SinkConfig for OpenTelemetryConfig {
     async fn build(&self, cx: SinkContext) -> crate::Result<(VectorSink, Healthcheck)> {
         match &self.protocol {
             Protocol::Http(config) => config.build(cx).await,
+            Protocol::Grpc(config) => config.build(cx).await,
         }
     }
 
     fn input(&self) -> Input {
         match &self.protocol {
             Protocol::Http(config) => config.input(),
+            Protocol::Grpc(config) => config.input(),
         }
     }
 
     fn acknowledgements(&self) -> &AcknowledgementsConfig {
-        match self.protocol {
-            Protocol::Http(ref config) => config.acknowledgements(),
+        match &self.protocol {
+            Protocol::Http(config) => config.acknowledgements(),
+            Protocol::Grpc(config) => config.acknowledgements(),
         }
     }
 }

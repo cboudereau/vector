@@ -1,9 +1,12 @@
 use crate::encoding::ProtobufSerializer;
 use bytes::BytesMut;
-use opentelemetry_proto::proto::{
-    DESCRIPTOR_BYTES, LOGS_REQUEST_MESSAGE_TYPE, METRICS_REQUEST_MESSAGE_TYPE,
-    RESOURCE_LOGS_JSON_FIELD, RESOURCE_METRICS_JSON_FIELD, RESOURCE_SPANS_JSON_FIELD,
-    TRACES_REQUEST_MESSAGE_TYPE,
+use opentelemetry_proto::{
+    metrics::encode_metric_to_request,
+    proto::{
+        DESCRIPTOR_BYTES, LOGS_REQUEST_MESSAGE_TYPE, METRICS_REQUEST_MESSAGE_TYPE,
+        RESOURCE_LOGS_JSON_FIELD, RESOURCE_METRICS_JSON_FIELD, RESOURCE_SPANS_JSON_FIELD,
+        TRACES_REQUEST_MESSAGE_TYPE,
+    },
 };
 use tokio_util::codec::Encoder;
 use vector_config_macros::configurable_component;
@@ -25,7 +28,7 @@ impl OtlpSerializerConfig {
 
     /// The data type of events that are accepted by `OtlpSerializer`.
     pub fn input_type(&self) -> DataType {
-        DataType::Log | DataType::Trace
+        DataType::Log | DataType::Metric | DataType::Trace
     }
 
     /// The schema required by the serializer.
@@ -124,9 +127,73 @@ impl Encoder<Event> for OtlpSerializer {
                         .into())
                 }
             }
-            Event::Metric(_) => {
-                Err("OTLP serializer does not support native Vector metrics yet.".into())
+            Event::Metric(metric) => {
+                encode_metric_to_request(metric, buffer);
+                Ok(())
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use bytes::BytesMut;
+    use tokio_util::codec::Encoder as _;
+    use vector_core::event::{Event, Metric, MetricKind, MetricValue, metric::Bucket};
+
+    use super::OtlpSerializer;
+
+    fn make_serializer() -> OtlpSerializer {
+        OtlpSerializer::new().expect("OtlpSerializer::new must succeed")
+    }
+
+    #[test]
+    fn encodes_counter_without_error() {
+        let mut ser = make_serializer();
+        let metric = Metric::new(
+            "http_requests_total",
+            MetricKind::Incremental,
+            MetricValue::Counter { value: 100.0 },
+        );
+        let mut buf = BytesMut::new();
+        ser.encode(Event::Metric(metric), &mut buf)
+            .expect("counter encode must succeed");
+        assert!(!buf.is_empty(), "encoded bytes must not be empty");
+    }
+
+    #[test]
+    fn encodes_gauge_without_error() {
+        let mut ser = make_serializer();
+        let metric = Metric::new(
+            "cpu_usage",
+            MetricKind::Absolute,
+            MetricValue::Gauge { value: 0.75 },
+        );
+        let mut buf = BytesMut::new();
+        ser.encode(Event::Metric(metric), &mut buf)
+            .expect("gauge encode must succeed");
+        assert!(!buf.is_empty());
+    }
+
+    #[test]
+    fn encodes_histogram_without_error() {
+        let mut ser = make_serializer();
+        let metric = Metric::new(
+            "request_latency",
+            MetricKind::Absolute,
+            MetricValue::AggregatedHistogram {
+                buckets: vec![
+                    Bucket { upper_limit: 0.1, count: 10 },
+                    Bucket { upper_limit: 1.0, count: 25 },
+                    Bucket { upper_limit: f64::INFINITY, count: 5 },
+                ],
+                count: 40,
+                sum: 12.5,
+            },
+        );
+        let mut buf = BytesMut::new();
+        ser.encode(Event::Metric(metric), &mut buf)
+            .expect("histogram encode must succeed");
+        assert!(!buf.is_empty());
     }
 }

@@ -6,7 +6,7 @@ use tower::Service;
 use vector_lib::{
     ByteSizeOf, EstimatedJsonEncodedSizeOf,
     configurable::configurable_component,
-    event::metric::{MetricSketch, MetricTags, Quantile},
+    event::metric::MetricTags,
 };
 
 use crate::{
@@ -363,41 +363,38 @@ fn get_type_and_fields(
             let fields = encode_distribution(samples, quantiles);
             ("distribution", fields)
         }
-        MetricValue::Sketch { sketch } => match sketch {
-            MetricSketch::AgentDDSketch(ddsketch) => {
-                // Hard-coded quantiles because InfluxDB can't natively do anything useful with the
-                // actual bins.
-                let mut fields = [0.5, 0.75, 0.9, 0.99]
+        // Bridge: convert sketch to AggregatedHistogram then encode as histogram fields.
+        // Removed in Step 3 when AgentDDSketch leaves core.
+        MetricValue::Sketch { sketch } => {
+            use vector_lib::event::metric::MetricSketch;
+            let MetricSketch::AgentDDSketch(ddsketch) = sketch;
+            // Default histogram bounds matching common observability tool defaults.
+            const DEFAULT_BOUNDS: &[f64] = &[
+                0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0,
+            ];
+            if let MetricValue::AggregatedHistogram {
+                buckets,
+                count,
+                sum,
+            } = ddsketch.to_aggregated_histogram(DEFAULT_BOUNDS)
+            {
+                let mut fields: HashMap<KeyString, Field> = buckets
                     .iter()
-                    .map(|q| {
-                        let quantile = Quantile {
-                            quantile: *q,
-                            value: ddsketch.quantile(*q).unwrap_or(0.0),
-                        };
+                    .filter(|b| !b.upper_limit.is_infinite())
+                    .map(|b| {
                         (
-                            quantile.to_percentile_string().into(),
-                            Field::Float(quantile.value),
+                            format!("bucket_{}", b.upper_limit).into(),
+                            Field::UnsignedInt(b.count),
                         )
                     })
-                    .collect::<HashMap<KeyString, _>>();
-                fields.insert(
-                    "count".into(),
-                    Field::UnsignedInt(u64::from(ddsketch.count())),
-                );
-                fields.insert(
-                    "min".into(),
-                    Field::Float(ddsketch.min().unwrap_or(f64::MAX)),
-                );
-                fields.insert(
-                    "max".into(),
-                    Field::Float(ddsketch.max().unwrap_or(f64::MIN)),
-                );
-                fields.insert("sum".into(), Field::Float(ddsketch.sum().unwrap_or(0.0)));
-                fields.insert("avg".into(), Field::Float(ddsketch.avg().unwrap_or(0.0)));
-
-                ("sketch", Some(fields))
+                    .collect();
+                fields.insert("count".into(), Field::UnsignedInt(count));
+                fields.insert("sum".into(), Field::Float(sum));
+                ("histogram", Some(fields))
+            } else {
+                ("histogram", None)
             }
-        },
+        }
     }
 }
 

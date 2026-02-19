@@ -38,13 +38,6 @@ pub mod clickhouse;
 pub mod console;
 #[cfg(feature = "sinks-databend")]
 pub mod databend;
-#[cfg(any(
-    feature = "sinks-datadog_events",
-    feature = "sinks-datadog_logs",
-    feature = "sinks-datadog_metrics",
-    feature = "sinks-datadog_traces"
-))]
-pub mod datadog;
 #[cfg(feature = "sinks-doris")]
 pub mod doris;
 #[cfg(feature = "sinks-elasticsearch")]
@@ -108,10 +101,10 @@ pub mod socket;
 pub mod splunk_hec;
 #[cfg(feature = "sinks-statsd")]
 pub mod statsd;
-#[cfg(feature = "sinks-vector")]
-pub mod vector;
 #[cfg(feature = "sinks-webhdfs")]
 pub mod webhdfs;
+#[cfg(feature = "sinks-vector")]
+pub mod vector;
 #[cfg(feature = "sinks-websocket")]
 pub mod websocket;
 #[cfg(feature = "sinks-websocket-server")]

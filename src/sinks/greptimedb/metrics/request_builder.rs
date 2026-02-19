@@ -1,11 +1,8 @@
 use chrono::Utc;
 use greptimedb_ingester::{api::v1::*, helpers::values::*};
-use vector_lib::{
-    event::{
-        Metric, MetricValue,
-        metric::{Bucket, MetricSketch, Quantile, Sample},
-    },
-    metrics::AgentDDSketch,
+use vector_lib::event::{
+    Metric, MetricValue,
+    metric::{Bucket, MetricSketch, Quantile, Sample},
 };
 
 use crate::sinks::util::statistic::DistributionStatistic;
@@ -126,9 +123,20 @@ pub fn metric_to_insert_request(
             encode_f64_value("count", *count as f64, &mut schema, &mut columns);
             encode_f64_value("sum", *sum, &mut schema, &mut columns);
         }
+        // Bridge: convert sketch to AggregatedHistogram then encode as histogram.
+        // Removed in Step 3 when AgentDDSketch leaves core.
         MetricValue::Sketch { sketch } => {
-            let MetricSketch::AgentDDSketch(sketch) = sketch;
-            encode_sketch(sketch, &mut schema, &mut columns);
+            let MetricSketch::AgentDDSketch(ddsketch) = sketch;
+            const DEFAULT_BOUNDS: &[f64] = &[
+                0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0,
+            ];
+            if let MetricValue::AggregatedHistogram { buckets, count, sum } =
+                ddsketch.to_aggregated_histogram(DEFAULT_BOUNDS)
+            {
+                encode_histogram(&buckets, &mut schema, &mut columns);
+                encode_f64_value("count", count as f64, &mut schema, &mut columns);
+                encode_f64_value("sum", sum, &mut schema, &mut columns);
+            }
         }
     }
 
@@ -182,31 +190,6 @@ fn encode_quantiles(
     }
 }
 
-fn encode_sketch(sketch: &AgentDDSketch, schema: &mut Vec<ColumnSchema>, columns: &mut Vec<Value>) {
-    encode_f64_value("count", sketch.count() as f64, schema, columns);
-    if let Some(min) = sketch.min() {
-        encode_f64_value("min", min, schema, columns);
-    }
-
-    if let Some(max) = sketch.max() {
-        encode_f64_value("max", max, schema, columns);
-    }
-
-    if let Some(sum) = sketch.sum() {
-        encode_f64_value("sum", sum, schema, columns);
-    }
-
-    if let Some(avg) = sketch.avg() {
-        encode_f64_value("avg", avg, schema, columns);
-    }
-
-    for q in DISTRIBUTION_QUANTILES {
-        if let Some(quantile) = sketch.quantile(q) {
-            let column_name = format!("p{:02}", q * 100f64);
-            encode_f64_value(&column_name, quantile, schema, columns);
-        }
-    }
-}
 
 fn f64_column(name: &str) -> ColumnSchema {
     ColumnSchema {
@@ -481,8 +464,9 @@ mod tests {
 
     #[test]
     fn test_sketch() {
+        use vector_lib::metrics::AgentDDSketch;
         let mut sketch = AgentDDSketch::with_agent_defaults();
-        let samples = 10;
+        let samples = 10u32;
         for i in 0..samples {
             sketch.insert(i as f64);
         }
@@ -500,19 +484,10 @@ mod tests {
 
         let insert = metric_to_insert_request(metric, &options);
         let rows = insert.rows.expect("Empty insert request");
-        assert_eq!(
-            rows.rows[0].values.len(),
-            1 + DISTRIBUTION_QUANTILES.len() + DISTRIBUTION_STAT_FIELD_COUNT
-        );
 
-        assert!(get_column(&rows, "p50") <= 4.0);
-        assert!(get_column(&rows, "p95") > 8.0);
-        assert!(get_column(&rows, "p95") <= 9.0);
-        assert!(get_column(&rows, "p99") > 8.0);
-        assert!(get_column(&rows, "p99") <= 9.0);
+        // Bridge: sketch now encoded as histogram + count + sum (11 bounds + 2 stats + 1 timestamp).
+        // count=10, sum=45 (0+1+...+9)
         assert_eq!(get_column(&rows, "count"), samples as f64);
         assert_eq!(get_column(&rows, "sum"), 45.0);
-        assert_eq!(get_column(&rows, "max"), 9.0);
-        assert_eq!(get_column(&rows, "min"), 0.0);
     }
 }

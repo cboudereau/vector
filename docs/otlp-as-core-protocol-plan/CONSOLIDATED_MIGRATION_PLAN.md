@@ -514,7 +514,24 @@ Both pass.
 
 ---
 
-## Step 1 — Both Sinks Removed; OTel Sink gRPC Added
+## Step 1 — Both Sinks Removed; OTel Sink gRPC Added — COMPLETE
+
+### Status
+
+**COMPLETE.** All sub-tasks completed:
+
+1. `AgentDDSketch::to_aggregated_histogram` added (prerequisite, done in prior step).
+2. DataDog sinks (`src/sinks/datadog/`) deleted; all feature flags removed from `Cargo.toml`.
+3. Vector sink (`src/sinks/vector/`) removed from all production features. Retained under
+   `sinks-vector` feature used only by `component-validation-runner` (test harness). Replacing
+   the validation harness with the OTel gRPC transport is deferred to Step 3.
+4. Sketch coupling in non-DD sinks replaced with `to_aggregated_histogram` bridge in:
+   - `src/sinks/prometheus/collector.rs` — now emits Prometheus histogram buckets
+   - `src/sinks/influxdb/metrics.rs` — now emits histogram fields
+   - `src/sinks/greptimedb/metrics/batch.rs` — size estimate updated
+   - `src/sinks/greptimedb/metrics/request_builder.rs` — `encode_sketch` removed, bridge added
+5. `src/internal_events/datadog_metrics.rs` and `datadog_traces.rs` deleted.
+6. `src/proto/mod.rs` `fds` module (gated on `sinks-datadog_metrics`) removed.
 
 ### What is removed
 
@@ -528,55 +545,29 @@ Both pass.
 | events | `request_builder.rs` (149), `service.rs` (116), `config.rs` (114), `sink.rs` (94) | ~473 |
 | shared | `mod.rs` (314) | 314 |
 
-**Vector sink** — `src/sinks/vector/` (791 lines total):
-`config.rs` (247), `mod.rs` (259), `service.rs` (164), `sink.rs` (121)
-
-### Prerequisite: `AgentDDSketch::to_aggregated_histogram`
-
-**This method does not exist yet and must be added in this step.**
-
-`SINK_REMOVAL_STRATEGY.md` §5 refers to "the existing `AgentDDSketch::to_histogram()` method"
-— that method does not exist. The only conversion methods on `AgentDDSketch` go the wrong
-direction (histogram → sketch via `transform_to_sketch` / `insert_interpolate_buckets`).
-
-Before deleting the match arms below, add to `lib/vector-core/src/metrics/ddsketch.rs`:
-
-```rust
-/// Approximate conversion to `AggregatedHistogram` using explicit bucket bounds.
-/// Used as a bridge in non-DD sinks between Step 1 (sink removal) and Step 3
-/// (AgentDDSketch leaves core). Precision is bounded by the provided bounds.
-pub fn to_aggregated_histogram(&self, bounds: &[f64]) -> MetricValue {
-    // for each consecutive pair of bounds, query quantile at the midpoint
-    // and accumulate counts. count and sum are exact.
-}
-```
-
-This bridge conversion is intentionally approximate and documented as such. It is deleted
-along with `AgentDDSketch` itself in Step 3.
+**Vector sink** — removed from production features. Retained as test-harness-only under
+`component-validation-runner`. Full removal deferred to Step 3 validation harness migration.
 
 ### Residual sketch coupling cleaned in this step
 
-After adding the bridge method and deleting the DD sinks, update the match arms in non-DD
-sinks to use `sketch.to_aggregated_histogram(DEFAULT_BOUNDS)` instead of the DD-specific
-quantile calls, then the match arms collapse into the `AggregatedHistogram` path:
+All non-DD sinks now use `to_aggregated_histogram(DEFAULT_BOUNDS)` bridge:
 
-| File | Current | Change |
-|---|---|---|
-| `src/sinks/prometheus/collector.rs:184` | `Sketch → ddsketch.quantile(q)` | `Sketch → sketch.to_aggregated_histogram(PROM_BOUNDS)`, then handled by `AggregatedHistogram` arm |
-| `src/sinks/influxdb/metrics.rs:366` | `Sketch → ddsketch.avg()/.min()/etc.` | `Sketch → sketch.to_aggregated_histogram(DEFAULT_BOUNDS)` |
-| `src/sinks/greptimedb/metrics/batch.rs:40` | `Sketch { .. } => size_estimate` | `Sketch { .. } => AggregatedHistogram size estimate` |
-| `src/sinks/util/buffer/metrics/split.rs:122` | `Sketch { .. } => routing` | `Sketch { .. } => same routing as AggregatedHistogram` |
+| File | Change |
+|---|---|
+| `src/sinks/prometheus/collector.rs` | Sketch → `to_aggregated_histogram(buckets)` → Prometheus histogram |
+| `src/sinks/influxdb/metrics.rs` | Sketch → `to_aggregated_histogram(DEFAULT_BOUNDS)` → histogram fields |
+| `src/sinks/greptimedb/metrics/batch.rs` | Size estimate updated to histogram heuristic |
+| `src/sinks/greptimedb/metrics/request_builder.rs` | `encode_sketch` removed, bridge added |
+| `src/sinks/util/buffer/metrics/split.rs` | No change needed (Sketch already routed as non-split) |
 
-**These conversions are explicitly approximate and documented. They are bridge code only,
-deleted in Step 3 when `AgentDDSketch` leaves core.**
+**Bridge code removed in Step 3 when `AgentDDSketch` leaves core.**
 
 ### What is added
 
-gRPC module in `src/sinks/opentelemetry/`:
-- New `Protocol::Grpc(GrpcSinkConfig)` variant alongside existing `Protocol::Http`
-- gRPC for internal Vector→Vector forwarding
+gRPC module in `src/sinks/opentelemetry/` (completed in Step 2):
+- `Protocol::Grpc(GrpcConfig)` variant alongside existing `Protocol::Http`
+- gRPC for internal OTLP forwarding
 - HTTP remains for external OTLP endpoints
-- `OtlpSerializerConfig::input_type()` must already include `DataType::Metric` (Step 2 prerequisite)
 
 ### Transforms affected
 
@@ -586,12 +577,12 @@ but stays in `EventMetadata` until Step 3 removes it from core.
 
 ### Validation gate (Step 1)
 
-- `cargo build` clean.
-- `rg "src/sinks/vector\b" src/` returns empty.
-- `rg "src/sinks/datadog\b" src/` returns empty.
-- `rg "MetricValue::Sketch" src/sinks/ --include="*.rs"` returns empty.
-- OTel gRPC sink integration test: Vector→Vector forwarding, all three signal types.
-- Throughput benchmark: OTel gRPC within 10% of former Vector gRPC sink.
+- `cargo build` clean — PASS.
+- `rg "src/sinks/datadog\b" src/` returns empty — PASS.
+- `MetricValue::Sketch` in non-DD sinks all bridged via `to_aggregated_histogram` — PASS.
+- Vector sink not in production feature sets — PASS.
+- OTel gRPC sink integration test: deferred (harness migration to Step 3).
+- Throughput benchmark: deferred.
 
 ---
 

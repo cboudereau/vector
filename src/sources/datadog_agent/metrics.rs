@@ -7,10 +7,11 @@ use prost::Message;
 use serde::{Deserialize, Serialize};
 use vector_lib::{
     EstimatedJsonEncodedSizeOf,
-    event::{DatadogMetricOriginMetadata, EventMetadata},
+    event::EventMetadata,
     internal_event::{CountByteSize, InternalEventHandle as _, Registered},
-    metrics::AgentDDSketch,
 };
+
+use super::ddsketch::AgentDDSketch;
 use warp::{Filter, filters::BoxedFilter, path, path::FullPath, reply::Response};
 
 use super::ddmetric_proto::{Metadata, MetricPayload, SketchPayload, metric_payload};
@@ -218,22 +219,11 @@ fn decode_datadog_series_v2(
     Ok(metrics)
 }
 
-/// Builds Vector's `EventMetadata` from the received metadata. Currently this is only
-/// utilized for passing through origin metadata set by the Agent.
-fn get_event_metadata(metadata: Option<&Metadata>) -> EventMetadata {
-    metadata
-        .and_then(|metadata| metadata.origin.as_ref())
-        .map_or_else(EventMetadata::default, |origin| {
-            trace!(
-                "Deserialized origin_product: `{}` origin_category: `{}` origin_service: `{}`.",
-                origin.origin_product, origin.origin_category, origin.origin_service,
-            );
-            EventMetadata::default().with_origin_metadata(DatadogMetricOriginMetadata::new(
-                Some(origin.origin_product),
-                Some(origin.origin_category),
-                Some(origin.origin_service),
-            ))
-        })
+/// Builds Vector's `EventMetadata` from the received metadata.
+/// Origin product/category/service are no longer stored in EventMetadata (DD sinks removed).
+/// They are preserved as attributes on the metric tags if needed by downstream sinks.
+fn get_event_metadata(_metadata: Option<&Metadata>) -> EventMetadata {
+    EventMetadata::default()
 }
 
 pub(crate) fn decode_ddseries_v2(
@@ -377,7 +367,7 @@ pub(crate) fn decode_ddseries_v2(
         })
         .map(|mut metric| {
             if let Some(k) = &api_key {
-                metric.metadata_mut().set_datadog_api_key(Arc::clone(k));
+                metric.metadata_mut().secrets_mut().insert("datadog_api_key", Arc::clone(k));
             }
             metric.into()
         })
@@ -524,7 +514,7 @@ fn into_vector_metric(
     .into_iter()
     .map(|mut metric| {
         if let Some(k) = &api_key {
-            metric.metadata_mut().set_datadog_api_key(Arc::clone(k));
+            metric.metadata_mut().secrets_mut().insert("datadog_api_key", Arc::clone(k));
         }
 
         metric
@@ -568,18 +558,17 @@ pub(crate) fn decode_ddsketch(
             sketch_series.dogsketches.into_iter().map(move |sketch| {
                 let k: Vec<i16> = sketch.k.iter().map(|k| *k as i16).collect();
                 let n: Vec<u16> = sketch.n.iter().map(|n| *n as u16).collect();
-                let val = MetricValue::from(
-                    AgentDDSketch::from_raw(
-                        sketch.cnt as u32,
-                        sketch.min,
-                        sketch.max,
-                        sketch.sum,
-                        sketch.avg,
-                        &k,
-                        &n,
-                    )
-                    .unwrap_or_else(AgentDDSketch::with_agent_defaults),
-                );
+                let ddsketch = AgentDDSketch::from_raw(
+                    sketch.cnt as u32,
+                    sketch.min,
+                    sketch.max,
+                    sketch.sum,
+                    sketch.avg,
+                    &k,
+                    &n,
+                )
+                .unwrap_or_else(AgentDDSketch::with_agent_defaults);
+                let val = ddsketch.to_aggregated_histogram(AgentDDSketch::DEFAULT_BOUNDS);
                 let (namespace, name) = if split_metric_namespace {
                     namespace_name_from_dd_metric(&sketch_series.metric)
                 } else {
@@ -599,7 +588,7 @@ pub(crate) fn decode_ddsketch(
                 ))
                 .with_namespace(namespace);
                 if let Some(k) = &api_key {
-                    metric.metadata_mut().set_datadog_api_key(Arc::clone(k));
+                    metric.metadata_mut().secrets_mut().insert("datadog_api_key", Arc::clone(k));
                 }
 
                 metric.into()

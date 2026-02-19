@@ -6,6 +6,7 @@ mod tests;
 pub mod logs;
 pub mod metrics;
 pub mod traces;
+pub(crate) mod ddsketch;
 
 #[allow(warnings, clippy::pedantic, clippy::nursery)]
 pub(crate) mod ddmetric_proto {

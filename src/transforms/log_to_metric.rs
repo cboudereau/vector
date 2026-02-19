@@ -5,7 +5,7 @@ use indexmap::IndexMap;
 use vector_lib::{
     configurable::configurable_component,
     event::{
-        DatadogMetricOriginMetadata, LogEvent,
+        LogEvent,
         metric::{Bucket, Quantile, Sample},
     },
 };
@@ -36,7 +36,6 @@ use crate::{
     },
 };
 
-const ORIGIN_SERVICE_VALUE: u32 = 3;
 
 /// Configuration for the `log_to_metric` transform.
 #[configurable_component(transform("log_to_metric", "Convert log events to metric events."))]
@@ -383,12 +382,7 @@ fn to_metric_with_config(config: &MetricConfig, event: &Event) -> Result<Metric,
     let metadata = event
         .metadata()
         .clone()
-        .with_schema_definition(&Arc::new(Definition::any()))
-        .with_origin_metadata(DatadogMetricOriginMetadata::new(
-            None,
-            None,
-            Some(ORIGIN_SERVICE_VALUE),
-        ));
+        .with_schema_definition(&Arc::new(Definition::any()));
 
     let field = parse_target_path(config.field()).map_err(|_e| PathNotFound {
         path: config.field().to_string(),
@@ -1076,12 +1070,7 @@ mod tests {
         let mut metadata =
             event
                 .metadata()
-                .clone()
-                .with_origin_metadata(DatadogMetricOriginMetadata::new(
-                    None,
-                    None,
-                    Some(ORIGIN_SERVICE_VALUE),
-                ));
+                .clone();
         // definitions aren't valid for metrics yet, it's just set to the default (anything).
         metadata.set_schema_definition(&Arc::new(Definition::any()));
         set_test_source_metadata(&mut metadata);
@@ -1118,12 +1107,7 @@ mod tests {
         let mut metadata =
             event
                 .metadata()
-                .clone()
-                .with_origin_metadata(DatadogMetricOriginMetadata::new(
-                    None,
-                    None,
-                    Some(ORIGIN_SERVICE_VALUE),
-                ));
+                .clone();
         // definitions aren't valid for metrics yet, it's just set to the default (anything).
         metadata.set_schema_definition(&Arc::new(Definition::any()));
         set_test_source_metadata(&mut metadata);
@@ -1172,12 +1156,7 @@ mod tests {
         let mut metadata =
             event
                 .metadata()
-                .clone()
-                .with_origin_metadata(DatadogMetricOriginMetadata::new(
-                    None,
-                    None,
-                    Some(ORIGIN_SERVICE_VALUE),
-                ));
+                .clone();
         // definitions aren't valid for metrics yet, it's just set to the default (anything).
         metadata.set_schema_definition(&Arc::new(Definition::any()));
         set_test_source_metadata(&mut metadata);
@@ -1227,12 +1206,7 @@ mod tests {
         let mut metadata =
             event
                 .metadata()
-                .clone()
-                .with_origin_metadata(DatadogMetricOriginMetadata::new(
-                    None,
-                    None,
-                    Some(ORIGIN_SERVICE_VALUE),
-                ));
+                .clone();
         // definitions aren't valid for metrics yet, it's just set to the default (anything).
         metadata.set_schema_definition(&Arc::new(Definition::any()));
         set_test_source_metadata(&mut metadata);
@@ -1351,12 +1325,7 @@ mod tests {
         let mut metadata =
             event
                 .metadata()
-                .clone()
-                .with_origin_metadata(DatadogMetricOriginMetadata::new(
-                    None,
-                    None,
-                    Some(ORIGIN_SERVICE_VALUE),
-                ));
+                .clone();
         // definitions aren't valid for metrics yet, it's just set to the default (anything).
         metadata.set_schema_definition(&Arc::new(Definition::any()));
         set_test_source_metadata(&mut metadata);
@@ -1406,12 +1375,7 @@ mod tests {
         let mut metadata =
             event
                 .metadata()
-                .clone()
-                .with_origin_metadata(DatadogMetricOriginMetadata::new(
-                    None,
-                    None,
-                    Some(ORIGIN_SERVICE_VALUE),
-                ));
+                .clone();
         // definitions aren't valid for metrics yet, it's just set to the default (anything).
         metadata.set_schema_definition(&Arc::new(Definition::any()));
         set_test_source_metadata(&mut metadata);
@@ -1446,12 +1410,7 @@ mod tests {
         let mut metadata =
             event
                 .metadata()
-                .clone()
-                .with_origin_metadata(DatadogMetricOriginMetadata::new(
-                    None,
-                    None,
-                    Some(ORIGIN_SERVICE_VALUE),
-                ));
+                .clone();
         // definitions aren't valid for metrics yet, it's just set to the default (anything).
         metadata.set_schema_definition(&Arc::new(Definition::any()));
         set_test_source_metadata(&mut metadata);
@@ -1485,12 +1444,7 @@ mod tests {
         let mut metadata =
             event
                 .metadata()
-                .clone()
-                .with_origin_metadata(DatadogMetricOriginMetadata::new(
-                    None,
-                    None,
-                    Some(ORIGIN_SERVICE_VALUE),
-                ));
+                .clone();
 
         // definitions aren't valid for metrics yet, it's just set to the default (anything).
         metadata.set_schema_definition(&Arc::new(Definition::any()));
@@ -1581,12 +1535,7 @@ mod tests {
         let mut metadata =
             event
                 .metadata()
-                .clone()
-                .with_origin_metadata(DatadogMetricOriginMetadata::new(
-                    None,
-                    None,
-                    Some(ORIGIN_SERVICE_VALUE),
-                ));
+                .clone();
 
         // definitions aren't valid for metrics yet, it's just set to the default (anything).
         metadata.set_schema_definition(&Arc::new(Definition::any()));
@@ -1646,12 +1595,7 @@ mod tests {
         let mut metadata =
             event
                 .metadata()
-                .clone()
-                .with_origin_metadata(DatadogMetricOriginMetadata::new(
-                    None,
-                    None,
-                    Some(ORIGIN_SERVICE_VALUE),
-                ));
+                .clone();
 
         // definitions aren't valid for metrics yet, it's just set to the default (anything).
         metadata.set_schema_definition(&Arc::new(Definition::any()));
@@ -1700,12 +1644,7 @@ mod tests {
         let mut metadata =
             event
                 .metadata()
-                .clone()
-                .with_origin_metadata(DatadogMetricOriginMetadata::new(
-                    None,
-                    None,
-                    Some(ORIGIN_SERVICE_VALUE),
-                ));
+                .clone();
         // definitions aren't valid for metrics yet, it's just set to the default (anything).
         metadata.set_schema_definition(&Arc::new(Definition::any()));
         set_test_source_metadata(&mut metadata);
@@ -1740,12 +1679,7 @@ mod tests {
         let mut metadata =
             event
                 .metadata()
-                .clone()
-                .with_origin_metadata(DatadogMetricOriginMetadata::new(
-                    None,
-                    None,
-                    Some(ORIGIN_SERVICE_VALUE),
-                ));
+                .clone();
 
         // definitions aren't valid for metrics yet, it's just set to the default (anything).
         metadata.set_schema_definition(&Arc::new(Definition::any()));
@@ -1782,12 +1716,7 @@ mod tests {
         let mut metadata =
             event
                 .metadata()
-                .clone()
-                .with_origin_metadata(DatadogMetricOriginMetadata::new(
-                    None,
-                    None,
-                    Some(ORIGIN_SERVICE_VALUE),
-                ));
+                .clone();
 
         // definitions aren't valid for metrics yet, it's just set to the default (anything).
         metadata.set_schema_definition(&Arc::new(Definition::any()));

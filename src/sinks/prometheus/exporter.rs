@@ -490,19 +490,12 @@ impl PrometheusExporter {
                 let (series, data, metadata) = metric.into_parts();
                 let (time, kind, value) = data.into_parts();
 
-                let new_value = if self.config.distributions_as_summaries {
-                    // We use a sketch when in summary mode because they're actually able to be
-                    // merged and provide correct output, unlike the aggregated summaries that
-                    // we handle from _sources_ like Prometheus.  The collector code itself
-                    // will render sketches as aggregated summaries, so we have continuity there.
-                    value
-                        .distribution_to_sketch()
-                        .expect("value should be distribution already")
-                } else {
-                    value
-                        .distribution_to_agg_histogram(&self.config.buckets)
-                        .expect("value should be distribution already")
-                };
+                // AgentDDSketch removed from core in Step 3; distributions always convert to
+                // AggregatedHistogram. The `distributions_as_summaries` flag is preserved for
+                // config compatibility but now both paths use histograms.
+                let new_value = value
+                    .distribution_to_agg_histogram(&self.config.buckets)
+                    .expect("value should be distribution already");
 
                 let data = MetricData::from_parts(time, kind, new_value);
                 Metric::from_parts(series, data, metadata)

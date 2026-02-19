@@ -363,38 +363,6 @@ fn get_type_and_fields(
             let fields = encode_distribution(samples, quantiles);
             ("distribution", fields)
         }
-        // Bridge: convert sketch to AggregatedHistogram then encode as histogram fields.
-        // Removed in Step 3 when AgentDDSketch leaves core.
-        MetricValue::Sketch { sketch } => {
-            use vector_lib::event::metric::MetricSketch;
-            let MetricSketch::AgentDDSketch(ddsketch) = sketch;
-            // Default histogram bounds matching common observability tool defaults.
-            const DEFAULT_BOUNDS: &[f64] = &[
-                0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0,
-            ];
-            if let MetricValue::AggregatedHistogram {
-                buckets,
-                count,
-                sum,
-            } = ddsketch.to_aggregated_histogram(DEFAULT_BOUNDS)
-            {
-                let mut fields: HashMap<KeyString, Field> = buckets
-                    .iter()
-                    .filter(|b| !b.upper_limit.is_infinite())
-                    .map(|b| {
-                        (
-                            format!("bucket_{}", b.upper_limit).into(),
-                            Field::UnsignedInt(b.count),
-                        )
-                    })
-                    .collect();
-                fields.insert("count".into(), Field::UnsignedInt(count));
-                fields.insert("sum".into(), Field::Float(sum));
-                ("histogram", Some(fields))
-            } else {
-                ("histogram", None)
-            }
-        }
     }
 }
 

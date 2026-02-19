@@ -18,7 +18,6 @@ use crate::{
     schema,
 };
 
-const DATADOG_API_KEY: &str = "datadog_api_key";
 const SPLUNK_HEC_TOKEN: &str = "splunk_hec_token";
 
 /// The event metadata structure is a `Arc` wrapper around the actual metadata to avoid cloning the
@@ -79,56 +78,9 @@ pub(super) struct Inner {
     /// we have to use `String`.
     pub(crate) dropped_fields: ObjectMap,
 
-    /// Metadata to track the origin of metrics. This is always `None` for log and trace events.
-    /// Only a small set of Vector sources and transforms explicitly set this field.
-    #[serde(default)]
-    pub(crate) datadog_origin_metadata: Option<DatadogMetricOriginMetadata>,
-
     /// An internal vector id that can be used to identify this event across all components.
     #[derivative(PartialEq = "ignore")]
     pub(crate) source_event_id: Option<Uuid>,
-}
-
-/// Metric Origin metadata for submission to Datadog.
-#[derive(Clone, Default, Debug, Deserialize, PartialEq, Serialize)]
-pub struct DatadogMetricOriginMetadata {
-    /// `OriginProduct`
-    product: Option<u32>,
-    /// `OriginCategory`
-    category: Option<u32>,
-    /// `OriginService`
-    service: Option<u32>,
-}
-
-impl DatadogMetricOriginMetadata {
-    /// Creates a new `DatadogMetricOriginMetadata`.
-    /// When Vector sends out metrics containing the Origin metadata, it should do so with
-    /// all of the fields defined.
-    /// The edge case where the Origin metadata is created within a component and does not
-    /// initially contain all of the metadata fields, is in the `log_to_metric` transform.
-    #[must_use]
-    pub fn new(product: Option<u32>, category: Option<u32>, service: Option<u32>) -> Self {
-        Self {
-            product,
-            category,
-            service,
-        }
-    }
-
-    /// Returns a reference to the `OriginProduct`.
-    pub fn product(&self) -> Option<u32> {
-        self.product
-    }
-
-    /// Returns a reference to the `OriginCategory`.
-    pub fn category(&self) -> Option<u32> {
-        self.category
-    }
-
-    /// Returns a reference to the `OriginService`.
-    pub fn service(&self) -> Option<u32> {
-        self.service
-    }
 }
 
 fn default_metadata_value() -> Value {
@@ -209,16 +161,6 @@ impl EventMetadata {
         self.get_mut().upstream_id = Some(upstream_id);
     }
 
-    /// Return the datadog API key, if it exists
-    pub fn datadog_api_key(&self) -> Option<Arc<str>> {
-        self.inner.secrets.get(DATADOG_API_KEY).cloned()
-    }
-
-    /// Set the datadog API key to passed value
-    pub fn set_datadog_api_key(&mut self, secret: Arc<str>) {
-        self.get_mut().secrets.insert(DATADOG_API_KEY, secret);
-    }
-
     /// Return the splunk hec token, if it exists
     pub fn splunk_hec_token(&self) -> Option<Arc<str>> {
         self.inner.secrets.get(SPLUNK_HEC_TOKEN).cloned()
@@ -240,11 +182,6 @@ impl EventMetadata {
     /// Fetches the dropped field by meaning.
     pub fn dropped_field(&self, meaning: impl AsRef<str>) -> Option<&Value> {
         self.inner.dropped_fields.get(meaning.as_ref())
-    }
-
-    /// Returns a reference to the `DatadogMetricOriginMetadata`.
-    pub fn datadog_origin_metadata(&self) -> Option<&DatadogMetricOriginMetadata> {
-        self.inner.datadog_origin_metadata.as_ref()
     }
 
     /// Returns a reference to the event id.
@@ -275,7 +212,6 @@ impl Default for Inner {
             source_type: None,
             upstream_id: None,
             dropped_fields: ObjectMap::new(),
-            datadog_origin_metadata: None,
             source_event_id: Some(Uuid::new_v4()),
         }
     }
@@ -347,13 +283,6 @@ impl EventMetadata {
     #[must_use]
     pub fn with_source_type<S: Into<Cow<'static, str>>>(mut self, source_type: S) -> Self {
         self.get_mut().source_type = Some(source_type.into());
-        self
-    }
-
-    /// Replaces the existing `DatadogMetricOriginMetadata` with the given one.
-    #[must_use]
-    pub fn with_origin_metadata(mut self, origin_metadata: DatadogMetricOriginMetadata) -> Self {
-        self.get_mut().datadog_origin_metadata = Some(origin_metadata);
         self
     }
 
@@ -567,9 +496,9 @@ mod test {
     #[test]
     fn metadata_hardcoded_secrets_get_set() {
         let mut metadata = EventMetadata::default();
-        metadata.set_datadog_api_key(Arc::from(SECRET));
+        metadata.secrets_mut().insert("datadog_api_key", Arc::from(SECRET));
         metadata.set_splunk_hec_token(Arc::from(SECRET2));
-        assert_eq!(metadata.datadog_api_key().unwrap().as_ref(), SECRET);
+        assert_eq!(metadata.secrets().get("datadog_api_key").unwrap().as_ref(), SECRET);
         assert_eq!(metadata.splunk_hec_token().unwrap().as_ref(), SECRET2);
     }
 

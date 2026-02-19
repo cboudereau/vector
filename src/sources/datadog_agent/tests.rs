@@ -407,7 +407,7 @@ async fn full_payload_v1() {
             assert_eq!(log["service"], "vector".into());
             assert_eq!(log["ddsource"], "curl".into());
             assert_eq!(log["ddtags"], "one,two,three".into());
-            assert!(event.metadata().datadog_api_key().is_none());
+            assert!(event.metadata().secrets().get("datadog_api_key").is_none());
             assert_eq!(*log.get_source_type().unwrap(), "datadog_agent".into());
             assert_eq!(
                 event.metadata().schema_definition().as_ref(),
@@ -462,7 +462,7 @@ async fn full_payload_v2() {
             assert_eq!(log["service"], "vector".into());
             assert_eq!(log["ddsource"], "curl".into());
             assert_eq!(log["ddtags"], "one,two,three".into());
-            assert!(event.metadata().datadog_api_key().is_none());
+            assert!(event.metadata().secrets().get("datadog_api_key").is_none());
             assert_eq!(*log.get_source_type().unwrap(), "datadog_agent".into());
             assert_eq!(
                 event.metadata().schema_definition().as_ref(),
@@ -517,7 +517,7 @@ async fn no_api_key() {
             assert_eq!(log["service"], "vector".into());
             assert_eq!(log["ddsource"], "curl".into());
             assert_eq!(log["ddtags"], "one,two,three".into());
-            assert!(event.metadata().datadog_api_key().is_none());
+            assert!(event.metadata().secrets().get("datadog_api_key").is_none());
             assert_eq!(*log.get_source_type().unwrap(), "datadog_agent".into());
             assert_eq!(
                 event.metadata().schema_definition().as_ref(),
@@ -574,7 +574,7 @@ async fn api_key_in_url() {
             assert_eq!(log["ddtags"], "one,two,three".into());
             assert_eq!(*log.get_source_type().unwrap(), "datadog_agent".into());
             assert_eq!(
-                &event.metadata().datadog_api_key().as_ref().unwrap()[..],
+                &event.metadata().secrets().get("datadog_api_key").unwrap()[..],
                 DD_API_KEY
             );
             assert_eq!(
@@ -632,7 +632,7 @@ async fn api_key_in_query_params() {
             assert_eq!(log["ddtags"], "one,two,three".into());
             assert_eq!(*log.get_source_type().unwrap(), "datadog_agent".into());
             assert_eq!(
-                &event.metadata().datadog_api_key().as_ref().unwrap()[..],
+                &event.metadata().secrets().get("datadog_api_key").unwrap()[..],
                 DD_API_KEY
             );
             assert_eq!(
@@ -690,7 +690,7 @@ async fn api_key_in_header() {
             assert_eq!(log["ddtags"], "one,two,three".into());
             assert_eq!(*log.get_source_type().unwrap(), "datadog_agent".into());
             assert_eq!(
-                &event.metadata().datadog_api_key().as_ref().unwrap()[..],
+                &event.metadata().secrets().get("datadog_api_key").unwrap()[..],
                 DD_API_KEY
             );
             assert_eq!(
@@ -878,7 +878,7 @@ async fn ignores_api_key() {
             assert_eq!(log["ddsource"], "curl".into());
             assert_eq!(log["ddtags"], "one,two,three".into());
             assert_eq!(*log.get_source_type().unwrap(), "datadog_agent".into());
-            assert!(event.metadata().datadog_api_key().is_none());
+            assert!(event.metadata().secrets().get("datadog_api_key").is_none());
             assert_eq!(
                 event.metadata().schema_definition().as_ref(),
                 &test_logs_schema_definition()
@@ -989,7 +989,7 @@ async fn decode_series_endpoint_v1() {
             );
 
             assert_eq!(
-                &events[0].metadata().datadog_api_key().as_ref().unwrap()[..],
+                &events[0].metadata().secrets().get("datadog_api_key").unwrap()[..],
                 DD_API_KEY
             );
 
@@ -1015,7 +1015,7 @@ async fn decode_series_endpoint_v1() {
             );
 
             assert_eq!(
-                &events[1].metadata().datadog_api_key().as_ref().unwrap()[..],
+                &events[1].metadata().secrets().get("datadog_api_key").unwrap()[..],
                 DD_API_KEY
             );
 
@@ -1046,7 +1046,7 @@ async fn decode_series_endpoint_v1() {
             );
 
             assert_eq!(
-                &events[2].metadata().datadog_api_key().as_ref().unwrap()[..],
+                &events[2].metadata().secrets().get("datadog_api_key").unwrap()[..],
                 DD_API_KEY
             );
 
@@ -1084,7 +1084,7 @@ async fn decode_series_endpoint_v1() {
             assert_eq!(metric.namespace(), Some("system"));
 
             assert_eq!(
-                &events[3].metadata().datadog_api_key().as_ref().unwrap()[..],
+                &events[3].metadata().secrets().get("datadog_api_key").unwrap()[..],
                 DD_API_KEY
             );
         }
@@ -1180,14 +1180,11 @@ async fn decode_sketches() {
             }
 
             assert_eq!(
-                &events[0].metadata().datadog_api_key().as_ref().unwrap()[..],
+                &events[0].metadata().secrets().get("datadog_api_key").unwrap()[..],
                 DD_API_KEY
             );
 
-            let event_origin = &events[0].metadata().datadog_origin_metadata().unwrap();
-            assert_eq!(event_origin.product().unwrap(), 10);
-            assert_eq!(event_origin.category().unwrap(), 11);
-            assert_eq!(event_origin.service().unwrap(), 9);
+            // origin metadata removed in Step 3 (DD types leave core)
         }
     })
     .await;
@@ -1343,7 +1340,7 @@ async fn decode_traces() {
                 0.577.into()
             );
             assert_eq!(
-                &events[0].metadata().datadog_api_key().as_ref().unwrap()[..],
+                &events[0].metadata().secrets().get("datadog_api_key").unwrap()[..],
                 DD_API_KEY
             );
 
@@ -1361,7 +1358,7 @@ async fn decode_traces() {
             assert_eq!(span_from_apm_event["resource"], "a_resource".into());
 
             assert_eq!(
-                &events[1].metadata().datadog_api_key().as_ref().unwrap()[..],
+                &events[1].metadata().secrets().get("datadog_api_key").unwrap()[..],
                 DD_API_KEY
             );
 
@@ -1423,7 +1420,7 @@ async fn decode_traces() {
                 0.577.into()
             );
             assert_eq!(
-                &events[2].metadata().datadog_api_key().as_ref().unwrap()[..],
+                &events[2].metadata().secrets().get("datadog_api_key").unwrap()[..],
                 DD_API_KEY
             );
         }
@@ -1512,7 +1509,7 @@ async fn split_outputs() {
                 ),
             );
             assert_eq!(
-                &event.metadata().datadog_api_key().as_ref().unwrap()[..],
+                &event.metadata().secrets().get("datadog_api_key").unwrap()[..],
                 "abcdefgh12345678abcdefgh12345678"
             );
         }
@@ -1535,7 +1532,7 @@ async fn split_outputs() {
             assert_eq!(log["ddtags"], "one,two,three".into());
             assert_eq!(*log.get_source_type().unwrap(), "datadog_agent".into());
             assert_eq!(
-                &event.metadata().datadog_api_key().as_ref().unwrap()[..],
+                &event.metadata().secrets().get("datadog_api_key").unwrap()[..],
                 DD_API_KEY
             );
             assert_eq!(
@@ -2201,7 +2198,7 @@ async fn decode_series_endpoint_v2() {
             assert_eq!(metric.namespace(), Some("namespace"));
 
             assert_eq!(
-                &events[0].metadata().datadog_api_key().as_ref().unwrap()[..],
+                &events[0].metadata().secrets().get("datadog_api_key").unwrap()[..],
                 DD_API_KEY
             );
 
@@ -2231,7 +2228,7 @@ async fn decode_series_endpoint_v2() {
             assert_eq!(metric.namespace(), Some("namespace"));
 
             assert_eq!(
-                &events[1].metadata().datadog_api_key().as_ref().unwrap()[..],
+                &events[1].metadata().secrets().get("datadog_api_key").unwrap()[..],
                 DD_API_KEY
             );
 
@@ -2264,7 +2261,7 @@ async fn decode_series_endpoint_v2() {
             assert_eq!(metric.namespace(), Some("another_namespace"));
 
             assert_eq!(
-                &events[2].metadata().datadog_api_key().as_ref().unwrap()[..],
+                &events[2].metadata().secrets().get("datadog_api_key").unwrap()[..],
                 DD_API_KEY
             );
 
@@ -2296,7 +2293,7 @@ async fn decode_series_endpoint_v2() {
             assert_eq!(metric.namespace(), None);
 
             assert_eq!(
-                &events[3].metadata().datadog_api_key().as_ref().unwrap()[..],
+                &events[3].metadata().secrets().get("datadog_api_key").unwrap()[..],
                 DD_API_KEY
             );
 

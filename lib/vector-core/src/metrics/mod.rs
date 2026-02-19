@@ -1,4 +1,3 @@
-mod ddsketch;
 mod label_filter;
 mod metric_matcher;
 mod recency;
@@ -14,7 +13,6 @@ use metrics_tracing_context::TracingContextLayer;
 use metrics_util::layers::Layer;
 use snafu::Snafu;
 
-pub use self::ddsketch::{AgentDDSketch, BinMap, Config};
 use self::{
     label_filter::VectorLabelFilter,
     recorder::{Registry, VectorRecorder},

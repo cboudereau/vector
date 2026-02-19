@@ -1094,9 +1094,6 @@ mod test {
         let counter_value = MetricValue::Counter { value: 3.13 };
         assert_eq!(counter_value.distribution_to_agg_histogram(&[1.0]), None);
 
-        let counter_value = MetricValue::Counter { value: 3.13 };
-        assert_eq!(counter_value.distribution_to_sketch(), None);
-
         let distrib_value = MetricValue::Distribution {
             samples: samples!(1.0 => 10, 2.0 => 5, 5.0 => 2),
             statistic: StatisticKind::Summary,
@@ -1123,13 +1120,6 @@ mod test {
                 count: 17,
             })
         );
-
-        let distrib_value = MetricValue::Distribution {
-            samples: samples!(1.0 => 1),
-            statistic: StatisticKind::Summary,
-        };
-        let converted = distrib_value.distribution_to_sketch();
-        assert!(matches!(converted, Some(MetricValue::Sketch { .. })));
     }
 
     #[test]

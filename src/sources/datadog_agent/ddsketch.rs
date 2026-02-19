@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::{
     cmp::{self, Ordering},
     mem,
@@ -7,13 +8,12 @@ use ordered_float::OrderedFloat;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error};
 use serde_with::{DeserializeAs, SerializeAs, serde_as};
 use snafu::Snafu;
-use vector_common::byte_size_of::ByteSizeOf;
-use vector_config::configurable_component;
+use vector_lib::{ByteSizeOf, configurable::configurable_component};
+use crate::event::metric::Bucket;
 
-use crate::{
-    event::{Metric, MetricValue, metric::Bucket},
-    float_eq,
-};
+fn float_eq(l: f64, r: f64) -> bool {
+    (l - r).abs() <= f64::EPSILON * l.abs().max(r.abs()).max(1.0)
+}
 
 const AGENT_DEFAULT_BIN_LIMIT: u16 = 4096;
 const AGENT_DEFAULT_EPS: f64 = 1.0 / 128.0;
@@ -236,6 +236,11 @@ pub struct AgentDDSketch {
 }
 
 impl AgentDDSketch {
+    /// Default histogram bucket bounds used when converting DDSketch to AggregatedHistogram.
+    pub const DEFAULT_BOUNDS: &'static [f64] = &[
+        0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0,
+    ];
+
     /// Creates a new `AgentDDSketch` based on a configuration that is identical to the one used by
     /// the Datadog agent itself.
     pub fn with_agent_defaults() -> Self {
@@ -871,47 +876,6 @@ impl AgentDDSketch {
         Ok(())
     }
 
-    /// Converts a `Metric` to a sketch representation, if possible, using `AgentDDSketch`.
-    ///
-    /// For certain types of metric values, such as distributions or aggregated histograms, we can
-    /// easily convert them to a sketch-based representation.  Rather than push the logic of how to
-    /// do that up to callers that wish to use a sketch-based representation, we bundle it here as a
-    /// free function on `AgentDDSketch` itself.
-    ///
-    /// If the metric value cannot be represented as a sketch -- essentially, everything that isn't
-    /// a distribution or aggregated histogram -- then the metric is passed back unmodified.  All
-    /// existing metadata -- series name, tags, timestamp, etc -- is left unmodified, even if the
-    /// metric is converted to a sketch internally.
-    ///
-    /// ## Errors
-    ///
-    /// Returns an error if a bucket size is greater that `u32::MAX`.
-    pub fn transform_to_sketch(mut metric: Metric) -> Result<Metric, &'static str> {
-        let sketch = match metric.data_mut().value_mut() {
-            MetricValue::Distribution { samples, .. } => {
-                let mut sketch = AgentDDSketch::with_agent_defaults();
-                for sample in samples {
-                    sketch.insert_n(sample.value, sample.rate);
-                }
-                Some(sketch)
-            }
-            MetricValue::AggregatedHistogram { buckets, .. } => {
-                let delta_buckets = mem::take(buckets);
-                let mut sketch = AgentDDSketch::with_agent_defaults();
-                sketch.insert_interpolate_buckets(delta_buckets)?;
-                Some(sketch)
-            }
-            // We can't convert from any other metric value.
-            _ => None,
-        };
-
-        match sketch {
-            // Metric was not able to be converted to a sketch, so pass it back.
-            None => Ok(metric),
-            // Metric was able to be converted to a sketch, so adjust the value.
-            Some(sketch) => Ok(metric.with_value(sketch.into())),
-        }
-    }
 }
 
 impl PartialEq for AgentDDSketch {

@@ -2,7 +2,7 @@ use chrono::Utc;
 use greptimedb_ingester::{api::v1::*, helpers::values::*};
 use vector_lib::event::{
     Metric, MetricValue,
-    metric::{Bucket, MetricSketch, Quantile, Sample},
+    metric::{Bucket, Quantile, Sample},
 };
 
 use crate::sinks::util::statistic::DistributionStatistic;
@@ -122,21 +122,6 @@ pub fn metric_to_insert_request(
             encode_quantiles(quantiles.as_ref(), &mut schema, &mut columns);
             encode_f64_value("count", *count as f64, &mut schema, &mut columns);
             encode_f64_value("sum", *sum, &mut schema, &mut columns);
-        }
-        // Bridge: convert sketch to AggregatedHistogram then encode as histogram.
-        // Removed in Step 3 when AgentDDSketch leaves core.
-        MetricValue::Sketch { sketch } => {
-            let MetricSketch::AgentDDSketch(ddsketch) = sketch;
-            const DEFAULT_BOUNDS: &[f64] = &[
-                0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0,
-            ];
-            if let MetricValue::AggregatedHistogram { buckets, count, sum } =
-                ddsketch.to_aggregated_histogram(DEFAULT_BOUNDS)
-            {
-                encode_histogram(&buckets, &mut schema, &mut columns);
-                encode_f64_value("count", count as f64, &mut schema, &mut columns);
-                encode_f64_value("sum", sum, &mut schema, &mut columns);
-            }
         }
     }
 
@@ -462,32 +447,4 @@ mod tests {
         assert_eq!(get_column(&rows, "sum"), 12.0);
     }
 
-    #[test]
-    fn test_sketch() {
-        use vector_lib::metrics::AgentDDSketch;
-        let mut sketch = AgentDDSketch::with_agent_defaults();
-        let samples = 10u32;
-        for i in 0..samples {
-            sketch.insert(i as f64);
-        }
-
-        let metric = Metric::new(
-            "cpu_seconds_total",
-            MetricKind::Incremental,
-            MetricValue::Sketch {
-                sketch: MetricSketch::AgentDDSketch(sketch),
-            },
-        );
-        let options = RequestBuilderOptions {
-            use_new_naming: false,
-        };
-
-        let insert = metric_to_insert_request(metric, &options);
-        let rows = insert.rows.expect("Empty insert request");
-
-        // Bridge: sketch now encoded as histogram + count + sum (11 bounds + 2 stats + 1 timestamp).
-        // count=10, sum=45 (0+1+...+9)
-        assert_eq!(get_column(&rows, "count"), samples as f64);
-        assert_eq!(get_column(&rows, "sum"), 45.0);
-    }
 }

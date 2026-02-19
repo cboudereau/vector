@@ -5,10 +5,9 @@ use proptest::{
 };
 
 use super::{
-    Bucket, MetricSketch, MetricTags, MetricValue, Quantile, Sample, StatisticKind, TagValue,
-    TagValueSet, samples_to_buckets,
+    Bucket, MetricTags, MetricValue, Quantile, Sample, StatisticKind, TagValue, TagValueSet,
+    samples_to_buckets,
 };
-use crate::metrics::AgentDDSketch;
 
 fn realistic_float() -> proptest::num::f64::Any {
     proptest::num::f64::POSITIVE | proptest::num::f64::NEGATIVE | proptest::num::f64::ZERO
@@ -30,7 +29,6 @@ impl Arbitrary for MetricValue {
             any::<(Vec<Sample>, StatisticKind)>()
                 .prop_map(|(samples, statistic)| MetricValue::Distribution { samples, statistic }),
             any::<Vec<Sample>>().prop_map(|samples| {
-                // Hard-coded log2 buckets for the sake of testing.
                 let (buckets, count, sum) =
                     samples_to_buckets(&samples, &[0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0]);
 
@@ -40,37 +38,24 @@ impl Arbitrary for MetricValue {
                     sum,
                 }
             }),
-            any::<AgentDDSketch>().prop_map(|sketch| {
-                // We lean on `AgentDDSketch` to generate our quantiles and the count/sum.
-                let count = u64::from(sketch.count());
-                let sum = sketch.sum().unwrap_or(0.0);
+            any::<Vec<Sample>>().prop_map(|samples| {
                 let quantiles = [0.5, 0.95, 0.99, 0.999]
                     .iter()
                     .copied()
-                    .map(|quantile| {
-                        let value = sketch.quantile(quantile).unwrap_or(0.0);
-                        Quantile { quantile, value }
+                    .map(|quantile| Quantile {
+                        quantile,
+                        value: 0.0,
                     })
                     .collect::<Vec<_>>();
-
+                let count = samples.len() as u64;
+                let sum = samples.iter().map(|s| s.value).sum();
                 MetricValue::AggregatedSummary {
                     quantiles,
                     count,
                     sum,
                 }
             }),
-            any::<MetricSketch>().prop_map(|sketch| MetricValue::Sketch { sketch }),
         ];
-        strategy.boxed()
-    }
-}
-
-impl Arbitrary for MetricSketch {
-    type Parameters = ();
-    type Strategy = BoxedStrategy<MetricSketch>;
-
-    fn arbitrary_with((): Self::Parameters) -> Self::Strategy {
-        let strategy = prop_oneof![any::<AgentDDSketch>().prop_map(MetricSketch::AgentDDSketch),];
         strategy.boxed()
     }
 }
@@ -114,23 +99,6 @@ impl Arbitrary for Quantile {
     fn arbitrary_with((): Self::Parameters) -> Self::Strategy {
         (0.0..=1.0, realistic_float())
             .prop_map(|(quantile, value)| Quantile { quantile, value })
-            .boxed()
-    }
-}
-
-impl Arbitrary for AgentDDSketch {
-    type Parameters = ();
-    type Strategy = BoxedStrategy<AgentDDSketch>;
-
-    fn arbitrary_with((): Self::Parameters) -> Self::Strategy {
-        use proptest::collection::vec as arb_vec;
-
-        arb_vec(realistic_float(), 16..128)
-            .prop_map(|samples| {
-                let mut sketch = AgentDDSketch::with_agent_defaults();
-                sketch.insert_many(&samples);
-                sketch
-            })
             .boxed()
     }
 }

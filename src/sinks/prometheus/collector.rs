@@ -181,45 +181,6 @@ pub(super) trait MetricCollector {
                     self.emit_value(timestamp, name, "_sum", *sum, tags, None);
                     self.emit_value(timestamp, name, "_count", *count as f64, tags, None);
                 }
-                // Bridge: convert sketch to an AggregatedHistogram using the
-                // configured bucket bounds, then encode as a Prometheus histogram.
-                // This arm is removed in Step 3 when AgentDDSketch leaves core.
-                MetricValue::Sketch { sketch } => {
-                    use vector_lib::event::metric::MetricSketch;
-                    let MetricSketch::AgentDDSketch(ddsketch) = sketch;
-                    if let MetricValue::AggregatedHistogram {
-                        buckets,
-                        count,
-                        sum,
-                    } = ddsketch.to_aggregated_histogram(buckets)
-                    {
-                        let mut bucket_count = 0.0;
-                        for bucket in &buckets {
-                            if bucket.upper_limit.is_infinite() {
-                                continue;
-                            }
-                            bucket_count += bucket.count as f64;
-                            self.emit_value(
-                                timestamp,
-                                name,
-                                "_bucket",
-                                bucket_count,
-                                tags,
-                                Some(("le", bucket.upper_limit.to_string())),
-                            );
-                        }
-                        self.emit_value(
-                            timestamp,
-                            name,
-                            "_bucket",
-                            count as f64,
-                            tags,
-                            Some(("le", "+Inf".to_string())),
-                        );
-                        self.emit_value(timestamp, name, "_sum", sum, tags, None);
-                        self.emit_value(timestamp, name, "_count", count as f64, tags, None);
-                    }
-                }
             }
         }
     }
@@ -433,7 +394,6 @@ const fn prometheus_metric_type(metric_value: &MetricValue) -> proto::MetricType
         } => MetricType::Summary,
         MetricValue::AggregatedHistogram { .. } => MetricType::Histogram,
         MetricValue::AggregatedSummary { .. } => MetricType::Summary,
-        MetricValue::Sketch { .. } => MetricType::Histogram,
     }
 }
 

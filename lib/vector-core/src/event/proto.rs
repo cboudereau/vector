@@ -5,7 +5,7 @@ use ordered_float::NotNan;
 use uuid::Uuid;
 
 use super::{MetricTags, WithMetadata};
-use crate::{event, metrics::AgentDDSketch};
+use crate::event;
 
 #[allow(warnings, clippy::all, clippy::pedantic)]
 mod proto_event {
@@ -18,7 +18,7 @@ use vrl::value::{ObjectMap, Value as VrlValue};
 
 use super::EventFinalizers;
 use super::metadata::{Inner, default_schema_definition};
-use super::{EventMetadata, array, metric::MetricSketch};
+use super::{EventMetadata, array};
 
 impl event_array::Events {
     // We can't use the standard `From` traits here because the actual
@@ -195,11 +195,11 @@ impl From<MetricValue> for super::MetricValue {
                 count: summary.count,
                 sum: summary.sum,
             },
-            MetricValue::Sketch(sketch) => match sketch.sketch.unwrap() {
-                sketch::Sketch::AgentDdSketch(ddsketch) => Self::Sketch {
-                    sketch: ddsketch.into(),
-                },
-            },
+            MetricValue::Sketch(_sketch) => {
+                // Sketch variant removed from core in Step 3 of OTLP migration.
+                // Old protobuf messages with sketch data decode to a zero gauge.
+                Self::Gauge { value: 0.0 }
+            }
         }
     }
 }
@@ -392,26 +392,6 @@ impl From<super::MetricValue> for MetricValue {
                 count,
                 sum,
             }),
-            super::MetricValue::Sketch { sketch } => match sketch {
-                MetricSketch::AgentDDSketch(ddsketch) => {
-                    let bin_map = ddsketch.bin_map();
-                    let (keys, counts) = bin_map.into_parts();
-                    let keys = keys.into_iter().map(i32::from).collect();
-                    let counts = counts.into_iter().map(u32::from).collect();
-
-                    Self::Sketch(Sketch {
-                        sketch: Some(sketch::Sketch::AgentDdSketch(sketch::AgentDdSketch {
-                            count: ddsketch.count(),
-                            min: ddsketch.min().unwrap_or(f64::MAX),
-                            max: ddsketch.max().unwrap_or(f64::MIN),
-                            sum: ddsketch.sum().unwrap_or(0.0),
-                            avg: ddsketch.avg().unwrap_or(0.0),
-                            k: keys,
-                            n: counts,
-                        })),
-                    })
-                }
-            },
         }
     }
 }
@@ -511,57 +491,6 @@ impl From<super::Event> for WithMetadata<EventWrapper> {
     }
 }
 
-impl From<AgentDDSketch> for Sketch {
-    fn from(ddsketch: AgentDDSketch) -> Self {
-        let bin_map = ddsketch.bin_map();
-        let (keys, counts) = bin_map.into_parts();
-        let ddsketch = sketch::AgentDdSketch {
-            count: ddsketch.count(),
-            min: ddsketch.min().unwrap_or(f64::MAX),
-            max: ddsketch.max().unwrap_or(f64::MIN),
-            sum: ddsketch.sum().unwrap_or(0.0),
-            avg: ddsketch.avg().unwrap_or(0.0),
-            k: keys.into_iter().map(i32::from).collect(),
-            n: counts.into_iter().map(u32::from).collect(),
-        };
-        Sketch {
-            sketch: Some(sketch::Sketch::AgentDdSketch(ddsketch)),
-        }
-    }
-}
-
-impl From<sketch::AgentDdSketch> for MetricSketch {
-    fn from(sketch: sketch::AgentDdSketch) -> Self {
-        // These safe conversions are annoying because the Datadog Agent internally uses i16/u16,
-        // but the proto definition uses i32/u32, so we have to jump through these hoops.
-        let keys = sketch
-            .k
-            .into_iter()
-            .map(|k| (k, k > 0))
-            .map(|(k, pos)| {
-                k.try_into()
-                    .unwrap_or(if pos { i16::MAX } else { i16::MIN })
-            })
-            .collect::<Vec<_>>();
-        let counts = sketch
-            .n
-            .into_iter()
-            .map(|n| n.try_into().unwrap_or(u16::MAX))
-            .collect::<Vec<_>>();
-        MetricSketch::AgentDDSketch(
-            AgentDDSketch::from_raw(
-                sketch.count,
-                sketch.min,
-                sketch.max,
-                sketch.sum,
-                sketch.avg,
-                &keys,
-                &counts,
-            )
-            .expect("keys/counts were unexpectedly mismatched"),
-        )
-    }
-}
 
 impl From<super::metadata::Secrets> for Secrets {
     fn from(value: super::metadata::Secrets) -> Self {
@@ -582,25 +511,6 @@ impl From<Secrets> for super::metadata::Secrets {
     }
 }
 
-impl From<super::DatadogMetricOriginMetadata> for DatadogOriginMetadata {
-    fn from(value: super::DatadogMetricOriginMetadata) -> Self {
-        Self {
-            origin_product: value.product(),
-            origin_category: value.category(),
-            origin_service: value.service(),
-        }
-    }
-}
-
-impl From<DatadogOriginMetadata> for super::DatadogMetricOriginMetadata {
-    fn from(value: DatadogOriginMetadata) -> Self {
-        Self::new(
-            value.origin_product,
-            value.origin_category,
-            value.origin_service,
-        )
-    }
-}
 
 impl From<crate::config::OutputId> for OutputId {
     fn from(value: crate::config::OutputId) -> Self {
@@ -625,7 +535,6 @@ impl From<EventMetadata> for Metadata {
             source_id,
             source_type,
             upstream_id,
-            datadog_origin_metadata,
             source_event_id,
             ..
         } = value.into_owned();
@@ -634,7 +543,7 @@ impl From<EventMetadata> for Metadata {
 
         Self {
             value: Some(encode_value(value)),
-            datadog_origin_metadata: datadog_origin_metadata.map(Into::into),
+            datadog_origin_metadata: None,
             source_id: source_id.map(|s| s.to_string()),
             source_type: source_type.map(|s| s.to_string()),
             upstream_id: upstream_id.map(|id| id.as_ref().clone()).map(Into::into),
@@ -652,15 +561,14 @@ impl From<Metadata> for EventMetadata {
             source_type,
             upstream_id,
             secrets,
-            datadog_origin_metadata,
             source_event_id,
+            ..
         } = value;
 
         let metadata_value = metadata_value.and_then(decode_value);
         let source_id = source_id.map(|s| Arc::new(s.into()));
         let upstream_id = upstream_id.map(|id| Arc::new(id.into()));
         let secrets = secrets.map(Into::into);
-        let datadog_origin_metadata = datadog_origin_metadata.map(Into::into);
         let source_event_id = if source_event_id.is_empty() {
             None
         } else {
@@ -688,7 +596,6 @@ impl From<Metadata> for EventMetadata {
                 upstream_id,
                 schema_definition: default_schema_definition(),
                 dropped_fields: ObjectMap::new(),
-                datadog_origin_metadata,
                 source_event_id,
             }),
             last_transform_timestamp: None,

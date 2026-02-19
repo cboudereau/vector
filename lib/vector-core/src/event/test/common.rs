@@ -7,11 +7,10 @@ use vrl::value::{ObjectMap, Value};
 use super::super::{
     Event, EventMetadata, LogEvent, Metric, MetricKind, MetricValue, StatisticKind, TraceEvent,
     metric::{
-        Bucket, MetricData, MetricName, MetricSeries, MetricSketch, MetricTags, MetricTime,
+        Bucket, MetricData, MetricName, MetricSeries, MetricTags, MetricTime,
         Quantile, Sample,
     },
 };
-use crate::metrics::AgentDDSketch;
 
 const MAX_F64_SIZE: f64 = 1_000_000.0;
 const MAX_MAP_SIZE: usize = 4;
@@ -169,11 +168,8 @@ impl Arbitrary for MetricKind {
 impl Arbitrary for MetricValue {
     fn arbitrary(g: &mut Gen) -> Self {
         // Quickcheck can't derive Arbitrary for enums, see
-        // https://github.com/BurntSushi/quickcheck/issues/98.  The magical
-        // constant here are the number of fields in `MetricValue`. Because the
-        // field total is not a power of two we introduce a bias into choice
-        // here toward `MetricValue::Counter` and `MetricValue::Gauge`.
-        match u8::arbitrary(g) % 7 {
+        // https://github.com/BurntSushi/quickcheck/issues/98.
+        match u8::arbitrary(g) % 6 {
             0 => MetricValue::Counter {
                 value: f64::arbitrary(g) % MAX_F64_SIZE,
             },
@@ -197,29 +193,6 @@ impl Arbitrary for MetricValue {
                 count: u64::arbitrary(g),
                 sum: f64::arbitrary(g) % MAX_F64_SIZE,
             },
-            6 => {
-                // We're working around quickcheck's limitations here, and
-                // should really migrate the tests in question to use proptest
-                let num_samples = u8::arbitrary(g);
-                let samples = std::iter::repeat_with(|| {
-                    loop {
-                        let f = f64::arbitrary(g);
-                        if f.is_normal() {
-                            return f;
-                        }
-                    }
-                })
-                .take(num_samples as usize)
-                .collect::<Vec<_>>();
-
-                let mut sketch = AgentDDSketch::with_agent_defaults();
-                sketch.insert_many(&samples);
-
-                MetricValue::Sketch {
-                    sketch: MetricSketch::AgentDDSketch(sketch),
-                }
-            }
-
             _ => unreachable!(),
         }
     }
@@ -347,15 +320,6 @@ impl Arbitrary for MetricValue {
                         }),
                 )
             }
-            // Property testing a sketch doesn't actually make any sense, I don't think.
-            //
-            // We can't extract the values used to build it, which is by design, so all we could do
-            // is mess with the internal buckets, which isn't even exposed (and absolutely shouldn't
-            // be) and doing that is guaranteed to mess with the sketch in non-obvious ways that
-            // would not occur if we were actually seeding it with real samples.
-            MetricValue::Sketch { sketch } => Box::new(iter::once(MetricValue::Sketch {
-                sketch: sketch.clone(),
-            })),
         }
     }
 }

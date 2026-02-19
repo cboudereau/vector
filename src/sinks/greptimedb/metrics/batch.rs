@@ -37,9 +37,6 @@ impl GreptimeDBBatchSizer {
                 MetricValue::Distribution { .. } => F64_BYTE_SIZE * (DISTRIBUTION_QUANTILES.len() + DISTRIBUTION_STAT_FIELD_COUNT),
                 MetricValue::AggregatedHistogram { buckets, .. }  => F64_BYTE_SIZE * (buckets.len() + SUMMARY_STAT_FIELD_COUNT),
                 MetricValue::AggregatedSummary { quantiles, .. } => F64_BYTE_SIZE * (quantiles.len() + SUMMARY_STAT_FIELD_COUNT),
-                // Bridge: sketch size estimate matches AggregatedHistogram heuristic.
-                // Removed in Step 3 when AgentDDSketch leaves core.
-                MetricValue::Sketch { .. } => F64_BYTE_SIZE * (11 + SUMMARY_STAT_FIELD_COUNT),
             }
     }
 }

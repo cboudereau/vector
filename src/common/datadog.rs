@@ -8,9 +8,7 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use vector_lib::{
-    event::DatadogMetricOriginMetadata, schema::meaning, sensitive_string::SensitiveString,
-};
+use vector_lib::{schema::meaning, sensitive_string::SensitiveString};
 
 pub(crate) const DD_US_SITE: &str = "datadoghq.com";
 pub(crate) const DD_EU_SITE: &str = "datadoghq.eu";
@@ -68,10 +66,7 @@ pub struct DatadogSeriesMetric {
 
 /// Datadog series metric metadata
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-pub struct DatadogSeriesMetricMetadata {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) origin: Option<DatadogMetricOriginMetadata>,
-}
+pub struct DatadogSeriesMetricMetadata {}
 
 /// Datadog Metric Type
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]

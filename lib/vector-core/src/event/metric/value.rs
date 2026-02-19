@@ -6,7 +6,7 @@ use vector_common::byte_size_of::ByteSizeOf;
 use vector_config::configurable_component;
 
 use super::{samples_to_buckets, write_list, write_word};
-use crate::{float_eq, metrics::AgentDDSketch};
+use crate::float_eq;
 
 const INFINITY: &str = "inf";
 const NEG_INFINITY: &str = "-inf";
@@ -74,16 +74,6 @@ pub enum MetricValue {
         sum: f64,
     },
 
-    /// A data structure that can answer questions about the cumulative distribution of the contained samples in
-    /// space-efficient way.
-    ///
-    /// Sketches represent the data in a way that queries over it have bounded error guarantees without needing to hold
-    /// every single sample in memory. They are also, typically, able to be merged with other sketches of the same type
-    /// such that client-side _and_ server-side aggregation can be accomplished without loss of accuracy in the queries.
-    Sketch {
-        #[configurable(derived)]
-        sketch: MetricSketch,
-    },
 }
 
 impl MetricValue {
@@ -98,7 +88,6 @@ impl MetricValue {
             MetricValue::Distribution { samples, .. } => samples.is_empty(),
             MetricValue::AggregatedSummary { count, .. }
             | MetricValue::AggregatedHistogram { count, .. } => *count == 0,
-            MetricValue::Sketch { sketch } => sketch.is_empty(),
         }
     }
 
@@ -113,7 +102,6 @@ impl MetricValue {
             Self::Distribution { .. } => "distribution",
             Self::AggregatedHistogram { .. } => "aggregated histogram",
             Self::AggregatedSummary { .. } => "aggregated summary",
-            Self::Sketch { sketch } => sketch.as_name(),
         }
     }
 
@@ -134,29 +122,6 @@ impl MetricValue {
                     buckets,
                     count,
                     sum,
-                })
-            }
-            _ => None,
-        }
-    }
-
-    /// Converts a distribution to a sketch.
-    ///
-    /// This conversion specifically use the `AgentDDSketch` sketch variant, in the default configuration that matches
-    /// the Datadog Agent, parameter-wise.
-    ///
-    /// If this value is not a distribution, then `None` is returned.  Otherwise, `Some(MetricValue::Sketch)` is
-    /// returned.
-    pub fn distribution_to_sketch(&self) -> Option<MetricValue> {
-        match self {
-            MetricValue::Distribution { samples, .. } => {
-                let mut sketch = AgentDDSketch::with_agent_defaults();
-                for sample in samples {
-                    sketch.insert_n(sample.value, sample.rate);
-                }
-
-                Some(MetricValue::Sketch {
-                    sketch: MetricSketch::AgentDDSketch(sketch),
                 })
             }
             _ => None,
@@ -194,11 +159,6 @@ impl MetricValue {
                 *count = 0;
                 *sum = 0.0;
             }
-            Self::Sketch { sketch } => match sketch {
-                MetricSketch::AgentDDSketch(ddsketch) => {
-                    ddsketch.clear();
-                }
-            },
         }
     }
 
@@ -255,14 +215,6 @@ impl MetricValue {
                 *count += count2;
                 *sum += sum2;
                 true
-            }
-            (Self::Sketch { sketch }, Self::Sketch { sketch: sketch2 }) => {
-                match (sketch, sketch2) {
-                    (
-                        MetricSketch::AgentDDSketch(ddsketch),
-                        MetricSketch::AgentDDSketch(ddsketch2),
-                    ) => ddsketch.merge(ddsketch2).is_ok(),
-                }
             }
             _ => false,
         }
@@ -370,7 +322,6 @@ impl ByteSizeOf for MetricValue {
             Self::Distribution { samples, .. } => samples.allocated_bytes(),
             Self::AggregatedHistogram { buckets, .. } => buckets.allocated_bytes(),
             Self::AggregatedSummary { quantiles, .. } => quantiles.allocated_bytes(),
-            Self::Sketch { sketch } => sketch.allocated_bytes(),
         }
     }
 }
@@ -419,9 +370,6 @@ impl PartialEq for MetricValue {
                     sum: r_sum,
                 },
             ) => l_quantiles == r_quantiles && l_count == r_count && float_eq(*l_sum, *r_sum),
-            (Self::Sketch { sketch: l_sketch }, Self::Sketch { sketch: r_sketch }) => {
-                l_sketch == r_sketch
-            }
             _ => false,
         }
     }
@@ -469,45 +417,6 @@ impl fmt::Display for MetricValue {
                     write!(fmt, "{}@{}", quantile.quantile, quantile.value)
                 })
             }
-            MetricValue::Sketch { sketch } => {
-                let quantiles = [0.5, 0.75, 0.9, 0.99]
-                    .iter()
-                    .map(|q| Quantile {
-                        quantile: *q,
-                        value: 0.0,
-                    })
-                    .collect::<Vec<_>>();
-
-                match sketch {
-                    MetricSketch::AgentDDSketch(ddsketch) => {
-                        write!(
-                            fmt,
-                            "count={} sum={:?} min={:?} max={:?} avg={:?} ",
-                            ddsketch.count(),
-                            ddsketch.sum(),
-                            ddsketch.min(),
-                            ddsketch.max(),
-                            ddsketch.avg()
-                        )?;
-                        write_list(fmt, " ", quantiles, |fmt, q| {
-                            write!(
-                                fmt,
-                                "{}={:?}",
-                                q.to_percentile_string(),
-                                ddsketch.quantile(q.quantile)
-                            )
-                        })
-                    }
-                }
-            }
-        }
-    }
-}
-
-impl From<AgentDDSketch> for MetricValue {
-    fn from(ddsketch: AgentDDSketch) -> Self {
-        MetricValue::Sketch {
-            sketch: MetricSketch::AgentDDSketch(ddsketch),
         }
     }
 }
@@ -531,55 +440,6 @@ pub enum StatisticKind {
     /// Corresponds to Datadog's Distribution Metric
     /// <https://docs.datadoghq.com/developers/metrics/types/?tab=distribution#definition>
     Summary,
-}
-
-/// A generalized metrics sketch.
-#[configurable_component]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum MetricSketch {
-    /// [DDSketch][ddsketch] implementation based on the [Datadog Agent][ddagent].
-    ///
-    /// While `DDSketch` has open-source implementations based on the white paper, the version used in
-    /// the Datadog Agent itself is subtly different. This version is suitable for sending directly
-    /// to Datadog's sketch ingest endpoint.
-    ///
-    /// [ddsketch]: https://www.vldb.org/pvldb/vol12/p2195-masson.pdf
-    /// [ddagent]: https://github.com/DataDog/datadog-agent
-    AgentDDSketch(AgentDDSketch),
-}
-
-impl MetricSketch {
-    /// Returns `true` if the sketch is empty.
-    pub fn is_empty(&self) -> bool {
-        match self {
-            MetricSketch::AgentDDSketch(ddsketch) => ddsketch.is_empty(),
-        }
-    }
-
-    /// Gets the name of the sketch as a string.
-    ///
-    /// This maps to the name of the enum variant itself.
-    pub fn as_name(&self) -> &'static str {
-        match self {
-            Self::AgentDDSketch(_) => "agent dd sketch",
-        }
-    }
-}
-
-impl ByteSizeOf for MetricSketch {
-    fn allocated_bytes(&self) -> usize {
-        match self {
-            Self::AgentDDSketch(ddsketch) => ddsketch.allocated_bytes(),
-        }
-    }
-}
-
-// Currently, VRL can only read the type of the value and doesn't consider ny actual metric values.
-#[cfg(feature = "vrl")]
-impl From<MetricSketch> for vrl::value::Value {
-    fn from(value: MetricSketch) -> Self {
-        value.as_name().into()
-    }
 }
 
 /// A single observation.

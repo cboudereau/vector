@@ -166,7 +166,7 @@ pub(crate) fn decode_log_body(
                             );
 
                             if let Some(k) = &api_key {
-                                log.metadata_mut().set_datadog_api_key(Arc::clone(k));
+                                log.metadata_mut().secrets_mut().insert("datadog_api_key", Arc::clone(k));
                             }
 
                             let logs_schema_definition = source

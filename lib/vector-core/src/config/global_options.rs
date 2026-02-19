@@ -8,7 +8,7 @@ use super::{
     super::default_data_dir, AcknowledgementsConfig, LogSchema, Telemetry,
     metrics_expiration::PerMetricSetExpiration, proxy::ProxyConfig,
 };
-use crate::serde::bool_or_struct;
+use crate::{event::BufferFormat, serde::bool_or_struct};
 
 #[derive(Debug, Snafu)]
 pub(crate) enum DataDirError {
@@ -173,6 +173,22 @@ pub struct GlobalOptions {
     /// `find_vector_metrics`, and `aggregate_vector_metrics` functions.
     #[serde(default, skip_serializing_if = "crate::serde::is_default")]
     pub metrics_storage_refresh_period: Option<f64>,
+
+    /// On-disk buffer encoding format.
+    ///
+    /// Controls how new disk-buffer records are serialised:
+    ///
+    /// - `vector` (default): Vector's native protobuf format. No change from previous behaviour.
+    /// - `otlp`: OTLP protobuf format. Use only after all existing buffers have been drained.
+    /// - `migrate`: Writes OTLP records but reads both formats, enabling a zero-downtime
+    ///   transition away from the legacy encoding.
+    ///
+    /// **Important**: switching directly from `vector` to `otlp` on a non-empty buffer will
+    /// cause decode failures. Always use `migrate` first, then switch to `otlp` once the
+    /// old records have been drained.
+    #[serde(default, skip_serializing_if = "crate::serde::is_default")]
+    #[configurable(metadata(docs::advanced))]
+    pub buffer_format: BufferFormat,
 }
 
 impl_generate_config_from_default!(GlobalOptions);
@@ -309,6 +325,19 @@ impl GlobalOptions {
             (None, None) => None,
         };
 
+        if self.buffer_format != BufferFormat::default()
+            && with.buffer_format != BufferFormat::default()
+            && self.buffer_format != with.buffer_format
+        {
+            errors.push("conflicting values for 'buffer_format' found".to_owned());
+        }
+
+        let buffer_format = if self.buffer_format != BufferFormat::default() {
+            self.buffer_format
+        } else {
+            with.buffer_format
+        };
+
         if errors.is_empty() {
             Ok(Self {
                 data_dir,
@@ -328,6 +357,7 @@ impl GlobalOptions {
                 metrics_storage_refresh_period: self
                     .metrics_storage_refresh_period
                     .or(with.metrics_storage_refresh_period),
+                buffer_format,
             })
         } else {
             Err(errors)

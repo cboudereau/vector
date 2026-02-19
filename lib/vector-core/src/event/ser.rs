@@ -1,11 +1,12 @@
-use bytes::{Buf, BufMut};
+use bytes::{Buf, BufMut, BytesMut};
 use crossbeam_utils::atomic::AtomicCell;
 use enumflags2::{BitFlags, FromBitsError, bitflags};
 use prost::Message;
 use snafu::Snafu;
 use vector_buffers::encoding::{AsMetadata, Encodable};
+use vector_config::configurable_component;
 
-use super::{Event, EventArray, proto};
+use super::{Event, EventArray, otlp, proto};
 
 #[derive(Debug, Snafu)]
 pub enum EncodeError {
@@ -25,16 +26,18 @@ pub enum DecodeError {
 /// Controls the on-disk encoding format for new records written to disk buffers.
 ///
 /// Set once at process startup from the global config before any buffer is opened.
-/// Defaults to [`BufferFormat::Vector`] so existing deployments are unaffected.
+/// Defaults to `vector` so existing deployments are unaffected.
+#[configurable_component]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
 pub enum BufferFormat {
-    /// Legacy Vector protobuf encoding (`proto::EventArray`). Default.
+    /// Legacy Vector protobuf encoding. Default; no migration required.
     #[default]
     Vector,
-    /// OTel protobuf encoding (`OtlpBufferBatch`). Use after migration is complete.
+    /// OTLP protobuf encoding. Use after draining all Vector-encoded buffers.
     Otlp,
-    /// Transition mode: writes OTel records, reads both Vector and OTel records.
-    /// Enables zero-downtime drain of existing Vector-encoded buffers.
+    /// Transition mode: writes OTLP records and reads both formats.
+    /// Enables zero-downtime drain of existing Vector-encoded disk buffers.
     Migrate,
 }
 
@@ -138,16 +141,29 @@ impl Encodable for EventArray {
     where
         B: BufMut,
     {
-        proto::EventArray::from(self)
-            .encode(buffer)
-            .map_err(|_| EncodeError::BufferTooSmall)
+        match BUFFER_FORMAT.load() {
+            BufferFormat::Otlp | BufferFormat::Migrate => {
+                otlp::encode_as_otlp(&self, buffer).map_err(|_| EncodeError::BufferTooSmall)
+            }
+            BufferFormat::Vector => proto::EventArray::from(self)
+                .encode(buffer)
+                .map_err(|_| EncodeError::BufferTooSmall),
+        }
     }
 
     fn decode<B>(metadata: Self::Metadata, buffer: B) -> Result<Self, Self::DecodeError>
     where
         B: Buf + Clone,
     {
-        if metadata.contains(EventEncodableMetadataFlags::DiskBufferV1CompatibilityMode) {
+        if metadata.contains(EventEncodableMetadataFlags::OtlpEncoding) {
+            let bytes = {
+                let remaining = buffer.remaining();
+                let mut b = BytesMut::with_capacity(remaining);
+                b.put(buffer);
+                b.freeze()
+            };
+            otlp::decode_from_otlp(bytes).map_err(|_| DecodeError::InvalidProtobufPayload)
+        } else if metadata.contains(EventEncodableMetadataFlags::DiskBufferV1CompatibilityMode) {
             proto::EventArray::decode(buffer.clone())
                 .map(Into::into)
                 .or_else(|_| {

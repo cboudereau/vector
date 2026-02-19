@@ -389,12 +389,13 @@ is blocked. Step 2 must land before Step 1 can be validated.
 
 File: `lib/vector-core/src/event/ser.rs`
 
-**Done (committed):**
+**Done (committed, `cargo build -p vector-core` green, 6/6 tests passing):**
 - `BufferFormat` enum (`Vector` / `Otlp` / `Migrate`) with `#[default] Vector`
 - `BUFFER_FORMAT: AtomicCell<BufferFormat>` process-wide static
 - `OtlpEncoding = 0b10` flag in `EventEncodableMetadataFlags`
 - `get_metadata()` branches on `BUFFER_FORMAT` — stamps correct flags on new records
 - `can_decode()` branches on `BUFFER_FORMAT` — accepts/rejects records by flag
+- `BufferFormat` and `BUFFER_FORMAT` re-exported from `lib/vector-core/src/event/mod.rs`
 - 6 unit tests covering all three modes for both `get_metadata` and `can_decode`
 
 **Not done — `encode()` and `decode()` still ignore `BUFFER_FORMAT`:**

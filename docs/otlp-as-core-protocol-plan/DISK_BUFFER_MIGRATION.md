@@ -315,7 +315,8 @@ format each record happens to use.
 | ✅ Done | Add process-wide `BUFFER_FORMAT` atomic | `lib/vector-core/src/event/ser.rs` | Default `Vector` |
 | ✅ Done | Wire `get_metadata()` to `BUFFER_FORMAT` | `lib/vector-core/src/event/ser.rs` | Stamps correct flags |
 | ✅ Done | Wire `can_decode()` to `BUFFER_FORMAT` | `lib/vector-core/src/event/ser.rs` | Accepts/rejects by flag |
-| ✅ Done | Unit tests for all three modes | `lib/vector-core/src/event/ser.rs` | 6 tests |
+| ✅ Done | Unit tests for all three modes | `lib/vector-core/src/event/ser.rs` | 6 tests, all passing |
+| ✅ Done | Re-export `BufferFormat` + `BUFFER_FORMAT` from event mod | `lib/vector-core/src/event/mod.rs` | Fixes `unreachable_pub` / dead-code build errors |
 | ⬜ Todo | Define `OtlpBufferBatch` proto | `lib/vector-core/proto/otlp_buffer.proto` | Thin wrapper proto |
 | ⬜ Todo | Add proto to `build.rs` compilation | `lib/vector-core/build.rs` | |
 | ⬜ Todo | Implement `encode_as_otlp` | `lib/vector-core/src/event/ser.rs` | Via `OtlpBufferBatch` |

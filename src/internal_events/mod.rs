@@ -32,10 +32,6 @@ mod common;
 mod conditions;
 #[cfg(feature = "sources-datadog_agent")]
 mod datadog_agent;
-#[cfg(feature = "sinks-datadog_metrics")]
-mod datadog_metrics;
-#[cfg(feature = "sinks-datadog_traces")]
-mod datadog_traces;
 #[cfg(feature = "transforms-impl-dedupe")]
 mod dedupe;
 #[cfg(feature = "sources-demo_logs")]
@@ -98,7 +94,6 @@ mod open;
 #[cfg(any(
     feature = "sources-kubernetes_logs",
     feature = "transforms-log_to_metric",
-    feature = "sinks-datadog_events",
 ))]
 mod parser;
 #[cfg(feature = "sources-postgresql_metrics")]
@@ -185,10 +180,6 @@ pub(crate) use self::aws_kinesis_firehose::*;
 pub(crate) use self::aws_sqs::*;
 #[cfg(feature = "sources-datadog_agent")]
 pub(crate) use self::datadog_agent::*;
-#[cfg(feature = "sinks-datadog_metrics")]
-pub(crate) use self::datadog_metrics::*;
-#[cfg(feature = "sinks-datadog_traces")]
-pub(crate) use self::datadog_traces::*;
 #[cfg(feature = "transforms-impl-dedupe")]
 pub(crate) use self::dedupe::*;
 #[cfg(feature = "sources-demo_logs")]
@@ -252,7 +243,6 @@ pub(crate) use self::nginx_metrics::*;
 #[cfg(any(
     feature = "sources-kubernetes_logs",
     feature = "transforms-log_to_metric",
-    feature = "sinks-datadog_events",
 ))]
 pub(crate) use self::parser::*;
 #[cfg(feature = "sources-postgresql_metrics")]

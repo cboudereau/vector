@@ -793,9 +793,6 @@ sinks-logs = [
   "sinks-clickhouse",
   "sinks-console",
   "sinks-databend",
-  "sinks-datadog_events",
-  "sinks-datadog_logs",
-  "sinks-datadog_traces",
   "sinks-doris",
   "sinks-elasticsearch",
   "sinks-file",
@@ -821,7 +818,6 @@ sinks-logs = [
   "sinks-sematext",
   "sinks-socket",
   "sinks-splunk_hec",
-  "sinks-vector",
   "sinks-webhdfs",
   "sinks-websocket",
   "sinks-websocket-server",
@@ -831,7 +827,6 @@ sinks-metrics = [
   "sinks-aws_cloudwatch_metrics",
   "sinks-blackhole",
   "sinks-console",
-  "sinks-datadog_metrics",
   "sinks-greptimedb_metrics",
   "sinks-humio",
   "sinks-influxdb",
@@ -839,7 +834,6 @@ sinks-metrics = [
   "sinks-prometheus",
   "sinks-sematext",
   "sinks-statsd",
-  "sinks-vector",
   "sinks-splunk_hec"
 ]
 
@@ -860,10 +854,6 @@ sinks-chronicle = []
 sinks-clickhouse = ["dep:nom", "dep:rust_decimal", "codecs-arrow"]
 sinks-console = []
 sinks-databend = ["dep:databend-client"]
-sinks-datadog_events = []
-sinks-datadog_logs = []
-sinks-datadog_metrics = ["protobuf-build", "dep:prost", "dep:prost-reflect"]
-sinks-datadog_traces = ["protobuf-build", "dep:prost", "dep:rmpv", "dep:rmp-serde", "dep:serde_bytes"]
 sinks-doris = ["sqlx/mysql"]
 sinks-elasticsearch = ["transforms-metric_to_log"]
 sinks-file = ["dep:async-compression"]
@@ -894,7 +884,6 @@ sinks-socket = ["sinks-utils-udp"]
 sinks-splunk_hec = []
 sinks-statsd = ["sinks-utils-udp", "tokio-util/net"]
 sinks-utils-udp = []
-sinks-vector = ["sinks-utils-udp", "dep:tonic", "protobuf-build", "dep:prost"]
 sinks-websocket = ["dep:tokio-tungstenite"]
 sinks-websocket-server = ["dep:tokio-tungstenite", "sources-utils-http-auth", "sources-utils-http-error", "sources-utils-http-prelude"]
 sinks-webhdfs = ["dep:opendal"]
@@ -913,9 +902,6 @@ all-integration-tests = [
   "clickhouse-integration-tests",
   "databend-integration-tests",
   "datadog-agent-integration-tests",
-  "datadog-logs-integration-tests",
-  "datadog-metrics-integration-tests",
-  "datadog-traces-integration-tests",
   "dnstap-integration-tests",
   "docker-logs-integration-tests",
   "doris-integration-tests",
@@ -980,9 +966,6 @@ chronicle-integration-tests = ["sinks-gcp"]
 clickhouse-integration-tests = ["sinks-clickhouse"]
 databend-integration-tests = ["sinks-databend"]
 datadog-agent-integration-tests = ["sources-datadog_agent"]
-datadog-logs-integration-tests = ["sinks-datadog_logs"]
-datadog-metrics-integration-tests = ["sinks-datadog_metrics", "dep:prost"]
-datadog-traces-integration-tests = ["sources-datadog_agent", "sinks-datadog_traces", "axum/tokio"]
 docker-logs-integration-tests = ["sources-docker_logs", "unix"]
 doris-integration-tests = ["sinks-doris"]
 es-integration-tests = ["sinks-elasticsearch", "aws-core"]
@@ -1023,10 +1006,7 @@ all-e2e-tests = [
 ]
 
 e2e-tests-datadog = [
-  "sources-datadog_agent",
-  "sinks-datadog_logs",
-  "sinks-datadog_metrics",
-  "dep:async-compression"
+  "sources-datadog_agent"
 ]
 
 e2e-tests-opentelemetry = [
@@ -1056,6 +1036,7 @@ vector-unit-test-tests = [
 ]
 
 component-validation-runner = ["dep:tonic", "sources-internal_logs", "sources-internal_metrics", "sources-vector", "sinks-vector"]
+sinks-vector = ["sinks-utils-udp", "dep:tonic", "protobuf-build", "dep:prost"]
 # For now, only include components that implement ValidatableComponent.
 # In the future, this can change to simply reference the targets `sources`, `transforms`, `sinks`
 component-validation-tests = [
@@ -1065,7 +1046,6 @@ component-validation-tests = [
   "sinks-http",
   "sinks-splunk_hec",
   "sources-splunk_hec",
-  "sinks-datadog_logs",
   "sources-datadog_agent",
 ]
 

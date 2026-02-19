@@ -1,11 +1,5 @@
 //! Modules that are common between sources, transforms, and sinks.
-#[cfg(any(
-    feature = "sources-datadog_agent",
-    feature = "sinks-datadog_events",
-    feature = "sinks-datadog_logs",
-    feature = "sinks-datadog_metrics",
-    feature = "sinks-datadog_traces",
-))]
+#[cfg(feature = "sources-datadog_agent")]
 pub mod datadog;
 
 #[cfg(any(

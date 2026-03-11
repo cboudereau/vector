@@ -365,12 +365,14 @@ use_otlp_decoding flag:
 ## Execution Order
 
 ```
-Step 0   Foundations (buffer toggle + isolation test + span scope fix)
-Step 2   OTel metric encoder — prerequisite for Step 1
-Step 1   Both sinks removed; OTel sink gRPC added; sketch arms cleaned from non-DD sinks
-Step 3   DataDog source rewritten as clean OTel adapter; DD types leave core
-Step 4   APM stats + tail sampling as OTel-native transforms
-Step 5   Core event model → OTel types; VRL migration tool ships; use_otlp_decoding removed
+Step 0   Foundations (buffer toggle + isolation test + span scope fix)          — COMPLETE
+Step 2   OTel metric encoder — prerequisite for Step 1                         — COMPLETE
+Step 1   Both sinks removed; OTel sink gRPC added; sketch arms cleaned         — COMPLETE
+Step 3   DD source rewritten as clean OTel adapter; DD types leave core        — COMPLETE
+Step 4c  Load-balancing sink mode (trace-aware routing for OTel gRPC sink)     — NEXT
+Step 5   Core event model → OTel types; VRL migration tool ships               — after 4c
+Step 4a  Pipeline telemetry (all-signal RED metrics, role-aware, OTel-native)  — after Step 5
+Step 4b  Tail sampling transform (built on final OTel types from Step 5)       — after Step 5
 Step 6   Native codecs and Vector proto removal
 Step 7   Optional: Vector and DataDog sink re-integration as OTel-native adapters
 ```
@@ -378,6 +380,21 @@ Step 7   Optional: Vector and DataDog sink re-integration as OTel-native adapter
 **Why Step 2 before Step 1:** The OTLP serializer currently errors on `Event::Metric`. Step 2
 fixes this. Without it, the OTel sink cannot replace the DataDog metric sink and the migration
 is blocked. Step 2 must land before Step 1 can be validated.
+
+**Why Step 4c now, but 4a and 4b after Step 5:** The load-balancing sink (4c) is type-agnostic
+— it routes by trace ID without inspecting event internals. It works identically on the
+current and future event models. In contrast:
+- **4b (tail sampling):** the policy engine deeply couples to span field paths. Building 12+
+  built-in policy types on `TraceEvent(LogEvent)` then rewriting for typed OTel `Span` is
+  wasteful.
+- **4a (pipeline telemetry):** needs all-signal RED metrics (logs, metrics, traces) with
+  role-awareness (agent, gateway, sampler). Internal metrics instrumentation touches every
+  component. Building on the current `Event` enum then rewriting for OTel-native types is
+  double work. Additionally, the `spanmetricsconnector`-equivalent (traces → RED metrics) is
+  most useful at the Sampling Collector tier alongside `tail_sample`.
+
+After Step 4c, the **critical path goes straight to Step 5** (core event model → OTel types),
+which is the highest-impact change and unblocks everything else.
 
 ---
 
@@ -676,46 +693,98 @@ They are never part of the core data model.
 
 ---
 
-## Step 4 — APM Stats and Tail Sampling as OTel-Native Transforms
+## Step 4 — Trace-Aware Load Balancing, Pipeline Telemetry, and Tail Sampling
 
-### `apm_stats` transform
+**Status: NOT STARTED — scope revised.**
 
-Full specification: `APM_STATS_OTLP_BACKPORT.md` (canonical). Summary below.
+Full specifications:
+- `TAIL_SAMPLING_BACKPORT.md` — `tail_sample` transform + load-balancing sink + 3-tier
+  deployment architecture (canonical, aligned with OTel Collector deployment patterns)
+- `APM_STATS_OTLP_BACKPORT.md` — pipeline telemetry: all-signal RED metrics, role-aware,
+  OTel-native (deferred to after Step 5)
 
-Ports the algorithm from `src/sinks/datadog/traces/apm_stats/` (removed in Step 1) as a
-standalone transform in `src/transforms/apm_stats/`. Consumes OTel `Span` events, emits
-OTel `Metric` signals per 10-second window:
+### Sub-steps
 
-| Metric | OTel type | Dimensions |
-|---|---|---|
-| `spans.hits` | Sum (delta, int) | `span.name`, `span.resource`, `span.type`, `http.status_code` |
-| `spans.top_level_hits` | Sum (delta, int) | `span.name`, `span.resource`, `span.type` |
-| `spans.errors` | Sum (delta, int) | `span.name`, `span.resource`, `span.type`, `http.status_code` |
-| `spans.duration` | Sum (delta) ns | `span.name`, `span.resource`, `span.type` |
-| `spans.duration.ok` | ExponentialHistogram (delta, scale 7) ns | `span.name`, `span.resource`, `span.type` |
-| `spans.duration.error` | ExponentialHistogram (delta, scale 7) ns | `span.name`, `span.resource`, `span.type` |
+| Sub-step | What | When | Estimated effort |
+|----------|------|------|-----------------|
+| **4c — Load-balancing sink** | Consistent-hash routing on OTel gRPC sink | **Now (next)** | ~600 lines |
+| **4a — Pipeline telemetry** | All-signal RED metrics (logs, metrics, traces), role-aware (agent, gateway, sampler), OTel-native. Replaces the DD-specific `apm_stats` concept with a vendor-neutral `spanmetricsconnector`-style approach covering all signals. | **After Step 5** | ~1,000 lines |
+| **4b — Tail sampling** | `tail_sample` transform with 12+ built-in policy types | **After Step 5** | ~1,200 lines |
 
-`AgentDDSketch` accumulator replaced by a ~100-line `ExponentialHistogramAccumulator` at
-scale 7. No DD proto, no MessagePack. Two outputs: `apm_stats.spans` (pass-through) and
-`apm_stats.stats` (metrics).
+### Why this ordering
 
-### `tail_sample` transform
+The 3-tier deployment architecture (Agent → Gateway → Sampling Collector) follows the
+[OTel Collector gateway pattern](https://opentelemetry.io/docs/collector/deploy/gateway/).
+Each tier is a standard Vector instance with a different TOML config.
 
-Full specification: `TAIL_SAMPLING_BACKPORT.md`.
+**4c (load-balancing sink) proceeds now** because it is type-agnostic — it routes by
+trace ID without inspecting event internals. It works identically on the current and
+future event models, and is a prerequisite for production multi-instance trace pipelines.
 
-Buffers OTel spans by `trace_id`, applies a VRL policy to the complete trace (`.spans` array),
-emits or drops all spans. Shorthand types: `type = "spans_any"` and `type = "spans_all"`.
+**4a (pipeline telemetry) and 4b (tail sampling) are deferred to after Step 5** because:
 
-### Internal pipeline telemetry
+1. **Step 5 changes the core event model.** Both components deeply couple to event field
+   paths and types. Building on `TraceEvent(LogEvent)` / `Metric` / `LogEvent` then
+   rewriting for OTel-native `Span` / `OtelMetric` / `LogRecord` is double work.
+2. **Pipeline telemetry needs all-signal coverage** (logs, metrics, traces) with
+   role-awareness (agent, gateway, sampler). Internal metrics instrumentation touches
+   every component. A unified OTel event model makes this one instrumentation path
+   instead of three.
+3. **The old DD-specific `apm_stats` concept is cancelled.** The DD sinks that consumed
+   `StatsPayload` are gone (Step 1). The DD-specific predicates (`_dd.measured`, weighted
+   hits, DD span type derivation) have no consumers. The replacement is a vendor-neutral
+   pipeline telemetry system inspired by otel-col-contrib's `spanmetricsconnector` but
+   extended to all signal types.
+4. **No existing user is blocked.** Vector never had tail sampling. The DD APM stats gap
+   is bounded to former DD trace sink users, who should now use the DD OTLP endpoint
+   directly. Vector's existing internal metrics (`vector_component_*`) remain functional.
 
-All existing internal metrics (`vector_buffer_events`, `vector_component_sent_events_total`,
-etc.) are preserved. The `metrics` crate emits them as OTel `Metric` signals.
+After Step 4c, the critical path goes straight to Step 5.
+
+### 4c — Load-balancing sink mode
+
+Adds a `load_balancing` option to the `opentelemetry` gRPC sink:
+- Consistent hash ring on `traceID` or `service` name
+- Resolvers: `static`, `dns`, `k8s` (EndpointSlice watcher)
+- One OTLP/gRPC sub-connection per backend
+- Deterministic: multiple Gateway instances with same config produce identical routing
+
+See `TAIL_SAMPLING_BACKPORT.md` §3 for full specification and configuration examples.
+
+### 4a — Pipeline telemetry (after Step 5)
+
+All-signal RED metrics emitted as OTel `Metric` events. Covers:
+- **Traces**: `spanmetricsconnector`-equivalent — configurable dimensions, explicit or
+  exponential histograms, configurable temporality and namespace
+- **Logs**: throughput, error rate, latency per source/transform/sink
+- **Metrics**: throughput, cardinality, flush latency per component
+- **Role awareness**: metrics tagged with Vector instance role (agent, gateway, sampler)
+  for multi-tier deployment observability
+
+Replaces the DD-specific `apm_stats` concept. Full spec in `APM_STATS_OTLP_BACKPORT.md`
+(to be rewritten for this scope before implementation begins).
+
+### 4b — Tail sampling (after Step 5)
+
+Buffers OTel spans by `trace_id`, evaluates policies after `decision_wait_secs`. Supports
+12+ built-in policy types matching otel-col-contrib (`status_code`, `latency`,
+`probabilistic`, `rate_limiting`, `span_count`, `and`, `not`, `drop`, `composite`, etc.)
+plus a `vrl` policy type for arbitrary VRL expressions.
+
+Decision cache (sampled + non-sampled LRU) handles late-arriving spans.
+Per-trace size limit (`max_trace_size_bytes`) protects memory.
+
+See `TAIL_SAMPLING_BACKPORT.md` §4 for full specification.
 
 ### Validation gate (Step 4)
 
-- `apm_stats` unit tests: known span inputs → expected OTel metric output.
-- `tail_sample` tests: buffer, policy evaluation, emit/drop correctness.
-- No DD types referenced in either transform.
+- Load-balancing sink (4c): consistent hash determinism tests, resolver refresh tests,
+  multi-backend routing correctness.
+- Pipeline telemetry (4a, when implemented): all-signal metric emission, role tagging,
+  configurable dimensions.
+- Tail sampling (4b, when implemented): buffer, policy evaluation, emit/drop correctness,
+  decision cache, late-span handling.
+- No DD types referenced in any component.
 
 ---
 

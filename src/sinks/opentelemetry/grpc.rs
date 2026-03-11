@@ -357,6 +357,7 @@ where
 
 fn collection_into_request(col: EventCollection) -> OtlpRequest {
     use vector_lib::opentelemetry::{
+        buffer_codec::{log_event_to_resource_logs, trace_event_to_resource_spans},
         metrics::metric_to_export_request,
         proto::{
             collector::{
@@ -364,12 +365,10 @@ fn collection_into_request(col: EventCollection) -> OtlpRequest {
                 metrics::v1::ExportMetricsServiceRequest,
                 trace::v1::ExportTraceServiceRequest,
             },
-            common::v1::{AnyValue, any_value},
-            logs::v1::{LogRecord, ResourceLogs, ScopeLogs},
-            trace::v1::{ResourceSpans, ScopeSpans, Span},
+            logs::v1::ResourceLogs,
+            trace::v1::ResourceSpans,
         },
     };
-    use vrl::{event_path, value::Value};
 
     use vector_lib::opentelemetry::proto::metrics::v1::ResourceMetrics;
 
@@ -380,69 +379,15 @@ fn collection_into_request(col: EventCollection) -> OtlpRequest {
 
     for event in col.events {
         match event {
-            Event::Log(log) => {
-                let body = match log.value().clone() {
-                    Value::Bytes(b) => any_value::Value::StringValue(
-                        String::from_utf8_lossy(&b).into_owned(),
-                    ),
-                    other => any_value::Value::StringValue(format!("{other:?}")),
-                };
-                log_resources.push(ResourceLogs {
-                    resource: None,
-                    scope_logs: vec![ScopeLogs {
-                        scope: None,
-                        log_records: vec![LogRecord {
-                            time_unix_nano: 0,
-                            observed_time_unix_nano: 0,
-                            severity_number: 0,
-                            severity_text: String::new(),
-                            body: Some(AnyValue { value: Some(body) }),
-                            attributes: vec![],
-                            dropped_attributes_count: 0,
-                            flags: 0,
-                            trace_id: vec![],
-                            span_id: vec![],
-                        }],
-                        schema_url: String::new(),
-                    }],
-                    schema_url: String::new(),
-                });
+            Event::Log(ref log) => {
+                log_resources.push(log_event_to_resource_logs(log));
             }
             Event::Metric(ref m) => {
-                let req = metric_to_export_request(&m);
+                let req = metric_to_export_request(m);
                 metric_resources.extend(req.resource_metrics);
             }
-            Event::Trace(trace) => {
-                let name = trace
-                    .get(event_path!("name"))
-                    .and_then(|v| v.as_str().map(|s| s.to_string()))
-                    .unwrap_or_default();
-
-                trace_resources.push(ResourceSpans {
-                    resource: None,
-                    scope_spans: vec![ScopeSpans {
-                        scope: None,
-                        spans: vec![Span {
-                            trace_id: vec![],
-                            span_id: vec![],
-                            trace_state: String::new(),
-                            parent_span_id: vec![],
-                            name,
-                            kind: 0,
-                            start_time_unix_nano: 0,
-                            end_time_unix_nano: 0,
-                            attributes: vec![],
-                            dropped_attributes_count: 0,
-                            events: vec![],
-                            dropped_events_count: 0,
-                            links: vec![],
-                            dropped_links_count: 0,
-                            status: None,
-                        }],
-                        schema_url: String::new(),
-                    }],
-                    schema_url: String::new(),
-                });
+            Event::Trace(ref trace) => {
+                trace_resources.push(trace_event_to_resource_spans(trace));
             }
         }
     }

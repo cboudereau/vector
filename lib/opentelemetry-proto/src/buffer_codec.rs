@@ -3,23 +3,32 @@
 /// This codec is registered at process startup via
 /// `vector_core::event::register_otlp_codec` so that `vector-core`'s disk-buffer
 /// layer can encode/decode without a circular crate dependency.
+///
+/// The public conversion helpers (`log_event_to_log_record`,
+/// `log_event_to_resource_logs`, `trace_event_to_span`,
+/// `trace_event_to_resource_spans`) are reused by the gRPC sink so that every
+/// path through Vector produces identical OTLP output.
 use bytes::Bytes;
 use prost::Message as _;
 use vector_core::event::{EventArray, LogArray, MetricArray, OtlpCodec, TraceArray};
-use vrl::{event_path, value::Value};
+use vrl::{event_path, path, value::Value};
 
 use crate::{
+    logs, spans,
     proto::{
         collector::{
             logs::v1::ExportLogsServiceRequest,
             metrics::v1::ExportMetricsServiceRequest,
             trace::v1::ExportTraceServiceRequest,
         },
-        common::v1::{AnyValue, KeyValue, any_value},
+        common::v1::{AnyValue, InstrumentationScope, KeyValue, any_value},
         logs::v1::{LogRecord, ResourceLogs, ScopeLogs},
-        trace::v1::{ResourceSpans, ScopeSpans, Span},
+        resource::v1::Resource,
+        trace::v1::{
+            ResourceSpans, ScopeSpans, Span, Status as SpanStatus,
+            span::{Event as SpanEvent, Link},
+        },
     },
-    spans,
 };
 
 /// Wire format: `OtlpBufferBatch` protobuf.
@@ -86,45 +95,85 @@ fn event_array_to_batch(array: &EventArray) -> OtlpBufferBatch {
 // --- Logs -------------------------------------------------------------------
 
 fn logs_to_export(logs: &LogArray) -> ExportLogsServiceRequest {
-    let records: Vec<LogRecord> = logs.iter().map(|log| {
-        let body = value_into_any_value(log.value().clone());
-
-        let trace_id = log
-            .get(event_path!(crate::logs::TRACE_ID_KEY))
-            .and_then(|v| hex_value_to_bytes(v, 16))
-            .unwrap_or_default();
-
-        let span_id = log
-            .get(event_path!(crate::logs::SPAN_ID_KEY))
-            .and_then(|v| hex_value_to_bytes(v, 8))
-            .unwrap_or_default();
-
-        LogRecord {
-            time_unix_nano: 0,
-            observed_time_unix_nano: 0,
-            severity_number: 0,
-            severity_text: String::new(),
-            body: Some(AnyValue {
-                value: Some(body),
-            }),
-            attributes: vec![],
-            dropped_attributes_count: 0,
-            flags: 0,
-            trace_id,
-            span_id,
-        }
-    }).collect();
-
     ExportLogsServiceRequest {
-        resource_logs: vec![ResourceLogs {
-            resource: None,
-            scope_logs: vec![ScopeLogs {
-                scope: None,
-                log_records: records,
-                schema_url: String::new(),
-            }],
+        resource_logs: logs.iter().map(log_event_to_resource_logs).collect(),
+    }
+}
+
+/// Convert a single `LogEvent` into a `ResourceLogs` proto, preserving
+/// resource, scope, timestamps, severity, attributes, and trace context.
+pub fn log_event_to_resource_logs(log: &vector_core::event::LogEvent) -> ResourceLogs {
+    ResourceLogs {
+        resource: read_resource_from_metadata(log.metadata()),
+        scope_logs: vec![ScopeLogs {
+            scope: read_scope_from_metadata(log.metadata()),
+            log_records: vec![log_event_to_log_record(log)],
             schema_url: String::new(),
         }],
+        schema_url: String::new(),
+    }
+}
+
+/// Convert a single `LogEvent` into an OTel `LogRecord`.
+///
+/// Reads all fields that the OTel source ingest path (`logs.rs`) stores on
+/// the event — body, timestamps, severity, attributes, trace/span IDs,
+/// flags, and dropped-attributes count.
+pub fn log_event_to_log_record(log: &vector_core::event::LogEvent) -> LogRecord {
+    let meta = log.metadata().value();
+    let otel = |key| meta.get(path!("opentelemetry", key));
+
+    let body = value_into_any_value(log.value().clone());
+
+    let time_unix_nano = otel("timestamp")
+        .and_then(|v| v.as_timestamp())
+        .and_then(|ts| ts.timestamp_nanos_opt())
+        .unwrap_or(0) as u64;
+
+    let observed_time_unix_nano = otel(logs::OBSERVED_TIMESTAMP_KEY)
+        .and_then(|v| v.as_timestamp())
+        .and_then(|ts| ts.timestamp_nanos_opt())
+        .unwrap_or(0) as u64;
+
+    let severity_number = otel(logs::SEVERITY_NUMBER_KEY)
+        .and_then(|v| v.as_integer())
+        .unwrap_or(0) as i32;
+
+    let severity_text = otel(logs::SEVERITY_TEXT_KEY)
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
+        .unwrap_or_default();
+
+    let attributes = otel(logs::ATTRIBUTES_KEY)
+        .and_then(|v| value_to_kv_list(v))
+        .unwrap_or_default();
+
+    let dropped_attributes_count = otel(logs::DROPPED_ATTRIBUTES_COUNT_KEY)
+        .and_then(|v| v.as_integer())
+        .unwrap_or(0) as u32;
+
+    let flags = otel(logs::FLAGS_KEY)
+        .and_then(|v| v.as_integer())
+        .unwrap_or(0) as u32;
+
+    let trace_id = otel(logs::TRACE_ID_KEY)
+        .and_then(|v| hex_value_to_bytes(v, 16))
+        .unwrap_or_default();
+
+    let span_id = otel(logs::SPAN_ID_KEY)
+        .and_then(|v| hex_value_to_bytes(v, 8))
+        .unwrap_or_default();
+
+    LogRecord {
+        time_unix_nano,
+        observed_time_unix_nano,
+        severity_number,
+        severity_text,
+        body: Some(AnyValue { value: Some(body) }),
+        attributes,
+        dropped_attributes_count,
+        flags,
+        trace_id,
+        span_id,
     }
 }
 
@@ -154,21 +203,43 @@ fn metrics_to_export(metrics: &MetricArray) -> ExportMetricsServiceRequest {
 // --- Traces -----------------------------------------------------------------
 
 fn traces_to_export(traces: &TraceArray) -> ExportTraceServiceRequest {
-    let otel_spans: Vec<Span> = traces.iter().map(trace_event_to_span).collect();
     ExportTraceServiceRequest {
-        resource_spans: vec![ResourceSpans {
-            resource: None,
-            scope_spans: vec![ScopeSpans {
-                scope: None,
-                spans: otel_spans,
-                schema_url: String::new(),
-            }],
-            schema_url: String::new(),
-        }],
+        resource_spans: traces.iter().map(trace_event_to_resource_spans).collect(),
     }
 }
 
-fn trace_event_to_span(trace: &vector_core::event::TraceEvent) -> Span {
+/// Convert a single `TraceEvent` into a `ResourceSpans` proto, preserving
+/// resource and scope metadata alongside the span.
+pub fn trace_event_to_resource_spans(
+    trace: &vector_core::event::TraceEvent,
+) -> ResourceSpans {
+    let resource = trace
+        .get(event_path!(spans::RESOURCE_KEY))
+        .and_then(|v| value_to_kv_list(v))
+        .map(|attrs| Resource {
+            attributes: attrs,
+            dropped_attributes_count: 0,
+        });
+
+    let scope = read_scope_from_trace_event(trace);
+
+    ResourceSpans {
+        resource,
+        scope_spans: vec![ScopeSpans {
+            scope,
+            spans: vec![trace_event_to_span(trace)],
+            schema_url: String::new(),
+        }],
+        schema_url: String::new(),
+    }
+}
+
+/// Convert a single `TraceEvent` into an OTel `Span`.
+///
+/// Reads all fields that the OTel source ingest path (`spans.rs`) stores on
+/// the event — IDs, name, kind, timestamps, attributes, events, links,
+/// status, trace_state, and all dropped-count fields.
+pub fn trace_event_to_span(trace: &vector_core::event::TraceEvent) -> Span {
     let trace_id = trace
         .get(event_path!(spans::TRACE_ID_KEY))
         .and_then(|v| hex_value_to_bytes(v, 16))
@@ -182,6 +253,11 @@ fn trace_event_to_span(trace: &vector_core::event::TraceEvent) -> Span {
     let parent_span_id = trace
         .get(event_path!("parent_span_id"))
         .and_then(|v| hex_value_to_bytes(v, 8))
+        .unwrap_or_default();
+
+    let trace_state = trace
+        .get(event_path!("trace_state"))
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
         .unwrap_or_default();
 
     let name = trace
@@ -211,22 +287,53 @@ fn trace_event_to_span(trace: &vector_core::event::TraceEvent) -> Span {
         .and_then(|v| value_to_kv_list(v))
         .unwrap_or_default();
 
+    let dropped_attributes_count = trace
+        .get(event_path!(spans::DROPPED_ATTRIBUTES_COUNT_KEY))
+        .and_then(|v| v.as_integer())
+        .unwrap_or(0) as u32;
+
+    let events = trace
+        .get(event_path!("events"))
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(value_to_span_event).collect())
+        .unwrap_or_default();
+
+    let dropped_events_count = trace
+        .get(event_path!("dropped_events_count"))
+        .and_then(|v| v.as_integer())
+        .unwrap_or(0) as u32;
+
+    let links = trace
+        .get(event_path!("links"))
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(value_to_span_link).collect())
+        .unwrap_or_default();
+
+    let dropped_links_count = trace
+        .get(event_path!("dropped_links_count"))
+        .and_then(|v| v.as_integer())
+        .unwrap_or(0) as u32;
+
+    let status = trace
+        .get(event_path!("status"))
+        .and_then(value_to_span_status);
+
     Span {
         trace_id,
         span_id,
-        trace_state: String::new(),
+        trace_state,
         parent_span_id,
         name,
         kind,
         start_time_unix_nano: start_nanos,
         end_time_unix_nano: end_nanos,
         attributes,
-        dropped_attributes_count: 0,
-        events: vec![],
-        dropped_events_count: 0,
-        links: vec![],
-        dropped_links_count: 0,
-        status: None,
+        dropped_attributes_count,
+        events,
+        dropped_events_count,
+        links,
+        dropped_links_count,
+        status,
     }
 }
 
@@ -271,10 +378,154 @@ fn batch_to_event_array(batch: OtlpBufferBatch) -> EventArray {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Shared metadata readers
 // ---------------------------------------------------------------------------
 
-fn value_into_any_value(v: Value) -> any_value::Value {
+fn read_resource_from_metadata(meta: &vector_core::event::EventMetadata) -> Option<Resource> {
+    let attrs = meta
+        .value()
+        .get(path!("opentelemetry", logs::RESOURCE_KEY))
+        .and_then(|v| value_to_kv_list(v))?;
+    if attrs.is_empty() {
+        return None;
+    }
+    Some(Resource {
+        attributes: attrs,
+        dropped_attributes_count: 0,
+    })
+}
+
+fn read_scope_from_metadata(
+    meta: &vector_core::event::EventMetadata,
+) -> Option<InstrumentationScope> {
+    let scope_val = meta.value().get(path!("opentelemetry", logs::SCOPE_KEY))?;
+    let name = scope_val
+        .get("name")
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
+        .unwrap_or_default();
+    let version = scope_val
+        .get("version")
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
+        .unwrap_or_default();
+    let attributes = scope_val
+        .get("attributes")
+        .and_then(|v| value_to_kv_list(v))
+        .unwrap_or_default();
+    let dropped_attributes_count = scope_val
+        .get("dropped_attributes_count")
+        .and_then(|v| v.as_integer())
+        .unwrap_or(0) as u32;
+
+    if name.is_empty() && version.is_empty() && attributes.is_empty() {
+        return None;
+    }
+    Some(InstrumentationScope {
+        name,
+        version,
+        attributes,
+        dropped_attributes_count,
+    })
+}
+
+fn read_scope_from_trace_event(
+    trace: &vector_core::event::TraceEvent,
+) -> Option<InstrumentationScope> {
+    let name = trace
+        .get(event_path!(spans::SCOPE_KEY, spans::SCOPE_NAME_KEY))
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
+        .unwrap_or_default();
+    let version = trace
+        .get(event_path!(spans::SCOPE_KEY, spans::SCOPE_VERSION_KEY))
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
+        .unwrap_or_default();
+    let attributes = trace
+        .get(event_path!(spans::SCOPE_KEY, spans::ATTRIBUTES_KEY))
+        .and_then(|v| value_to_kv_list(v))
+        .unwrap_or_default();
+
+    if name.is_empty() && version.is_empty() && attributes.is_empty() {
+        return None;
+    }
+    Some(InstrumentationScope {
+        name,
+        version,
+        attributes,
+        dropped_attributes_count: 0,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Span sub-object converters (Value → proto)
+// ---------------------------------------------------------------------------
+
+fn value_to_span_event(v: &Value) -> Option<SpanEvent> {
+    let obj = v.as_object()?;
+    Some(SpanEvent {
+        time_unix_nano: obj
+            .get("time_unix_nano")
+            .and_then(|v| v.as_timestamp())
+            .and_then(|ts| ts.timestamp_nanos_opt())
+            .unwrap_or(0) as u64,
+        name: obj
+            .get("name")
+            .and_then(|v| v.as_str().map(|s| s.to_string()))
+            .unwrap_or_default(),
+        attributes: obj
+            .get("attributes")
+            .and_then(|v| value_to_kv_list(v))
+            .unwrap_or_default(),
+        dropped_attributes_count: obj
+            .get("dropped_attributes_count")
+            .and_then(|v| v.as_integer())
+            .unwrap_or(0) as u32,
+    })
+}
+
+fn value_to_span_link(v: &Value) -> Option<Link> {
+    let obj = v.as_object()?;
+    Some(Link {
+        trace_id: obj
+            .get("trace_id")
+            .and_then(|v| hex_value_to_bytes(v, 16))
+            .unwrap_or_default(),
+        span_id: obj
+            .get("span_id")
+            .and_then(|v| hex_value_to_bytes(v, 8))
+            .unwrap_or_default(),
+        trace_state: obj
+            .get("trace_state")
+            .and_then(|v| v.as_str().map(|s| s.to_string()))
+            .unwrap_or_default(),
+        attributes: obj
+            .get("attributes")
+            .and_then(|v| value_to_kv_list(v))
+            .unwrap_or_default(),
+        dropped_attributes_count: obj
+            .get("dropped_attributes_count")
+            .and_then(|v| v.as_integer())
+            .unwrap_or(0) as u32,
+    })
+}
+
+fn value_to_span_status(v: &Value) -> Option<SpanStatus> {
+    let obj = v.as_object()?;
+    Some(SpanStatus {
+        message: obj
+            .get("message")
+            .and_then(|v| v.as_str().map(|s| s.to_string()))
+            .unwrap_or_default(),
+        code: obj
+            .get("code")
+            .and_then(|v| v.as_integer())
+            .unwrap_or(0) as i32,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Value helpers
+// ---------------------------------------------------------------------------
+
+pub fn value_into_any_value(v: Value) -> any_value::Value {
     match v {
         Value::Bytes(b) => {
             any_value::Value::StringValue(String::from_utf8_lossy(&b).into_owned())
@@ -311,13 +562,13 @@ fn value_into_any_value(v: Value) -> any_value::Value {
     }
 }
 
-fn hex_value_to_bytes(v: &Value, expected_len: usize) -> Option<Vec<u8>> {
+pub fn hex_value_to_bytes(v: &Value, expected_len: usize) -> Option<Vec<u8>> {
     let s = v.as_str()?;
     let bytes = hex::decode(s.as_ref()).ok()?;
     (bytes.len() == expected_len).then_some(bytes)
 }
 
-fn value_to_kv_list(v: &Value) -> Option<Vec<KeyValue>> {
+pub fn value_to_kv_list(v: &Value) -> Option<Vec<KeyValue>> {
     let map = v.as_object()?;
     Some(
         map.iter()

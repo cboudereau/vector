@@ -37,7 +37,9 @@ mod r#ref;
 mod ser;
 pub mod otlp;
 pub use otlp::{OtlpCodec, register_otlp_codec};
-pub use ser::{BufferFormat, BUFFER_FORMAT};
+pub use ser::{
+    BufferFormat, BUFFER_FORMAT, EventEncodableMetadata, EventEncodableMetadataFlags,
+};
 #[cfg(test)]
 mod test;
 mod trace;

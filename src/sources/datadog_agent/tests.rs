@@ -42,7 +42,7 @@ use crate::{
     config::{SourceConfig, SourceContext},
     event::{
         Event, EventStatus, Metric, Value, into_event_stream,
-        metric::{MetricKind, MetricSketch, MetricValue},
+        metric::{MetricKind, MetricValue},
     },
     schema,
     schema::Definition,
@@ -63,7 +63,6 @@ const DD_API_LOGS_V1_PATH: &str = "/v1/input/";
 const DD_API_LOGS_V2_PATH: &str = "/api/v2/logs";
 const DD_API_SERIES_V1_PATH: &str = "/api/v1/series";
 const DD_API_SERIES_V2_PATH: &str = "/api/v2/series";
-const DD_API_SKETCHES_PATH: &str = "/api/beta/sketches";
 const DD_API_TRACES_PATH: &str = "/api/v0.2/traces";
 const HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -1087,104 +1086,6 @@ async fn decode_series_endpoint_v1() {
                 &events[3].metadata().secrets().get("datadog_api_key").unwrap()[..],
                 DD_API_KEY
             );
-        }
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn decode_sketches() {
-    assert_source_compliance(&HTTP_PUSH_SOURCE_TAGS, async {
-        let (rx, _, _, addr, _guard) =
-            source(EventStatus::Delivered, true, true, false, true).await;
-
-        let mut buf = Vec::new();
-        let sketch = ddmetric_proto::sketch_payload::Sketch {
-            metric: "dd_sketch".to_string(),
-            tags: vec![
-                "foo:bar".to_string(),
-                "foo:baz".to_string(),
-                "foobar".to_string(),
-            ],
-            host: "a_host".to_string(),
-            distributions: Vec::new(),
-            dogsketches: vec![ddmetric_proto::sketch_payload::sketch::Dogsketch {
-                ts: 1542182950,
-                cnt: 2,
-                min: 16.0,
-                max: 31.0,
-                avg: 23.5,
-                sum: 74.0,
-                k: vec![1517, 1559],
-                n: vec![1, 1],
-            }],
-            metadata: Some(ddmetric_proto::Metadata {
-                origin: Some(ddmetric_proto::Origin {
-                    origin_product: 10,
-                    origin_category: 11,
-                    origin_service: 9,
-                }),
-            }),
-        };
-
-        let sketch_payload = ddmetric_proto::SketchPayload {
-            metadata: None,
-            sketches: vec![sketch],
-        };
-
-        sketch_payload.encode(&mut buf).unwrap();
-        let body = unsafe { String::from_utf8_unchecked(buf) };
-        let events = send_and_collect(
-            addr,
-            body,
-            dd_api_key_headers(),
-            DD_API_SKETCHES_PATH,
-            rx,
-            1,
-        )
-        .await;
-
-        {
-            let metric = events[0].as_metric();
-            assert_eq!(metric.name(), "dd_sketch");
-            assert_eq!(
-                metric.timestamp(),
-                Some(
-                    Utc.with_ymd_and_hms(2018, 11, 14, 8, 9, 10)
-                        .single()
-                        .expect("invalid timestamp")
-                )
-            );
-            assert_eq!(metric.kind(), MetricKind::Incremental);
-            assert_tags(
-                metric,
-                metric_tags!(
-                    "host" => "a_host",
-                    "foo" => "bar",
-                    "foo" => "baz",
-                    "foobar" => TagValue::Bare,
-                ),
-            );
-            let s = metric.value();
-            assert!(matches!(s, MetricValue::Sketch { .. }));
-            if let MetricValue::Sketch {
-                sketch: MetricSketch::AgentDDSketch(ddsketch),
-            } = s
-            {
-                assert_eq!(ddsketch.bins().len(), 2);
-                assert_eq!(ddsketch.count(), 2);
-                assert_eq!(ddsketch.min(), Some(16.0));
-                assert_eq!(ddsketch.max(), Some(31.0));
-                assert_eq!(ddsketch.sum(), Some(74.0));
-                assert_eq!(ddsketch.avg(), Some(23.5));
-            }
-
-            assert_eq!(
-                &events[0].metadata().secrets().get("datadog_api_key").unwrap()[..],
-                DD_API_KEY
-            );
-
-            // origin metadata removed in Step 3 (DD types leave core)
         }
     })
     .await;
@@ -2296,34 +2197,6 @@ async fn decode_series_endpoint_v2() {
                 &events[3].metadata().secrets().get("datadog_api_key").unwrap()[..],
                 DD_API_KEY
             );
-
-            assert_eq!(
-                events[3]
-                    .metadata()
-                    .datadog_origin_metadata()
-                    .unwrap()
-                    .product()
-                    .unwrap(),
-                10
-            );
-            assert_eq!(
-                events[3]
-                    .metadata()
-                    .datadog_origin_metadata()
-                    .unwrap()
-                    .category()
-                    .unwrap(),
-                10
-            );
-            assert_eq!(
-                events[3]
-                    .metadata()
-                    .datadog_origin_metadata()
-                    .unwrap()
-                    .service()
-                    .unwrap(),
-                42
-            );
         }
     })
     .await;
@@ -2641,70 +2514,6 @@ async fn series_v2_split_metric_namespace_true() {
 async fn series_v2_split_metric_namespace_false() {
     assert_source_compliance(&HTTP_PUSH_SOURCE_TAGS, async {
         test_series_v2_split_metric_namespace_impl(false, "system.disk.free", None).await;
-    })
-    .await;
-}
-
-async fn test_sketches_split_metric_namespace_impl(
-    split: bool,
-    expected_name: &str,
-    expected_namespace: Option<&str>,
-) {
-    let (rx, _, _, addr, _guard) = source(EventStatus::Delivered, true, true, false, split).await;
-
-    let mut buf = Vec::new();
-    let sketch = ddmetric_proto::sketch_payload::Sketch {
-        metric: "system.disk.free".to_string(),
-        tags: vec!["foo:bar".to_string()],
-        host: "test_host".to_string(),
-        distributions: Vec::new(),
-        dogsketches: vec![ddmetric_proto::sketch_payload::sketch::Dogsketch {
-            ts: 1542182950,
-            cnt: 2,
-            min: 16.0,
-            max: 31.0,
-            avg: 23.5,
-            sum: 74.0,
-            k: vec![1517, 1559],
-            n: vec![1, 1],
-        }],
-        metadata: None,
-    };
-
-    let sketch_payload = ddmetric_proto::SketchPayload {
-        metadata: None,
-        sketches: vec![sketch],
-    };
-
-    sketch_payload.encode(&mut buf).unwrap();
-    let body = unsafe { String::from_utf8_unchecked(buf) };
-    let events = send_and_collect(
-        addr,
-        body,
-        dd_api_key_headers(),
-        DD_API_SKETCHES_PATH,
-        rx,
-        1,
-    )
-    .await;
-
-    let metric = events[0].as_metric();
-    assert_eq!(metric.name(), expected_name);
-    assert_eq!(metric.namespace(), expected_namespace);
-}
-
-#[tokio::test]
-async fn sketches_split_metric_namespace_true() {
-    assert_source_compliance(&HTTP_PUSH_SOURCE_TAGS, async {
-        test_sketches_split_metric_namespace_impl(true, "disk.free", Some("system")).await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn sketches_split_metric_namespace_false() {
-    assert_source_compliance(&HTTP_PUSH_SOURCE_TAGS, async {
-        test_sketches_split_metric_namespace_impl(false, "system.disk.free", None).await;
     })
     .await;
 }

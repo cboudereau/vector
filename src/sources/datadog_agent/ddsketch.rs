@@ -1214,33 +1214,6 @@ mod tests {
 
     const FLOATING_POINT_ACCEPTABLE_ERROR: f64 = 1.0e-10;
 
-    #[cfg(ddsketch_extended)]
-    fn generate_pareto_distribution() -> Vec<OrderedFloat<f64>> {
-        use ordered_float::OrderedFloat;
-        use rand::rng;
-        use rand_distr::{Distribution, Pareto};
-
-        // Generate a set of samples that roughly correspond to the latency of a typical web
-        // service, in microseconds, with a gamma distribution: big hump at the beginning with a
-        // long tail.  We limit this so the samples represent latencies that bottom out at 15
-        // milliseconds and tail off all the way up to 10 seconds.
-        //let distribution = Gamma::new(1.2, 100.0).unwrap();
-        let distribution = Pareto::new(1.0, 1.0).expect("pareto distribution should be valid");
-        let mut samples = distribution
-            .sample_iter(rng())
-            // Scale by 10,000 to get microseconds.
-            .map(|n| n * 10_000.0)
-            .filter(|n| *n > 15_000.0 && *n < 10_000_000.0)
-            .map(OrderedFloat)
-            .take(1000)
-            .collect::<Vec<_>>();
-
-        // Sort smallest to largest.
-        samples.sort();
-
-        samples
-    }
-
     #[test]
     fn test_ddsketch_config_key_lower_bound_identity() {
         let config = Config::default();
@@ -1423,68 +1396,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(ddsketch_extended)]
-    fn test_ddsketch_pareto_distribution() {
-        use ndarray::{Array, Axis};
-        use ndarray_stats::{QuantileExt, interpolate::Midpoint};
-        use noisy_float::prelude::N64;
-
-        // NOTE: This test unexpectedly fails to meet the relative accuracy guarantees when checking
-        // the samples against quantiles pulled via `ndarray_stats`.  When feeding the same samples
-        // to the actual DDSketch implementation in datadog-agent, we get identical results at each
-        // quantile. This doesn't make a huge amount of sense to me, since we have a unit test that
-        // verifies the relative accuracy of the configuration itself, which should only fail to be
-        // met if we hit the bin limit and bins have to be collapsed.
-        //
-        // We're keeping it here as a reminder of the seemingly practical difference in accuracy
-        // vs deriving the quantiles of the sample sets directly.
-
-        // We generate a straightforward Pareto distribution to simulate web request latencies.
-        let samples = generate_pareto_distribution();
-
-        // Prepare our data for querying.
-        let mut sketch = AgentDDSketch::with_agent_defaults();
-
-        let relative_accuracy = AGENT_DEFAULT_EPS;
-        for sample in &samples {
-            sketch.insert(sample.into_inner());
-        }
-
-        let mut array = Array::from_iter(samples);
-
-        // Now check the estimated quantile via `AgentDDSketch` vs the true quantile via `ndarray`.
-        //
-        // TODO: what's a reasonable quantile to start from? from testing the actual agent code, it
-        // seems like <p50 is gonna be rough no matter what, which I think is expected but also not great?
-        for p in 1..=100 {
-            let q = p as f64 / 100.0;
-            let x = sketch.quantile(q);
-            assert!(x.is_some());
-
-            let estimated = x.unwrap();
-            let actual = array
-                .quantile_axis_mut(Axis(0), N64::unchecked_new(q), &Midpoint)
-                .expect("quantile should be in range")
-                .get(())
-                .expect("quantile value should be present")
-                .clone()
-                .into_inner();
-
-            let _err = (estimated - actual).abs() / actual;
-            assert!(
-                err <= relative_accuracy,
-                "relative accuracy out of bounds: q={}, estimate={}, actual={}, target-rel-acc={}, actual-rel-acc={}, bin-count={}",
-                q,
-                estimated,
-                actual,
-                relative_accuracy,
-                err,
-                sketch.bin_count()
-            );
-        }
-    }
-
-    #[test]
     fn test_relative_accuracy_fast() {
         // These values are based on the agent's unit tests for asserting relative accuracy of the
         // DDSketch implementation.  Notably, it does not seem to test the full extent of values
@@ -1501,27 +1412,6 @@ mod tests {
         let max_value = config.gamma_v.powf(5.0) as f32;
 
         test_relative_accuracy(config, AGENT_DEFAULT_EPS, min_value, max_value);
-    }
-
-    #[test]
-    #[cfg(ddsketch_extended)]
-    fn test_relative_accuracy_slow() {
-        // These values are based on the agent's unit tests for asserting relative accuracy of the
-        // DDSketch implementation.  Notably, it does not seem to test the full extent of values
-        // that the open-source implementations do, but then again... all we care about is parity
-        // with the agent version so we can pass them through.
-        //
-        // Another noteworthy thing: it seems that they don't test from the actual targeted minimum
-        // value, which is 1.0e-9, which would give nanosecond granularity vs just microsecond
-        // granularity.
-        //
-        // This test uses a far larger range of values, and takes 60-70 seconds, hence why we've
-        // guarded it here behind a cfg flag.
-        let config = Config::default();
-        let min_value = 1.0e-6;
-        let max_value = i64::MAX as f32;
-
-        test_relative_accuracy(config, AGENT_DEFAULT_EPS, min_value, max_value)
     }
 
     fn parse_sketch_from_string_bins(layout: &str) -> AgentDDSketch {

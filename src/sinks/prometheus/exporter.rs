@@ -614,7 +614,7 @@ mod tests {
         config::ProxyConfig,
         event::metric::{Metric, MetricValue},
         http::HttpClient,
-        sinks::prometheus::{distribution_to_agg_histogram, distribution_to_ddsketch},
+        sinks::prometheus::distribution_to_agg_histogram,
         test_util::{
             addr::next_addr,
             components::{SINK_TAGS, run_and_assert_sink_compliance},
@@ -1269,13 +1269,9 @@ mod tests {
         // since they can actually be aggregated anywhere in the pipeline -- so long as the buckets
         // are the same -- without loss of accuracy.
 
-        // This assumes that when we turn on `distributions_as_summaries`, we'll get aggregated
-        // summaries from distributions.  This is technically true, but the way this test works is
-        // that we check the internal metric data, which, when in this mode, will actually be a
-        // sketch (so that we can merge without loss of accuracy).
-        //
-        // The render code is actually what will end up rendering those sketches as aggregated
-        // summaries in the scrape output.
+        // With DDSketch removed from core (Step 3), both summary and histogram distributions
+        // are now converted to AggregatedHistogram internally, regardless of the
+        // `distributions_as_summaries` flag.
         let (_guard, address) = next_addr();
         let config = PrometheusExporterConfig {
             address,
@@ -1284,6 +1280,7 @@ mod tests {
             ..Default::default()
         };
 
+        let buckets = config.buckets.clone();
         let sink = PrometheusExporter::new(config);
 
         // Define a series of incremental distribution updates.
@@ -1335,17 +1332,19 @@ mod tests {
         ];
 
         // Figure out what the merged distributions should add up to.
+        // Since Step 3 removed DDSketch from core, both paths now convert to
+        // AggregatedHistogram using the configured buckets.
         let mut merged_summary = base_summary_metric.clone();
         assert!(merged_summary.update(&metrics[1]));
         assert!(merged_summary.update(&metrics[2]));
-        let expected_summary = distribution_to_ddsketch(merged_summary)
+        let expected_summary = distribution_to_agg_histogram(merged_summary, &buckets)
             .expect("input summary metric should have been distribution")
             .into_absolute();
 
         let mut merged_histogram = base_histogram_metric.clone();
         assert!(merged_histogram.update(&metrics[4]));
         assert!(merged_histogram.update(&metrics[5]));
-        let expected_histogram = distribution_to_ddsketch(merged_histogram)
+        let expected_histogram = distribution_to_agg_histogram(merged_histogram, &buckets)
             .expect("input histogram metric should have been distribution")
             .into_absolute();
 

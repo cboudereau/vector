@@ -385,73 +385,45 @@ is blocked. Step 2 must land before Step 1 can be validated.
 
 ### 0a — Buffer format toggle
 
-**Status: PARTIAL — metadata layer done, I/O layer not started**
+**Status: COMPLETE**
 
-File: `lib/vector-core/src/event/ser.rs`
+All functionality is implemented, tested, and wired end-to-end:
 
-**Done (committed, `cargo build -p vector-core` green, 6/6 tests passing):**
 - `BufferFormat` enum (`Vector` / `Otlp` / `Migrate`) with `#[default] Vector`
 - `BUFFER_FORMAT: AtomicCell<BufferFormat>` process-wide static
 - `OtlpEncoding = 0b10` flag in `EventEncodableMetadataFlags`
 - `get_metadata()` branches on `BUFFER_FORMAT` — stamps correct flags on new records
 - `can_decode()` branches on `BUFFER_FORMAT` — accepts/rejects records by flag
-- `BufferFormat` and `BUFFER_FORMAT` re-exported from `lib/vector-core/src/event/mod.rs`
+- `BufferFormat`, `BUFFER_FORMAT`, `EventEncodableMetadata`, and
+  `EventEncodableMetadataFlags` re-exported from `lib/vector-core/src/event/mod.rs`
 - 6 unit tests covering all three modes for both `get_metadata` and `can_decode`
-
-**Not done — `encode()` and `decode()` still ignore `BUFFER_FORMAT`:**
-
-Current `encode()` always uses `proto::EventArray` regardless of the toggle:
-```rust
-fn encode<B>(self, buffer: &mut B) -> Result<(), Self::EncodeError> {
-    proto::EventArray::from(self)   // ← always Vector proto
-        .encode(buffer)
-        .map_err(|_| EncodeError::BufferTooSmall)
-}
-```
-
-Current `decode()` never checks for `OtlpEncoding`, always decodes as `proto::EventArray`
-or falls back to `proto::EventWrapper`.
-
-The toggle currently has **no effect on actual I/O** — only the metadata/flag stamping is
-wired. The data path is the remaining work.
-
-**Remaining tasks:**
-
-1. `lib/vector-core/proto/otlp_buffer.proto` — define `OtlpBufferBatch`:
-   ```protobuf
-   message OtlpBufferBatch {
-     opentelemetry.proto.collector.logs.v1.ExportLogsServiceRequest logs = 1;
-     opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceRequest metrics = 2;
-     opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest traces = 3;
-   }
-   ```
-   Add to `lib/vector-core/build.rs` proto compilation list.
-
-2. `EventArray → OtlpBufferBatch` conversion: split by signal type using
-   `EventArray::logs()` / `EventArray::metrics()` / `EventArray::traces()`, convert each
-   using existing `lib/opentelemetry-proto/src/` types in reverse.
-
-3. `OtlpBufferBatch → EventArray` conversion: use existing
-   `ResourceLogs::into_event_iter()` / `ResourceMetrics::into_event_iter()` /
-   `ResourceSpans::into_event_iter()`.
-
-4. Update `encode()` to branch on `BUFFER_FORMAT`:
-   - `Vector` → existing `proto::EventArray::from(self).encode(buffer)`
-   - `Otlp` | `Migrate` → `OtlpBufferBatch::from(self).encode(buffer)`
-
-5. Update `decode()` to branch on `OtlpEncoding` flag:
-   - flag set → `OtlpBufferBatch::decode(buffer)` → `EventArray::from(batch)`
-   - flag not set → existing `proto::EventArray` / `proto::EventWrapper` path
-
-6. `buffer_format` field in `lib/vector-core/src/config/global_options.rs`
-   (default `"vector"`), with startup wiring: `BUFFER_FORMAT.store(config.buffer_format)`.
-
-7. Startup validation: if `buffer_format = "otlp"` and an existing on-disk buffer is
-   detected, force `Migrate` mode and log a warning rather than crashing on unreadable
-   records.
-
-8. Integration test: write Vector-proto records, restart in `migrate` mode, assert old
-   records decode and new records carry `OtlpEncoding` flag.
+- `lib/vector-core/proto/otlp_buffer.proto` — `OtlpBufferBatch` message defined, compiled
+  via `lib/vector-core/build.rs`
+- `OtlpCodec` trait in `lib/vector-core/src/event/otlp.rs` — codec vtable avoiding
+  circular crate dependency. `vector-core` owns the trait and global registry;
+  `opentelemetry-proto` registers the implementation
+- `lib/opentelemetry-proto/src/buffer_codec.rs` — full `VectorOtlpCodec` implementation:
+  - `event_array_to_batch()`: `EventArray` → `OtlpBufferBatch` (logs, metrics, traces)
+  - `batch_to_event_array()`: `OtlpBufferBatch` → `EventArray` using existing
+    `ResourceLogs/ResourceMetrics/ResourceSpans::into_event_iter()`
+  - Round-trip unit tests for logs and counter metrics
+  - **Migration integration test**: writes a record in Vector mode, switches to Migrate
+    mode, verifies old record decodes, writes new OTLP record, switches to Otlp mode,
+    verifies OTLP records decode and Vector metadata is rejected
+- `encode()` in `ser.rs` branches on `BUFFER_FORMAT`:
+  - `Vector` → `proto::EventArray::from(self).encode(buffer)`
+  - `Otlp` | `Migrate` → `otlp::encode_as_otlp(&self, buffer)`
+- `decode()` in `ser.rs` branches on `OtlpEncoding` metadata flag:
+  - flag set → `otlp::decode_from_otlp(bytes)`
+  - flag not set → existing `proto::EventArray` / `proto::EventWrapper` path
+- `buffer_format` field in `lib/vector-core/src/config/global_options.rs`
+  (default `"vector"`, `serde(rename_all = "lowercase")`)
+- Startup wiring in `src/app.rs`: `BUFFER_FORMAT.store(config.global.buffer_format)` +
+  `buffer_codec::init()` registers the OTLP codec before any buffer is opened
+- **Startup validation** (`src/app.rs`): `maybe_force_migrate_mode()` — if
+  `buffer_format = "otlp"` is set but any sink's disk buffer directory
+  (`<data_dir>/buffer/v2/<sink_id>/`) contains `.dat` files, automatically overrides to
+  `Migrate` mode and logs a warning. 4 unit tests for `has_dat_files` helper.
 
 Full spec: `DISK_BUFFER_MIGRATION.md`.
 
@@ -474,9 +446,11 @@ Both pass.
 ### Validation gate (Step 0) — ALL PASS
 
 - 186 vector-core tests pass (excluding pre-existing TLS fixture failures, unrelated).
-- 6 opentelemetry-proto tests pass including new scope tests.
+- 7 opentelemetry-proto tests pass including new scope tests and migration test.
+- 4 `has_dat_files` unit tests pass.
 - `rg "flat_map.*ils.spans" lib/opentelemetry-proto/src/spans.rs` returns no match — scope
   is no longer dropped.
+- Migration integration test: Vector→Migrate→Otlp encode/decode round-trip passes.
 
 ---
 

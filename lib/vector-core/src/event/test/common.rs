@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, iter};
+use std::collections::BTreeSet;
 
 use chrono::{DateTime, Utc};
 use quickcheck::{Arbitrary, Gen, empty_shrinker};

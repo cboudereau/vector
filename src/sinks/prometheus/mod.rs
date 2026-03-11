@@ -56,9 +56,3 @@ fn distribution_to_agg_histogram(metric: Metric, buckets: &[f64]) -> Option<Metr
     new_value.map(move |value| metric.with_value(value))
 }
 
-#[cfg(test)]
-fn distribution_to_ddsketch(metric: Metric) -> Option<Metric> {
-    // If the metric isn;'t already a distribution, this ends up returning `None`.
-    let new_value = metric.value().clone().distribution_to_sketch();
-    new_value.map(move |value| metric.with_value(value))
-}

@@ -333,7 +333,9 @@ fn value_to_kv_list(v: &Value) -> Option<Vec<KeyValue>> {
 
 #[cfg(test)]
 mod tests {
-    use vector_core::event::{EventArray, LogEvent, Metric, MetricKind, MetricValue};
+    use vector_core::event::{
+        BufferFormat, EventArray, LogEvent, Metric, MetricKind, MetricValue, BUFFER_FORMAT,
+    };
     use vrl::value::Value;
 
     use super::{VectorOtlpCodec, init};
@@ -394,5 +396,90 @@ mod tests {
             }
             other => panic!("expected Metrics, got {other:?}"),
         }
+    }
+
+    /// Simulates a buffer format migration through the `Encodable` trait on
+    /// `EventArray`, exercising the full `encode()`/`decode()` data path that
+    /// the disk buffer layer uses.
+    ///
+    /// Phases:
+    /// 1. Vector mode: encode a log, capture the encoded bytes + metadata.
+    /// 2. Migrate mode: decode the Vector-era bytes, then encode+decode a new
+    ///    record (which should be OTLP-encoded).
+    /// 3. Otlp mode: verify OTLP records still decode, and Vector metadata is
+    ///    rejected.
+    #[test]
+    fn migrate_mode_decodes_vector_records_and_writes_otlp() {
+        use vector_buffers::encoding::Encodable;
+
+        setup();
+
+        let log = LogEvent::from(Value::from("vector-era record"));
+        let array = EventArray::from(log);
+
+        // Phase 1: write a record in Vector mode.
+        BUFFER_FORMAT.store(BufferFormat::Vector);
+        let vector_metadata = EventArray::get_metadata();
+        let mut vector_buf = Vec::new();
+        array.clone().encode(&mut vector_buf).expect("Vector encode failed");
+
+        // Phase 2: switch to Migrate mode.
+        BUFFER_FORMAT.store(BufferFormat::Migrate);
+
+        assert!(
+            EventArray::can_decode(vector_metadata),
+            "Migrate mode must accept Vector-encoded metadata"
+        );
+        let decoded = EventArray::decode(vector_metadata, vector_buf.as_slice())
+            .expect("Migrate mode must decode Vector-encoded records");
+        match &decoded {
+            EventArray::Logs(logs) => assert_eq!(logs.len(), 1),
+            other => panic!("expected Logs, got {other:?}"),
+        }
+
+        // Write a new record in Migrate mode — should use OTLP encoding.
+        let migrate_metadata = EventArray::get_metadata();
+        assert!(
+            {
+                use vector_core::event::EventEncodableMetadataFlags::*;
+                let flags: vector_core::event::EventEncodableMetadata =
+                    (DiskBufferV1CompatibilityMode | OtlpEncoding).into();
+                migrate_metadata == flags
+            },
+            "Migrate mode metadata must include both V1 compat and OtlpEncoding flags"
+        );
+
+        let log2 = LogEvent::from(Value::from("migrate-era record"));
+        let array2 = EventArray::from(log2);
+        let mut otlp_buf = Vec::new();
+        array2.encode(&mut otlp_buf).expect("Migrate encode failed");
+
+        let decoded2 = EventArray::decode(migrate_metadata, otlp_buf.as_slice())
+            .expect("Migrate mode must decode its own OTLP records");
+        match decoded2 {
+            EventArray::Logs(logs) => assert_eq!(logs.len(), 1),
+            other => panic!("expected Logs, got {other:?}"),
+        }
+
+        // Phase 3: switch to Otlp mode.
+        BUFFER_FORMAT.store(BufferFormat::Otlp);
+        assert!(
+            EventArray::can_decode(migrate_metadata),
+            "Otlp mode must accept OTLP-encoded metadata"
+        );
+        assert!(
+            !EventArray::can_decode(vector_metadata),
+            "Otlp mode must reject Vector-encoded metadata"
+        );
+
+        let decoded3 = EventArray::decode(migrate_metadata, otlp_buf.as_slice())
+            .expect("Otlp mode must decode OTLP records written during Migrate");
+        match decoded3 {
+            EventArray::Logs(logs) => assert_eq!(logs.len(), 1),
+            other => panic!("expected Logs, got {other:?}"),
+        }
+
+        // Reset to default.
+        BUFFER_FORMAT.store(BufferFormat::Vector);
     }
 }

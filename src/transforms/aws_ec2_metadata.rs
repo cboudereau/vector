@@ -330,7 +330,9 @@ impl Ec2MetadataTransform {
                         .replace_tag(k.metric_tag.clone(), String::from_utf8_lossy(v).to_string());
                 });
             }
-            Event::Trace(_) => panic!("Traces are not supported."),
+            Event::Trace(_) | Event::OtelLog(_) | Event::OtelMetric(_) | Event::OtelSpan(_) => {
+                panic!("Traces and OTel-native events are not supported.")
+            }
         }
         event
     }

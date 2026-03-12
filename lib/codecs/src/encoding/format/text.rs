@@ -73,7 +73,10 @@ impl Encoder<Event> for TextSerializer {
                 let bytes = metric.to_string();
                 buffer.put(bytes.as_ref());
             }
-            Event::Trace(_) => {}
+            Event::Trace(_)
+            | Event::OtelLog(_)
+            | Event::OtelMetric(_)
+            | Event::OtelSpan(_) => {}
         };
 
         Ok(())

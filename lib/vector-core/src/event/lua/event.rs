@@ -24,11 +24,11 @@ impl IntoLua for LuaEvent {
                 }
                 .into_lua(lua)?,
             )?,
-            Event::Trace(_) => {
+            Event::Trace(_) | Event::OtelLog(_) | Event::OtelMetric(_) | Event::OtelSpan(_) => {
                 return Err(LuaError::ToLuaConversionError {
                     from: String::from("Event"),
                     to: "table",
-                    message: Some("Trace are not supported".to_string()),
+                    message: Some("Trace/OTel events are not supported in Lua".to_string()),
                 });
             }
         }

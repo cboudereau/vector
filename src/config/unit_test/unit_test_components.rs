@@ -326,6 +326,15 @@ fn events_to_string(events: &[Event]) -> String {
             Event::Trace(trace) => {
                 serde_json::to_string(trace).unwrap_or_else(|_| "{}".to_string())
             }
+            Event::OtelLog(e) => {
+                serde_json::to_string(e).unwrap_or_else(|_| "{}".to_string())
+            }
+            Event::OtelMetric(e) => {
+                serde_json::to_string(e).unwrap_or_else(|_| "{}".to_string())
+            }
+            Event::OtelSpan(e) => {
+                serde_json::to_string(e).unwrap_or_else(|_| "{}".to_string())
+            }
         })
         .collect::<Vec<_>>()
         .join("\n  ")

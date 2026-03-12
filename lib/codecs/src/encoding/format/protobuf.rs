@@ -126,6 +126,9 @@ impl Encoder<Event> for ProtobufSerializer {
                 Value::Object(trace.into_parts().0),
                 &self.options,
             ),
+            Event::OtelLog(_) | Event::OtelMetric(_) | Event::OtelSpan(_) => {
+                return Err("OTel-native events cannot be encoded with the generic protobuf serializer".into());
+            }
         }?;
         message.encode(buffer).map_err(Into::into)
     }

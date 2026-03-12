@@ -355,6 +355,45 @@ where
 // Event → OtlpRequest conversion
 // ---------------------------------------------------------------------------
 
+/// Reconstruct a `ResourceSpans` (opentelemetry-proto types) from an
+/// `OtelSpanEvent` (otel-proto-types) via protobuf encode→decode.
+/// Both crate types are generated from the same .proto schema, so the wire
+/// format is identical.
+fn otel_span_event_to_resource_spans(
+    span_event: &vector_lib::event::OtelSpanEvent,
+) -> vector_lib::opentelemetry::proto::trace::v1::ResourceSpans {
+    use prost::Message;
+    use vector_lib::opentelemetry::proto::{
+        common::v1::InstrumentationScope as SinkScope,
+        resource::v1::Resource as SinkResource,
+        trace::v1::{ResourceSpans, ScopeSpans, Span as SinkSpan},
+    };
+
+    let span_bytes = span_event.span().encode_to_vec();
+    let sink_span =
+        SinkSpan::decode(bytes::Bytes::from(span_bytes)).expect("Span proto roundtrip");
+
+    let resource = span_event.resource().map(|r| {
+        let b = r.encode_to_vec();
+        SinkResource::decode(bytes::Bytes::from(b)).expect("Resource proto roundtrip")
+    });
+
+    let scope = span_event.scope().map(|s| {
+        let b = s.encode_to_vec();
+        SinkScope::decode(bytes::Bytes::from(b)).expect("Scope proto roundtrip")
+    });
+
+    ResourceSpans {
+        resource,
+        scope_spans: vec![ScopeSpans {
+            scope,
+            spans: vec![sink_span],
+            schema_url: String::new(),
+        }],
+        schema_url: String::new(),
+    }
+}
+
 fn collection_into_request(col: EventCollection) -> OtlpRequest {
     use vector_lib::opentelemetry::{
         buffer_codec::{log_event_to_resource_logs, trace_event_to_resource_spans},
@@ -389,6 +428,10 @@ fn collection_into_request(col: EventCollection) -> OtlpRequest {
             Event::Trace(ref trace) => {
                 trace_resources.push(trace_event_to_resource_spans(trace));
             }
+            Event::OtelSpan(ref span_event) => {
+                trace_resources.push(otel_span_event_to_resource_spans(span_event));
+            }
+            _ => {}
         }
     }
 

@@ -553,6 +553,7 @@ where
                     self.dropped_data(reason, error).into()
                 });
             }
+            Event::OtelLog(_) | Event::OtelMetric(_) | Event::OtelSpan(_) => {}
         }
     }
 

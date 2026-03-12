@@ -35,7 +35,9 @@ pub mod metric;
 pub mod proto;
 mod r#ref;
 mod ser;
+pub mod otel_event;
 pub mod otlp;
+pub use otel_event::{OtelLogEvent, OtelMetricEvent, OtelSpanEvent};
 pub use otlp::{OtlpCodec, register_otlp_codec};
 pub use ser::{
     BufferFormat, BUFFER_FORMAT, EventEncodableMetadata, EventEncodableMetadataFlags,
@@ -56,6 +58,9 @@ pub enum Event {
     Log(LogEvent),
     Metric(Metric),
     Trace(TraceEvent),
+    OtelLog(OtelLogEvent),
+    OtelMetric(OtelMetricEvent),
+    OtelSpan(OtelSpanEvent),
 }
 
 impl ByteSizeOf for Event {
@@ -64,6 +69,9 @@ impl ByteSizeOf for Event {
             Event::Log(log_event) => log_event.allocated_bytes(),
             Event::Metric(metric_event) => metric_event.allocated_bytes(),
             Event::Trace(trace_event) => trace_event.allocated_bytes(),
+            Event::OtelLog(e) => e.allocated_bytes(),
+            Event::OtelMetric(e) => e.allocated_bytes(),
+            Event::OtelSpan(e) => e.allocated_bytes(),
         }
     }
 }
@@ -74,6 +82,9 @@ impl EstimatedJsonEncodedSizeOf for Event {
             Event::Log(log_event) => log_event.estimated_json_encoded_size_of(),
             Event::Metric(metric_event) => metric_event.estimated_json_encoded_size_of(),
             Event::Trace(trace_event) => trace_event.estimated_json_encoded_size_of(),
+            Event::OtelLog(e) => e.estimated_json_encoded_size_of(),
+            Event::OtelMetric(e) => e.estimated_json_encoded_size_of(),
+            Event::OtelSpan(e) => e.estimated_json_encoded_size_of(),
         }
     }
 }
@@ -90,6 +101,9 @@ impl Finalizable for Event {
             Event::Log(log_event) => log_event.take_finalizers(),
             Event::Metric(metric) => metric.take_finalizers(),
             Event::Trace(trace_event) => trace_event.take_finalizers(),
+            Event::OtelLog(e) => e.take_finalizers(),
+            Event::OtelMetric(e) => e.take_finalizers(),
+            Event::OtelSpan(e) => e.take_finalizers(),
         }
     }
 }
@@ -100,6 +114,9 @@ impl GetEventCountTags for Event {
             Event::Log(log) => log.get_tags(),
             Event::Metric(metric) => metric.get_tags(),
             Event::Trace(trace) => trace.get_tags(),
+            Event::OtelLog(e) => e.get_tags(),
+            Event::OtelMetric(e) => e.get_tags(),
+            Event::OtelSpan(e) => e.get_tags(),
         }
     }
 }
@@ -258,6 +275,9 @@ impl Event {
             Self::Log(log) => log.metadata(),
             Self::Metric(metric) => metric.metadata(),
             Self::Trace(trace) => trace.metadata(),
+            Self::OtelLog(e) => e.metadata(),
+            Self::OtelMetric(e) => e.metadata(),
+            Self::OtelSpan(e) => e.metadata(),
         }
     }
 
@@ -266,6 +286,9 @@ impl Event {
             Self::Log(log) => log.metadata_mut(),
             Self::Metric(metric) => metric.metadata_mut(),
             Self::Trace(trace) => trace.metadata_mut(),
+            Self::OtelLog(e) => e.metadata_mut(),
+            Self::OtelMetric(e) => e.metadata_mut(),
+            Self::OtelSpan(e) => e.metadata_mut(),
         }
     }
 
@@ -275,6 +298,9 @@ impl Event {
             Self::Log(log) => log.into_parts().1,
             Self::Metric(metric) => metric.into_parts().2,
             Self::Trace(trace) => trace.into_parts().1,
+            Self::OtelLog(e) => e.into_parts().3,
+            Self::OtelMetric(e) => e.into_parts().3,
+            Self::OtelSpan(e) => e.into_parts().3,
         }
     }
 
@@ -284,6 +310,9 @@ impl Event {
             Self::Log(log) => log.with_batch_notifier(batch).into(),
             Self::Metric(metric) => metric.with_batch_notifier(batch).into(),
             Self::Trace(trace) => trace.with_batch_notifier(batch).into(),
+            Self::OtelLog(e) => e.with_batch_notifier(batch).into(),
+            Self::OtelMetric(e) => e.with_batch_notifier(batch).into(),
+            Self::OtelSpan(e) => e.with_batch_notifier(batch).into(),
         }
     }
 
@@ -293,6 +322,100 @@ impl Event {
             Self::Log(log) => log.with_batch_notifier_option(batch).into(),
             Self::Metric(metric) => metric.with_batch_notifier_option(batch).into(),
             Self::Trace(trace) => trace.with_batch_notifier_option(batch).into(),
+            Self::OtelLog(e) => e.with_batch_notifier_option(batch).into(),
+            Self::OtelMetric(e) => e.with_batch_notifier_option(batch).into(),
+            Self::OtelSpan(e) => e.with_batch_notifier_option(batch).into(),
+        }
+    }
+
+    pub fn as_otel_log(&self) -> &OtelLogEvent {
+        match self {
+            Event::OtelLog(e) => e,
+            _ => panic!("Failed type coercion, {self:?} is not an OtelLog event"),
+        }
+    }
+
+    pub fn as_mut_otel_log(&mut self) -> &mut OtelLogEvent {
+        match self {
+            Event::OtelLog(e) => e,
+            _ => panic!("Failed type coercion, {self:?} is not an OtelLog event"),
+        }
+    }
+
+    pub fn into_otel_log(self) -> OtelLogEvent {
+        match self {
+            Event::OtelLog(e) => e,
+            _ => panic!("Failed type coercion, {self:?} is not an OtelLog event"),
+        }
+    }
+
+    pub fn try_into_otel_log(self) -> Option<OtelLogEvent> {
+        match self {
+            Event::OtelLog(e) => Some(e),
+            _ => None,
+        }
+    }
+
+    pub fn maybe_as_otel_log(&self) -> Option<&OtelLogEvent> {
+        match self {
+            Event::OtelLog(e) => Some(e),
+            _ => None,
+        }
+    }
+
+    pub fn as_otel_span(&self) -> &OtelSpanEvent {
+        match self {
+            Event::OtelSpan(e) => e,
+            _ => panic!("Failed type coercion, {self:?} is not an OtelSpan event"),
+        }
+    }
+
+    pub fn as_mut_otel_span(&mut self) -> &mut OtelSpanEvent {
+        match self {
+            Event::OtelSpan(e) => e,
+            _ => panic!("Failed type coercion, {self:?} is not an OtelSpan event"),
+        }
+    }
+
+    pub fn into_otel_span(self) -> OtelSpanEvent {
+        match self {
+            Event::OtelSpan(e) => e,
+            _ => panic!("Failed type coercion, {self:?} is not an OtelSpan event"),
+        }
+    }
+
+    pub fn try_into_otel_span(self) -> Option<OtelSpanEvent> {
+        match self {
+            Event::OtelSpan(e) => Some(e),
+            _ => None,
+        }
+    }
+
+    pub fn as_otel_metric(&self) -> &OtelMetricEvent {
+        match self {
+            Event::OtelMetric(e) => e,
+            _ => panic!("Failed type coercion, {self:?} is not an OtelMetric event"),
+        }
+    }
+
+    pub fn as_mut_otel_metric(&mut self) -> &mut OtelMetricEvent {
+        match self {
+            Event::OtelMetric(e) => e,
+            _ => panic!("Failed type coercion, {self:?} is not an OtelMetric event"),
+        }
+    }
+
+    pub fn into_otel_metric(self) -> OtelMetricEvent {
+        match self {
+            Event::OtelMetric(e) => e,
+            _ => panic!("Failed type coercion, {self:?} is not an OtelMetric event"),
+        }
+    }
+
+    pub fn try_into_otel_metric(self) -> Option<OtelMetricEvent> {
+        match self {
+            Event::OtelMetric(e) => Some(e),
+            _ => None,
         }
     }
 
@@ -370,6 +493,9 @@ impl EventDataEq for Event {
             (Self::Log(a), Self::Log(b)) => a.event_data_eq(b),
             (Self::Metric(a), Self::Metric(b)) => a.event_data_eq(b),
             (Self::Trace(a), Self::Trace(b)) => a.event_data_eq(b),
+            (Self::OtelLog(a), Self::OtelLog(b)) => a.event_data_eq(b),
+            (Self::OtelMetric(a), Self::OtelMetric(b)) => a.event_data_eq(b),
+            (Self::OtelSpan(a), Self::OtelSpan(b)) => a.event_data_eq(b),
             _ => false,
         }
     }
@@ -382,6 +508,9 @@ impl finalization::AddBatchNotifier for Event {
             Self::Log(log) => log.add_finalizer(finalizer),
             Self::Metric(metric) => metric.add_finalizer(finalizer),
             Self::Trace(trace) => trace.add_finalizer(finalizer),
+            Self::OtelLog(e) => e.add_finalizer(finalizer),
+            Self::OtelMetric(e) => e.add_finalizer(finalizer),
+            Self::OtelSpan(e) => e.add_finalizer(finalizer),
         }
     }
 }
@@ -394,6 +523,9 @@ impl TryInto<serde_json::Value> for Event {
             Event::Log(fields) => serde_json::to_value(fields),
             Event::Metric(metric) => serde_json::to_value(metric),
             Event::Trace(fields) => serde_json::to_value(fields),
+            Event::OtelLog(e) => serde_json::to_value(e),
+            Event::OtelMetric(e) => serde_json::to_value(e),
+            Event::OtelSpan(e) => serde_json::to_value(e),
         }
     }
 }
@@ -485,6 +617,24 @@ impl From<Metric> for Event {
 impl From<TraceEvent> for Event {
     fn from(trace: TraceEvent) -> Self {
         Event::Trace(trace)
+    }
+}
+
+impl From<OtelLogEvent> for Event {
+    fn from(e: OtelLogEvent) -> Self {
+        Event::OtelLog(e)
+    }
+}
+
+impl From<OtelMetricEvent> for Event {
+    fn from(e: OtelMetricEvent) -> Self {
+        Event::OtelMetric(e)
+    }
+}
+
+impl From<OtelSpanEvent> for Event {
+    fn from(e: OtelSpanEvent) -> Self {
+        Event::OtelSpan(e)
     }
 }
 

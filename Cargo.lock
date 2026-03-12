@@ -7687,6 +7687,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "otel-proto-types"
+version = "0.1.0"
+dependencies = [
+ "glob",
+ "prost 0.12.6",
+ "prost-build 0.12.6",
+ "tonic 0.11.0",
+ "tonic-build 0.11.0",
+]
+
+[[package]]
 name = "outref"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -12855,6 +12866,7 @@ dependencies = [
  "noisy_float",
  "openssl",
  "ordered-float 4.6.0",
+ "otel-proto-types",
  "parking_lot 0.12.5",
  "pin-project",
  "proptest",

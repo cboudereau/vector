@@ -488,6 +488,7 @@ tower-test = "0.4.0"
 vector-lib = { workspace = true, features = ["test"] }
 vrl.workspace = true
 
+otel-proto-types = { path = "lib/otel-proto-types" }
 wiremock = "0.6.4"
 zstd = { version = "0.13.0", default-features = false }
 

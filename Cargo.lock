@@ -12594,6 +12594,7 @@ dependencies = [
  "openssl-probe",
  "openssl-src",
  "ordered-float 4.6.0",
+ "otel-proto-types",
  "paste",
  "percent-encoding",
  "pin-project",

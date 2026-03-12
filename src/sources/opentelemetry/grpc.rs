@@ -114,7 +114,7 @@ impl MetricsService for Service {
                 .into_inner()
                 .resource_metrics
                 .into_iter()
-                .flat_map(|v| v.into_event_iter())
+                .flat_map(|v| v.into_otel_event_iter())
                 .collect()
         };
 

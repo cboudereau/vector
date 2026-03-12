@@ -355,6 +355,43 @@ where
 // Event → OtlpRequest conversion
 // ---------------------------------------------------------------------------
 
+/// Reconstruct a `ResourceMetrics` (opentelemetry-proto types) from an
+/// `OtelMetricEvent` (otel-proto-types) via protobuf encode→decode.
+fn otel_metric_event_to_resource_metrics(
+    metric_event: &vector_lib::event::OtelMetricEvent,
+) -> vector_lib::opentelemetry::proto::metrics::v1::ResourceMetrics {
+    use prost::Message;
+    use vector_lib::opentelemetry::proto::{
+        common::v1::InstrumentationScope as SinkScope,
+        metrics::v1::{Metric as SinkMetric, ResourceMetrics, ScopeMetrics},
+        resource::v1::Resource as SinkResource,
+    };
+
+    let metric_bytes = metric_event.metric().encode_to_vec();
+    let sink_metric = SinkMetric::decode(bytes::Bytes::from(metric_bytes))
+        .expect("Metric proto roundtrip");
+
+    let resource = metric_event.resource().map(|r| {
+        let b = r.encode_to_vec();
+        SinkResource::decode(bytes::Bytes::from(b)).expect("Resource proto roundtrip")
+    });
+
+    let scope = metric_event.scope().map(|s| {
+        let b = s.encode_to_vec();
+        SinkScope::decode(bytes::Bytes::from(b)).expect("Scope proto roundtrip")
+    });
+
+    ResourceMetrics {
+        resource,
+        scope_metrics: vec![ScopeMetrics {
+            scope,
+            metrics: vec![sink_metric],
+            schema_url: String::new(),
+        }],
+        schema_url: String::new(),
+    }
+}
+
 /// Reconstruct a `ResourceLogs` (opentelemetry-proto types) from an
 /// `OtelLogEvent` (otel-proto-types) via protobuf encode→decode.
 fn otel_log_event_to_resource_logs(
@@ -463,13 +500,15 @@ fn collection_into_request(col: EventCollection) -> OtlpRequest {
                 let req = metric_to_export_request(m);
                 metric_resources.extend(req.resource_metrics);
             }
+            Event::OtelMetric(ref metric_event) => {
+                metric_resources.push(otel_metric_event_to_resource_metrics(metric_event));
+            }
             Event::Trace(ref trace) => {
                 trace_resources.push(trace_event_to_resource_spans(trace));
             }
             Event::OtelSpan(ref span_event) => {
                 trace_resources.push(otel_span_event_to_resource_spans(span_event));
             }
-            _ => {}
         }
     }
 

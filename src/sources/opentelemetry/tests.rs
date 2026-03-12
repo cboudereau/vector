@@ -1,12 +1,11 @@
 use std::{
     net,
-    sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use chrono::{DateTime, Utc};
 use futures::Stream;
 use futures_util::StreamExt;
+use otel_proto_types::metrics::v1::metric::Data as OtelMetricData;
 use prost::Message;
 use similar_asserts::assert_eq;
 use tonic::Request;
@@ -31,11 +30,10 @@ use vector_lib::{
 };
 use crate::{
     SourceSender,
-    config::{OutputId, SourceConfig, SourceContext},
+    config::{SourceConfig, SourceContext},
     event::{
-        Event, EventStatus, Metric as MetricEvent, MetricKind, MetricTags, MetricValue,
+        Event, EventStatus, MetricValue,
         Value, into_event_stream,
-        metric::{Bucket, Quantile},
     },
     sources::opentelemetry::config::{GrpcConfig, HttpConfig, LOGS, METRICS, OpentelemetryConfig},
     test_util::{
@@ -205,7 +203,7 @@ async fn receive_sum_metric() {
         let mut client = MetricsServiceClient::connect(format!("http://{}", env.grpc_addr))
             .await
             .unwrap();
-        let (event_time, event_time_nanos) = current_time_and_nanos();
+        let (_event_time, event_time_nanos) = current_time_and_nanos();
         let req = Request::new(ExportMetricsServiceRequest {
             resource_metrics: vec![ResourceMetrics {
                 resource: Some(Resource {
@@ -264,25 +262,30 @@ async fn receive_sum_metric() {
         assert_eq!(output.len(), 1);
         let actual_event = output.pop().unwrap();
 
-        let mut tags = MetricTags::default();
-        tags.insert("resource.service.name".to_string(),"vector-collector".to_string());
-        tags.insert("scope.name".to_string(), "vector-collector-instrumentation".to_string());
-        tags.insert("scope.version".to_string(), "0.111.0".to_string());
-        tags.insert("host".to_string(), "localhost".to_string());
-        tags.insert("service".to_string(), "vector-collector".to_string());
-
-        let mut expected_event = Event::from(MetricEvent::new(
-            "some.random.metric",
-            MetricKind::Absolute, // since monotonic = true
-            MetricValue::Counter { value: 42.0 },
-        )
-            .with_timestamp(Some(DateTime::<Utc>::from(event_time)))
-            .with_tags(Some(tags)));
-        expected_event.set_upstream_id(Arc::new(OutputId {
-            component: "test".into(),
-            port: Some("metrics".into()),
-        }));
-        assert_eq!(actual_event, expected_event);
+        let otel_metric = actual_event.as_otel_metric();
+        assert_eq!(otel_metric.metric().name, "some.random.metric");
+        assert_eq!(otel_metric.metric().description, "Some random metric we use for test");
+        assert_eq!(otel_metric.metric().unit, "1");
+        match &otel_metric.metric().data {
+            Some(OtelMetricData::Sum(sum)) => {
+                assert_eq!(sum.data_points.len(), 1);
+                assert!(sum.is_monotonic);
+                assert_eq!(sum.aggregation_temporality, AggregationTemporality::Cumulative as i32);
+                let dp = &sum.data_points[0];
+                assert_eq!(dp.time_unix_nano, event_time_nanos);
+                assert_eq!(dp.attributes.len(), 2);
+                assert_eq!(dp.attributes[0].key, "host");
+                assert_eq!(dp.attributes[1].key, "service");
+                let val_debug = format!("{:?}", dp.value);
+                assert!(val_debug.contains("42"), "expected 42.0 in value, got {val_debug}");
+            }
+            other => panic!("expected Sum, got {:?}", other),
+        }
+        let resource = otel_metric.resource().expect("resource must exist");
+        assert_eq!(resource.attributes[0].key, "service.name");
+        let scope = otel_metric.scope().expect("scope must exist");
+        assert_eq!(scope.name, "vector-collector-instrumentation");
+        assert_eq!(scope.version, "0.111.0");
     })
         .await;
 }
@@ -296,7 +299,7 @@ async fn receive_sum_non_monotonic_metric() {
         let mut client = MetricsServiceClient::connect(format!("http://{}", env.grpc_addr))
             .await
             .unwrap();
-        let (event_time, event_time_nanos) = current_time_and_nanos();
+        let (_event_time, event_time_nanos) = current_time_and_nanos();
 
         let req = Request::new(ExportMetricsServiceRequest {
             resource_metrics: vec![ResourceMetrics {
@@ -356,25 +359,24 @@ async fn receive_sum_non_monotonic_metric() {
         assert_eq!(output.len(), 1);
         let actual_event = output.pop().unwrap();
 
-        let mut tags = MetricTags::default();
-        tags.insert("resource.service.name".to_string(),"vector-collector".to_string());
-        tags.insert("scope.name".to_string(), "vector-collector-instrumentation".to_string());
-        tags.insert("scope.version".to_string(), "0.111.0".to_string());
-        tags.insert("host".to_string(), "localhost".to_string());
-        tags.insert("service".to_string(), "vector-collector".to_string());
-
-        let mut expected_event = Event::from(MetricEvent::new(
-            "some.random.metric",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 42.0 }, // since we have monotonic = false
-        )
-            .with_timestamp(Some(DateTime::<Utc>::from(event_time)))
-            .with_tags(Some(tags)));
-        expected_event.set_upstream_id(Arc::new(OutputId {
-            component: "test".into(),
-            port: Some("metrics".into()),
-        }));
-        assert_eq!(actual_event, expected_event);
+        let otel_metric = actual_event.as_otel_metric();
+        assert_eq!(otel_metric.metric().name, "some.random.metric");
+        match &otel_metric.metric().data {
+            Some(OtelMetricData::Sum(sum)) => {
+                assert_eq!(sum.data_points.len(), 1);
+                assert!(!sum.is_monotonic);
+                assert_eq!(sum.aggregation_temporality, AggregationTemporality::Cumulative as i32);
+                let dp = &sum.data_points[0];
+                assert_eq!(dp.time_unix_nano, event_time_nanos);
+                let val_debug = format!("{:?}", dp.value);
+                assert!(val_debug.contains("42"), "expected 42.0 in value, got {val_debug}");
+            }
+            other => panic!("expected Sum, got {:?}", other),
+        }
+        let resource = otel_metric.resource().expect("resource must exist");
+        assert_eq!(resource.attributes[0].key, "service.name");
+        let scope = otel_metric.scope().expect("scope must exist");
+        assert_eq!(scope.name, "vector-collector-instrumentation");
     })
         .await;
 }
@@ -388,7 +390,7 @@ async fn receive_gauge_metric() {
         let mut client = MetricsServiceClient::connect(format!("http://{}", env.grpc_addr))
             .await
             .unwrap();
-        let (event_time, event_time_nanos) = current_time_and_nanos();
+        let (_event_time, event_time_nanos) = current_time_and_nanos();
 
         let req = Request::new(ExportMetricsServiceRequest {
             resource_metrics: vec![ResourceMetrics {
@@ -445,25 +447,22 @@ async fn receive_gauge_metric() {
         assert_eq!(output.len(), 1);
         let actual_event = output.pop().unwrap();
 
-        let mut tags = MetricTags::default();
-        tags.insert("resource.service.name".to_string(),"vector-collector".to_string());
-        tags.insert("scope.name".to_string(), "vector-collector-instrumentation".to_string());
-        tags.insert("scope.version".to_string(), "0.111.0".to_string());
-        tags.insert("host".to_string(), "localhost".to_string());
-        tags.insert("service".to_string(), "vector-collector".to_string());
-
-        let mut expected_event = Event::from(MetricEvent::new(
-            "some.random.metric",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 42.0 },
-        )
-            .with_timestamp(Some(DateTime::<Utc>::from(event_time)))
-            .with_tags(Some(tags)));
-        expected_event.set_upstream_id(Arc::new(OutputId {
-            component: "test".into(),
-            port: Some("metrics".into()),
-        }));
-        assert_eq!(actual_event, expected_event);
+        let otel_metric = actual_event.as_otel_metric();
+        assert_eq!(otel_metric.metric().name, "some.random.metric");
+        match &otel_metric.metric().data {
+            Some(OtelMetricData::Gauge(gauge)) => {
+                assert_eq!(gauge.data_points.len(), 1);
+                let dp = &gauge.data_points[0];
+                assert_eq!(dp.time_unix_nano, event_time_nanos);
+                let val_debug = format!("{:?}", dp.value);
+                assert!(val_debug.contains("42"), "expected 42.0 in value, got {val_debug}");
+            }
+            other => panic!("expected Gauge, got {:?}", other),
+        }
+        let resource = otel_metric.resource().expect("resource must exist");
+        assert_eq!(resource.attributes[0].key, "service.name");
+        let scope = otel_metric.scope().expect("scope must exist");
+        assert_eq!(scope.name, "vector-collector-instrumentation");
     })
         .await;
 }
@@ -477,7 +476,7 @@ async fn receive_histogram_metric() {
         let mut client = MetricsServiceClient::connect(format!("http://{}", env.grpc_addr))
             .await
             .unwrap();
-        let (event_time, event_time_nanos) = current_time_and_nanos();
+        let (_event_time, event_time_nanos) = current_time_and_nanos();
 
         let req = Request::new(ExportMetricsServiceRequest {
             resource_metrics: vec![ResourceMetrics {
@@ -543,54 +542,27 @@ async fn receive_histogram_metric() {
         assert_eq!(output.len(), 1);
         let actual_event = output.pop().unwrap();
 
-        let mut tags = MetricTags::default();
-        tags.insert(
-            "resource.service.name".to_string(),
-            "vector-collector".to_string(),
-        );
-        tags.insert(
-            "scope.name".to_string(),
-            "vector-collector-instrumentation".to_string(),
-        );
-        tags.insert("scope.version".to_string(), "0.111.0".to_string());
-        tags.insert("host".to_string(), "localhost".to_string());
-        tags.insert("service".to_string(), "vector-collector".to_string());
-
-        let mut expected_event = Event::from(
-            MetricEvent::new(
-                "some.random.metric",
-                MetricKind::Absolute,
-                MetricValue::AggregatedHistogram {
-                    buckets: vec![
-                        Bucket {
-                            count: 1,
-                            upper_limit: 50.0,
-                        },
-                        Bucket {
-                            count: 2,
-                            upper_limit: 100.0,
-                        },
-                        Bucket {
-                            count: 2,
-                            upper_limit: 150.0,
-                        },
-                        Bucket {
-                            count: 4,
-                            upper_limit: f64::INFINITY,
-                        },
-                    ],
-                    count: 9,
-                    sum: 123.45,
-                },
-            )
-            .with_timestamp(Some(DateTime::<Utc>::from(event_time)))
-            .with_tags(Some(tags)),
-        );
-        expected_event.set_upstream_id(Arc::new(OutputId {
-            component: "test".into(),
-            port: Some("metrics".into()),
-        }));
-        assert_eq!(actual_event, expected_event);
+        let otel_metric = actual_event.as_otel_metric();
+        assert_eq!(otel_metric.metric().name, "some.random.metric");
+        match &otel_metric.metric().data {
+            Some(OtelMetricData::Histogram(hist)) => {
+                assert_eq!(hist.aggregation_temporality, AggregationTemporality::Cumulative as i32);
+                assert_eq!(hist.data_points.len(), 1);
+                let dp = &hist.data_points[0];
+                assert_eq!(dp.time_unix_nano, event_time_nanos);
+                assert_eq!(dp.count, 9);
+                assert_eq!(dp.sum, Some(123.45));
+                assert_eq!(dp.bucket_counts, vec![1, 2, 2, 4]);
+                assert_eq!(dp.explicit_bounds, vec![50.0, 100.0, 150.0]);
+                assert_eq!(dp.min, Some(10.0));
+                assert_eq!(dp.max, Some(60.0));
+            }
+            other => panic!("expected Histogram, got {:?}", other),
+        }
+        let resource = otel_metric.resource().expect("resource must exist");
+        assert_eq!(resource.attributes[0].key, "service.name");
+        let scope = otel_metric.scope().expect("scope must exist");
+        assert_eq!(scope.name, "vector-collector-instrumentation");
     })
     .await;
 }
@@ -604,7 +576,7 @@ async fn receive_histogram_delta_metric() {
         let mut client = MetricsServiceClient::connect(format!("http://{}", env.grpc_addr))
             .await
             .unwrap();
-        let (event_time, event_time_nanos) = current_time_and_nanos();
+        let (_event_time, event_time_nanos) = current_time_and_nanos();
 
         let req = Request::new(ExportMetricsServiceRequest {
             resource_metrics: vec![ResourceMetrics {
@@ -670,54 +642,27 @@ async fn receive_histogram_delta_metric() {
         assert_eq!(output.len(), 1);
         let actual_event = output.pop().unwrap();
 
-        let mut tags = MetricTags::default();
-        tags.insert(
-            "resource.service.name".to_string(),
-            "vector-collector".to_string(),
-        );
-        tags.insert(
-            "scope.name".to_string(),
-            "vector-collector-instrumentation".to_string(),
-        );
-        tags.insert("scope.version".to_string(), "0.111.0".to_string());
-        tags.insert("host".to_string(), "localhost".to_string());
-        tags.insert("service".to_string(), "vector-collector".to_string());
-
-        let mut expected_event = Event::from(
-            MetricEvent::new(
-                "some.random.metric",
-                MetricKind::Incremental,
-                MetricValue::AggregatedHistogram {
-                    buckets: vec![
-                        Bucket {
-                            count: 1,
-                            upper_limit: 50.0,
-                        },
-                        Bucket {
-                            count: 2,
-                            upper_limit: 100.0,
-                        },
-                        Bucket {
-                            count: 2,
-                            upper_limit: 150.0,
-                        },
-                        Bucket {
-                            count: 4,
-                            upper_limit: f64::INFINITY,
-                        },
-                    ],
-                    count: 9,
-                    sum: 123.45,
-                },
-            )
-            .with_timestamp(Some(DateTime::<Utc>::from(event_time)))
-            .with_tags(Some(tags)),
-        );
-        expected_event.set_upstream_id(Arc::new(OutputId {
-            component: "test".into(),
-            port: Some("metrics".into()),
-        }));
-        assert_eq!(actual_event, expected_event);
+        let otel_metric = actual_event.as_otel_metric();
+        assert_eq!(otel_metric.metric().name, "some.random.metric");
+        match &otel_metric.metric().data {
+            Some(OtelMetricData::Histogram(hist)) => {
+                assert_eq!(hist.aggregation_temporality, AggregationTemporality::Delta as i32);
+                assert_eq!(hist.data_points.len(), 1);
+                let dp = &hist.data_points[0];
+                assert_eq!(dp.time_unix_nano, event_time_nanos);
+                assert_eq!(dp.count, 9);
+                assert_eq!(dp.sum, Some(123.45));
+                assert_eq!(dp.bucket_counts, vec![1, 2, 2, 4]);
+                assert_eq!(dp.explicit_bounds, vec![50.0, 100.0, 150.0]);
+                assert_eq!(dp.min, Some(10.0));
+                assert_eq!(dp.max, Some(60.0));
+            }
+            other => panic!("expected Histogram, got {:?}", other),
+        }
+        let resource = otel_metric.resource().expect("resource must exist");
+        assert_eq!(resource.attributes[0].key, "service.name");
+        let scope = otel_metric.scope().expect("scope must exist");
+        assert_eq!(scope.name, "vector-collector-instrumentation");
     })
     .await;
 }
@@ -731,7 +676,7 @@ async fn receive_expontential_histogram_metric() {
         let mut client = MetricsServiceClient::connect(format!("http://{}", env.grpc_addr))
             .await
             .unwrap();
-        let (event_time, event_time_nanos) = current_time_and_nanos();
+        let (_event_time, event_time_nanos) = current_time_and_nanos();
 
         let req = Request::new(ExportMetricsServiceRequest {
             resource_metrics: vec![ResourceMetrics {
@@ -806,58 +751,33 @@ async fn receive_expontential_histogram_metric() {
         assert_eq!(output.len(), 1);
         let actual_event = output.pop().unwrap();
 
-        let mut tags = MetricTags::default();
-        tags.insert(
-            "resource.service.name".to_string(),
-            "vector-collector".to_string(),
-        );
-        tags.insert(
-            "scope.name".to_string(),
-            "vector-collector-instrumentation".to_string(),
-        );
-        tags.insert("scope.version".to_string(), "0.111.0".to_string());
-        tags.insert("host".to_string(), "localhost".to_string());
-        tags.insert("service".to_string(), "vector-collector".to_string());
-
-        let mut expected_event = Event::from(
-            MetricEvent::new(
-                "some.random.metric",
-                MetricKind::Absolute,
-                MetricValue::AggregatedHistogram {
-                    buckets: vec![
-                        Bucket {
-                            count: 1,
-                            upper_limit: -0.8408964152537146,
-                        },
-                        Bucket {
-                            count: 2,
-                            upper_limit: -1.0,
-                        },
-                        Bucket {
-                            count: 1,
-                            upper_limit: 0f64,
-                        },
-                        Bucket {
-                            count: 2,
-                            upper_limit: 1.189207115002721,
-                        },
-                        Bucket {
-                            count: 1,
-                            upper_limit: 1.4142135623730951,
-                        },
-                    ],
-                    count: 7,
-                    sum: 700.00,
-                },
-            )
-            .with_timestamp(Some(DateTime::<Utc>::from(event_time)))
-            .with_tags(Some(tags)),
-        );
-        expected_event.set_upstream_id(Arc::new(OutputId {
-            component: "test".into(),
-            port: Some("metrics".into()),
-        }));
-        assert_eq!(actual_event, expected_event);
+        let otel_metric = actual_event.as_otel_metric();
+        assert_eq!(otel_metric.metric().name, "some.random.metric");
+        match &otel_metric.metric().data {
+            Some(OtelMetricData::ExponentialHistogram(hist)) => {
+                assert_eq!(hist.aggregation_temporality, AggregationTemporality::Cumulative as i32);
+                assert_eq!(hist.data_points.len(), 1);
+                let dp = &hist.data_points[0];
+                assert_eq!(dp.time_unix_nano, event_time_nanos);
+                assert_eq!(dp.count, 7);
+                assert_eq!(dp.sum, Some(700.0));
+                assert_eq!(dp.scale, 2);
+                assert_eq!(dp.zero_count, 1);
+                let positive = dp.positive.as_ref().expect("positive buckets");
+                assert_eq!(positive.offset, 0);
+                assert_eq!(positive.bucket_counts, vec![2, 1]);
+                let negative = dp.negative.as_ref().expect("negative buckets");
+                assert_eq!(negative.offset, -1);
+                assert_eq!(negative.bucket_counts, vec![1, 2]);
+                assert_eq!(dp.min, Some(-120.0));
+                assert_eq!(dp.max, Some(150.0));
+            }
+            other => panic!("expected ExponentialHistogram, got {:?}", other),
+        }
+        let resource = otel_metric.resource().expect("resource must exist");
+        assert_eq!(resource.attributes[0].key, "service.name");
+        let scope = otel_metric.scope().expect("scope must exist");
+        assert_eq!(scope.name, "vector-collector-instrumentation");
     })
     .await;
 }
@@ -871,7 +791,7 @@ async fn receive_summary_metric() {
         let mut client = MetricsServiceClient::connect(format!("http://{}", env.grpc_addr))
             .await
             .unwrap();
-        let (event_time, event_time_nanos) = current_time_and_nanos();
+        let (_event_time, event_time_nanos) = current_time_and_nanos();
 
         let req = Request::new(ExportMetricsServiceRequest {
             resource_metrics: vec![ResourceMetrics {
@@ -945,50 +865,29 @@ async fn receive_summary_metric() {
         assert_eq!(output.len(), 1);
         let actual_event = output.pop().unwrap();
 
-        let mut tags = MetricTags::default();
-        tags.insert(
-            "resource.service.name".to_string(),
-            "vector-collector".to_string(),
-        );
-        tags.insert(
-            "scope.name".to_string(),
-            "vector-collector-instrumentation".to_string(),
-        );
-        tags.insert("scope.version".to_string(), "0.111.0".to_string());
-        tags.insert("host".to_string(), "localhost".to_string());
-        tags.insert("service".to_string(), "vector-collector".to_string());
-
-        let mut expected_event = Event::from(
-            MetricEvent::new(
-                "some.random.metric",
-                MetricKind::Absolute,
-                MetricValue::AggregatedSummary {
-                    quantiles: vec![
-                        Quantile {
-                            quantile: 0.5,
-                            value: 24.5,
-                        },
-                        Quantile {
-                            quantile: 0.9,
-                            value: 45.0,
-                        },
-                        Quantile {
-                            quantile: 1.0,
-                            value: 60.0,
-                        },
-                    ],
-                    count: 5,
-                    sum: 122.5,
-                },
-            )
-            .with_timestamp(Some(DateTime::<Utc>::from(event_time)))
-            .with_tags(Some(tags)),
-        );
-        expected_event.set_upstream_id(Arc::new(OutputId {
-            component: "test".into(),
-            port: Some("metrics".into()),
-        }));
-        assert_eq!(actual_event, expected_event);
+        let otel_metric = actual_event.as_otel_metric();
+        assert_eq!(otel_metric.metric().name, "some.random.metric");
+        match &otel_metric.metric().data {
+            Some(OtelMetricData::Summary(summary)) => {
+                assert_eq!(summary.data_points.len(), 1);
+                let dp = &summary.data_points[0];
+                assert_eq!(dp.time_unix_nano, event_time_nanos);
+                assert_eq!(dp.count, 5);
+                assert_eq!(dp.sum, 122.5);
+                assert_eq!(dp.quantile_values.len(), 3);
+                assert_eq!(dp.quantile_values[0].quantile, 0.5);
+                assert_eq!(dp.quantile_values[0].value, 24.5);
+                assert_eq!(dp.quantile_values[1].quantile, 0.9);
+                assert_eq!(dp.quantile_values[1].value, 45.0);
+                assert_eq!(dp.quantile_values[2].quantile, 1.0);
+                assert_eq!(dp.quantile_values[2].value, 60.0);
+            }
+            other => panic!("expected Summary, got {:?}", other),
+        }
+        let resource = otel_metric.resource().expect("resource must exist");
+        assert_eq!(resource.attributes[0].key, "service.name");
+        let scope = otel_metric.scope().expect("scope must exist");
+        assert_eq!(scope.name, "vector-collector-instrumentation");
     })
     .await;
 }

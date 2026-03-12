@@ -95,7 +95,7 @@ src/sinks/opentelemetry/mod.rs (104 lines)
   comment: "Currently only HTTP is supported, but we plan to support gRPC."
 
 src/sources/opentelemetry/config.rs
-  pub use_otlp_decoding: bool  ← flag: false = OTel→Vector types (lossy), true = raw blobs
+  (use_otlp_decoding removed in Step 5e — source always emits OTel-native events)
 
 lib/opentelemetry-proto/src/spans.rs (159 lines)
   ResourceSpans::into_event_iter:
@@ -149,8 +149,8 @@ The OTLP serializer (`lib/codecs/src/encoding/format/otlp.rs`) operates in two m
 3. `Event::Trace` with `resourceSpans` field → serialize as `ExportTraceServiceRequest` ✓
 4. `Event::Metric(_)` → **error: not supported** ✗
 
-This means the current OTel sink **only works when `use_otlp_decoding = true`** on the source
-(raw OTLP blobs stored as logs). It cannot handle native Vector `Metric` events at all.
+This was the state before Steps 2 and 5. After Steps 5a–5e, the OTel source emits
+OTel-native events and the OTel sink accepts them directly for all three signals.
 
 ---
 
@@ -243,9 +243,9 @@ conversion, you **cannot reconstruct** the `ExponentialHistogram`. Merging two c
 histograms is not possible with relative-error guarantees because the bucket boundaries no
 longer align across different scale values.
 
-This conversion happens today every time the OTel source decodes an `ExponentialHistogram`
-with `use_otlp_decoding = false` (the default). It is one of the primary things the migration
-must eliminate.
+This conversion happened when the OTel source decoded an `ExponentialHistogram` via the
+legacy path. **Eliminated in Step 5d batch 1** — the OTel source now emits
+`Event::OtelMetric` which preserves the full `ExponentialHistogram` proto structure.
 
 ### Comparison table
 
@@ -353,11 +353,7 @@ DatadogMetricOriginMetadata removal blast radius:
   src/common/datadog.rs ← helper; may stay for source HTTP parsing
 
 use_otlp_decoding flag:
-  src/sources/opentelemetry/config.rs ← definition
-  src/sources/opentelemetry/mod.rs ← routing
-  src/sources/opentelemetry/grpc.rs ← conditional branch
-  src/sources/opentelemetry/http.rs ← conditional branch
-  → frozen at Step 0; all branches deleted in Step 5d
+  → REMOVED in Step 5e. All references deleted from src/.
 ```
 
 ---
@@ -373,9 +369,9 @@ Step 5a   Introduce OTel wrapper types (additive, zero breakage)                
 Step 5b   Migrate traces: OTel source/sink emit/accept OtelSpanEvent           — COMPLETE
 Step 5c   Migrate logs: OTel source/sink emit/accept OtelLogEvent              — COMPLETE (batch 1)
 Step 5d   Migrate metrics: OTel source/sink emit/accept OtelMetricEvent        — COMPLETE (batch 1)
+Step 5e   Remove use_otlp_decoding flag + legacy deserializer paths             — COMPLETE
 Step 5c²  Migrate logs batch 2+: other sources, transforms, sinks              — NEXT
 Step 5d²  Migrate metrics batch 2+: other sources, transforms, sinks
-Step 5e   Remove use_otlp_decoding flag + legacy VrlTarget arms (22 files)
 Step 5f   Ship VRL migration tool
 Step 5g   Rename OtelXxxEvent → XxxEvent + type alias cleanup
 Step 4    Tail sampling + load-balancing sink + pipeline telemetry              — after Step 5
@@ -1066,20 +1062,40 @@ remove `Event::Trace` variant. Deferred to later batch.
 
 **Blast radius: ~103 files across multiple PRs.**
 
-#### 5e — Remove `use_otlp_decoding` flag (22 files)
+#### 5e — Remove `use_otlp_decoding` flag — COMPLETE
 
-All four files (`config.rs`, `mod.rs`, `grpc.rs`, `http.rs`) in
-`src/sources/opentelemetry/` have their `use_otlp_decoding` conditional branches removed.
-The `false` path (OTel proto → Vector event types) no longer exists. The source always emits
-OTel-native events.
+**Status: COMPLETE.** Committed as `chore(agt): step 5e — remove use_otlp_decoding flag and legacy deserializer paths`.
 
-Remove legacy `VrlTarget` arms (`LogEvent`, `Metric`, `Trace`).
+The `use_otlp_decoding` flag and all associated `OtlpDeserializer` code paths are removed.
+The OTel source now always emits OTel-native events (`Event::OtelLog`, `Event::OtelMetric`,
+`Event::OtelSpan`) for all three signals. There is no longer any path that converts OTLP
+data into legacy Vector types or stores raw OTLP blobs as `Event::Log`.
 
-**Validation gate (5e):**
+**What was removed (15 files, -464 / +47 lines):**
+- `use_otlp_decoding` field from `OpentelemetryConfig` struct
+- `get_signal_deserializer()` method
+- `deserializer` field from `grpc::Service`
+- `OtlpDeserializer` params from all HTTP warp filter builders
+- `parse_with_deserializer()` function
+- `count_otlp_items()` / `count_items_inner()` helpers (only needed for OTLP-blob counting)
+- 2 tests that exercised the legacy deserializer path
+- `use_otlp_decoding: true` from e2e test YAML configs
+- `otlp_decoding` how-it-works section from website cue docs
+- Documentation references in cue schema and code comments
+
+**Legacy behavior eliminated:** Before this step, `use_otlp_decoding: true` would store
+OTLP metrics as `Event::Log` (raw JSON blobs) — metrics were literally converted to logs.
+This workaround existed because Vector's native `Metric` type could not represent the full
+OTLP metric model. With OTel-native `Event::OtelMetric`, metrics are now true metrics end
+to end.
+
+**Remaining for full 5e:** Remove legacy `VrlTarget` arms (`LogEvent`, `Metric`, `Trace`)
+— deferred to Step 5c²/5d² when the legacy Event variants are removed.
+
+**Validation gate (5e) — ALL PASS:**
 - `rg "use_otlp_decoding" src/` returns empty.
-- `VrlTarget` has exactly 3 arms (`OtelLog`, `OtelSpan`, `OtelMetric`).
-
-**Blast radius: ~22 files.**
+- 11 OTel source tests pass, 22 opentelemetry-proto tests pass.
+- `cargo check` clean with zero warnings.
 
 #### 5f — Ship VRL migration tool
 
@@ -1185,7 +1201,7 @@ signal types including span scope assertion (validates Fix A from Step 0b).
 | Q8 | VRL migration tool coverage | ~91% after SEM-08/SEM-09 and dynamic path heuristic. |
 | Q9 | `NativeDeserializer` external exposure | `publish = false`. Internal only. |
 | Q10 | OTel sink grouping + spans.rs scope drop | Scope drop fixed in Step 0b (15 lines). Reverse encoder in Step 2. |
-| PC1 | `use_otlp_decoding` flag | Frozen at Step 0; deleted in Step 5e. |
+| PC1 | `use_otlp_decoding` flag | ✓ Deleted in Step 5e. `rg "use_otlp_decoding" src/` returns empty. |
 | PC2 | Step 2 ownership | Must be in flight before Step 0 closes. |
 | PC3 | Buffer toggle design | Single process-wide `AtomicCell<BufferFormat>`. |
 | PC4 | Span scope fix timing | Step 0b. Zero-risk, additive. |
@@ -1249,7 +1265,7 @@ Based on actual file counts from source. Items marked ✓ have actual line count
 | Step 5d batch 1: Metric migration (OTel source/sink) | 265 | 433 actual | ✓ COMPLETE |
 | Step 5c remaining: other sources, transforms, sinks | ~1,600 est. | ~400 est. | NEXT |
 | Step 5d remaining: other sources, transforms, sinks | ~2,800 est. | ~300 est. | Pending |
-| Step 5e: `use_otlp_decoding` + legacy VrlTarget arms | ~500 | 0 | Pending |
+| Step 5e: `use_otlp_decoding` + legacy deserializer paths | 464 actual | 47 actual | ✓ COMPLETE |
 | Step 5f: VRL migration tool | 0 | ~800 est. | Pending |
 | Step 5g: Rename + type alias + proto cleanup | ~800 (event/proto.rs + aliases) | ~50 est. | Pending |
 | Source adaptations DD + Vector | ~500 est. | ~800 est. | Pending |
@@ -1270,5 +1286,19 @@ ingested via the OTel source and exported via the OTel sink traverses the pipeli
 `encode_to_vec()` / `decode()` round-trip at the crate boundary (same-schema types from
 `opentelemetry-proto` ↔ `otel-proto-types`).
 
-Total: 22 opentelemetry-proto tests + 13 OTel source tests passing.
-Files changed across 5a–5d batch 1: ~30 files, +1,852/-478 actual lines.
+### Legacy `use_otlp_decoding` workaround: ELIMINATED
+
+Before Step 5e, the `use_otlp_decoding` flag provided two paths in the OTel source:
+- `false` (default): OTLP data was converted to Vector native types with **lossy
+  field-level conversion** (e.g., `ExponentialHistogram` collapsed into
+  `AggregatedHistogram`, scope fields dropped for traces).
+- `true`: OTLP data was stored as raw JSON blobs inside `Event::Log` — **metrics were
+  literally converted to logs** as a workaround because Vector's native `Metric` type
+  could not represent the full OTLP metric model.
+
+Both paths are now removed. The source always emits true OTel-native events:
+`Event::OtelLog`, `Event::OtelMetric`, `Event::OtelSpan`. Metrics are true metrics,
+not logs.
+
+Total: 22 opentelemetry-proto tests + 11 OTel source tests passing.
+Files changed across 5a–5e: ~45 files, +1,899/-942 actual lines.

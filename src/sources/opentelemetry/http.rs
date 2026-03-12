@@ -11,7 +11,6 @@ use tower::ServiceBuilder;
 use tracing::Span;
 use vector_lib::{
     EstimatedJsonEncodedSizeOf,
-    codecs::decoding::{OtlpDeserializer, format::Deserializer},
     config::LogNamespace,
     event::{BatchNotifier, BatchStatus},
     internal_event::{
@@ -86,7 +85,6 @@ pub(crate) async fn run_http_server(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)] // TODO change to a builder struct
 pub(crate) fn build_warp_filter(
     acknowledgements: bool,
     log_namespace: LogNamespace,
@@ -94,9 +92,6 @@ pub(crate) fn build_warp_filter(
     bytes_received: Registered<BytesReceived>,
     events_received: Registered<EventsReceived>,
     headers: Vec<HttpConfigParamKind>,
-    logs_deserializer: Option<OtlpDeserializer>,
-    metrics_deserializer: Option<OtlpDeserializer>,
-    traces_deserializer: Option<OtlpDeserializer>,
 ) -> BoxedFilter<(Response,)> {
     let log_filters = build_warp_log_filter(
         acknowledgements,
@@ -105,21 +100,18 @@ pub(crate) fn build_warp_filter(
         bytes_received.clone(),
         events_received.clone(),
         headers.clone(),
-        logs_deserializer,
     );
     let metrics_filters = build_warp_metrics_filter(
         acknowledgements,
         out.clone(),
         bytes_received.clone(),
         events_received.clone(),
-        metrics_deserializer,
     );
     let trace_filters = build_warp_trace_filter(
         acknowledgements,
         out.clone(),
         bytes_received,
         events_received,
-        traces_deserializer,
     );
     log_filters
         .or(trace_filters)
@@ -151,27 +143,6 @@ fn emit_decode_error(error: impl std::fmt::Display) -> ErrorMessage {
         &message
     ));
     ErrorMessage::new(StatusCode::BAD_REQUEST, message)
-}
-
-fn parse_with_deserializer(
-    deserializer: &OtlpDeserializer,
-    body: Bytes,
-    log_namespace: LogNamespace,
-    events_received: &Registered<EventsReceived>,
-) -> Result<Vec<Event>, ErrorMessage> {
-    let events = deserializer
-        .parse(body, log_namespace)
-        .map(|r| r.into_vec())
-        .map_err(emit_decode_error)?;
-
-    // Count individual items within OTLP batches for consistency with other sources
-    let count = super::count_otlp_items(&events);
-    events_received.emit(CountByteSize(
-        count,
-        events.estimated_json_encoded_size_of(),
-    ));
-
-    Ok(events)
 }
 
 fn build_ingest_filter<Resp, F>(
@@ -221,12 +192,10 @@ fn build_warp_log_filter(
     bytes_received: Registered<BytesReceived>,
     events_received: Registered<EventsReceived>,
     headers_cfg: Vec<HttpConfigParamKind>,
-    deserializer: Option<OtlpDeserializer>,
 ) -> BoxedFilter<(Response,)> {
     let make_events = move |encoding_header: Option<String>, headers: HeaderMap, body: Bytes| {
         decompress_body(encoding_header.as_deref(), body)
             .inspect_err(|err| {
-                // Other status codes are already handled by `sources::util::decompress_body` (tech debt).
                 if err.status_code() == StatusCode::UNSUPPORTED_MEDIA_TYPE {
                     emit!(HttpBadRequest::new(
                         err.status_code().as_u16(),
@@ -236,12 +205,7 @@ fn build_warp_log_filter(
             })
             .and_then(|decoded_body| {
                 bytes_received.emit(ByteSize(decoded_body.len()));
-                if let Some(d) = deserializer.as_ref() {
-                    parse_with_deserializer(d, decoded_body, log_namespace, &events_received)
-                } else {
-                    decode_log_body(decoded_body, log_namespace, &events_received)
-                }
-                .map(|mut events| {
+                decode_log_body(decoded_body, log_namespace, &events_received).map(|mut events| {
                     enrich_events(&mut events, &headers_cfg, &headers, log_namespace);
                     events
                 })
@@ -255,17 +219,16 @@ fn build_warp_log_filter(
         make_events,
     )
 }
+
 fn build_warp_metrics_filter(
     acknowledgements: bool,
     source_sender: SourceSender,
     bytes_received: Registered<BytesReceived>,
     events_received: Registered<EventsReceived>,
-    deserializer: Option<OtlpDeserializer>,
 ) -> BoxedFilter<(Response,)> {
     let make_events = move |encoding_header: Option<String>, _headers: HeaderMap, body: Bytes| {
         decompress_body(encoding_header.as_deref(), body)
             .inspect_err(|err| {
-                // Other status codes are already handled by `sources::util::decompress_body` (tech debt).
                 if err.status_code() == StatusCode::UNSUPPORTED_MEDIA_TYPE {
                     emit!(HttpBadRequest::new(
                         err.status_code().as_u16(),
@@ -275,16 +238,7 @@ fn build_warp_metrics_filter(
             })
             .and_then(|decoded_body| {
                 bytes_received.emit(ByteSize(decoded_body.len()));
-                if let Some(d) = deserializer.as_ref() {
-                    parse_with_deserializer(
-                        d,
-                        decoded_body,
-                        LogNamespace::default(),
-                        &events_received,
-                    )
-                } else {
-                    decode_metrics_body(decoded_body, &events_received)
-                }
+                decode_metrics_body(decoded_body, &events_received)
             })
     };
 
@@ -301,12 +255,10 @@ fn build_warp_trace_filter(
     source_sender: SourceSender,
     bytes_received: Registered<BytesReceived>,
     events_received: Registered<EventsReceived>,
-    deserializer: Option<OtlpDeserializer>,
 ) -> BoxedFilter<(Response,)> {
     let make_events = move |encoding_header: Option<String>, _headers: HeaderMap, body: Bytes| {
         decompress_body(encoding_header.as_deref(), body)
             .inspect_err(|err| {
-                // Other status codes are already handled by `sources::util::decompress_body` (tech debt).
                 if err.status_code() == StatusCode::UNSUPPORTED_MEDIA_TYPE {
                     emit!(HttpBadRequest::new(
                         err.status_code().as_u16(),
@@ -316,16 +268,7 @@ fn build_warp_trace_filter(
             })
             .and_then(|decoded_body| {
                 bytes_received.emit(ByteSize(decoded_body.len()));
-                if let Some(d) = deserializer.as_ref() {
-                    parse_with_deserializer(
-                        d,
-                        decoded_body,
-                        LogNamespace::default(),
-                        &events_received,
-                    )
-                } else {
-                    decode_trace_body(decoded_body, &events_received)
-                }
+                decode_trace_body(decoded_body, &events_received)
             })
     };
 

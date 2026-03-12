@@ -20,9 +20,7 @@ use crate::{
 use futures::FutureExt;
 use futures_util::{TryFutureExt, future::join};
 use tonic::{codec::CompressionEncoding, transport::server::RoutesBuilder};
-use vector_config::indexmap::IndexSet;
 use vector_lib::{
-    codecs::decoding::{OtlpDeserializer, OtlpSignalType},
     config::{LegacyKey, LogNamespace, log_schema},
     configurable::configurable_component,
     internal_event::{BytesReceived, EventsReceived, Protocol},
@@ -66,15 +64,6 @@ pub struct OpentelemetryConfig {
     #[configurable(metadata(docs::hidden))]
     #[serde(default)]
     pub log_namespace: Option<bool>,
-
-    /// Setting this field will override the legacy mapping of OTEL protos to Vector events and use the proto directly.
-    ///
-    /// One major caveat here is that the incoming metrics will be parsed as logs but they will preserve the OTLP format.
-    /// This means that components that work on metrics, will not be compatible with this output.
-    /// However, these events can be forwarded directly to a downstream OTEL collector.
-    #[configurable(derived)]
-    #[serde(default)]
-    pub use_otlp_decoding: bool,
 }
 
 /// Configuration for the `opentelemetry` gRPC server.
@@ -152,24 +141,8 @@ impl GenerateConfig for OpentelemetryConfig {
             http: example_http_config(),
             acknowledgements: Default::default(),
             log_namespace: None,
-            use_otlp_decoding: false,
         })
         .unwrap()
-    }
-}
-
-impl OpentelemetryConfig {
-    fn get_signal_deserializer(
-        &self,
-        signal_type: OtlpSignalType,
-    ) -> vector_common::Result<Option<OtlpDeserializer>> {
-        if self.use_otlp_decoding {
-            Ok(Some(OtlpDeserializer::new_with_signals(IndexSet::from([
-                signal_type,
-            ]))))
-        } else {
-            Ok(None)
-        }
     }
 }
 
@@ -183,16 +156,10 @@ impl SourceConfig for OpentelemetryConfig {
 
         let grpc_tls_settings = MaybeTlsSettings::from_config(self.grpc.tls.as_ref(), true)?;
 
-        let logs_deserializer = self.get_signal_deserializer(OtlpSignalType::Logs)?;
-        let metrics_deserializer = self.get_signal_deserializer(OtlpSignalType::Metrics)?;
-        let traces_deserializer = self.get_signal_deserializer(OtlpSignalType::Traces)?;
-
         let log_service = LogsServiceServer::new(Service {
             pipeline: cx.out.clone(),
             acknowledgements,
-            log_namespace,
             events_received: events_received.clone(),
-            deserializer: logs_deserializer.clone(),
         })
         .accept_compressed(CompressionEncoding::Gzip)
         .max_decoding_message_size(usize::MAX);
@@ -200,9 +167,7 @@ impl SourceConfig for OpentelemetryConfig {
         let metrics_service = MetricsServiceServer::new(Service {
             pipeline: cx.out.clone(),
             acknowledgements,
-            log_namespace,
             events_received: events_received.clone(),
-            deserializer: metrics_deserializer.clone(),
         })
         .accept_compressed(CompressionEncoding::Gzip)
         .max_decoding_message_size(usize::MAX);
@@ -210,9 +175,7 @@ impl SourceConfig for OpentelemetryConfig {
         let trace_service = TraceServiceServer::new(Service {
             pipeline: cx.out.clone(),
             acknowledgements,
-            log_namespace,
             events_received: events_received.clone(),
-            deserializer: traces_deserializer.clone(),
         })
         .accept_compressed(CompressionEncoding::Gzip)
         .max_decoding_message_size(usize::MAX);
@@ -246,9 +209,6 @@ impl SourceConfig for OpentelemetryConfig {
             bytes_received,
             events_received,
             headers,
-            logs_deserializer,
-            metrics_deserializer,
-            traces_deserializer,
         );
 
         let http_source = run_http_server(
@@ -352,14 +312,9 @@ impl SourceConfig for OpentelemetryConfig {
             }
         };
 
-        let metrics_output = if self.use_otlp_decoding {
-            SourceOutput::new_maybe_logs(DataType::Log, Definition::any()).with_port(METRICS)
-        } else {
-            SourceOutput::new_metrics().with_port(METRICS)
-        };
         vec![
             SourceOutput::new_maybe_logs(DataType::Log, schema_definition).with_port(LOGS),
-            metrics_output,
+            SourceOutput::new_metrics().with_port(METRICS),
             SourceOutput::new_traces().with_port(TRACES),
         ]
     }

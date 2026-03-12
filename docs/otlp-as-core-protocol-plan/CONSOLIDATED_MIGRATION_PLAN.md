@@ -365,14 +365,20 @@ use_otlp_decoding flag:
 ## Execution Order
 
 ```
-Step 0   Foundations (buffer toggle + isolation test + span scope fix)          — COMPLETE
-Step 2   OTel metric encoder — prerequisite for Step 1                         — COMPLETE
-Step 1   Both sinks removed; OTel sink gRPC added; sketch arms cleaned         — COMPLETE
-Step 3   DD source rewritten as clean OTel adapter; DD types leave core        — COMPLETE
-Step 5   Core event model → OTel types; VRL migration tool ships               — NEXT
-Step 4   Tail sampling + load-balancing sink + pipeline telemetry              — after Step 5
-Step 6   Native codecs and Vector proto removal
-Step 7   Optional: Vector and DataDog sink re-integration as OTel-native adapters
+Step 0    Foundations (buffer toggle + isolation test + span scope fix)          — COMPLETE
+Step 2    OTel metric encoder — prerequisite for Step 1                         — COMPLETE
+Step 1    Both sinks removed; OTel sink gRPC added; sketch arms cleaned         — COMPLETE
+Step 3    DD source rewritten as clean OTel adapter; DD types leave core        — COMPLETE
+Step 5a   Introduce OTel wrapper types (additive, zero breakage)                — NEXT
+Step 5b   Migrate traces: TraceEvent → OtelSpanEvent (18 files)
+Step 5c   Migrate logs: LogEvent → OtelLogEvent (~147 files, batched)
+Step 5d   Migrate metrics: Metric → OtelMetricEvent (~103 files, batched)
+Step 5e   Remove use_otlp_decoding flag + legacy VrlTarget arms (22 files)
+Step 5f   Ship VRL migration tool
+Step 5g   Rename OtelXxxEvent → XxxEvent + type alias cleanup
+Step 4    Tail sampling + load-balancing sink + pipeline telemetry              — after Step 5
+Step 6    Native codecs and Vector proto removal
+Step 7    Optional: Vector and DataDog sink re-integration as OTel-native adapters
 ```
 
 **Why Step 2 before Step 1:** The OTLP serializer currently errors on `Event::Metric`. Step 2
@@ -383,6 +389,9 @@ is blocked. Step 2 must land before Step 1 can be validated.
 pipeline telemetry) requires the final OTel event model — all three sub-components deeply
 couple to event field paths and types. Building on `TraceEvent(LogEvent)` then rewriting for
 typed OTel `Span` is wasteful. Step 5 is the highest-impact change and unblocks everything.
+Step 5 uses an **incremental wrapper strategy** (sub-steps 5a–5g) — OTel wrapper types are
+introduced alongside existing types, then each signal is migrated independently. The codebase
+compiles at every intermediate commit.
 
 **Why Step 4 is a single unit after Step 5:** The load-balancing sink exists solely to serve
 the tail sampling use case (trace-aware routing to sampler instances). Shipping one without
@@ -791,38 +800,295 @@ Full spec in `APM_STATS_OTLP_BACKPORT.md`.
 
 ### Goal
 
-Replace `Event::{Log(LogEvent), Metric(Metric), Trace(TraceEvent)}` with OTel native types
-throughout `vector-core`. This is the largest structural change.
+Replace `Event::{Log(LogEvent), Metric(Metric), Trace(TraceEvent)}` with OTel-native wrapper
+types throughout `vector-core`. OTLP protobuf types become the **core data model**. VRL
+`Value` becomes an adapter at the VRL transform boundary only — not the internal
+representation.
 
-### What changes
+### Architecture: OTel as Core, VRL as Adapter
 
-| Current | OTel replacement |
+```
+Wire (gRPC/HTTP)
+  ↓
+OTel Proto Types (LogRecord, Span, Metric, AnyValue, KeyValue, Resource, Scope)
+  ↓                                              ← core model
+Event Wrappers (OtelLogEvent, OtelSpanEvent, OtelMetricEvent + EventMetadata)
+  ↓
+VRL Boundary (AnyValue ↔ Value conversion, only when VRL transform runs)
+  ↓
+VRL Value (Bytes, Integer, Float, Boolean, Timestamp, Null, Object, Array, Regex)
+```
+
+**Key principle:** An event ingested from the OTel source, routed or filtered using attribute
+checks, and exported via the OTel sink **never touches VRL `Value`**. The proto struct flows
+end-to-end with zero conversion. VRL `Value` is materialized only when a `remap` transform
+executes, and only for the fields the VRL program touches (lazy projection).
+
+### OTel wrapper types
+
+New types in `lib/vector-core/src/event/`:
+
+```rust
+// otel_log.rs
+pub struct OtelLogEvent {
+    record: LogRecord,
+    resource: Option<Resource>,
+    scope: Option<InstrumentationScope>,
+    metadata: EventMetadata,
+}
+
+// otel_span.rs
+pub struct OtelSpanEvent {
+    span: Span,
+    resource: Option<Resource>,
+    scope: Option<InstrumentationScope>,
+    metadata: EventMetadata,
+}
+
+// otel_metric.rs
+pub struct OtelMetricEvent {
+    metric: OtelMetric,
+    resource: Option<Resource>,
+    scope: Option<InstrumentationScope>,
+    metadata: EventMetadata,
+}
+```
+
+Each wrapper implements the full trait surface required by `vector-core`:
+
+| Trait | Implementation |
 |---|---|
-| `LogEvent` (Value-based flat map, 1,221 lines) | OTel `LogRecord` (body + attributes + resource + scope + typed timestamp fields) |
-| `Metric` + `MetricValue` (~2,300 lines) | OTel `Metric` (Sum/Gauge/Histogram/ExpHistogram/Summary) |
-| `TraceEvent` (`LogEvent` newtype, 192 lines) | OTel `Span` (typed: trace_id, span_id, kind, status, events, links) |
-| `EventMetadata` pipeline fields | `Resource.attributes["pipeline.*"]` on each event |
-| `VrlTarget` (`vrl_target.rs`, 1,414 lines) | Rewritten for OTel field paths and `AnyValue` |
-| `event/proto.rs` (769 lines) | Removed; superseded by OTel proto |
-| `LogNamespace::Legacy` | Deprecated; `Vector` namespace becomes the only mode |
-| `Value::Timestamp` in body/attributes | Serialized as `fixed64` nanoseconds; VRL requires explicit `parse_timestamp` |
-| `Value::Null` in body/attributes | Absent field; VRL `exists()` pattern replaces `== null` |
+| `ByteSizeOf` | Delegates to protobuf `encoded_len()` |
+| `EstimatedJsonEncodedSizeOf` | Estimates from proto fields |
+| `Finalizable` | Delegates to `metadata.take_finalizers()` |
+| `EventDataEq` | Compares proto fields |
+| `EventCount` | Returns 1 |
+| `Serialize` / `Deserialize` | JSON via prost-serde or custom |
+| `GetEventCountTags` | Reads from resource attributes |
+| `AddBatchNotifier` | Delegates to metadata |
+| `EventContainer` | Yields single `Event` |
 
-**5d — `use_otlp_decoding` flag deleted:**
+Each wrapper exposes **typed accessors** that operate directly on proto fields:
+
+```rust
+impl OtelLogEvent {
+    pub fn body(&self) -> Option<&AnyValue> { ... }
+    pub fn set_body(&mut self, v: AnyValue) { ... }
+    pub fn attribute(&self, key: &str) -> Option<&AnyValue> { ... }
+    pub fn set_attribute(&mut self, key: String, v: AnyValue) { ... }
+    pub fn resource_attribute(&self, key: &str) -> Option<&AnyValue> { ... }
+    pub fn time_unix_nano(&self) -> u64 { ... }
+    pub fn severity_text(&self) -> &str { ... }
+    pub fn trace_id(&self) -> &[u8] { ... }
+}
+```
+
+No `get(path) -> Value` at this level. Path-based access is VRL's job.
+
+### VRL `Value` as boundary adapter — not core
+
+VRL `Value` has three types that OTel `AnyValue` does not: `Timestamp`, `Null`, `Regex`.
+These are handled at the VRL boundary, not in core:
+
+| Gap | Core representation | VRL projection |
+|---|---|---|
+| `Timestamp` | `fixed64` nanoseconds (OTel spec) | VRL adapter converts nanos ↔ `DateTime<Utc>` |
+| `Null` | Absent field (OTel: omit, don't null) | VRL `exists(.field)` maps to key presence in attributes |
+| `Regex` | Never stored in events | VRL-only runtime type, never serialized |
+
+`VrlTarget` gains new arms for OTel wrappers:
+
+```rust
+pub enum VrlTarget {
+    // Legacy (removed when old variants are gone)
+    LogEvent(Value, EventMetadata),
+    Metric { metric: Metric, value: Value, ... },
+    Trace(Value, EventMetadata),
+
+    // OTel-native
+    OtelLog(OtelLogEvent),
+    OtelSpan(OtelSpanEvent),
+    OtelMetric(OtelMetricEvent),
+}
+```
+
+The `Target` trait implementation for OTel arms converts `AnyValue` ↔ `Value` per field
+access. Conversion is **lazy** — only touched fields are materialized as `Value`.
+
+### `Vec<KeyValue>` performance
+
+OTel attributes are `Vec<KeyValue>` (O(n) lookup) vs VRL's `BTreeMap` (O(log n)).
+
+- **Non-VRL transforms** (route, filter): typically check 1–2 attributes on ~10–50 keys.
+  O(n) is negligible.
+- **VRL transforms**: the adapter copies attributes into `Value::Object` (`BTreeMap`) for
+  the duration of the VRL program. No regression vs today.
+- **Future optimization**: an `IndexedAttributes` wrapper can be added around
+  `Vec<KeyValue>` without changing the wire format.
+
+### `EventMetadata` as pipeline sidecar
+
+`EventMetadata` is retained as a separate sidecar on each wrapper. It carries pipeline
+concerns (finalizers, source_id, schema_definition, secrets) that are not part of the OTel
+data model. OTel `Resource.attributes` is for user-facing telemetry metadata; `EventMetadata`
+is for Vector's internal pipeline machinery.
+
+### Incremental migration via `Event` enum expansion
+
+During migration, the `Event` enum temporarily has 6 variants:
+
+```rust
+pub enum Event {
+    Log(LogEvent),          // legacy
+    Metric(Metric),         // legacy
+    Trace(TraceEvent),      // legacy
+    OtelLog(OtelLogEvent),      // new
+    OtelMetric(OtelMetricEvent), // new
+    OtelSpan(OtelSpanEvent),    // new
+}
+```
+
+Existing `as_log()`, `maybe_as_log()` etc. continue working for old variants. New
+`as_otel_log()`, `maybe_as_otel_log()` accessors are added. `From<OtelLogEvent> for LogEvent`
+and `From<LogEvent> for OtelLogEvent` enable mixed pipelines during the transition.
+
+### Sub-steps (each compilable and independently reviewable)
+
+#### 5a — Introduce OTel wrapper types (additive only)
+
+- Add `OtelLogEvent`, `OtelSpanEvent`, `OtelMetricEvent` in `lib/vector-core/src/event/`.
+- Implement all required traits (`ByteSizeOf`, `Finalizable`, `EventDataEq`, etc.).
+- Add typed accessors for proto fields.
+- Extend `Event` enum with three new variants.
+- Extend `EventArray` with `OtelLogs(Vec<OtelLogEvent>)`, `OtelMetrics(Vec<OtelMetricEvent>)`,
+  `OtelSpans(Vec<OtelSpanEvent>)`.
+- Add `VrlTarget` arms for OTel types (lazy `AnyValue` ↔ `Value` conversion).
+- Add `From` conversions between old and new types.
+- **Zero breakage**: no existing code changes. All new code.
+
+**Validation gate (5a):**
+- `cargo build` clean.
+- New unit tests for each wrapper type (trait impls, accessors, VRL round-trip).
+- Existing test suite unchanged and passing.
+
+**Blast radius: 0 existing files modified.**
+
+#### 5b — Migrate traces: `TraceEvent` → `OtelSpanEvent` (smallest signal, 18 files)
+
+- OTel source emits `Event::OtelSpan` instead of `Event::Trace`.
+- OTel sink accepts `Event::OtelSpan` directly (zero conversion — proto struct to wire).
+- Migrate transforms that handle traces (route, filter, remap via `VrlTarget::OtelSpan`).
+- Update `buffer_codec.rs` to encode/decode `OtelSpanEvent` natively.
+- Remove `Event::Trace` variant once all consumers are migrated.
+- Delete `trace.rs` (192 lines).
+
+**Validation gate (5b):**
+- `rg "TraceEvent" lib/vector-core/src/` returns empty (except type alias shim).
+- OTel span round-trip test: source → buffer → sink with zero conversion.
+- All trace-related tests pass.
+
+**Blast radius: ~18 files.**
+
+#### 5c — Migrate logs: `LogEvent` → `OtelLogEvent` (largest signal, batched by subsystem)
+
+Batched by subsystem to keep PRs reviewable:
+1. OTel source + OTel sink (emit/accept `OtelLog`)
+2. Sources: syslog, file, stdin, journald, etc. (each source emits `OtelLog`)
+3. Transforms: remap, filter, route, reduce, dedupe, etc.
+4. Sinks: Prometheus, InfluxDB, Kafka, Loki, etc. (each accepts `OtelLog`)
+5. Remove `Event::Log` variant. Delete `log_event.rs` (1,221 lines).
+
+**Validation gate (5c):**
+- `rg "LogEvent" lib/vector-core/src/` returns empty (except type alias shim).
+- `LogNamespace::Legacy` removed — `Vector` namespace becomes the only mode.
+- All log-related tests pass.
+
+**Blast radius: ~147 files across multiple PRs.**
+
+#### 5d — Migrate metrics: `Metric` → `OtelMetricEvent` (most complex mapping)
+
+- Map Vector `MetricValue` variants to OTel metric types:
+
+| Vector | OTel |
+|---|---|
+| `Counter` + `Absolute` | `Gauge` with single `NumberDataPoint` |
+| `Counter` + `Incremental` | `Sum` (delta temporality) |
+| `Gauge` | `Gauge` |
+| `AggregatedHistogram` | `Histogram` |
+| `AggregatedSummary` | `Summary` |
+| `Distribution` | `ExponentialHistogram` (aggregate samples) |
+| `Set` | `Gauge` (cardinality as value) |
+
+- `MetricKind` (Incremental/Absolute) maps to `AggregationTemporality` (delta/cumulative)
+  on `Sum` and `Histogram` types. Context-dependent — each source sets it at ingestion.
+- Migrate metric sources, transforms (`tag_cardinality_limit`, `aggregate`, etc.), sinks.
+- Remove `Event::Metric` variant. Delete metric module (~2,300 lines).
+
+**Validation gate (5d):**
+- `rg "MetricValue|MetricKind|MetricSeries" lib/vector-core/src/` returns empty.
+- Metric round-trip tests for all 7 mapping rows.
+- All metric-related tests pass.
+
+**Blast radius: ~103 files across multiple PRs.**
+
+#### 5e — Remove `use_otlp_decoding` flag (22 files)
+
 All four files (`config.rs`, `mod.rs`, `grpc.rs`, `http.rs`) in
 `src/sources/opentelemetry/` have their `use_otlp_decoding` conditional branches removed.
 The `false` path (OTel proto → Vector event types) no longer exists. The source always emits
 OTel-native events.
 
-**VRL migration tool ships:** `vector vrl-migrate <file>` rewrites ~91% of user VRL programs.
-Remaining ~9% flagged with `# REVIEW:`. Full spec: `VRL_MIGRATION_TOOL.md`.
+Remove legacy `VrlTarget` arms (`LogEvent`, `Metric`, `Trace`).
 
-### Validation gate (Step 5)
+**Validation gate (5e):**
+- `rg "use_otlp_decoding" src/` returns empty.
+- `VrlTarget` has exactly 3 arms (`OtelLog`, `OtelSpan`, `OtelMetric`).
 
-- Full test suite passes.
-- `rg "LogEvent|TraceEvent|MetricValue|use_otlp_decoding" lib/vector-core/src/` returns empty
-  (except one-release type alias shims if needed).
+**Blast radius: ~22 files.**
+
+#### 5f — Ship VRL migration tool
+
+`vector vrl-migrate <file>` rewrites ~91% of user VRL programs. Remaining ~9% flagged with
+`# REVIEW:`. Three passes: structural (mechanical), semantic (context-sensitive), metric
+field rewrites. Full spec: `VRL_MIGRATION_TOOL.md`.
+
+**Validation gate (5f):**
 - VRL migration tool achieves ≥91% auto-rewrite on project's own VRL test corpus.
+- Dry-run mode (`--diff`) works without modifying files.
+- Config-level mode (`--config vector.toml`) rewrites all inline VRL in a config file.
+
+#### 5g — Rename and type alias cleanup
+
+- Rename `OtelLogEvent` → `LogEvent`, `OtelSpanEvent` → `SpanEvent`,
+  `OtelMetricEvent` → `MetricEvent`.
+- Publish type aliases `OtelLogEvent = LogEvent` etc. for one release cycle.
+- Remove `event/proto.rs` (769 lines) — superseded by OTel proto.
+
+**Validation gate (5g):**
+- `rg "Otel(Log|Span|Metric)Event" lib/vector-core/src/` returns only type alias shims.
+- `cargo build` clean.
+
+### Why wrapper types instead of big-bang replacement
+
+| | Wrapper (chosen) | Big-bang |
+|---|---|---|
+| **Compilable intermediate states** | Every sub-step compiles and passes tests | Single atomic swap of 270+ files |
+| **Reviewable PRs** | Each PR migrates one subsystem | One massive PR |
+| **Risk** | Bounded per sub-step; rollback = revert one PR | All-or-nothing |
+| **Mixed pipelines during transition** | Old source → new sink works via `From` conversion | Not possible |
+| **Temporary complexity** | 6-variant `Event` enum during migration | None |
+| **Duration** | Longer tail across multiple PRs | Shorter calendar time if it works |
+
+### Design decisions
+
+| Decision | Resolution |
+|---|---|
+| Path API on wrappers | Typed OTel accessors only. No `get(path) -> Value`. VRL boundary handles path-based access. |
+| `EventArray` strategy | New `OtelLogs`, `OtelMetrics`, `OtelSpans` variants. Homogeneous arrays only. |
+| `EventMetadata` | Retained as pipeline sidecar. Not merged into `Resource.attributes`. |
+| Bidirectional conversion | `From<LogEvent> for OtelLogEvent` and vice versa. Required for mixed pipelines during transition. |
+| `AnyValue` vs `Value` in core | `AnyValue` is the core value type. `Value` is VRL-boundary only. |
+| `Vec<KeyValue>` performance | Acceptable for non-VRL paths. VRL adapter copies to `BTreeMap` for duration of program. |
 
 ---
 
@@ -870,7 +1136,7 @@ signal types including span scope assertion (validates Fix A from Step 0b).
 
 ---
 
-## Open Questions and Decisions (All Resolved)
+## Open Questions and Decisions
 
 | ID | Question | Resolution |
 |---|---|---|
@@ -879,21 +1145,26 @@ signal types including span scope assertion (validates Fix A from Step 0b).
 | Q3 | OTel sink — gRPC missing | gRPC added in Step 1. Dual-protocol: gRPC internal, HTTP external. |
 | Q4 | `MetricValue::Distribution` / `Set` — who uses them? | StatsD source only. Conversion at StatsD boundary (Step 3). |
 | Q5 | `datadog_api_key` blast radius | Only DD source/sink + `log_to_metric`. VRL `get_secret` unaffected. |
-| Q6 | APM stats — keep or drop? | Kept. Ported as `apm_stats` OTel transform in Step 4. Canonical spec: `APM_STATS_OTLP_BACKPORT.md`. |
+| Q6 | APM stats — keep or drop? | Cancelled. Replaced by pipeline telemetry (Step 4). Spec: `APM_STATS_OTLP_BACKPORT.md`. |
 | Q7 | VRL tail sampling ergonomics | `spans_any`/`spans_all` shorthand types added. |
 | Q8 | VRL migration tool coverage | ~91% after SEM-08/SEM-09 and dynamic path heuristic. |
 | Q9 | `NativeDeserializer` external exposure | `publish = false`. Internal only. |
 | Q10 | OTel sink grouping + spans.rs scope drop | Scope drop fixed in Step 0b (15 lines). Reverse encoder in Step 2. |
-| PC1 | `use_otlp_decoding` flag | Frozen at Step 0; deleted in Step 5d. |
+| PC1 | `use_otlp_decoding` flag | Frozen at Step 0; deleted in Step 5e. |
 | PC2 | Step 2 ownership | Must be in flight before Step 0 closes. |
 | PC3 | Buffer toggle design | Single process-wide `AtomicCell<BufferFormat>`. |
 | PC4 | Span scope fix timing | Step 0b. Zero-risk, additive. |
 | G1 | `AgentDDSketch::to_histogram()` referenced but missing | Add `to_aggregated_histogram(bounds)` in Step 1 as bridge. Deleted in Step 3. |
 | G2 | `EventArray → OtlpBufferBatch` grouping | Split by signal type via `EventArray::logs/metrics/traces()`. Three export request types per batch. |
 | G3 | `buffer_format = "otlp"` on existing buffer | Startup: auto-detect existing buffer → force `Migrate` mode, log warning, refuse to start in `Otlp` mode if records present. |
-| G4 | VRL `TypeState` after Step 5 | Migration tool uses OTel type schema for TypeState, not Vector schema. Addressed in Step 5 VRL rewrite. |
-| G5 | `ByteSizeOf` / `EventCount` for OTel types | Must be implemented for new OTel `Span`, `LogRecord`, `Metric` types in Step 5. |
-| G6 | Schema definitions after Step 5 | OTel source `outputs()` schema definitions must be rewritten for OTel field paths in Step 5. |
+| G4 | VRL `TypeState` after Step 5 | Migration tool uses OTel type schema for TypeState, not Vector schema. Addressed in Step 5f. |
+| G5 | `ByteSizeOf` / `EventCount` for OTel types | Implemented in Step 5a as part of wrapper trait impls. |
+| G6 | Schema definitions after Step 5 | OTel source `outputs()` schema definitions rewritten for OTel field paths in Step 5c/5d. |
+| G7 | Big-bang vs wrapper migration strategy | Wrapper approach chosen. OTel wrapper types introduced alongside existing types (Step 5a), then signal-by-signal migration (5b/5c/5d). Always compilable. |
+| G8 | Core value type: VRL `Value` vs OTel `AnyValue` | `AnyValue` is the core value type. `Value` is VRL-boundary only. `Timestamp`/`Null`/`Regex` gaps handled at VRL adapter layer. |
+| G9 | `Vec<KeyValue>` attribute lookup performance | O(n) acceptable for non-VRL paths. VRL adapter copies to `BTreeMap` during program execution. `IndexedAttributes` wrapper deferred to future optimization. |
+| G10 | `EventMetadata` fate | Retained as pipeline sidecar. Not merged into `Resource.attributes`. Carries finalizers, source_id, schema — pipeline concerns only. |
+| G11 | 6-variant `Event` enum duration | Temporary during Step 5b–5d. Each signal migration removes one legacy variant. All legacy variants gone by end of Step 5d. |
 
 ---
 
@@ -903,7 +1174,7 @@ signal types including span scope assertion (validates Fix A from Step 0b).
 |---|---|---|---|
 | OTel metric encoder misses edge cases (multi-value tags, `interval_ms`, empty points) | Medium | High | Property-based round-trip tests at Step 2 |
 | Three batch timers introduce jitter on sparse-signal pipelines | High | Low | Benchmark at Step 1; unified flush if needed |
-| VRL user programs break at scale | High | High | `vector vrl-migrate` ships before Step 5; dry-run mode |
+| VRL user programs break at scale | High | High | `vector vrl-migrate` ships at Step 5f; dry-run mode; 91% auto-rewrite target |
 | spans.rs scope drop causes trace data loss before fix lands | High | Medium | Fix A in Step 0b — must be first PR after Step 0a |
 | DataDog source rewrite misses field edge cases | Medium | High | Integration tests against real DD agent at Step 3 |
 | Buffer `migrate` mode regression | Low | High | Golden tests at Step 0a; CI gate |
@@ -912,7 +1183,13 @@ signal types including span scope assertion (validates Fix A from Step 0b).
 | `avg` field on AgentDDSketch lost (no OTel equivalent) | Low | Medium | Documented explicitly in DD source adapter code |
 | `buffer_format = "otlp"` set on existing buffer → crash | Medium | High | Startup auto-detect: force `Migrate` if existing buffer detected (G3) |
 | `to_aggregated_histogram` bridge omitted → Prometheus/InfluxDB/GreptimeDB drop sketch metrics silently at Step 1 | Medium | Medium | Must implement before Step 1 PR is merged |
-| VRL migration tool TypeState computed against wrong schema | Low | Medium | Use OTel schema in tool (G4); flagged for Step 5 |
+| VRL migration tool TypeState computed against wrong schema | Low | Medium | Use OTel schema in tool (G4); flagged for Step 5f |
+| 6-variant `Event` enum increases `match` arm noise during migration | High | Low | Temporary. Each sub-step (5b/5c/5d) removes one legacy variant. Macro or helper to reduce boilerplate. |
+| `From<LogEvent> for OtelLogEvent` conversion is lossy for edge cases | Medium | Medium | Document known losses (e.g., `Value::Regex` → string). Round-trip property tests in Step 5a. |
+| Wrapper types add memory overhead (dual Resource/Scope + EventMetadata) | Low | Low | OTel proto types are already small. `Option<Resource>` is zero-cost when absent. Benchmark in Step 5a. |
+| Lazy VRL projection has correctness bugs (write-back to proto) | Medium | High | Comprehensive VRL round-trip tests for each OTel wrapper arm. Fuzz testing on `VrlTarget::into_events()`. |
+| Metric mapping ambiguity (Vector Set/Distribution → OTel) | Medium | Medium | Mapping table documented in Step 5d. Each source sets `AggregationTemporality` at ingestion. |
+| Mixed pipeline conversion during transition adds latency | Low | Low | `From` conversions are O(n) on fields, not O(n) on events. Acceptable for transition period. |
 
 ---
 
@@ -929,11 +1206,18 @@ Based on actual file counts from source:
 | `AgentDDSketch` from core | 1,637 lines | 0 (moved to adapter) |
 | OTel sink gRPC module | 0 | ~300 est. |
 | OTel metric encoder (Step 2) | 0 | ~400 est. |
-| Core event model rewrite (Step 5) | ~6,000 est. | ~3,000 est. |
+| Step 5a: OTel wrapper types + trait impls + VrlTarget arms | 0 | ~1,500 est. |
+| Step 5b: Trace migration (18 files) | ~200 (trace.rs + arms) | ~100 est. |
+| Step 5c: Log migration (~147 files, batched) | ~1,800 (log_event.rs + arms) | ~600 est. |
+| Step 5d: Metric migration (~103 files, batched) | ~3,100 (metric/ + arms) | ~500 est. |
+| Step 5e: `use_otlp_decoding` + legacy VrlTarget arms | ~500 | 0 |
+| Step 5f: VRL migration tool | 0 | ~800 est. |
+| Step 5g: Rename + type alias + proto cleanup | ~800 (event/proto.rs + aliases) | ~50 est. |
 | Source adaptations DD + Vector | ~500 est. | ~800 est. |
-| `apm_stats` + `tail_sample` transforms | 0 | ~1,200 est. |
-| VRL migration tool | 0 | ~800 est. |
+| Tail sampling + LB sink + pipeline telemetry (Step 4) | 0 | ~2,800 est. |
 | Buffer toggle + OtlpBufferBatch | 0 | ~300 est. |
-| **Net** | **~19,391** | **~6,800** |
+| **Net** | **~19,791** | **~8,150** |
 
-Net reduction: ~12,591 lines. The migration is a major simplification.
+Net reduction: ~11,641 lines. The wrapper approach adds ~1,350 lines vs big-bang (temporary
+wrapper types + `From` conversions + extra `VrlTarget` arms during transition) but enables
+incremental, always-compilable migration across ~30 smaller PRs instead of one monolith.

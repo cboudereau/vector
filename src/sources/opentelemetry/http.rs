@@ -346,7 +346,7 @@ fn decode_trace_body(
     let events: Vec<Event> = request
         .resource_spans
         .into_iter()
-        .flat_map(|v| v.into_event_iter())
+        .flat_map(|v| v.into_otel_event_iter())
         .collect();
 
     events_received.emit(CountByteSize(

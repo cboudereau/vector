@@ -123,6 +123,7 @@ impl FunctionTransform for BasicTransform {
                     trace.insert(message_key, Value::from(v));
                 }
             }
+            Event::OtelLog(_) | Event::OtelMetric(_) | Event::OtelSpan(_) => {}
         };
         output.push(event);
     }

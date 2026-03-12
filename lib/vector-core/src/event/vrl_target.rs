@@ -122,6 +122,9 @@ impl VrlTarget {
                 let (fields, metadata) = event.into_parts();
                 VrlTarget::Trace(Value::Object(fields), metadata)
             }
+            Event::OtelLog(_) | Event::OtelMetric(_) | Event::OtelSpan(_) => {
+                todo!("VrlTarget for OTel-native events (step 5d)")
+            }
         }
     }
 

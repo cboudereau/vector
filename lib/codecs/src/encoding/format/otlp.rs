@@ -131,6 +131,9 @@ impl Encoder<Event> for OtlpSerializer {
                 encode_metric_to_request(metric, buffer);
                 Ok(())
             }
+            Event::OtelLog(_) | Event::OtelMetric(_) | Event::OtelSpan(_) => {
+                Err("OTel-native events should use the gRPC sink, not the OTLP HTTP codec".into())
+            }
         }
     }
 }

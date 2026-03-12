@@ -79,6 +79,9 @@ impl JsonSerializer {
             Event::Log(log) => serde_json::to_value(&log),
             Event::Metric(metric) => serde_json::to_value(&metric),
             Event::Trace(trace) => serde_json::to_value(&trace),
+            Event::OtelLog(e) => serde_json::to_value(&e),
+            Event::OtelMetric(e) => serde_json::to_value(&e),
+            Event::OtelSpan(e) => serde_json::to_value(&e),
         }
         .map_err(|e| e.to_string().into())
     }
@@ -99,6 +102,9 @@ impl Encoder<Event> for JsonSerializer {
                     serde_json::to_writer_pretty(writer, &metric)
                 }
                 Event::Trace(trace) => serde_json::to_writer_pretty(writer, &trace),
+                Event::OtelLog(e) => serde_json::to_writer_pretty(writer, &e),
+                Event::OtelMetric(e) => serde_json::to_writer_pretty(writer, &e),
+                Event::OtelSpan(e) => serde_json::to_writer_pretty(writer, &e),
             }
         } else {
             match event {
@@ -110,6 +116,9 @@ impl Encoder<Event> for JsonSerializer {
                     serde_json::to_writer(writer, &metric)
                 }
                 Event::Trace(trace) => serde_json::to_writer(writer, &trace),
+                Event::OtelLog(e) => serde_json::to_writer(writer, &e),
+                Event::OtelMetric(e) => serde_json::to_writer(writer, &e),
+                Event::OtelSpan(e) => serde_json::to_writer(writer, &e),
             }
         }
         .map_err(Into::into)

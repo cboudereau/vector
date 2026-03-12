@@ -71,10 +71,10 @@ where
                 future::ready(Some(match event {
                     Event::Metric(metric) => metric_to_log.transform_one(metric),
                     Event::Log(log) => Some(log),
-                    Event::Trace(_) => {
-                        // Although technically this will cause the event to be dropped, due to the sink
-                        // config it is not possible to send traces to this sink - so this situation can
-                        // never occur. We don't need to emit an `EventsDropped` event.
+                    Event::Trace(_)
+                    | Event::OtelLog(_)
+                    | Event::OtelMetric(_)
+                    | Event::OtelSpan(_) => {
                         None
                     }
                 }))

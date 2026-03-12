@@ -370,6 +370,7 @@ Step 5b   Migrate traces: OTel source/sink emit/accept OtelSpanEvent           �
 Step 5c   Migrate logs: OTel source/sink emit/accept OtelLogEvent              — COMPLETE (batch 1)
 Step 5d   Migrate metrics: OTel source/sink emit/accept OtelMetricEvent        — COMPLETE (batch 1)
 Step 5e   Remove use_otlp_decoding flag + legacy deserializer paths             — COMPLETE
+Step 5e²  OTLP serializer encodes OTel-native events (HTTP sink path)           — COMPLETE
 Step 5c²  Migrate logs batch 2+: other sources, transforms, sinks              — NEXT
 Step 5d²  Migrate metrics batch 2+: other sources, transforms, sinks
 Step 5f   Ship VRL migration tool
@@ -1097,6 +1098,30 @@ to end.
 - 11 OTel source tests pass, 22 opentelemetry-proto tests pass.
 - `cargo check` clean with zero warnings.
 
+#### 5e² — OTLP serializer encodes OTel-native events — COMPLETE
+
+**Status: COMPLETE.** Committed as `feat(agt): OTLP serializer encodes OTel-native events for HTTP sink path`.
+
+The `OtlpSerializer` in `lib/codecs/src/encoding/format/otlp.rs` previously returned an error
+for `Event::OtelLog`, `Event::OtelMetric`, `Event::OtelSpan`, telling users to use the gRPC
+sink instead. This blocked the OTel HTTP sink for OTel-native events.
+
+**What was added (3 files, +227 / -4 lines):**
+- `proto_convert<S, D>` generic helper for protobuf encode/decode roundtrip across crate boundary
+- `otel_log_to_export_request()` — `OtelLogEvent` → `ExportLogsServiceRequest`
+- `otel_metric_to_export_request()` — `OtelMetricEvent` → `ExportMetricsServiceRequest`
+- `otel_span_to_export_request()` — `OtelSpanEvent` → `ExportTraceServiceRequest`
+- 3 new encode+decode roundtrip tests (log, metric, span)
+- `otel-proto-types` added as dev-dependency to codecs crate for test assertions
+
+**Result:** Both the OTel gRPC sink and the OTel HTTP sink (with `encoding.codec = "otlp"`)
+now accept OTel-native events for all three signals. The full OTel pipeline
+(source → gRPC/HTTP sink) works end-to-end with zero field-level conversion.
+
+**Validation gate (5e²) — ALL PASS:**
+- All 6 OTLP serializer tests pass (3 existing + 3 new).
+- `cargo check` clean.
+
 #### 5f — Ship VRL migration tool
 
 `vector vrl-migrate <file>` rewrites ~91% of user VRL programs. Remaining ~9% flagged with
@@ -1266,6 +1291,7 @@ Based on actual file counts from source. Items marked ✓ have actual line count
 | Step 5c remaining: other sources, transforms, sinks | ~1,600 est. | ~400 est. | NEXT |
 | Step 5d remaining: other sources, transforms, sinks | ~2,800 est. | ~300 est. | Pending |
 | Step 5e: `use_otlp_decoding` + legacy deserializer paths | 464 actual | 47 actual | ✓ COMPLETE |
+| Step 5e²: OTLP serializer OTel-native encoding | 4 actual | 227 actual | ✓ COMPLETE |
 | Step 5f: VRL migration tool | 0 | ~800 est. | Pending |
 | Step 5g: Rename + type alias + proto cleanup | ~800 (event/proto.rs + aliases) | ~50 est. | Pending |
 | Source adaptations DD + Vector | ~500 est. | ~800 est. | Pending |
@@ -1277,14 +1303,14 @@ Net reduction: ~11,567 lines. The wrapper approach adds ~1,350 lines vs big-bang
 wrapper types + `From` conversions + extra `VrlTarget` arms during transition) but enables
 incremental, always-compilable migration across ~30 smaller PRs instead of one monolith.
 
-### OTel source → sink zero-conversion path: COMPLETE for all 3 signals
+### OTel source → sink zero-conversion path: COMPLETE for all 3 signals (gRPC + HTTP)
 
-As of Step 5d batch 1, the OTel source emits OTel-native events for **all three signals**
-(logs, metrics, traces) and the OTel gRPC sink accepts them directly. An OTLP event
-ingested via the OTel source and exported via the OTel sink traverses the pipeline with
-**zero field-level conversion** — the protobuf struct flows end-to-end, with only a
-`encode_to_vec()` / `decode()` round-trip at the crate boundary (same-schema types from
-`opentelemetry-proto` ↔ `otel-proto-types`).
+As of Step 5e², the OTel source emits OTel-native events for **all three signals**
+(logs, metrics, traces) and **both** the OTel gRPC sink and the OTel HTTP sink accept
+them directly. An OTLP event ingested via the OTel source and exported via either OTel
+sink traverses the pipeline with **zero field-level conversion** — the protobuf struct
+flows end-to-end, with only a `encode_to_vec()` / `decode()` round-trip at the crate
+boundary (same-schema types from `opentelemetry-proto` ↔ `otel-proto-types`).
 
 ### Legacy `use_otlp_decoding` workaround: ELIMINATED
 
@@ -1300,5 +1326,5 @@ Both paths are now removed. The source always emits true OTel-native events:
 `Event::OtelLog`, `Event::OtelMetric`, `Event::OtelSpan`. Metrics are true metrics,
 not logs.
 
-Total: 22 opentelemetry-proto tests + 11 OTel source tests passing.
-Files changed across 5a–5e: ~45 files, +1,899/-942 actual lines.
+Total: 22 opentelemetry-proto tests + 11 OTel source tests + 6 OTLP serializer tests passing.
+Files changed across 5a–5e²: ~48 files, +2,126/-946 actual lines.

@@ -355,10 +355,45 @@ where
 // Event → OtlpRequest conversion
 // ---------------------------------------------------------------------------
 
+/// Reconstruct a `ResourceLogs` (opentelemetry-proto types) from an
+/// `OtelLogEvent` (otel-proto-types) via protobuf encode→decode.
+fn otel_log_event_to_resource_logs(
+    log_event: &vector_lib::event::OtelLogEvent,
+) -> vector_lib::opentelemetry::proto::logs::v1::ResourceLogs {
+    use prost::Message;
+    use vector_lib::opentelemetry::proto::{
+        common::v1::InstrumentationScope as SinkScope,
+        logs::v1::{LogRecord as SinkLogRecord, ResourceLogs, ScopeLogs},
+        resource::v1::Resource as SinkResource,
+    };
+
+    let record_bytes = log_event.record().encode_to_vec();
+    let sink_record = SinkLogRecord::decode(bytes::Bytes::from(record_bytes))
+        .expect("LogRecord proto roundtrip");
+
+    let resource = log_event.resource().map(|r| {
+        let b = r.encode_to_vec();
+        SinkResource::decode(bytes::Bytes::from(b)).expect("Resource proto roundtrip")
+    });
+
+    let scope = log_event.scope().map(|s| {
+        let b = s.encode_to_vec();
+        SinkScope::decode(bytes::Bytes::from(b)).expect("Scope proto roundtrip")
+    });
+
+    ResourceLogs {
+        resource,
+        scope_logs: vec![ScopeLogs {
+            scope,
+            log_records: vec![sink_record],
+            schema_url: String::new(),
+        }],
+        schema_url: String::new(),
+    }
+}
+
 /// Reconstruct a `ResourceSpans` (opentelemetry-proto types) from an
 /// `OtelSpanEvent` (otel-proto-types) via protobuf encode→decode.
-/// Both crate types are generated from the same .proto schema, so the wire
-/// format is identical.
 fn otel_span_event_to_resource_spans(
     span_event: &vector_lib::event::OtelSpanEvent,
 ) -> vector_lib::opentelemetry::proto::trace::v1::ResourceSpans {
@@ -420,6 +455,9 @@ fn collection_into_request(col: EventCollection) -> OtlpRequest {
         match event {
             Event::Log(ref log) => {
                 log_resources.push(log_event_to_resource_logs(log));
+            }
+            Event::OtelLog(ref log_event) => {
+                log_resources.push(otel_log_event_to_resource_logs(log_event));
             }
             Event::Metric(ref m) => {
                 let req = metric_to_export_request(m);

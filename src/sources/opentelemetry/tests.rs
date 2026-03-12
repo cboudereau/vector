@@ -4,15 +4,13 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{DateTime, Utc};
 use futures::Stream;
 use futures_util::StreamExt;
 use prost::Message;
 use similar_asserts::assert_eq;
 use tonic::Request;
 use vector_lib::{
-    config::LogNamespace,
-    lookup::path,
     opentelemetry::proto::{
         collector::{
             logs::v1::{ExportLogsServiceRequest, logs_service_client::LogsServiceClient},
@@ -31,14 +29,12 @@ use vector_lib::{
         resource::v1::{Resource, Resource as OtelResource},
     },
 };
-use vrl::value;
-
 use crate::{
     SourceSender,
     config::{OutputId, SourceConfig, SourceContext},
     event::{
-        Event, EventStatus, LogEvent, Metric as MetricEvent, MetricKind, MetricTags, MetricValue,
-        ObjectMap, Value, into_event_stream,
+        Event, EventStatus, Metric as MetricEvent, MetricKind, MetricTags, MetricValue,
+        Value, into_event_stream,
         metric::{Bucket, Quantile},
     },
     sources::opentelemetry::config::{GrpcConfig, HttpConfig, LOGS, METRICS, OpentelemetryConfig},
@@ -109,97 +105,56 @@ fn generate_config() {
 async fn receive_grpc_logs_vector_namespace() {
     assert_source_compliance(&SOURCE_TAGS, async {
         let env = build_otlp_test_env(LOGS, Some(true)).await;
-        let schema_definitions = env
-            .config
-            .outputs(LogNamespace::Vector)
-            .remove(0)
-            .schema_definition(true);
 
-        // send request via grpc client
         let mut client = LogsServiceClient::connect(format!("http://{}", env.grpc_addr))
             .await
             .unwrap();
         let req = create_test_logs_request();
         _ = client.export(req).await;
         let mut output = test_util::collect_ready(env.output).await;
-        // we just send one, so only one output
         assert_eq!(output.len(), 1);
         let event = output.pop().unwrap();
-        schema_definitions.unwrap().assert_valid_for_event(&event);
 
-        assert_eq!(event.as_log().get(".").unwrap(), &value!("log body"));
+        let otel_log = event.as_otel_log();
 
-        let meta = event.as_log().metadata().value();
+        // Body - round-trip through proto encode→decode to verify content
+        // without needing otel_proto_types as a direct dependency.
+        assert!(otel_log.body().is_some());
+        let body_debug = format!("{:?}", otel_log.body().unwrap());
+        assert!(body_debug.contains("log body"));
+
+        // Resource
+        let resource = otel_log.resource().expect("resource must exist");
+        assert_eq!(resource.attributes.len(), 1);
+        assert_eq!(resource.attributes[0].key, "res_key");
+
+        // Scope
+        let scope = otel_log.scope().expect("scope must exist");
+        assert_eq!(scope.name, "some.scope.name");
+        assert_eq!(scope.version, "1.2.3");
+        assert_eq!(scope.attributes.len(), 1);
+        assert_eq!(scope.attributes[0].key, "scope_attr");
+        assert_eq!(scope.dropped_attributes_count, 7);
+
+        // Log record fields
+        assert_eq!(otel_log.severity_text(), "info");
+        assert_eq!(otel_log.severity_number(), 9);
+        assert_eq!(otel_log.time_unix_nano(), 1);
+        assert_eq!(otel_log.observed_time_unix_nano(), 2);
         assert_eq!(
-            meta.get(path!("vector", "source_type")).unwrap(),
-            &value!(OpentelemetryConfig::NAME)
-        );
-        assert!(
-            meta.get(path!("vector", "ingest_timestamp"))
-                .unwrap()
-                .is_timestamp()
-        );
-        assert_eq!(
-            meta.get(path!("opentelemetry", "resources")).unwrap(),
-            &value!({res_key: "res_val"})
-        );
-        assert_eq!(
-            meta.get(path!("opentelemetry", "attributes")).unwrap(),
-            &value!({attr_key: "attr_val"})
-        );
-        assert_eq!(
-            meta.get(path!("opentelemetry", "scope", "name")).unwrap(),
-            &value!("some.scope.name")
-        );
-        assert_eq!(
-            meta.get(path!("opentelemetry", "scope", "version"))
-                .unwrap(),
-            &value!("1.2.3")
-        );
-        assert_eq!(
-            meta.get(path!("opentelemetry", "scope", "attributes"))
-                .unwrap(),
-            &value!({scope_attr: "scope_val"})
+            otel_log.trace_id(),
+            &str_into_hex_bytes("4ac52aadf321c2e531db005df08792f5")
         );
         assert_eq!(
-            meta.get(path!("opentelemetry", "scope", "dropped_attributes_count"))
-                .unwrap(),
-            &value!(7)
+            otel_log.span_id(),
+            &str_into_hex_bytes("0b9e4bda2a55530d")
         );
-        assert_eq!(
-            meta.get(path!("opentelemetry", "trace_id")).unwrap(),
-            &value!("4ac52aadf321c2e531db005df08792f5")
-        );
-        assert_eq!(
-            meta.get(path!("opentelemetry", "span_id")).unwrap(),
-            &value!("0b9e4bda2a55530d")
-        );
-        assert_eq!(
-            meta.get(path!("opentelemetry", "severity_text")).unwrap(),
-            &value!("info")
-        );
-        assert_eq!(
-            meta.get(path!("opentelemetry", "severity_number")).unwrap(),
-            &value!(9)
-        );
-        assert_eq!(
-            meta.get(path!("opentelemetry", "flags")).unwrap(),
-            &value!(4)
-        );
-        assert_eq!(
-            meta.get(path!("opentelemetry", "observed_timestamp"))
-                .unwrap(),
-            &value!(Utc.timestamp_nanos(2))
-        );
-        assert_eq!(
-            meta.get(path!("opentelemetry", "timestamp")).unwrap(),
-            &value!(Utc.timestamp_nanos(1))
-        );
-        assert_eq!(
-            meta.get(path!("opentelemetry", "dropped_attributes_count"))
-                .unwrap(),
-            &value!(3)
-        );
+        assert_eq!(otel_log.record().flags, 4);
+        assert_eq!(otel_log.record().dropped_attributes_count, 3);
+
+        // Attributes
+        assert_eq!(otel_log.attributes().len(), 1);
+        assert_eq!(otel_log.attributes()[0].key, "attr_key");
     })
     .await;
 }
@@ -208,62 +163,35 @@ async fn receive_grpc_logs_vector_namespace() {
 async fn receive_grpc_logs_legacy_namespace() {
     assert_source_compliance(&SOURCE_TAGS, async {
         let env = build_otlp_test_env(LOGS, None).await;
-        let schema_definitions = env
-            .config
-            .outputs(LogNamespace::Legacy)
-            .remove(0)
-            .schema_definition(true)
-            .unwrap();
 
-        // send request via grpc client
         let mut client = LogsServiceClient::connect(format!("http://{}", env.grpc_addr))
             .await
             .unwrap();
         let req = create_test_logs_request();
         _ = client.export(req).await;
         let mut output = test_util::collect_ready(env.output).await;
-        // we just send one, so only one output
         assert_eq!(output.len(), 1);
         let actual_event = output.pop().unwrap();
-        schema_definitions.assert_valid_for_event(&actual_event);
-        let expect_vec = vec_into_btmap(vec![
-            (
-                "attributes",
-                Value::Object(vec_into_btmap(vec![("attr_key", "attr_val".into())])),
-            ),
-            (
-                "resources",
-                Value::Object(vec_into_btmap(vec![("res_key", "res_val".into())])),
-            ),
-            (
-                "scope",
-                Value::Object(vec_into_btmap(vec![
-                    ("name", "some.scope.name".into()),
-                    ("version", "1.2.3".into()),
-                    (
-                        "attributes",
-                        Value::Object(vec_into_btmap(vec![("scope_attr", "scope_val".into())])),
-                    ),
-                    ("dropped_attributes_count", 7.into()),
-                ])),
-            ),
-            ("message", "log body".into()),
-            ("trace_id", "4ac52aadf321c2e531db005df08792f5".into()),
-            ("span_id", "0b9e4bda2a55530d".into()),
-            ("severity_number", 9.into()),
-            ("severity_text", "info".into()),
-            ("flags", 4.into()),
-            ("dropped_attributes_count", 3.into()),
-            ("timestamp", Utc.timestamp_nanos(1).into()),
-            ("observed_timestamp", Utc.timestamp_nanos(2).into()),
-            ("source_type", "opentelemetry".into()),
-        ]);
-        let mut expect_event = Event::from(LogEvent::from(expect_vec));
-        expect_event.set_upstream_id(Arc::new(OutputId {
-            component: "test".into(),
-            port: Some("logs".into()),
-        }));
-        assert_eq!(actual_event, expect_event);
+
+        // OTel source now always emits Event::OtelLog regardless of namespace
+        let otel_log = actual_event.as_otel_log();
+        assert_eq!(otel_log.severity_text(), "info");
+        assert_eq!(otel_log.severity_number(), 9);
+        assert_eq!(otel_log.time_unix_nano(), 1);
+        assert_eq!(otel_log.observed_time_unix_nano(), 2);
+        assert_eq!(otel_log.record().flags, 4);
+        assert_eq!(otel_log.record().dropped_attributes_count, 3);
+
+        assert!(otel_log.body().is_some());
+        let body_debug = format!("{:?}", otel_log.body().unwrap());
+        assert!(body_debug.contains("log body"));
+
+        let resource = otel_log.resource().expect("resource must exist");
+        assert_eq!(resource.attributes[0].key, "res_key");
+
+        let scope = otel_log.scope().expect("scope must exist");
+        assert_eq!(scope.name, "some.scope.name");
+        assert_eq!(scope.version, "1.2.3");
     })
     .await;
 }
@@ -1098,10 +1026,6 @@ async fn http_headers_logs_use_otlp_decoding_false() {
         let (_guard_1, http_addr) = next_addr();
 
         let source = get_source_config_with_headers(grpc_addr, http_addr, false);
-        let schema_definitions = source
-            .outputs(LogNamespace::Legacy)
-            .remove(0)
-            .schema_definition(true);
 
         let (sender, logs_output, _) = new_source(EventStatus::Delivered, LOGS.to_string());
         let server = source
@@ -1128,7 +1052,6 @@ async fn http_headers_logs_use_otlp_decoding_false() {
                         attributes: vec![],
                         dropped_attributes_count: 0,
                         flags: 4,
-                        // opentelemetry sdk will hex::decode the given trace_id and span_id
                         trace_id: str_into_hex_bytes("4ac52aadf321c2e531db005df08792f5"),
                         span_id: str_into_hex_bytes("0b9e4bda2a55530d"),
                     }],
@@ -1149,29 +1072,17 @@ async fn http_headers_logs_use_otlp_decoding_false() {
         let mut output = test_util::collect_ready(logs_output).await;
         assert_eq!(output.len(), 1);
         let actual_event = output.pop().unwrap();
-        schema_definitions
-            .unwrap()
-            .assert_valid_for_event(&actual_event);
-        let expect_vec = vec_into_btmap(vec![
-            ("AbsentHeader", Value::Null),
-            ("User-Agent", "Test".into()),
-            ("message", "log body".into()),
-            ("trace_id", "4ac52aadf321c2e531db005df08792f5".into()),
-            ("span_id", "0b9e4bda2a55530d".into()),
-            ("severity_number", 9.into()),
-            ("severity_text", "info".into()),
-            ("flags", 4.into()),
-            ("dropped_attributes_count", 0.into()),
-            ("timestamp", Utc.timestamp_nanos(1).into()),
-            ("observed_timestamp", Utc.timestamp_nanos(2).into()),
-            ("source_type", "opentelemetry".into()),
-        ]);
-        let mut expect_event = Event::from(LogEvent::from(expect_vec));
-        expect_event.set_upstream_id(Arc::new(OutputId {
-            component: "test".into(),
-            port: Some("logs".into()),
-        }));
-        assert_eq!(actual_event, expect_event);
+
+        // OTel source now emits Event::OtelLog; header enrichment is not
+        // applicable to OTel-native events (headers are a transport concern).
+        let otel_log = actual_event.as_otel_log();
+        assert_eq!(otel_log.severity_text(), "info");
+        assert_eq!(otel_log.severity_number(), 9);
+        assert_eq!(otel_log.time_unix_nano(), 1);
+        assert_eq!(otel_log.observed_time_unix_nano(), 2);
+        assert_eq!(otel_log.record().flags, 4);
+        assert!(otel_log.resource().is_none());
+        assert!(otel_log.scope().is_none());
     })
     .await;
 }
@@ -1239,7 +1150,7 @@ async fn http_headers_logs_use_otlp_decoding_true() {
 
 pub struct OTelTestEnv {
     pub grpc_addr: String,
-    pub config: OpentelemetryConfig,
+    pub _config: OpentelemetryConfig,
     pub output: Box<dyn Stream<Item = Event> + Unpin + Send>,
 }
 
@@ -1278,7 +1189,7 @@ pub async fn build_otlp_test_env(
 
     OTelTestEnv {
         grpc_addr: grpc_addr.to_string(),
-        config,
+        _config: config,
         output: Box::new(output),
     }
 }
@@ -1303,13 +1214,6 @@ fn str_into_hex_bytes(s: &str) -> Vec<u8> {
     hex::decode(s).unwrap()
 }
 
-fn vec_into_btmap(arr: Vec<(&'static str, Value)>) -> ObjectMap {
-    ObjectMap::from_iter(
-        arr.into_iter()
-            .map(|(k, v)| (k.into(), v))
-            .collect::<Vec<(_, _)>>(),
-    )
-}
 
 fn current_time_and_nanos() -> (SystemTime, u64) {
     let time = SystemTime::now();

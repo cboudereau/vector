@@ -2,7 +2,10 @@
 
 use vector_common::EventDataEq;
 
-use super::{Event, EventMetadata, LogEvent, Metric, TraceEvent};
+use super::{
+    Event, EventMetadata, LogEvent, Metric, OtelLogEvent, OtelMetricEvent, OtelSpanEvent,
+    TraceEvent,
+};
 
 /// A wrapper for references to inner event types, where reconstituting
 /// a full `Event` from a `LogEvent` or `Metric` might be inconvenient.
@@ -14,6 +17,12 @@ pub enum EventRef<'a> {
     Metric(&'a Metric),
     /// Reference to a `TraceEvent`
     Trace(&'a TraceEvent),
+    /// Reference to an `OtelLogEvent`
+    OtelLog(&'a OtelLogEvent),
+    /// Reference to an `OtelMetricEvent`
+    OtelMetric(&'a OtelMetricEvent),
+    /// Reference to an `OtelSpanEvent`
+    OtelSpan(&'a OtelSpanEvent),
 }
 
 impl<'a> EventRef<'a> {
@@ -72,9 +81,9 @@ impl<'a> From<&'a Event> for EventRef<'a> {
             Event::Log(log) => EventRef::Log(log),
             Event::Metric(metric) => EventRef::Metric(metric),
             Event::Trace(trace) => EventRef::Trace(trace),
-            Event::OtelLog(_) | Event::OtelMetric(_) | Event::OtelSpan(_) => {
-                todo!("EventRef for OTel-native events not yet implemented")
-            }
+            Event::OtelLog(e) => EventRef::OtelLog(e),
+            Event::OtelMetric(e) => EventRef::OtelMetric(e),
+            Event::OtelSpan(e) => EventRef::OtelSpan(e),
         }
     }
 }
@@ -118,6 +127,12 @@ pub enum EventMutRef<'a> {
     Metric(&'a mut Metric),
     /// Reference to a `TraceEvent`
     Trace(&'a mut TraceEvent),
+    /// Reference to an `OtelLogEvent`
+    OtelLog(&'a mut OtelLogEvent),
+    /// Reference to an `OtelMetricEvent`
+    OtelMetric(&'a mut OtelMetricEvent),
+    /// Reference to an `OtelSpanEvent`
+    OtelSpan(&'a mut OtelSpanEvent),
 }
 
 impl<'a> EventMutRef<'a> {
@@ -175,6 +190,9 @@ impl<'a> EventMutRef<'a> {
             Self::Log(event) => event.metadata(),
             Self::Metric(event) => event.metadata(),
             Self::Trace(event) => event.metadata(),
+            Self::OtelLog(event) => event.metadata(),
+            Self::OtelMetric(event) => event.metadata(),
+            Self::OtelSpan(event) => event.metadata(),
         }
     }
 
@@ -184,6 +202,9 @@ impl<'a> EventMutRef<'a> {
             Self::Log(event) => event.metadata_mut(),
             Self::Metric(event) => event.metadata_mut(),
             Self::Trace(event) => event.metadata_mut(),
+            Self::OtelLog(event) => event.metadata_mut(),
+            Self::OtelMetric(event) => event.metadata_mut(),
+            Self::OtelSpan(event) => event.metadata_mut(),
         }
     }
 }
@@ -194,9 +215,9 @@ impl<'a> From<&'a mut Event> for EventMutRef<'a> {
             Event::Log(event) => event.into(),
             Event::Metric(event) => event.into(),
             Event::Trace(event) => event.into(),
-            Event::OtelLog(_) | Event::OtelMetric(_) | Event::OtelSpan(_) => {
-                todo!("EventMutRef for OTel-native events not yet implemented")
-            }
+            Event::OtelLog(event) => EventMutRef::OtelLog(event),
+            Event::OtelMetric(event) => EventMutRef::OtelMetric(event),
+            Event::OtelSpan(event) => EventMutRef::OtelSpan(event),
         }
     }
 }

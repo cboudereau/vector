@@ -301,6 +301,9 @@ impl OutputBuffer {
             EventArray::Logs(l) => l.first().map(Into::into),
             EventArray::Metrics(m) => m.first().map(Into::into),
             EventArray::Traces(t) => t.first().map(Into::into),
+            EventArray::OtelLogs(l) => l.first().map(EventRef::OtelLog),
+            EventArray::OtelMetrics(m) => m.first().map(EventRef::OtelMetric),
+            EventArray::OtelSpans(s) => s.first().map(EventRef::OtelSpan),
         })
     }
 

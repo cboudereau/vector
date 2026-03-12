@@ -197,6 +197,9 @@ impl Template {
                                 .parse_path_and_get_value(key)
                                 .ok()
                                 .and_then(|v| v.map(Value::to_string_lossy)),
+                            EventRef::OtelLog(_)
+                            | EventRef::OtelMetric(_)
+                            | EventRef::OtelSpan(_) => None,
                         }
                         .unwrap_or_else(|| {
                             missing_keys.push(key.to_owned());
@@ -426,6 +429,9 @@ impl UnsignedIntTemplate {
                                 .parse_path_and_get_value(key)
                                 .ok()
                                 .and_then(|v| v.map(Value::to_string_lossy)),
+                            EventRef::OtelLog(_)
+                            | EventRef::OtelMetric(_)
+                            | EventRef::OtelSpan(_) => None,
                         }
                         .unwrap_or_else(|| {
                             missing_keys.push(key.to_owned());
@@ -599,6 +605,7 @@ fn render_timestamp(
                         .copied()
                 })
         }
+        EventRef::OtelLog(_) | EventRef::OtelMetric(_) | EventRef::OtelSpan(_) => None,
     }
     .unwrap_or_else(Utc::now);
 

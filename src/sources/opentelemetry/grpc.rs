@@ -84,7 +84,7 @@ impl LogsService for Service {
                 .into_inner()
                 .resource_logs
                 .into_iter()
-                .flat_map(|v| v.into_event_iter(self.log_namespace))
+                .flat_map(|v| v.into_otel_event_iter())
                 .collect()
         };
         self.handle_events(events, LOGS).await?;

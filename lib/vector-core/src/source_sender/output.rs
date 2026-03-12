@@ -263,6 +263,7 @@ impl Output {
                             trace.get(timestamp_key).and_then(get_timestamp_millis)
                         })
                 }
+                EventRef::OtelLog(_) | EventRef::OtelMetric(_) | EventRef::OtelSpan(_) => None,
             };
             if let Some(timestamp) = timestamp {
                 // This will truncate precision for values larger than 2**52, but at that point the user

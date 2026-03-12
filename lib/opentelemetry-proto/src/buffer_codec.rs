@@ -89,6 +89,9 @@ fn event_array_to_batch(array: &EventArray) -> OtlpBufferBatch {
             traces: Some(traces_to_export(traces)),
             ..Default::default()
         },
+        EventArray::OtelLogs(_) | EventArray::OtelMetrics(_) | EventArray::OtelSpans(_) => {
+            todo!("Native OTel EventArray disk buffer encoding")
+        }
     }
 }
 

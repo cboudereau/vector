@@ -45,6 +45,11 @@ impl From<array::EventArray> for EventArray {
             array::EventArray::Logs(array) => event_array::Events::from_logs(array),
             array::EventArray::Metrics(array) => event_array::Events::from_metrics(array),
             array::EventArray::Traces(array) => event_array::Events::from_traces(array),
+            array::EventArray::OtelLogs(_)
+            | array::EventArray::OtelMetrics(_)
+            | array::EventArray::OtelSpans(_) => {
+                panic!("OTel-native events cannot be serialized to legacy Vector proto format")
+            }
         });
         Self { events }
     }

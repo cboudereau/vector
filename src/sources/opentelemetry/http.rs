@@ -359,7 +359,7 @@ fn decode_trace_body(
 
 fn decode_log_body(
     body: Bytes,
-    log_namespace: LogNamespace,
+    _log_namespace: LogNamespace,
     events_received: &Registered<EventsReceived>,
 ) -> Result<Vec<Event>, ErrorMessage> {
     let request = ExportLogsServiceRequest::decode(body).map_err(emit_decode_error)?;
@@ -367,7 +367,7 @@ fn decode_log_body(
     let events: Vec<Event> = request
         .resource_logs
         .into_iter()
-        .flat_map(|v| v.into_event_iter(log_namespace))
+        .flat_map(|v| v.into_otel_event_iter())
         .collect();
 
     events_received.emit(CountByteSize(

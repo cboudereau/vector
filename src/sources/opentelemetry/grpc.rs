@@ -1,10 +1,7 @@
 use futures::TryFutureExt;
-use prost::Message;
 use tonic::{Request, Response, Status};
 use vector_lib::{
     EstimatedJsonEncodedSizeOf,
-    codecs::decoding::{OtlpDeserializer, format::Deserializer},
-    config::LogNamespace,
     event::{BatchNotifier, BatchStatus, BatchStatusReceiver, Event},
     internal_event::{CountByteSize, InternalEventHandle as _, Registered},
     opentelemetry::proto::collector::{
@@ -33,8 +30,6 @@ pub(super) struct Service {
     pub pipeline: SourceSender,
     pub acknowledgements: bool,
     pub events_received: Registered<EventsReceived>,
-    pub log_namespace: LogNamespace,
-    pub deserializer: Option<OtlpDeserializer>,
 }
 
 #[tonic::async_trait]
@@ -43,21 +38,12 @@ impl TraceService for Service {
         &self,
         request: Request<ExportTraceServiceRequest>,
     ) -> Result<Response<ExportTraceServiceResponse>, Status> {
-        let events = if let Some(deserializer) = self.deserializer.as_ref() {
-            let raw_bytes = request.get_ref().encode_to_vec();
-            let bytes = bytes::Bytes::from(raw_bytes);
-            deserializer
-                .parse(bytes, self.log_namespace)
-                .map_err(|e| Status::invalid_argument(e.to_string()))
-                .map(|buf| buf.into_vec())?
-        } else {
-            request
-                .into_inner()
-                .resource_spans
-                .into_iter()
-                .flat_map(|v| v.into_otel_event_iter())
-                .collect()
-        };
+        let events: Vec<Event> = request
+            .into_inner()
+            .resource_spans
+            .into_iter()
+            .flat_map(|v| v.into_otel_event_iter())
+            .collect();
         self.handle_events(events, TRACES).await?;
 
         Ok(Response::new(ExportTraceServiceResponse {
@@ -72,21 +58,12 @@ impl LogsService for Service {
         &self,
         request: Request<ExportLogsServiceRequest>,
     ) -> Result<Response<ExportLogsServiceResponse>, Status> {
-        let events = if let Some(deserializer) = self.deserializer.as_ref() {
-            let raw_bytes = request.get_ref().encode_to_vec();
-            let bytes = bytes::Bytes::from(raw_bytes);
-            deserializer
-                .parse(bytes, self.log_namespace)
-                .map_err(|e| Status::invalid_argument(e.to_string()))
-                .map(|buf| buf.into_vec())?
-        } else {
-            request
-                .into_inner()
-                .resource_logs
-                .into_iter()
-                .flat_map(|v| v.into_otel_event_iter())
-                .collect()
-        };
+        let events: Vec<Event> = request
+            .into_inner()
+            .resource_logs
+            .into_iter()
+            .flat_map(|v| v.into_otel_event_iter())
+            .collect();
         self.handle_events(events, LOGS).await?;
 
         Ok(Response::new(ExportLogsServiceResponse {
@@ -101,23 +78,12 @@ impl MetricsService for Service {
         &self,
         request: Request<ExportMetricsServiceRequest>,
     ) -> Result<Response<ExportMetricsServiceResponse>, Status> {
-        let events = if let Some(deserializer) = self.deserializer.as_ref() {
-            let raw_bytes = request.get_ref().encode_to_vec();
-            // Major caveat here, the output event will be logs.
-            let bytes = bytes::Bytes::from(raw_bytes);
-            deserializer
-                .parse(bytes, self.log_namespace)
-                .map_err(|e| Status::invalid_argument(e.to_string()))
-                .map(|buf| buf.into_vec())?
-        } else {
-            request
-                .into_inner()
-                .resource_metrics
-                .into_iter()
-                .flat_map(|v| v.into_otel_event_iter())
-                .collect()
-        };
-
+        let events: Vec<Event> = request
+            .into_inner()
+            .resource_metrics
+            .into_iter()
+            .flat_map(|v| v.into_otel_event_iter())
+            .collect();
         self.handle_events(events, METRICS).await?;
 
         Ok(Response::new(ExportMetricsServiceResponse {
@@ -132,13 +98,7 @@ impl Service {
         mut events: Vec<Event>,
         log_name: &'static str,
     ) -> Result<(), Status> {
-        // When using OTLP decoding, count individual items within the batch
-        // to maintain consistency with other Vector sources
-        let count = if self.deserializer.is_some() {
-            super::count_otlp_items(&events)
-        } else {
-            events.len()
-        };
+        let count = events.len();
         let byte_size = events.estimated_json_encoded_size_of();
         self.events_received.emit(CountByteSize(count, byte_size));
 

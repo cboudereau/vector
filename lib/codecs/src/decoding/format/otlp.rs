@@ -94,12 +94,10 @@ impl OtlpDeserializerConfig {
 /// - `ExportMetricsServiceRequest` → Log events with `resourceMetrics` field
 /// - `ExportTraceServiceRequest` → Trace events with `resourceSpans` field
 ///
-/// One major caveat here is that the incoming metrics will be parsed as logs but they will preserve the OTLP format.
-/// This means that components that work on metrics, will not be compatible with this output.
-/// However, these events can be forwarded directly to a downstream OTEL collector.
-///
-/// This is the inverse of what the OTLP encoder does, ensuring round-trip compatibility
-/// with the `opentelemetry` source when `use_otlp_decoding` is enabled.
+/// Note: This deserializer stores OTLP data as legacy `LogEvent`/`TraceEvent` types
+/// with raw OTLP JSON fields. It is retained for backward compatibility with external
+/// codecs usage but is no longer used by the `opentelemetry` source, which now emits
+/// OTel-native events directly.
 #[derive(Debug, Clone)]
 pub struct OtlpDeserializer {
     logs_deserializer: ProtobufDeserializer,

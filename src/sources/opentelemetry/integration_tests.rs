@@ -62,7 +62,6 @@ async fn receive_logs_legacy_namespace() {
             },
             acknowledgements: Default::default(),
             log_namespace: Default::default(),
-            use_otlp_decoding: false,
         };
 
         let (sender, logs_output, _) = new_source(EventStatus::Delivered, LOGS.to_string());
@@ -161,7 +160,6 @@ async fn receive_trace() {
             },
             acknowledgements: Default::default(),
             log_namespace: Default::default(),
-            use_otlp_decoding: false,
         };
 
         let (sender, trace_output, _) = new_source(EventStatus::Delivered, TRACES.to_string());
@@ -266,7 +264,6 @@ async fn receive_metric() {
             },
             acknowledgements: Default::default(),
             log_namespace: Default::default(),
-            use_otlp_decoding: false,
         };
 
         let (sender, metrics_output, _) = new_source(EventStatus::Delivered, METRICS.to_string());

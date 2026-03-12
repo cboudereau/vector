@@ -475,6 +475,9 @@ impl From<super::Event> for WithMetadata<Event> {
             super::Event::Log(log_event) => WithMetadata::<Log>::from(log_event).into(),
             super::Event::Metric(metric) => WithMetadata::<Metric>::from(metric).into(),
             super::Event::Trace(trace) => WithMetadata::<Trace>::from(trace).into(),
+            super::Event::OtelLog(_) | super::Event::OtelMetric(_) | super::Event::OtelSpan(_) => {
+                panic!("OTel-native events cannot be converted to Vector proto format; use OTLP encoding instead")
+            }
         }
     }
 }

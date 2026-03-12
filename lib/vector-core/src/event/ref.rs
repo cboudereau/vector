@@ -72,6 +72,9 @@ impl<'a> From<&'a Event> for EventRef<'a> {
             Event::Log(log) => EventRef::Log(log),
             Event::Metric(metric) => EventRef::Metric(metric),
             Event::Trace(trace) => EventRef::Trace(trace),
+            Event::OtelLog(_) | Event::OtelMetric(_) | Event::OtelSpan(_) => {
+                todo!("EventRef for OTel-native events not yet implemented")
+            }
         }
     }
 }
@@ -191,6 +194,9 @@ impl<'a> From<&'a mut Event> for EventMutRef<'a> {
             Event::Log(event) => event.into(),
             Event::Metric(event) => event.into(),
             Event::Trace(event) => event.into(),
+            Event::OtelLog(_) | Event::OtelMetric(_) | Event::OtelSpan(_) => {
+                todo!("EventMutRef for OTel-native events not yet implemented")
+            }
         }
     }
 }

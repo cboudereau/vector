@@ -195,6 +195,9 @@ impl From<Event> for EventArray {
             Event::Log(log) => Self::Logs(vec![log]),
             Event::Metric(metric) => Self::Metrics(vec![metric]),
             Event::Trace(trace) => Self::Traces(vec![trace]),
+            Event::OtelLog(_) | Event::OtelMetric(_) | Event::OtelSpan(_) => {
+                todo!("OTel-native EventArray variants not yet implemented (Step 5a additive)")
+            }
         }
     }
 }

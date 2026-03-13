@@ -371,6 +371,7 @@ Step 5c   Migrate logs: OTel source/sink emit/accept OtelLogEvent              �
 Step 5d   Migrate metrics: OTel source/sink emit/accept OtelMetricEvent        — COMPLETE (batch 1)
 Step 5e   Remove use_otlp_decoding flag + legacy deserializer paths             — COMPLETE
 Step 5e²  OTLP serializer encodes OTel-native events (HTTP sink path)           — COMPLETE
+Step 5c²a VrlTarget supports OTel-native events (all 3 signals)                — COMPLETE
 Step 5c²  Migrate logs batch 2+: other sources, transforms, sinks              — NEXT
 Step 5d²  Migrate metrics batch 2+: other sources, transforms, sinks
 Step 5f   Ship VRL migration tool
@@ -1122,6 +1123,39 @@ now accept OTel-native events for all three signals. The full OTel pipeline
 - All 6 OTLP serializer tests pass (3 existing + 3 new).
 - `cargo check` clean.
 
+#### 5c²a — VrlTarget supports OTel-native events — COMPLETE
+
+**Status: COMPLETE.** Committed as `feat(agt): VrlTarget supports OTel-native events — unblocks all VRL transforms`.
+
+The `VrlTarget` enum previously had a `todo!()` panic for `Event::OtelLog`,
+`Event::OtelSpan`, and `Event::OtelMetric`. This meant any VRL-based transform
+(remap, filter, route, sample, dedupe, exclusive_route) would panic on OTel-native events.
+
+**What was added (3 files, +966 / -17 lines):**
+- `VrlTarget::OtelLog(Value, EventMetadata)` — eager projection of LogRecord proto to
+  VRL `Value::Object` with full read/write/remove and `into_events()` write-back.
+- `VrlTarget::OtelSpan(Value, EventMetadata)` — same approach for Span proto, including
+  events, links, and status sub-structures.
+- `VrlTarget::OtelMetric { event, value }` — restricted-path model (like legacy `Metric`)
+  with `.name`, `.description`, `.unit`, `.resource`, `.scope` as accessible fields.
+- `AnyValue` ↔ `vrl::Value` bidirectional conversion (strings, bools, ints, doubles,
+  bytes, arrays, kvlists).
+- `Resource` / `InstrumentationScope` ↔ `Value` conversion helpers.
+- Hex encode/decode for trace_id and span_id (16-byte / 8-byte → hex string).
+- `TargetEvents::OtelLogs` and `TargetEvents::OtelSpans` iterator variants.
+- Updated all `TargetEvents` match sites: remap transform, VRL deserializer (codecs),
+  and test utilities.
+- 12 new tests: get/set/insert/roundtrip for all 3 OTel event types, AnyValue conversion,
+  hex encode/decode, resource+scope roundtrip.
+
+**Result:** OTel-native events can now flow through any VRL-based transform
+(remap, filter, route, sample, dedupe, exclusive_route) without panicking.
+The full OTel pipeline (source → VRL transforms → sink) works end-to-end.
+
+**Validation gate (5c²a) — ALL PASS:**
+- All 24 VrlTarget tests pass (12 existing + 12 new).
+- `cargo check -p vector` clean.
+
 #### 5f — Ship VRL migration tool
 
 `vector vrl-migrate <file>` rewrites ~91% of user VRL programs. Remaining ~9% flagged with
@@ -1292,6 +1326,7 @@ Based on actual file counts from source. Items marked ✓ have actual line count
 | Step 5d remaining: other sources, transforms, sinks | ~2,800 est. | ~300 est. | Pending |
 | Step 5e: `use_otlp_decoding` + legacy deserializer paths | 464 actual | 47 actual | ✓ COMPLETE |
 | Step 5e²: OTLP serializer OTel-native encoding | 4 actual | 227 actual | ✓ COMPLETE |
+| Step 5c²a: VrlTarget OTel-native events | 17 actual | 966 actual | ✓ COMPLETE |
 | Step 5f: VRL migration tool | 0 | ~800 est. | Pending |
 | Step 5g: Rename + type alias + proto cleanup | ~800 (event/proto.rs + aliases) | ~50 est. | Pending |
 | Source adaptations DD + Vector | ~500 est. | ~800 est. | Pending |
@@ -1326,5 +1361,6 @@ Both paths are now removed. The source always emits true OTel-native events:
 `Event::OtelLog`, `Event::OtelMetric`, `Event::OtelSpan`. Metrics are true metrics,
 not logs.
 
-Total: 22 opentelemetry-proto tests + 11 OTel source tests + 6 OTLP serializer tests passing.
-Files changed across 5a–5e²: ~48 files, +2,126/-946 actual lines.
+Total: 22 opentelemetry-proto tests + 11 OTel source tests + 6 OTLP serializer tests
++ 24 VrlTarget tests (12 existing + 12 new OTel) passing.
+Files changed across 5a–5c²a: ~51 files, +3,092/-963 actual lines.

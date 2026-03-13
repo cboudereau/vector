@@ -71,12 +71,8 @@ where
                 future::ready(Some(match event {
                     Event::Metric(metric) => metric_to_log.transform_one(metric),
                     Event::Log(log) => Some(log),
-                    Event::Trace(_)
-                    | Event::OtelLog(_)
-                    | Event::OtelMetric(_)
-                    | Event::OtelSpan(_) => {
-                        None
-                    }
+                    Event::OtelLog(otel) => Some(otel.to_log_event()),
+                    Event::Trace(_) | Event::OtelMetric(_) | Event::OtelSpan(_) => None,
                 }))
             })
             .filter_map(|x| async move { x })

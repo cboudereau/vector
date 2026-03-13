@@ -187,8 +187,9 @@ impl SematextMetricsService {
                 stream::iter({
                     let byte_size = event.size_of();
                     let json_byte_size = event.estimated_json_encoded_size_of();
-                    normalizer
-                        .normalize(event.into_metric())
+                    event
+                        .try_into_metric()
+                        .and_then(|m| normalizer.normalize(m))
                         .map(|item| Ok(EncodedEvent::new(item, byte_size, json_byte_size)))
                 })
             })

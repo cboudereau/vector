@@ -177,8 +177,9 @@ impl InfluxDbSvc {
                     let byte_size = event.size_of();
                     let json_size = event.estimated_json_encoded_size_of();
 
-                    normalizer
-                        .normalize(event.into_metric())
+                    event
+                        .try_into_metric()
+                        .and_then(|m| normalizer.normalize(m))
                         .map(|metric| Ok(EncodedEvent::new(metric, byte_size, json_size)))
                 })
             })

@@ -168,8 +168,8 @@ impl FunctionTransform for Sample {
                 .parse_path_and_get_value(key_field.as_str())
                 .ok()
                 .flatten(),
-            Event::OtelSpan(_) => None,
-            Event::Metric(_) | Event::OtelLog(_) | Event::OtelMetric(_) => {
+            Event::OtelLog(_) | Event::OtelSpan(_) => None,
+            Event::Metric(_) | Event::OtelMetric(_) => {
                 panic!("component can never receive metric events")
             }
         });
@@ -179,8 +179,8 @@ impl FunctionTransform for Sample {
             match &event {
                 Event::Log(event) => group_by.render_string(event),
                 Event::Trace(event) => group_by.render_string(event),
-                Event::OtelSpan(_) => Ok(String::new()),
-                Event::Metric(_) | Event::OtelLog(_) | Event::OtelMetric(_) => {
+                Event::OtelLog(_) | Event::OtelSpan(_) => Ok(String::new()),
+                Event::Metric(_) | Event::OtelMetric(_) => {
                     panic!("component can never receive metric events")
                 }
             }
@@ -209,8 +209,8 @@ impl FunctionTransform for Sample {
                     Event::Trace(ref mut event) => {
                         event.insert(&OwnedTargetPath::event(path.clone()), self.rate.to_string());
                     }
-                    Event::OtelSpan(_) => {}
-                    Event::Metric(_) | Event::OtelLog(_) | Event::OtelMetric(_) => {
+                    Event::OtelLog(_) | Event::OtelSpan(_) => {}
+                    Event::Metric(_) | Event::OtelMetric(_) => {
                         panic!("component can never receive metric events")
                     }
                 };

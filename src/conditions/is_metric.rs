@@ -1,7 +1,7 @@
 use crate::event::Event;
 
 pub(crate) const fn check_is_metric(e: Event) -> (bool, Event) {
-    (matches!(e, Event::Metric(_)), e)
+    (matches!(e, Event::Metric(_) | Event::OtelMetric(_)), e)
 }
 
 pub(crate) fn check_is_metric_with_context(e: Event) -> (Result<(), String>, Event) {
@@ -17,9 +17,10 @@ pub(crate) fn check_is_metric_with_context(e: Event) -> (Result<(), String>, Eve
 mod test {
     use super::check_is_metric;
     use crate::event::{
-        Event, LogEvent,
+        Event, LogEvent, OtelMetricEvent,
         metric::{Metric, MetricKind, MetricValue},
     };
+    use otel_proto_types::metrics::v1::Metric as OtelMetricProto;
 
     #[test]
     fn is_metric_basic() {
@@ -32,5 +33,14 @@ mod test {
             )))
             .0,
         );
+    }
+
+    #[test]
+    fn is_metric_matches_otel_metric() {
+        let event = Event::OtelMetric(OtelMetricEvent::new(OtelMetricProto {
+            name: "http.duration".to_string(),
+            ..Default::default()
+        }));
+        assert!(check_is_metric(event).0);
     }
 }

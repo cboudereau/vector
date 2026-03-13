@@ -376,6 +376,7 @@ Step 5c²b Condition matchers + sample transform recognize OTel events          
 Step 5c²c Codec serializers handle OTel-native log events                      — COMPLETE
 Step 5c²d Transforms handle OTel-native events (eliminate panics)              — COMPLETE
 Step 5c²e Sinks handle OTel-native events (eliminate panics)                   — COMPLETE
+Step 5c²f Buffer codec + remaining gaps (tap, OutputBuffer, sematext, NR)      — COMPLETE
 Step 5c²  Migrate logs batch 2+: other sources, transforms, sinks              — NEXT
 Step 5d²  Migrate metrics batch 2+: other sources, transforms, sinks
 Step 5f   Ship VRL migration tool
@@ -1127,6 +1128,37 @@ now accept OTel-native events for all three signals. The full OTel pipeline
 - All 6 OTLP serializer tests pass (3 existing + 3 new).
 - `cargo check` clean.
 
+#### 5c²f — Buffer codec + remaining gaps (tap, OutputBuffer, sematext, NR) — COMPLETE
+
+**Status: COMPLETE.** Committed as `feat(agt): fix remaining OTel gaps in buffer codec, sinks, tap, and OutputBuffer`.
+
+Resolves all remaining panic and silent-drop sites for OTel-native events across the
+infrastructure layer. The disk buffer codec can now persist OTel event arrays, the tap
+can display OTel logs, and transforms coalesce OTel events efficiently.
+
+**What was changed (6 files, +133 / -8 lines):**
+
+- `buffer_codec.rs`: Implement `event_array_to_batch` for `OtelLogs`/`OtelMetrics`/`OtelSpans`
+  via protobuf transcoding (`otel_proto_types` → `crate::proto` wire-compatible roundtrip).
+  Replaces `todo!()` panic. Added `transcode<S,D>()` helper.
+- `sematext/logs.rs`: Handle `EventArray::OtelLogs` in `map_timestamp` by projecting OtelLog
+  events to LogEvent (was `unreachable!()` panic).
+- `new_relic/model.rs`: Use `try_into_log_coerce()` so OtelLog events are projected to LogEvent
+  instead of being silently dropped by `try_into_log()`.
+- `vector-tap/controller.rs`: Convert `OtelLogs` to `LogArray` for tap display (was dropped).
+- `transform/outputs.rs`: Coalesce `OtelLog`/`OtelMetric`/`OtelSpan` pushes into their
+  respective `EventArray` variants (was creating single-element arrays per event).
+- `vector-core/event/mod.rs`: Add `Event::try_into_log_coerce()` (non-panicking variant),
+  export `OtelLogArray`/`OtelMetricArray`/`OtelSpanArray` type aliases.
+
+**Validation gate (5c²f) — ALL PASS:**
+- 22 opentelemetry-proto tests pass.
+- 7 sematext sink tests pass.
+- 14 new_relic sink tests pass.
+- 1 vector-tap test passes.
+- 1 vector-core transform test passes.
+- `cargo check -p vector` clean.
+
 #### 5c²e — Sinks handle OTel-native events (eliminate panics) — COMPLETE
 
 **Status: COMPLETE.** Committed as `feat(agt): sinks handle OTel-native events without panicking`.
@@ -1447,6 +1479,7 @@ Based on actual file counts from source. Items marked ✓ have actual line count
 | Step 5c²c: Codec serializers OTel-native logs | 26 actual | 384 actual | ✓ COMPLETE |
 | Step 5c²d: Transforms handle OTel events | 16 actual | 135 actual | ✓ COMPLETE |
 | Step 5c²e: Sinks handle OTel events | 23 actual | 39 actual | ✓ COMPLETE |
+| Step 5c²f: Buffer codec + remaining gaps | 8 actual | 133 actual | ✓ COMPLETE |
 | Step 5f: VRL migration tool | 0 | ~800 est. | Pending |
 | Step 5g: Rename + type alias + proto cleanup | ~800 (event/proto.rs + aliases) | ~50 est. | Pending |
 | Source adaptations DD + Vector | ~500 est. | ~800 est. | Pending |

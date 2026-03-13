@@ -377,8 +377,9 @@ Step 5c²c Codec serializers handle OTel-native log events                      
 Step 5c²d Transforms handle OTel-native events (eliminate panics)              — COMPLETE
 Step 5c²e Sinks handle OTel-native events (eliminate panics)                   — COMPLETE
 Step 5c²f Buffer codec + remaining gaps (tap, OutputBuffer, sematext, NR)      — COMPLETE
-Step 5c²  Migrate logs batch 2+: other sources, transforms, sinks              — NEXT
-Step 5d²  Migrate metrics batch 2+: other sources, transforms, sinks
+Step 5c²g Last unsafe into_log/as_mut_log call sites                           — COMPLETE
+Step 5c²  Migrate logs batch 2+: other sources, transforms, sinks              — COMPLETE
+Step 5d²  Migrate metrics batch 2+: other sources, transforms, sinks           — NEXT
 Step 5f   Ship VRL migration tool
 Step 5g   Rename OtelXxxEvent → XxxEvent + type alias cleanup
 Step 4    Tail sampling + load-balancing sink + pipeline telemetry              — after Step 5
@@ -1128,6 +1129,35 @@ now accept OTel-native events for all three signals. The full OTel pipeline
 - All 6 OTLP serializer tests pass (3 existing + 3 new).
 - `cargo check` clean.
 
+#### 5c²g — Last unsafe into_log/as_mut_log call sites — COMPLETE
+
+**Status: COMPLETE.** Committed as `feat(agt): fix last 5 unsafe into_log/as_mut_log call sites for OTel events`.
+
+Eliminates the last 5 production call sites where `into_log()` / `as_mut_log()` could
+panic on `OtelLog` events. After this step, **zero** unsafe `Event` type coercions remain
+in production code.
+
+**What was changed (5 files, +18 / -4 lines):**
+
+- `enrichment_tables/memory/table.rs`: `into_log()` → `into_log_coerce()`
+- `aws_cloudwatch_logs/request_builder.rs`: coerce OtelLog at start of `build()`
+- `azure_monitor_logs/sink.rs`: coerce OtelLog in-place before `as_mut_log()`
+- `papertrail.rs`: coerce OtelLog at start of `encode()`
+- `honeycomb/encoder.rs`: coerce OtelLog before `as_mut_log()`
+
+**Validation gate (5c²g) — ALL PASS:**
+- 32 tests pass across all 5 affected components.
+- `cargo check -p vector` clean.
+
+---
+
+**Step 5c² — Migrate logs batch 2+ — COMPLETE**
+
+With sub-steps 5c²a through 5c²g, the full log signal migration is complete:
+- VRL targets, conditions, codec serializers, transforms, all sinks, disk buffers, tap,
+  OutputBuffer coalescing, and every `as_log`/`into_log` call site now handle OTel-native
+  log events. Zero remaining panics for `Event::OtelLog` in production code.
+
 #### 5c²f — Buffer codec + remaining gaps (tap, OutputBuffer, sematext, NR) — COMPLETE
 
 **Status: COMPLETE.** Committed as `feat(agt): fix remaining OTel gaps in buffer codec, sinks, tap, and OutputBuffer`.
@@ -1470,7 +1500,7 @@ Based on actual file counts from source. Items marked ✓ have actual line count
 | Step 5b: Trace migration (OTel source/sink) | 0 | ~200 actual | ✓ COMPLETE |
 | Step 5c batch 1: Log migration (OTel source/sink + EventArray) | 213 | 479 actual | ✓ COMPLETE |
 | Step 5d batch 1: Metric migration (OTel source/sink) | 265 | 433 actual | ✓ COMPLETE |
-| Step 5c remaining: other sources, transforms, sinks | ~1,600 est. | ~400 est. | NEXT |
+| Step 5c remaining: other sources, transforms, sinks (5c²a–5c²g) | 92 actual | 1,711 actual | ✓ COMPLETE |
 | Step 5d remaining: other sources, transforms, sinks | ~2,800 est. | ~300 est. | Pending |
 | Step 5e: `use_otlp_decoding` + legacy deserializer paths | 464 actual | 47 actual | ✓ COMPLETE |
 | Step 5e²: OTLP serializer OTel-native encoding | 4 actual | 227 actual | ✓ COMPLETE |
@@ -1480,6 +1510,7 @@ Based on actual file counts from source. Items marked ✓ have actual line count
 | Step 5c²d: Transforms handle OTel events | 16 actual | 135 actual | ✓ COMPLETE |
 | Step 5c²e: Sinks handle OTel events | 23 actual | 39 actual | ✓ COMPLETE |
 | Step 5c²f: Buffer codec + remaining gaps | 8 actual | 133 actual | ✓ COMPLETE |
+| Step 5c²g: Last unsafe call sites | 4 actual | 18 actual | ✓ COMPLETE |
 | Step 5f: VRL migration tool | 0 | ~800 est. | Pending |
 | Step 5g: Rename + type alias + proto cleanup | ~800 (event/proto.rs + aliases) | ~50 est. | Pending |
 | Source adaptations DD + Vector | ~500 est. | ~800 est. | Pending |

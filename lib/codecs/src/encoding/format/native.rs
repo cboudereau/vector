@@ -37,9 +37,35 @@ impl Encoder<Event> for NativeSerializer {
     type Error = vector_common::Error;
 
     fn encode(&mut self, event: Event, buffer: &mut BytesMut) -> Result<(), Self::Error> {
+        if matches!(
+            event,
+            Event::OtelLog(_) | Event::OtelMetric(_) | Event::OtelSpan(_)
+        ) {
+            return Err(
+                "OTel-native events cannot be encoded in legacy Vector native format".into(),
+            );
+        }
         let array = EventArray::from(event);
         let proto = proto::EventArray::from(array);
         proto.encode(buffer)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use bytes::BytesMut;
+    use tokio_util::codec::Encoder;
+    use vector_core::event::{Event, OtelLogEvent};
+
+    use super::*;
+
+    #[test]
+    fn native_rejects_otel_log() {
+        let event = Event::OtelLog(OtelLogEvent::new(Default::default()));
+        let mut serializer = NativeSerializer;
+        let mut buffer = BytesMut::new();
+        let result = serializer.encode(event, &mut buffer);
+        assert!(result.is_err());
     }
 }

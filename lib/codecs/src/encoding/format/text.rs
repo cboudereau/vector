@@ -73,10 +73,13 @@ impl Encoder<Event> for TextSerializer {
                 let bytes = metric.to_string();
                 buffer.put(bytes.as_ref());
             }
-            Event::Trace(_)
-            | Event::OtelLog(_)
-            | Event::OtelMetric(_)
-            | Event::OtelSpan(_) => {}
+            Event::OtelLog(ref otel_log) => {
+                let s = otel_log.body_string();
+                if !s.is_empty() {
+                    buffer.put(s.as_bytes());
+                }
+            }
+            Event::Trace(_) | Event::OtelMetric(_) | Event::OtelSpan(_) => {}
         };
 
         Ok(())
@@ -155,6 +158,27 @@ mod tests {
                 "a" => "second",
             ))),
         )
+    }
+
+    #[test]
+    fn serialize_otel_log() {
+        use otel_proto_types::common::v1::AnyValue;
+        use vector_core::event::OtelLogEvent;
+
+        let event = Event::OtelLog(OtelLogEvent::new(
+            otel_proto_types::logs::v1::LogRecord {
+                body: Some(AnyValue {
+                    value: Some(
+                        otel_proto_types::common::v1::any_value::Value::StringValue(
+                            "hello otel".into(),
+                        ),
+                    ),
+                }),
+                ..Default::default()
+            },
+        ));
+        let buffer = serialize(TextSerializerConfig::default(), event);
+        assert_eq!(buffer, Bytes::from("hello otel"));
     }
 
     fn serialize(config: TextSerializerConfig, input: Event) -> Bytes {

@@ -39,9 +39,19 @@ impl Encoder<Event> for RawMessageSerializer {
     type Error = vector_common::Error;
 
     fn encode(&mut self, event: Event, buffer: &mut BytesMut) -> Result<(), Self::Error> {
-        let log = event.as_log();
-        if let Some(bytes) = log.get_message().map(|value| value.coerce_to_bytes()) {
-            buffer.put(bytes);
+        match &event {
+            Event::Log(log) => {
+                if let Some(bytes) = log.get_message().map(|value| value.coerce_to_bytes()) {
+                    buffer.put(bytes);
+                }
+            }
+            Event::OtelLog(otel_log) => {
+                let s = otel_log.body_string();
+                if !s.is_empty() {
+                    buffer.put(s.as_bytes());
+                }
+            }
+            _ => {}
         }
         Ok(())
     }
@@ -63,5 +73,30 @@ mod tests {
         serializer.encode(input, &mut buffer).unwrap();
 
         assert_eq!(buffer.freeze(), Bytes::from("foo"));
+    }
+
+    #[test]
+    fn serialize_otel_log() {
+        use otel_proto_types::common::v1::AnyValue;
+        use vector_core::event::OtelLogEvent;
+
+        let event = Event::OtelLog(OtelLogEvent::new(
+            otel_proto_types::logs::v1::LogRecord {
+                body: Some(AnyValue {
+                    value: Some(
+                        otel_proto_types::common::v1::any_value::Value::StringValue(
+                            "otel raw message".into(),
+                        ),
+                    ),
+                }),
+                ..Default::default()
+            },
+        ));
+
+        let mut serializer = RawMessageSerializer;
+        let mut buffer = BytesMut::new();
+        serializer.encode(event, &mut buffer).unwrap();
+
+        assert_eq!(buffer.freeze(), Bytes::from("otel raw message"));
     }
 }

@@ -40,7 +40,7 @@ impl Encoder<Event> for LogfmtSerializer {
     type Error = vector_common::Error;
 
     fn encode(&mut self, event: Event, buffer: &mut BytesMut) -> Result<(), Self::Error> {
-        let log = event.as_log();
+        let log = event.into_log_coerce();
         let string = encode_logfmt::encode_value(log.value())?;
         buffer.extend_from_slice(string.as_bytes());
 
@@ -67,5 +67,34 @@ mod tests {
         serializer.encode(event, &mut bytes).unwrap();
 
         assert_eq!(bytes.freeze(), "foo=bar");
+    }
+
+    #[test]
+    fn serialize_otel_log_logfmt() {
+        use otel_proto_types::common::v1::{AnyValue, KeyValue, any_value::Value as Kind};
+        use vector_core::event::OtelLogEvent;
+
+        let event = Event::OtelLog(OtelLogEvent::new(
+            otel_proto_types::logs::v1::LogRecord {
+                body: Some(AnyValue {
+                    value: Some(Kind::StringValue("hello".into())),
+                }),
+                attributes: vec![KeyValue {
+                    key: "env".into(),
+                    value: Some(AnyValue {
+                        value: Some(Kind::StringValue("prod".into())),
+                    }),
+                }],
+                ..Default::default()
+            },
+        ));
+        let mut serializer = LogfmtSerializer;
+        let mut bytes = BytesMut::new();
+
+        serializer.encode(event, &mut bytes).unwrap();
+
+        let output = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(output.contains("env=prod"));
+        assert!(output.contains("message=hello"));
     }
 }

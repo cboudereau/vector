@@ -81,14 +81,17 @@ impl Encoder<Event> for SyslogSerializer {
     type Error = vector_common::Error;
 
     fn encode(&mut self, event: Event, buffer: &mut BytesMut) -> Result<(), Self::Error> {
-        if let Event::Log(log_event) = event {
-            let syslog_message = ConfigDecanter::new(&log_event).decant_config(&self.config.syslog);
-            let vec = syslog_message
-                .encode(&self.config.syslog.rfc)
-                .as_bytes()
-                .to_vec();
-            buffer.put_slice(&vec);
-        }
+        let log_event = match event {
+            Event::Log(log) => log,
+            Event::OtelLog(otel) => otel.to_log_event(),
+            _ => return Ok(()),
+        };
+        let syslog_message = ConfigDecanter::new(&log_event).decant_config(&self.config.syslog);
+        let vec = syslog_message
+            .encode(&self.config.syslog.rfc)
+            .as_bytes()
+            .to_vec();
+        buffer.put_slice(&vec);
 
         Ok(())
     }

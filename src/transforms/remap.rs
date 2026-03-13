@@ -609,6 +609,12 @@ where
                 TargetEvents::Traces(events) => {
                     events.for_each(|event| push_default(event, output))
                 }
+                TargetEvents::OtelLogs(events) => {
+                    events.for_each(|event| push_default(event, output))
+                }
+                TargetEvents::OtelSpans(events) => {
+                    events.for_each(|event| push_default(event, output))
+                }
             },
             Err(reason) => {
                 let (reason, error, drop) = match reason {

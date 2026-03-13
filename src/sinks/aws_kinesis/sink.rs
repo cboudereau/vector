@@ -45,8 +45,7 @@ where
 
         input
             .filter_map(|event| {
-                // Panic: This sink only accepts Logs, so this should never panic
-                let log = event.into_log();
+                let log = event.into_log_coerce();
                 let processed = process_log(log, self.partition_key_field.as_ref());
 
                 future::ready(processed)

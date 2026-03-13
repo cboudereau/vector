@@ -41,7 +41,10 @@ where
         let batch_settings = self.batch_settings;
 
         input
-            .map(|event| (event.size_of(), event.into_metric()))
+            .filter_map(|event| {
+                let byte_size = event.size_of();
+                future::ready(event.try_into_metric().map(|m| (byte_size, m)))
+            })
             .filter_map(move |(event_byte_size, metric)| {
                 future::ready(process_metric(
                     metric,

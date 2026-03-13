@@ -1,3 +1,5 @@
+use std::future::ready;
+
 use async_trait::async_trait;
 use futures::StreamExt;
 use futures_util::stream::BoxStream;
@@ -39,7 +41,7 @@ pub struct GreptimeDBGrpcSink {
 impl GreptimeDBGrpcSink {
     async fn run_inner(self: Box<Self>, input: BoxStream<'_, Event>) -> Result<(), ()> {
         input
-            .map(|event| event.into_metric())
+            .filter_map(|event| ready(event.try_into_metric()))
             .normalized_with_default::<GreptimeDBMetricNormalize>()
             .batched(
                 self.batch_settings

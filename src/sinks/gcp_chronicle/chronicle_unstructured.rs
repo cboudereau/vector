@@ -435,6 +435,9 @@ impl Encoder<(ChroniclePartitionKey, Vec<Event>)> for ChronicleEncoder {
         let events = events
             .into_iter()
             .filter_map(|mut event| {
+                if let Event::OtelLog(otel) = event {
+                    event = Event::Log(otel.to_log_event());
+                }
                 let timestamp = event
                     .as_log()
                     .get_timestamp()

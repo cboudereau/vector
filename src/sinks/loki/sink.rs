@@ -293,7 +293,12 @@ impl EventEncoder {
         }
     }
 
-    pub(super) fn encode_event(&mut self, mut event: Event) -> Option<LokiRecord> {
+    pub(super) fn encode_event(&mut self, event: Event) -> Option<LokiRecord> {
+        let mut event = match event {
+            Event::Log(_) => event,
+            Event::OtelLog(otel) => Event::Log(otel.to_log_event()),
+            _ => return None,
+        };
         let tenant_id = self.key_partitioner.partition(&event);
         let finalizers = event.take_finalizers();
         let json_byte_size = event.estimated_json_encoded_size_of();

@@ -52,8 +52,9 @@ where
     async fn run_inner(self: Box<Self>, input: BoxStream<'_, Event>) -> Result<(), ()> {
         input
             .filter_map(|event| {
-                // Filter out anything that is not a Counter or a Gauge.
-                let metric = event.into_metric();
+                let Some(metric) = event.try_into_metric() else {
+                    return future::ready(None);
+                };
 
                 future::ready(match metric.value() {
                     &MetricValue::Counter { .. } => Some(metric),

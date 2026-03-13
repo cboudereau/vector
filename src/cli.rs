@@ -13,7 +13,7 @@ use crate::top;
 
 use crate::{
     completion, config, convert_config, generate, generate_schema, get_version, graph, list,
-    signal, unit_test, validate,
+    signal, unit_test, validate, vrl_migrate,
 };
 
 #[derive(Parser, Debug)]
@@ -40,7 +40,8 @@ impl Opts {
             | Some(SubCommand::Generate(_))
             | Some(SubCommand::ConvertConfig(_))
             | Some(SubCommand::List(_))
-            | Some(SubCommand::Test(_)) => {
+            | Some(SubCommand::Test(_))
+            | Some(SubCommand::VrlMigrate(_)) => {
                 if self.root.verbose == 0 {
                     (self.root.quiet + 1, self.root.verbose)
                 } else {
@@ -350,6 +351,9 @@ pub enum SubCommand {
 
     /// Vector Remap Language CLI
     Vrl(vrl::cli::Opts),
+
+    /// Migrate VRL programs from Vector field semantics to OTel field semantics
+    VrlMigrate(vrl_migrate::cmd::Opts),
 }
 
 impl SubCommand {
@@ -375,6 +379,7 @@ impl SubCommand {
             Self::Top(t) => top::cmd(t).await,
             Self::Validate(v) => validate::validate(v, color).await,
             Self::Vrl(s) => vrl::cli::cmd::cmd(s, vector_vrl_functions::all()),
+            Self::VrlMigrate(s) => vrl_migrate::cmd::cmd(s),
         }
     }
 }

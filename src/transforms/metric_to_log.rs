@@ -337,9 +337,11 @@ impl MetricToLog {
 
 impl FunctionTransform for MetricToLog {
     fn transform(&mut self, output: &mut OutputBuffer, event: Event) {
-        let retval: Option<Event> = self
-            .transform_one(event.into_metric())
-            .map(|log| log.into());
+        let metric = match event {
+            Event::Metric(m) => m,
+            _ => return,
+        };
+        let retval: Option<Event> = self.transform_one(metric).map(|log| log.into());
         output.extend(retval.into_iter())
     }
 }

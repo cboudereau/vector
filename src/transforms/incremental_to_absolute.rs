@@ -76,9 +76,10 @@ impl IncrementalToAbsolute {
         })
     }
     pub fn transform_one(&mut self, event: Event) -> Option<Event> {
-        self.data
-            .make_absolute(event.as_metric().clone())
-            .map(Event::Metric)
+        match &event {
+            Event::Metric(m) => self.data.make_absolute(m.clone()).map(Event::Metric),
+            _ => Some(event),
+        }
     }
 }
 

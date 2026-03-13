@@ -477,6 +477,101 @@ impl OtelSpanEvent {
         self.metadata = self.metadata.with_batch_notifier_option(batch);
         self
     }
+
+    /// Lossy projection of this OTel span event into a legacy `LogEvent`.
+    ///
+    /// Span name becomes `message`, attributes become top-level fields, and
+    /// trace_id/span_id/timestamps/status are included.  Useful for
+    /// `trace_to_log` and text-oriented serializers.
+    pub fn to_log_event(&self) -> LogEvent {
+        let mut map = ObjectMap::new();
+
+        if !self.span.name.is_empty() {
+            map.insert("name".into(), Value::Bytes(self.span.name.clone().into()));
+        }
+        if !self.span.trace_id.is_empty() {
+            map.insert("trace_id".into(), hex_encode(&self.span.trace_id));
+        }
+        if !self.span.span_id.is_empty() {
+            map.insert("span_id".into(), hex_encode(&self.span.span_id));
+        }
+        if !self.span.parent_span_id.is_empty() {
+            map.insert(
+                "parent_span_id".into(),
+                hex_encode(&self.span.parent_span_id),
+            );
+        }
+        if self.span.start_time_unix_nano != 0 {
+            let nanos = self.span.start_time_unix_nano;
+            let secs = (nanos / 1_000_000_000) as i64;
+            let nsecs = (nanos % 1_000_000_000) as u32;
+            if let Some(ts) = chrono::DateTime::from_timestamp(secs, nsecs) {
+                map.insert("start_time".into(), Value::Timestamp(ts));
+            }
+        }
+        if self.span.end_time_unix_nano != 0 {
+            let nanos = self.span.end_time_unix_nano;
+            let secs = (nanos / 1_000_000_000) as i64;
+            let nsecs = (nanos % 1_000_000_000) as u32;
+            if let Some(ts) = chrono::DateTime::from_timestamp(secs, nsecs) {
+                map.insert("end_time".into(), Value::Timestamp(ts));
+            }
+        }
+        if self.span.kind != 0 {
+            map.insert("kind".into(), Value::Integer(self.span.kind as i64));
+        }
+        if let Some(status) = &self.span.status {
+            let mut status_map = ObjectMap::new();
+            if !status.message.is_empty() {
+                status_map.insert(
+                    "message".into(),
+                    Value::Bytes(status.message.clone().into()),
+                );
+            }
+            status_map.insert("code".into(), Value::Integer(status.code as i64));
+            map.insert("status".into(), Value::Object(status_map));
+        }
+
+        for kv in &self.span.attributes {
+            let v = kv
+                .value
+                .as_ref()
+                .map(any_value_to_vrl)
+                .unwrap_or(Value::Null);
+            map.insert(kv.key.clone().into(), v);
+        }
+
+        if let Some(resource) = &self.resource {
+            let mut res_map = kvlist_to_object_map(&resource.attributes);
+            if resource.dropped_attributes_count != 0 {
+                res_map.insert(
+                    "dropped_attributes_count".into(),
+                    Value::Integer(resource.dropped_attributes_count as i64),
+                );
+            }
+            map.insert("resource".into(), Value::Object(res_map));
+        }
+
+        if let Some(scope) = &self.scope {
+            let mut scope_map = ObjectMap::new();
+            if !scope.name.is_empty() {
+                scope_map.insert("name".into(), Value::Bytes(scope.name.clone().into()));
+            }
+            if !scope.version.is_empty() {
+                scope_map
+                    .insert("version".into(), Value::Bytes(scope.version.clone().into()));
+            }
+            if !scope.attributes.is_empty() {
+                scope_map.insert(
+                    "attributes".into(),
+                    Value::Object(kvlist_to_object_map(&scope.attributes)),
+                );
+            }
+            map.insert("scope".into(), Value::Object(scope_map));
+        }
+
+        LogEvent::from_map(map, self.metadata.clone())
+    }
 }
 
 // -- OtelMetricEvent --

@@ -127,7 +127,11 @@ impl Aggregate {
     }
 
     fn record(&mut self, event: Event) {
-        let (series, data, metadata) = event.into_metric().into_parts();
+        let metric = match event {
+            Event::Metric(m) => m,
+            _ => return,
+        };
+        let (series, data, metadata) = metric.into_parts();
 
         match self.mode {
             AggregationMode::Auto => match data.kind {

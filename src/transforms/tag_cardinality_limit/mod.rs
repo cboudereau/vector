@@ -128,6 +128,9 @@ impl TagCardinalityLimit {
     }
 
     fn transform_one(&mut self, mut event: Event) -> Option<Event> {
+        if !matches!(event, Event::Metric(_)) {
+            return Some(event);
+        }
         let metric = event.as_mut_metric();
         let metric_name = metric.name().to_string();
         let metric_namespace = metric.namespace().map(|n| n.to_string());

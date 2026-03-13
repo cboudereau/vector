@@ -274,7 +274,7 @@ impl Reduce {
             None => (false, event),
         };
 
-        let event = event.into_log();
+        let event = event.into_log_coerce();
         let discriminant = Discriminant::from_log_event(&event, &self.group_by);
 
         if let Some(max_events) = self.max_events {

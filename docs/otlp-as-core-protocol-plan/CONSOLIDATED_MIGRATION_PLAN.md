@@ -381,8 +381,8 @@ Step 5c²g Last unsafe into_log/as_mut_log call sites                           
 Step 5c²h Template engine + Transformer + silent-drop fixes                    — COMPLETE
 Step 5c²  Migrate logs batch 2+: other sources, transforms, sinks              — COMPLETE
 Step 5d²  Migrate metrics batch 2+: other sources, transforms, sinks           — COMPLETE
-Step 5f   Ship VRL migration tool                                              — NEXT
-Step 5g   Rename OtelXxxEvent → XxxEvent + type alias cleanup
+Step 5f   Ship VRL migration tool                                              — COMPLETE
+Step 5g   Rename OtelXxxEvent → XxxEvent + type alias cleanup                  — NEXT
 Step 4    Tail sampling + load-balancing sink + pipeline telemetry              — after Step 5
 Step 6    Native codecs and Vector proto removal
 Step 7    Optional: Vector and DataDog sink re-integration as OTel-native adapters
@@ -1130,6 +1130,39 @@ now accept OTel-native events for all three signals. The full OTel pipeline
 - All 6 OTLP serializer tests pass (3 existing + 3 new).
 - `cargo check` clean.
 
+#### 5f — Ship VRL migration tool — COMPLETE
+
+**Status: COMPLETE.** Committed as `feat(agt): ship VRL migration tool (vector vrl-migrate)`.
+
+Implements `vector vrl-migrate` — a three-pass text rewriter that migrates user VRL programs
+from Vector internal field semantics to OTel field semantics.
+
+**What was created (7 new files, +1,229 lines):**
+
+- `src/vrl_migrate/mod.rs`: Core engine — three-pass line-by-line rewriter with annotation
+  injection (`# MIGRATED:` / `# REVIEW:`), diff output, and `MigrationOutput` type.
+- `src/vrl_migrate/rules/mod.rs`: Rule infrastructure — `RuleId` enum (22 variants),
+  `Rule` struct, `RewriteResult` enum, string/comment safety helpers.
+- `src/vrl_migrate/rules/structural.rs`: Pass 1 — 10 rules (LOG-01..07, META-01..02, TRC-01).
+  Mechanical field path rewrites: `.message`→`.`, `.timestamp`→`.time_unix_nano`,
+  `.host`→`.resource.attributes."host.name"`, `.tags.<key>`→`.attributes."<key>"`,
+  `.level`/`.severity`→`.severity_text`, `%vector.*`→`%pipeline.*`.
+- `src/vrl_migrate/rules/semantic.rs`: Pass 2 — 7 rules (SEM-01..07). Context-sensitive
+  patterns: `exists(.)→true`, `del(.)→REVIEW`, `parse_json(.)→parse_json(string!(.))`,
+  `assert_eq!(., ...)→assert_eq!(string!(.), ...)`.
+- `src/vrl_migrate/rules/metric.rs`: Pass 3 — 5 rules (MET-02..07). Metric field rewrites:
+  `.namespace`→`.attributes."metric.namespace"`, `.kind`→`REVIEW`,
+  `.value.counter.value`→`.data_points[0].as_double`.
+- `src/vrl_migrate/cmd.rs`: CLI subcommand — `--in-place`, `--diff`, `--config vector.toml`.
+- `src/vrl_migrate/tests.rs`: 29 unit tests covering all rules, edge cases, and safety.
+- `src/cli.rs`: Added `VrlMigrate` variant to `SubCommand` enum.
+
+**Validation gate (5f) — ALL PASS:**
+- 29 unit tests pass.
+- `cargo check -p vector` clean.
+- `--diff` mode produces unified diff without modifying files.
+- `--config` mode rewrites inline VRL in TOML config files.
+
 #### 5d² — Migrate metrics batch 2+ — COMPLETE
 
 **Status: COMPLETE.** Committed as `feat(agt): pass OtelMetric events through aggregate and metric_to_log transforms`.
@@ -1574,7 +1607,7 @@ Based on actual file counts from source. Items marked ✓ have actual line count
 | Step 5c²f: Buffer codec + remaining gaps | 8 actual | 133 actual | ✓ COMPLETE |
 | Step 5c²g: Last unsafe call sites | 4 actual | 18 actual | ✓ COMPLETE |
 | Step 5c²h: Template + Transformer + silent drops | 2 actual | 22 actual | ✓ COMPLETE |
-| Step 5f: VRL migration tool | 0 | ~800 est. | Pending |
+| Step 5f: VRL migration tool | 0 | 1,229 actual | ✓ COMPLETE |
 | Step 5g: Rename + type alias + proto cleanup | ~800 (event/proto.rs + aliases) | ~50 est. | Pending |
 | Source adaptations DD + Vector | ~500 est. | ~800 est. | Pending |
 | Tail sampling + LB sink + pipeline telemetry (Step 4) | 0 | ~2,800 est. | Pending |

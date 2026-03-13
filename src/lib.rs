@@ -122,6 +122,8 @@ pub mod trace;
 pub mod transforms;
 pub mod types;
 pub mod unit_test;
+#[allow(unreachable_pub, missing_docs)]
+pub mod vrl_migrate;
 pub(crate) mod utilization;
 pub mod validate;
 #[cfg(windows)]

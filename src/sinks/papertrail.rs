@@ -135,9 +135,13 @@ impl tokio_util::codec::Encoder<Event> for PapertrailEncoder {
 
     fn encode(
         &mut self,
-        mut event: Event,
+        event: Event,
         buffer: &mut bytes::BytesMut,
     ) -> Result<(), Self::Error> {
+        let mut event = match event {
+            Event::OtelLog(otel) => Event::Log(otel.to_log_event()),
+            other => other,
+        };
         let host = event
             .as_mut_log()
             .get_host()

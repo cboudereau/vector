@@ -373,6 +373,7 @@ Step 5e   Remove use_otlp_decoding flag + legacy deserializer paths             
 Step 5e²  OTLP serializer encodes OTel-native events (HTTP sink path)           — COMPLETE
 Step 5c²a VrlTarget supports OTel-native events (all 3 signals)                — COMPLETE
 Step 5c²b Condition matchers + sample transform recognize OTel events           — COMPLETE
+Step 5c²c Codec serializers handle OTel-native log events                      — COMPLETE
 Step 5c²  Migrate logs batch 2+: other sources, transforms, sinks              — NEXT
 Step 5d²  Migrate metrics batch 2+: other sources, transforms, sinks
 Step 5f   Ship VRL migration tool
@@ -1124,6 +1125,38 @@ now accept OTel-native events for all three signals. The full OTel pipeline
 - All 6 OTLP serializer tests pass (3 existing + 3 new).
 - `cargo check` clean.
 
+#### 5c²c — Codec serializers handle OTel-native log events — COMPLETE
+
+**Status: COMPLETE.** Committed as `feat(agt): codec serializers handle OTel-native log events`.
+
+All log-oriented codec serializers now accept `OtelLog` events without panicking.
+OTel log events are projected to `LogEvent` via a new `to_log_event()` lossy projection
+(body→message, attributes→top-level fields, resource/scope as nested objects).
+
+**What was changed (12 files, +384 / -26 lines):**
+- `OtelLogEvent::to_log_event()` — lossy projection to LogEvent for all log-oriented sinks.
+- `OtelLogEvent::body_string()` — text extraction for text/raw_message serializers.
+- `Event::into_log_coerce()` — handles both `Log` (passthrough) and `OtelLog` (projection).
+- Shared `any_value_to_vrl()` and `kvlist_to_object_map()` helpers in `otel_event.rs`.
+- **text.rs**: OtelLog body encoded as text line via `body_string()`.
+- **raw_message.rs**: OtelLog body encoded as raw bytes via `body_string()`.
+- **logfmt.rs**: OtelLog projected via `into_log_coerce()`, attributes encoded as logfmt.
+- **csv.rs**: OtelLog projected via `into_log_coerce()`.
+- **gelf.rs**: OtelLog projected via `into_log_coerce()`, then GELF validation.
+- **cef.rs**: OtelLog projected via `into_log_coerce()`.
+- **avro.rs**: OtelLog projected via `into_log_coerce()`.
+- **arrow.rs**: OtelLog included in record batch building via `to_log_event()`.
+- **syslog.rs**: Explicit match on OtelLog, projects to LogEvent for syslog encoding.
+- **native.rs**: Returns error (was panic) for OTel events in legacy proto format.
+
+**7 new tests:** to_log_event roundtrip, body_string extraction, text/raw_message/logfmt
+OtelLog serialization, native rejection.
+
+**Validation gate (5c²c) — ALL PASS:**
+- 218 codec tests pass (3 pre-existing failures in syslog/gelf unrelated).
+- 11 otel_event tests pass (2 new).
+- `cargo check -p vector` clean.
+
 #### 5c²b — Condition matchers + sample transform recognize OTel events — COMPLETE
 
 **Status: COMPLETE.** Committed as `feat(agt): condition matchers and sample transform recognize OTel-native events`.
@@ -1347,6 +1380,7 @@ Based on actual file counts from source. Items marked ✓ have actual line count
 | Step 5e²: OTLP serializer OTel-native encoding | 4 actual | 227 actual | ✓ COMPLETE |
 | Step 5c²a: VrlTarget OTel-native events | 17 actual | 966 actual | ✓ COMPLETE |
 | Step 5c²b: Condition matchers + sample transform | 12 actual | 42 actual | ✓ COMPLETE |
+| Step 5c²c: Codec serializers OTel-native logs | 26 actual | 384 actual | ✓ COMPLETE |
 | Step 5f: VRL migration tool | 0 | ~800 est. | Pending |
 | Step 5g: Rename + type alias + proto cleanup | ~800 (event/proto.rs + aliases) | ~50 est. | Pending |
 | Source adaptations DD + Vector | ~500 est. | ~800 est. | Pending |
@@ -1382,5 +1416,7 @@ Both paths are now removed. The source always emits true OTel-native events:
 not logs.
 
 Total: 22 opentelemetry-proto tests + 11 OTel source tests + 6 OTLP serializer tests
-+ 24 VrlTarget tests (12 existing + 12 new OTel) + 3 condition matcher tests passing.
++ 24 VrlTarget tests (12 existing + 12 new OTel) + 3 condition matcher tests
++ 7 new codec/otel_event tests (to_log_event, body_string, text, raw_message, logfmt,
+native rejection) passing.
 Files changed across 5a–5c²b: ~55 files, +3,134/-975 actual lines.

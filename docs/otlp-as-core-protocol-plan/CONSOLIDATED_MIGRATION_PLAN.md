@@ -375,6 +375,7 @@ Step 5c²a VrlTarget supports OTel-native events (all 3 signals)                
 Step 5c²b Condition matchers + sample transform recognize OTel events           — COMPLETE
 Step 5c²c Codec serializers handle OTel-native log events                      — COMPLETE
 Step 5c²d Transforms handle OTel-native events (eliminate panics)              — COMPLETE
+Step 5c²e Sinks handle OTel-native events (eliminate panics)                   — COMPLETE
 Step 5c²  Migrate logs batch 2+: other sources, transforms, sinks              — NEXT
 Step 5d²  Migrate metrics batch 2+: other sources, transforms, sinks
 Step 5f   Ship VRL migration tool
@@ -1126,6 +1127,39 @@ now accept OTel-native events for all three signals. The full OTel pipeline
 - All 6 OTLP serializer tests pass (3 existing + 3 new).
 - `cargo check` clean.
 
+#### 5c²e — Sinks handle OTel-native events (eliminate panics) — COMPLETE
+
+**Status: COMPLETE.** Committed as `feat(agt): sinks handle OTel-native events without panicking`.
+
+All sinks that previously panicked on OTel-native events now handle them gracefully.
+Log sinks project `OtelLogEvent` to `LogEvent`; metric sinks skip non-metric events.
+
+**What was changed (16 files, +39 / -23 lines):**
+
+*Log sinks — project OtelLog to LogEvent:*
+- `loki/sink.rs`: coerce at start of `encode_event`; OtelLog projected to LogEvent
+- `splunk_hec/logs/sink.rs`: `into_log_coerce()` in `process_log`
+- `elasticsearch/sink.rs`: `OtelLog` arm added to scan filter (was silently dropped)
+- `mezmo.rs`: `into_log_coerce()` in `encode_event`
+- `influxdb/logs.rs`: `into_log_coerce()` in `encode_event`
+- `gcp/stackdriver/logs/encoder.rs`: `into_log_coerce()` in `encode_event`
+- `gcp_chronicle/chronicle_unstructured.rs`: coerce OtelLog before timestamp extraction
+- `keep/encoder.rs`: coerce OtelLog before JSON serialization
+- `aws_kinesis/sink.rs`: `into_log_coerce()` in `run_inner`
+
+*Metric sinks — skip non-metric events:*
+- `prometheus/exporter.rs`: `try_into_metric()` with `continue` (was `into_metric()`)
+- `influxdb/metrics.rs`: `try_into_metric()` chained with `normalize()`
+- `greptimedb/metrics/sink.rs`: `filter_map` with `try_into_metric()`
+- `splunk_hec/metrics/sink.rs`: `filter_map` with `try_into_metric()`
+- `sematext/metrics.rs`: `try_into_metric()` chained with `normalize()`
+- `aws_cloudwatch_metrics/mod.rs`: `try_into_metric()` chained with `normalize()`
+- `gcp/stackdriver/metrics/sink.rs`: `try_into_metric()` before Counter/Gauge filter
+
+**Validation gate (5c²e) — ALL PASS:**
+- 243 sink tests pass across all modified sinks.
+- `cargo check -p vector` clean.
+
 #### 5c²d — Transforms handle OTel-native events (eliminate panics) — COMPLETE
 
 **Status: COMPLETE.** Committed as `feat(agt): transforms handle OTel-native events without panicking`.
@@ -1412,6 +1446,7 @@ Based on actual file counts from source. Items marked ✓ have actual line count
 | Step 5c²b: Condition matchers + sample transform | 12 actual | 42 actual | ✓ COMPLETE |
 | Step 5c²c: Codec serializers OTel-native logs | 26 actual | 384 actual | ✓ COMPLETE |
 | Step 5c²d: Transforms handle OTel events | 16 actual | 135 actual | ✓ COMPLETE |
+| Step 5c²e: Sinks handle OTel events | 23 actual | 39 actual | ✓ COMPLETE |
 | Step 5f: VRL migration tool | 0 | ~800 est. | Pending |
 | Step 5g: Rename + type alias + proto cleanup | ~800 (event/proto.rs + aliases) | ~50 est. | Pending |
 | Source adaptations DD + Vector | ~500 est. | ~800 est. | Pending |

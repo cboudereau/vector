@@ -380,8 +380,8 @@ Step 5c²f Buffer codec + remaining gaps (tap, OutputBuffer, sematext, NR)      
 Step 5c²g Last unsafe into_log/as_mut_log call sites                           — COMPLETE
 Step 5c²h Template engine + Transformer + silent-drop fixes                    — COMPLETE
 Step 5c²  Migrate logs batch 2+: other sources, transforms, sinks              — COMPLETE
-Step 5d²  Migrate metrics batch 2+: other sources, transforms, sinks           — NEXT
-Step 5f   Ship VRL migration tool
+Step 5d²  Migrate metrics batch 2+: other sources, transforms, sinks           — COMPLETE
+Step 5f   Ship VRL migration tool                                              — NEXT
 Step 5g   Rename OtelXxxEvent → XxxEvent + type alias cleanup
 Step 4    Tail sampling + load-balancing sink + pipeline telemetry              — after Step 5
 Step 6    Native codecs and Vector proto removal
@@ -1129,6 +1129,42 @@ now accept OTel-native events for all three signals. The full OTel pipeline
 **Validation gate (5e²) — ALL PASS:**
 - All 6 OTLP serializer tests pass (3 existing + 3 new).
 - `cargo check` clean.
+
+#### 5d² — Migrate metrics batch 2+ — COMPLETE
+
+**Status: COMPLETE.** Committed as `feat(agt): pass OtelMetric events through aggregate and metric_to_log transforms`.
+
+The metric migration is simpler than the log migration because `OtelMetricEvent` wraps OTLP
+metric protobuf structures that are fundamentally different from Vector's `Metric` type
+(gauges/sums/histograms with data points vs. flat metric values). Metric-specific transforms
+and sinks already received safe handling in steps 5c²d and 5c²e (via `try_into_metric()` and
+early returns for non-Metric events).
+
+**Remaining gaps fixed (2 files, +11 / -2 lines):**
+
+- `aggregate.rs`: OtelMetric events were silently dropped by `record()`. Now they pass through
+  to downstream components unchanged.
+- `metric_to_log.rs`: OtelMetric events were silently dropped. Now they pass through unchanged.
+
+**Audit confirmed safe — no changes needed:**
+
+| Component | Status |
+|-----------|--------|
+| tag_cardinality_limit | Returns early for non-Metric, passes through |
+| incremental_to_absolute | `_ => Some(event)` passes through |
+| sample transform | OtelMetric can't reach (Input::log+trace only) |
+| Transformer | OtelMetric passes through (no field filtering needed) |
+| Template engine | Metric sinks don't render templates against raw events |
+| Prometheus, InfluxDB, Splunk HEC metrics, etc. | `try_into_metric()` — safe skip |
+| Buffer codec | Encodes OtelMetrics arrays (fixed in 5c²f) |
+| OutputBuffer | Coalesces OtelMetric events (fixed in 5c²f) |
+| source_sender lag | Returns None for OtelMetric timestamp — acceptable |
+| vector-tap | OtelMetrics skipped (no TapPayload variant yet) — acceptable |
+
+**Validation gate (5d²) — ALL PASS:**
+- 14 aggregate tests pass.
+- 9 metric_to_log tests pass.
+- `cargo check -p vector` clean.
 
 #### 5c²h — Template engine + Transformer + silent-drop fixes — COMPLETE
 

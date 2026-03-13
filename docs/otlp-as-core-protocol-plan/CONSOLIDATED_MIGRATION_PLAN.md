@@ -374,6 +374,7 @@ Step 5e²  OTLP serializer encodes OTel-native events (HTTP sink path)          
 Step 5c²a VrlTarget supports OTel-native events (all 3 signals)                — COMPLETE
 Step 5c²b Condition matchers + sample transform recognize OTel events           — COMPLETE
 Step 5c²c Codec serializers handle OTel-native log events                      — COMPLETE
+Step 5c²d Transforms handle OTel-native events (eliminate panics)              — COMPLETE
 Step 5c²  Migrate logs batch 2+: other sources, transforms, sinks              — NEXT
 Step 5d²  Migrate metrics batch 2+: other sources, transforms, sinks
 Step 5f   Ship VRL migration tool
@@ -1125,6 +1126,35 @@ now accept OTel-native events for all three signals. The full OTel pipeline
 - All 6 OTLP serializer tests pass (3 existing + 3 new).
 - `cargo check` clean.
 
+#### 5c²d — Transforms handle OTel-native events (eliminate panics) — COMPLETE
+
+**Status: COMPLETE.** Committed as `feat(agt): transforms handle OTel-native events without panicking`.
+
+All transforms that previously panicked on OTel-native events now handle them gracefully.
+`OtelSpanEvent` gains `to_log_event()` for lossy projection to `LogEvent`.
+
+**What was changed (10 files, +135 / -16 lines):**
+
+*Log-oriented transforms — project OtelLog to LogEvent:*
+- `dedupe`: projects OtelLog to LogEvent for cache key extraction; original event preserved
+- `reduce`: uses `into_log_coerce()` for OtelLog projection
+- `log_to_metric`: projects OtelLog to LogEvent; non-log events silently skipped
+
+*Metric-only transforms — pass through or skip non-metrics:*
+- `tag_cardinality_limit`: non-metric events pass through unchanged
+- `aggregate`: non-metric events silently skipped
+- `incremental_to_absolute`: non-metric events pass through unchanged
+- `metric_to_log`: non-metric events silently skipped
+
+*Other transforms:*
+- `aws_ec2_metadata`: OTel events pass through without metadata insertion (was panic)
+- `trace_to_log`: `OtelSpan` events converted via new `OtelSpanEvent::to_log_event()`
+- `lua v1/v2`: left as-is (returns error for unsupported types — acceptable limitation)
+
+**Validation gate (5c²d) — ALL PASS:**
+- 68 existing transform tests pass.
+- `cargo check -p vector` clean.
+
 #### 5c²c — Codec serializers handle OTel-native log events — COMPLETE
 
 **Status: COMPLETE.** Committed as `feat(agt): codec serializers handle OTel-native log events`.
@@ -1381,6 +1411,7 @@ Based on actual file counts from source. Items marked ✓ have actual line count
 | Step 5c²a: VrlTarget OTel-native events | 17 actual | 966 actual | ✓ COMPLETE |
 | Step 5c²b: Condition matchers + sample transform | 12 actual | 42 actual | ✓ COMPLETE |
 | Step 5c²c: Codec serializers OTel-native logs | 26 actual | 384 actual | ✓ COMPLETE |
+| Step 5c²d: Transforms handle OTel events | 16 actual | 135 actual | ✓ COMPLETE |
 | Step 5f: VRL migration tool | 0 | ~800 est. | Pending |
 | Step 5g: Rename + type alias + proto cleanup | ~800 (event/proto.rs + aliases) | ~50 est. | Pending |
 | Source adaptations DD + Vector | ~500 est. | ~800 est. | Pending |
@@ -1418,5 +1449,5 @@ not logs.
 Total: 22 opentelemetry-proto tests + 11 OTel source tests + 6 OTLP serializer tests
 + 24 VrlTarget tests (12 existing + 12 new OTel) + 3 condition matcher tests
 + 7 new codec/otel_event tests (to_log_event, body_string, text, raw_message, logfmt,
-native rejection) passing.
+native rejection) + 68 existing transform tests verified passing.
 Files changed across 5a–5c²b: ~55 files, +3,134/-975 actual lines.

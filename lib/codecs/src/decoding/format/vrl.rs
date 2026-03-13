@@ -130,7 +130,9 @@ impl VrlDeserializer {
             Ok(_) => match target.into_events(log_namespace) {
                 TargetEvents::One(event) => Ok(smallvec![event]),
                 TargetEvents::Logs(events_iter) => Ok(SmallVec::from_iter(events_iter)),
-                TargetEvents::Traces(_) => Err("trace targets are not supported".into()),
+                TargetEvents::OtelLogs(events_iter) => Ok(SmallVec::from_iter(events_iter)),
+                TargetEvents::Traces(_)
+                | TargetEvents::OtelSpans(_) => Err("trace targets are not supported".into()),
             },
             Err(e) => Err(e.to_string().into()),
         }

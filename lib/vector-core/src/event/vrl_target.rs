@@ -7,6 +7,12 @@ use std::{
 };
 
 use lookup::{OwnedTargetPath, OwnedValuePath, PathPrefix, lookup_v2::OwnedSegment};
+use otel_proto_types::common::v1::{
+    AnyValue as OtelAnyValue, ArrayValue as OtelArrayValue, KeyValue as OtelKeyValue,
+    KeyValueList as OtelKeyValueList, InstrumentationScope as OtelScope,
+    any_value::Value as OtelValueKind,
+};
+use otel_proto_types::resource::v1::Resource as OtelResource;
 use snafu::Snafu;
 use vrl::{
     compiler::{ProgramInfo, SecretTarget, Target, value::VrlValueConvert},
@@ -14,7 +20,10 @@ use vrl::{
     value::{Kind, ObjectMap, Value},
 };
 
-use super::{Event, EventMetadata, LogEvent, Metric, MetricKind, TraceEvent, metric::TagValue};
+use super::{
+    Event, EventMetadata, LogEvent, Metric, MetricKind, OtelLogEvent, OtelMetricEvent,
+    OtelSpanEvent, TraceEvent, metric::TagValue,
+};
 use crate::{
     config::{LogNamespace, log_schema},
     schema::Definition,
@@ -32,6 +41,417 @@ const VALID_METRIC_PATHS_GET: &str =
 /// fields such as `.tags.host.thing`.
 const MAX_METRIC_PATH_DEPTH: usize = 3;
 
+const VALID_OTEL_METRIC_PATHS_SET: &str = ".name, .description, .unit, .resource, .scope";
+const VALID_OTEL_METRIC_PATHS_GET: &str =
+    ".name, .description, .unit, .resource, .scope, .data";
+const MAX_OTEL_METRIC_PATH_DEPTH: usize = 4;
+
+// ---------------------------------------------------------------------------
+// OTel AnyValue <-> VRL Value conversion
+// ---------------------------------------------------------------------------
+
+fn otel_any_value_to_vrl(av: &OtelAnyValue) -> Value {
+    match &av.value {
+        Some(OtelValueKind::StringValue(s)) => Value::Bytes(s.clone().into()),
+        Some(OtelValueKind::BoolValue(b)) => Value::Boolean(*b),
+        Some(OtelValueKind::IntValue(i)) => Value::Integer(*i),
+        Some(OtelValueKind::DoubleValue(d)) => {
+            Value::Float(ordered_float::NotNan::new(*d).unwrap_or_default())
+        }
+        Some(OtelValueKind::BytesValue(b)) => Value::Bytes(bytes::Bytes::copy_from_slice(b)),
+        Some(OtelValueKind::ArrayValue(arr)) => {
+            Value::Array(arr.values.iter().map(otel_any_value_to_vrl).collect())
+        }
+        Some(OtelValueKind::KvlistValue(kvl)) => {
+            Value::Object(otel_kvlist_to_object_map(&kvl.values))
+        }
+        None => Value::Null,
+    }
+}
+
+fn vrl_value_to_otel_any_value(val: &Value) -> OtelAnyValue {
+    let kind = match val {
+        Value::Bytes(b) => Some(OtelValueKind::StringValue(
+            String::from_utf8_lossy(b).into_owned(),
+        )),
+        Value::Boolean(b) => Some(OtelValueKind::BoolValue(*b)),
+        Value::Integer(i) => Some(OtelValueKind::IntValue(*i)),
+        Value::Float(f) => Some(OtelValueKind::DoubleValue(f.into_inner())),
+        Value::Timestamp(ts) => Some(OtelValueKind::StringValue(ts.to_rfc3339())),
+        Value::Regex(r) => Some(OtelValueKind::StringValue(r.to_string())),
+        Value::Null => None,
+        Value::Object(map) => Some(OtelValueKind::KvlistValue(OtelKeyValueList {
+            values: object_map_to_otel_kvlist(map),
+        })),
+        Value::Array(arr) => Some(OtelValueKind::ArrayValue(OtelArrayValue {
+            values: arr.iter().map(vrl_value_to_otel_any_value).collect(),
+        })),
+    };
+    OtelAnyValue { value: kind }
+}
+
+fn otel_kvlist_to_object_map(kvs: &[OtelKeyValue]) -> ObjectMap {
+    kvs.iter()
+        .map(|kv| {
+            let v = kv
+                .value
+                .as_ref()
+                .map(otel_any_value_to_vrl)
+                .unwrap_or(Value::Null);
+            (kv.key.clone().into(), v)
+        })
+        .collect()
+}
+
+fn object_map_to_otel_kvlist(map: &ObjectMap) -> Vec<OtelKeyValue> {
+    map.iter()
+        .map(|(k, v)| OtelKeyValue {
+            key: k.to_string(),
+            value: Some(vrl_value_to_otel_any_value(v)),
+        })
+        .collect()
+}
+
+fn otel_resource_to_value(resource: &OtelResource) -> Value {
+    let mut map = ObjectMap::new();
+    map.insert(
+        "attributes".into(),
+        Value::Object(otel_kvlist_to_object_map(&resource.attributes)),
+    );
+    map.insert(
+        "dropped_attributes_count".into(),
+        Value::Integer(resource.dropped_attributes_count as i64),
+    );
+    Value::Object(map)
+}
+
+fn value_to_otel_resource(val: &Value) -> Option<OtelResource> {
+    let map = val.as_object()?;
+    let attributes = map
+        .get("attributes")
+        .and_then(|v| v.as_object())
+        .map(object_map_to_otel_kvlist)
+        .unwrap_or_default();
+    let dropped_attributes_count = map
+        .get("dropped_attributes_count")
+        .and_then(|v| v.as_integer())
+        .unwrap_or(0) as u32;
+    Some(OtelResource {
+        attributes,
+        dropped_attributes_count,
+    })
+}
+
+fn otel_scope_to_value(scope: &OtelScope) -> Value {
+    let mut map = ObjectMap::new();
+    map.insert("name".into(), Value::Bytes(scope.name.clone().into()));
+    map.insert("version".into(), Value::Bytes(scope.version.clone().into()));
+    map.insert(
+        "attributes".into(),
+        Value::Object(otel_kvlist_to_object_map(&scope.attributes)),
+    );
+    map.insert(
+        "dropped_attributes_count".into(),
+        Value::Integer(scope.dropped_attributes_count as i64),
+    );
+    Value::Object(map)
+}
+
+fn value_to_otel_scope(val: &Value) -> Option<OtelScope> {
+    let map = val.as_object()?;
+    let name = map
+        .get("name")
+        .and_then(|v| v.as_bytes())
+        .map(|b| String::from_utf8_lossy(b).into_owned())
+        .unwrap_or_default();
+    let version = map
+        .get("version")
+        .and_then(|v| v.as_bytes())
+        .map(|b| String::from_utf8_lossy(b).into_owned())
+        .unwrap_or_default();
+    let attributes = map
+        .get("attributes")
+        .and_then(|v| v.as_object())
+        .map(object_map_to_otel_kvlist)
+        .unwrap_or_default();
+    let dropped_attributes_count = map
+        .get("dropped_attributes_count")
+        .and_then(|v| v.as_integer())
+        .unwrap_or(0) as u32;
+    Some(OtelScope {
+        name,
+        version,
+        attributes,
+        dropped_attributes_count,
+    })
+}
+
+fn hex_encode_bytes(bytes: &[u8]) -> Value {
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        use std::fmt::Write;
+        let _ = write!(s, "{b:02x}");
+    }
+    Value::Bytes(s.into())
+}
+
+fn hex_decode_value(val: &Value) -> Vec<u8> {
+    val.as_bytes()
+        .map(|b| {
+            let s = String::from_utf8_lossy(b);
+            let mut out = Vec::with_capacity(s.len() / 2);
+            let mut chars = s.chars();
+            while let (Some(hi), Some(lo)) = (chars.next(), chars.next()) {
+                if let (Some(h), Some(l)) = (hi.to_digit(16), lo.to_digit(16)) {
+                    out.push((h * 16 + l) as u8);
+                }
+            }
+            out
+        })
+        .unwrap_or_default()
+}
+
+// ---------------------------------------------------------------------------
+// OtelLogEvent -> Value projection
+// ---------------------------------------------------------------------------
+
+fn otel_log_event_to_value(event: &OtelLogEvent) -> Value {
+    let record = event.record();
+    let mut map = ObjectMap::new();
+    map.insert("time_unix_nano".into(), Value::Integer(record.time_unix_nano as i64));
+    map.insert("observed_time_unix_nano".into(), Value::Integer(record.observed_time_unix_nano as i64));
+    map.insert("severity_number".into(), Value::Integer(record.severity_number as i64));
+    map.insert("severity_text".into(), Value::Bytes(record.severity_text.clone().into()));
+    map.insert(
+        "body".into(),
+        record.body.as_ref().map(otel_any_value_to_vrl).unwrap_or(Value::Null),
+    );
+    map.insert(
+        "attributes".into(),
+        Value::Object(otel_kvlist_to_object_map(&record.attributes)),
+    );
+    map.insert("dropped_attributes_count".into(), Value::Integer(record.dropped_attributes_count as i64));
+    map.insert("flags".into(), Value::Integer(record.flags as i64));
+    map.insert("trace_id".into(), hex_encode_bytes(&record.trace_id));
+    map.insert("span_id".into(), hex_encode_bytes(&record.span_id));
+
+    if let Some(resource) = event.resource() {
+        map.insert("resource".into(), otel_resource_to_value(resource));
+    }
+    if let Some(scope) = event.scope() {
+        map.insert("scope".into(), otel_scope_to_value(scope));
+    }
+
+    Value::Object(map)
+}
+
+fn value_to_otel_log_event(value: Value, metadata: EventMetadata) -> OtelLogEvent {
+    use otel_proto_types::logs::v1::LogRecord;
+
+    let map = match value {
+        Value::Object(m) => m,
+        _ => ObjectMap::new(),
+    };
+
+    let body = map.get("body").and_then(|v| {
+        if v.is_null() { None } else { Some(vrl_value_to_otel_any_value(v)) }
+    });
+
+    let record = LogRecord {
+        time_unix_nano: map.get("time_unix_nano").and_then(|v| v.as_integer()).unwrap_or(0) as u64,
+        observed_time_unix_nano: map.get("observed_time_unix_nano").and_then(|v| v.as_integer()).unwrap_or(0) as u64,
+        severity_number: map.get("severity_number").and_then(|v| v.as_integer()).unwrap_or(0) as i32,
+        severity_text: map.get("severity_text").and_then(|v| v.as_bytes()).map(|b| String::from_utf8_lossy(b).into_owned()).unwrap_or_default(),
+        body,
+        attributes: map.get("attributes").and_then(|v| v.as_object()).map(object_map_to_otel_kvlist).unwrap_or_default(),
+        dropped_attributes_count: map.get("dropped_attributes_count").and_then(|v| v.as_integer()).unwrap_or(0) as u32,
+        flags: map.get("flags").and_then(|v| v.as_integer()).unwrap_or(0) as u32,
+        trace_id: map.get("trace_id").map(hex_decode_value).unwrap_or_default(),
+        span_id: map.get("span_id").map(hex_decode_value).unwrap_or_default(),
+    };
+
+    let resource = map.get("resource").and_then(value_to_otel_resource);
+    let scope = map.get("scope").and_then(value_to_otel_scope);
+
+    OtelLogEvent::from_parts(record, resource, scope, metadata)
+}
+
+// ---------------------------------------------------------------------------
+// OtelSpanEvent -> Value projection
+// ---------------------------------------------------------------------------
+
+fn otel_span_event_to_value(event: &OtelSpanEvent) -> Value {
+    let span_proto = event.span();
+    let mut map = ObjectMap::new();
+    map.insert("trace_id".into(), hex_encode_bytes(&span_proto.trace_id));
+    map.insert("span_id".into(), hex_encode_bytes(&span_proto.span_id));
+    map.insert("trace_state".into(), Value::Bytes(span_proto.trace_state.clone().into()));
+    map.insert("parent_span_id".into(), hex_encode_bytes(&span_proto.parent_span_id));
+    map.insert("name".into(), Value::Bytes(span_proto.name.clone().into()));
+    map.insert("kind".into(), Value::Integer(span_proto.kind as i64));
+    map.insert("start_time_unix_nano".into(), Value::Integer(span_proto.start_time_unix_nano as i64));
+    map.insert("end_time_unix_nano".into(), Value::Integer(span_proto.end_time_unix_nano as i64));
+    map.insert(
+        "attributes".into(),
+        Value::Object(otel_kvlist_to_object_map(&span_proto.attributes)),
+    );
+    map.insert("dropped_attributes_count".into(), Value::Integer(span_proto.dropped_attributes_count as i64));
+
+    let events_arr: Vec<Value> = span_proto.events.iter().map(|e| {
+        let mut em = ObjectMap::new();
+        em.insert("time_unix_nano".into(), Value::Integer(e.time_unix_nano as i64));
+        em.insert("name".into(), Value::Bytes(e.name.clone().into()));
+        em.insert("attributes".into(), Value::Object(otel_kvlist_to_object_map(&e.attributes)));
+        em.insert("dropped_attributes_count".into(), Value::Integer(e.dropped_attributes_count as i64));
+        Value::Object(em)
+    }).collect();
+    map.insert("events".into(), Value::Array(events_arr));
+    map.insert("dropped_events_count".into(), Value::Integer(span_proto.dropped_events_count as i64));
+
+    let links_arr: Vec<Value> = span_proto.links.iter().map(|l| {
+        let mut lm = ObjectMap::new();
+        lm.insert("trace_id".into(), hex_encode_bytes(&l.trace_id));
+        lm.insert("span_id".into(), hex_encode_bytes(&l.span_id));
+        lm.insert("trace_state".into(), Value::Bytes(l.trace_state.clone().into()));
+        lm.insert("attributes".into(), Value::Object(otel_kvlist_to_object_map(&l.attributes)));
+        lm.insert("dropped_attributes_count".into(), Value::Integer(l.dropped_attributes_count as i64));
+        Value::Object(lm)
+    }).collect();
+    map.insert("links".into(), Value::Array(links_arr));
+    map.insert("dropped_links_count".into(), Value::Integer(span_proto.dropped_links_count as i64));
+
+    if let Some(status) = &span_proto.status {
+        let mut sm = ObjectMap::new();
+        sm.insert("message".into(), Value::Bytes(status.message.clone().into()));
+        sm.insert("code".into(), Value::Integer(status.code as i64));
+        map.insert("status".into(), Value::Object(sm));
+    }
+
+    if let Some(resource) = event.resource() {
+        map.insert("resource".into(), otel_resource_to_value(resource));
+    }
+    if let Some(scope) = event.scope() {
+        map.insert("scope".into(), otel_scope_to_value(scope));
+    }
+
+    Value::Object(map)
+}
+
+fn value_to_otel_span_event(value: Value, metadata: EventMetadata) -> OtelSpanEvent {
+    use otel_proto_types::trace::v1::{Span, Status, span};
+
+    let map = match value {
+        Value::Object(m) => m,
+        _ => ObjectMap::new(),
+    };
+
+    let events = map
+        .get("events")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| {
+                    let em = v.as_object()?;
+                    Some(span::Event {
+                        time_unix_nano: em.get("time_unix_nano").and_then(|v| v.as_integer()).unwrap_or(0) as u64,
+                        name: em.get("name").and_then(|v| v.as_bytes()).map(|b| String::from_utf8_lossy(b).into_owned()).unwrap_or_default(),
+                        attributes: em.get("attributes").and_then(|v| v.as_object()).map(object_map_to_otel_kvlist).unwrap_or_default(),
+                        dropped_attributes_count: em.get("dropped_attributes_count").and_then(|v| v.as_integer()).unwrap_or(0) as u32,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let links = map
+        .get("links")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| {
+                    let lm = v.as_object()?;
+                    Some(span::Link {
+                        trace_id: lm.get("trace_id").map(hex_decode_value).unwrap_or_default(),
+                        span_id: lm.get("span_id").map(hex_decode_value).unwrap_or_default(),
+                        trace_state: lm.get("trace_state").and_then(|v| v.as_bytes()).map(|b| String::from_utf8_lossy(b).into_owned()).unwrap_or_default(),
+                        attributes: lm.get("attributes").and_then(|v| v.as_object()).map(object_map_to_otel_kvlist).unwrap_or_default(),
+                        dropped_attributes_count: lm.get("dropped_attributes_count").and_then(|v| v.as_integer()).unwrap_or(0) as u32,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let status = map.get("status").and_then(|v| {
+        let sm = v.as_object()?;
+        Some(Status {
+            message: sm.get("message").and_then(|v| v.as_bytes()).map(|b| String::from_utf8_lossy(b).into_owned()).unwrap_or_default(),
+            code: sm.get("code").and_then(|v| v.as_integer()).unwrap_or(0) as i32,
+        })
+    });
+
+    let span_proto = Span {
+        trace_id: map.get("trace_id").map(hex_decode_value).unwrap_or_default(),
+        span_id: map.get("span_id").map(hex_decode_value).unwrap_or_default(),
+        trace_state: map.get("trace_state").and_then(|v| v.as_bytes()).map(|b| String::from_utf8_lossy(b).into_owned()).unwrap_or_default(),
+        parent_span_id: map.get("parent_span_id").map(hex_decode_value).unwrap_or_default(),
+        name: map.get("name").and_then(|v| v.as_bytes()).map(|b| String::from_utf8_lossy(b).into_owned()).unwrap_or_default(),
+        kind: map.get("kind").and_then(|v| v.as_integer()).unwrap_or(0) as i32,
+        start_time_unix_nano: map.get("start_time_unix_nano").and_then(|v| v.as_integer()).unwrap_or(0) as u64,
+        end_time_unix_nano: map.get("end_time_unix_nano").and_then(|v| v.as_integer()).unwrap_or(0) as u64,
+        attributes: map.get("attributes").and_then(|v| v.as_object()).map(object_map_to_otel_kvlist).unwrap_or_default(),
+        dropped_attributes_count: map.get("dropped_attributes_count").and_then(|v| v.as_integer()).unwrap_or(0) as u32,
+        events,
+        dropped_events_count: map.get("dropped_events_count").and_then(|v| v.as_integer()).unwrap_or(0) as u32,
+        links,
+        dropped_links_count: map.get("dropped_links_count").and_then(|v| v.as_integer()).unwrap_or(0) as u32,
+        status,
+    };
+
+    let resource = map.get("resource").and_then(value_to_otel_resource);
+    let scope = map.get("scope").and_then(value_to_otel_scope);
+
+    OtelSpanEvent::from_parts(span_proto, resource, scope, metadata)
+}
+
+// ---------------------------------------------------------------------------
+// OtelMetricEvent -> Value projection (restricted, read-heavy)
+// ---------------------------------------------------------------------------
+
+fn precompute_otel_metric_value(
+    event: &OtelMetricEvent,
+    info: &ProgramInfo,
+) -> Value {
+    let mut map = ObjectMap::new();
+
+    let target_path_iter = info.target_queries.iter().filter_map(|query| {
+        query
+            .path
+            .to_alternative_components(MAX_OTEL_METRIC_PATH_DEPTH)
+    });
+
+    for path in target_path_iter {
+        match path.as_slice() {
+            ["name"] => { map.insert("name".into(), Value::Bytes(event.name().to_owned().into())); }
+            ["description"] => { map.insert("description".into(), Value::Bytes(event.description().to_owned().into())); }
+            ["unit"] => { map.insert("unit".into(), Value::Bytes(event.unit().to_owned().into())); }
+            ["resource"] | ["resource", ..] => {
+                if let Some(resource) = event.resource() {
+                    map.insert("resource".into(), otel_resource_to_value(resource));
+                }
+            }
+            ["scope"] | ["scope", ..] => {
+                if let Some(scope) = event.scope() {
+                    map.insert("scope".into(), otel_scope_to_value(scope));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Value::Object(map)
+}
+
 /// An adapter to turn `Event`s into `vrl_lib::Target`s.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
@@ -45,12 +465,20 @@ pub enum VrlTarget {
         multi_value_tags: bool,
     },
     Trace(Value, EventMetadata),
+    OtelLog(Value, EventMetadata),
+    OtelSpan(Value, EventMetadata),
+    OtelMetric {
+        event: OtelMetricEvent,
+        value: Value,
+    },
 }
 
 pub enum TargetEvents {
     One(Event),
     Logs(TargetIter<LogEvent>),
     Traces(TargetIter<TraceEvent>),
+    OtelLogs(TargetIter<OtelLogEvent>),
+    OtelSpans(TargetIter<OtelSpanEvent>),
 }
 
 pub struct TargetIter<T> {
@@ -99,6 +527,26 @@ impl Iterator for TargetIter<TraceEvent> {
     }
 }
 
+impl Iterator for TargetIter<OtelLogEvent> {
+    type Item = Event;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|v| {
+            Event::OtelLog(value_to_otel_log_event(v, self.metadata.clone()))
+        })
+    }
+}
+
+impl Iterator for TargetIter<OtelSpanEvent> {
+    type Item = Event;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|v| {
+            Event::OtelSpan(value_to_otel_span_event(v, self.metadata.clone()))
+        })
+    }
+}
+
 impl VrlTarget {
     pub fn new(event: Event, info: &ProgramInfo, multi_value_metric_tags: bool) -> Self {
         match event {
@@ -107,9 +555,6 @@ impl VrlTarget {
                 VrlTarget::LogEvent(value, metadata)
             }
             Event::Metric(metric) => {
-                // We pre-generate [`Value`] types for the metric fields accessed in
-                // the event. This allows us to then return references to those
-                // values, even if the field is accessed more than once.
                 let value = precompute_metric_value(&metric, info, multi_value_metric_tags);
 
                 VrlTarget::Metric {
@@ -122,8 +567,19 @@ impl VrlTarget {
                 let (fields, metadata) = event.into_parts();
                 VrlTarget::Trace(Value::Object(fields), metadata)
             }
-            Event::OtelLog(_) | Event::OtelMetric(_) | Event::OtelSpan(_) => {
-                todo!("VrlTarget for OTel-native events (step 5d)")
+            Event::OtelLog(event) => {
+                let metadata = event.metadata().clone();
+                let value = otel_log_event_to_value(&event);
+                VrlTarget::OtelLog(value, metadata)
+            }
+            Event::OtelSpan(event) => {
+                let metadata = event.metadata().clone();
+                let value = otel_span_event_to_value(&event);
+                VrlTarget::OtelSpan(value, metadata)
+            }
+            Event::OtelMetric(event) => {
+                let value = precompute_otel_metric_value(&event, info);
+                VrlTarget::OtelMetric { event, value }
             }
         }
     }
@@ -182,20 +638,57 @@ impl VrlTarget {
                 v => TargetEvents::One(create_log_event(v, metadata).into()),
             },
             VrlTarget::Metric { metric, .. } => TargetEvents::One(Event::Metric(metric)),
+            VrlTarget::OtelLog(value, metadata) => match value {
+                value @ Value::Object(_) => {
+                    TargetEvents::One(Event::OtelLog(value_to_otel_log_event(value, metadata)))
+                }
+                Value::Array(values) => TargetEvents::OtelLogs(TargetIter {
+                    iter: values.into_iter(),
+                    metadata,
+                    _marker: PhantomData,
+                    log_namespace,
+                }),
+                value => {
+                    TargetEvents::One(Event::OtelLog(value_to_otel_log_event(value, metadata)))
+                }
+            },
+            VrlTarget::OtelSpan(value, metadata) => match value {
+                value @ Value::Object(_) => {
+                    TargetEvents::One(Event::OtelSpan(value_to_otel_span_event(value, metadata)))
+                }
+                Value::Array(values) => TargetEvents::OtelSpans(TargetIter {
+                    iter: values.into_iter(),
+                    metadata,
+                    _marker: PhantomData,
+                    log_namespace,
+                }),
+                value => {
+                    TargetEvents::One(Event::OtelSpan(value_to_otel_span_event(value, metadata)))
+                }
+            },
+            VrlTarget::OtelMetric { event, .. } => TargetEvents::One(Event::OtelMetric(event)),
         }
     }
 
     fn metadata(&self) -> &EventMetadata {
         match self {
-            VrlTarget::LogEvent(_, metadata) | VrlTarget::Trace(_, metadata) => metadata,
+            VrlTarget::LogEvent(_, metadata)
+            | VrlTarget::Trace(_, metadata)
+            | VrlTarget::OtelLog(_, metadata)
+            | VrlTarget::OtelSpan(_, metadata) => metadata,
             VrlTarget::Metric { metric, .. } => metric.metadata(),
+            VrlTarget::OtelMetric { event, .. } => event.metadata(),
         }
     }
 
     fn metadata_mut(&mut self) -> &mut EventMetadata {
         match self {
-            VrlTarget::LogEvent(_, metadata) | VrlTarget::Trace(_, metadata) => metadata,
+            VrlTarget::LogEvent(_, metadata)
+            | VrlTarget::Trace(_, metadata)
+            | VrlTarget::OtelLog(_, metadata)
+            | VrlTarget::OtelSpan(_, metadata) => metadata,
             VrlTarget::Metric { metric, .. } => metric.metadata_mut(),
+            VrlTarget::OtelMetric { event, .. } => event.metadata_mut(),
         }
     }
 }
@@ -284,9 +777,68 @@ impl Target for VrlTarget {
         let path = &target_path.path;
         match target_path.prefix {
             PathPrefix::Event => match self {
-                VrlTarget::LogEvent(log, _) | VrlTarget::Trace(log, _) => {
+                VrlTarget::LogEvent(log, _)
+                | VrlTarget::Trace(log, _)
+                | VrlTarget::OtelLog(log, _)
+                | VrlTarget::OtelSpan(log, _) => {
                     log.insert(path, value);
                     Ok(())
+                }
+                VrlTarget::OtelMetric {
+                    event,
+                    value: metric_value,
+                } => {
+                    if path.is_root() {
+                        return Err(MetricPathError::SetPathError.to_string());
+                    }
+
+                    if let Some(paths) = path.to_alternative_components(MAX_OTEL_METRIC_PATH_DEPTH) {
+                        match paths.as_slice() {
+                            ["name"] => {
+                                let v = value.clone().try_bytes().map_err(|e| e.to_string())?;
+                                event.metric_mut().name = String::from_utf8_lossy(&v).into_owned();
+                            }
+                            ["description"] => {
+                                let v = value.clone().try_bytes().map_err(|e| e.to_string())?;
+                                event.metric_mut().description = String::from_utf8_lossy(&v).into_owned();
+                            }
+                            ["unit"] => {
+                                let v = value.clone().try_bytes().map_err(|e| e.to_string())?;
+                                event.metric_mut().unit = String::from_utf8_lossy(&v).into_owned();
+                            }
+                            ["resource"] => {
+                                if let Some(resource) = value_to_otel_resource(&value) {
+                                    event.set_resource(resource);
+                                }
+                            }
+                            ["resource", ..] => {
+                                // Insert into existing resource value projection
+                            }
+                            ["scope"] => {
+                                if let Some(scope) = value_to_otel_scope(&value) {
+                                    event.set_scope(scope);
+                                }
+                            }
+                            ["scope", ..] => {
+                                // Insert into existing scope value projection
+                            }
+                            _ => {
+                                return Err(MetricPathError::InvalidPath {
+                                    path: &path.to_string(),
+                                    expected: VALID_OTEL_METRIC_PATHS_SET,
+                                }
+                                .to_string());
+                            }
+                        }
+                        metric_value.insert(path, value);
+                        return Ok(());
+                    }
+
+                    Err(MetricPathError::InvalidPath {
+                        path: &path.to_string(),
+                        expected: VALID_OTEL_METRIC_PATHS_SET,
+                    }
+                    .to_string())
                 }
                 VrlTarget::Metric {
                     metric,
@@ -382,10 +934,14 @@ impl Target for VrlTarget {
     fn target_get(&self, target_path: &OwnedTargetPath) -> Result<Option<&Value>, String> {
         match target_path.prefix {
             PathPrefix::Event => match self {
-                VrlTarget::LogEvent(log, _) | VrlTarget::Trace(log, _) => {
-                    Ok(log.get(&target_path.path))
-                }
+                VrlTarget::LogEvent(log, _)
+                | VrlTarget::Trace(log, _)
+                | VrlTarget::OtelLog(log, _)
+                | VrlTarget::OtelSpan(log, _) => Ok(log.get(&target_path.path)),
                 VrlTarget::Metric { value, .. } => target_get_metric(&target_path.path, value),
+                VrlTarget::OtelMetric { value, .. } => {
+                    target_get_otel_metric(&target_path.path, value)
+                }
             },
             PathPrefix::Metadata => Ok(self.metadata().value().get(&target_path.path)),
         }
@@ -397,10 +953,14 @@ impl Target for VrlTarget {
     ) -> Result<Option<&mut Value>, String> {
         match target_path.prefix {
             PathPrefix::Event => match self {
-                VrlTarget::LogEvent(log, _) | VrlTarget::Trace(log, _) => {
-                    Ok(log.get_mut(&target_path.path))
-                }
+                VrlTarget::LogEvent(log, _)
+                | VrlTarget::Trace(log, _)
+                | VrlTarget::OtelLog(log, _)
+                | VrlTarget::OtelSpan(log, _) => Ok(log.get_mut(&target_path.path)),
                 VrlTarget::Metric { value, .. } => target_get_mut_metric(&target_path.path, value),
+                VrlTarget::OtelMetric { value, .. } => {
+                    target_get_mut_otel_metric(&target_path.path, value)
+                }
             },
             PathPrefix::Metadata => Ok(self.metadata_mut().value_mut().get_mut(&target_path.path)),
         }
@@ -413,7 +973,10 @@ impl Target for VrlTarget {
     ) -> Result<Option<vrl::value::Value>, String> {
         match target_path.prefix {
             PathPrefix::Event => match self {
-                VrlTarget::LogEvent(log, _) | VrlTarget::Trace(log, _) => {
+                VrlTarget::LogEvent(log, _)
+                | VrlTarget::Trace(log, _)
+                | VrlTarget::OtelLog(log, _)
+                | VrlTarget::OtelSpan(log, _) => {
                     Ok(log.remove(&target_path.path, compact))
                 }
                 VrlTarget::Metric {
@@ -460,6 +1023,13 @@ impl Target for VrlTarget {
                     } else {
                         Ok(None)
                     }
+                }
+                VrlTarget::OtelMetric { event: _, value } => {
+                    if target_path.path.is_root() {
+                        return Err(MetricPathError::SetPathError.to_string());
+                    }
+                    value.remove(&target_path.path, false);
+                    Ok(None)
                 }
             },
             PathPrefix::Metadata => Ok(self
@@ -552,6 +1122,56 @@ fn target_get_mut_metric<'a>(
         _ => Err(MetricPathError::InvalidPath {
             path: &path.to_string(),
             expected: VALID_METRIC_PATHS_SET,
+        }
+        .to_string()),
+    }
+}
+
+fn target_get_otel_metric<'a>(
+    path: &OwnedValuePath,
+    value: &'a Value,
+) -> Result<Option<&'a Value>, String> {
+    if path.is_root() {
+        return Ok(Some(value));
+    }
+
+    let value = value.get(path);
+
+    let Some(paths) = path.to_alternative_components(MAX_OTEL_METRIC_PATH_DEPTH) else {
+        return Ok(None);
+    };
+
+    match paths.as_slice() {
+        ["name"] | ["description"] | ["unit"] | ["resource"] | ["resource", ..]
+        | ["scope"] | ["scope", ..] | ["data"] => Ok(value),
+        _ => Err(MetricPathError::InvalidPath {
+            path: &path.to_string(),
+            expected: VALID_OTEL_METRIC_PATHS_GET,
+        }
+        .to_string()),
+    }
+}
+
+fn target_get_mut_otel_metric<'a>(
+    path: &OwnedValuePath,
+    value: &'a mut Value,
+) -> Result<Option<&'a mut Value>, String> {
+    if path.is_root() {
+        return Ok(Some(value));
+    }
+
+    let value = value.get_mut(path);
+
+    let Some(paths) = path.to_alternative_components(MAX_OTEL_METRIC_PATH_DEPTH) else {
+        return Ok(None);
+    };
+
+    match paths.as_slice() {
+        ["name"] | ["description"] | ["unit"] | ["resource"] | ["resource", ..]
+        | ["scope"] | ["scope", ..] => Ok(value),
+        _ => Err(MetricPathError::InvalidPath {
+            path: &path.to_string(),
+            expected: VALID_OTEL_METRIC_PATHS_SET,
         }
         .to_string()),
     }
@@ -955,6 +1575,8 @@ mod test {
                     TargetEvents::One(event) => vec![event],
                     TargetEvents::Logs(events) => events.collect::<Vec<_>>(),
                     TargetEvents::Traces(events) => events.collect::<Vec<_>>(),
+                    TargetEvents::OtelLogs(events) => events.collect::<Vec<_>>(),
+                    TargetEvents::OtelSpans(events) => events.collect::<Vec<_>>(),
                 }
                 .first()
                 .cloned()
@@ -1101,6 +1723,8 @@ mod test {
                     TargetEvents::One(event) => vec![event],
                     TargetEvents::Logs(events) => events.collect::<Vec<_>>(),
                     TargetEvents::Traces(events) => events.collect::<Vec<_>>(),
+                    TargetEvents::OtelLogs(events) => events.collect::<Vec<_>>(),
+                    TargetEvents::OtelSpans(events) => events.collect::<Vec<_>>(),
                 },
                 expect
                     .into_iter()
@@ -1413,5 +2037,322 @@ mod test {
 
         // get single value (should be the last one)
         assert_eq!(metric.tag_value("foo"), Some("b".into()));
+    }
+
+    // -- OTel-native VrlTarget tests --
+
+    fn make_info_with_queries(paths: &[&str]) -> ProgramInfo {
+        ProgramInfo {
+            fallible: false,
+            abortable: false,
+            target_queries: paths
+                .iter()
+                .map(|p| {
+                    OwnedTargetPath::event(
+                        OwnedValuePath::try_from(p.to_string()).unwrap(),
+                    )
+                })
+                .collect(),
+            target_assignments: vec![],
+        }
+    }
+
+    fn make_empty_info() -> ProgramInfo {
+        ProgramInfo {
+            fallible: false,
+            abortable: false,
+            target_queries: vec![],
+            target_assignments: vec![],
+        }
+    }
+
+    #[test]
+    fn otel_log_vrl_target_get_severity_text() {
+        use otel_proto_types::logs::v1::LogRecord;
+        let event = OtelLogEvent::new(LogRecord {
+            severity_text: "ERROR".to_string(),
+            ..Default::default()
+        });
+        let info = make_empty_info();
+        let target = VrlTarget::new(Event::OtelLog(event), &info, false);
+
+        let path = OwnedTargetPath::event(owned_value_path!("severity_text"));
+        let result = Target::target_get(&target, &path).unwrap();
+        assert_eq!(result, Some(&Value::Bytes("ERROR".into())));
+    }
+
+    #[test]
+    fn otel_log_vrl_target_get_attribute() {
+        use otel_proto_types::logs::v1::LogRecord;
+        let event = OtelLogEvent::new(LogRecord {
+            attributes: vec![OtelKeyValue {
+                key: "host.name".to_string(),
+                value: Some(OtelAnyValue {
+                    value: Some(OtelValueKind::StringValue("myhost".to_string())),
+                }),
+            }],
+            ..Default::default()
+        });
+        let info = make_empty_info();
+        let target = VrlTarget::new(Event::OtelLog(event), &info, false);
+
+        let path = OwnedTargetPath::event(owned_value_path!("attributes", "host.name"));
+        let result = Target::target_get(&target, &path).unwrap();
+        assert_eq!(result, Some(&Value::Bytes("myhost".into())));
+    }
+
+    #[test]
+    fn otel_log_vrl_target_insert_attribute() {
+        use otel_proto_types::logs::v1::LogRecord;
+        let event = OtelLogEvent::new(LogRecord::default());
+        let info = make_empty_info();
+        let mut target = VrlTarget::new(Event::OtelLog(event), &info, false);
+
+        let path = OwnedTargetPath::event(owned_value_path!("attributes", "host.name"));
+        Target::target_insert(&mut target, &path, Value::Bytes("myhost".into())).unwrap();
+
+        let result = Target::target_get(&target, &path).unwrap();
+        assert_eq!(result, Some(&Value::Bytes("myhost".into())));
+    }
+
+    #[test]
+    fn otel_log_vrl_target_roundtrip_into_events() {
+        use otel_proto_types::logs::v1::LogRecord;
+        let event = OtelLogEvent::new(LogRecord {
+            severity_text: "INFO".to_string(),
+            severity_number: 9,
+            time_unix_nano: 1234567890,
+            attributes: vec![OtelKeyValue {
+                key: "service".to_string(),
+                value: Some(OtelAnyValue {
+                    value: Some(OtelValueKind::StringValue("web".to_string())),
+                }),
+            }],
+            ..Default::default()
+        });
+        let info = make_empty_info();
+        let target = VrlTarget::new(Event::OtelLog(event), &info, false);
+
+        let events: Vec<Event> = match target.into_events(LogNamespace::Vector) {
+            TargetEvents::One(e) => vec![e],
+            _ => panic!("expected one event"),
+        };
+        assert_eq!(events.len(), 1);
+
+        let restored = match &events[0] {
+            Event::OtelLog(e) => e,
+            _ => panic!("expected OtelLog"),
+        };
+        assert_eq!(restored.severity_text(), "INFO");
+        assert_eq!(restored.severity_number(), 9);
+        assert_eq!(restored.time_unix_nano(), 1234567890);
+        assert_eq!(restored.attributes().len(), 1);
+        assert_eq!(restored.attributes()[0].key, "service");
+    }
+
+    #[test]
+    fn otel_log_vrl_target_mutate_and_roundtrip() {
+        use otel_proto_types::logs::v1::LogRecord;
+        let event = OtelLogEvent::new(LogRecord {
+            severity_text: "DEBUG".to_string(),
+            ..Default::default()
+        });
+        let info = make_empty_info();
+        let mut target = VrlTarget::new(Event::OtelLog(event), &info, false);
+
+        let path = OwnedTargetPath::event(owned_value_path!("severity_text"));
+        Target::target_insert(&mut target, &path, Value::Bytes("WARN".into())).unwrap();
+
+        let events: Vec<Event> = match target.into_events(LogNamespace::Vector) {
+            TargetEvents::One(e) => vec![e],
+            _ => panic!("expected one event"),
+        };
+
+        let restored = match &events[0] {
+            Event::OtelLog(e) => e,
+            _ => panic!("expected OtelLog"),
+        };
+        assert_eq!(restored.severity_text(), "WARN");
+    }
+
+    #[test]
+    fn otel_span_vrl_target_get_name() {
+        use otel_proto_types::trace::v1::Span;
+        let event = OtelSpanEvent::new(Span {
+            name: "my-span".to_string(),
+            trace_id: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+            ..Default::default()
+        });
+        let info = make_empty_info();
+        let target = VrlTarget::new(Event::OtelSpan(event), &info, false);
+
+        let path = OwnedTargetPath::event(owned_value_path!("name"));
+        let result = Target::target_get(&target, &path).unwrap();
+        assert_eq!(result, Some(&Value::Bytes("my-span".into())));
+
+        let path = OwnedTargetPath::event(owned_value_path!("trace_id"));
+        let result = Target::target_get(&target, &path).unwrap();
+        assert_eq!(result, Some(&Value::Bytes("0102030405060708090a0b0c0d0e0f10".into())));
+    }
+
+    #[test]
+    fn otel_span_vrl_target_roundtrip() {
+        use otel_proto_types::trace::v1::Span;
+        let event = OtelSpanEvent::new(Span {
+            name: "test-span".to_string(),
+            kind: 2,
+            start_time_unix_nano: 1000,
+            end_time_unix_nano: 2000,
+            ..Default::default()
+        });
+        let info = make_empty_info();
+        let target = VrlTarget::new(Event::OtelSpan(event), &info, false);
+
+        let events: Vec<Event> = match target.into_events(LogNamespace::Vector) {
+            TargetEvents::One(e) => vec![e],
+            _ => panic!("expected one event"),
+        };
+
+        let restored = match &events[0] {
+            Event::OtelSpan(e) => e,
+            _ => panic!("expected OtelSpan"),
+        };
+        assert_eq!(restored.name(), "test-span");
+        assert_eq!(restored.kind(), 2);
+        assert_eq!(restored.start_time_unix_nano(), 1000);
+        assert_eq!(restored.end_time_unix_nano(), 2000);
+    }
+
+    #[test]
+    fn otel_metric_vrl_target_get_name() {
+        use otel_proto_types::metrics::v1::Metric as OtelMetricProto;
+        let event = OtelMetricEvent::new(OtelMetricProto {
+            name: "http.duration".to_string(),
+            description: "request duration".to_string(),
+            unit: "ms".to_string(),
+            ..Default::default()
+        });
+        let info = make_info_with_queries(&[".name", ".description", ".unit"]);
+        let target = VrlTarget::new(Event::OtelMetric(event), &info, false);
+
+        let path = OwnedTargetPath::event(owned_value_path!("name"));
+        let result = Target::target_get(&target, &path).unwrap();
+        assert_eq!(result, Some(&Value::Bytes("http.duration".into())));
+
+        let path = OwnedTargetPath::event(owned_value_path!("unit"));
+        let result = Target::target_get(&target, &path).unwrap();
+        assert_eq!(result, Some(&Value::Bytes("ms".into())));
+    }
+
+    #[test]
+    fn otel_metric_vrl_target_set_name() {
+        use otel_proto_types::metrics::v1::Metric as OtelMetricProto;
+        let event = OtelMetricEvent::new(OtelMetricProto {
+            name: "old.name".to_string(),
+            ..Default::default()
+        });
+        let info = make_info_with_queries(&[".name"]);
+        let mut target = VrlTarget::new(Event::OtelMetric(event), &info, false);
+
+        let path = OwnedTargetPath::event(owned_value_path!("name"));
+        Target::target_insert(&mut target, &path, Value::Bytes("new.name".into())).unwrap();
+
+        let events: Vec<Event> = match target.into_events(LogNamespace::Vector) {
+            TargetEvents::One(e) => vec![e],
+            _ => panic!("expected one event"),
+        };
+
+        let restored = match &events[0] {
+            Event::OtelMetric(e) => e,
+            _ => panic!("expected OtelMetric"),
+        };
+        assert_eq!(restored.name(), "new.name");
+    }
+
+    #[test]
+    fn otel_log_resource_and_scope_roundtrip() {
+        use otel_proto_types::logs::v1::LogRecord;
+        let mut event = OtelLogEvent::new(LogRecord::default());
+        event.set_resource(OtelResource {
+            attributes: vec![OtelKeyValue {
+                key: "service.name".to_string(),
+                value: Some(OtelAnyValue {
+                    value: Some(OtelValueKind::StringValue("my-svc".to_string())),
+                }),
+            }],
+            dropped_attributes_count: 0,
+        });
+        event.set_scope(OtelScope {
+            name: "my-lib".to_string(),
+            version: "1.0".to_string(),
+            ..Default::default()
+        });
+
+        let info = make_empty_info();
+        let target = VrlTarget::new(Event::OtelLog(event), &info, false);
+
+        let path = OwnedTargetPath::event(owned_value_path!("resource", "attributes", "service.name"));
+        let result = Target::target_get(&target, &path).unwrap();
+        assert_eq!(result, Some(&Value::Bytes("my-svc".into())));
+
+        let path = OwnedTargetPath::event(owned_value_path!("scope", "name"));
+        let result = Target::target_get(&target, &path).unwrap();
+        assert_eq!(result, Some(&Value::Bytes("my-lib".into())));
+
+        let events: Vec<Event> = match target.into_events(LogNamespace::Vector) {
+            TargetEvents::One(e) => vec![e],
+            _ => panic!("expected one event"),
+        };
+
+        let restored = match &events[0] {
+            Event::OtelLog(e) => e,
+            _ => panic!("expected OtelLog"),
+        };
+        assert!(restored.resource().is_some());
+        assert_eq!(
+            restored.resource_attribute("service.name").and_then(|v| {
+                match &v.value {
+                    Some(OtelValueKind::StringValue(s)) => Some(s.as_str()),
+                    _ => None,
+                }
+            }),
+            Some("my-svc")
+        );
+        assert_eq!(restored.scope().unwrap().name, "my-lib");
+        assert_eq!(restored.scope().unwrap().version, "1.0");
+    }
+
+    #[test]
+    fn otel_any_value_conversion_roundtrip() {
+        let cases = vec![
+            OtelAnyValue { value: Some(OtelValueKind::StringValue("hello".to_string())) },
+            OtelAnyValue { value: Some(OtelValueKind::BoolValue(true)) },
+            OtelAnyValue { value: Some(OtelValueKind::IntValue(42)) },
+            OtelAnyValue { value: Some(OtelValueKind::DoubleValue(3.14)) },
+            OtelAnyValue { value: Some(OtelValueKind::BytesValue(vec![1, 2, 3])) },
+            OtelAnyValue { value: None },
+        ];
+
+        for original in &cases {
+            let vrl_val = otel_any_value_to_vrl(original);
+            let restored = vrl_value_to_otel_any_value(&vrl_val);
+            match (&original.value, &restored.value) {
+                (Some(OtelValueKind::BytesValue(a)), Some(OtelValueKind::StringValue(b))) => {
+                    // bytes -> string lossy conversion is expected
+                    assert_eq!(String::from_utf8_lossy(a).as_ref(), b.as_str());
+                }
+                (None, None) => {}
+                _ => assert_eq!(original, &restored, "roundtrip failed for {original:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn hex_encode_decode_roundtrip() {
+        let original = vec![0x01, 0x23, 0xab, 0xcd, 0xef, 0x00, 0xff];
+        let encoded = hex_encode_bytes(&original);
+        assert_eq!(encoded, Value::Bytes("0123abcdef00ff".into()));
+        let decoded = hex_decode_value(&encoded);
+        assert_eq!(decoded, original);
     }
 }

@@ -417,8 +417,7 @@ impl StreamSink<Event> for Memory {
 
                     let finalizers = event.take_finalizers();
 
-                    // Panic: This sink only accepts Logs, so this should never panic
-                    let log = event.into_log();
+                    let log = event.into_log_coerce();
 
                     if let (Value::Object(map), _) = log.into_parts() {
                         self.handle_value(map)

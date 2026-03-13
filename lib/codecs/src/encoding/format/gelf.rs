@@ -115,8 +115,7 @@ impl GelfSerializer {
 
     /// Encode event and represent it as JSON value.
     pub fn to_json_value(&self, event: Event) -> Result<serde_json::Value, vector_common::Error> {
-        // input_type() restricts the event type to LogEvents
-        let log = to_gelf_event(event.into_log())?;
+        let log = to_gelf_event(event.into_log_coerce())?;
         serde_json::to_value(&log).map_err(|e| e.to_string().into())
     }
 
@@ -132,7 +131,7 @@ impl Encoder<Event> for GelfSerializer {
     type Error = vector_common::Error;
 
     fn encode(&mut self, event: Event, buffer: &mut BytesMut) -> Result<(), Self::Error> {
-        let log = to_gelf_event(event.into_log())?;
+        let log = to_gelf_event(event.into_log_coerce())?;
         let writer = buffer.writer();
         serde_json::to_writer(writer, &log)?;
         Ok(())

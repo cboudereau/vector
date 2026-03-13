@@ -168,6 +168,19 @@ impl Event {
         }
     }
 
+    /// Coerce self into a `LogEvent`, projecting `OtelLog` events lossily.
+    ///
+    /// `Event::Log` passes through as-is.  `Event::OtelLog` is projected
+    /// into a `LogEvent` via [`OtelLogEvent::to_log_event`].  All other
+    /// variants cause a panic.
+    pub fn into_log_coerce(self) -> LogEvent {
+        match self {
+            Event::Log(log) => log,
+            Event::OtelLog(otel) => otel.to_log_event(),
+            _ => panic!("Failed type coercion, {self:?} is not a log-like event"),
+        }
+    }
+
     /// Return self as a `LogEvent` if possible
     ///
     /// If the event is a `LogEvent`, then `Some(&log_event)` is returned, otherwise `None`.

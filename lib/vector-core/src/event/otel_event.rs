@@ -1,4 +1,6 @@
-use otel_proto_types::common::v1::{AnyValue, InstrumentationScope, KeyValue};
+use otel_proto_types::common::v1::{
+    AnyValue, InstrumentationScope, KeyValue, any_value::Value as OtelValueKind,
+};
 use otel_proto_types::logs::v1::LogRecord;
 use otel_proto_types::metrics::v1::Metric as OtelMetricProto;
 use otel_proto_types::resource::v1::Resource;
@@ -14,8 +16,50 @@ use vector_common::{
     json_size::JsonSize,
     request_metadata::GetEventCountTags,
 };
+use vrl::value::{ObjectMap, Value};
 
-use super::{BatchNotifier, EstimatedJsonEncodedSizeOf, EventFinalizer, EventMetadata};
+use super::{
+    BatchNotifier, EstimatedJsonEncodedSizeOf, EventFinalizer, EventMetadata, LogEvent,
+};
+
+fn hex_encode(bytes: &[u8]) -> Value {
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        use std::fmt::Write;
+        let _ = write!(s, "{b:02x}");
+    }
+    Value::Bytes(s.into())
+}
+
+pub(crate) fn any_value_to_vrl(av: &AnyValue) -> Value {
+    match &av.value {
+        Some(OtelValueKind::StringValue(s)) => Value::Bytes(s.clone().into()),
+        Some(OtelValueKind::BoolValue(b)) => Value::Boolean(*b),
+        Some(OtelValueKind::IntValue(i)) => Value::Integer(*i),
+        Some(OtelValueKind::DoubleValue(d)) => {
+            Value::Float(ordered_float::NotNan::new(*d).unwrap_or_default())
+        }
+        Some(OtelValueKind::BytesValue(b)) => Value::Bytes(bytes::Bytes::copy_from_slice(b)),
+        Some(OtelValueKind::ArrayValue(arr)) => {
+            Value::Array(arr.values.iter().map(any_value_to_vrl).collect())
+        }
+        Some(OtelValueKind::KvlistValue(kvl)) => Value::Object(kvlist_to_object_map(&kvl.values)),
+        None => Value::Null,
+    }
+}
+
+pub(crate) fn kvlist_to_object_map(kvs: &[KeyValue]) -> ObjectMap {
+    kvs.iter()
+        .map(|kv| {
+            let v = kv
+                .value
+                .as_ref()
+                .map(any_value_to_vrl)
+                .unwrap_or(Value::Null);
+            (kv.key.clone().into(), v)
+        })
+        .collect()
+}
 
 fn attribute_value<'a>(attrs: &'a [KeyValue], key: &str) -> Option<&'a AnyValue> {
     attrs
@@ -124,6 +168,21 @@ impl OtelLogEvent {
         self.record.body.as_ref()
     }
 
+    /// Return the body as a human-readable string, suitable for text-oriented
+    /// serializers (text, raw_message, etc.).
+    pub fn body_string(&self) -> String {
+        match self.record.body.as_ref().and_then(|av| av.value.as_ref()) {
+            Some(OtelValueKind::StringValue(s)) => s.clone(),
+            Some(OtelValueKind::BoolValue(b)) => b.to_string(),
+            Some(OtelValueKind::IntValue(i)) => i.to_string(),
+            Some(OtelValueKind::DoubleValue(d)) => d.to_string(),
+            Some(OtelValueKind::BytesValue(b)) => String::from_utf8_lossy(b).into_owned(),
+            Some(OtelValueKind::ArrayValue(a)) => format!("{a:?}"),
+            Some(OtelValueKind::KvlistValue(kv)) => format!("{kv:?}"),
+            None => String::new(),
+        }
+    }
+
     pub fn set_body(&mut self, value: AnyValue) {
         self.record.body = Some(value);
     }
@@ -188,6 +247,87 @@ impl OtelLogEvent {
     pub fn with_batch_notifier_option(mut self, batch: &Option<BatchNotifier>) -> Self {
         self.metadata = self.metadata.with_batch_notifier_option(batch);
         self
+    }
+
+    /// Lossy projection of this OTel log event into a legacy `LogEvent`.
+    ///
+    /// The body becomes `message`, attributes become top-level fields, and
+    /// resource / scope are preserved as nested objects.  Useful for
+    /// text-oriented serializers (text, logfmt, CSV, GELF, CEF, syslog, etc.)
+    /// that only understand `LogEvent`.
+    pub fn to_log_event(&self) -> LogEvent {
+        let mut map = ObjectMap::new();
+
+        if let Some(body) = self.body() {
+            map.insert("message".into(), any_value_to_vrl(body));
+        }
+
+        for kv in &self.record.attributes {
+            let v = kv
+                .value
+                .as_ref()
+                .map(any_value_to_vrl)
+                .unwrap_or(Value::Null);
+            map.insert(kv.key.clone().into(), v);
+        }
+
+        if !self.record.severity_text.is_empty() {
+            map.insert(
+                "severity_text".into(),
+                Value::Bytes(self.record.severity_text.clone().into()),
+            );
+        }
+        if self.record.severity_number != 0 {
+            map.insert(
+                "severity_number".into(),
+                Value::Integer(self.record.severity_number as i64),
+            );
+        }
+        if self.record.time_unix_nano != 0 {
+            let nanos = self.record.time_unix_nano;
+            let secs = (nanos / 1_000_000_000) as i64;
+            let nsecs = (nanos % 1_000_000_000) as u32;
+            if let Some(ts) = chrono::DateTime::from_timestamp(secs, nsecs) {
+                map.insert("timestamp".into(), Value::Timestamp(ts));
+            }
+        }
+        if !self.record.trace_id.is_empty() {
+            map.insert("trace_id".into(), hex_encode(&self.record.trace_id));
+        }
+        if !self.record.span_id.is_empty() {
+            map.insert("span_id".into(), hex_encode(&self.record.span_id));
+        }
+
+        if let Some(resource) = &self.resource {
+            let mut res_map = kvlist_to_object_map(&resource.attributes);
+            if resource.dropped_attributes_count != 0 {
+                res_map.insert(
+                    "dropped_attributes_count".into(),
+                    Value::Integer(resource.dropped_attributes_count as i64),
+                );
+            }
+            map.insert("resource".into(), Value::Object(res_map));
+        }
+
+        if let Some(scope) = &self.scope {
+            let mut scope_map = ObjectMap::new();
+            if !scope.name.is_empty() {
+                scope_map.insert("name".into(), Value::Bytes(scope.name.clone().into()));
+            }
+            if !scope.version.is_empty() {
+                scope_map
+                    .insert("version".into(), Value::Bytes(scope.version.clone().into()));
+            }
+            if !scope.attributes.is_empty() {
+                scope_map.insert(
+                    "attributes".into(),
+                    Value::Object(kvlist_to_object_map(&scope.attributes)),
+                );
+            }
+            map.insert("scope".into(), Value::Object(scope_map));
+        }
+
+        LogEvent::from_map(map, self.metadata.clone())
     }
 }
 
@@ -734,5 +874,87 @@ mod tests {
         assert_eq!(r.severity_text, "INFO");
         assert_eq!(res, resource);
         assert_eq!(sc.as_ref().map(|s| s.name.as_str()), Some("my-lib"));
+    }
+
+    #[test]
+    fn to_log_event_projects_fields() {
+        use otel_proto_types::common::v1::any_value::Value as Kind;
+
+        let mut event = OtelLogEvent::new(LogRecord {
+            body: Some(AnyValue {
+                value: Some(Kind::StringValue("hello world".into())),
+            }),
+            severity_text: "ERROR".into(),
+            severity_number: 17,
+            time_unix_nano: 1_700_000_000_000_000_000,
+            trace_id: vec![0xab, 0xcd],
+            span_id: vec![0x12, 0x34],
+            attributes: vec![KeyValue {
+                key: "env".into(),
+                value: Some(AnyValue {
+                    value: Some(Kind::StringValue("prod".into())),
+                }),
+            }],
+            ..Default::default()
+        });
+        event.set_resource(Resource {
+            attributes: vec![KeyValue {
+                key: "service.name".into(),
+                value: Some(AnyValue {
+                    value: Some(Kind::StringValue("my-svc".into())),
+                }),
+            }],
+            dropped_attributes_count: 0,
+        });
+        event.set_scope(InstrumentationScope {
+            name: "my-lib".into(),
+            version: "1.0".into(),
+            ..Default::default()
+        });
+
+        let log = event.to_log_event();
+        assert_eq!(
+            log.get("message").unwrap().as_str().unwrap(),
+            "hello world"
+        );
+        assert_eq!(
+            log.get("severity_text").unwrap().as_str().unwrap(),
+            "ERROR"
+        );
+        assert_eq!(log.get("severity_number").unwrap().as_integer().unwrap(), 17);
+        assert!(log.get("timestamp").unwrap().is_timestamp());
+        assert_eq!(log.get("trace_id").unwrap().as_str().unwrap(), "abcd");
+        assert_eq!(log.get("span_id").unwrap().as_str().unwrap(), "1234");
+        assert_eq!(log.get("env").unwrap().as_str().unwrap(), "prod");
+
+        let resource = log.get("resource").unwrap();
+        assert!(resource.is_object());
+
+        let scope = log.get("scope").unwrap();
+        assert!(scope.is_object());
+    }
+
+    #[test]
+    fn body_string_returns_body_text() {
+        use otel_proto_types::common::v1::any_value::Value as Kind;
+
+        let event = OtelLogEvent::new(LogRecord {
+            body: Some(AnyValue {
+                value: Some(Kind::StringValue("test body".into())),
+            }),
+            ..Default::default()
+        });
+        assert_eq!(event.body_string(), "test body");
+
+        let empty = OtelLogEvent::new(LogRecord::default());
+        assert_eq!(empty.body_string(), "");
+
+        let int_body = OtelLogEvent::new(LogRecord {
+            body: Some(AnyValue {
+                value: Some(Kind::IntValue(42)),
+            }),
+            ..Default::default()
+        });
+        assert_eq!(int_body.body_string(), "42");
     }
 }

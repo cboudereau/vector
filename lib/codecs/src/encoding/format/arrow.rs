@@ -299,9 +299,16 @@ fn build_record_batch(
     schema: SchemaRef,
     events: &[Event],
 ) -> Result<RecordBatch, ArrowEncodingError> {
-    let log_events: Vec<LogEvent> = events
+    let projected: Vec<LogEvent> = events
         .iter()
-        .filter_map(Event::maybe_as_log)
+        .filter_map(|e| match e {
+            Event::Log(log) => Some(log.clone()),
+            Event::OtelLog(otel) => Some(otel.to_log_event()),
+            _ => None,
+        })
+        .collect();
+    let log_events: Vec<LogEvent> = projected
+        .iter()
         .map(|log| convert_timestamps(log, &schema))
         .collect::<Result<Vec<_>, _>>()?;
 

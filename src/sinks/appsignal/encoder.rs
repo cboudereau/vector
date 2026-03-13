@@ -29,6 +29,7 @@ impl Encoder<Vec<Event>> for AppsignalEncoder {
 
             let json = match event {
                 Event::Log(log) => json!({ "log": log }),
+                Event::OtelLog(otel) => json!({ "log": otel.to_log_event() }),
                 Event::Metric(metric) => json!({ "metric": metric }),
                 _ => {
                     return Err(std::io::Error::other(format!(

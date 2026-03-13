@@ -115,9 +115,12 @@ impl Transformer {
 
     /// Prepare an event for serialization by the given transformation rules.
     pub fn transform(&self, event: &mut Event) {
+        if matches!(event, Event::OtelLog(_)) {
+            let owned = std::mem::replace(event, Event::Log(LogEvent::default()));
+            *event = Event::Log(owned.into_log_coerce());
+        }
         // Rules are currently applied to logs only.
         if let Some(log) = event.maybe_as_log_mut() {
-            // Ordering in here should not matter.
             self.apply_except_fields(log);
             self.apply_only_fields(log);
             self.apply_timestamp_format(log);

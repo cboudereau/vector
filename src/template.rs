@@ -175,6 +175,15 @@ impl Template {
     }
 
     fn render_event(&self, event: EventRef<'_>) -> Result<String, TemplateRenderingError> {
+        let projected;
+        let event = match event {
+            EventRef::OtelLog(otel) => {
+                projected = otel.to_log_event();
+                EventRef::Log(&projected)
+            }
+            other => other,
+        };
+
         let mut missing_keys = Vec::new();
         let mut out = String::with_capacity(self.reserve_size);
         for part in &self.parts {

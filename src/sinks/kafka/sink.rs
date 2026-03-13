@@ -79,8 +79,11 @@ impl KafkaSink {
         };
 
         input
+            .map(|event| match event {
+                Event::OtelLog(otel) => Event::Log(otel.to_log_event()),
+                other => other,
+            })
             .filter_map(|event| {
-                // Compute the topic.
                 future::ready(
                     self.topic
                         .render_string(&event)

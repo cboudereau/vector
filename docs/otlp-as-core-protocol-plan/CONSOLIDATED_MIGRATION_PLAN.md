@@ -372,6 +372,7 @@ Step 5d   Migrate metrics: OTel source/sink emit/accept OtelMetricEvent        �
 Step 5e   Remove use_otlp_decoding flag + legacy deserializer paths             — COMPLETE
 Step 5e²  OTLP serializer encodes OTel-native events (HTTP sink path)           — COMPLETE
 Step 5c²a VrlTarget supports OTel-native events (all 3 signals)                — COMPLETE
+Step 5c²b Condition matchers + sample transform recognize OTel events           — COMPLETE
 Step 5c²  Migrate logs batch 2+: other sources, transforms, sinks              — NEXT
 Step 5d²  Migrate metrics batch 2+: other sources, transforms, sinks
 Step 5f   Ship VRL migration tool
@@ -1123,6 +1124,24 @@ now accept OTel-native events for all three signals. The full OTel pipeline
 - All 6 OTLP serializer tests pass (3 existing + 3 new).
 - `cargo check` clean.
 
+#### 5c²b — Condition matchers + sample transform recognize OTel events — COMPLETE
+
+**Status: COMPLETE.** Committed as `feat(agt): condition matchers and sample transform recognize OTel-native events`.
+
+The `is_log`, `is_metric`, and `is_trace` condition matchers now recognize OTel-native
+event variants in addition to legacy variants. The `sample` transform no longer panics
+on `OtelLog` events — they flow through sampling like regular logs.
+
+**What was changed (4 files, +42 / -12 lines):**
+- `is_log` matches `Event::OtelLog(_)` (was only `Event::Log(_)`)
+- `is_metric` matches `Event::OtelMetric(_)` (was only `Event::Metric(_)`)
+- `is_trace` matches `Event::OtelSpan(_)` (was only `Event::Trace(_)`)
+- `sample` transform: `OtelLog` moved from panic arm to pass-through arm (like `OtelSpan`)
+- 3 new tests: one per condition matcher verifying the OTel variant is recognized
+
+**Result:** Transforms using `condition.type = "is_log"` (filter, route, etc.) now
+correctly match OTel-native events. The sample transform accepts OTel logs without panicking.
+
 #### 5c²a — VrlTarget supports OTel-native events — COMPLETE
 
 **Status: COMPLETE.** Committed as `feat(agt): VrlTarget supports OTel-native events — unblocks all VRL transforms`.
@@ -1327,6 +1346,7 @@ Based on actual file counts from source. Items marked ✓ have actual line count
 | Step 5e: `use_otlp_decoding` + legacy deserializer paths | 464 actual | 47 actual | ✓ COMPLETE |
 | Step 5e²: OTLP serializer OTel-native encoding | 4 actual | 227 actual | ✓ COMPLETE |
 | Step 5c²a: VrlTarget OTel-native events | 17 actual | 966 actual | ✓ COMPLETE |
+| Step 5c²b: Condition matchers + sample transform | 12 actual | 42 actual | ✓ COMPLETE |
 | Step 5f: VRL migration tool | 0 | ~800 est. | Pending |
 | Step 5g: Rename + type alias + proto cleanup | ~800 (event/proto.rs + aliases) | ~50 est. | Pending |
 | Source adaptations DD + Vector | ~500 est. | ~800 est. | Pending |
@@ -1362,5 +1382,5 @@ Both paths are now removed. The source always emits true OTel-native events:
 not logs.
 
 Total: 22 opentelemetry-proto tests + 11 OTel source tests + 6 OTLP serializer tests
-+ 24 VrlTarget tests (12 existing + 12 new OTel) passing.
-Files changed across 5a–5c²a: ~51 files, +3,092/-963 actual lines.
++ 24 VrlTarget tests (12 existing + 12 new OTel) + 3 condition matcher tests passing.
+Files changed across 5a–5c²b: ~55 files, +3,134/-975 actual lines.

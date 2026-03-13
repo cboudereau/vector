@@ -17,6 +17,10 @@ pub(super) fn make_pulsar_event(
     config: &PulsarSinkConfig,
     event: Event,
 ) -> Option<PulsarEvent> {
+    let event = match event {
+        Event::OtelLog(otel) => Event::Log(otel.to_log_event()),
+        other => other,
+    };
     let topic = topic.render_string(&event).ok()?;
     let key = get_key(&event, &config.partition_key_field);
     let timestamp_millis = get_timestamp_millis(&event);

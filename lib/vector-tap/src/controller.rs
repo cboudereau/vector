@@ -171,7 +171,11 @@ impl TapTransformer {
             EventArray::Logs(logs) => TapPayload::Log(self.output.clone(), logs),
             EventArray::Metrics(metrics) => TapPayload::Metric(self.output.clone(), metrics),
             EventArray::Traces(traces) => TapPayload::Trace(self.output.clone(), traces),
-            EventArray::OtelLogs(_) | EventArray::OtelMetrics(_) | EventArray::OtelSpans(_) => {
+            EventArray::OtelLogs(otel_logs) => {
+                let logs: LogArray = otel_logs.into_iter().map(|o| o.to_log_event()).collect();
+                TapPayload::Log(self.output.clone(), logs)
+            }
+            EventArray::OtelMetrics(_) | EventArray::OtelSpans(_) => {
                 return;
             }
         };

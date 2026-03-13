@@ -10,7 +10,10 @@
 /// path through Vector produces identical OTLP output.
 use bytes::Bytes;
 use prost::Message as _;
-use vector_core::event::{EventArray, LogArray, MetricArray, OtlpCodec, TraceArray};
+use vector_core::event::{
+    EventArray, LogArray, MetricArray, OtelLogArray, OtelMetricArray, OtelSpanArray, OtlpCodec,
+    TraceArray,
+};
 use vrl::{event_path, path, value::Value};
 
 use crate::{
@@ -89,9 +92,101 @@ fn event_array_to_batch(array: &EventArray) -> OtlpBufferBatch {
             traces: Some(traces_to_export(traces)),
             ..Default::default()
         },
-        EventArray::OtelLogs(_) | EventArray::OtelMetrics(_) | EventArray::OtelSpans(_) => {
-            todo!("Native OTel EventArray disk buffer encoding")
+        EventArray::OtelLogs(otel_logs) => OtlpBufferBatch {
+            logs: Some(otel_logs_to_export(otel_logs)),
+            ..Default::default()
+        },
+        EventArray::OtelMetrics(otel_metrics) => OtlpBufferBatch {
+            metrics: Some(otel_metrics_to_export(otel_metrics)),
+            ..Default::default()
+        },
+        EventArray::OtelSpans(otel_spans) => OtlpBufferBatch {
+            traces: Some(otel_spans_to_export(otel_spans)),
+            ..Default::default()
         }
+    }
+}
+
+/// Re-encode a prost Message from `otel_proto_types` to the equivalent
+/// `crate::proto` type. Both are generated from the same `.proto` files so the
+/// wire format is identical.
+fn transcode<S: prost::Message, D: prost::Message + Default>(src: &S) -> D {
+    let mut buf = Vec::with_capacity(src.encoded_len());
+    src.encode(&mut buf).expect("prost encode infallible");
+    D::decode(buf.as_slice()).expect("wire-compatible proto decode")
+}
+
+// --- OTel-native logs -------------------------------------------------------
+
+fn otel_logs_to_export(otel_logs: &OtelLogArray) -> ExportLogsServiceRequest {
+    ExportLogsServiceRequest {
+        resource_logs: otel_logs
+            .iter()
+            .map(|otel| {
+                let record: LogRecord = transcode(otel.record());
+                let resource: Option<Resource> = otel.resource().map(|r| transcode(r));
+                let scope: Option<InstrumentationScope> = otel.scope().map(|s| transcode(s));
+                ResourceLogs {
+                    resource,
+                    scope_logs: vec![ScopeLogs {
+                        scope,
+                        log_records: vec![record],
+                        schema_url: String::new(),
+                    }],
+                    schema_url: String::new(),
+                }
+            })
+            .collect(),
+    }
+}
+
+// --- OTel-native metrics ----------------------------------------------------
+
+fn otel_metrics_to_export(otel_metrics: &OtelMetricArray) -> ExportMetricsServiceRequest {
+    use crate::proto::metrics::v1::{Metric, ResourceMetrics, ScopeMetrics};
+
+    ExportMetricsServiceRequest {
+        resource_metrics: otel_metrics
+            .iter()
+            .map(|otel| {
+                let metric: Metric = transcode(otel.metric());
+                let resource: Option<Resource> = otel.resource().map(|r| transcode(r));
+                let scope: Option<InstrumentationScope> = otel.scope().map(|s| transcode(s));
+                ResourceMetrics {
+                    resource,
+                    scope_metrics: vec![ScopeMetrics {
+                        scope,
+                        metrics: vec![metric],
+                        schema_url: String::new(),
+                    }],
+                    schema_url: String::new(),
+                }
+            })
+            .collect(),
+    }
+}
+
+// --- OTel-native spans ------------------------------------------------------
+
+fn otel_spans_to_export(otel_spans: &OtelSpanArray) -> ExportTraceServiceRequest {
+    ExportTraceServiceRequest {
+        resource_spans: otel_spans
+            .iter()
+            .map(|otel| {
+                let span: Span = transcode(otel.span());
+                let resource: Option<Resource> = otel.resource().map(|r| transcode(r));
+                let scope: Option<InstrumentationScope> = otel.scope().map(|s| transcode(s));
+                ResourceSpans {
+                    resource,
+                    scope_spans: vec![ScopeSpans {
+                        scope,
+                        spans: vec![span],
+                        schema_url: String::new(),
+                    }],
+                    schema_url: String::new(),
+                }
+            })
+            .collect(),
     }
 }
 

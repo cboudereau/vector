@@ -266,6 +266,15 @@ impl OutputBuffer {
             (Event::Trace(trace), Some(EventArray::Traces(traces))) => {
                 traces.push(trace);
             }
+            (Event::OtelLog(e), Some(EventArray::OtelLogs(a))) => {
+                a.push(e);
+            }
+            (Event::OtelMetric(e), Some(EventArray::OtelMetrics(a))) => {
+                a.push(e);
+            }
+            (Event::OtelSpan(e), Some(EventArray::OtelSpans(a))) => {
+                a.push(e);
+            }
             (event, _) => {
                 self.0.push(event.into());
             }

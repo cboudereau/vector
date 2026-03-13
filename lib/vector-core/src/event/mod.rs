@@ -1,6 +1,9 @@
 use std::{convert::TryInto, fmt::Debug, sync::Arc};
 
-pub use array::{EventArray, EventContainer, LogArray, MetricArray, TraceArray, into_event_stream};
+pub use array::{
+    EventArray, EventContainer, LogArray, MetricArray, OtelLogArray, OtelMetricArray,
+    OtelSpanArray, TraceArray, into_event_stream,
+};
 pub use estimated_json_encoded_size_of::EstimatedJsonEncodedSizeOf;
 pub use finalization::{
     BatchNotifier, BatchStatus, BatchStatusReceiver, EventFinalizer, EventFinalizers, EventStatus,
@@ -164,6 +167,16 @@ impl Event {
     pub fn try_into_log(self) -> Option<LogEvent> {
         match self {
             Event::Log(log) => Some(log),
+            _ => None,
+        }
+    }
+
+    /// Try to coerce self into a `LogEvent`, projecting `OtelLog` lossily.
+    /// Returns `None` for non-log event types.
+    pub fn try_into_log_coerce(self) -> Option<LogEvent> {
+        match self {
+            Event::Log(log) => Some(log),
+            Event::OtelLog(otel) => Some(otel.to_log_event()),
             _ => None,
         }
     }

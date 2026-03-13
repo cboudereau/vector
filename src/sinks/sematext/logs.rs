@@ -149,7 +149,11 @@ fn map_timestamp(mut events: EventArray) -> EventArray {
                 }
             }
         }
-        _ => unreachable!("This sink only accepts logs"),
+        EventArray::OtelLogs(otel_logs) => {
+            let logs: Vec<_> = otel_logs.drain(..).map(|o| o.to_log_event()).collect();
+            return map_timestamp(EventArray::Logs(logs));
+        }
+        _ => {}
     }
 
     events

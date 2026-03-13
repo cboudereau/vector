@@ -852,6 +852,11 @@ fn to_metrics(event: &Event) -> Result<Metric, TransformError> {
 
 impl FunctionTransform for LogToMetric {
     fn transform(&mut self, output: &mut OutputBuffer, event: Event) {
+        let event = match event {
+            Event::Log(_) => event,
+            Event::OtelLog(otel) => Event::Log(otel.to_log_event()),
+            _ => return,
+        };
         // Metrics are "all or none" for a specific log. If a single fails, none are produced.
         let mut buffer = Vec::with_capacity(self.metrics.len());
         if self.all_metrics {

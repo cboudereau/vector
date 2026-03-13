@@ -65,8 +65,10 @@ pub struct TraceToLog;
 
 impl FunctionTransform for TraceToLog {
     fn transform(&mut self, output: &mut OutputBuffer, event: Event) {
-        if let Event::Trace(trace) = event {
-            output.push(Event::Log(LogEvent::from(trace)));
+        match event {
+            Event::Trace(trace) => output.push(Event::Log(LogEvent::from(trace))),
+            Event::OtelSpan(span) => output.push(Event::Log(span.to_log_event())),
+            _ => {}
         }
     }
 }

@@ -88,11 +88,20 @@ impl Dedupe {
 /// containing all relevant information for the fields that need matching
 /// against according to the specified FieldMatchConfig.
 pub(crate) fn build_cache_entry(event: &Event, fields: &FieldMatchConfig) -> CacheEntry {
+    let projected;
+    let log = match event {
+        Event::Log(log) => log,
+        Event::OtelLog(otel) => {
+            projected = otel.to_log_event();
+            &projected
+        }
+        _ => return CacheEntry::Match(Vec::new()),
+    };
     match &fields {
         FieldMatchConfig::MatchFields(fields) => {
             let mut entry = Vec::new();
             for field_name in fields.iter() {
-                if let Some(value) = event.as_log().get(field_name) {
+                if let Some(value) = log.get(field_name) {
                     entry.push(Some((type_id_for_value(value), value.coerce_to_bytes())));
                 } else {
                     entry.push(None);
@@ -103,8 +112,8 @@ pub(crate) fn build_cache_entry(event: &Event, fields: &FieldMatchConfig) -> Cac
         FieldMatchConfig::IgnoreFields(fields) => {
             let mut entry = Vec::new();
 
-            if let Some(event_fields) = event.as_log().all_event_fields()
-                && let Some(metadata_fields) = event.as_log().all_metadata_fields()
+            if let Some(event_fields) = log.all_event_fields()
+                && let Some(metadata_fields) = log.all_metadata_fields()
             {
                 for (field_name, value) in event_fields.chain(metadata_fields) {
                     if let Ok(path) = ConfigTargetPath::try_from(field_name)

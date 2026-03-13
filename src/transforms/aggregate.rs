@@ -348,7 +348,13 @@ impl TaskTransform<Event> for Aggregate {
                                 self.flush_into(&mut output);
                                 done = true;
                             }
-                            Some(event) => self.record(event),
+                            Some(event) => {
+                                if matches!(&event, Event::Metric(_)) {
+                                    self.record(event);
+                                } else {
+                                    output.push(event);
+                                }
+                            }
                         }
                     }
                 };

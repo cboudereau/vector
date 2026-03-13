@@ -1,7 +1,7 @@
 use crate::event::Event;
 
 pub(crate) const fn check_is_log(e: Event) -> (bool, Event) {
-    (matches!(e, Event::Log(_)), e)
+    (matches!(e, Event::Log(_) | Event::OtelLog(_)), e)
 }
 
 pub(crate) fn check_is_log_with_context(e: Event) -> (Result<(), String>, Event) {
@@ -17,9 +17,10 @@ pub(crate) fn check_is_log_with_context(e: Event) -> (Result<(), String>, Event)
 mod test {
     use super::check_is_log;
     use crate::event::{
-        Event, LogEvent,
+        Event, LogEvent, OtelLogEvent,
         metric::{Metric, MetricKind, MetricValue},
     };
+    use otel_proto_types::logs::v1::LogRecord;
 
     #[test]
     fn is_log_basic() {
@@ -32,5 +33,14 @@ mod test {
             )))
             .0,
         );
+    }
+
+    #[test]
+    fn is_log_matches_otel_log() {
+        let event = Event::OtelLog(OtelLogEvent::new(LogRecord {
+            severity_text: "INFO".to_string(),
+            ..Default::default()
+        }));
+        assert!(check_is_log(event).0);
     }
 }

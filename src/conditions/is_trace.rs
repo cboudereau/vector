@@ -1,7 +1,7 @@
 use crate::event::Event;
 
 pub(crate) const fn check_is_trace(e: Event) -> (bool, Event) {
-    (matches!(e, Event::Trace(_)), e)
+    (matches!(e, Event::Trace(_) | Event::OtelSpan(_)), e)
 }
 
 pub(crate) fn check_is_trace_with_context(e: Event) -> (Result<(), String>, Event) {
@@ -17,9 +17,10 @@ pub(crate) fn check_is_trace_with_context(e: Event) -> (Result<(), String>, Even
 mod test {
     use super::check_is_trace;
     use crate::event::{
-        Event, LogEvent, TraceEvent,
+        Event, LogEvent, OtelSpanEvent, TraceEvent,
         metric::{Metric, MetricKind, MetricValue},
     };
+    use otel_proto_types::trace::v1::Span;
 
     #[test]
     fn is_trace_basic() {
@@ -37,5 +38,14 @@ mod test {
             )))
             .0,
         );
+    }
+
+    #[test]
+    fn is_trace_matches_otel_span() {
+        let event = Event::OtelSpan(OtelSpanEvent::new(Span {
+            name: "my-span".to_string(),
+            ..Default::default()
+        }));
+        assert!(check_is_trace(event).0);
     }
 }

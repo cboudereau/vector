@@ -378,6 +378,7 @@ Step 5c²d Transforms handle OTel-native events (eliminate panics)              
 Step 5c²e Sinks handle OTel-native events (eliminate panics)                   — COMPLETE
 Step 5c²f Buffer codec + remaining gaps (tap, OutputBuffer, sematext, NR)      — COMPLETE
 Step 5c²g Last unsafe into_log/as_mut_log call sites                           — COMPLETE
+Step 5c²h Template engine + Transformer + silent-drop fixes                    — COMPLETE
 Step 5c²  Migrate logs batch 2+: other sources, transforms, sinks              — COMPLETE
 Step 5d²  Migrate metrics batch 2+: other sources, transforms, sinks           — NEXT
 Step 5f   Ship VRL migration tool
@@ -1129,6 +1130,31 @@ now accept OTel-native events for all three signals. The full OTel pipeline
 - All 6 OTLP serializer tests pass (3 existing + 3 new).
 - `cargo check` clean.
 
+#### 5c²h — Template engine + Transformer + silent-drop fixes — COMPLETE
+
+**Status: COMPLETE.** Committed as `feat(agt): fix silent OTel event drops in templates, transformer, and sinks`.
+
+Fixes the systemic issue where OTel log events produced wrong output (empty fields,
+fallback timestamps) when processed by template rendering, and bypassed field filtering
+in the codec Transformer.
+
+**What was changed (5 files, +22 / -2 lines):**
+
+- `template.rs`: Project OtelLog to LogEvent at start of `render_event()`. Field references
+  and strftime timestamps now resolve correctly for OtelLog events across ALL sinks that
+  use dynamic templates (Kafka topics, Loki labels, HTTP URIs, S3 key prefixes, etc.).
+- `transformer.rs`: Coerce OtelLog in-place before applying `only_fields`, `except_fields`,
+  and `timestamp_format` rules. Previously OtelLog events bypassed all field filtering in
+  every sink.
+- `kafka/sink.rs`: Coerce OtelLog at stream level before topic rendering.
+- `pulsar/util.rs`: Coerce OtelLog at start of `make_pulsar_event()`.
+- `appsignal/encoder.rs`: Handle OtelLog alongside Log in the encoder match.
+
+**Validation gate (5c²h) — ALL PASS:**
+- 36 template tests pass.
+- 11 appsignal, 2 kafka, 2 pulsar sink tests pass.
+- `cargo check -p vector` clean.
+
 #### 5c²g — Last unsafe into_log/as_mut_log call sites — COMPLETE
 
 **Status: COMPLETE.** Committed as `feat(agt): fix last 5 unsafe into_log/as_mut_log call sites for OTel events`.
@@ -1511,6 +1537,7 @@ Based on actual file counts from source. Items marked ✓ have actual line count
 | Step 5c²e: Sinks handle OTel events | 23 actual | 39 actual | ✓ COMPLETE |
 | Step 5c²f: Buffer codec + remaining gaps | 8 actual | 133 actual | ✓ COMPLETE |
 | Step 5c²g: Last unsafe call sites | 4 actual | 18 actual | ✓ COMPLETE |
+| Step 5c²h: Template + Transformer + silent drops | 2 actual | 22 actual | ✓ COMPLETE |
 | Step 5f: VRL migration tool | 0 | ~800 est. | Pending |
 | Step 5g: Rename + type alias + proto cleanup | ~800 (event/proto.rs + aliases) | ~50 est. | Pending |
 | Source adaptations DD + Vector | ~500 est. | ~800 est. | Pending |

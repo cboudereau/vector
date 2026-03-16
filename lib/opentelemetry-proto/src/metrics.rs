@@ -646,28 +646,28 @@ pub fn buckets_to_otel_bounds(buckets: &[Bucket]) -> (Vec<f64>, Vec<u64>) {
 
 fn proto_convert_resource(
     r: Option<Resource>,
-) -> Option<otel_proto_types::resource::v1::Resource> {
+) -> Option<upstream_opentelemetry_proto::tonic::resource::v1::Resource> {
     use prost::Message;
     let r = r?;
     let bytes = r.encode_to_vec();
-    otel_proto_types::resource::v1::Resource::decode(bytes::Bytes::from(bytes)).ok()
+    upstream_opentelemetry_proto::tonic::resource::v1::Resource::decode(bytes::Bytes::from(bytes)).ok()
 }
 
 fn proto_convert_scope(
     s: Option<InstrumentationScope>,
-) -> Option<otel_proto_types::common::v1::InstrumentationScope> {
+) -> Option<upstream_opentelemetry_proto::tonic::common::v1::InstrumentationScope> {
     use prost::Message;
     let s = s?;
     let bytes = s.encode_to_vec();
-    otel_proto_types::common::v1::InstrumentationScope::decode(bytes::Bytes::from(bytes)).ok()
+    upstream_opentelemetry_proto::tonic::common::v1::InstrumentationScope::decode(bytes::Bytes::from(bytes)).ok()
 }
 
 fn proto_convert_metric(
     m: super::proto::metrics::v1::Metric,
-) -> otel_proto_types::metrics::v1::Metric {
+) -> upstream_opentelemetry_proto::tonic::metrics::v1::Metric {
     use prost::Message;
     let bytes = m.encode_to_vec();
-    otel_proto_types::metrics::v1::Metric::decode(bytes::Bytes::from(bytes))
+    upstream_opentelemetry_proto::tonic::metrics::v1::Metric::decode(bytes::Bytes::from(bytes))
         .expect("Metric proto decode failed on same-schema message")
 }
 
@@ -794,7 +794,7 @@ mod tests {
 
         let m0 = events[0].as_otel_metric();
         match &m0.metric().data {
-            Some(otel_proto_types::metrics::v1::metric::Data::Sum(sum)) => {
+            Some(upstream_opentelemetry_proto::tonic::metrics::v1::metric::Data::Sum(sum)) => {
                 assert_eq!(sum.data_points.len(), 1);
                 assert!(sum.is_monotonic);
                 assert_eq!(sum.data_points[0].time_unix_nano, 2_000_000_000);
@@ -804,7 +804,7 @@ mod tests {
 
         let m1 = events[1].as_otel_metric();
         match &m1.metric().data {
-            Some(otel_proto_types::metrics::v1::metric::Data::Gauge(gauge)) => {
+            Some(upstream_opentelemetry_proto::tonic::metrics::v1::metric::Data::Gauge(gauge)) => {
                 assert_eq!(gauge.data_points.len(), 1);
                 assert_eq!(gauge.data_points[0].time_unix_nano, 3_000_000_000);
             }

@@ -20,7 +20,7 @@ mod test {
         Event, LogEvent, OtelSpan, TraceEvent,
         metric::{Metric, MetricKind, MetricValue},
     };
-    use otel_proto_types::trace::v1::Span;
+    use opentelemetry_proto::tonic::trace::v1::Span;
 
     #[test]
     fn is_trace_basic() {

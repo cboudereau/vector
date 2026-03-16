@@ -2,7 +2,7 @@ use std::{num::NonZeroUsize, task::{Context, Poll}};
 
 use async_trait::async_trait;
 use futures::{StreamExt, TryFutureExt, future::BoxFuture, stream::BoxStream};
-use http::Uri;
+use http_1::Uri;
 use prost::Message as _;
 use tonic::{IntoRequest, transport::Channel};
 use tower::{Service, ServiceBuilder};

@@ -69,23 +69,23 @@ impl ResourceLogs {
 
 fn proto_convert_resource(
     r: Option<Resource>,
-) -> Option<otel_proto_types::resource::v1::Resource> {
+) -> Option<upstream_opentelemetry_proto::tonic::resource::v1::Resource> {
     let r = r?;
     let bytes = r.encode_to_vec();
-    otel_proto_types::resource::v1::Resource::decode(bytes::Bytes::from(bytes)).ok()
+    upstream_opentelemetry_proto::tonic::resource::v1::Resource::decode(bytes::Bytes::from(bytes)).ok()
 }
 
 fn proto_convert_scope(
     s: Option<InstrumentationScope>,
-) -> Option<otel_proto_types::common::v1::InstrumentationScope> {
+) -> Option<upstream_opentelemetry_proto::tonic::common::v1::InstrumentationScope> {
     let s = s?;
     let bytes = s.encode_to_vec();
-    otel_proto_types::common::v1::InstrumentationScope::decode(bytes::Bytes::from(bytes)).ok()
+    upstream_opentelemetry_proto::tonic::common::v1::InstrumentationScope::decode(bytes::Bytes::from(bytes)).ok()
 }
 
-fn proto_convert_log_record(r: LogRecord) -> otel_proto_types::logs::v1::LogRecord {
+fn proto_convert_log_record(r: LogRecord) -> upstream_opentelemetry_proto::tonic::logs::v1::LogRecord {
     let bytes = r.encode_to_vec();
-    otel_proto_types::logs::v1::LogRecord::decode(bytes::Bytes::from(bytes))
+    upstream_opentelemetry_proto::tonic::logs::v1::LogRecord::decode(bytes::Bytes::from(bytes))
         .expect("LogRecord proto decode failed on same-schema message")
 }
 
@@ -169,7 +169,7 @@ mod tests {
 
         let body = log_a.body().expect("body must exist");
         match &body.value {
-            Some(otel_proto_types::common::v1::any_value::Value::StringValue(s)) => {
+            Some(upstream_opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(s)) => {
                 assert_eq!(s, "hello world")
             }
             other => panic!("unexpected body: {:?}", other),
@@ -209,7 +209,7 @@ mod tests {
         let log = events[0].as_otel_log();
         let attr = log.attribute("http.status").expect("attribute must exist");
         match &attr.value {
-            Some(otel_proto_types::common::v1::any_value::Value::IntValue(v)) => {
+            Some(upstream_opentelemetry_proto::tonic::common::v1::any_value::Value::IntValue(v)) => {
                 assert_eq!(*v, 200)
             }
             other => panic!("unexpected attribute value: {:?}", other),

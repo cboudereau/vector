@@ -5,7 +5,7 @@ use std::{
 
 use futures::Stream;
 use futures_util::StreamExt;
-use otel_proto_types::metrics::v1::metric::Data as OtelMetricData;
+use opentelemetry_proto::tonic::metrics::v1::metric::Data as OtelMetricData;
 use prost::Message;
 use similar_asserts::assert_eq;
 use tonic::Request;
@@ -30,7 +30,7 @@ use crate::{
     SourceSender,
     config::{SourceConfig, SourceContext},
     event::{Event, EventStatus, into_event_stream},
-    sources::opentelemetry::config::{GrpcConfig, HttpConfig, LOGS, METRICS, OpentelemetryConfig},
+    sources::opentelemetry::config::{GrpcConfig, HttpConfig, LOGS, METRICS, OpentelemetryConfig, TRACES},
     test_util::{
         self,
         addr::next_addr,
@@ -111,7 +111,7 @@ async fn receive_grpc_logs_vector_namespace() {
         let otel_log = event.as_otel_log();
 
         // Body - round-trip through proto encode→decode to verify content
-        // without needing otel_proto_types as a direct dependency.
+        // without needing opentelemetry_proto::tonic as a direct dependency.
         assert!(otel_log.body().is_some());
         let body_debug = format!("{:?}", otel_log.body().unwrap());
         assert!(body_debug.contains("log body"));
@@ -981,6 +981,7 @@ async fn http_logs_emits_otel_native_events() {
 
 pub struct OTelTestEnv {
     pub grpc_addr: String,
+    pub http_addr: String,
     pub _config: OpentelemetryConfig,
     pub output: Box<dyn Stream<Item = Event> + Unpin + Send>,
 }
@@ -1016,9 +1017,11 @@ pub async fn build_otlp_test_env(
 
     tokio::spawn(server);
     test_util::wait_for_tcp(grpc_addr).await;
+    test_util::wait_for_tcp(http_addr).await;
 
     OTelTestEnv {
         grpc_addr: grpc_addr.to_string(),
+        http_addr: http_addr.to_string(),
         _config: config,
         output: Box::new(output),
     }
@@ -1052,5 +1055,314 @@ fn current_time_and_nanos() -> (SystemTime, u64) {
         .map(|d| d.as_secs() * 1_000_000_000 + u64::from(d.subsec_nanos()))
         .unwrap();
     (time, nanos)
+}
+
+// ---------------------------------------------------------------------------
+// OTLP HTTP JSON ingestion tests
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn http_json_logs() {
+    assert_source_compliance(&SOURCE_TAGS, async {
+        let env = build_otlp_test_env(LOGS, Some(true)).await;
+
+        let payload = serde_json::json!({
+            "resourceLogs": [{
+                "resource": {
+                    "attributes": [{
+                        "key": "service.name",
+                        "value": { "stringValue": "json-test" }
+                    }]
+                },
+                "scopeLogs": [{
+                    "scope": {
+                        "name": "test.scope",
+                        "version": "0.1.0"
+                    },
+                    "logRecords": [{
+                        "timeUnixNano": "1000000001",
+                        "observedTimeUnixNano": "2000000002",
+                        "severityNumber": 9,
+                        "severityText": "INFO",
+                        "body": { "stringValue": "hello from json" },
+                        "attributes": [{
+                            "key": "env",
+                            "value": { "stringValue": "staging" }
+                        }],
+                        "droppedAttributesCount": 1,
+                        "flags": 5,
+                        "traceId": "4ac52aadf321c2e531db005df08792f5",
+                        "spanId": "0b9e4bda2a55530d"
+                    }]
+                }]
+            }]
+        });
+
+        let client = reqwest::Client::new();
+        let res = client
+            .post(format!("http://{}/v1/logs", env.http_addr))
+            .header("Content-Type", "application/json")
+            .json(&payload)
+            .send()
+            .await
+            .expect("Failed to send JSON logs");
+        assert_eq!(res.status(), 200);
+        assert_eq!(
+            res.headers().get("content-type").unwrap().to_str().unwrap(),
+            "application/json"
+        );
+
+        let mut output = test_util::collect_ready(env.output).await;
+        assert_eq!(output.len(), 1);
+        let event = output.pop().unwrap();
+        let otel_log = event.as_otel_log();
+
+        assert_eq!(otel_log.severity_text(), "INFO");
+        assert_eq!(otel_log.severity_number(), 9);
+        assert_eq!(otel_log.time_unix_nano(), 1_000_000_001);
+        assert_eq!(otel_log.observed_time_unix_nano(), 2_000_000_002);
+        assert_eq!(otel_log.record().flags, 5);
+        assert_eq!(otel_log.record().dropped_attributes_count, 1);
+
+        let body_debug = format!("{:?}", otel_log.body().unwrap());
+        assert!(body_debug.contains("hello from json"));
+
+        let resource = otel_log.resource().expect("resource must exist");
+        assert_eq!(resource.attributes[0].key, "service.name");
+
+        let scope = otel_log.scope().expect("scope must exist");
+        assert_eq!(scope.name, "test.scope");
+        assert_eq!(scope.version, "0.1.0");
+
+        assert_eq!(otel_log.attributes().len(), 1);
+        assert_eq!(otel_log.attributes()[0].key, "env");
+
+        assert_eq!(
+            otel_log.trace_id(),
+            &str_into_hex_bytes("4ac52aadf321c2e531db005df08792f5")
+        );
+        assert_eq!(
+            otel_log.span_id(),
+            &str_into_hex_bytes("0b9e4bda2a55530d")
+        );
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn http_json_metrics() {
+    assert_source_compliance(&SOURCE_TAGS, async {
+        let env = build_otlp_test_env(METRICS, None).await;
+
+        let payload = serde_json::json!({
+            "resourceMetrics": [{
+                "resource": {
+                    "attributes": [{
+                        "key": "service.name",
+                        "value": { "stringValue": "json-metric-test" }
+                    }]
+                },
+                "scopeMetrics": [{
+                    "scope": {
+                        "name": "test.metric.scope",
+                        "version": "1.0.0"
+                    },
+                    "metrics": [{
+                        "name": "http.requests",
+                        "description": "Total HTTP requests",
+                        "unit": "1",
+                        "sum": {
+                            "dataPoints": [{
+                                "asDouble": 42.0,
+                                "timeUnixNano": "1713525203000000000",
+                                "attributes": [{
+                                    "key": "method",
+                                    "value": { "stringValue": "GET" }
+                                }]
+                            }],
+                            "aggregationTemporality": 2,
+                            "isMonotonic": true
+                        }
+                    }]
+                }]
+            }]
+        });
+
+        let client = reqwest::Client::new();
+        let res = client
+            .post(format!("http://{}/v1/metrics", env.http_addr))
+            .header("Content-Type", "application/json")
+            .json(&payload)
+            .send()
+            .await
+            .expect("Failed to send JSON metrics");
+        assert_eq!(res.status(), 200);
+        assert_eq!(
+            res.headers().get("content-type").unwrap().to_str().unwrap(),
+            "application/json"
+        );
+
+        let mut output = test_util::collect_ready(env.output).await;
+        assert_eq!(output.len(), 1);
+        let event = output.pop().unwrap();
+        let otel_metric = event.as_otel_metric();
+
+        assert_eq!(otel_metric.metric().name, "http.requests");
+        assert_eq!(otel_metric.metric().description, "Total HTTP requests");
+        assert_eq!(otel_metric.metric().unit, "1");
+
+        match &otel_metric.metric().data {
+            Some(OtelMetricData::Sum(sum)) => {
+                assert!(sum.is_monotonic);
+                assert_eq!(sum.aggregation_temporality, AggregationTemporality::Cumulative as i32);
+                assert_eq!(sum.data_points.len(), 1);
+                let dp = &sum.data_points[0];
+                assert_eq!(dp.attributes[0].key, "method");
+                let val_debug = format!("{:?}", dp.value);
+                assert!(val_debug.contains("42"), "expected 42.0, got {val_debug}");
+            }
+            other => panic!("expected Sum, got {:?}", other),
+        }
+
+        let resource = otel_metric.resource().expect("resource must exist");
+        assert_eq!(resource.attributes[0].key, "service.name");
+        let scope = otel_metric.scope().expect("scope must exist");
+        assert_eq!(scope.name, "test.metric.scope");
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn http_json_traces() {
+    assert_source_compliance(&SOURCE_TAGS, async {
+        let env = build_otlp_test_env(TRACES, None).await;
+
+        let payload = serde_json::json!({
+            "resourceSpans": [{
+                "resource": {
+                    "attributes": [{
+                        "key": "service.name",
+                        "value": { "stringValue": "json-trace-test" }
+                    }]
+                },
+                "scopeSpans": [{
+                    "scope": {
+                        "name": "test.trace.scope",
+                        "version": "2.0.0"
+                    },
+                    "spans": [{
+                        "traceId": "4ac52aadf321c2e531db005df08792f5",
+                        "spanId": "0b9e4bda2a55530d",
+                        "parentSpanId": "",
+                        "name": "my-span",
+                        "kind": 1,
+                        "startTimeUnixNano": "1713525203000000000",
+                        "endTimeUnixNano": "1713525205000000000",
+                        "attributes": [{
+                            "key": "http.method",
+                            "value": { "stringValue": "GET" }
+                        }],
+                        "status": { "code": 1 }
+                    }]
+                }]
+            }]
+        });
+
+        let client = reqwest::Client::new();
+        let res = client
+            .post(format!("http://{}/v1/traces", env.http_addr))
+            .header("Content-Type", "application/json")
+            .json(&payload)
+            .send()
+            .await
+            .expect("Failed to send JSON traces");
+        assert_eq!(res.status(), 200);
+        assert_eq!(
+            res.headers().get("content-type").unwrap().to_str().unwrap(),
+            "application/json"
+        );
+
+        let mut output = test_util::collect_ready(env.output).await;
+        assert_eq!(output.len(), 1);
+        let event = output.pop().unwrap();
+        let otel_span = event.as_otel_span();
+
+        assert_eq!(otel_span.span().name, "my-span");
+        assert_eq!(otel_span.span().kind, 1);
+        assert_eq!(otel_span.span().start_time_unix_nano, 1713525203000000000);
+        assert_eq!(otel_span.span().end_time_unix_nano, 1713525205000000000);
+        assert_eq!(otel_span.span().attributes.len(), 1);
+        assert_eq!(otel_span.span().attributes[0].key, "http.method");
+        assert_eq!(
+            otel_span.span().trace_id,
+            str_into_hex_bytes("4ac52aadf321c2e531db005df08792f5")
+        );
+        assert_eq!(
+            otel_span.span().span_id,
+            str_into_hex_bytes("0b9e4bda2a55530d")
+        );
+
+        let resource = otel_span.resource().expect("resource must exist");
+        assert_eq!(resource.attributes[0].key, "service.name");
+        let scope = otel_span.scope().expect("scope must exist");
+        assert_eq!(scope.name, "test.trace.scope");
+        assert_eq!(scope.version, "2.0.0");
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn http_unsupported_content_type_returns_415() {
+    assert_source_compliance(&SOURCE_TAGS, async {
+        let env = build_otlp_test_env(LOGS, None).await;
+
+        let client = reqwest::Client::new();
+        let res = client
+            .post(format!("http://{}/v1/logs", env.http_addr))
+            .header("Content-Type", "text/plain")
+            .body("not valid")
+            .send()
+            .await
+            .expect("Failed to send request");
+        assert_eq!(res.status(), 415);
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn http_protobuf_response_content_type() {
+    assert_source_compliance(&SOURCE_TAGS, async {
+        let env = build_otlp_test_env(LOGS, None).await;
+
+        let req = ExportLogsServiceRequest {
+            resource_logs: vec![ResourceLogs {
+                resource: None,
+                scope_logs: vec![ScopeLogs {
+                    scope: None,
+                    log_records: vec![LogRecord {
+                        severity_text: "DEBUG".into(),
+                        ..Default::default()
+                    }],
+                    schema_url: String::new(),
+                }],
+                schema_url: String::new(),
+            }],
+        };
+
+        let client = reqwest::Client::new();
+        let res = client
+            .post(format!("http://{}/v1/logs", env.http_addr))
+            .header("Content-Type", "application/x-protobuf")
+            .body(req.encode_to_vec())
+            .send()
+            .await
+            .expect("Failed to send protobuf request");
+        assert_eq!(res.status(), 200);
+        assert_eq!(
+            res.headers().get("content-type").unwrap().to_str().unwrap(),
+            "application/x-protobuf"
+        );
+    })
+    .await;
 }
 

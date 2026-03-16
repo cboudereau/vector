@@ -10,16 +10,12 @@ Based on [o11y-weekly OTEL-example](https://github.com/o11y-weekly/o11y-weekly.g
 ```
                          ┌─ otelcontribcol ──→ debug exporter (stdout)
 curl (OTLP/JSON) ──────►│
-                         └─ otel-to-vector ──(gRPC)──→ vector ──→ console sink (stdout)
+                         └─ vector ──→ console sink (stdout)
 ```
 
 Both paths receive the exact same OTLP/JSON payloads on `/v1/logs`, `/v1/metrics`,
-`/v1/traces`.
-
-**Note:** Vector's OTLP HTTP source currently only accepts `application/x-protobuf`,
-not `application/json`. The demo uses an otelcontribcol instance as a thin forwarder
-that receives JSON over HTTP and re-exports as protobuf over gRPC to Vector.
-Adding OTLP/JSON HTTP support to Vector is a follow-up task.
+`/v1/traces`. Vector accepts `application/json` and `application/x-protobuf`
+natively — no intermediate forwarder needed.
 
 ## Run
 
@@ -35,15 +31,17 @@ First build takes ~15-20 min (Rust compilation). Subsequent runs use Docker cach
 ```bash
 docker compose logs otelcontribcol    # OTel Collector received data
 docker compose logs vector            # Vector received data
+
+# Save full output for review
+docker compose logs > logs.log 2>&1
 ```
 
 ## Ports
 
-| Service         | HTTP (OTLP/JSON) | gRPC (OTLP/protobuf) |
-|-----------------|-------------------|-----------------------|
-| otelcontribcol  | 4318              | 4317                  |
-| vector          | 4328 (protobuf only) | 4327               |
-| otel-to-vector  | 4338 (JSON→gRPC bridge) | —              |
+| Service         | HTTP (OTLP) | gRPC (OTLP) |
+|-----------------|-------------|-------------|
+| otelcontribcol  | 4318        | 4317        |
+| vector          | 4328        | 4327        |
 
 ## Send data manually
 
@@ -52,15 +50,19 @@ docker compose logs vector            # Vector received data
 curl -X POST -H 'Content-Type: application/json' \
   -d @otlpjson/logs.json http://localhost:4318/v1/logs
 
-# To Vector via forwarder (JSON→gRPC)
+# To Vector (JSON, direct)
 curl -X POST -H 'Content-Type: application/json' \
-  -d @otlpjson/logs.json http://localhost:4338/v1/logs
+  -d @otlpjson/logs.json http://localhost:4328/v1/logs
+
+# To Vector (protobuf — also supported)
+# Use any OTLP client that sends application/x-protobuf
 ```
 
 ## Findings
 
-- **Works:** Vector's `opentelemetry` source handles OTLP/gRPC (protobuf) for all 3
-  signals — logs, metrics, traces are received and printed correctly.
-- **Gap:** Vector's OTLP HTTP endpoint rejects `Content-Type: application/json` with
-  HTTP 500. It only accepts `application/x-protobuf`. The OTLP spec requires both.
-  This is tracked as a follow-up to achieve true drop-in parity.
+- **Works:** Vector's `opentelemetry` source handles both OTLP/HTTP (JSON and
+  protobuf) and OTLP/gRPC for all 3 signals — logs, metrics, traces.
+- **JSON responses:** When a request arrives with `Content-Type: application/json`,
+  Vector responds with `application/json`. Protobuf requests get protobuf responses.
+- **Drop-in parity:** Vector can receive the same OTLP/JSON payloads as the
+  OTel Collector Contrib without any intermediate forwarder or conversion layer.

@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use opentelemetry_proto::proto::{
+use vector_opentelemetry_proto::proto::{
     DESCRIPTOR_BYTES, LOGS_REQUEST_MESSAGE_TYPE, METRICS_REQUEST_MESSAGE_TYPE,
     RESOURCE_LOGS_JSON_FIELD, RESOURCE_METRICS_JSON_FIELD, RESOURCE_SPANS_JSON_FIELD,
     TRACES_REQUEST_MESSAGE_TYPE,
@@ -200,7 +200,7 @@ impl Deserializer for OtlpDeserializer {
 
 #[cfg(test)]
 mod tests {
-    use opentelemetry_proto::proto::{
+    use vector_opentelemetry_proto::proto::{
         collector::{
             logs::v1::ExportLogsServiceRequest, metrics::v1::ExportMetricsServiceRequest,
             trace::v1::ExportTraceServiceRequest,

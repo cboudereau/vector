@@ -10,11 +10,11 @@ services:
     ports:
       - "4318:4318"
       - "4317:4317"
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133/"]
-      interval: 2s
-      timeout: 2s
-      retries: 10
+    # healthcheck:
+    #   test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133/"]
+    #   interval: 2s
+    #   timeout: 2s
+    #   retries: 10
 
   # ── Vector (drop-in replacement) ──────────────────────────────
   vector:
@@ -29,31 +29,11 @@ services:
     ports:
       - "4328:4318"
       - "4327:4317"
-    healthcheck:
-      test: ["CMD-SHELL", "echo > /dev/tcp/localhost/4318 || exit 1"]
-      interval: 2s
-      timeout: 2s
-      retries: 10
-
-  # ── OTel Collector as forwarder → Vector (JSON→gRPC bridge) ──
-  # Receives OTLP/JSON on HTTP, re-exports as OTLP/gRPC to Vector
-  otel-to-vector:
-    image: otel/opentelemetry-collector-contrib:0.122.0
-    command: "--config /etc/otelcol-contrib/config.yml"
-    volumes:
-      - ./otelcontribcol/forward-to-vector.yml:/etc/otelcol-contrib/config.yml:ro
-    networks:
-      - bridge
-    ports:
-      - "4338:4318"
-    depends_on:
-      vector:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133/"]
-      interval: 2s
-      timeout: 2s
-      retries: 10
+    # healthcheck:
+    #   test: ["CMD-SHELL", "echo > /dev/tcp/localhost/4318 || exit 1"]
+    #   interval: 2s
+    #   timeout: 2s
+    #   retries: 10
 
   # ── Curl tests → OTel Collector (OTLP/JSON) ──────────────────
   otel-logs:
@@ -68,7 +48,7 @@ services:
       - ./otlpjson/logs.json:/otlpjson/logs.json:ro
     depends_on:
       otelcontribcol:
-        condition: service_healthy
+        condition: service_started
     networks:
       - bridge
 
@@ -84,7 +64,7 @@ services:
       - ./otlpjson/metrics.json:/otlpjson/metrics.json:ro
     depends_on:
       otelcontribcol:
-        condition: service_healthy
+        condition: service_started
     networks:
       - bridge
 
@@ -100,11 +80,11 @@ services:
       - ./otlpjson/trace.json:/otlpjson/trace.json:ro
     depends_on:
       otelcontribcol:
-        condition: service_healthy
+        condition: service_started
     networks:
       - bridge
 
-  # ── Curl tests → Vector via forwarder (OTLP/JSON→gRPC) ───────
+  # ── Curl tests → Vector (OTLP/JSON, direct) ────────────────
   vector-logs:
     image: curlimages/curl:8.5.0
     command: >-
@@ -112,12 +92,12 @@ services:
       -X POST -H 'Content-Type: application/json'
       -d @/otlpjson/logs.json
       -w "\n%{http_code}\n"
-      otel-to-vector:4318/v1/logs
+      vector:4318/v1/logs
     volumes:
       - ./otlpjson/logs.json:/otlpjson/logs.json:ro
     depends_on:
-      otel-to-vector:
-        condition: service_healthy
+      vector:
+        condition: service_started
     networks:
       - bridge
 
@@ -128,12 +108,12 @@ services:
       -X POST -H 'Content-Type: application/json'
       -d @/otlpjson/metrics.json
       -w "\n%{http_code}\n"
-      otel-to-vector:4318/v1/metrics
+      vector:4318/v1/metrics
     volumes:
       - ./otlpjson/metrics.json:/otlpjson/metrics.json:ro
     depends_on:
-      otel-to-vector:
-        condition: service_healthy
+      vector:
+        condition: service_started
     networks:
       - bridge
 
@@ -144,12 +124,12 @@ services:
       -X POST -H 'Content-Type: application/json'
       -d @/otlpjson/trace.json
       -w "\n%{http_code}\n"
-      otel-to-vector:4318/v1/traces
+      vector:4318/v1/traces
     volumes:
       - ./otlpjson/trace.json:/otlpjson/trace.json:ro
     depends_on:
-      otel-to-vector:
-        condition: service_healthy
+      vector:
+        condition: service_started
     networks:
       - bridge
 

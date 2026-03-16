@@ -77,14 +77,14 @@ mod tests {
 
     #[test]
     fn serialize_otel_log() {
-        use otel_proto_types::common::v1::AnyValue;
+        use opentelemetry_proto::tonic::common::v1::AnyValue;
         use vector_core::event::OtelLog;
 
         let event = Event::OtelLog(OtelLog::new(
-            otel_proto_types::logs::v1::LogRecord {
+            opentelemetry_proto::tonic::logs::v1::LogRecord {
                 body: Some(AnyValue {
                     value: Some(
-                        otel_proto_types::common::v1::any_value::Value::StringValue(
+                        opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(
                             "otel raw message".into(),
                         ),
                     ),

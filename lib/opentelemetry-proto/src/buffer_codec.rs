@@ -107,7 +107,7 @@ fn event_array_to_batch(array: &EventArray) -> OtlpBufferBatch {
     }
 }
 
-/// Re-encode a prost Message from `otel_proto_types` to the equivalent
+/// Re-encode a prost Message from `upstream_opentelemetry_proto::tonic` to the equivalent
 /// `crate::proto` type. Both are generated from the same `.proto` files so the
 /// wire format is identical.
 fn transcode<S: prost::Message, D: prost::Message + Default>(src: &S) -> D {

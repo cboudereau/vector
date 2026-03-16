@@ -356,9 +356,9 @@ where
 // ---------------------------------------------------------------------------
 
 /// Reconstruct a `ResourceMetrics` (opentelemetry-proto types) from an
-/// `OtelMetricEvent` (otel-proto-types) via protobuf encode→decode.
+/// `OtelMetric` (otel-proto-types) via protobuf encode→decode.
 fn otel_metric_event_to_resource_metrics(
-    metric_event: &vector_lib::event::OtelMetricEvent,
+    metric_event: &vector_lib::event::OtelMetric,
 ) -> vector_lib::opentelemetry::proto::metrics::v1::ResourceMetrics {
     use prost::Message;
     use vector_lib::opentelemetry::proto::{
@@ -393,9 +393,9 @@ fn otel_metric_event_to_resource_metrics(
 }
 
 /// Reconstruct a `ResourceLogs` (opentelemetry-proto types) from an
-/// `OtelLogEvent` (otel-proto-types) via protobuf encode→decode.
+/// `OtelLog` (otel-proto-types) via protobuf encode→decode.
 fn otel_log_event_to_resource_logs(
-    log_event: &vector_lib::event::OtelLogEvent,
+    log_event: &vector_lib::event::OtelLog,
 ) -> vector_lib::opentelemetry::proto::logs::v1::ResourceLogs {
     use prost::Message;
     use vector_lib::opentelemetry::proto::{
@@ -430,9 +430,9 @@ fn otel_log_event_to_resource_logs(
 }
 
 /// Reconstruct a `ResourceSpans` (opentelemetry-proto types) from an
-/// `OtelSpanEvent` (otel-proto-types) via protobuf encode→decode.
+/// `OtelSpan` (otel-proto-types) via protobuf encode→decode.
 fn otel_span_event_to_resource_spans(
-    span_event: &vector_lib::event::OtelSpanEvent,
+    span_event: &vector_lib::event::OtelSpan,
 ) -> vector_lib::opentelemetry::proto::trace::v1::ResourceSpans {
     use prost::Message;
     use vector_lib::opentelemetry::proto::{

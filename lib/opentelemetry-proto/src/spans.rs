@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use chrono::{DateTime, TimeZone, Utc};
 use prost::Message;
-use vector_core::event::{Event, EventMetadata, OtelSpanEvent, TraceEvent};
+use vector_core::event::{Event, EventMetadata, OtelSpan, TraceEvent};
 use vrl::{
     event_path,
     value::{KeyString, Value},
@@ -62,7 +62,7 @@ impl ResourceSpans {
                 let resource = resource.clone();
                 scope_spans.spans.into_iter().map(move |span| {
                     let otel_span = proto_convert_span(span);
-                    Event::OtelSpan(OtelSpanEvent::from_parts(
+                    Event::OtelSpan(OtelSpan::from_parts(
                         otel_span,
                         resource.clone(),
                         scope.clone(),

@@ -21,8 +21,8 @@ use vrl::{
 };
 
 use super::{
-    Event, EventMetadata, LogEvent, Metric, MetricKind, OtelLogEvent, OtelMetricEvent,
-    OtelSpanEvent, TraceEvent, metric::TagValue,
+    Event, EventMetadata, LogEvent, Metric, MetricKind, OtelLog, OtelMetric,
+    OtelSpan, TraceEvent, metric::TagValue,
 };
 use crate::{
     config::{LogNamespace, log_schema},
@@ -212,10 +212,10 @@ fn hex_decode_value(val: &Value) -> Vec<u8> {
 }
 
 // ---------------------------------------------------------------------------
-// OtelLogEvent -> Value projection
+// OtelLog -> Value projection
 // ---------------------------------------------------------------------------
 
-fn otel_log_event_to_value(event: &OtelLogEvent) -> Value {
+fn otel_log_event_to_value(event: &OtelLog) -> Value {
     let record = event.record();
     let mut map = ObjectMap::new();
     map.insert("time_unix_nano".into(), Value::Integer(record.time_unix_nano as i64));
@@ -245,7 +245,7 @@ fn otel_log_event_to_value(event: &OtelLogEvent) -> Value {
     Value::Object(map)
 }
 
-fn value_to_otel_log_event(value: Value, metadata: EventMetadata) -> OtelLogEvent {
+fn value_to_otel_log_event(value: Value, metadata: EventMetadata) -> OtelLog {
     use otel_proto_types::logs::v1::LogRecord;
 
     let map = match value {
@@ -273,14 +273,14 @@ fn value_to_otel_log_event(value: Value, metadata: EventMetadata) -> OtelLogEven
     let resource = map.get("resource").and_then(value_to_otel_resource);
     let scope = map.get("scope").and_then(value_to_otel_scope);
 
-    OtelLogEvent::from_parts(record, resource, scope, metadata)
+    OtelLog::from_parts(record, resource, scope, metadata)
 }
 
 // ---------------------------------------------------------------------------
-// OtelSpanEvent -> Value projection
+// OtelSpan -> Value projection
 // ---------------------------------------------------------------------------
 
-fn otel_span_event_to_value(event: &OtelSpanEvent) -> Value {
+fn otel_span_event_to_value(event: &OtelSpan) -> Value {
     let span_proto = event.span();
     let mut map = ObjectMap::new();
     map.insert("trace_id".into(), hex_encode_bytes(&span_proto.trace_id));
@@ -337,7 +337,7 @@ fn otel_span_event_to_value(event: &OtelSpanEvent) -> Value {
     Value::Object(map)
 }
 
-fn value_to_otel_span_event(value: Value, metadata: EventMetadata) -> OtelSpanEvent {
+fn value_to_otel_span_event(value: Value, metadata: EventMetadata) -> OtelSpan {
     use otel_proto_types::trace::v1::{Span, Status, span};
 
     let map = match value {
@@ -411,15 +411,15 @@ fn value_to_otel_span_event(value: Value, metadata: EventMetadata) -> OtelSpanEv
     let resource = map.get("resource").and_then(value_to_otel_resource);
     let scope = map.get("scope").and_then(value_to_otel_scope);
 
-    OtelSpanEvent::from_parts(span_proto, resource, scope, metadata)
+    OtelSpan::from_parts(span_proto, resource, scope, metadata)
 }
 
 // ---------------------------------------------------------------------------
-// OtelMetricEvent -> Value projection (restricted, read-heavy)
+// OtelMetric -> Value projection (restricted, read-heavy)
 // ---------------------------------------------------------------------------
 
 fn precompute_otel_metric_value(
-    event: &OtelMetricEvent,
+    event: &OtelMetric,
     info: &ProgramInfo,
 ) -> Value {
     let mut map = ObjectMap::new();
@@ -468,7 +468,7 @@ pub enum VrlTarget {
     OtelLog(Value, EventMetadata),
     OtelSpan(Value, EventMetadata),
     OtelMetric {
-        event: OtelMetricEvent,
+        event: OtelMetric,
         value: Value,
     },
 }
@@ -477,8 +477,8 @@ pub enum TargetEvents {
     One(Event),
     Logs(TargetIter<LogEvent>),
     Traces(TargetIter<TraceEvent>),
-    OtelLogs(TargetIter<OtelLogEvent>),
-    OtelSpans(TargetIter<OtelSpanEvent>),
+    OtelLogs(TargetIter<OtelLog>),
+    OtelSpans(TargetIter<OtelSpan>),
 }
 
 pub struct TargetIter<T> {
@@ -527,7 +527,7 @@ impl Iterator for TargetIter<TraceEvent> {
     }
 }
 
-impl Iterator for TargetIter<OtelLogEvent> {
+impl Iterator for TargetIter<OtelLog> {
     type Item = Event;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -537,7 +537,7 @@ impl Iterator for TargetIter<OtelLogEvent> {
     }
 }
 
-impl Iterator for TargetIter<OtelSpanEvent> {
+impl Iterator for TargetIter<OtelSpan> {
     type Item = Event;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -2069,7 +2069,7 @@ mod test {
     #[test]
     fn otel_log_vrl_target_get_severity_text() {
         use otel_proto_types::logs::v1::LogRecord;
-        let event = OtelLogEvent::new(LogRecord {
+        let event = OtelLog::new(LogRecord {
             severity_text: "ERROR".to_string(),
             ..Default::default()
         });
@@ -2084,7 +2084,7 @@ mod test {
     #[test]
     fn otel_log_vrl_target_get_attribute() {
         use otel_proto_types::logs::v1::LogRecord;
-        let event = OtelLogEvent::new(LogRecord {
+        let event = OtelLog::new(LogRecord {
             attributes: vec![OtelKeyValue {
                 key: "host.name".to_string(),
                 value: Some(OtelAnyValue {
@@ -2104,7 +2104,7 @@ mod test {
     #[test]
     fn otel_log_vrl_target_insert_attribute() {
         use otel_proto_types::logs::v1::LogRecord;
-        let event = OtelLogEvent::new(LogRecord::default());
+        let event = OtelLog::new(LogRecord::default());
         let info = make_empty_info();
         let mut target = VrlTarget::new(Event::OtelLog(event), &info, false);
 
@@ -2118,7 +2118,7 @@ mod test {
     #[test]
     fn otel_log_vrl_target_roundtrip_into_events() {
         use otel_proto_types::logs::v1::LogRecord;
-        let event = OtelLogEvent::new(LogRecord {
+        let event = OtelLog::new(LogRecord {
             severity_text: "INFO".to_string(),
             severity_number: 9,
             time_unix_nano: 1234567890,
@@ -2153,7 +2153,7 @@ mod test {
     #[test]
     fn otel_log_vrl_target_mutate_and_roundtrip() {
         use otel_proto_types::logs::v1::LogRecord;
-        let event = OtelLogEvent::new(LogRecord {
+        let event = OtelLog::new(LogRecord {
             severity_text: "DEBUG".to_string(),
             ..Default::default()
         });
@@ -2178,7 +2178,7 @@ mod test {
     #[test]
     fn otel_span_vrl_target_get_name() {
         use otel_proto_types::trace::v1::Span;
-        let event = OtelSpanEvent::new(Span {
+        let event = OtelSpan::new(Span {
             name: "my-span".to_string(),
             trace_id: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
             ..Default::default()
@@ -2198,7 +2198,7 @@ mod test {
     #[test]
     fn otel_span_vrl_target_roundtrip() {
         use otel_proto_types::trace::v1::Span;
-        let event = OtelSpanEvent::new(Span {
+        let event = OtelSpan::new(Span {
             name: "test-span".to_string(),
             kind: 2,
             start_time_unix_nano: 1000,
@@ -2226,7 +2226,7 @@ mod test {
     #[test]
     fn otel_metric_vrl_target_get_name() {
         use otel_proto_types::metrics::v1::Metric as OtelMetricProto;
-        let event = OtelMetricEvent::new(OtelMetricProto {
+        let event = OtelMetric::new(OtelMetricProto {
             name: "http.duration".to_string(),
             description: "request duration".to_string(),
             unit: "ms".to_string(),
@@ -2247,7 +2247,7 @@ mod test {
     #[test]
     fn otel_metric_vrl_target_set_name() {
         use otel_proto_types::metrics::v1::Metric as OtelMetricProto;
-        let event = OtelMetricEvent::new(OtelMetricProto {
+        let event = OtelMetric::new(OtelMetricProto {
             name: "old.name".to_string(),
             ..Default::default()
         });
@@ -2272,7 +2272,7 @@ mod test {
     #[test]
     fn otel_log_resource_and_scope_roundtrip() {
         use otel_proto_types::logs::v1::LogRecord;
-        let mut event = OtelLogEvent::new(LogRecord::default());
+        let mut event = OtelLog::new(LogRecord::default());
         event.set_resource(OtelResource {
             attributes: vec![OtelKeyValue {
                 key: "service.name".to_string(),

@@ -78,9 +78,9 @@ mod tests {
     #[test]
     fn serialize_otel_log() {
         use otel_proto_types::common::v1::AnyValue;
-        use vector_core::event::OtelLogEvent;
+        use vector_core::event::OtelLog;
 
-        let event = Event::OtelLog(OtelLogEvent::new(
+        let event = Event::OtelLog(OtelLog::new(
             otel_proto_types::logs::v1::LogRecord {
                 body: Some(AnyValue {
                     value: Some(

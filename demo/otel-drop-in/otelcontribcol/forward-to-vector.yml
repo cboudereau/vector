@@ -1,27 +1,23 @@
-extensions:
-  health_check:
-
 receivers:
   otlp:
     protocols:
       http:
         endpoint: "0.0.0.0:4318"
-      grpc:
-        endpoint: "0.0.0.0:4317"
 
 exporters:
-  debug:
-    verbosity: detailed
+  otlp:
+    endpoint: "vector:4317"
+    tls:
+      insecure: true
 
 service:
-  extensions: [health_check]
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [debug]
+      exporters: [otlp]
     metrics:
       receivers: [otlp]
-      exporters: [debug]
+      exporters: [otlp]
     logs:
       receivers: [otlp]
-      exporters: [debug]
+      exporters: [otlp]

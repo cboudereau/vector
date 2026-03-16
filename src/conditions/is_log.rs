@@ -20,7 +20,7 @@ mod test {
         Event, LogEvent, OtelLog,
         metric::{Metric, MetricKind, MetricValue},
     };
-    use otel_proto_types::logs::v1::LogRecord;
+    use opentelemetry_proto::tonic::logs::v1::LogRecord;
 
     #[test]
     fn is_log_basic() {

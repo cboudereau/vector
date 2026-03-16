@@ -1,6 +1,7 @@
 use bytes::BytesMut;
 use http::{HeaderValue, header::CONTENT_TYPE};
 use prost::Message;
+use serde::Serialize;
 use warp::{Reply, reply::Response};
 
 use super::status::Status;
@@ -47,6 +48,46 @@ impl Reply for Protobuf {
                 res.headers_mut().insert(
                     CONTENT_TYPE,
                     HeaderValue::from_static("application/x-protobuf"),
+                );
+                res
+            }
+        }
+    }
+}
+
+pub fn json<T>(val: T) -> Json
+where
+    T: Serialize,
+{
+    Json {
+        inner: serde_json::to_vec(&val).map_err(|err| {
+            error!("Failed to JSON-encode value: {}", err);
+        }),
+    }
+}
+
+#[allow(missing_debug_implementations)]
+pub struct Json {
+    inner: Result<Vec<u8>, ()>,
+}
+
+impl Reply for Json {
+    #[inline]
+    fn into_response(self) -> Response {
+        match self.inner {
+            Ok(body) => {
+                let mut res = Response::new(body.into());
+                res.headers_mut().insert(
+                    CONTENT_TYPE,
+                    HeaderValue::from_static("application/json"),
+                );
+                res
+            }
+            Err(()) => {
+                let mut res = Response::new(b"{}".to_vec().into());
+                res.headers_mut().insert(
+                    CONTENT_TYPE,
+                    HeaderValue::from_static("application/json"),
                 );
                 res
             }

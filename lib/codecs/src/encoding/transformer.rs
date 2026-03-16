@@ -115,7 +115,11 @@ impl Transformer {
 
     /// Prepare an event for serialization by the given transformation rules.
     pub fn transform(&self, event: &mut Event) {
-        if matches!(event, Event::OtelLog(_)) {
+        let has_rules = self.only_fields.is_some()
+            || self.except_fields.is_some()
+            || self.timestamp_format.is_some();
+
+        if has_rules && matches!(event, Event::OtelLog(_)) {
             let owned = std::mem::replace(event, Event::Log(LogEvent::default()));
             *event = Event::Log(owned.into_log_coerce());
         }

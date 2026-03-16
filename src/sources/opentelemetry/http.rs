@@ -17,9 +17,9 @@ use vector_lib::{
         ByteSize, BytesReceived, CountByteSize, InternalEventHandle as _, Registered,
     },
     opentelemetry::proto::collector::{
-        logs::v1::{ExportLogsServiceRequest, ExportLogsServiceResponse},
-        metrics::v1::{ExportMetricsServiceRequest, ExportMetricsServiceResponse},
-        trace::v1::{ExportTraceServiceRequest, ExportTraceServiceResponse},
+        logs::v1::ExportLogsServiceRequest,
+        metrics::v1::ExportMetricsServiceRequest,
+        trace::v1::ExportTraceServiceRequest,
     },
     tls::MaybeTlsIncomingStream,
 };
@@ -27,7 +27,7 @@ use warp::{
     Filter, Reply, filters::BoxedFilter, http::HeaderMap, reject::Rejection, reply::Response,
 };
 
-use super::{reply::protobuf, status::Status};
+use super::{reply::{json, protobuf}, status::Status};
 use crate::{
     SourceSender,
     common::http::ErrorMessage,
@@ -145,6 +145,9 @@ fn emit_decode_error(error: impl std::fmt::Display) -> ErrorMessage {
     ErrorMessage::new(StatusCode::BAD_REQUEST, message)
 }
 
+const CONTENT_TYPE_PROTOBUF: &str = "application/x-protobuf";
+const CONTENT_TYPE_JSON: &str = "application/json";
+
 fn build_ingest_filter<Resp, F>(
     telemetry_type: &'static str,
     acknowledgements: bool,
@@ -152,37 +155,62 @@ fn build_ingest_filter<Resp, F>(
     make_events: F,
 ) -> BoxedFilter<(Response,)>
 where
-    Resp: prost::Message + Default + Send + 'static,
+    Resp: prost::Message + Default + serde::Serialize + Send + 'static,
     F: Clone
         + Send
         + Sync
         + 'static
-        + Fn(Option<String>, HeaderMap, Bytes) -> Result<Vec<Event>, ErrorMessage>,
+        + Fn(Option<String>, Option<String>, HeaderMap, Bytes) -> Result<Vec<Event>, ErrorMessage>,
 {
     warp::post()
         .and(warp::path("v1"))
         .and(warp::path(telemetry_type))
         .and(warp::path::end())
-        .and(warp::header::exact_ignore_case(
-            "content-type",
-            "application/x-protobuf",
-        ))
+        .and(warp::header::optional::<String>("content-type"))
         .and(warp::header::optional::<String>("content-encoding"))
         .and(warp::header::headers_cloned())
         .and(warp::body::bytes())
         .and_then(
-            move |encoding_header: Option<String>, headers: HeaderMap, body: Bytes| {
-                let events = make_events(encoding_header, headers, body);
+            move |content_type: Option<String>,
+                  encoding_header: Option<String>,
+                  headers: HeaderMap,
+                  body: Bytes| {
+                let is_json = is_json_content_type(content_type.as_deref());
+                let ct = content_type.as_deref().unwrap_or(CONTENT_TYPE_PROTOBUF);
+                if !ct.starts_with(CONTENT_TYPE_PROTOBUF)
+                    && !ct.starts_with(CONTENT_TYPE_JSON)
+                {
+                    let err = ErrorMessage::new(
+                        StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                        format!(
+                            "Unsupported content type: {ct}. Expected {CONTENT_TYPE_PROTOBUF} or {CONTENT_TYPE_JSON}"
+                        ),
+                    );
+                    return handle_request(
+                        Err(err),
+                        acknowledgements,
+                        out.clone(),
+                        telemetry_type,
+                        Resp::default(),
+                        is_json,
+                    );
+                }
+                let events = make_events(content_type, encoding_header, headers, body);
                 handle_request(
                     events,
                     acknowledgements,
                     out.clone(),
                     telemetry_type,
                     Resp::default(),
+                    is_json,
                 )
             },
         )
         .boxed()
+}
+
+fn is_json_content_type(content_type: Option<&str>) -> bool {
+    content_type.is_some_and(|ct| ct.starts_with(CONTENT_TYPE_JSON))
 }
 
 fn build_warp_log_filter(
@@ -193,26 +221,36 @@ fn build_warp_log_filter(
     events_received: Registered<EventsReceived>,
     headers_cfg: Vec<HttpConfigParamKind>,
 ) -> BoxedFilter<(Response,)> {
-    let make_events = move |encoding_header: Option<String>, headers: HeaderMap, body: Bytes| {
-        decompress_body(encoding_header.as_deref(), body)
-            .inspect_err(|err| {
-                if err.status_code() == StatusCode::UNSUPPORTED_MEDIA_TYPE {
-                    emit!(HttpBadRequest::new(
-                        err.status_code().as_u16(),
-                        err.message()
-                    ));
-                }
-            })
-            .and_then(|decoded_body| {
-                bytes_received.emit(ByteSize(decoded_body.len()));
-                decode_log_body(decoded_body, log_namespace, &events_received).map(|mut events| {
-                    enrich_events(&mut events, &headers_cfg, &headers, log_namespace);
-                    events
+    let make_events =
+        move |content_type: Option<String>,
+              encoding_header: Option<String>,
+              headers: HeaderMap,
+              body: Bytes| {
+            decompress_body(encoding_header.as_deref(), body)
+                .inspect_err(|err| {
+                    if err.status_code() == StatusCode::UNSUPPORTED_MEDIA_TYPE {
+                        emit!(HttpBadRequest::new(
+                            err.status_code().as_u16(),
+                            err.message()
+                        ));
+                    }
                 })
-            })
-    };
+                .and_then(|decoded_body| {
+                    bytes_received.emit(ByteSize(decoded_body.len()));
+                    decode_log_body(
+                        decoded_body,
+                        log_namespace,
+                        &events_received,
+                        is_json_content_type(content_type.as_deref()),
+                    )
+                    .map(|mut events| {
+                        enrich_events(&mut events, &headers_cfg, &headers, log_namespace);
+                        events
+                    })
+                })
+        };
 
-    build_ingest_filter::<ExportLogsServiceResponse, _>(
+    build_ingest_filter::<otel::collector::logs::v1::ExportLogsServiceResponse, _>(
         LOGS,
         acknowledgements,
         source_sender,
@@ -226,23 +264,31 @@ fn build_warp_metrics_filter(
     bytes_received: Registered<BytesReceived>,
     events_received: Registered<EventsReceived>,
 ) -> BoxedFilter<(Response,)> {
-    let make_events = move |encoding_header: Option<String>, _headers: HeaderMap, body: Bytes| {
-        decompress_body(encoding_header.as_deref(), body)
-            .inspect_err(|err| {
-                if err.status_code() == StatusCode::UNSUPPORTED_MEDIA_TYPE {
-                    emit!(HttpBadRequest::new(
-                        err.status_code().as_u16(),
-                        err.message()
-                    ));
-                }
-            })
-            .and_then(|decoded_body| {
-                bytes_received.emit(ByteSize(decoded_body.len()));
-                decode_metrics_body(decoded_body, &events_received)
-            })
-    };
+    let make_events =
+        move |content_type: Option<String>,
+              encoding_header: Option<String>,
+              _headers: HeaderMap,
+              body: Bytes| {
+            decompress_body(encoding_header.as_deref(), body)
+                .inspect_err(|err| {
+                    if err.status_code() == StatusCode::UNSUPPORTED_MEDIA_TYPE {
+                        emit!(HttpBadRequest::new(
+                            err.status_code().as_u16(),
+                            err.message()
+                        ));
+                    }
+                })
+                .and_then(|decoded_body| {
+                    bytes_received.emit(ByteSize(decoded_body.len()));
+                    decode_metrics_body(
+                        decoded_body,
+                        &events_received,
+                        is_json_content_type(content_type.as_deref()),
+                    )
+                })
+        };
 
-    build_ingest_filter::<ExportMetricsServiceResponse, _>(
+    build_ingest_filter::<otel::collector::metrics::v1::ExportMetricsServiceResponse, _>(
         METRICS,
         acknowledgements,
         source_sender,
@@ -256,23 +302,31 @@ fn build_warp_trace_filter(
     bytes_received: Registered<BytesReceived>,
     events_received: Registered<EventsReceived>,
 ) -> BoxedFilter<(Response,)> {
-    let make_events = move |encoding_header: Option<String>, _headers: HeaderMap, body: Bytes| {
-        decompress_body(encoding_header.as_deref(), body)
-            .inspect_err(|err| {
-                if err.status_code() == StatusCode::UNSUPPORTED_MEDIA_TYPE {
-                    emit!(HttpBadRequest::new(
-                        err.status_code().as_u16(),
-                        err.message()
-                    ));
-                }
-            })
-            .and_then(|decoded_body| {
-                bytes_received.emit(ByteSize(decoded_body.len()));
-                decode_trace_body(decoded_body, &events_received)
-            })
-    };
+    let make_events =
+        move |content_type: Option<String>,
+              encoding_header: Option<String>,
+              _headers: HeaderMap,
+              body: Bytes| {
+            decompress_body(encoding_header.as_deref(), body)
+                .inspect_err(|err| {
+                    if err.status_code() == StatusCode::UNSUPPORTED_MEDIA_TYPE {
+                        emit!(HttpBadRequest::new(
+                            err.status_code().as_u16(),
+                            err.message()
+                        ));
+                    }
+                })
+                .and_then(|decoded_body| {
+                    bytes_received.emit(ByteSize(decoded_body.len()));
+                    decode_trace_body(
+                        decoded_body,
+                        &events_received,
+                        is_json_content_type(content_type.as_deref()),
+                    )
+                })
+        };
 
-    build_ingest_filter::<ExportTraceServiceResponse, _>(
+    build_ingest_filter::<otel::collector::trace::v1::ExportTraceServiceResponse, _>(
         TRACES,
         acknowledgements,
         source_sender,
@@ -280,17 +334,104 @@ fn build_warp_trace_filter(
     )
 }
 
+use opentelemetry_proto::tonic as otel;
+
+#[cfg(feature = "sources-opentelemetry")]
+use vector_lib::event::{EventMetadata, OtelLog, OtelMetric, OtelSpan};
+
+#[cfg(feature = "sources-opentelemetry")]
+fn json_decode_logs(body: Bytes) -> Result<Vec<Event>, ErrorMessage> {
+    let request: otel::collector::logs::v1::ExportLogsServiceRequest =
+        serde_json::from_slice(&body).map_err(emit_decode_error)?;
+
+    Ok(request
+        .resource_logs
+        .into_iter()
+        .flat_map(|rl| {
+            let resource = rl.resource;
+            rl.scope_logs.into_iter().flat_map(move |sl| {
+                let scope = sl.scope.clone();
+                let resource = resource.clone();
+                sl.log_records.into_iter().map(move |record| {
+                    Event::OtelLog(OtelLog::from_parts(
+                        record,
+                        resource.clone(),
+                        scope.clone(),
+                        EventMetadata::default(),
+                    ))
+                })
+            })
+        })
+        .collect())
+}
+
+#[cfg(feature = "sources-opentelemetry")]
+fn json_decode_metrics(body: Bytes) -> Result<Vec<Event>, ErrorMessage> {
+    let request: otel::collector::metrics::v1::ExportMetricsServiceRequest =
+        serde_json::from_slice(&body).map_err(emit_decode_error)?;
+
+    Ok(request
+        .resource_metrics
+        .into_iter()
+        .flat_map(|rm| {
+            let resource = rm.resource;
+            rm.scope_metrics.into_iter().flat_map(move |sm| {
+                let scope = sm.scope.clone();
+                let resource = resource.clone();
+                sm.metrics.into_iter().map(move |metric| {
+                    Event::OtelMetric(OtelMetric::from_parts(
+                        metric,
+                        resource.clone(),
+                        scope.clone(),
+                        EventMetadata::default(),
+                    ))
+                })
+            })
+        })
+        .collect())
+}
+
+#[cfg(feature = "sources-opentelemetry")]
+fn json_decode_traces(body: Bytes) -> Result<Vec<Event>, ErrorMessage> {
+    let request: otel::collector::trace::v1::ExportTraceServiceRequest =
+        serde_json::from_slice(&body).map_err(emit_decode_error)?;
+
+    Ok(request
+        .resource_spans
+        .into_iter()
+        .flat_map(|rs| {
+            let resource = rs.resource;
+            rs.scope_spans.into_iter().flat_map(move |ss| {
+                let scope = ss.scope.clone();
+                let resource = resource.clone();
+                ss.spans.into_iter().map(move |span| {
+                    Event::OtelSpan(OtelSpan::from_parts(
+                        span,
+                        resource.clone(),
+                        scope.clone(),
+                        EventMetadata::default(),
+                    ))
+                })
+            })
+        })
+        .collect())
+}
+
 fn decode_trace_body(
     body: Bytes,
     events_received: &Registered<EventsReceived>,
+    is_json: bool,
 ) -> Result<Vec<Event>, ErrorMessage> {
-    let request = ExportTraceServiceRequest::decode(body).map_err(emit_decode_error)?;
-
-    let events: Vec<Event> = request
-        .resource_spans
-        .into_iter()
-        .flat_map(|v| v.into_otel_event_iter())
-        .collect();
+    let events: Vec<Event> = if is_json {
+        json_decode_traces(body)?
+    } else {
+        let request = ExportTraceServiceRequest::decode(body).map_err(emit_decode_error)?;
+        request
+            .resource_spans
+            .into_iter()
+            .flat_map(|v| v.into_otel_event_iter())
+            .collect()
+    };
 
     events_received.emit(CountByteSize(
         events.len(),
@@ -304,14 +445,18 @@ fn decode_log_body(
     body: Bytes,
     _log_namespace: LogNamespace,
     events_received: &Registered<EventsReceived>,
+    is_json: bool,
 ) -> Result<Vec<Event>, ErrorMessage> {
-    let request = ExportLogsServiceRequest::decode(body).map_err(emit_decode_error)?;
-
-    let events: Vec<Event> = request
-        .resource_logs
-        .into_iter()
-        .flat_map(|v| v.into_otel_event_iter())
-        .collect();
+    let events: Vec<Event> = if is_json {
+        json_decode_logs(body)?
+    } else {
+        let request = ExportLogsServiceRequest::decode(body).map_err(emit_decode_error)?;
+        request
+            .resource_logs
+            .into_iter()
+            .flat_map(|v| v.into_otel_event_iter())
+            .collect()
+    };
 
     events_received.emit(CountByteSize(
         events.len(),
@@ -324,14 +469,18 @@ fn decode_log_body(
 fn decode_metrics_body(
     body: Bytes,
     events_received: &Registered<EventsReceived>,
+    is_json: bool,
 ) -> Result<Vec<Event>, ErrorMessage> {
-    let request = ExportMetricsServiceRequest::decode(body).map_err(emit_decode_error)?;
-
-    let events: Vec<Event> = request
-        .resource_metrics
-        .into_iter()
-        .flat_map(|v| v.into_otel_event_iter())
-        .collect();
+    let events: Vec<Event> = if is_json {
+        json_decode_metrics(body)?
+    } else {
+        let request = ExportMetricsServiceRequest::decode(body).map_err(emit_decode_error)?;
+        request
+            .resource_metrics
+            .into_iter()
+            .flat_map(|v| v.into_otel_event_iter())
+            .collect()
+    };
 
     events_received.emit(CountByteSize(
         events.len(),
@@ -341,12 +490,21 @@ fn decode_metrics_body(
     Ok(events)
 }
 
+fn reply_for<T: Message + serde::Serialize>(resp: T, is_json: bool) -> Response {
+    if is_json {
+        json(resp).into_response()
+    } else {
+        protobuf(resp).into_response()
+    }
+}
+
 async fn handle_request(
     events: Result<Vec<Event>, ErrorMessage>,
     acknowledgements: bool,
     mut out: SourceSender,
     output: &str,
-    resp: impl Message,
+    resp: impl Message + serde::Serialize,
+    is_json: bool,
 ) -> Result<Response, Rejection> {
     match events {
         Ok(mut events) => {
@@ -359,16 +517,16 @@ async fn handle_request(
             })?;
 
             match receiver {
-                None => Ok(protobuf(resp).into_response()),
+                None => Ok(reply_for(resp, is_json)),
                 Some(receiver) => match receiver.await {
-                    BatchStatus::Delivered => Ok(protobuf(resp).into_response()),
+                    BatchStatus::Delivered => Ok(reply_for(resp, is_json)),
                     BatchStatus::Errored => Err(warp::reject::custom(Status {
-                        code: 2, // UNKNOWN - OTLP doesn't require use of status.code, but we can't encode a None here
+                        code: 2,
                         message: "Error delivering contents to sink".into(),
                         ..Default::default()
                     })),
                     BatchStatus::Rejected => Err(warp::reject::custom(Status {
-                        code: 2, // UNKNOWN - OTLP doesn't require use of status.code, but we can't encode a None here
+                        code: 2,
                         message: "Contents failed to deliver to sink".into(),
                         ..Default::default()
                     })),
@@ -382,7 +540,7 @@ async fn handle_request(
 async fn handle_rejection(err: Rejection) -> Result<impl Reply, std::convert::Infallible> {
     if let Some(err_msg) = err.find::<ErrorMessage>() {
         let reply = protobuf(Status {
-            code: 2, // UNKNOWN - OTLP doesn't require use of status.code, but we can't encode a None here
+            code: 2,
             message: err_msg.message().into(),
             ..Default::default()
         });
@@ -390,7 +548,7 @@ async fn handle_rejection(err: Rejection) -> Result<impl Reply, std::convert::In
         Ok(warp::reply::with_status(reply, err_msg.status_code()))
     } else {
         let reply = protobuf(Status {
-            code: 2, // UNKNOWN - OTLP doesn't require use of status.code, but we can't encode a None here
+            code: 2,
             message: format!("{err:?}"),
             ..Default::default()
         });

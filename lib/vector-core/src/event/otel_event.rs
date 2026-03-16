@@ -1,11 +1,11 @@
-use otel_proto_types::common::v1::{
+use opentelemetry_proto::tonic::common::v1::{
     AnyValue, InstrumentationScope, KeyValue, any_value::Value as OtelValueKind,
 };
-use otel_proto_types::logs::v1::LogRecord;
-use otel_proto_types::metrics::v1::Metric as OtelMetricProto;
-use otel_proto_types::resource::v1::Resource;
-use otel_proto_types::trace::v1::Span;
-use prost::Message;
+use opentelemetry_proto::tonic::logs::v1::LogRecord;
+use opentelemetry_proto::tonic::metrics::v1::Metric as OtelMetricProto;
+use opentelemetry_proto::tonic::resource::v1::Resource;
+use opentelemetry_proto::tonic::trace::v1::Span;
+use prost::Message as _;
 use serde::{Deserialize, Serialize};
 use vector_buffers::EventCount;
 use vector_common::{
@@ -436,7 +436,7 @@ impl OtelSpan {
         self.span.kind
     }
 
-    pub fn status(&self) -> Option<&otel_proto_types::trace::v1::Status> {
+    pub fn status(&self) -> Option<&opentelemetry_proto::tonic::trace::v1::Status> {
         self.span.status.as_ref()
     }
 
@@ -744,15 +744,13 @@ impl_otel_event_traits!(OtelLog, record);
 impl_otel_event_traits!(OtelSpan, span);
 impl_otel_event_traits!(OtelMetric, metric);
 
-// Serde: serialize as JSON via prost-serde (needed for Event derive)
-
 impl Serialize for OtelLog {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeStruct;
         let mut state = serializer.serialize_struct("OtelLog", 3)?;
-        state.serialize_field("record", &JsonProto(&self.record))?;
-        state.serialize_field("resource", &self.resource.as_ref().map(JsonProto))?;
-        state.serialize_field("scope", &self.scope.as_ref().map(JsonProto))?;
+        state.serialize_field("record", &self.record)?;
+        state.serialize_field("resource", &self.resource)?;
+        state.serialize_field("scope", &self.scope)?;
         state.end()
     }
 }
@@ -761,9 +759,9 @@ impl Serialize for OtelSpan {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeStruct;
         let mut state = serializer.serialize_struct("OtelSpan", 3)?;
-        state.serialize_field("span", &JsonProto(&self.span))?;
-        state.serialize_field("resource", &self.resource.as_ref().map(JsonProto))?;
-        state.serialize_field("scope", &self.scope.as_ref().map(JsonProto))?;
+        state.serialize_field("span", &self.span)?;
+        state.serialize_field("resource", &self.resource)?;
+        state.serialize_field("scope", &self.scope)?;
         state.end()
     }
 }
@@ -772,19 +770,10 @@ impl Serialize for OtelMetric {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeStruct;
         let mut state = serializer.serialize_struct("OtelMetric", 3)?;
-        state.serialize_field("metric", &JsonProto(&self.metric))?;
-        state.serialize_field("resource", &self.resource.as_ref().map(JsonProto))?;
-        state.serialize_field("scope", &self.scope.as_ref().map(JsonProto))?;
+        state.serialize_field("metric", &self.metric)?;
+        state.serialize_field("resource", &self.resource)?;
+        state.serialize_field("scope", &self.scope)?;
         state.end()
-    }
-}
-
-struct JsonProto<'a, M: Message>(&'a M);
-
-impl<M: Message> Serialize for JsonProto<'_, M> {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let bytes = self.0.encode_to_vec();
-        serializer.serialize_bytes(&bytes)
     }
 }
 
@@ -834,7 +823,7 @@ mod tests {
         let mut event = OtelLog::new(LogRecord::default());
 
         let value = AnyValue {
-            value: Some(otel_proto_types::common::v1::any_value::Value::StringValue(
+            value: Some(opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(
                 "bar".to_string(),
             )),
         };
@@ -845,7 +834,7 @@ mod tests {
         assert_eq!(event.attribute("foo"), Some(&value));
 
         let new_value = AnyValue {
-            value: Some(otel_proto_types::common::v1::any_value::Value::IntValue(42)),
+            value: Some(opentelemetry_proto::tonic::common::v1::any_value::Value::IntValue(42)),
         };
         event.set_attribute("foo".to_string(), new_value.clone());
         assert_eq!(event.attribute("foo"), Some(&new_value));
@@ -861,7 +850,7 @@ mod tests {
         assert!(event.resource_attribute("host.name").is_none());
 
         let host = AnyValue {
-            value: Some(otel_proto_types::common::v1::any_value::Value::StringValue(
+            value: Some(opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(
                 "myhost".to_string(),
             )),
         };
@@ -917,7 +906,7 @@ mod tests {
     fn byte_size_of_non_zero() {
         let event = OtelLog::new(LogRecord {
             body: Some(AnyValue {
-                value: Some(otel_proto_types::common::v1::any_value::Value::StringValue(
+                value: Some(opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(
                     "hello world".to_string(),
                 )),
             }),
@@ -973,7 +962,7 @@ mod tests {
 
     #[test]
     fn to_log_event_projects_fields() {
-        use otel_proto_types::common::v1::any_value::Value as Kind;
+        use opentelemetry_proto::tonic::common::v1::any_value::Value as Kind;
 
         let mut event = OtelLog::new(LogRecord {
             body: Some(AnyValue {
@@ -1031,7 +1020,7 @@ mod tests {
 
     #[test]
     fn body_string_returns_body_text() {
-        use otel_proto_types::common::v1::any_value::Value as Kind;
+        use opentelemetry_proto::tonic::common::v1::any_value::Value as Kind;
 
         let event = OtelLog::new(LogRecord {
             body: Some(AnyValue {
@@ -1051,5 +1040,33 @@ mod tests {
             ..Default::default()
         });
         assert_eq!(int_body.body_string(), "42");
+    }
+
+    #[test]
+    fn otel_log_serializes_as_structured_json() {
+        use opentelemetry_proto::tonic::common::v1::any_value::Value as Kind;
+        let record = LogRecord {
+            severity_text: "INFO".to_string(),
+            body: Some(AnyValue {
+                value: Some(Kind::StringValue("hello".to_string())),
+            }),
+            ..Default::default()
+        };
+        let resource = Some(Resource {
+            attributes: vec![KeyValue {
+                key: "service.name".to_string(),
+                value: Some(AnyValue {
+                    value: Some(Kind::StringValue("test-svc".to_string())),
+                }),
+            }],
+            dropped_attributes_count: 0,
+        });
+        let event = OtelLog::from_parts(record, resource, None, EventMetadata::default());
+        let json = serde_json::to_string(&event).expect("serialize");
+
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(v.get("record").is_some(), "expected 'record' key, got: {json}");
+        assert_eq!(v["record"]["severityText"], "INFO");
+        assert!(v["resource"].is_object(), "expected 'resource' object");
     }
 }

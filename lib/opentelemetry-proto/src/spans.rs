@@ -75,23 +75,23 @@ impl ResourceSpans {
 
 fn proto_convert_resource(
     r: Option<Resource>,
-) -> Option<otel_proto_types::resource::v1::Resource> {
+) -> Option<upstream_opentelemetry_proto::tonic::resource::v1::Resource> {
     let r = r?;
     let bytes = r.encode_to_vec();
-    otel_proto_types::resource::v1::Resource::decode(bytes::Bytes::from(bytes)).ok()
+    upstream_opentelemetry_proto::tonic::resource::v1::Resource::decode(bytes::Bytes::from(bytes)).ok()
 }
 
 fn proto_convert_scope(
     s: Option<InstrumentationScope>,
-) -> Option<otel_proto_types::common::v1::InstrumentationScope> {
+) -> Option<upstream_opentelemetry_proto::tonic::common::v1::InstrumentationScope> {
     let s = s?;
     let bytes = s.encode_to_vec();
-    otel_proto_types::common::v1::InstrumentationScope::decode(bytes::Bytes::from(bytes)).ok()
+    upstream_opentelemetry_proto::tonic::common::v1::InstrumentationScope::decode(bytes::Bytes::from(bytes)).ok()
 }
 
-fn proto_convert_span(s: Span) -> otel_proto_types::trace::v1::Span {
+fn proto_convert_span(s: Span) -> upstream_opentelemetry_proto::tonic::trace::v1::Span {
     let bytes = s.encode_to_vec();
-    otel_proto_types::trace::v1::Span::decode(bytes::Bytes::from(bytes))
+    upstream_opentelemetry_proto::tonic::trace::v1::Span::decode(bytes::Bytes::from(bytes))
         .expect("Span proto decode failed on same-schema message")
 }
 
@@ -414,7 +414,7 @@ mod tests {
         let span = events[0].as_otel_span();
         let attr = span.attribute("http.method").expect("attribute must exist");
         match &attr.value {
-            Some(otel_proto_types::common::v1::any_value::Value::StringValue(s)) => {
+            Some(upstream_opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(s)) => {
                 assert_eq!(s, "GET")
             }
             other => panic!("unexpected attribute value: {:?}", other),

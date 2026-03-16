@@ -7,12 +7,12 @@ use std::{
 };
 
 use lookup::{OwnedTargetPath, OwnedValuePath, PathPrefix, lookup_v2::OwnedSegment};
-use otel_proto_types::common::v1::{
+use opentelemetry_proto::tonic::common::v1::{
     AnyValue as OtelAnyValue, ArrayValue as OtelArrayValue, KeyValue as OtelKeyValue,
     KeyValueList as OtelKeyValueList, InstrumentationScope as OtelScope,
     any_value::Value as OtelValueKind,
 };
-use otel_proto_types::resource::v1::Resource as OtelResource;
+use opentelemetry_proto::tonic::resource::v1::Resource as OtelResource;
 use snafu::Snafu;
 use vrl::{
     compiler::{ProgramInfo, SecretTarget, Target, value::VrlValueConvert},
@@ -246,7 +246,7 @@ fn otel_log_event_to_value(event: &OtelLog) -> Value {
 }
 
 fn value_to_otel_log_event(value: Value, metadata: EventMetadata) -> OtelLog {
-    use otel_proto_types::logs::v1::LogRecord;
+    use opentelemetry_proto::tonic::logs::v1::LogRecord;
 
     let map = match value {
         Value::Object(m) => m,
@@ -338,7 +338,7 @@ fn otel_span_event_to_value(event: &OtelSpan) -> Value {
 }
 
 fn value_to_otel_span_event(value: Value, metadata: EventMetadata) -> OtelSpan {
-    use otel_proto_types::trace::v1::{Span, Status, span};
+    use opentelemetry_proto::tonic::trace::v1::{Span, Status, span};
 
     let map = match value {
         Value::Object(m) => m,
@@ -376,6 +376,7 @@ fn value_to_otel_span_event(value: Value, metadata: EventMetadata) -> OtelSpan {
                         trace_state: lm.get("trace_state").and_then(|v| v.as_bytes()).map(|b| String::from_utf8_lossy(b).into_owned()).unwrap_or_default(),
                         attributes: lm.get("attributes").and_then(|v| v.as_object()).map(object_map_to_otel_kvlist).unwrap_or_default(),
                         dropped_attributes_count: lm.get("dropped_attributes_count").and_then(|v| v.as_integer()).unwrap_or(0) as u32,
+                        flags: lm.get("flags").and_then(|v| v.as_integer()).unwrap_or(0) as u32,
                     })
                 })
                 .collect()
@@ -406,6 +407,7 @@ fn value_to_otel_span_event(value: Value, metadata: EventMetadata) -> OtelSpan {
         links,
         dropped_links_count: map.get("dropped_links_count").and_then(|v| v.as_integer()).unwrap_or(0) as u32,
         status,
+        flags: map.get("flags").and_then(|v| v.as_integer()).unwrap_or(0) as u32,
     };
 
     let resource = map.get("resource").and_then(value_to_otel_resource);
@@ -2068,7 +2070,7 @@ mod test {
 
     #[test]
     fn otel_log_vrl_target_get_severity_text() {
-        use otel_proto_types::logs::v1::LogRecord;
+        use opentelemetry_proto::tonic::logs::v1::LogRecord;
         let event = OtelLog::new(LogRecord {
             severity_text: "ERROR".to_string(),
             ..Default::default()
@@ -2083,7 +2085,7 @@ mod test {
 
     #[test]
     fn otel_log_vrl_target_get_attribute() {
-        use otel_proto_types::logs::v1::LogRecord;
+        use opentelemetry_proto::tonic::logs::v1::LogRecord;
         let event = OtelLog::new(LogRecord {
             attributes: vec![OtelKeyValue {
                 key: "host.name".to_string(),
@@ -2103,7 +2105,7 @@ mod test {
 
     #[test]
     fn otel_log_vrl_target_insert_attribute() {
-        use otel_proto_types::logs::v1::LogRecord;
+        use opentelemetry_proto::tonic::logs::v1::LogRecord;
         let event = OtelLog::new(LogRecord::default());
         let info = make_empty_info();
         let mut target = VrlTarget::new(Event::OtelLog(event), &info, false);
@@ -2117,7 +2119,7 @@ mod test {
 
     #[test]
     fn otel_log_vrl_target_roundtrip_into_events() {
-        use otel_proto_types::logs::v1::LogRecord;
+        use opentelemetry_proto::tonic::logs::v1::LogRecord;
         let event = OtelLog::new(LogRecord {
             severity_text: "INFO".to_string(),
             severity_number: 9,
@@ -2152,7 +2154,7 @@ mod test {
 
     #[test]
     fn otel_log_vrl_target_mutate_and_roundtrip() {
-        use otel_proto_types::logs::v1::LogRecord;
+        use opentelemetry_proto::tonic::logs::v1::LogRecord;
         let event = OtelLog::new(LogRecord {
             severity_text: "DEBUG".to_string(),
             ..Default::default()
@@ -2177,7 +2179,7 @@ mod test {
 
     #[test]
     fn otel_span_vrl_target_get_name() {
-        use otel_proto_types::trace::v1::Span;
+        use opentelemetry_proto::tonic::trace::v1::Span;
         let event = OtelSpan::new(Span {
             name: "my-span".to_string(),
             trace_id: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
@@ -2197,7 +2199,7 @@ mod test {
 
     #[test]
     fn otel_span_vrl_target_roundtrip() {
-        use otel_proto_types::trace::v1::Span;
+        use opentelemetry_proto::tonic::trace::v1::Span;
         let event = OtelSpan::new(Span {
             name: "test-span".to_string(),
             kind: 2,
@@ -2225,7 +2227,7 @@ mod test {
 
     #[test]
     fn otel_metric_vrl_target_get_name() {
-        use otel_proto_types::metrics::v1::Metric as OtelMetricProto;
+        use opentelemetry_proto::tonic::metrics::v1::Metric as OtelMetricProto;
         let event = OtelMetric::new(OtelMetricProto {
             name: "http.duration".to_string(),
             description: "request duration".to_string(),
@@ -2246,7 +2248,7 @@ mod test {
 
     #[test]
     fn otel_metric_vrl_target_set_name() {
-        use otel_proto_types::metrics::v1::Metric as OtelMetricProto;
+        use opentelemetry_proto::tonic::metrics::v1::Metric as OtelMetricProto;
         let event = OtelMetric::new(OtelMetricProto {
             name: "old.name".to_string(),
             ..Default::default()
@@ -2271,7 +2273,7 @@ mod test {
 
     #[test]
     fn otel_log_resource_and_scope_roundtrip() {
-        use otel_proto_types::logs::v1::LogRecord;
+        use opentelemetry_proto::tonic::logs::v1::LogRecord;
         let mut event = OtelLog::new(LogRecord::default());
         event.set_resource(OtelResource {
             attributes: vec![OtelKeyValue {

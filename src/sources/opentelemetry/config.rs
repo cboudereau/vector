@@ -19,7 +19,7 @@ use crate::{
 };
 use futures::FutureExt;
 use futures_util::{TryFutureExt, future::join};
-use tonic::{codec::CompressionEncoding, transport::server::RoutesBuilder};
+use tonic::{codec::CompressionEncoding, service::RoutesBuilder};
 use vector_lib::{
     config::{LegacyKey, LogNamespace, log_schema},
     configurable::configurable_component,

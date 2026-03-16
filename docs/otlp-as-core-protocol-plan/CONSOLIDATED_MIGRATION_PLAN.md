@@ -19,6 +19,7 @@ Single source of truth for the migration. All other documents in this folder fee
 | `SINK_REMOVAL_STRATEGY.md` | Remove-first strategy rationale and re-integration scope |
 | `VRL_MIGRATION_TOOL.md` | VRL migration tool specification and rewrite rule catalogue |
 | `GAP_ANALYSIS.md` | Code-verified gaps between docs and codebase — read before coding |
+| `UPSTREAM_PROTO_MIGRATION.md` | Migrate to upstream `opentelemetry-proto` crate + OTLP HTTP JSON support |
 
 ---
 

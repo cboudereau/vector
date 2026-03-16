@@ -14,7 +14,7 @@ fn main() -> Result<()> {
     tonic_build::configure()
         .build_client(false)
         .build_server(false)
-        .compile(&proto_paths, &[include_path])?;
+        .compile_protos(&proto_paths, &[include_path])?;
 
     Ok(())
 }

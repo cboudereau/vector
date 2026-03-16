@@ -1,6 +1,6 @@
 use crate::encoding::ProtobufSerializer;
 use bytes::BytesMut;
-use opentelemetry_proto::{
+use vector_opentelemetry_proto::{
     metrics::encode_metric_to_request,
     proto::{
         DESCRIPTOR_BYTES, LOGS_REQUEST_MESSAGE_TYPE, METRICS_REQUEST_MESSAGE_TYPE,
@@ -289,7 +289,7 @@ mod tests {
 
     #[test]
     fn encodes_otel_log_event() {
-        use otel_proto_types::{
+        use opentelemetry_proto::tonic::{
             common::v1::{AnyValue, KeyValue, any_value::Value as AnyValueKind},
             logs::v1::LogRecord,
             resource::v1::Resource,
@@ -325,7 +325,7 @@ mod tests {
             .expect("OtelLog encode must succeed");
         assert!(!buf.is_empty());
 
-        let decoded = opentelemetry_proto::proto::collector::logs::v1::ExportLogsServiceRequest::decode(
+        let decoded = vector_opentelemetry_proto::proto::collector::logs::v1::ExportLogsServiceRequest::decode(
             bytes::Bytes::from(buf.to_vec()),
         )
         .expect("must decode as ExportLogsServiceRequest");
@@ -340,7 +340,7 @@ mod tests {
 
     #[test]
     fn encodes_otel_metric_event() {
-        use otel_proto_types::metrics::v1::{
+        use opentelemetry_proto::tonic::metrics::v1::{
             Gauge, NumberDataPoint, Metric as OtelMetric,
             metric::Data as OtelMetricData,
             number_data_point::Value as NdpValue,
@@ -371,7 +371,7 @@ mod tests {
         assert!(!buf.is_empty());
 
         let decoded =
-            opentelemetry_proto::proto::collector::metrics::v1::ExportMetricsServiceRequest::decode(
+            vector_opentelemetry_proto::proto::collector::metrics::v1::ExportMetricsServiceRequest::decode(
                 bytes::Bytes::from(buf.to_vec()),
             )
             .expect("must decode as ExportMetricsServiceRequest");
@@ -384,7 +384,7 @@ mod tests {
 
     #[test]
     fn encodes_otel_span_event() {
-        use otel_proto_types::trace::v1::Span;
+        use opentelemetry_proto::tonic::trace::v1::Span;
 
         let span = Span {
             name: "GET /api/users".into(),
@@ -408,7 +408,7 @@ mod tests {
         assert!(!buf.is_empty());
 
         let decoded =
-            opentelemetry_proto::proto::collector::trace::v1::ExportTraceServiceRequest::decode(
+            vector_opentelemetry_proto::proto::collector::trace::v1::ExportTraceServiceRequest::decode(
                 bytes::Bytes::from(buf.to_vec()),
             )
             .expect("must decode as ExportTraceServiceRequest");

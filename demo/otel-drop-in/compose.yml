@@ -10,6 +10,11 @@ services:
     ports:
       - "4318:4318"
       - "4317:4317"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133/"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
 
   # ── Vector (drop-in replacement) ──────────────────────────────
   vector:
@@ -24,84 +29,127 @@ services:
     ports:
       - "4328:4318"
       - "4327:4317"
+    healthcheck:
+      test: ["CMD-SHELL", "echo > /dev/tcp/localhost/4318 || exit 1"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
 
-  # ── Curl tests → OTel Collector ───────────────────────────────
+  # ── OTel Collector as forwarder → Vector (JSON→gRPC bridge) ──
+  # Receives OTLP/JSON on HTTP, re-exports as OTLP/gRPC to Vector
+  otel-to-vector:
+    image: otel/opentelemetry-collector-contrib:0.122.0
+    command: "--config /etc/otelcol-contrib/config.yml"
+    volumes:
+      - ./otelcontribcol/forward-to-vector.yml:/etc/otelcol-contrib/config.yml:ro
+    networks:
+      - bridge
+    ports:
+      - "4338:4318"
+    depends_on:
+      vector:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133/"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+
+  # ── Curl tests → OTel Collector (OTLP/JSON) ──────────────────
   otel-logs:
     image: curlimages/curl:8.5.0
     command: >-
+      -sS --retry 5 --retry-delay 2 --retry-connrefused
       -X POST -H 'Content-Type: application/json'
       -d @/otlpjson/logs.json
-      -i otelcontribcol:4318/v1/logs
+      -w "\n%{http_code}\n"
+      otelcontribcol:4318/v1/logs
     volumes:
       - ./otlpjson/logs.json:/otlpjson/logs.json:ro
     depends_on:
-      - otelcontribcol
+      otelcontribcol:
+        condition: service_healthy
     networks:
       - bridge
 
   otel-metrics:
     image: curlimages/curl:8.5.0
     command: >-
+      -sS --retry 5 --retry-delay 2 --retry-connrefused
       -X POST -H 'Content-Type: application/json'
       -d @/otlpjson/metrics.json
-      -i otelcontribcol:4318/v1/metrics
+      -w "\n%{http_code}\n"
+      otelcontribcol:4318/v1/metrics
     volumes:
       - ./otlpjson/metrics.json:/otlpjson/metrics.json:ro
     depends_on:
-      - otelcontribcol
+      otelcontribcol:
+        condition: service_healthy
     networks:
       - bridge
 
   otel-traces:
     image: curlimages/curl:8.5.0
     command: >-
+      -sS --retry 5 --retry-delay 2 --retry-connrefused
       -X POST -H 'Content-Type: application/json'
       -d @/otlpjson/trace.json
-      -i otelcontribcol:4318/v1/traces
+      -w "\n%{http_code}\n"
+      otelcontribcol:4318/v1/traces
     volumes:
       - ./otlpjson/trace.json:/otlpjson/trace.json:ro
     depends_on:
-      - otelcontribcol
+      otelcontribcol:
+        condition: service_healthy
     networks:
       - bridge
 
-  # ── Curl tests → Vector ──────────────────────────────────────
+  # ── Curl tests → Vector via forwarder (OTLP/JSON→gRPC) ───────
   vector-logs:
     image: curlimages/curl:8.5.0
     command: >-
+      -sS --retry 5 --retry-delay 2 --retry-connrefused
       -X POST -H 'Content-Type: application/json'
       -d @/otlpjson/logs.json
-      -i vector:4318/v1/logs
+      -w "\n%{http_code}\n"
+      otel-to-vector:4318/v1/logs
     volumes:
       - ./otlpjson/logs.json:/otlpjson/logs.json:ro
     depends_on:
-      - vector
+      otel-to-vector:
+        condition: service_healthy
     networks:
       - bridge
 
   vector-metrics:
     image: curlimages/curl:8.5.0
     command: >-
+      -sS --retry 5 --retry-delay 2 --retry-connrefused
       -X POST -H 'Content-Type: application/json'
       -d @/otlpjson/metrics.json
-      -i vector:4318/v1/metrics
+      -w "\n%{http_code}\n"
+      otel-to-vector:4318/v1/metrics
     volumes:
       - ./otlpjson/metrics.json:/otlpjson/metrics.json:ro
     depends_on:
-      - vector
+      otel-to-vector:
+        condition: service_healthy
     networks:
       - bridge
 
   vector-traces:
     image: curlimages/curl:8.5.0
     command: >-
+      -sS --retry 5 --retry-delay 2 --retry-connrefused
       -X POST -H 'Content-Type: application/json'
       -d @/otlpjson/trace.json
-      -i vector:4318/v1/traces
+      -w "\n%{http_code}\n"
+      otel-to-vector:4318/v1/traces
     volumes:
       - ./otlpjson/trace.json:/otlpjson/trace.json:ro
     depends_on:
-      - vector
+      otel-to-vector:
+        condition: service_healthy
     networks:
       - bridge
 

@@ -40,7 +40,12 @@ mod r#ref;
 mod ser;
 pub mod otel_event;
 pub mod otlp;
-pub use otel_event::{OtelLogEvent, OtelMetricEvent, OtelSpanEvent};
+pub use otel_event::{OtelLog, OtelMetric, OtelSpan};
+
+/// Backward-compat aliases — deprecated, use `OtelLog`/`OtelMetric`/`OtelSpan` directly.
+pub type OtelLogEvent = OtelLog;
+pub type OtelMetricEvent = OtelMetric;
+pub type OtelSpanEvent = OtelSpan;
 pub use otlp::{OtlpCodec, register_otlp_codec};
 pub use ser::{
     BufferFormat, BUFFER_FORMAT, EventEncodableMetadata, EventEncodableMetadataFlags,
@@ -61,9 +66,9 @@ pub enum Event {
     Log(LogEvent),
     Metric(Metric),
     Trace(TraceEvent),
-    OtelLog(OtelLogEvent),
-    OtelMetric(OtelMetricEvent),
-    OtelSpan(OtelSpanEvent),
+    OtelLog(OtelLog),
+    OtelMetric(OtelMetric),
+    OtelSpan(OtelSpan),
 }
 
 impl ByteSizeOf for Event {
@@ -184,7 +189,7 @@ impl Event {
     /// Coerce self into a `LogEvent`, projecting `OtelLog` events lossily.
     ///
     /// `Event::Log` passes through as-is.  `Event::OtelLog` is projected
-    /// into a `LogEvent` via [`OtelLogEvent::to_log_event`].  All other
+    /// into a `LogEvent` via [`OtelLog::to_log_event`].  All other
     /// variants cause a panic.
     pub fn into_log_coerce(self) -> LogEvent {
         match self {
@@ -354,91 +359,91 @@ impl Event {
         }
     }
 
-    pub fn as_otel_log(&self) -> &OtelLogEvent {
+    pub fn as_otel_log(&self) -> &OtelLog {
         match self {
             Event::OtelLog(e) => e,
             _ => panic!("Failed type coercion, {self:?} is not an OtelLog event"),
         }
     }
 
-    pub fn as_mut_otel_log(&mut self) -> &mut OtelLogEvent {
+    pub fn as_mut_otel_log(&mut self) -> &mut OtelLog {
         match self {
             Event::OtelLog(e) => e,
             _ => panic!("Failed type coercion, {self:?} is not an OtelLog event"),
         }
     }
 
-    pub fn into_otel_log(self) -> OtelLogEvent {
+    pub fn into_otel_log(self) -> OtelLog {
         match self {
             Event::OtelLog(e) => e,
             _ => panic!("Failed type coercion, {self:?} is not an OtelLog event"),
         }
     }
 
-    pub fn try_into_otel_log(self) -> Option<OtelLogEvent> {
+    pub fn try_into_otel_log(self) -> Option<OtelLog> {
         match self {
             Event::OtelLog(e) => Some(e),
             _ => None,
         }
     }
 
-    pub fn maybe_as_otel_log(&self) -> Option<&OtelLogEvent> {
+    pub fn maybe_as_otel_log(&self) -> Option<&OtelLog> {
         match self {
             Event::OtelLog(e) => Some(e),
             _ => None,
         }
     }
 
-    pub fn as_otel_span(&self) -> &OtelSpanEvent {
+    pub fn as_otel_span(&self) -> &OtelSpan {
         match self {
             Event::OtelSpan(e) => e,
             _ => panic!("Failed type coercion, {self:?} is not an OtelSpan event"),
         }
     }
 
-    pub fn as_mut_otel_span(&mut self) -> &mut OtelSpanEvent {
+    pub fn as_mut_otel_span(&mut self) -> &mut OtelSpan {
         match self {
             Event::OtelSpan(e) => e,
             _ => panic!("Failed type coercion, {self:?} is not an OtelSpan event"),
         }
     }
 
-    pub fn into_otel_span(self) -> OtelSpanEvent {
+    pub fn into_otel_span(self) -> OtelSpan {
         match self {
             Event::OtelSpan(e) => e,
             _ => panic!("Failed type coercion, {self:?} is not an OtelSpan event"),
         }
     }
 
-    pub fn try_into_otel_span(self) -> Option<OtelSpanEvent> {
+    pub fn try_into_otel_span(self) -> Option<OtelSpan> {
         match self {
             Event::OtelSpan(e) => Some(e),
             _ => None,
         }
     }
 
-    pub fn as_otel_metric(&self) -> &OtelMetricEvent {
+    pub fn as_otel_metric(&self) -> &OtelMetric {
         match self {
             Event::OtelMetric(e) => e,
             _ => panic!("Failed type coercion, {self:?} is not an OtelMetric event"),
         }
     }
 
-    pub fn as_mut_otel_metric(&mut self) -> &mut OtelMetricEvent {
+    pub fn as_mut_otel_metric(&mut self) -> &mut OtelMetric {
         match self {
             Event::OtelMetric(e) => e,
             _ => panic!("Failed type coercion, {self:?} is not an OtelMetric event"),
         }
     }
 
-    pub fn into_otel_metric(self) -> OtelMetricEvent {
+    pub fn into_otel_metric(self) -> OtelMetric {
         match self {
             Event::OtelMetric(e) => e,
             _ => panic!("Failed type coercion, {self:?} is not an OtelMetric event"),
         }
     }
 
-    pub fn try_into_otel_metric(self) -> Option<OtelMetricEvent> {
+    pub fn try_into_otel_metric(self) -> Option<OtelMetric> {
         match self {
             Event::OtelMetric(e) => Some(e),
             _ => None,
@@ -646,20 +651,20 @@ impl From<TraceEvent> for Event {
     }
 }
 
-impl From<OtelLogEvent> for Event {
-    fn from(e: OtelLogEvent) -> Self {
+impl From<OtelLog> for Event {
+    fn from(e: OtelLog) -> Self {
         Event::OtelLog(e)
     }
 }
 
-impl From<OtelMetricEvent> for Event {
-    fn from(e: OtelMetricEvent) -> Self {
+impl From<OtelMetric> for Event {
+    fn from(e: OtelMetric) -> Self {
         Event::OtelMetric(e)
     }
 }
 
-impl From<OtelSpanEvent> for Event {
-    fn from(e: OtelSpanEvent) -> Self {
+impl From<OtelSpan> for Event {
+    fn from(e: OtelSpan) -> Self {
         Event::OtelSpan(e)
     }
 }

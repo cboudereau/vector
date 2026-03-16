@@ -2,7 +2,7 @@ use chrono::{TimeZone, Utc};
 use prost::Message as _;
 use vector_core::event::{
     Event, EventMetadata, Metric as MetricEvent, MetricKind, MetricTags, MetricValue,
-    OtelMetricEvent,
+    OtelMetric,
     metric::{Bucket, Quantile, TagValue},
 };
 
@@ -63,7 +63,7 @@ impl ResourceMetrics {
 
                 scope_metrics.metrics.into_iter().map(move |metric| {
                     let otel_metric = proto_convert_metric(metric);
-                    Event::OtelMetric(OtelMetricEvent::from_parts(
+                    Event::OtelMetric(OtelMetric::from_parts(
                         otel_metric,
                         resource.clone(),
                         scope.clone(),

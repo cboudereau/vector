@@ -3,7 +3,7 @@
 use vector_common::EventDataEq;
 
 use super::{
-    Event, EventMetadata, LogEvent, Metric, OtelLogEvent, OtelMetricEvent, OtelSpanEvent,
+    Event, EventMetadata, LogEvent, Metric, OtelLog, OtelMetric, OtelSpan,
     TraceEvent,
 };
 
@@ -17,12 +17,12 @@ pub enum EventRef<'a> {
     Metric(&'a Metric),
     /// Reference to a `TraceEvent`
     Trace(&'a TraceEvent),
-    /// Reference to an `OtelLogEvent`
-    OtelLog(&'a OtelLogEvent),
-    /// Reference to an `OtelMetricEvent`
-    OtelMetric(&'a OtelMetricEvent),
-    /// Reference to an `OtelSpanEvent`
-    OtelSpan(&'a OtelSpanEvent),
+    /// Reference to an `OtelLog`
+    OtelLog(&'a OtelLog),
+    /// Reference to an `OtelMetric`
+    OtelMetric(&'a OtelMetric),
+    /// Reference to an `OtelSpan`
+    OtelSpan(&'a OtelSpan),
 }
 
 impl<'a> EventRef<'a> {
@@ -127,12 +127,12 @@ pub enum EventMutRef<'a> {
     Metric(&'a mut Metric),
     /// Reference to a `TraceEvent`
     Trace(&'a mut TraceEvent),
-    /// Reference to an `OtelLogEvent`
-    OtelLog(&'a mut OtelLogEvent),
-    /// Reference to an `OtelMetricEvent`
-    OtelMetric(&'a mut OtelMetricEvent),
-    /// Reference to an `OtelSpanEvent`
-    OtelSpan(&'a mut OtelSpanEvent),
+    /// Reference to an `OtelLog`
+    OtelLog(&'a mut OtelLog),
+    /// Reference to an `OtelMetric`
+    OtelMetric(&'a mut OtelMetric),
+    /// Reference to an `OtelSpan`
+    OtelSpan(&'a mut OtelSpan),
 }
 
 impl<'a> EventMutRef<'a> {

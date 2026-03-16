@@ -56,13 +56,13 @@ impl Encoder<Event> for NativeSerializer {
 mod tests {
     use bytes::BytesMut;
     use tokio_util::codec::Encoder;
-    use vector_core::event::{Event, OtelLogEvent};
+    use vector_core::event::{Event, OtelLog};
 
     use super::*;
 
     #[test]
     fn native_rejects_otel_log() {
-        let event = Event::OtelLog(OtelLogEvent::new(Default::default()));
+        let event = Event::OtelLog(OtelLog::new(Default::default()));
         let mut serializer = NativeSerializer;
         let mut buffer = BytesMut::new();
         let result = serializer.encode(event, &mut buffer);

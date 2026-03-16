@@ -87,17 +87,17 @@ fn remove_attribute(attrs: &mut Vec<KeyValue>, key: &str) -> Option<AnyValue> {
     }
 }
 
-// -- OtelLogEvent --
+// -- OtelLog --
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct OtelLogEvent {
+pub struct OtelLog {
     pub(crate) record: LogRecord,
     pub(crate) resource: Option<Resource>,
     pub(crate) scope: Option<InstrumentationScope>,
     pub(crate) metadata: EventMetadata,
 }
 
-impl OtelLogEvent {
+impl OtelLog {
     pub fn new(record: LogRecord) -> Self {
         Self {
             record,
@@ -331,17 +331,17 @@ impl OtelLogEvent {
     }
 }
 
-// -- OtelSpanEvent --
+// -- OtelSpan --
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct OtelSpanEvent {
+pub struct OtelSpan {
     pub(crate) span: Span,
     pub(crate) resource: Option<Resource>,
     pub(crate) scope: Option<InstrumentationScope>,
     pub(crate) metadata: EventMetadata,
 }
 
-impl OtelSpanEvent {
+impl OtelSpan {
     pub fn new(span: Span) -> Self {
         Self {
             span,
@@ -574,17 +574,17 @@ impl OtelSpanEvent {
     }
 }
 
-// -- OtelMetricEvent --
+// -- OtelMetric --
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct OtelMetricEvent {
+pub struct OtelMetric {
     pub(crate) metric: OtelMetricProto,
     pub(crate) resource: Option<Resource>,
     pub(crate) scope: Option<InstrumentationScope>,
     pub(crate) metadata: EventMetadata,
 }
 
-impl OtelMetricEvent {
+impl OtelMetric {
     pub fn new(metric: OtelMetricProto) -> Self {
         Self {
             metric,
@@ -740,16 +740,16 @@ macro_rules! impl_otel_event_traits {
     };
 }
 
-impl_otel_event_traits!(OtelLogEvent, record);
-impl_otel_event_traits!(OtelSpanEvent, span);
-impl_otel_event_traits!(OtelMetricEvent, metric);
+impl_otel_event_traits!(OtelLog, record);
+impl_otel_event_traits!(OtelSpan, span);
+impl_otel_event_traits!(OtelMetric, metric);
 
 // Serde: serialize as JSON via prost-serde (needed for Event derive)
 
-impl Serialize for OtelLogEvent {
+impl Serialize for OtelLog {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("OtelLogEvent", 3)?;
+        let mut state = serializer.serialize_struct("OtelLog", 3)?;
         state.serialize_field("record", &JsonProto(&self.record))?;
         state.serialize_field("resource", &self.resource.as_ref().map(JsonProto))?;
         state.serialize_field("scope", &self.scope.as_ref().map(JsonProto))?;
@@ -757,10 +757,10 @@ impl Serialize for OtelLogEvent {
     }
 }
 
-impl Serialize for OtelSpanEvent {
+impl Serialize for OtelSpan {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("OtelSpanEvent", 3)?;
+        let mut state = serializer.serialize_struct("OtelSpan", 3)?;
         state.serialize_field("span", &JsonProto(&self.span))?;
         state.serialize_field("resource", &self.resource.as_ref().map(JsonProto))?;
         state.serialize_field("scope", &self.scope.as_ref().map(JsonProto))?;
@@ -768,10 +768,10 @@ impl Serialize for OtelSpanEvent {
     }
 }
 
-impl Serialize for OtelMetricEvent {
+impl Serialize for OtelMetric {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("OtelMetricEvent", 3)?;
+        let mut state = serializer.serialize_struct("OtelMetric", 3)?;
         state.serialize_field("metric", &JsonProto(&self.metric))?;
         state.serialize_field("resource", &self.resource.as_ref().map(JsonProto))?;
         state.serialize_field("scope", &self.scope.as_ref().map(JsonProto))?;
@@ -788,27 +788,27 @@ impl<M: Message> Serialize for JsonProto<'_, M> {
     }
 }
 
-impl<'de> Deserialize<'de> for OtelLogEvent {
+impl<'de> Deserialize<'de> for OtelLog {
     fn deserialize<D: serde::Deserializer<'de>>(_deserializer: D) -> Result<Self, D::Error> {
         // Full deserialization deferred to Step 5b+; placeholder for Derive on Event
         Err(serde::de::Error::custom(
-            "OtelLogEvent deserialization not yet implemented",
+            "OtelLog deserialization not yet implemented",
         ))
     }
 }
 
-impl<'de> Deserialize<'de> for OtelSpanEvent {
+impl<'de> Deserialize<'de> for OtelSpan {
     fn deserialize<D: serde::Deserializer<'de>>(_deserializer: D) -> Result<Self, D::Error> {
         Err(serde::de::Error::custom(
-            "OtelSpanEvent deserialization not yet implemented",
+            "OtelSpan deserialization not yet implemented",
         ))
     }
 }
 
-impl<'de> Deserialize<'de> for OtelMetricEvent {
+impl<'de> Deserialize<'de> for OtelMetric {
     fn deserialize<D: serde::Deserializer<'de>>(_deserializer: D) -> Result<Self, D::Error> {
         Err(serde::de::Error::custom(
-            "OtelMetricEvent deserialization not yet implemented",
+            "OtelMetric deserialization not yet implemented",
         ))
     }
 }
@@ -819,7 +819,7 @@ mod tests {
 
     #[test]
     fn otel_log_event_default_fields() {
-        let event = OtelLogEvent::new(LogRecord::default());
+        let event = OtelLog::new(LogRecord::default());
         assert_eq!(event.time_unix_nano(), 0);
         assert_eq!(event.severity_text(), "");
         assert!(event.body().is_none());
@@ -831,7 +831,7 @@ mod tests {
 
     #[test]
     fn otel_log_event_attribute_crud() {
-        let mut event = OtelLogEvent::new(LogRecord::default());
+        let mut event = OtelLog::new(LogRecord::default());
 
         let value = AnyValue {
             value: Some(otel_proto_types::common::v1::any_value::Value::StringValue(
@@ -857,7 +857,7 @@ mod tests {
 
     #[test]
     fn otel_log_event_resource_attribute() {
-        let mut event = OtelLogEvent::new(LogRecord::default());
+        let mut event = OtelLog::new(LogRecord::default());
         assert!(event.resource_attribute("host.name").is_none());
 
         let host = AnyValue {
@@ -887,7 +887,7 @@ mod tests {
             kind: 2, // SPAN_KIND_SERVER
             ..Default::default()
         };
-        let event = OtelSpanEvent::new(span);
+        let event = OtelSpan::new(span);
 
         assert_eq!(event.name(), "test-span");
         assert_eq!(event.trace_id().len(), 16);
@@ -906,7 +906,7 @@ mod tests {
             unit: "ms".to_string(),
             ..Default::default()
         };
-        let event = OtelMetricEvent::new(metric);
+        let event = OtelMetric::new(metric);
 
         assert_eq!(event.name(), "http.request.duration");
         assert_eq!(event.description(), "Duration of HTTP requests");
@@ -915,7 +915,7 @@ mod tests {
 
     #[test]
     fn byte_size_of_non_zero() {
-        let event = OtelLogEvent::new(LogRecord {
+        let event = OtelLog::new(LogRecord {
             body: Some(AnyValue {
                 value: Some(otel_proto_types::common::v1::any_value::Value::StringValue(
                     "hello world".to_string(),
@@ -928,21 +928,21 @@ mod tests {
 
     #[test]
     fn event_data_eq_works() {
-        let a = OtelLogEvent::new(LogRecord::default());
-        let b = OtelLogEvent::new(LogRecord::default());
+        let a = OtelLog::new(LogRecord::default());
+        let b = OtelLog::new(LogRecord::default());
         assert!(a.event_data_eq(&b));
 
-        let mut c = OtelLogEvent::new(LogRecord::default());
+        let mut c = OtelLog::new(LogRecord::default());
         c.record.severity_text = "ERROR".to_string();
         assert!(!a.event_data_eq(&c));
     }
 
     #[test]
     fn event_count_is_one() {
-        assert_eq!(OtelLogEvent::new(LogRecord::default()).event_count(), 1);
-        assert_eq!(OtelSpanEvent::new(Span::default()).event_count(), 1);
+        assert_eq!(OtelLog::new(LogRecord::default()).event_count(), 1);
+        assert_eq!(OtelSpan::new(Span::default()).event_count(), 1);
         assert_eq!(
-            OtelMetricEvent::new(OtelMetricProto::default()).event_count(),
+            OtelMetric::new(OtelMetricProto::default()).event_count(),
             1
         );
     }
@@ -964,7 +964,7 @@ mod tests {
         let metadata = EventMetadata::default();
 
         let event =
-            OtelLogEvent::from_parts(record.clone(), resource.clone(), scope.clone(), metadata);
+            OtelLog::from_parts(record.clone(), resource.clone(), scope.clone(), metadata);
         let (r, res, sc, _meta) = event.into_parts();
         assert_eq!(r.severity_text, "INFO");
         assert_eq!(res, resource);
@@ -975,7 +975,7 @@ mod tests {
     fn to_log_event_projects_fields() {
         use otel_proto_types::common::v1::any_value::Value as Kind;
 
-        let mut event = OtelLogEvent::new(LogRecord {
+        let mut event = OtelLog::new(LogRecord {
             body: Some(AnyValue {
                 value: Some(Kind::StringValue("hello world".into())),
             }),
@@ -1033,7 +1033,7 @@ mod tests {
     fn body_string_returns_body_text() {
         use otel_proto_types::common::v1::any_value::Value as Kind;
 
-        let event = OtelLogEvent::new(LogRecord {
+        let event = OtelLog::new(LogRecord {
             body: Some(AnyValue {
                 value: Some(Kind::StringValue("test body".into())),
             }),
@@ -1041,10 +1041,10 @@ mod tests {
         });
         assert_eq!(event.body_string(), "test body");
 
-        let empty = OtelLogEvent::new(LogRecord::default());
+        let empty = OtelLog::new(LogRecord::default());
         assert_eq!(empty.body_string(), "");
 
-        let int_body = OtelLogEvent::new(LogRecord {
+        let int_body = OtelLog::new(LogRecord {
             body: Some(AnyValue {
                 value: Some(Kind::IntValue(42)),
             }),

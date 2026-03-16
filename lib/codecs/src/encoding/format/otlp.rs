@@ -23,7 +23,7 @@ use tokio_util::codec::Encoder;
 use vector_config_macros::configurable_component;
 use vector_core::{
     config::DataType,
-    event::{Event, OtelLogEvent, OtelMetricEvent, OtelSpanEvent},
+    event::{Event, OtelLog, OtelMetric, OtelSpan},
     schema,
 };
 use vrl::protobuf::encode::Options;
@@ -167,7 +167,7 @@ fn proto_convert<S: Message, D: Message + Default>(src: &S) -> D {
     D::decode(bytes::Bytes::from(src.encode_to_vec())).expect("proto roundtrip")
 }
 
-fn otel_log_to_export_request(log_event: &OtelLogEvent) -> ExportLogsServiceRequest {
+fn otel_log_to_export_request(log_event: &OtelLog) -> ExportLogsServiceRequest {
     let record: ProtoLogRecord = proto_convert(log_event.record());
     let resource = log_event.resource().map(|r| proto_convert::<_, ProtoResource>(r));
     let scope = log_event.scope().map(|s| proto_convert::<_, ProtoScope>(s));
@@ -185,7 +185,7 @@ fn otel_log_to_export_request(log_event: &OtelLogEvent) -> ExportLogsServiceRequ
     }
 }
 
-fn otel_metric_to_export_request(metric_event: &OtelMetricEvent) -> ExportMetricsServiceRequest {
+fn otel_metric_to_export_request(metric_event: &OtelMetric) -> ExportMetricsServiceRequest {
     let metric: ProtoMetric = proto_convert(metric_event.metric());
     let resource = metric_event.resource().map(|r| proto_convert::<_, ProtoResource>(r));
     let scope = metric_event.scope().map(|s| proto_convert::<_, ProtoScope>(s));
@@ -203,7 +203,7 @@ fn otel_metric_to_export_request(metric_event: &OtelMetricEvent) -> ExportMetric
     }
 }
 
-fn otel_span_to_export_request(span_event: &OtelSpanEvent) -> ExportTraceServiceRequest {
+fn otel_span_to_export_request(span_event: &OtelSpan) -> ExportTraceServiceRequest {
     let span: ProtoSpan = proto_convert(span_event.span());
     let resource = span_event.resource().map(|r| proto_convert::<_, ProtoResource>(r));
     let scope = span_event.scope().map(|s| proto_convert::<_, ProtoScope>(s));
@@ -227,8 +227,8 @@ mod tests {
     use prost::Message;
     use tokio_util::codec::Encoder as _;
     use vector_core::event::{
-        Event, EventMetadata, Metric, MetricKind, MetricValue, OtelLogEvent, OtelMetricEvent,
-        OtelSpanEvent, metric::Bucket,
+        Event, EventMetadata, Metric, MetricKind, MetricValue, OtelLog, OtelMetric,
+        OtelSpan, metric::Bucket,
     };
 
     use super::OtlpSerializer;
@@ -312,7 +312,7 @@ mod tests {
             }],
             ..Default::default()
         };
-        let event = Event::OtelLog(OtelLogEvent::from_parts(
+        let event = Event::OtelLog(OtelLog::from_parts(
             record,
             Some(resource),
             None,
@@ -357,7 +357,7 @@ mod tests {
                 }],
             })),
         };
-        let event = Event::OtelMetric(OtelMetricEvent::from_parts(
+        let event = Event::OtelMetric(OtelMetric::from_parts(
             metric,
             None,
             None,
@@ -394,7 +394,7 @@ mod tests {
             end_time_unix_nano: 2_000_000_000,
             ..Default::default()
         };
-        let event = Event::OtelSpan(OtelSpanEvent::from_parts(
+        let event = Event::OtelSpan(OtelSpan::from_parts(
             span,
             None,
             None,

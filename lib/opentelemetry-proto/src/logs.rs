@@ -3,7 +3,7 @@ use chrono::{DateTime, TimeZone, Utc};
 use prost::Message;
 use vector_core::{
     config::{LegacyKey, LogNamespace, log_schema},
-    event::{Event, EventMetadata, LogEvent, OtelLogEvent},
+    event::{Event, EventMetadata, LogEvent, OtelLog},
 };
 use vrl::{core::Value, path};
 
@@ -56,7 +56,7 @@ impl ResourceLogs {
             let resource = resource.clone();
             scope_log.log_records.into_iter().map(move |log_record| {
                 let otel_record = proto_convert_log_record(log_record);
-                Event::OtelLog(OtelLogEvent::from_parts(
+                Event::OtelLog(OtelLog::from_parts(
                     otel_record,
                     resource.clone(),
                     scope.clone(),

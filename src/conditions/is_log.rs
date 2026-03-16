@@ -17,7 +17,7 @@ pub(crate) fn check_is_log_with_context(e: Event) -> (Result<(), String>, Event)
 mod test {
     use super::check_is_log;
     use crate::event::{
-        Event, LogEvent, OtelLogEvent,
+        Event, LogEvent, OtelLog,
         metric::{Metric, MetricKind, MetricValue},
     };
     use otel_proto_types::logs::v1::LogRecord;
@@ -37,7 +37,7 @@ mod test {
 
     #[test]
     fn is_log_matches_otel_log() {
-        let event = Event::OtelLog(OtelLogEvent::new(LogRecord {
+        let event = Event::OtelLog(OtelLog::new(LogRecord {
             severity_text: "INFO".to_string(),
             ..Default::default()
         }));

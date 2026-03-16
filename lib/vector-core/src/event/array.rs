@@ -16,7 +16,7 @@ use vector_common::{
 
 use super::{
     EstimatedJsonEncodedSizeOf, Event, EventDataEq, EventFinalizer, EventMetadata, EventMutRef,
-    EventRef, LogEvent, Metric, OtelLogEvent, OtelMetricEvent, OtelSpanEvent, TraceEvent,
+    EventRef, LogEvent, Metric, OtelLog, OtelMetric, OtelSpan, TraceEvent,
 };
 
 /// The type alias for an array of `LogEvent` elements.
@@ -28,14 +28,14 @@ pub type TraceArray = Vec<TraceEvent>;
 /// The type alias for an array of `Metric` elements.
 pub type MetricArray = Vec<Metric>;
 
-/// The type alias for an array of `OtelLogEvent` elements.
-pub type OtelLogArray = Vec<OtelLogEvent>;
+/// The type alias for an array of `OtelLog` elements.
+pub type OtelLogArray = Vec<OtelLog>;
 
-/// The type alias for an array of `OtelSpanEvent` elements.
-pub type OtelSpanArray = Vec<OtelSpanEvent>;
+/// The type alias for an array of `OtelSpan` elements.
+pub type OtelSpanArray = Vec<OtelSpan>;
 
-/// The type alias for an array of `OtelMetricEvent` elements.
-pub type OtelMetricArray = Vec<OtelMetricEvent>;
+/// The type alias for an array of `OtelMetric` elements.
+pub type OtelMetricArray = Vec<OtelMetric>;
 
 /// The core trait to abstract over any type that may work as an array
 /// of events. This is effectively the same as the standard
@@ -147,11 +147,11 @@ pub enum EventArray {
     Metrics(MetricArray),
     /// An array of type `TraceEvent`
     Traces(TraceArray),
-    /// An array of type `OtelLogEvent`
+    /// An array of type `OtelLog`
     OtelLogs(OtelLogArray),
-    /// An array of type `OtelMetricEvent`
+    /// An array of type `OtelMetric`
     OtelMetrics(OtelMetricArray),
-    /// An array of type `OtelSpanEvent`
+    /// An array of type `OtelSpan`
     OtelSpans(OtelSpanArray),
 }
 
@@ -399,12 +399,12 @@ pub enum EventArrayIter<'a> {
     Metrics(slice::Iter<'a, Metric>),
     /// An iterator over type `Trace`.
     Traces(slice::Iter<'a, TraceEvent>),
-    /// An iterator over type `OtelLogEvent`.
-    OtelLogs(slice::Iter<'a, OtelLogEvent>),
-    /// An iterator over type `OtelMetricEvent`.
-    OtelMetrics(slice::Iter<'a, OtelMetricEvent>),
-    /// An iterator over type `OtelSpanEvent`.
-    OtelSpans(slice::Iter<'a, OtelSpanEvent>),
+    /// An iterator over type `OtelLog`.
+    OtelLogs(slice::Iter<'a, OtelLog>),
+    /// An iterator over type `OtelMetric`.
+    OtelMetrics(slice::Iter<'a, OtelMetric>),
+    /// An iterator over type `OtelSpan`.
+    OtelSpans(slice::Iter<'a, OtelSpan>),
 }
 
 impl<'a> Iterator for EventArrayIter<'a> {
@@ -431,12 +431,12 @@ pub enum EventArrayIterMut<'a> {
     Metrics(slice::IterMut<'a, Metric>),
     /// An iterator over type `Trace`.
     Traces(slice::IterMut<'a, TraceEvent>),
-    /// An iterator over type `OtelLogEvent`.
-    OtelLogs(slice::IterMut<'a, OtelLogEvent>),
-    /// An iterator over type `OtelMetricEvent`.
-    OtelMetrics(slice::IterMut<'a, OtelMetricEvent>),
-    /// An iterator over type `OtelSpanEvent`.
-    OtelSpans(slice::IterMut<'a, OtelSpanEvent>),
+    /// An iterator over type `OtelLog`.
+    OtelLogs(slice::IterMut<'a, OtelLog>),
+    /// An iterator over type `OtelMetric`.
+    OtelMetrics(slice::IterMut<'a, OtelMetric>),
+    /// An iterator over type `OtelSpan`.
+    OtelSpans(slice::IterMut<'a, OtelSpan>),
 }
 
 impl<'a> Iterator for EventArrayIterMut<'a> {
@@ -463,12 +463,12 @@ pub enum EventArrayIntoIter {
     Metrics(vec::IntoIter<Metric>),
     /// An iterator over type `TraceEvent`.
     Traces(vec::IntoIter<TraceEvent>),
-    /// An iterator over type `OtelLogEvent`.
-    OtelLogs(vec::IntoIter<OtelLogEvent>),
-    /// An iterator over type `OtelMetricEvent`.
-    OtelMetrics(vec::IntoIter<OtelMetricEvent>),
-    /// An iterator over type `OtelSpanEvent`.
-    OtelSpans(vec::IntoIter<OtelSpanEvent>),
+    /// An iterator over type `OtelLog`.
+    OtelLogs(vec::IntoIter<OtelLog>),
+    /// An iterator over type `OtelMetric`.
+    OtelMetrics(vec::IntoIter<OtelMetric>),
+    /// An iterator over type `OtelSpan`.
+    OtelSpans(vec::IntoIter<OtelSpan>),
 }
 
 impl Iterator for EventArrayIntoIter {

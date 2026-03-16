@@ -1,0 +1,26 @@
+sources:
+  otlp:
+    type: opentelemetry
+    grpc:
+      address: "0.0.0.0:4317"
+    http:
+      address: "0.0.0.0:4318"
+
+sinks:
+  console_logs:
+    type: console
+    inputs: ["otlp.logs"]
+    encoding:
+      codec: json
+
+  console_metrics:
+    type: console
+    inputs: ["otlp.metrics"]
+    encoding:
+      codec: json
+
+  console_traces:
+    type: console
+    inputs: ["otlp.traces"]
+    encoding:
+      codec: json

@@ -1,61 +1,0 @@
-otel-traces-1  |   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
-otel-traces-1  |                                  Dload  Upload   Total   Spent    Left  Speed
-otel-traces-1  |   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
-otel-logs-1    |   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
-otelcontribcol-1  | 2026-03-16T10:04:09.223Z	info	service@v0.122.0/service.go:193	Setting up own telemetry...
-otelcontribcol-1  | 2026-03-16T10:04:09.224Z	info	builders/builders.go:26	Development component. May change in the future.	{"otelcol.component.id": "debug", "otelcol.component.kind": "Exporter", "otelcol.signal": "traces"}
-otelcontribcol-1  | 2026-03-16T10:04:09.238Z	info	builders/builders.go:26	Development component. May change in the future.	{"otelcol.component.id": "debug", "otelcol.component.kind": "Exporter", "otelcol.signal": "logs"}
-otelcontribcol-1  | 2026-03-16T10:04:09.239Z	info	builders/builders.go:26	Development component. May change in the future.	{"otelcol.component.id": "debug", "otelcol.component.kind": "Exporter", "otelcol.signal": "metrics"}
-otelcontribcol-1  | 2026-03-16T10:04:09.244Z	info	service@v0.122.0/service.go:260	Starting otelcol-contrib...	{"Version": "0.122.0", "NumCPU": 12}
-otelcontribcol-1  | 2026-03-16T10:04:09.244Z	info	extensions/extensions.go:40	Starting extensions...
-otelcontribcol-1  | 2026-03-16T10:04:09.245Z	info	otlpreceiver@v0.122.0/otlp.go:116	Starting GRPC server	{"otelcol.component.id": "otlp", "otelcol.component.kind": "Receiver", "endpoint": "0.0.0.0:4317"}
-otelcontribcol-1  | 2026-03-16T10:04:09.250Z	info	otlpreceiver@v0.122.0/otlp.go:173	Starting HTTP server	{"otelcol.component.id": "otlp", "otelcol.component.kind": "Receiver", "endpoint": "0.0.0.0:4318"}
-otelcontribcol-1  | 2026-03-16T10:04:09.250Z	info	service@v0.122.0/service.go:283	Everything is ready. Begin running and processing data.
-otelcontribcol-1  | 2026-03-16T10:14:13.106Z	info	otelcol@v0.122.0/collector.go:342	Received signal from OS	{"signal": "terminated"}
-otelcontribcol-1  | 2026-03-16T10:14:13.107Z	info	service@v0.122.0/service.go:325	Starting shutdown...
-otelcontribcol-1  | 2026-03-16T10:14:13.111Z	info	extensions/extensions.go:68	Stopping extensions...
-otelcontribcol-1  | 2026-03-16T10:14:13.111Z	info	service@v0.122.0/service.go:339	Shutdown complete.
-otel-traces-1  | curl: (7) Failed to connect to otelcontribcol port 4318 after 4 ms: Couldn't connect to server
-vector-1       | 2026-03-16T10:04:07.674170Z  INFO vector::app: Log level is enabled. level="info"
-vector-1          | 2026-03-16T10:04:07.681595Z  INFO vector::app: Loading configs. paths=["/etc/vector/vector.yaml"]
-vector-logs-1     |   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
-vector-1          | 2026-03-16T10:04:07.694307Z  INFO vector::topology::running: Running healthchecks.
-vector-logs-1     |                                  Dload  Upload   Total   Spent    Left  Speed
-otel-logs-1       |                                  Dload  Upload   Total   Spent    Left  Speed
-vector-logs-1     |   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0100  2295  100    53  100  2242  11327   467k --:--:-- --:--:-- --:--:--  560k
-vector-logs-1     | HTTP/1.1 500 Internal Server Error
-otel-logs-1       |   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
-vector-1          | 2026-03-16T10:04:07.694690Z  INFO vector::topology::builder: Healthcheck passed.
-otel-logs-1       | curl: (7) Failed to connect to otelcontribcol port 4318 after 4 ms: Couldn't connect to server
-vector-1          | 2026-03-16T10:04:07.694889Z  INFO vector::topology::builder: Internal log [Healthcheck passed.] is being suppressed to avoid flooding.
-vector-1          | 2026-03-16T10:04:07.694847Z  INFO vector: Vector has started. debug="false" version="0.54.0" arch="x86_64" revision=""
-vector-1          | 2026-03-16T10:04:07.695216Z  INFO vector::app: API is disabled, enable by setting `api.enabled` to `true` and use commands like `vector top`.
-vector-1          | 2026-03-16T10:04:07.695207Z  INFO source{component_kind="source" component_id=otlp component_type=opentelemetry}: vector::sources::util::grpc: Building gRPC server. address=0.0.0.0:4317
-vector-1          | 2026-03-16T10:04:07.695518Z  INFO source{component_kind="source" component_id=otlp component_type=opentelemetry}: vector::sources::opentelemetry::http: Building HTTP server. address=0.0.0.0:4318
-vector-1          | 2026-03-16T10:14:13.106803Z  INFO vector::signal: Signal received. signal="SIGTERM"
-vector-1          | 2026-03-16T10:14:13.108307Z  INFO vector: Vector has stopped.
-vector-1          | 2026-03-16T10:14:13.111389Z  INFO vector::topology::running: Shutting down... Waiting on running components. remaining_components="console_metrics, otlp, console_traces, console_logs" time_remaining="59 seconds left"
-vector-logs-1     | content-type: application/x-protobuf
-vector-traces-1   |   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
-vector-traces-1   |                                  Dload  Upload   Total   Spent    Left  Speed
-vector-traces-1   |   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0100  1140  100    53  100  1087  11469   229k --:--:-- --:--:-- --:--:--  278k
-vector-traces-1   | HTTP/1.1 500 Internal Server Error
-vector-traces-1   | content-type: application/x-protobuf
-vector-traces-1   | content-length: 53
-otel-metrics-1    |   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
-otel-metrics-1    |                                  Dload  Upload   Total   Spent    Left  Speed
-otel-metrics-1    |   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
-vector-traces-1   | date: Mon, 16 Mar 2026 10:04:08 GMT
-vector-traces-1   | 
-vector-logs-1     | content-length: 53
-otel-metrics-1    | curl: (7) Failed to connect to otelcontribcol port 4318 after 7 ms: Couldn't connect to server
-vector-logs-1     | date: Mon, 16 Mar 2026 10:04:08 GMT
-vector-logs-1     | 
-vector-metrics-1  |   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
-vector-metrics-1  |                                  Dload  Upload   Total   Spent    Left  Speed
-vector-metrics-1  |   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0100  2733  100    53  100  2680  10986   542k --:--:-- --:--:-- --:--:--  667k
-vector-metrics-1  | HTTP/1.1 500 Internal Server Error
-vector-metrics-1  | content-type: application/x-protobuf
-vector-metrics-1  | content-length: 53
-vector-metrics-1  | date: Mon, 16 Mar 2026 10:04:08 GMT
-vector-metrics-1  | 

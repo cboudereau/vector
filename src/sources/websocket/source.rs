@@ -237,8 +237,10 @@ impl WebSocketSource {
 
                     let now = Utc::now();
                     let events_with_meta = events.into_iter().map(|mut event| {
-                        if let Event::Log(event) = &mut event {
-                            self.add_metadata(event, now);
+                        if let Event::OtelLog(ref mut otel_log) = event {
+                            otel_log.set_source_metadata(WebSocketConfig::NAME, now);
+                        } else if let Event::Log(ref mut log_event) = event {
+                            self.add_metadata(log_event, now);
                         }
                         event
                     });

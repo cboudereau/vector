@@ -20,7 +20,7 @@ use vrl::value::Kind;
 
 use crate::{
     config::{GenerateConfig, SourceConfig, SourceContext, SourceOutput, log_schema},
-    event::Event,
+    event::{Event, string_value},
     internal_events::{EventsReceived, StreamClosedError},
     serde::{default_decoding, default_framing_message_based},
 };
@@ -251,7 +251,13 @@ impl InputHandler {
                     self.events_received.emit(CountByteSize(count, byte_size));
 
                     let events = events.into_iter().map(|mut event| {
-                        if let Event::Log(ref mut log) = event {
+                        if let Event::OtelLog(ref mut otel_log) = event {
+                            otel_log.set_source_metadata(RedisSourceConfig::NAME, now);
+                            otel_log.set_attribute(
+                                "key".to_string(),
+                                string_value(self.key.as_str()),
+                            );
+                        } else if let Event::Log(ref mut log) = event {
                             self.log_namespace.insert_vector_metadata(
                                 log,
                                 log_schema().source_type_key(),
@@ -272,7 +278,7 @@ impl InputHandler {
                                 path!("key"),
                                 self.key.as_str(),
                             );
-                        };
+                        }
 
                         event
                     });

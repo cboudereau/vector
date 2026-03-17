@@ -25,6 +25,7 @@ use crate::{
     SourceSender,
     codecs::{Decoder, DecodingConfig},
     config::{SourceConfig, SourceContext, SourceOutput},
+    event::{Event, string_value},
     internal_events::{DemoLogsEventProcessed, EventsReceived, StreamClosedError},
     serde::{default_decoding, default_framing_message_based},
     shutdown::ShutdownSignal,
@@ -244,26 +245,37 @@ async fn demo_logs_source(
                     let now = Utc::now();
 
                     let events = events.into_iter().map(|mut event| {
-                        let log = event.as_mut_log();
-                        log_namespace.insert_standard_vector_source_metadata(
-                            log,
-                            DemoLogsConfig::NAME,
-                            now,
-                        );
-                        log_namespace.insert_source_metadata(
-                            DemoLogsConfig::NAME,
-                            log,
-                            Some(LegacyKey::InsertIfEmpty(path!("service"))),
-                            path!("service"),
-                            "vector",
-                        );
-                        log_namespace.insert_source_metadata(
-                            DemoLogsConfig::NAME,
-                            log,
-                            Some(LegacyKey::InsertIfEmpty(path!("host"))),
-                            path!("host"),
-                            "localhost",
-                        );
+                        if let Event::OtelLog(ref mut otel_log) = event {
+                            otel_log.set_source_metadata(DemoLogsConfig::NAME, now);
+                            otel_log.set_attribute(
+                                "service".to_string(),
+                                string_value("vector"),
+                            );
+                            otel_log.set_resource_attribute(
+                                "host.name".to_string(),
+                                string_value("localhost"),
+                            );
+                        } else if let Event::Log(ref mut log) = event {
+                            log_namespace.insert_standard_vector_source_metadata(
+                                log,
+                                DemoLogsConfig::NAME,
+                                now,
+                            );
+                            log_namespace.insert_source_metadata(
+                                DemoLogsConfig::NAME,
+                                log,
+                                Some(LegacyKey::InsertIfEmpty(path!("service"))),
+                                path!("service"),
+                                "vector",
+                            );
+                            log_namespace.insert_source_metadata(
+                                DemoLogsConfig::NAME,
+                                log,
+                                Some(LegacyKey::InsertIfEmpty(path!("host"))),
+                                path!("host"),
+                                "localhost",
+                            );
+                        }
 
                         event
                     });

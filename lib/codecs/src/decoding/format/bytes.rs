@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use smallvec::{SmallVec, smallvec};
 use vector_core::{
     config::{DataType, LogNamespace, log_schema},
-    event::{Event, LogEvent},
+    event::{Event, OtelLog},
     schema,
     schema::meaning,
 };
@@ -54,7 +54,7 @@ impl BytesDeserializerConfig {
     }
 }
 
-/// Deserializer that converts bytes to an `Event`.
+/// Deserializer that converts bytes to an `OtelLog` event.
 ///
 /// This deserializer can be considered as the no-op action for input where no
 /// further decoding has been specified.
@@ -62,16 +62,9 @@ impl BytesDeserializerConfig {
 pub struct BytesDeserializer;
 
 impl BytesDeserializer {
-    /// Deserializes the given bytes, which will always produce a single `LogEvent`.
-    pub fn parse_single(&self, bytes: Bytes, log_namespace: LogNamespace) -> LogEvent {
-        match log_namespace {
-            LogNamespace::Vector => log_namespace.new_log_from_data(bytes),
-            LogNamespace::Legacy => {
-                let mut log = LogEvent::default();
-                log.maybe_insert(log_schema().message_key_target_path(), bytes);
-                log
-            }
-        }
+    /// Deserializes the given bytes, which will always produce a single `OtelLog`.
+    pub fn parse_single(&self, bytes: Bytes, _log_namespace: LogNamespace) -> OtelLog {
+        OtelLog::from_bytes(bytes)
     }
 }
 
@@ -81,42 +74,32 @@ impl Deserializer for BytesDeserializer {
         bytes: Bytes,
         log_namespace: LogNamespace,
     ) -> vector_common::Result<SmallVec<[Event; 1]>> {
-        let log = self.parse_single(bytes, log_namespace);
-        Ok(smallvec![log.into()])
+        let otel_log = self.parse_single(bytes, log_namespace);
+        Ok(smallvec![Event::OtelLog(otel_log)])
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use vrl::value::Value;
-
     use super::*;
 
     #[test]
-    fn deserialize_bytes_legacy_namespace() {
+    fn deserialize_bytes_produces_otel_log() {
         let input = Bytes::from("foo");
         let deserializer = BytesDeserializer;
 
-        let events = deserializer.parse(input, LogNamespace::Legacy).unwrap();
-        let mut events = events.into_iter();
+        for namespace in [LogNamespace::Legacy, LogNamespace::Vector] {
+            let events = deserializer.parse(input.clone(), namespace).unwrap();
+            assert_eq!(events.len(), 1);
 
-        {
-            let event = events.next().unwrap();
-            let log = event.as_log();
-            assert_eq!(*log.get_message().unwrap(), "foo".into());
+            let event = &events[0];
+            assert!(matches!(event, Event::OtelLog(_)), "expected OtelLog");
+
+            let otel_log = match event {
+                Event::OtelLog(log) => log,
+                _ => panic!("expected OtelLog"),
+            };
+            assert_eq!(otel_log.body_string(), "foo");
         }
-
-        assert_eq!(events.next(), None);
-    }
-
-    #[test]
-    fn deserialize_bytes_vector_namespace() {
-        let input = Bytes::from("foo");
-        let deserializer = BytesDeserializer;
-
-        let events = deserializer.parse(input, LogNamespace::Vector).unwrap();
-        assert_eq!(events.len(), 1);
-
-        assert_eq!(events[0].as_log().get(".").unwrap(), &Value::from("foo"));
     }
 }

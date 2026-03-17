@@ -21,7 +21,7 @@ use vector_lib::{
     },
     config::{LegacyKey, LogNamespace, SourceAcknowledgementsConfig, SourceOutput},
     configurable::configurable_component,
-    event::Event,
+    event::{Event, string_value},
     finalization::BatchStatus,
     finalizer::OrderedFinalizer,
     internal_event::{
@@ -402,7 +402,23 @@ async fn parse_message(
                     let now = chrono::Utc::now();
 
                     let events = events.into_iter().map(|mut event| {
-                        if let Event::Log(ref mut log) = event {
+                        if let Event::OtelLog(ref mut otel_log) = event {
+                            otel_log.set_source_metadata(PulsarSourceConfig::NAME, now);
+                            if let Some(pt) = publish_time {
+                                otel_log.set_attribute(
+                                    "publish_time".to_string(),
+                                    string_value(pt.to_rfc3339()),
+                                );
+                            }
+                            otel_log.set_attribute(
+                                "topic".to_string(),
+                                string_value(topic.clone()),
+                            );
+                            otel_log.set_attribute(
+                                "producer_name".to_string(),
+                                string_value(producer_name.clone()),
+                            );
+                        } else if let Event::Log(ref mut log) = event {
                             log_namespace.insert_standard_vector_source_metadata(
                                 log,
                                 PulsarSourceConfig::NAME,

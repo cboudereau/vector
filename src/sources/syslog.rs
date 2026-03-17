@@ -30,7 +30,7 @@ use crate::{
     config::{
         DataType, GenerateConfig, Resource, SourceConfig, SourceContext, SourceOutput, log_schema,
     },
-    event::Event,
+    event::{Event, string_value},
     internal_events::{
         SocketBindError, SocketEventsReceived, SocketMode, SocketReceiveError, StreamClosedError,
     },
@@ -417,42 +417,55 @@ fn enrich_syslog_event(
     default_host: Option<Bytes>,
     log_namespace: LogNamespace,
 ) {
-    let log = event.as_mut_log();
+    if let Event::OtelLog(otel_log) = event {
+        let now = Utc::now();
+        otel_log.set_source_metadata(SyslogConfig::NAME, now);
+        if let Some(ref host) = default_host {
+            otel_log.set_resource_attribute(
+                "source_ip".to_string(),
+                string_value(String::from_utf8_lossy(host).into_owned()),
+            );
+            otel_log.set_resource_attribute(
+                "host.name".to_string(),
+                string_value(String::from_utf8_lossy(host).into_owned()),
+            );
+        }
+    } else if let Event::Log(log) = event {
+        if let Some(default_host) = &default_host {
+            log_namespace.insert_source_metadata(
+                SyslogConfig::NAME,
+                log,
+                Some(LegacyKey::Overwrite(path!("source_ip"))),
+                path!("source_ip"),
+                default_host.clone(),
+            );
+        }
 
-    if let Some(default_host) = &default_host {
-        log_namespace.insert_source_metadata(
-            SyslogConfig::NAME,
-            log,
-            Some(LegacyKey::Overwrite(path!("source_ip"))),
-            path!("source_ip"),
-            default_host.clone(),
-        );
-    }
+        let parsed_hostname = log
+            .get(event_path!("hostname"))
+            .map(|hostname| hostname.coerce_to_bytes());
 
-    let parsed_hostname = log
-        .get(event_path!("hostname"))
-        .map(|hostname| hostname.coerce_to_bytes());
+        if let Some(parsed_host) = parsed_hostname.or(default_host) {
+            let legacy_host_key = host_key.as_ref().map(LegacyKey::Overwrite);
 
-    if let Some(parsed_host) = parsed_hostname.or(default_host) {
-        let legacy_host_key = host_key.as_ref().map(LegacyKey::Overwrite);
+            log_namespace.insert_source_metadata(
+                SyslogConfig::NAME,
+                log,
+                legacy_host_key,
+                path!("host"),
+                parsed_host,
+            );
+        }
 
-        log_namespace.insert_source_metadata(
-            SyslogConfig::NAME,
-            log,
-            legacy_host_key,
-            path!("host"),
-            parsed_host,
-        );
-    }
+        log_namespace.insert_standard_vector_source_metadata(log, SyslogConfig::NAME, Utc::now());
 
-    log_namespace.insert_standard_vector_source_metadata(log, SyslogConfig::NAME, Utc::now());
-
-    if log_namespace == LogNamespace::Legacy {
-        let timestamp = log
-            .get(event_path!("timestamp"))
-            .and_then(|timestamp| timestamp.as_timestamp().cloned())
-            .unwrap_or_else(Utc::now);
-        log.maybe_insert(log_schema().timestamp_key_target_path(), timestamp);
+        if log_namespace == LogNamespace::Legacy {
+            let timestamp = log
+                .get(event_path!("timestamp"))
+                .and_then(|timestamp| timestamp.as_timestamp().cloned())
+                .unwrap_or_else(Utc::now);
+            log.maybe_insert(log_schema().timestamp_key_target_path(), timestamp);
+        }
     }
 
     trace!(

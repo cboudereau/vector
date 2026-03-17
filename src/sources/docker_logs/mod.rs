@@ -29,7 +29,7 @@ use vector_lib::{
     configurable::configurable_component,
     internal_event::{ByteSize, BytesReceived, InternalEventHandle as _, Protocol, Registered},
     lookup::{
-        OwnedValuePath, PathPrefix, lookup_v2::OptionalValuePath, metadata_path, owned_value_path,
+        OwnedValuePath, lookup_v2::OptionalValuePath, metadata_path, owned_value_path,
         path,
     },
 };
@@ -44,7 +44,7 @@ use crate::{
     common::backoff::ExponentialBackoff,
     config::{DataType, SourceConfig, SourceContext, SourceOutput, log_schema},
     docker::{DockerTlsConfig, docker},
-    event::{self, EstimatedJsonEncodedSizeOf, LogEvent, Value, merge_state::LogEventMergeState},
+    event::{self, EstimatedJsonEncodedSizeOf, LogEvent, Value, merge_state::LogEventMergeState, string_value},
     internal_events::{
         DockerLogsCommunicationError, DockerLogsContainerEventReceived,
         DockerLogsContainerMetadataFetchError, DockerLogsContainerUnwatch,
@@ -1128,90 +1128,29 @@ impl ContainerLogInfo {
             true
         };
 
-        // Build the log.
+        // Build the OtelLog event.
         let deserializer = BytesDeserializer;
-        let mut log = deserializer.parse_single(bytes_message, log_namespace);
+        let mut otel_log = deserializer.parse_single(bytes_message, log_namespace);
 
-        // Container ID
-        log_namespace.insert_source_metadata(
-            DockerLogsConfig::NAME,
-            &mut log,
-            Some(LegacyKey::Overwrite(path!(CONTAINER))),
-            path!(CONTAINER),
-            self.id.0.clone(),
-        );
-        // Container image
-        log_namespace.insert_source_metadata(
-            DockerLogsConfig::NAME,
-            &mut log,
-            Some(LegacyKey::Overwrite(path!(IMAGE))),
-            path!(IMAGE),
-            self.metadata.image.clone(),
-        );
-        // Container name
-        log_namespace.insert_source_metadata(
-            DockerLogsConfig::NAME,
-            &mut log,
-            Some(LegacyKey::Overwrite(path!(NAME))),
-            path!(NAME),
-            self.metadata.name.clone(),
-        );
-        // Created at timestamp
-        log_namespace.insert_source_metadata(
-            DockerLogsConfig::NAME,
-            &mut log,
-            Some(LegacyKey::Overwrite(path!(CREATED_AT))),
-            path!(CREATED_AT),
-            self.metadata.created_at,
-        );
-        // Labels
-        if !self.metadata.labels.is_empty() {
-            for (key, value) in self.metadata.labels.iter() {
-                log_namespace.insert_source_metadata(
-                    DockerLogsConfig::NAME,
-                    &mut log,
-                    Some(LegacyKey::Overwrite(path!("label", key))),
-                    path!("labels", key),
-                    value.clone(),
-                )
-            }
+        otel_log.set_source_metadata(DockerLogsConfig::NAME, Utc::now());
+
+        otel_log.set_attribute(CONTAINER.to_string(), string_value(self.id.as_str()));
+        otel_log.set_attribute(IMAGE.to_string(), string_value(String::from_utf8_lossy(&self.metadata.image.coerce_to_bytes()).into_owned()));
+        otel_log.set_attribute(NAME.to_string(), string_value(String::from_utf8_lossy(&self.metadata.name.coerce_to_bytes()).into_owned()));
+        otel_log.set_attribute(CREATED_AT.to_string(), string_value(self.metadata.created_at.to_rfc3339()));
+
+        for (key, value) in self.metadata.labels.iter() {
+            otel_log.set_attribute(format!("label.{key}"), string_value(value.clone()));
         }
-        log_namespace.insert_source_metadata(
-            DockerLogsConfig::NAME,
-            &mut log,
-            Some(LegacyKey::Overwrite(path!(STREAM))),
-            path!(STREAM),
-            stream,
-        );
 
-        log_namespace.insert_vector_metadata(
-            &mut log,
-            log_schema().source_type_key(),
-            path!("source_type"),
-            Bytes::from_static(DockerLogsConfig::NAME.as_bytes()),
-        );
+        otel_log.set_attribute(STREAM.to_string(), string_value(String::from_utf8_lossy(&stream).into_owned()));
 
-        // This handles the transition from the original timestamp logic. Originally the
-        // `timestamp_key` was only populated when a timestamp was parsed from the event.
-        match log_namespace {
-            LogNamespace::Vector => {
-                if let Some(timestamp) = timestamp {
-                    log.insert(
-                        metadata_path!(DockerLogsConfig::NAME, "timestamp"),
-                        timestamp,
-                    );
-                }
+        if let Some(timestamp) = timestamp {
+            otel_log.record_mut().time_unix_nano =
+                timestamp.timestamp_nanos_opt().unwrap_or(0) as u64;
+        }
 
-                log.insert(metadata_path!("vector", "ingest_timestamp"), Utc::now());
-            }
-            LogNamespace::Legacy => {
-                if let Some(timestamp) = timestamp
-                    && let Some(timestamp_key) = log_schema().timestamp_key()
-                {
-                    log.try_insert((PathPrefix::Event, timestamp_key), timestamp);
-                }
-            }
-        };
+        let mut log = otel_log.to_log_event();
 
         // If automatic partial event merging is requested - perform the
         // merging.

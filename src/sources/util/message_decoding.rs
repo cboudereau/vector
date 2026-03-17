@@ -1,6 +1,6 @@
 use std::iter;
 
-use bytes::{Bytes, BytesMut};
+use bytes::BytesMut;
 use chrono::{DateTime, Utc};
 use tokio_util::codec::Decoder as _;
 use vector_lib::{
@@ -8,13 +8,9 @@ use vector_lib::{
     codecs::StreamDecodingError,
     config::LogNamespace,
     internal_event::{CountByteSize, EventsReceived, InternalEventHandle as _, Registered},
-    lookup::{PathPrefix, metadata_path, path},
 };
 
-use crate::{
-    config::log_schema,
-    event::{BatchNotifier, Event},
-};
+use crate::event::{BatchNotifier, Event};
 use vector_lib::codecs::Decoder;
 
 pub fn decode_message<'a>(
@@ -26,8 +22,6 @@ pub fn decode_message<'a>(
     log_namespace: LogNamespace,
     events_received: &'a Registered<EventsReceived>,
 ) -> impl Iterator<Item = Event> + 'a + use<'a> {
-    let schema = log_schema();
-
     let mut buffer = BytesMut::with_capacity(message.len());
     buffer.extend_from_slice(message);
     let now = Utc::now();
@@ -36,39 +30,33 @@ pub fn decode_message<'a>(
         loop {
             break match decoder.decode_eof(&mut buffer) {
                 Ok(Some((events, _))) => Some(events.into_iter().map(move |mut event| {
-                    if let Event::Log(ref mut log) = event {
+                    if let Event::OtelLog(ref mut otel_log) = event {
+                        otel_log.set_source_metadata(source_type, now);
+                        if let Some(timestamp) = timestamp {
+                            otel_log.record_mut().time_unix_nano =
+                                timestamp.timestamp_nanos_opt().unwrap_or(0) as u64;
+                        }
+                    } else if let Event::Log(ref mut log) = event {
+                        // Legacy path for non-OtelLog events (e.g. from native/syslog/gelf deserializers)
+                        use vector_lib::config::log_schema;
+                        use vector_lib::lookup::path;
                         log_namespace.insert_vector_metadata(
                             log,
-                            schema.source_type_key(),
+                            log_schema().source_type_key(),
                             path!("source_type"),
-                            Bytes::from(source_type),
+                            bytes::Bytes::from(source_type),
                         );
-                        match log_namespace {
-                            LogNamespace::Vector => {
-                                if let Some(timestamp) = timestamp {
-                                    log.try_insert(
-                                        metadata_path!(source_type, "timestamp"),
-                                        timestamp,
-                                    );
-                                }
-
-                                log.insert(metadata_path!("vector", "ingest_timestamp"), now);
-                            }
-                            LogNamespace::Legacy => {
-                                if let Some(timestamp) = timestamp
-                                    && let Some(timestamp_key) = schema.timestamp_key()
-                                {
-                                    log.try_insert((PathPrefix::Event, timestamp_key), timestamp);
-                                }
-                            }
-                        }
+                        log_namespace.insert_vector_metadata(
+                            log,
+                            log_schema().timestamp_key(),
+                            path!("ingest_timestamp"),
+                            now,
+                        );
                     }
                     events_received.emit(CountByteSize(1, event.estimated_json_encoded_size_of()));
                     event
                 })),
                 Err(error) => {
-                    // Error is logged by `vector_lib::codecs::Decoder`, no further handling
-                    // is needed here.
                     if error.can_continue() {
                         continue;
                     }

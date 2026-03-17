@@ -29,7 +29,7 @@ use crate::{
         GenerateConfig, Resource, SourceAcknowledgementsConfig, SourceConfig, SourceContext,
         SourceOutput, log_schema,
     },
-    event::{Event, LogEvent},
+    event::{Event, LogEvent, string_value},
     http::KeepaliveConfig,
     internal_events::{HerokuLogplexRequestReadError, HerokuLogplexRequestReceived},
     serde::{bool_or_struct, default_decoding, default_framing_message_based},
@@ -356,7 +356,24 @@ fn line_to_events(
             match decoder.decode_eof(&mut buffer) {
                 Ok(Some((decoded, _byte_size))) => {
                     for mut event in decoded {
-                        if let Event::Log(ref mut log) = event {
+                        if let Event::OtelLog(ref mut otel_log) = event {
+                            if let Ok(ts) = timestamp.parse::<DateTime<Utc>>() {
+                                otel_log.record_mut().time_unix_nano =
+                                    ts.timestamp_nanos_opt().unwrap_or(0) as u64;
+                            }
+                            otel_log.set_resource_attribute(
+                                "host.name".to_string(),
+                                string_value(hostname),
+                            );
+                            otel_log.set_attribute(
+                                "app_name".to_string(),
+                                string_value(app_name),
+                            );
+                            otel_log.set_attribute(
+                                "proc_id".to_string(),
+                                string_value(proc_id),
+                            );
+                        } else if let Event::Log(ref mut log) = event {
                             if let Ok(ts) = timestamp.parse::<DateTime<Utc>>() {
                                 log_namespace.insert_vector_metadata(
                                     log,
@@ -414,7 +431,9 @@ fn line_to_events(
     let now = Utc::now();
 
     for event in &mut events {
-        if let Event::Log(log) = event {
+        if let Event::OtelLog(otel_log) = event {
+            otel_log.set_source_metadata(LogplexConfig::NAME, now);
+        } else if let Event::Log(log) = event {
             log_namespace.insert_standard_vector_source_metadata(log, LogplexConfig::NAME, now);
         }
     }

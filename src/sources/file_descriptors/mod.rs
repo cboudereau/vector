@@ -13,7 +13,7 @@ use vector_lib::{
     },
     config::{LegacyKey, LogNamespace},
     configurable::NamedComponent,
-    event::Event,
+    event::{Event, string_value},
     internal_event::{ByteSize, BytesReceived, CountByteSize, InternalEventHandle as _, Protocol},
     lookup::{OwnedValuePath, lookup_v2::OptionalValuePath, owned_value_path, path},
 };
@@ -146,6 +146,16 @@ async fn process_stream(
 
                     for mut event in events {
                         match event{
+                            Event::OtelLog(ref mut otel_log) => {
+                                otel_log.set_source_metadata(source_type, now);
+                                if let Some(hostname) = &hostname {
+                                    otel_log.set_resource_attribute(
+                                        "host.name".to_string(),
+                                        string_value(hostname.clone()),
+                                    );
+                                }
+                                yield event;
+                            },
                             Event::Log(_) => {
                                 let log = event.as_mut_log();
 

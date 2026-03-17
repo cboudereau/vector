@@ -186,26 +186,43 @@ impl<T: FrameHandler + Clone> FrameHandler for DnstapFrameHandler<T> {
         self.frame_handler
             .handle_event(received_from, frame)
             .map(|mut event| {
-                if let Event::Log(mut log_event) = event {
-                    if let Some(tls_client_metadata) = &self.tls_client_metadata {
-                        self.log_namespace.insert_source_metadata(
-                            super::DnstapConfig::NAME,
-                            &mut log_event,
-                            self.tls_client_metadata_key
-                                .as_ref()
-                                .map(LegacyKey::Overwrite),
-                            path!("tls_client_metadata"),
-                            tls_client_metadata.clone(),
-                        );
+                match &mut event {
+                    Event::OtelLog(otel_log) => {
+                        if let Some(tls_client_metadata) = &self.tls_client_metadata {
+                            for (k, v) in tls_client_metadata.iter() {
+                                otel_log.set_attribute(
+                                    format!("tls_client_metadata.{k}"),
+                                    crate::event::string_value(v.to_string_lossy().as_ref()),
+                                );
+                            }
+                        }
+
+                        emit!(SocketEventsReceived {
+                            mode: SocketMode::Tcp,
+                            byte_size: otel_log.estimated_json_encoded_size_of(),
+                            count: 1
+                        });
                     }
+                    Event::Log(log_event) => {
+                        if let Some(tls_client_metadata) = &self.tls_client_metadata {
+                            self.log_namespace.insert_source_metadata(
+                                super::DnstapConfig::NAME,
+                                log_event,
+                                self.tls_client_metadata_key
+                                    .as_ref()
+                                    .map(LegacyKey::Overwrite),
+                                path!("tls_client_metadata"),
+                                tls_client_metadata.clone(),
+                            );
+                        }
 
-                    emit!(SocketEventsReceived {
-                        mode: SocketMode::Tcp,
-                        byte_size: log_event.estimated_json_encoded_size_of(),
-                        count: 1
-                    });
-
-                    event = Event::from(log_event);
+                        emit!(SocketEventsReceived {
+                            mode: SocketMode::Tcp,
+                            byte_size: log_event.estimated_json_encoded_size_of(),
+                            count: 1
+                        });
+                    }
+                    _ => {}
                 }
                 event
             })

@@ -14,7 +14,7 @@ use vrl::{
     value::Kind,
 };
 
-use crate::{BytesDeserializerConfig, decoding::format::Deserializer};
+use crate::decoding::format::Deserializer;
 
 /// Config used to build a `VrlDeserializer`.
 #[configurable_component]
@@ -99,9 +99,16 @@ pub struct VrlDeserializer {
 }
 
 fn parse_bytes(bytes: Bytes, log_namespace: LogNamespace) -> Event {
-    let bytes_deserializer = BytesDeserializerConfig::new().build();
-    let log_event = bytes_deserializer.parse_single(bytes, log_namespace);
-    Event::from(log_event)
+    use vector_core::{config::log_schema, event::LogEvent};
+    let log = match log_namespace {
+        LogNamespace::Vector => LogEvent::from(vrl::value::Value::from(bytes)),
+        LogNamespace::Legacy => {
+            let mut log = LogEvent::default();
+            log.maybe_insert(log_schema().message_key_target_path(), bytes);
+            log
+        }
+    };
+    Event::Log(log)
 }
 
 impl Deserializer for VrlDeserializer {

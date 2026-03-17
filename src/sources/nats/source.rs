@@ -17,7 +17,7 @@ use vector_lib::{
 use crate::{
     SourceSender,
     codecs::Decoder,
-    event::Event,
+    event::{Event, string_value},
     internal_events::StreamClosedError,
     shutdown::ShutdownSignal,
     sources::nats::config::{BuildError, NatsSourceConfig, SubscribeSnafu},
@@ -59,7 +59,13 @@ pub async fn process_message(
                 events_received.emit(CountByteSize(count, byte_size));
                 let now = Utc::now();
                 let events = events.into_iter().map(|mut event| {
-                    if let Event::Log(ref mut log) = event {
+                    if let Event::OtelLog(ref mut otel_log) = event {
+                        otel_log.set_source_metadata(NatsSourceConfig::NAME, now);
+                        otel_log.set_attribute(
+                            "subject".to_string(),
+                            string_value(msg.subject.as_str()),
+                        );
+                    } else if let Event::Log(ref mut log) = event {
                         log_namespace.insert_standard_vector_source_metadata(
                             log,
                             NatsSourceConfig::NAME,

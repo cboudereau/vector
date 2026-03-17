@@ -21,7 +21,7 @@ use super::default_host_key;
 use crate::{
     SourceSender,
     codecs::Decoder,
-    event::Event,
+    event::{Event, int_value, string_value},
     internal_events::{
         SocketBindError, SocketEventsReceived, SocketMode, SocketMulticastGroupJoinError,
         SocketReceiveError, StreamClosedError,
@@ -275,36 +275,50 @@ pub(super) fn udp(
                                 let now = Utc::now();
 
                                 for event in &mut events {
-                                    if let Event::Log(log) = event {
-                                        log_namespace.insert_standard_vector_source_metadata(
-                                            log,
-                                            SocketConfig::NAME,
-                                            now,
-                                        );
+                                    match event {
+                                        Event::OtelLog(otel_log) => {
+                                            otel_log.set_source_metadata(SocketConfig::NAME, now);
+                                            otel_log.set_resource_attribute(
+                                                "host.name".to_string(),
+                                                string_value(address.ip().to_string()),
+                                            );
+                                            otel_log.set_attribute(
+                                                "net.peer.port".to_string(),
+                                                int_value(address.port() as i64),
+                                            );
+                                        }
+                                        Event::Log(log) => {
+                                            log_namespace.insert_standard_vector_source_metadata(
+                                                log,
+                                                SocketConfig::NAME,
+                                                now,
+                                            );
 
-                                        let legacy_host_key = config
-                                            .host_key
-                                            .clone()
-                                            .unwrap_or(default_host_key())
-                                            .path;
+                                            let legacy_host_key = config
+                                                .host_key
+                                                .clone()
+                                                .unwrap_or(default_host_key())
+                                                .path;
 
-                                        log_namespace.insert_source_metadata(
-                                            SocketConfig::NAME,
-                                            log,
-                                            legacy_host_key.as_ref().map(LegacyKey::InsertIfEmpty),
-                                            path!("host"),
-                                            address.ip().to_string()
-                                        );
+                                            log_namespace.insert_source_metadata(
+                                                SocketConfig::NAME,
+                                                log,
+                                                legacy_host_key.as_ref().map(LegacyKey::InsertIfEmpty),
+                                                path!("host"),
+                                                address.ip().to_string()
+                                            );
 
-                                        let legacy_port_key = config.port_key.clone().path;
+                                            let legacy_port_key = config.port_key.clone().path;
 
-                                        log_namespace.insert_source_metadata(
-                                            SocketConfig::NAME,
-                                            log,
-                                            legacy_port_key.as_ref().map(LegacyKey::InsertIfEmpty),
-                                            path!("port"),
-                                            address.port()
-                                        );
+                                            log_namespace.insert_source_metadata(
+                                                SocketConfig::NAME,
+                                                log,
+                                                legacy_port_key.as_ref().map(LegacyKey::InsertIfEmpty),
+                                                path!("port"),
+                                                address.port()
+                                            );
+                                        }
+                                        _ => {}
                                     }
                                 }
 

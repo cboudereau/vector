@@ -47,7 +47,7 @@ use crate::{
     codecs::Decoder,
     common::backoff::ExponentialBackoff,
     config::{SourceAcknowledgementsConfig, SourceContext},
-    event::{BatchNotifier, BatchStatus, EstimatedJsonEncodedSizeOf, Event, LogEvent},
+    event::{BatchNotifier, BatchStatus, EstimatedJsonEncodedSizeOf, Event, LogEvent, string_value},
     internal_events::{
         EventsReceived, S3ObjectProcessingFailed, S3ObjectProcessingSucceeded,
         SqsMessageDeleteBatchError, SqsMessageDeletePartialError, SqsMessageDeleteSucceeded,
@@ -766,7 +766,22 @@ impl IngestorProcess {
                 .into_iter()
                 .map(|mut event: Event| {
                     event = event.with_batch_notifier_option(&batch);
-                    if let Some(log_event) = event.maybe_as_log_mut() {
+                    if let Event::OtelLog(ref mut otel_log) = event {
+                        let now = Utc::now();
+                        otel_log.set_source_metadata(AwsS3Config::NAME, now);
+                        otel_log.set_attribute(
+                            "bucket".to_string(),
+                            string_value(s3_event.s3.bucket.name.clone()),
+                        );
+                        otel_log.set_attribute(
+                            "object".to_string(),
+                            string_value(s3_event.s3.object.key.clone()),
+                        );
+                        otel_log.set_attribute(
+                            "region".to_string(),
+                            string_value(s3_event.aws_region.clone()),
+                        );
+                    } else if let Some(log_event) = event.maybe_as_log_mut() {
                         handle_single_log(
                             log_event,
                             log_namespace,

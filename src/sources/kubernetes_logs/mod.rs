@@ -33,7 +33,7 @@ use vector_lib::{
         Checkpointer, FingerprintStrategy, Fingerprinter, ReadFrom, ReadFromConfig,
     },
     internal_event::{ByteSize, BytesReceived, InternalEventHandle as _, Protocol},
-    lookup::{OwnedTargetPath, lookup_v2::OptionalTargetPath, owned_value_path, path},
+    lookup::{OwnedTargetPath, lookup_v2::OptionalTargetPath, owned_value_path},
 };
 use vrl::value::{Kind, kind::Collection};
 
@@ -44,7 +44,7 @@ use crate::{
         ComponentKey, DataType, GenerateConfig, GlobalOptions, SourceConfig, SourceContext,
         SourceOutput, log_schema,
     },
-    event::Event,
+    event::{Event, string_value},
     internal_events::{
         FileInternalMetricsConfig, FileSourceInternalEventsEmitter, KubernetesLifecycleError,
         KubernetesLogsEventAnnotationError, KubernetesLogsEventNamespaceAnnotationError,
@@ -998,40 +998,15 @@ fn get_page_size(use_apiserver_cache: bool) -> Option<u32> {
 fn create_event(
     line: Bytes,
     file: &str,
-    ingestion_timestamp_field: Option<&OwnedTargetPath>,
+    _ingestion_timestamp_field: Option<&OwnedTargetPath>,
     log_namespace: LogNamespace,
 ) -> Event {
     let deserializer = BytesDeserializer;
     let mut log = deserializer.parse_single(line, log_namespace);
 
-    log_namespace.insert_source_metadata(
-        Config::NAME,
-        &mut log,
-        Some(LegacyKey::Overwrite(path!("file"))),
-        path!("file"),
-        file,
-    );
+    log.set_source_metadata(Config::NAME, Utc::now());
 
-    log_namespace.insert_vector_metadata(
-        &mut log,
-        log_schema().source_type_key(),
-        path!("source_type"),
-        Bytes::from(Config::NAME),
-    );
-    match (log_namespace, ingestion_timestamp_field) {
-        // When using LogNamespace::Vector always set the ingest_timestamp.
-        (LogNamespace::Vector, _) => {
-            log.metadata_mut()
-                .value_mut()
-                .insert(path!("vector", "ingest_timestamp"), Utc::now());
-        }
-        // When LogNamespace::Legacy, only set when the `ingestion_timestamp_field` is configured.
-        (LogNamespace::Legacy, Some(ingestion_timestamp_field)) => {
-            log.try_insert(ingestion_timestamp_field, Utc::now())
-        }
-        // The CRI/Docker parsers handle inserting the `log_schema().timestamp_key()` value.
-        (LogNamespace::Legacy, None) => (),
-    };
+    log.set_attribute("file".to_string(), string_value(file));
 
     log.into()
 }

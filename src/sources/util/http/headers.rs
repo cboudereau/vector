@@ -6,7 +6,10 @@ use vector_lib::{
 };
 use warp::http::{HeaderMap, HeaderValue};
 
-use crate::{event::Value, sources::http_server::HttpConfigParamKind};
+use crate::{
+    event::{Value, string_value},
+    sources::http_server::HttpConfigParamKind,
+};
 
 pub fn add_headers(
     events: &mut [Event],
@@ -24,14 +27,25 @@ pub fn add_headers(
                 let value = headers.get(header_name).map(HeaderValue::as_bytes);
 
                 for event in events.iter_mut() {
-                    if let Event::Log(log) = event {
-                        log_namespace.insert_source_metadata(
-                            source_name,
-                            log,
-                            Some(LegacyKey::InsertIfEmpty(path!(header_name))),
-                            path!("headers", header_name),
-                            Value::from(value.map(Bytes::copy_from_slice)),
-                        );
+                    match event {
+                        Event::OtelLog(otel_log) => {
+                            if let Some(v) = value {
+                                otel_log.set_attribute(
+                                    format!("http.header.{header_name}"),
+                                    string_value(String::from_utf8_lossy(v).into_owned()),
+                                );
+                            }
+                        }
+                        Event::Log(log) => {
+                            log_namespace.insert_source_metadata(
+                                source_name,
+                                log,
+                                Some(LegacyKey::InsertIfEmpty(path!(header_name))),
+                                path!("headers", header_name),
+                                Value::from(value.map(Bytes::copy_from_slice)),
+                            );
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -45,14 +59,29 @@ pub fn add_headers(
                         let value = headers.get(header_name).map(HeaderValue::as_bytes);
 
                         for event in events.iter_mut() {
-                            if let Event::Log(log) = event {
-                                log_namespace.insert_source_metadata(
-                                    source_name,
-                                    log,
-                                    Some(LegacyKey::InsertIfEmpty(path!(header_name.as_str()))),
-                                    path!("headers", header_name.as_str()),
-                                    Value::from(value.map(Bytes::copy_from_slice)),
-                                );
+                            match event {
+                                Event::OtelLog(otel_log) => {
+                                    if let Some(v) = value {
+                                        otel_log.set_attribute(
+                                            format!("http.header.{}", header_name.as_str()),
+                                            string_value(
+                                                String::from_utf8_lossy(v).into_owned(),
+                                            ),
+                                        );
+                                    }
+                                }
+                                Event::Log(log) => {
+                                    log_namespace.insert_source_metadata(
+                                        source_name,
+                                        log,
+                                        Some(LegacyKey::InsertIfEmpty(path!(
+                                            header_name.as_str()
+                                        ))),
+                                        path!("headers", header_name.as_str()),
+                                        Value::from(value.map(Bytes::copy_from_slice)),
+                                    );
+                                }
+                                _ => {}
                             }
                         }
                     }

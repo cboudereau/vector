@@ -40,7 +40,7 @@ mod r#ref;
 mod ser;
 pub mod otel_event;
 pub mod otlp;
-pub use otel_event::{OtelLog, OtelMetric, OtelSpan};
+pub use otel_event::{OtelLog, OtelMetric, OtelSpan, json_to_any_value, string_value, int_value};
 
 /// Backward-compat aliases — deprecated, use `OtelLog`/`OtelMetric`/`OtelSpan` directly.
 pub type OtelLogEvent = OtelLog;

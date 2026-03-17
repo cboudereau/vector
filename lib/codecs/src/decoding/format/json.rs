@@ -1,11 +1,10 @@
 use bytes::Bytes;
-use chrono::Utc;
 use derivative::Derivative;
 use smallvec::{SmallVec, smallvec};
 use vector_config::configurable_component;
 use vector_core::{
     config::{DataType, LogNamespace, log_schema},
-    event::Event,
+    event::{Event, OtelLog},
     schema,
 };
 use vrl::value::Kind;
@@ -99,10 +98,8 @@ impl Deserializer for JsonDeserializer {
     fn parse(
         &self,
         bytes: Bytes,
-        log_namespace: LogNamespace,
+        _log_namespace: LogNamespace,
     ) -> vector_common::Result<SmallVec<[Event; 1]>> {
-        // It's common to receive empty frames when parsing NDJSON, since it
-        // allows multiple empty newlines. We proceed without a warning here.
         if bytes.is_empty() {
             return Ok(smallvec![]);
         }
@@ -113,31 +110,12 @@ impl Deserializer for JsonDeserializer {
         }
         .map_err(|error| format!("Error parsing JSON: {error:?}"))?;
 
-        // If the root is an Array, split it into multiple events
-        let mut events = match json {
+        let events = match json {
             serde_json::Value::Array(values) => values
                 .into_iter()
-                .map(|json| Event::from_json_value(json, log_namespace))
-                .collect::<Result<SmallVec<[Event; 1]>, _>>()?,
-            _ => smallvec![Event::from_json_value(json, log_namespace)?],
-        };
-
-        let events = match log_namespace {
-            LogNamespace::Vector => events,
-            LogNamespace::Legacy => {
-                let timestamp = Utc::now();
-
-                if let Some(timestamp_key) = log_schema().timestamp_key_target_path() {
-                    for event in &mut events {
-                        let log = event.as_mut_log();
-                        if !log.contains(timestamp_key) {
-                            log.insert(timestamp_key, timestamp);
-                        }
-                    }
-                }
-
-                events
-            }
+                .map(|json| Event::OtelLog(OtelLog::from_json_value(json)))
+                .collect::<SmallVec<[Event; 1]>>(),
+            _ => smallvec![Event::OtelLog(OtelLog::from_json_value(json))],
         };
 
         Ok(events)
@@ -154,88 +132,63 @@ impl From<&JsonDeserializerConfig> for JsonDeserializer {
 
 #[cfg(test)]
 mod tests {
-    use vector_core::config::log_schema;
-    use vrl::core::Value;
+    use opentelemetry_proto::tonic::common::v1::any_value::Value as OtelValueKind;
 
     use super::*;
 
+    fn get_body_kvlist_value(event: &Event, key: &str) -> Option<OtelValueKind> {
+        match event {
+            Event::OtelLog(otel_log) => {
+                if let Some(body) = otel_log.body() {
+                    if let Some(OtelValueKind::KvlistValue(kvlist)) = &body.value {
+                        return kvlist
+                            .values
+                            .iter()
+                            .find(|kv| kv.key == key)
+                            .and_then(|kv| kv.value.as_ref())
+                            .and_then(|av| av.value.clone());
+                    }
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+
     #[test]
-    fn deserialize_json() {
+    fn deserialize_json_produces_otel_log() {
         let input = Bytes::from(r#"{ "foo": 123 }"#);
         let deserializer = JsonDeserializer::default();
 
         for namespace in [LogNamespace::Legacy, LogNamespace::Vector] {
             let events = deserializer.parse(input.clone(), namespace).unwrap();
-            let mut events = events.into_iter();
+            assert_eq!(events.len(), 1);
 
-            {
-                let event = events.next().unwrap();
-                let log = event.as_log();
-                assert_eq!(log["foo"], 123.into());
-                assert_eq!(
-                    log.get((
-                        lookup::PathPrefix::Event,
-                        log_schema().timestamp_key().unwrap()
-                    ))
-                    .is_some(),
-                    namespace == LogNamespace::Legacy
-                );
-            }
+            let event = &events[0];
+            assert!(matches!(event, Event::OtelLog(_)), "expected OtelLog");
 
-            assert_eq!(events.next(), None);
+            let val = get_body_kvlist_value(event, "foo");
+            assert_eq!(val, Some(OtelValueKind::IntValue(123)));
         }
     }
 
     #[test]
-    fn deserialize_non_object_vector_namespace() {
-        let input = Bytes::from(r#"null"#);
-        let deserializer = JsonDeserializer::default();
-
-        let namespace = LogNamespace::Vector;
-        let events = deserializer.parse(input.clone(), namespace).unwrap();
-        let mut events = events.into_iter();
-
-        let event = events.next().unwrap();
-        let log = event.as_log();
-        assert_eq!(log["."], Value::Null);
-
-        assert_eq!(events.next(), None);
-    }
-
-    #[test]
-    fn deserialize_json_array() {
+    fn deserialize_json_array_produces_otel_logs() {
         let input = Bytes::from(r#"[{ "foo": 123 }, { "bar": 456 }]"#);
         let deserializer = JsonDeserializer::default();
+
         for namespace in [LogNamespace::Legacy, LogNamespace::Vector] {
             let events = deserializer.parse(input.clone(), namespace).unwrap();
-            let mut events = events.into_iter();
+            assert_eq!(events.len(), 2);
 
-            {
-                let event = events.next().unwrap();
-                let log = event.as_log();
-                assert_eq!(log["foo"], 123.into());
-                assert_eq!(
-                    log.get((
-                        lookup::PathPrefix::Event,
-                        log_schema().timestamp_key().unwrap()
-                    ))
-                    .is_some(),
-                    namespace == LogNamespace::Legacy
-                );
-            }
+            assert!(matches!(&events[0], Event::OtelLog(_)));
+            assert!(matches!(&events[1], Event::OtelLog(_)));
 
-            {
-                let event = events.next().unwrap();
-                let log = event.as_log();
-                assert_eq!(log["bar"], 456.into());
-                assert_eq!(
-                    log.get(log_schema().timestamp_key_target_path().unwrap())
-                        .is_some(),
-                    namespace == LogNamespace::Legacy
-                );
-            }
+            let foo = get_body_kvlist_value(&events[0], "foo");
+            assert_eq!(foo, Some(OtelValueKind::IntValue(123)));
 
-            assert_eq!(events.next(), None);
+            let bar = get_body_kvlist_value(&events[1], "bar");
+            assert_eq!(bar, Some(OtelValueKind::IntValue(456)));
         }
     }
 
@@ -261,39 +214,24 @@ mod tests {
     }
 
     #[test]
-    fn deserialize_lossy_replace_invalid_utf8() {
-        let input = Bytes::from(b"{ \"foo\": \"Hello \xF0\x90\x80World\" }".as_slice());
-        let deserializer = JsonDeserializer::new(true);
-
-        for namespace in [LogNamespace::Legacy, LogNamespace::Vector] {
-            let events = deserializer.parse(input.clone(), namespace).unwrap();
-            let mut events = events.into_iter();
-
-            {
-                let event = events.next().unwrap();
-                let log = event.as_log();
-                assert_eq!(log["foo"], b"Hello \xEF\xBF\xBDWorld".into());
-                assert_eq!(
-                    log.get((
-                        lookup::PathPrefix::Event,
-                        log_schema().timestamp_key().unwrap()
-                    ))
-                    .is_some(),
-                    namespace == LogNamespace::Legacy
-                );
-            }
-
-            assert_eq!(events.next(), None);
-        }
-    }
-
-    #[test]
     fn deserialize_non_lossy_error_invalid_utf8() {
         let input = Bytes::from(b"{ \"foo\": \"Hello \xF0\x90\x80World\" }".as_slice());
         let deserializer = JsonDeserializer::new(false);
 
         for namespace in [LogNamespace::Legacy, LogNamespace::Vector] {
             assert!(deserializer.parse(input.clone(), namespace).is_err());
+        }
+    }
+
+    #[test]
+    fn deserialize_lossy_replace_invalid_utf8() {
+        let input = Bytes::from(b"{ \"foo\": \"Hello \xF0\x90\x80World\" }".as_slice());
+        let deserializer = JsonDeserializer::new(true);
+
+        for namespace in [LogNamespace::Legacy, LogNamespace::Vector] {
+            let events = deserializer.parse(input.clone(), namespace).unwrap();
+            assert_eq!(events.len(), 1);
+            assert!(matches!(&events[0], Event::OtelLog(_)));
         }
     }
 }

@@ -14,7 +14,7 @@ use super::{SocketConfig, default_host_key};
 use crate::{
     SourceSender,
     codecs::Decoder,
-    event::Event,
+    event::{Event, string_value},
     serde::default_decoding,
     sources::{
         Source,
@@ -100,20 +100,36 @@ fn handle_events(
     let now = Utc::now();
 
     for event in events {
-        if let Event::Log(log) = event {
-            log_namespace.insert_standard_vector_source_metadata(log, SocketConfig::NAME, now);
-
-            if let Some(ref host) = received_from {
-                let legacy_host_key = host_key.clone().path;
-
-                log_namespace.insert_source_metadata(
-                    SocketConfig::NAME,
-                    log,
-                    legacy_host_key.as_ref().map(LegacyKey::InsertIfEmpty),
-                    path!("host"),
-                    host.clone(),
-                );
+        match event {
+            Event::OtelLog(otel_log) => {
+                otel_log.set_source_metadata(SocketConfig::NAME, now);
+                if let Some(ref host) = received_from {
+                    otel_log.set_resource_attribute(
+                        "host.name".to_string(),
+                        string_value(String::from_utf8_lossy(host).into_owned()),
+                    );
+                }
             }
+            Event::Log(log) => {
+                log_namespace.insert_standard_vector_source_metadata(
+                    log,
+                    SocketConfig::NAME,
+                    now,
+                );
+
+                if let Some(ref host) = received_from {
+                    let legacy_host_key = host_key.clone().path;
+
+                    log_namespace.insert_source_metadata(
+                        SocketConfig::NAME,
+                        log,
+                        legacy_host_key.as_ref().map(LegacyKey::InsertIfEmpty),
+                        path!("host"),
+                        host.clone(),
+                    );
+                }
+            }
+            _ => {}
         }
     }
 }

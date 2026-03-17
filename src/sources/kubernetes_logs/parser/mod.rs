@@ -11,6 +11,55 @@ use crate::{
     transforms::{FunctionTransform, OutputBuffer},
 };
 
+/// For OtelLog events, convert to a temporary LogEvent for parsing,
+/// then transfer the parsed fields back as OtelLog attributes.
+fn transform_otel_event(parser: &mut ParserState, output: &mut OutputBuffer, mut event: Event) {
+    if let Event::OtelLog(ref otel_log) = event {
+        let body = otel_log.body_string();
+        if body.is_empty() {
+            return;
+        }
+        let bytes = bytes::Bytes::from(body);
+        let tmp_log = crate::event::LogEvent::from(Value::Bytes(bytes));
+        let tmp_event = Event::Log(tmp_log);
+        let mut tmp_output = OutputBuffer::with_capacity(1);
+        match parser {
+            ParserState::Docker(t) => t.transform(&mut tmp_output, tmp_event),
+            ParserState::Cri(t) => t.transform(&mut tmp_output, tmp_event),
+            _ => return,
+        }
+        for parsed in tmp_output.into_events() {
+            if let Event::Log(ref parsed_log) = parsed {
+                if let Event::OtelLog(ref mut otel_log) = event {
+                    if let Some(msg) = parsed_log.get(".message") {
+                        otel_log.set_body(crate::event::string_value(
+                            msg.as_str().unwrap_or_default(),
+                        ));
+                    }
+                    if let Some(stream) = parsed_log.get(".stream") {
+                        otel_log.set_attribute(
+                            "stream".to_string(),
+                            crate::event::string_value(stream.as_str().unwrap_or_default()),
+                        );
+                    }
+                    if let Some(Value::Boolean(true)) = parsed_log.get("._partial") {
+                        otel_log.set_attribute(
+                            "_partial".to_string(),
+                            crate::event::string_value("true"),
+                        );
+                    }
+                    if let Some(Value::Timestamp(ts)) = parsed_log.get(".timestamp") {
+                        otel_log.record_mut().time_unix_nano =
+                            ts.timestamp_nanos_opt().unwrap_or(0) as u64;
+                    }
+                }
+            }
+            output.push(event.clone());
+            return;
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 enum ParserState {
     /// Runtime has not yet been detected.
@@ -40,26 +89,49 @@ impl Parser {
 
 impl FunctionTransform for Parser {
     fn transform(&mut self, output: &mut OutputBuffer, event: Event) {
+        let is_otel = matches!(event, Event::OtelLog(_));
+
+        let bytes_for_detection = if is_otel {
+            if let Event::OtelLog(ref otel_log) = event {
+                let s = otel_log.body_string();
+                if s.is_empty() {
+                    emit!(KubernetesLogsFormatPickerEdgeCase {
+                        what: "got an OtelLog event without a body"
+                    });
+                    return;
+                }
+                Some(bytes::Bytes::from(s))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         match &mut self.state {
             ParserState::Uninitialized => {
-                let message_field = get_message_path(self.log_namespace);
-                let message = match event.as_log().get(&message_field) {
-                    Some(message) => message,
-                    None => {
-                        emit!(KubernetesLogsFormatPickerEdgeCase {
-                            what: "got an event without a message"
-                        });
-                        return;
-                    }
-                };
+                let bytes = if let Some(ref b) = bytes_for_detection {
+                    b.clone()
+                } else {
+                    let message_field = get_message_path(self.log_namespace);
+                    let message = match event.as_log().get(&message_field) {
+                        Some(message) => message,
+                        None => {
+                            emit!(KubernetesLogsFormatPickerEdgeCase {
+                                what: "got an event without a message"
+                            });
+                            return;
+                        }
+                    };
 
-                let bytes = match message {
-                    Value::Bytes(bytes) => bytes,
-                    _ => {
-                        emit!(KubernetesLogsFormatPickerEdgeCase {
-                            what: "got an event with non-bytes message"
-                        });
-                        return;
+                    match message {
+                        Value::Bytes(bytes) => bytes.clone(),
+                        _ => {
+                            emit!(KubernetesLogsFormatPickerEdgeCase {
+                                what: "got an event with non-bytes message"
+                            });
+                            return;
+                        }
                     }
                 };
 
@@ -70,8 +142,20 @@ impl FunctionTransform for Parser {
                 };
                 self.transform(output, event)
             }
-            ParserState::Docker(t) => t.transform(output, event),
-            ParserState::Cri(t) => t.transform(output, event),
+            ParserState::Docker(t) => {
+                if is_otel {
+                    transform_otel_event(&mut ParserState::Docker(t.clone()), output, event);
+                } else {
+                    t.transform(output, event);
+                }
+            }
+            ParserState::Cri(t) => {
+                if is_otel {
+                    transform_otel_event(&mut ParserState::Cri(t.clone()), output, event);
+                } else {
+                    t.transform(output, event);
+                }
+            }
         }
     }
 }

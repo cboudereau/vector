@@ -15,7 +15,7 @@ use vector_lib::{
 };
 
 use super::Config;
-use crate::event::{Event, LogEvent};
+use crate::event::{Event, LogEvent, string_value};
 
 /// Configuration for how the events are enriched with Node metadata.
 #[configurable_component]
@@ -65,12 +65,16 @@ impl NodeMetadataAnnotator {
 impl NodeMetadataAnnotator {
     /// Annotates an event with the information from the [`Node::metadata`].
     pub fn annotate(&self, event: &mut Event, node: &str) -> Option<()> {
-        let log = event.as_mut_log();
         let obj = ObjectRef::<Node>::new(node);
         let resource = self.node_state_reader.get(&obj)?;
         let node: &Node = resource.as_ref();
 
-        annotate_from_metadata(log, &self.fields_spec, &node.metadata, self.log_namespace);
+        if let Event::OtelLog(otel_log) = event {
+            annotate_otel_from_metadata(otel_log, &node.metadata);
+        } else {
+            let log = event.as_mut_log();
+            annotate_from_metadata(log, &self.fields_spec, &node.metadata, self.log_namespace);
+        }
         Some(())
     }
 }
@@ -94,6 +98,20 @@ fn annotate_from_metadata(
                 path!("node_labels", key),
                 value.to_owned(),
             )
+        }
+    }
+}
+
+fn annotate_otel_from_metadata(
+    otel_log: &mut crate::event::OtelLog,
+    metadata: &ObjectMeta,
+) {
+    if let Some(labels) = &metadata.labels {
+        for (key, value) in labels.iter() {
+            otel_log.set_resource_attribute(
+                format!("k8s.node.labels.{key}"),
+                string_value(value),
+            );
         }
     }
 }

@@ -32,7 +32,7 @@ use crate::{
     SourceSender,
     codecs::Decoder,
     config::log_schema,
-    event::{BatchStatus, Event},
+    event::{BatchStatus, Event, string_value},
     internal_events::{
         AwsKinesisFirehoseAutomaticRecordDecodeError, EventsReceived, StreamClosedError,
     },
@@ -91,15 +91,26 @@ pub(super) async fn firehose(
                         if let Some(batch) = &batch {
                             event.add_batch_notifier(batch.clone());
                         }
-                        if let Event::Log(log) = event {
+                        if let Event::OtelLog(otel_log) = event {
+                            otel_log.set_source_metadata(
+                                AwsKinesisFirehoseConfig::NAME,
+                                now,
+                            );
+                            otel_log.set_attribute(
+                                "request_id".to_string(),
+                                string_value(request_id.clone()),
+                            );
+                            otel_log.set_attribute(
+                                "source_arn".to_string(),
+                                string_value(source_arn.clone()),
+                            );
+                        } else if let Event::Log(log) = event {
                             log_namespace.insert_vector_metadata(
                                 log,
                                 log_schema().source_type_key(),
                                 path!("source_type"),
                                 Bytes::from_static(AwsKinesisFirehoseConfig::NAME.as_bytes()),
                             );
-                            // This handles the transition from the original timestamp logic. Originally the
-                            // `timestamp_key` was always populated by the `request.timestamp` time.
                             match log_namespace {
                                 LogNamespace::Vector => {
                                     log.insert(metadata_path!("vector", "ingest_timestamp"), now);

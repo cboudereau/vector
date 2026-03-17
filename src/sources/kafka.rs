@@ -57,7 +57,7 @@ use crate::{
         LogSchema, SourceAcknowledgementsConfig, SourceConfig, SourceContext, SourceOutput,
         log_schema,
     },
-    event::{BatchNotifier, BatchStatus, Event, Value},
+    event::{BatchNotifier, BatchStatus, Event, Value, string_value, int_value},
     internal_events::{
         KafkaBytesReceived, KafkaEventsReceived, KafkaOffsetUpdateError, KafkaReadError,
         StreamClosedError,
@@ -1098,13 +1098,32 @@ impl ReceivedMessage {
     }
 
     fn apply(&self, keys: &Keys, event: &mut Event, log_namespace: LogNamespace) {
-        if let Event::Log(log) = event {
+        if let Event::OtelLog(otel_log) = event {
+            otel_log.set_source_metadata(KafkaSourceConfig::NAME, Utc::now());
+            otel_log.set_attribute("topic".to_string(), string_value(&self.topic));
+            otel_log.set_attribute("partition".to_string(), int_value(self.partition as i64));
+            otel_log.set_attribute("offset".to_string(), int_value(self.offset));
+            if let Value::Bytes(key_bytes) = &self.key {
+                otel_log.set_attribute(
+                    "message_key".to_string(),
+                    string_value(String::from_utf8_lossy(key_bytes).into_owned()),
+                );
+            }
+            for (header_key, header_val) in &self.headers {
+                if let Value::Bytes(val_bytes) = header_val {
+                    otel_log.set_attribute(
+                        format!("kafka.header.{}", header_key),
+                        string_value(String::from_utf8_lossy(val_bytes).into_owned()),
+                    );
+                }
+            }
+            if let Some(ts) = self.timestamp {
+                otel_log.record_mut().time_unix_nano =
+                    ts.timestamp_nanos_opt().unwrap_or(0) as u64;
+            }
+        } else if let Event::Log(log) = event {
             match log_namespace {
                 LogNamespace::Vector => {
-                    // We'll only use this function in Vector namespaces because we don't want
-                    // "timestamp" to be set automatically in legacy namespaces. In legacy
-                    // namespaces, the "timestamp" field corresponds to the Kafka message, not the
-                    // timestamp when the event was processed.
                     log_namespace.insert_standard_vector_source_metadata(
                         log,
                         KafkaSourceConfig::NAME,

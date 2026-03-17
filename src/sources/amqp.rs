@@ -27,7 +27,7 @@ use crate::{
     amqp::AmqpConfig,
     codecs::{Decoder, DecodingConfig},
     config::{SourceConfig, SourceContext, SourceOutput},
-    event::{BatchNotifier, BatchStatus},
+    event::{BatchNotifier, BatchStatus, int_value, string_value},
     internal_events::{
         StreamClosedError,
         source::{AmqpAckError, AmqpBytesReceived, AmqpEventError, AmqpRejectError},
@@ -356,8 +356,23 @@ async fn receive_event(
                         events.estimated_json_encoded_size_of(),
                     ));
 
+                    let now = Utc::now();
                     for mut event in events {
-                        if let Event::Log(ref mut log) = event {
+                        if let Event::OtelLog(ref mut otel_log) = event {
+                            otel_log.set_source_metadata(AmqpSourceConfig::NAME, now);
+                            otel_log.set_attribute(
+                                "routing".to_string(),
+                                string_value(keys.routing),
+                            );
+                            otel_log.set_attribute(
+                                "exchange".to_string(),
+                                string_value(keys.exchange),
+                            );
+                            otel_log.set_attribute(
+                                "offset".to_string(),
+                                int_value(keys.delivery_tag),
+                            );
+                        } else if let Event::Log(ref mut log) = event {
                             populate_log_event(log,
                                         timestamp,
                                         &keys,

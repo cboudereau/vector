@@ -584,7 +584,10 @@ impl http_client::HttpClientContext for HttpClientContext {
                         Bytes::from(HttpClientConfig::NAME).into()
                     });
                 }
-                Event::OtelLog(_) | Event::OtelMetric(_) | Event::OtelSpan(_) => {}
+                Event::OtelLog(otel_log) => {
+                    otel_log.set_source_metadata(HttpClientConfig::NAME, now);
+                }
+                Event::OtelMetric(_) | Event::OtelSpan(_) => {}
             }
         }
     }

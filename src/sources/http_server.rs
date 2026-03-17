@@ -26,7 +26,7 @@ use crate::{
         GenerateConfig, Resource, SourceAcknowledgementsConfig, SourceConfig, SourceContext,
         SourceOutput,
     },
-    event::Event,
+    event::{Event, string_value},
     http::KeepaliveConfig,
     serde::{bool_or_struct, default_decoding},
     sources::util::{
@@ -437,8 +437,20 @@ impl HttpSource for SimpleHttpSource {
         let now = Utc::now();
         for event in events.iter_mut() {
             match event {
+                Event::OtelLog(otel_log) => {
+                    otel_log.set_source_metadata(SimpleHttpConfig::NAME, now);
+                    otel_log.set_attribute(
+                        "http.path".to_string(),
+                        string_value(request_path),
+                    );
+                    if let Some(addr) = source_ip {
+                        otel_log.set_resource_attribute(
+                            "host.name".to_string(),
+                            string_value(socket_addr_to_ip_string(addr)),
+                        );
+                    }
+                }
                 Event::Log(log) => {
-                    // add request_path to each event
                     self.log_namespace.insert_source_metadata(
                         SimpleHttpConfig::NAME,
                         log,

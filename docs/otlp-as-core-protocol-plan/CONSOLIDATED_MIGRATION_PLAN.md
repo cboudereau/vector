@@ -384,27 +384,36 @@ Step 5c²  Migrate logs batch 2+: other sources, transforms, sinks              
 Step 5d²  Migrate metrics batch 2+: other sources, transforms, sinks           — COMPLETE
 Step 5f   Ship VRL migration tool                                              — COMPLETE
 Step 5g   Rename OtelXxxEvent → OtelXxx + type alias cleanup                   — COMPLETE
-Step 4    Tail sampling + load-balancing sink + pipeline telemetry              — NEXT
-Step 6    Native codecs and Vector proto removal
-Step 7    Optional: Vector and DataDog sink re-integration as OTel-native adapters
+Step 5h   OTLP HTTP JSON ingestion + dependency upgrades                       — COMPLETE
+Step 6    Full legacy removal: sources → sinks → core → native codecs          — IN PROGRESS (6a COMPLETE)
+Step 7    Re-integration: Vector + DataDog sinks/sources as OTel adapters
+Step 4    Tail sampling + load-balancing sink + pipeline telemetry
 ```
+
+**Why Step 6 before Step 4 and Step 7:** Completing the core protocol migration before
+adding new features ensures a clean foundation. Step 4 (tail sampling) and Step 7
+(sink/source re-integration) should only be built on OTel-native types — building them
+on a codebase that still has 153 files referencing legacy types means every new feature
+would need to handle both old and new representations, doubling complexity. Finishing
+Step 6 first means Steps 4 and 7 are pure additive work on a clean OTel-only core.
+
+**Why Step 7 before Step 4:** Re-adding Vector and DataDog as clean OTel adapters
+restores practical deployment compatibility. Tail sampling is a net-new feature that
+has never existed in Vector; adapter re-integration restores capabilities that were
+removed in Step 1. Users blocked by the missing sinks are unblocked sooner.
 
 **Why Step 2 before Step 1:** The OTLP serializer currently errors on `Event::Metric`. Step 2
 fixes this. Without it, the OTel sink cannot replace the DataDog metric sink and the migration
 is blocked. Step 2 must land before Step 1 can be validated.
 
-**Why Step 5 is next:** Steps 0–3 are complete. Step 4 (tail sampling, load-balancing sink,
-pipeline telemetry) requires the final OTel event model — all three sub-components deeply
-couple to event field paths and types. Building on `TraceEvent(LogEvent)` then rewriting for
-typed OTel `Span` is wasteful. Step 5 is the highest-impact change and unblocks everything.
-Step 5 uses an **incremental wrapper strategy** (sub-steps 5a–5g) — OTel wrapper types are
-introduced alongside existing types, then each signal is migrated independently. The codebase
-compiles at every intermediate commit.
-
-**Why Step 4 is a single unit after Step 5:** The load-balancing sink exists solely to serve
-the tail sampling use case (trace-aware routing to sampler instances). Shipping one without
-the other has no value. Pipeline telemetry (`spanmetricsconnector`-equivalent) is most useful
-at the Sampling Collector tier alongside `tail_sample`. All three are delivered together.
+**Why Step 5 was next after Step 3:** Steps 0–3 are complete. Step 4 (tail sampling,
+load-balancing sink, pipeline telemetry) requires the final OTel event model — all three
+sub-components deeply couple to event field paths and types. Building on
+`TraceEvent(LogEvent)` then rewriting for typed OTel `Span` is wasteful. Step 5 is the
+highest-impact change and unblocks everything. Step 5 uses an **incremental wrapper
+strategy** (sub-steps 5a–5g) — OTel wrapper types are introduced alongside existing
+types, then each signal is migrated independently. The codebase compiles at every
+intermediate commit.
 
 ---
 
@@ -705,7 +714,7 @@ They are never part of the core data model.
 
 ## Step 4 — Tail Sampling, Load-Balancing Sink, and Pipeline Telemetry
 
-**Status: NOT STARTED — all sub-components delivered together after Step 5.**
+**Status: NOT STARTED — delivered after Step 7, built entirely on OTel-native types.**
 
 Full specifications:
 - `TAIL_SAMPLING_BACKPORT.md` — `tail_sample` transform + load-balancing sink + 3-tier
@@ -1475,6 +1484,50 @@ field rewrites. Full spec: `VRL_MIGRATION_TOOL.md`.
 - `rg "Otel(Log|Span|Metric)Event" lib/vector-core/src/` returns only type alias shims.
 - `cargo check -p vector` clean.
 
+#### 5h — OTLP HTTP JSON ingestion + dependency upgrades — COMPLETE
+
+**Status: COMPLETE.** Committed as `feat(agt): add native OTLP HTTP JSON ingestion and upgrade proto stack`.
+
+Bumps the protobuf/gRPC dependency stack and adds native OTLP HTTP JSON support to the
+`opentelemetry` source, enabling Vector to act as a drop-in replacement for the OTel
+Collector Contrib for JSON-based OTLP ingestion.
+
+**Dependency upgrades:**
+- `prost` 0.12 → 0.13, `prost-build` 0.12 → 0.13, `prost-types` 0.12 → 0.13
+- `tonic` 0.11 → 0.12, `tonic-build` 0.11 → 0.12
+- Added upstream `opentelemetry-proto 0.27` with `with-serde` feature
+- Renamed `lib/opentelemetry-proto` to `vector-opentelemetry-proto` to avoid naming conflict
+
+**OTLP HTTP JSON ingestion (source):**
+- Content-type dispatch: `application/json` → `serde_json` deserialization into upstream
+  `opentelemetry_proto::tonic::collector::*` request types
+- `application/x-protobuf` → existing `prost::Message::decode` path
+- Unsupported content types → `415 Unsupported Media Type`
+- JSON responses for JSON requests (using upstream `serde::Serialize` on response types)
+- `json_decode_logs`, `json_decode_metrics`, `json_decode_traces` create `Event::OtelLog`,
+  `Event::OtelMetric`, `Event::OtelSpan` directly — zero conversion overhead
+
+**Serialization fix:**
+- Removed `JsonProto` wrapper from `otel_event.rs` — was encoding inner protobuf messages
+  to raw byte arrays (`[10,5,...]`) instead of structured JSON
+- `OtelLog`, `OtelMetric`, `OtelSpan` now serialize their inner fields directly using the
+  upstream `opentelemetry-proto` serde derives (camelCase, hex trace IDs, typed `AnyValue`)
+- Fixed `Transformer::transform()` unconditionally coercing `OtelLog` → `LogEvent` — now
+  only triggers when transformer rules (`only_fields`, `except_fields`, `timestamp_format`)
+  are configured
+
+**Demo validation:**
+- Updated `demo/otel-drop-in/` to send JSON directly to Vector (removed OTel Collector
+  forwarder)
+- Validated with full o11y demo (dotnet apps → gateway → Vector forwarder → loki/mimir/tempo)
+  confirming OTLP source (gRPC) + OTLP sink (gRPC + HTTP) work for all 3 signals with
+  batching
+
+**Validation gate (5h) — ALL PASS:**
+- All OTLP HTTP JSON tests pass (logs, metrics, traces, content-type dispatch, response format).
+- Demo produces structured OTLP JSON for all 3 signals.
+- `cargo check` clean with full feature set.
+
 ### Why wrapper types instead of big-bang replacement
 
 | | Wrapper (chosen) | Big-bang |
@@ -1499,47 +1552,263 @@ field rewrites. Full spec: `VRL_MIGRATION_TOOL.md`.
 
 ---
 
-## Step 6 — Native Codecs and Vector Proto Removal
+## Step 6 — Full Legacy Removal: Sources → Sinks → Core → Native Codecs
 
-### What is deleted
+**Status: IN PROGRESS**
+
+### Goal
+
+Complete the OTLP core protocol migration by removing all legacy event types
+(`Event::Log`, `Event::Metric`, `Event::Trace`, `LogEvent`, `Metric`, `TraceEvent`)
+from the codebase. After this step, `Event` has exactly 3 variants:
+`OtelLog`, `OtelMetric`, `OtelSpan`.
+
+### Scope (from code audit)
+
+| Category | Files | Description |
+|----------|-------|-------------|
+| Sources | ~50 | Every source creates `LogEvent`/`Metric`/`TraceEvent` directly |
+| Transforms | ~14 | Consume/produce legacy events in match arms |
+| Sinks | ~25 | Many already have `into_log_coerce()` shims from Step 5c² |
+| Core/lib | ~42 | `Event` enum, `EventArray`, `VrlTarget`, proto, Lua, schema |
+| Codecs | ~22 | Encoders/decoders match on legacy variants |
+| **Total** | **~153** | |
+
+### Phased execution
+
+Each phase compiles and passes tests independently.
+
+#### 6a — Migrate log sources to emit `OtelLog` (~40 files) — COMPLETE
+
+Every log-ingesting source now handles `OtelLog` events from the decoder chain.
+
+**Sources to migrate (grouped by complexity):**
+
+*Simple (message → body, few attributes):*
+- `socket/{tcp,udp,unix}.rs`, `file_descriptors/mod.rs`, `exec/mod.rs`,
+  `websocket/source.rs`, `redis/mod.rs`, `amqp.rs`, `nats/source.rs`,
+  `mqtt/source.rs`, `pulsar.rs`
+
+*Medium (structured fields → attributes):*
+- `journald.rs`, `kafka.rs`, `heroku_logs.rs`, `http_server.rs`,
+  `http_client/client.rs`, `logstash.rs`, `splunk_hec/mod.rs`,
+  `aws_kinesis_firehose/handlers.rs`
+
+*Complex (multi-line, parsing, enrichment):*
+- `kubernetes_logs/` (parser, CRI, Docker, partial merger, annotators)
+- `fluent/mod.rs`, `dnstap/{tcp,unix,mod}.rs`
+- `vector/mod.rs` (Vector source — must migrate off `NativeDeserializerConfig`)
+- `datadog_agent/logs.rs` (already partly migrated in Step 3)
+
+*Shared utilities:*
+- `util/framestream.rs`, `util/http/{headers,query}.rs`,
+  `util/message_decoding.rs`
+
+**What was done:**
+
+*Core deserializer migration:*
+- `BytesDeserializer` now produces `Event::OtelLog(OtelLog::from_bytes(...))` instead of `Event::Log(LogEvent)`
+- `JsonDeserializer` now produces `Event::OtelLog(OtelLog::from_json_value(...))` instead of `Event::Log(LogEvent)`
+- `VrlDeserializer` continues using `LogEvent` internally (VRL programs expect flat event structure)
+- `SyslogDeserializer`, `GelfDeserializer`, `NativeDeserializer` still produce `Event::Log` (legacy fallback)
+
+*New OtelLog convenience API:*
+- `OtelLog::from_bytes(bytes)` — body as string value
+- `OtelLog::from_json_value(json)` — body as kvlist/string/int/etc
+- `OtelLog::set_source_metadata(name, now)` — sets `source_type` resource attribute + `observed_time_unix_nano`
+- `OtelLog::set_resource_attribute(key, value)` — e.g. `host.name`
+- `OtelLog::set_attribute(key, value)` — record-level attributes
+- `string_value(s)`, `int_value(i)`, `json_to_any_value(v)` — AnyValue constructors
+
+*Source annotation migration pattern:*
+All 40 source files now have dual-path event handling:
+```rust
+if let Event::OtelLog(ref mut otel_log) = event {
+    otel_log.set_source_metadata(SOURCE_NAME, now);
+    otel_log.set_resource_attribute("host.name".into(), string_value(host));
+    // source-specific attributes
+} else if let Event::Log(ref mut log) = event {
+    // legacy fallback for syslog/gelf/native deserializers
+}
+```
+
+*Kubernetes-specific:* Pod/namespace/node metadata annotators add OTel semantic
+convention attributes (`k8s.pod.name`, `k8s.namespace.name`, etc.) on the
+`Event::OtelLog` branch. CRI/Docker parser converts OtelLog body to temporary
+LogEvent for parsing, then transfers parsed fields back as attributes.
+
+*Files changed:* 40 files, +1,446/-790 lines.
+
+**Validation gate (6a):** ✓ PASS
+- `cargo check` — clean
+- 12/12 otel_event unit tests — pass
+- 16/16 OpenTelemetry source tests — pass
+- 107/107 event module tests — pass
+- 29/29 codec format tests — pass
+
+#### 6b — Migrate metric sources to emit `OtelMetric` (~14 files)
+
+Every metric source currently creates `Metric::new(...)`. Each must create
+`OtelMetric` with the appropriate OTel metric type.
+
+**Mapping:**
+
+| Source | Current Vector type | OTel type |
+|--------|-------------------|-----------|
+| `statsd/parser.rs` | Counter/Gauge/Distribution/Set | Sum/Gauge/ExponentialHistogram/Gauge |
+| `prometheus/parser.rs` | Counter/Gauge/AggregatedHistogram/AggregatedSummary | Sum/Gauge/Histogram/Summary |
+| `prometheus/remote_write.rs` | Same | Same |
+| `prometheus/pushgateway.rs` | Same | Same |
+| `host_metrics/mod.rs` | Gauge/Counter | Gauge/Sum |
+| `apache_metrics/parser.rs` | Gauge/Counter | Gauge/Sum |
+| `nginx_metrics/mod.rs` | Gauge/Counter | Gauge/Sum |
+| `postgresql_metrics.rs` | Gauge/Counter | Gauge/Sum |
+| `mongodb_metrics/mod.rs` | Gauge/Counter | Gauge/Sum |
+| `aws_ecs_metrics/parser.rs` | Gauge/Counter | Gauge/Sum |
+| `eventstoredb_metrics/types.rs` | Gauge/Counter | Gauge/Sum |
+| `datadog_agent/metrics.rs` | Already migrated (Step 3) | — |
+
+#### 6c — Migrate trace source (`datadog_agent/traces.rs`)
+
+Already partly migrated in Step 3. Verify it emits `OtelSpan` exclusively.
+
+#### 6d — Migrate transforms off legacy types (~14 files)
+
+Most transforms already handle OTel events (Step 5c²d). This phase removes
+the legacy match arms so transforms ONLY accept OTel types.
+
+| Transform | Change |
+|-----------|--------|
+| `remap.rs` | Remove `VrlTarget::LogEvent`, `VrlTarget::Metric`, `VrlTarget::Trace` arms |
+| `reduce/transform.rs` | Accept `OtelLog` directly (remove `into_log_coerce()`) |
+| `dedupe/transform.rs` | Accept `OtelLog` directly |
+| `log_to_metric.rs` | Accept `OtelLog` → emit `OtelMetric` |
+| `metric_to_log.rs` | Accept `OtelMetric` → emit `OtelLog` |
+| `trace_to_log.rs` | Accept `OtelSpan` → emit `OtelLog` |
+| `aggregate.rs` | Accept `OtelMetric` directly |
+| `sample/transform.rs` | Remove legacy match arms |
+| `tag_cardinality_limit` | Accept `OtelMetric` directly |
+| `incremental_to_absolute` | Accept `OtelMetric` directly |
+| `aws_ec2_metadata.rs` | Enrich `OtelLog`/`OtelMetric`/`OtelSpan` resource attributes |
+| `lua/v1/mod.rs`, `lua/v2/mod.rs` | Lua bindings for OTel types (or deprecate) |
+
+#### 6e — Migrate sinks off legacy types (~25 files)
+
+Many sinks already coerce `OtelLog → LogEvent` (Step 5c²e/5c²g). This phase
+removes the coercion — sinks accept OTel types natively.
+
+*Log sinks:* Each sink's encoder projects `OtelLog` fields directly instead of
+going through `to_log_event()`. Example: Loki extracts labels from
+`resource.attributes` + `record.attributes`; Elasticsearch indexes
+`record.body` and `record.attributes` as document fields.
+
+*Metric sinks:* Each sink maps `OtelMetric` data points to the target format.
+Example: Prometheus maps `Sum → counter`, `Gauge → gauge`,
+`Histogram → histogram`; InfluxDB maps data point attributes to tags.
+
+*The OTel sink (gRPC + HTTP):* Remove `Event::Log`/`Event::Metric`/`Event::Trace`
+match arms from `collection_into_request()`.
+
+#### 6f — Remove legacy types from core (~42 files)
+
+With all sources, transforms, and sinks migrated, the legacy types become dead code.
+
+**What is deleted:**
+
+| Type | File | Lines |
+|------|------|-------|
+| `LogEvent` | `lib/vector-core/src/event/log_event.rs` | ~1,221 |
+| `TraceEvent` | `lib/vector-core/src/event/trace.rs` | ~192 |
+| `Metric` | `lib/vector-core/src/event/metric/` | ~2,300 |
+| `Event::{Log,Metric,Trace}` | `lib/vector-core/src/event/mod.rs` | variants removed |
+| `EventArray::{Logs,Metrics,Traces}` | `lib/vector-core/src/event/array.rs` | variants removed |
+| `VrlTarget::{LogEvent,Metric,Trace}` | `lib/vector-core/src/event/vrl_target.rs` | arms removed |
+| `event.proto` | `lib/vector-core/proto/event.proto` | ~230 |
+| Legacy proto ser/de | `lib/vector-core/src/event/proto.rs` | legacy arms |
+| Lua legacy bindings | `lib/vector-core/src/event/lua/` | legacy arms |
+| Legacy `into_event_iter()` | `lib/opentelemetry-proto/src/{logs,spans,metrics}.rs` | old iterators |
+| Legacy buffer codec paths | `lib/opentelemetry-proto/src/buffer_codec.rs` | old paths |
+
+**Rename:** `OtelLog` → `Log`, `OtelMetric` → `Metric`, `OtelSpan` → `Span`.
+The `Event` enum becomes `Event { Log(Log), Metric(Metric), Span(Span) }`.
+
+#### 6g — Delete native codecs and test fixtures
+
+With legacy types gone, the native codecs have nothing to serialize.
+
+**What is deleted:**
 
 | File | Lines | Notes |
-|---|---|---|
+|------|-------|-------|
 | `lib/codecs/src/decoding/format/native.rs` | 59 | `NativeDeserializer` |
 | `lib/codecs/src/encoding/format/native.rs` | 45 | `NativeSerializer` |
 | `lib/codecs/src/decoding/format/native_json.rs` | 139 | `NativeJsonDeserializer` |
 | `lib/codecs/src/encoding/format/native_json.rs` | 108 | `NativeJsonSerializer` |
-| `lib/vector-core/proto/event.proto` | ~230 | Vector-native wire format |
+| `lib/codecs/tests/native.rs` | test file | Round-trip tests |
+| `lib/codecs/tests/native_json.rs` | test file | Round-trip tests |
+| `lib/codecs/tests/data/native_encoding/` | ~7,400 files | Fixture data |
 
-**Flag rule:** `DiskBufferV1CompatibilityMode` and `OtlpEncoding` are **never removed** from
-`EventEncodableMetadataFlags`. The `can_decode()` implementation stops accepting
-`DiskBufferV1CompatibilityMode`-only records (same precedent as v1→v2 transition). The enum
-variant stays permanently.
+**Enum cleanup:** Remove `DeserializerConfig::Native`, `DeserializerConfig::NativeJson`,
+`SerializerConfig::Native`, `SerializerConfig::NativeJson` and all match arms in
+`lib/codecs/src/decoding/mod.rs`, `lib/codecs/src/encoding/serializer.rs`,
+`lib/codecs/src/encoding/config.rs`, `lib/codecs/src/encoding/encoder.rs`.
+
+**Production code cleanup:**
+- `src/sinks/http/batch.rs` — remove `Serializer::NativeJson` match arm
+- `src/components/validation/resources/mod.rs` — remove Native codec mapping
+
+**Flag rule:** `DiskBufferV1CompatibilityMode` and `OtlpEncoding` are **never removed**
+from `EventEncodableMetadataFlags`. The `can_decode()` implementation stops accepting
+`DiskBufferV1CompatibilityMode`-only records (same precedent as v1→v2 transition). The
+enum variant stays permanently.
 
 `vector validate` updated to error if `buffer_format = "vector"` is still set.
 
-Note: `proto/vector/vector.proto` is **retained** — the Vector source still decodes legacy
-Vector proto frames from unupgraded upstream instances.
+Note: `proto/vector/vector.proto` is **retained** for Step 7 — the Vector source
+re-integration needs to decode legacy Vector proto frames from unupgraded upstream
+instances.
 
 ### Validation gate (Step 6)
 
+- `rg "LogEvent|TraceEvent\b" lib/vector-core/src/` returns empty (except backward-compat aliases if kept for one release).
+- `rg "Event::Log\b|Event::Metric\b|Event::Trace\b" src/ lib/` returns empty.
 - `rg "NativeDeserializer|NativeSerializer|native_json" lib/` returns empty.
 - `cargo build` clean.
+- `cargo test` — all tests pass.
+- The `Event` enum has exactly 3 variants: `Log`, `Metric`, `Span`.
+- OTLP source → OTLP sink round-trip for all 3 signals with zero conversion.
 
 ---
 
-## Step 7 — Optional: Vector and DataDog Sink Re-Integration
+## Step 7 — Re-Integration: Vector + DataDog Sinks/Sources as OTel Adapters
 
-If re-added, both sinks are clean OTel-native adapters. No proprietary types leak into core.
+**Status: NOT STARTED — after Step 6.**
 
-**Vector sink (new):** OTel events → `ExportLogsServiceRequest`/etc. over gRPC to unupgraded
-downstream Vector instances. Backward-compat bridge only.
+With the core protocol migration complete (Step 6), Vector and DataDog sinks/sources
+can be re-added as clean OTel-native adapters. No proprietary types leak into core.
 
-**DataDog sink (new):** OTel events → DataDog wire format for APIs without OTLP support
-(e.g. Events API). `AgentDDSketch` re-introduced only within this adapter if needed.
+### Sub-components
 
-**Validation gate:** `cargo build -p vector-core` still clean. Round-trip test for all three
-signal types including span scope assertion (validates Fix A from Step 0b).
+| Component | What | Estimated effort |
+|-----------|------|-----------------|
+| **Vector sink** | `Event::Log`/`Metric`/`Span` → `ExportXxxServiceRequest` over gRPC to unupgraded downstream Vector instances. Backward-compat bridge only. | ~300 lines |
+| **DataDog sink** | OTel events → DataDog wire format for APIs without OTLP support (e.g. Events API). `AgentDDSketch` re-introduced only within this adapter if needed. | ~2,000 lines |
+| **DataDog source** | Already migrated in Step 3. Verify clean against final OTel types. | ~100 lines |
+| **Vector source** | Already receives OTLP natively. Legacy proto decoding retained from `proto/vector/vector.proto` for backward compat with unupgraded upstream instances. | ~100 lines |
+
+### Validation gate (Step 7)
+
+- `cargo build -p vector-core` still clean — no proprietary types in core.
+- Round-trip test for all three signal types including span scope assertion.
+- DataDog sink integration test against DD OTLP endpoint.
+
+---
+
+## Step 4 — Tail Sampling, Load-Balancing Sink, and Pipeline Telemetry
+
+**Status: NOT STARTED — after Step 7.**
+
+Built entirely on OTel-native types. No legacy compatibility concerns.
 
 ---
 
@@ -1571,7 +1840,7 @@ signal types including span scope assertion (validates Fix A from Step 0b).
 | G8 | Core value type: VRL `Value` vs OTel `AnyValue` | `AnyValue` is the core value type. `Value` is VRL-boundary only. `Timestamp`/`Null`/`Regex` gaps handled at VRL adapter layer. |
 | G9 | `Vec<KeyValue>` attribute lookup performance | O(n) acceptable for non-VRL paths. VRL adapter copies to `BTreeMap` during program execution. `IndexedAttributes` wrapper deferred to future optimization. |
 | G10 | `EventMetadata` fate | Retained as pipeline sidecar. Not merged into `Resource.attributes`. Carries finalizers, source_id, schema — pipeline concerns only. ✓ Validated across all 3 wrappers. |
-| G11 | 6-variant `Event` enum duration | Currently active. All 6 variants in play. Legacy variants removed as remaining batches of 5c/5d complete. |
+| G11 | 6-variant `Event` enum duration | Currently active. All 6 variants in play. Legacy variants removed in Step 6f. |
 | G12 | `EventArray` expansion for OTel | Added `OtelLogs`, `OtelMetrics`, `OtelSpans` variants in Step 5c batch 1. All iterators, trait impls, and pipeline plumbing updated. ✓ Done. |
 | G13 | Proto type boundary (`opentelemetry-proto` ↔ `otel-proto-types`) | Identical protobuf schemas in two crates — bridged via `encode_to_vec()` / `decode()` roundtrip. Validated across all 3 signals. Low overhead. ✓ Proven. |
 
@@ -1633,7 +1902,10 @@ Based on actual file counts from source. Items marked ✓ have actual line count
 | Step 5c²h: Template + Transformer + silent drops | 2 actual | 22 actual | ✓ COMPLETE |
 | Step 5f: VRL migration tool | 0 | 1,229 actual | ✓ COMPLETE |
 | Step 5g: Rename + type alias cleanup | 0 | 173 actual (net +5) | ✓ COMPLETE |
-| Source adaptations DD + Vector | ~500 est. | ~800 est. | Pending |
+| Step 5h: OTLP HTTP JSON + dep upgrades | 559 actual | 1,464 actual | ✓ COMPLETE |
+| Step 6a: Log source OtelLog migration (40 files) | 790 actual | 1,446 actual | ✓ COMPLETE |
+| Step 6b–6g: Remaining legacy removal (~113 files) | ~5,200 est. | ~1,600 est. | NEXT |
+| Step 7: Vector + DD sink/source re-integration | 0 | ~2,500 est. | Pending |
 | Tail sampling + LB sink + pipeline telemetry (Step 4) | 0 | ~2,800 est. | Pending |
 | Buffer toggle + OtlpBufferBatch | 0 | ~300 est. | ✓ COMPLETE |
 | **Net** | **~19,569** | **~8,002** | |

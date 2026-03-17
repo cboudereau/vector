@@ -21,7 +21,7 @@ use vector_lib::{
         Checkpointer, FileFingerprint, FingerprintStrategy, Fingerprinter, ReadFrom, ReadFromConfig,
     },
     finalizer::OrderedFinalizer,
-    lookup::{OwnedValuePath, lookup_v2::OptionalValuePath, owned_value_path, path},
+    lookup::{lookup_v2::OptionalValuePath, owned_value_path},
 };
 use vrl::value::Kind;
 
@@ -33,7 +33,7 @@ use crate::{
         log_schema,
     },
     encoding_transcode::{Decoder, Encoder},
-    event::{BatchNotifier, BatchStatus, LogEvent},
+    event::{BatchNotifier, BatchStatus, OtelLog, string_value, int_value},
     internal_events::{
         FileBytesReceived, FileEventsReceived, FileInternalMetricsConfig, FileOpen,
         FileSourceInternalEventsEmitter, StreamClosedError,
@@ -552,14 +552,7 @@ pub fn file_source(
     };
 
     let event_metadata = EventMetadata {
-        host_key: config
-            .host_key
-            .clone()
-            .unwrap_or(log_schema().host_key().cloned().into())
-            .path,
         hostname: crate::get_hostname().ok(),
-        file_key: config.file_key.clone().path,
-        offset_key: config.offset_key.clone().and_then(|k| k.path),
     };
 
     let include = config.include.clone();
@@ -755,10 +748,7 @@ fn wrap_with_line_agg(
 }
 
 struct EventMetadata {
-    host_key: Option<OwnedValuePath>,
     hostname: Option<String>,
-    file_key: Option<OwnedValuePath>,
-    offset_key: Option<OwnedValuePath>,
 }
 
 fn create_event(
@@ -768,51 +758,25 @@ fn create_event(
     meta: &EventMetadata,
     log_namespace: LogNamespace,
     include_file_metric_tag: bool,
-) -> LogEvent {
+) -> OtelLog {
     let deserializer = BytesDeserializer;
     let mut event = deserializer.parse_single(line, log_namespace);
 
-    log_namespace.insert_vector_metadata(
-        &mut event,
-        log_schema().source_type_key(),
-        path!("source_type"),
-        Bytes::from_static(FileConfig::NAME.as_bytes()),
-    );
-    log_namespace.insert_vector_metadata(
-        &mut event,
-        log_schema().timestamp_key(),
-        path!("ingest_timestamp"),
-        Utc::now(),
-    );
+    event.set_source_metadata(FileConfig::NAME, Utc::now());
 
-    let legacy_host_key = meta.host_key.as_ref().map(LegacyKey::Overwrite);
-    // `meta.host_key` is already `unwrap_or_else`ed so we can just pass it in.
     if let Some(hostname) = &meta.hostname {
-        log_namespace.insert_source_metadata(
-            FileConfig::NAME,
-            &mut event,
-            legacy_host_key,
-            path!("host"),
-            hostname.clone(),
+        event.set_resource_attribute(
+            "host.name".to_string(),
+            string_value(hostname.clone()),
         );
     }
-
-    let legacy_offset_key = meta.offset_key.as_ref().map(LegacyKey::Overwrite);
-    log_namespace.insert_source_metadata(
-        FileConfig::NAME,
-        &mut event,
-        legacy_offset_key,
-        path!("offset"),
-        offset,
+    event.set_attribute(
+        "file.offset".to_string(),
+        int_value(offset as i64),
     );
-
-    let legacy_file_key = meta.file_key.as_ref().map(LegacyKey::Overwrite);
-    log_namespace.insert_source_metadata(
-        FileConfig::NAME,
-        &mut event,
-        legacy_file_key,
-        path!("path"),
-        file,
+    event.set_attribute(
+        "file.path".to_string(),
+        string_value(file),
     );
 
     emit!(FileEventsReceived {
@@ -839,7 +803,7 @@ mod tests {
     use tempfile::tempdir;
     use tokio::time::{Duration, sleep, timeout};
     use vector_lib::schema::Definition;
-    use vrl::{value, value::kind::Collection};
+    use vrl::value::kind::Collection;
 
     use super::*;
     use crate::{
@@ -1043,101 +1007,56 @@ mod tests {
     }
 
     #[test]
-    fn create_event_legacy_namespace() {
+    fn create_event_produces_otel_log() {
         let line = Bytes::from("hello world");
         let file = "some_file.rs";
         let offset: u64 = 0;
 
         let meta = EventMetadata {
-            host_key: Some(owned_value_path!("host")),
             hostname: Some("Some.Machine".to_string()),
-            file_key: Some(owned_value_path!("file")),
-            offset_key: Some(owned_value_path!("offset")),
         };
-        let log = create_event(line, offset, file, &meta, LogNamespace::Legacy, false);
+        let otel_log = create_event(line, offset, file, &meta, LogNamespace::Legacy, false);
 
-        assert_eq!(log["file"], "some_file.rs".into());
-        assert_eq!(log["host"], "Some.Machine".into());
-        assert_eq!(log["offset"], 0.into());
-        assert_eq!(*log.get_message().unwrap(), "hello world".into());
-        assert_eq!(*log.get_source_type().unwrap(), "file".into());
-        assert!(log[log_schema().timestamp_key().unwrap().to_string()].is_timestamp());
-    }
+        assert_eq!(otel_log.body_string(), "hello world");
 
-    #[test]
-    fn create_event_custom_fields_legacy_namespace() {
-        let line = Bytes::from("hello world");
-        let file = "some_file.rs";
-        let offset: u64 = 0;
-
-        let meta = EventMetadata {
-            host_key: Some(owned_value_path!("hostname")),
-            hostname: Some("Some.Machine".to_string()),
-            file_key: Some(owned_value_path!("file_path")),
-            offset_key: Some(owned_value_path!("off")),
-        };
-        let log = create_event(line, offset, file, &meta, LogNamespace::Legacy, false);
-
-        assert_eq!(log["file_path"], "some_file.rs".into());
-        assert_eq!(log["hostname"], "Some.Machine".into());
-        assert_eq!(log["off"], 0.into());
-        assert_eq!(*log.get_message().unwrap(), "hello world".into());
-        assert_eq!(*log.get_source_type().unwrap(), "file".into());
-        assert!(log[log_schema().timestamp_key().unwrap().to_string()].is_timestamp());
-    }
-
-    #[test]
-    fn create_event_vector_namespace() {
-        let line = Bytes::from("hello world");
-        let file = "some_file.rs";
-        let offset: u64 = 0;
-
-        let meta = EventMetadata {
-            host_key: Some(owned_value_path!("ignored")),
-            hostname: Some("Some.Machine".to_string()),
-            file_key: Some(owned_value_path!("ignored")),
-            offset_key: Some(owned_value_path!("ignored")),
-        };
-        let log = create_event(line, offset, file, &meta, LogNamespace::Vector, false);
-
-        assert_eq!(log.value(), &value!("hello world"));
-
-        assert_eq!(
-            log.metadata()
-                .value()
-                .get(path!("vector", "source_type"))
-                .unwrap(),
-            &value!("file")
-        );
+        use opentelemetry_proto::tonic::common::v1::any_value::Value as V;
+        let source_type = otel_log.resource_attribute("source_type");
         assert!(
-            log.metadata()
-                .value()
-                .get(path!("vector", "ingest_timestamp"))
-                .unwrap()
-                .is_timestamp()
+            matches!(
+                source_type.and_then(|av| av.value.as_ref()),
+                Some(V::StringValue(s)) if s == "file"
+            ),
+            "expected source_type=file"
         );
 
-        assert_eq!(
-            log.metadata()
-                .value()
-                .get(path!(FileConfig::NAME, "host"))
-                .unwrap(),
-            &value!("Some.Machine")
+        let host = otel_log.resource_attribute("host.name");
+        assert!(
+            matches!(
+                host.and_then(|av| av.value.as_ref()),
+                Some(V::StringValue(s)) if s == "Some.Machine"
+            ),
+            "expected host.name=Some.Machine"
         );
-        assert_eq!(
-            log.metadata()
-                .value()
-                .get(path!(FileConfig::NAME, "offset"))
-                .unwrap(),
-            &value!(0)
+
+        let file_path = otel_log.attribute("file.path");
+        assert!(
+            matches!(
+                file_path.and_then(|av| av.value.as_ref()),
+                Some(V::StringValue(s)) if s == "some_file.rs"
+            ),
+            "expected file.path=some_file.rs"
         );
-        assert_eq!(
-            log.metadata()
-                .value()
-                .get(path!(FileConfig::NAME, "path"))
-                .unwrap(),
-            &value!("some_file.rs")
+
+        let file_offset = otel_log.attribute("file.offset");
+        assert!(
+            matches!(
+                file_offset.and_then(|av| av.value.as_ref()),
+                Some(V::IntValue(0))
+            ),
+            "expected file.offset=0"
         );
+
+        assert!(otel_log.observed_time_unix_nano() > 0, "expected ingest timestamp");
     }
 
     #[tokio::test]

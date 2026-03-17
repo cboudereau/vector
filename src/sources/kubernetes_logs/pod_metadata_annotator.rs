@@ -21,7 +21,7 @@ use super::{
     Config,
     path_helpers::{LogFileInfo, parse_log_file_path},
 };
-use crate::event::{Event, LogEvent};
+use crate::event::{Event, LogEvent, string_value};
 
 /// Configuration for how the events are enriched with Pod metadata.
 #[configurable_component]
@@ -198,41 +198,66 @@ impl PodMetadataAnnotator {
 impl PodMetadataAnnotator {
     /// Annotates an event with the information from the [`Pod::metadata`].
     pub fn annotate<'a>(&self, event: &mut Event, file: &'a str) -> Option<LogFileInfo<'a>> {
-        let log = event.as_mut_log();
         let file_info = parse_log_file_path(file)?;
         let obj = ObjectRef::<Pod>::new(file_info.pod_name).within(file_info.pod_namespace);
         let resource = self.pods_state_reader.get(&obj)?;
         let pod: &Pod = resource.as_ref();
 
-        annotate_from_file_info(log, &self.fields_spec, &file_info, self.log_namespace);
-        annotate_from_metadata(log, &self.fields_spec, &pod.metadata, self.log_namespace);
-
-        let container;
-        if let Some(ref pod_spec) = pod.spec {
-            annotate_from_pod_spec(log, &self.fields_spec, pod_spec, self.log_namespace);
-
-            container = pod_spec
-                .containers
-                .iter()
-                .find(|c| c.name == file_info.container_name);
-            if let Some(container) = container {
-                annotate_from_container(log, &self.fields_spec, container, self.log_namespace);
-            }
-        }
-
-        if let Some(ref pod_status) = pod.status {
-            annotate_from_pod_status(log, &self.fields_spec, pod_status, self.log_namespace);
-            if let Some(ref container_statuses) = pod_status.container_statuses {
-                let container_status = container_statuses
+        if let Event::OtelLog(otel_log) = event {
+            annotate_otel_from_file_info(otel_log, &file_info);
+            annotate_otel_from_metadata(otel_log, &pod.metadata);
+            if let Some(ref pod_spec) = pod.spec {
+                annotate_otel_from_pod_spec(otel_log, pod_spec);
+                if let Some(container) = pod_spec
+                    .containers
                     .iter()
-                    .find(|c| c.name == file_info.container_name);
-                if let Some(container_status) = container_status {
-                    annotate_from_container_status(
-                        log,
-                        &self.fields_spec,
-                        container_status,
-                        self.log_namespace,
-                    )
+                    .find(|c| c.name == file_info.container_name)
+                {
+                    annotate_otel_from_container(otel_log, container);
+                }
+            }
+            if let Some(ref pod_status) = pod.status {
+                annotate_otel_from_pod_status(otel_log, pod_status);
+                if let Some(ref container_statuses) = pod_status.container_statuses {
+                    if let Some(container_status) = container_statuses
+                        .iter()
+                        .find(|c| c.name == file_info.container_name)
+                    {
+                        annotate_otel_from_container_status(otel_log, container_status);
+                    }
+                }
+            }
+        } else {
+            let log = event.as_mut_log();
+            annotate_from_file_info(log, &self.fields_spec, &file_info, self.log_namespace);
+            annotate_from_metadata(log, &self.fields_spec, &pod.metadata, self.log_namespace);
+
+            if let Some(ref pod_spec) = pod.spec {
+                annotate_from_pod_spec(log, &self.fields_spec, pod_spec, self.log_namespace);
+
+                if let Some(container) = pod_spec
+                    .containers
+                    .iter()
+                    .find(|c| c.name == file_info.container_name)
+                {
+                    annotate_from_container(log, &self.fields_spec, container, self.log_namespace);
+                }
+            }
+
+            if let Some(ref pod_status) = pod.status {
+                annotate_from_pod_status(log, &self.fields_spec, pod_status, self.log_namespace);
+                if let Some(ref container_statuses) = pod_status.container_statuses {
+                    if let Some(container_status) = container_statuses
+                        .iter()
+                        .find(|c| c.name == file_info.container_name)
+                    {
+                        annotate_from_container_status(
+                            log,
+                            &self.fields_spec,
+                            container_status,
+                            self.log_namespace,
+                        )
+                    }
                 }
             }
         }
@@ -476,6 +501,113 @@ fn annotate_from_container(
             path!("container_image"),
             value.to_owned(),
         )
+    }
+}
+
+fn annotate_otel_from_file_info(
+    otel_log: &mut crate::event::OtelLog,
+    file_info: &LogFileInfo<'_>,
+) {
+    otel_log.set_resource_attribute(
+        "k8s.container.name".to_string(),
+        string_value(file_info.container_name),
+    );
+}
+
+fn annotate_otel_from_metadata(
+    otel_log: &mut crate::event::OtelLog,
+    metadata: &ObjectMeta,
+) {
+    if let Some(name) = &metadata.name {
+        otel_log.set_resource_attribute("k8s.pod.name".to_string(), string_value(name));
+    }
+    if let Some(ns) = &metadata.namespace {
+        otel_log.set_resource_attribute("k8s.namespace.name".to_string(), string_value(ns));
+    }
+    if let Some(uid) = &metadata.uid {
+        otel_log.set_resource_attribute("k8s.pod.uid".to_string(), string_value(uid));
+    }
+    if let Some(owner_references) = &metadata.owner_references {
+        otel_log.set_resource_attribute(
+            "k8s.pod.owner".to_string(),
+            string_value(format!(
+                "{}/{}",
+                owner_references[0].kind, owner_references[0].name
+            )),
+        );
+    }
+    if let Some(labels) = &metadata.labels {
+        for (key, value) in labels.iter() {
+            otel_log.set_resource_attribute(
+                format!("k8s.pod.labels.{key}"),
+                string_value(value),
+            );
+        }
+    }
+    if let Some(annotations) = &metadata.annotations {
+        for (key, value) in annotations.iter() {
+            otel_log.set_resource_attribute(
+                format!("k8s.pod.annotations.{key}"),
+                string_value(value),
+            );
+        }
+    }
+}
+
+fn annotate_otel_from_pod_spec(
+    otel_log: &mut crate::event::OtelLog,
+    pod_spec: &PodSpec,
+) {
+    if let Some(node_name) = &pod_spec.node_name {
+        otel_log.set_resource_attribute("k8s.node.name".to_string(), string_value(node_name));
+    }
+}
+
+fn annotate_otel_from_pod_status(
+    otel_log: &mut crate::event::OtelLog,
+    pod_status: &PodStatus,
+) {
+    if let Some(pod_ip) = &pod_status.pod_ip {
+        otel_log.set_resource_attribute("k8s.pod.ip".to_string(), string_value(pod_ip));
+    }
+    if let Some(pod_ips) = &pod_status.pod_ips {
+        let ips: Vec<String> = pod_ips.iter().filter_map(|k| k.ip.clone()).collect();
+        if !ips.is_empty() {
+            otel_log.set_resource_attribute(
+                "k8s.pod.ips".to_string(),
+                string_value(ips.join(",")),
+            );
+        }
+    }
+}
+
+fn annotate_otel_from_container_status(
+    otel_log: &mut crate::event::OtelLog,
+    container_status: &ContainerStatus,
+) {
+    if let Some(container_id) = &container_status.container_id {
+        otel_log.set_resource_attribute(
+            "k8s.container.id".to_string(),
+            string_value(container_id),
+        );
+    }
+    if !container_status.image_id.is_empty() {
+        otel_log.set_resource_attribute(
+            "k8s.container.image.id".to_string(),
+            string_value(&container_status.image_id),
+        );
+    }
+}
+
+fn annotate_otel_from_container(
+    otel_log: &mut crate::event::OtelLog,
+    container: &Container,
+) {
+    if let Some(image) = &container.image {
+        otel_log.set_resource_attribute(
+            "k8s.container.image.name".to_string(),
+            string_value(image),
+        );
     }
 }
 

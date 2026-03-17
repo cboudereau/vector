@@ -28,7 +28,7 @@ use vrl::{path::OwnedValuePath, value::Kind};
 use crate::{
     SourceSender,
     config::{SourceConfig, SourceContext, SourceOutput},
-    event::Event,
+    event::{Event, string_value, int_value},
     internal_events::{
         ExecChannelClosedError, ExecCommandExecuted, ExecEventsReceived, ExecFailedError,
         ExecFailedToSignalChild, ExecFailedToSignalChildError, ExecTimeoutError, StreamClosedError,
@@ -671,10 +671,21 @@ fn handle_event(
     event: &mut Event,
     log_namespace: LogNamespace,
 ) {
-    if let Event::Log(log) = event {
+    if let Event::OtelLog(otel_log) = event {
+        otel_log.set_source_metadata(ExecConfig::NAME, Utc::now());
+        if let Some(data_stream) = data_stream {
+            otel_log.set_attribute(STREAM_KEY.to_string(), string_value(data_stream.clone()));
+        }
+        if let Some(pid) = pid {
+            otel_log.set_attribute(PID_KEY.to_string(), int_value(pid as i64));
+        }
+        if let Some(hostname) = hostname {
+            otel_log.set_resource_attribute("host.name".to_string(), string_value(hostname.clone()));
+        }
+        otel_log.set_attribute(COMMAND_KEY.to_string(), string_value(config.command_line()));
+    } else if let Event::Log(log) = event {
         log_namespace.insert_standard_vector_source_metadata(log, ExecConfig::NAME, Utc::now());
 
-        // Add data stream of stdin or stderr (if needed)
         if let Some(data_stream) = data_stream {
             log_namespace.insert_source_metadata(
                 ExecConfig::NAME,
@@ -685,7 +696,6 @@ fn handle_event(
             );
         }
 
-        // Add pid (if needed)
         if let Some(pid) = pid {
             log_namespace.insert_source_metadata(
                 ExecConfig::NAME,
@@ -696,7 +706,6 @@ fn handle_event(
             );
         }
 
-        // Add hostname (if needed)
         if let Some(hostname) = hostname {
             log_namespace.insert_source_metadata(
                 ExecConfig::NAME,
@@ -707,7 +716,6 @@ fn handle_event(
             );
         }
 
-        // Add command
         log_namespace.insert_source_metadata(
             ExecConfig::NAME,
             log,

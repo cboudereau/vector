@@ -7,10 +7,12 @@ use vector_lib::{
     lookup::path,
 };
 
+use chrono::Utc;
+
 use crate::{
     SourceSender,
     common::mqtt::MqttConnector,
-    event::{BatchNotifier, Event},
+    event::{BatchNotifier, Event, string_value},
     internal_events::{EndpointBytesReceived, StreamClosedError},
     serde::OneOrMany,
     shutdown::ShutdownSignal,
@@ -122,7 +124,10 @@ impl MqttSource {
     }
 
     fn apply_metadata(&self, publish: &Publish, event: &mut Event) {
-        if let Event::Log(log) = event {
+        if let Event::OtelLog(otel_log) = event {
+            otel_log.set_source_metadata(MqttSourceConfig::NAME, Utc::now());
+            otel_log.set_attribute("topic".to_string(), string_value(publish.topic.clone()));
+        } else if let Event::Log(log) = event {
             self.log_namespace.insert_source_metadata(
                 MqttSourceConfig::NAME,
                 log,

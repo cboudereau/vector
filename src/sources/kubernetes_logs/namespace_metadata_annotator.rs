@@ -15,7 +15,7 @@ use vector_lib::{
 };
 
 use super::Config;
-use crate::event::{Event, LogEvent};
+use crate::event::{Event, LogEvent, string_value};
 
 /// Configuration for how the events are enriched with Namespace metadata.
 #[configurable_component]
@@ -68,17 +68,21 @@ impl NamespaceMetadataAnnotator {
 impl NamespaceMetadataAnnotator {
     /// Annotates an event with the information from the [`Namespace::metadata`].
     pub fn annotate(&self, event: &mut Event, pod_namespace: &str) -> Option<()> {
-        let log = event.as_mut_log();
         let obj = ObjectRef::<Namespace>::new(pod_namespace);
         let resource = self.namespace_state_reader.get(&obj)?;
         let namespace: &Namespace = resource.as_ref();
 
-        annotate_from_metadata(
-            log,
-            &self.fields_spec,
-            &namespace.metadata,
-            self.log_namespace,
-        );
+        if let Event::OtelLog(otel_log) = event {
+            annotate_otel_from_metadata(otel_log, &namespace.metadata);
+        } else {
+            let log = event.as_mut_log();
+            annotate_from_metadata(
+                log,
+                &self.fields_spec,
+                &namespace.metadata,
+                self.log_namespace,
+            );
+        }
         Some(())
     }
 }
@@ -102,6 +106,20 @@ fn annotate_from_metadata(
                 path!("namespace_labels", key),
                 value.to_owned(),
             )
+        }
+    }
+}
+
+fn annotate_otel_from_metadata(
+    otel_log: &mut crate::event::OtelLog,
+    metadata: &ObjectMeta,
+) {
+    if let Some(labels) = &metadata.labels {
+        for (key, value) in labels.iter() {
+            otel_log.set_resource_attribute(
+                format!("k8s.namespace.labels.{key}"),
+                string_value(value),
+            );
         }
     }
 }

@@ -6,7 +6,10 @@ use vector_lib::{
     lookup::path,
 };
 
-use crate::sources::http_server::HttpConfigParamKind;
+use crate::{
+    event::string_value,
+    sources::http_server::HttpConfigParamKind,
+};
 
 pub fn add_query_parameters(
     events: &mut [Event],
@@ -24,14 +27,25 @@ pub fn add_query_parameters(
                 let value = query_parameters.get(query_parameter_name);
 
                 for event in events.iter_mut() {
-                    if let Event::Log(log) = event {
-                        log_namespace.insert_source_metadata(
-                            source_name,
-                            log,
-                            Some(LegacyKey::Overwrite(path!(query_parameter_name))),
-                            path!("query_parameters", query_parameter_name),
-                            crate::event::Value::from(value.map(String::to_owned)),
-                        );
+                    match event {
+                        Event::OtelLog(otel_log) => {
+                            if let Some(v) = value {
+                                otel_log.set_attribute(
+                                    format!("http.query.{query_parameter_name}"),
+                                    string_value(v),
+                                );
+                            }
+                        }
+                        Event::Log(log) => {
+                            log_namespace.insert_source_metadata(
+                                source_name,
+                                log,
+                                Some(LegacyKey::Overwrite(path!(query_parameter_name))),
+                                path!("query_parameters", query_parameter_name),
+                                crate::event::Value::from(value.map(String::to_owned)),
+                            );
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -45,14 +59,25 @@ pub fn add_query_parameters(
                         let value = query_parameters.get(query_parameter_name);
 
                         for event in events.iter_mut() {
-                            if let Event::Log(log) = event {
-                                log_namespace.insert_source_metadata(
-                                    source_name,
-                                    log,
-                                    Some(LegacyKey::Overwrite(path!(query_parameter_name))),
-                                    path!("query_parameters", query_parameter_name),
-                                    crate::event::Value::from(value.map(String::to_owned)),
-                                );
+                            match event {
+                                Event::OtelLog(otel_log) => {
+                                    if let Some(v) = value {
+                                        otel_log.set_attribute(
+                                            format!("http.query.{query_parameter_name}"),
+                                            string_value(v),
+                                        );
+                                    }
+                                }
+                                Event::Log(log) => {
+                                    log_namespace.insert_source_metadata(
+                                        source_name,
+                                        log,
+                                        Some(LegacyKey::Overwrite(path!(query_parameter_name))),
+                                        path!("query_parameters", query_parameter_name),
+                                        crate::event::Value::from(value.map(String::to_owned)),
+                                    );
+                                }
+                                _ => {}
                             }
                         }
                     }

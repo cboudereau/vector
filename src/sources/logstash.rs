@@ -27,7 +27,7 @@ use crate::{
         DataType, GenerateConfig, Resource, SourceAcknowledgementsConfig, SourceConfig,
         SourceContext, SourceOutput, log_schema,
     },
-    event::{Event, LogEvent, Value},
+    event::{Event, LogEvent, Value, string_value},
     serde::bool_or_struct,
     tcp::TcpKeepaliveConfig,
     tls::{MaybeTlsSettings, TlsSourceConfig},
@@ -210,51 +210,57 @@ impl TcpSource for LogstashSource {
     fn handle_events(&self, events: &mut [Event], host: SocketAddr) {
         let now = chrono::Utc::now();
         for event in events {
-            let log = event.as_mut_log();
+            if let Event::OtelLog(otel_log) = event {
+                otel_log.set_source_metadata(LogstashConfig::NAME, now);
+                otel_log.set_attribute(
+                    "host".to_string(),
+                    string_value(host.ip().to_string()),
+                );
+            } else if let Event::Log(log) = event {
+                self.log_namespace.insert_vector_metadata(
+                    log,
+                    log_schema().source_type_key(),
+                    path!("source_type"),
+                    Bytes::from_static(LogstashConfig::NAME.as_bytes()),
+                );
 
-            self.log_namespace.insert_vector_metadata(
-                log,
-                log_schema().source_type_key(),
-                path!("source_type"),
-                Bytes::from_static(LogstashConfig::NAME.as_bytes()),
-            );
+                let log_timestamp =
+                    log.get(event_path!("@timestamp")).and_then(|timestamp| {
+                        self.timestamp_converter
+                            .convert::<Value>(timestamp.coerce_to_bytes())
+                            .ok()
+                    });
 
-            let log_timestamp = log.get(event_path!("@timestamp")).and_then(|timestamp| {
-                self.timestamp_converter
-                    .convert::<Value>(timestamp.coerce_to_bytes())
-                    .ok()
-            });
-
-            // Vector: always insert `ingest_timestamp`. Insert `timestamp` if found in event.
-            //
-            // Legacy: always insert the global log schema timestamp key- use timestamp from
-            //         event if present, otherwise use ingest.
-            match self.log_namespace {
-                LogNamespace::Vector => {
-                    if let Some(timestamp) = log_timestamp {
-                        log.insert(metadata_path!(LogstashConfig::NAME, "timestamp"), timestamp);
+                match self.log_namespace {
+                    LogNamespace::Vector => {
+                        if let Some(timestamp) = log_timestamp {
+                            log.insert(
+                                metadata_path!(LogstashConfig::NAME, "timestamp"),
+                                timestamp,
+                            );
+                        }
+                        log.insert(metadata_path!("vector", "ingest_timestamp"), now);
                     }
-                    log.insert(metadata_path!("vector", "ingest_timestamp"), now);
-                }
-                LogNamespace::Legacy => {
-                    if let Some(timestamp_key) = log_schema().timestamp_key_target_path() {
-                        log.insert(
-                            timestamp_key,
-                            log_timestamp.unwrap_or_else(|| Value::from(now)),
-                        );
+                    LogNamespace::Legacy => {
+                        if let Some(timestamp_key) = log_schema().timestamp_key_target_path() {
+                            log.insert(
+                                timestamp_key,
+                                log_timestamp.unwrap_or_else(|| Value::from(now)),
+                            );
+                        }
                     }
                 }
+
+                self.log_namespace.insert_source_metadata(
+                    LogstashConfig::NAME,
+                    log,
+                    self.legacy_host_key_path
+                        .as_ref()
+                        .map(LegacyKey::InsertIfEmpty),
+                    path!("host"),
+                    host.ip().to_string(),
+                );
             }
-
-            self.log_namespace.insert_source_metadata(
-                LogstashConfig::NAME,
-                log,
-                self.legacy_host_key_path
-                    .as_ref()
-                    .map(LegacyKey::InsertIfEmpty),
-                path!("host"),
-                host.ip().to_string(),
-            );
         }
     }
 

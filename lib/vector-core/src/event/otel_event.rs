@@ -22,6 +22,55 @@ use super::{
     BatchNotifier, EstimatedJsonEncodedSizeOf, EventFinalizer, EventMetadata, LogEvent,
 };
 
+/// Convert a JSON value to an OTel `AnyValue`.
+pub fn json_to_any_value(value: serde_json::Value) -> AnyValue {
+    let kind = match value {
+        serde_json::Value::Null => None,
+        serde_json::Value::Bool(b) => Some(OtelValueKind::BoolValue(b)),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Some(OtelValueKind::IntValue(i))
+            } else {
+                Some(OtelValueKind::DoubleValue(n.as_f64().unwrap_or(0.0)))
+            }
+        }
+        serde_json::Value::String(s) => Some(OtelValueKind::StringValue(s)),
+        serde_json::Value::Array(arr) => {
+            let values = arr.into_iter().map(json_to_any_value).collect();
+            Some(OtelValueKind::ArrayValue(
+                opentelemetry_proto::tonic::common::v1::ArrayValue { values },
+            ))
+        }
+        serde_json::Value::Object(map) => {
+            let values = map
+                .into_iter()
+                .map(|(k, v)| KeyValue {
+                    key: k,
+                    value: Some(json_to_any_value(v)),
+                })
+                .collect();
+            Some(OtelValueKind::KvlistValue(
+                opentelemetry_proto::tonic::common::v1::KeyValueList { values },
+            ))
+        }
+    };
+    AnyValue { value: kind }
+}
+
+/// Create a string `AnyValue`.
+pub fn string_value(s: impl Into<String>) -> AnyValue {
+    AnyValue {
+        value: Some(OtelValueKind::StringValue(s.into())),
+    }
+}
+
+/// Create an integer `AnyValue`.
+pub fn int_value(i: i64) -> AnyValue {
+    AnyValue {
+        value: Some(OtelValueKind::IntValue(i)),
+    }
+}
+
 fn hex_encode(bytes: &[u8]) -> Value {
     let mut s = String::with_capacity(bytes.len() * 2);
     for b in bytes {
@@ -101,6 +150,37 @@ impl OtelLog {
     pub fn new(record: LogRecord) -> Self {
         Self {
             record,
+            resource: None,
+            scope: None,
+            metadata: EventMetadata::default(),
+        }
+    }
+
+    /// Create an `OtelLog` from raw bytes, setting `record.body` to a string value.
+    pub fn from_bytes(bytes: bytes::Bytes) -> Self {
+        let body_str = String::from_utf8_lossy(&bytes).into_owned();
+        Self {
+            record: LogRecord {
+                body: Some(AnyValue {
+                    value: Some(OtelValueKind::StringValue(body_str)),
+                }),
+                ..Default::default()
+            },
+            resource: None,
+            scope: None,
+            metadata: EventMetadata::default(),
+        }
+    }
+
+    /// Create an `OtelLog` from a JSON value, setting `record.body` to a kvlist
+    /// if the value is an object, or a string/int/float/bool/array otherwise.
+    pub fn from_json_value(value: serde_json::Value) -> Self {
+        let body = json_to_any_value(value);
+        Self {
+            record: LogRecord {
+                body: Some(body),
+                ..Default::default()
+            },
             resource: None,
             scope: None,
             metadata: EventMetadata::default(),
@@ -231,6 +311,44 @@ impl OtelLog {
         self.resource
             .as_ref()
             .and_then(|r| attribute_value(&r.attributes, key))
+    }
+
+    /// Ensure the resource object exists, creating it if absent.
+    pub fn resource_mut(&mut self) -> &mut Resource {
+        self.resource.get_or_insert_with(|| Resource {
+            attributes: Vec::new(),
+            dropped_attributes_count: 0,
+        })
+    }
+
+    /// Set a resource attribute (e.g. `host.name`, `source_type`).
+    pub fn set_resource_attribute(&mut self, key: String, value: AnyValue) {
+        let resource = self.resource_mut();
+        if let Some(kv) = resource.attributes.iter_mut().find(|kv| kv.key == key) {
+            kv.value = Some(value);
+        } else {
+            resource.attributes.push(KeyValue {
+                key,
+                value: Some(value),
+            });
+        }
+    }
+
+    /// Set the observed_time_unix_nano (ingest timestamp) from a chrono DateTime.
+    pub fn set_observed_timestamp(&mut self, now: chrono::DateTime<chrono::Utc>) {
+        self.record.observed_time_unix_nano =
+            now.timestamp_nanos_opt().unwrap_or(0) as u64;
+    }
+
+    /// Set source metadata: source_type and observed_time_unix_nano.
+    /// Equivalent to `LogNamespace::insert_standard_vector_source_metadata`.
+    pub fn set_source_metadata(
+        &mut self,
+        source_name: &str,
+        now: chrono::DateTime<chrono::Utc>,
+    ) {
+        self.set_resource_attribute("source_type".to_string(), string_value(source_name));
+        self.set_observed_timestamp(now);
     }
 
     pub fn add_finalizer(&mut self, finalizer: EventFinalizer) {

@@ -587,7 +587,10 @@ impl http_client::HttpClientContext for HttpClientContext {
                 Event::OtelLog(otel_log) => {
                     otel_log.set_source_metadata(HttpClientConfig::NAME, now);
                 }
-                Event::OtelMetric(_) | Event::OtelSpan(_) => {}
+                Event::OtelMetric(_) | Event::OtelSpan(_) => {
+                    // OtelMetric and OtelSpan don't need source_type enrichment
+                    // since they carry resource attributes from the OTel protocol.
+                }
             }
         }
     }

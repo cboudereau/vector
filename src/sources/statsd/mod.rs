@@ -308,7 +308,7 @@ impl decoding::format::Deserializer for StatsdDeserializer {
             Err(error) => Err(Box::new(error)),
             Ok(s) => match self.parser.parse(s) {
                 Ok(metric) => {
-                    let event = Event::Metric(metric);
+                    let event = Event::from(metric);
                     if let Some(er) = &self.events_received {
                         let byte_size = event.estimated_json_encoded_size_of();
                         er.emit(CountByteSize(1, byte_size));

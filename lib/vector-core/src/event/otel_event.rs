@@ -110,6 +110,19 @@ pub(crate) fn kvlist_to_object_map(kvs: &[KeyValue]) -> ObjectMap {
         .collect()
 }
 
+/// Convert an OTel `any_value::Value` to a string for use as a metric tag.
+fn otel_value_to_tag_string(v: &OtelValueKind) -> String {
+    match v {
+        OtelValueKind::StringValue(s) => s.clone(),
+        OtelValueKind::BoolValue(b) => b.to_string(),
+        OtelValueKind::IntValue(i) => i.to_string(),
+        OtelValueKind::DoubleValue(f) => f.to_string(),
+        OtelValueKind::BytesValue(b) => String::from_utf8_lossy(b).into_owned(),
+        OtelValueKind::ArrayValue(_) => "<array>".to_string(),
+        OtelValueKind::KvlistValue(_) => "<kvlist>".to_string(),
+    }
+}
+
 fn attribute_value<'a>(attrs: &'a [KeyValue], key: &str) -> Option<&'a AnyValue> {
     attrs
         .iter()
@@ -712,6 +725,189 @@ impl OtelMetric {
         }
     }
 
+    /// Convert a legacy Vector `Metric` into an `OtelMetric`.
+    ///
+    /// Maps MetricValue variants to OTel metric data types:
+    /// - Counter → Sum (monotonic)
+    /// - Gauge → Gauge
+    /// - AggregatedHistogram → Histogram (explicit bounds)
+    /// - AggregatedSummary → Summary
+    /// - Distribution/Set → Gauge (lossy fallback)
+    pub fn from_legacy_metric(m: super::Metric) -> Self {
+        use opentelemetry_proto::tonic::metrics::v1::{
+            self as otel_metrics, metric, number_data_point::Value as NDPValue,
+        };
+        use super::{MetricKind, MetricValue};
+
+        let (series, data, metadata) = m.into_parts();
+        let metric_data = data.value;
+        let time_nanos = data
+            .time
+            .timestamp
+            .and_then(|ts| ts.timestamp_nanos_opt())
+            .unwrap_or(0) as u64;
+
+        let attributes: Vec<KeyValue> = series
+            .tags
+            .as_ref()
+            .map(|tags| {
+                tags.iter_single()
+                    .map(|(k, v)| KeyValue {
+                        key: k.to_string(),
+                        value: Some(string_value(v.to_string())),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let temporality = match data.kind {
+            MetricKind::Incremental => {
+                otel_metrics::AggregationTemporality::Delta as i32
+            }
+            MetricKind::Absolute => {
+                otel_metrics::AggregationTemporality::Cumulative as i32
+            }
+        };
+
+        let start_nanos = data
+            .time
+            .interval_ms
+            .and_then(|interval| {
+                data.time.timestamp.and_then(|ts| ts.timestamp_nanos_opt()).map(|t| {
+                    (t as u64).saturating_sub(u64::from(interval.get()) * 1_000_000)
+                })
+            })
+            .unwrap_or(0);
+
+        let data = match metric_data {
+            MetricValue::Counter { value } => metric::Data::Sum(otel_metrics::Sum {
+                data_points: vec![otel_metrics::NumberDataPoint {
+                    attributes: attributes.clone(),
+                    start_time_unix_nano: start_nanos,
+                    time_unix_nano: time_nanos,
+                    exemplars: vec![],
+                    flags: 0,
+                    value: Some(NDPValue::AsDouble(value)),
+                }],
+                aggregation_temporality: temporality,
+                is_monotonic: true,
+            }),
+            MetricValue::Gauge { value } => metric::Data::Gauge(otel_metrics::Gauge {
+                data_points: vec![otel_metrics::NumberDataPoint {
+                    attributes: attributes.clone(),
+                    start_time_unix_nano: start_nanos,
+                    time_unix_nano: time_nanos,
+                    exemplars: vec![],
+                    flags: 0,
+                    value: Some(NDPValue::AsDouble(value)),
+                }],
+            }),
+            MetricValue::AggregatedHistogram { buckets, count, sum } => {
+                let mut explicit_bounds =
+                    Vec::with_capacity(buckets.len().saturating_sub(1));
+                let mut bucket_counts = Vec::with_capacity(buckets.len());
+                for b in &buckets {
+                    bucket_counts.push(b.count);
+                    explicit_bounds.push(b.upper_limit);
+                }
+                if explicit_bounds.last() == Some(&f64::INFINITY) {
+                    explicit_bounds.pop();
+                }
+                metric::Data::Histogram(otel_metrics::Histogram {
+                    data_points: vec![otel_metrics::HistogramDataPoint {
+                        attributes: attributes.clone(),
+                        start_time_unix_nano: start_nanos,
+                        time_unix_nano: time_nanos,
+                        count,
+                        sum: Some(sum),
+                        bucket_counts,
+                        explicit_bounds,
+                        exemplars: vec![],
+                        flags: 0,
+                        min: None,
+                        max: None,
+                    }],
+                    aggregation_temporality: temporality,
+                })
+            }
+            MetricValue::AggregatedSummary { quantiles, count, sum } => {
+                metric::Data::Summary(otel_metrics::Summary {
+                    data_points: vec![otel_metrics::SummaryDataPoint {
+                        attributes: attributes.clone(),
+                        start_time_unix_nano: start_nanos,
+                        time_unix_nano: time_nanos,
+                        count,
+                        sum,
+                        quantile_values: quantiles
+                            .iter()
+                            .map(|q| {
+                                otel_metrics::summary_data_point::ValueAtQuantile {
+                                    quantile: q.quantile,
+                                    value: q.value,
+                                }
+                            })
+                            .collect(),
+                        flags: 0,
+                    }],
+                })
+            }
+            MetricValue::Set { values } => {
+                metric::Data::Gauge(otel_metrics::Gauge {
+                    data_points: vec![otel_metrics::NumberDataPoint {
+                        attributes: attributes.clone(),
+                        start_time_unix_nano: start_nanos,
+                        time_unix_nano: time_nanos,
+                        exemplars: vec![],
+                        flags: 0,
+                        value: Some(NDPValue::AsDouble(values.len() as f64)),
+                    }],
+                })
+            }
+            MetricValue::Distribution { samples, statistic: _ } => {
+                let count = samples.iter().map(|s| s.rate).sum::<u32>() as u64;
+                let sum: f64 = samples.iter().map(|s| s.value * s.rate as f64).sum();
+                metric::Data::Histogram(otel_metrics::Histogram {
+                    data_points: vec![otel_metrics::HistogramDataPoint {
+                        attributes: attributes.clone(),
+                        start_time_unix_nano: start_nanos,
+                        time_unix_nano: time_nanos,
+                        count,
+                        sum: Some(sum),
+                        bucket_counts: vec![],
+                        explicit_bounds: vec![],
+                        exemplars: vec![],
+                        flags: 0,
+                        min: None,
+                        max: None,
+                    }],
+                    aggregation_temporality: temporality,
+                })
+            }
+        };
+
+        let name = series.name.name;
+        let namespace = series.name.namespace;
+        let full_name = match namespace {
+            Some(ns) => format!("{ns}_{name}"),
+            None => name,
+        };
+
+        let otel_metric = OtelMetricProto {
+            name: full_name,
+            description: String::new(),
+            unit: String::new(),
+            metadata: vec![],
+            data: Some(data),
+        };
+
+        Self {
+            metric: otel_metric,
+            resource: None,
+            scope: None,
+            metadata,
+        }
+    }
+
     pub fn from_parts(
         metric: OtelMetricProto,
         resource: Option<Resource>,
@@ -785,6 +981,156 @@ impl OtelMetric {
         self.resource
             .as_ref()
             .and_then(|r| attribute_value(&r.attributes, key))
+    }
+
+    /// Convert this `OtelMetric` back to a legacy `Metric`.
+    ///
+    /// Temporary bridge for sinks/transforms that still expect `Event::Metric`.
+    pub fn to_legacy_metric(self) -> super::Metric {
+        use chrono::{TimeZone, Utc};
+        use opentelemetry_proto::tonic::metrics::v1::{
+            metric, number_data_point::Value as NDPValue, AggregationTemporality,
+        };
+        use super::{MetricKind, MetricValue, MetricTags};
+        use super::metric::{Bucket, Quantile};
+
+        let name = self.metric.name.clone();
+
+        let mut tags = MetricTags::default();
+        if let Some(ref res) = self.resource {
+            for attr in &res.attributes {
+                if let Some(ref val) = attr.value {
+                    if let Some(ref v) = val.value {
+                        tags.insert(
+                            format!("resource.{}", attr.key),
+                            otel_value_to_tag_string(v),
+                        );
+                    }
+                }
+            }
+        }
+        if let Some(ref scope) = self.scope {
+            if !scope.name.is_empty() {
+                tags.insert("scope.name".to_string(), scope.name.clone());
+            }
+            if !scope.version.is_empty() {
+                tags.insert("scope.version".to_string(), scope.version.clone());
+            }
+        }
+
+        let (kind, value, timestamp, dp_tags) = match self.metric.data.as_ref() {
+            Some(metric::Data::Sum(sum)) => {
+                let dp = sum.data_points.first();
+                let val = dp.and_then(|p| p.value.as_ref()).map(|v| match v {
+                    NDPValue::AsDouble(f) => *f,
+                    NDPValue::AsInt(i) => *i as f64,
+                }).unwrap_or(0.0);
+                let kind = if sum.aggregation_temporality == AggregationTemporality::Delta as i32 {
+                    MetricKind::Incremental
+                } else {
+                    MetricKind::Absolute
+                };
+                let ts = dp.map(|p| Utc.timestamp_nanos(p.time_unix_nano as i64));
+                let metric_value = if sum.is_monotonic {
+                    MetricValue::Counter { value: val }
+                } else {
+                    MetricValue::Gauge { value: val }
+                };
+                (kind, metric_value, ts, dp.map(|p| p.attributes.clone()))
+            }
+            Some(metric::Data::Gauge(gauge)) => {
+                let dp = gauge.data_points.first();
+                let val = dp.and_then(|p| p.value.as_ref()).map(|v| match v {
+                    NDPValue::AsDouble(f) => *f,
+                    NDPValue::AsInt(i) => *i as f64,
+                }).unwrap_or(0.0);
+                let ts = dp.map(|p| Utc.timestamp_nanos(p.time_unix_nano as i64));
+                (MetricKind::Absolute, MetricValue::Gauge { value: val }, ts, dp.map(|p| p.attributes.clone()))
+            }
+            Some(metric::Data::Histogram(hist)) => {
+                let dp = hist.data_points.first();
+                let kind = if hist.aggregation_temporality == AggregationTemporality::Delta as i32 {
+                    MetricKind::Incremental
+                } else {
+                    MetricKind::Absolute
+                };
+                let (buckets, count, sum_val) = dp
+                    .map(|p| {
+                        let buckets: Vec<Bucket> = p.bucket_counts.iter().enumerate()
+                            .map(|(i, &c)| Bucket {
+                                count: c,
+                                upper_limit: p.explicit_bounds.get(i).copied().unwrap_or(f64::INFINITY),
+                            })
+                            .collect();
+                        (buckets, p.count, p.sum.unwrap_or(0.0))
+                    })
+                    .unwrap_or_default();
+                let ts = dp.map(|p| Utc.timestamp_nanos(p.time_unix_nano as i64));
+                (kind, MetricValue::AggregatedHistogram { buckets, count, sum: sum_val }, ts, dp.map(|p| p.attributes.clone()))
+            }
+            Some(metric::Data::Summary(summary)) => {
+                let dp = summary.data_points.first();
+                let (quantiles, count, sum_val) = dp
+                    .map(|p| {
+                        let quantiles: Vec<Quantile> = p.quantile_values.iter()
+                            .map(|q| Quantile { quantile: q.quantile, value: q.value })
+                            .collect();
+                        (quantiles, p.count, p.sum)
+                    })
+                    .unwrap_or_default();
+                let ts = dp.map(|p| Utc.timestamp_nanos(p.time_unix_nano as i64));
+                (MetricKind::Absolute, MetricValue::AggregatedSummary { quantiles, count, sum: sum_val }, ts, dp.map(|p| p.attributes.clone()))
+            }
+            Some(metric::Data::ExponentialHistogram(exp)) => {
+                let dp = exp.data_points.first();
+                let kind = if exp.aggregation_temporality == AggregationTemporality::Delta as i32 {
+                    MetricKind::Incremental
+                } else {
+                    MetricKind::Absolute
+                };
+                let (buckets, count, sum_val) = dp
+                    .map(|p| {
+                        let scale = p.scale;
+                        let base = 2f64.powf(2f64.powi(-scale));
+                        let mut buckets = Vec::new();
+                        if let Some(ref neg) = p.negative {
+                            for (i, &c) in neg.bucket_counts.iter().enumerate() {
+                                let idx = neg.offset + i as i32;
+                                buckets.push(Bucket { count: c, upper_limit: -base.powi(idx) });
+                            }
+                        }
+                        if p.zero_count > 0 {
+                            buckets.push(Bucket { count: p.zero_count, upper_limit: 0.0 });
+                        }
+                        if let Some(ref pos) = p.positive {
+                            for (i, &c) in pos.bucket_counts.iter().enumerate() {
+                                let idx = pos.offset + i as i32;
+                                buckets.push(Bucket { count: c, upper_limit: base.powi(idx + 1) });
+                            }
+                        }
+                        (buckets, p.count, p.sum.unwrap_or(0.0))
+                    })
+                    .unwrap_or_default();
+                let ts = dp.map(|p| Utc.timestamp_nanos(p.time_unix_nano as i64));
+                (kind, MetricValue::AggregatedHistogram { buckets, count, sum: sum_val }, ts, dp.map(|p| p.attributes.clone()))
+            }
+            None => (MetricKind::Absolute, MetricValue::Gauge { value: 0.0 }, None, None),
+        };
+
+        if let Some(dp_attrs) = dp_tags {
+            for attr in dp_attrs {
+                if let Some(ref val) = attr.value {
+                    if let Some(ref v) = val.value {
+                        tags.insert(attr.key.clone(), otel_value_to_tag_string(v));
+                    }
+                }
+            }
+        }
+
+        let has_tags = !tags.is_empty();
+        super::Metric::new_with_metadata(name, kind, value, self.metadata)
+            .with_tags(has_tags.then_some(tags))
+            .with_timestamp(timestamp)
     }
 
     pub fn add_finalizer(&mut self, finalizer: EventFinalizer) {
@@ -1186,5 +1532,85 @@ mod tests {
         assert!(v.get("record").is_some(), "expected 'record' key, got: {json}");
         assert_eq!(v["record"]["severityText"], "INFO");
         assert!(v["resource"].is_object(), "expected 'resource' object");
+    }
+
+    #[test]
+    fn metric_to_otel_metric_round_trip_counter() {
+        use crate::event::{Metric, MetricKind, MetricValue};
+        use chrono::Utc;
+
+        let m = Metric::new("requests_total", MetricKind::Incremental, MetricValue::Counter { value: 42.0 })
+            .with_namespace(Some("http"))
+            .with_timestamp(Some(Utc::now()));
+
+        let otel = OtelMetric::from_legacy_metric(m.clone());
+        assert_eq!(otel.name(), "http_requests_total");
+
+        let back = otel.to_legacy_metric();
+        assert_eq!(back.name(), "http_requests_total");
+        assert_eq!(back.kind(), MetricKind::Incremental);
+        match back.value() {
+            MetricValue::Counter { value } => assert!((value - 42.0).abs() < f64::EPSILON),
+            other => panic!("expected Counter, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn metric_to_otel_metric_round_trip_gauge() {
+        use crate::event::{Metric, MetricKind, MetricValue};
+
+        let m = Metric::new("temperature", MetricKind::Absolute, MetricValue::Gauge { value: 98.6 });
+        let otel = OtelMetric::from_legacy_metric(m);
+        let back = otel.to_legacy_metric();
+
+        assert_eq!(back.name(), "temperature");
+        assert_eq!(back.kind(), MetricKind::Absolute);
+        match back.value() {
+            MetricValue::Gauge { value } => assert!((value - 98.6).abs() < f64::EPSILON),
+            other => panic!("expected Gauge, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn metric_to_otel_metric_round_trip_histogram() {
+        use crate::event::{Metric, MetricKind, MetricValue};
+        use crate::event::metric::Bucket;
+
+        let buckets = vec![
+            Bucket { count: 10, upper_limit: 5.0 },
+            Bucket { count: 20, upper_limit: 10.0 },
+            Bucket { count: 5, upper_limit: f64::INFINITY },
+        ];
+        let m = Metric::new(
+            "latency",
+            MetricKind::Absolute,
+            MetricValue::AggregatedHistogram { buckets, count: 35, sum: 150.0 },
+        );
+        let otel = OtelMetric::from_legacy_metric(m);
+        let back = otel.to_legacy_metric();
+
+        assert_eq!(back.name(), "latency");
+        match back.value() {
+            MetricValue::AggregatedHistogram { buckets, count, sum } => {
+                assert_eq!(*count, 35);
+                assert!((sum - 150.0).abs() < f64::EPSILON);
+                assert_eq!(buckets.len(), 3);
+                assert_eq!(buckets[0].count, 10);
+                assert!((buckets[0].upper_limit - 5.0).abs() < f64::EPSILON);
+            }
+            other => panic!("expected AggregatedHistogram, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn from_metric_for_event_produces_otel_metric() {
+        use crate::event::{Event, Metric, MetricKind, MetricValue};
+
+        let m = Metric::new("test", MetricKind::Absolute, MetricValue::Gauge { value: 1.0 });
+        let event: Event = m.into();
+        assert!(matches!(event, Event::OtelMetric(_)), "expected OtelMetric, got {event:?}");
+
+        let metric = event.try_into_metric().expect("should convert back");
+        assert_eq!(metric.name(), "test");
     }
 }

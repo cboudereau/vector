@@ -385,7 +385,7 @@ Step 5d²  Migrate metrics batch 2+: other sources, transforms, sinks           
 Step 5f   Ship VRL migration tool                                              — COMPLETE
 Step 5g   Rename OtelXxxEvent → OtelXxx + type alias cleanup                   — COMPLETE
 Step 5h   OTLP HTTP JSON ingestion + dependency upgrades                       — COMPLETE
-Step 6    Full legacy removal: sources → sinks → core → native codecs          — IN PROGRESS (6a COMPLETE)
+Step 6    Full legacy removal: sources → sinks → core → native codecs          — IN PROGRESS (6a–6c COMPLETE)
 Step 7    Re-integration: Vector + DataDog sinks/sources as OTel adapters
 Step 4    Tail sampling + load-balancing sink + pipeline telemetry
 ```
@@ -1646,31 +1646,49 @@ LogEvent for parsing, then transfers parsed fields back as attributes.
 - 107/107 event module tests — pass
 - 29/29 codec format tests — pass
 
-#### 6b — Migrate metric sources to emit `OtelMetric` (~14 files)
+#### 6b — Migrate metric sources to emit `OtelMetric` — COMPLETE
 
-Every metric source currently creates `Metric::new(...)`. Each must create
-`OtelMetric` with the appropriate OTel metric type.
+**Strategy**: Instead of modifying each of the ~14 metric sources individually,
+the migration was achieved by changing the single `impl From<Metric> for Event`
+in `lib/vector-core/src/event/mod.rs` to produce
+`Event::OtelMetric(OtelMetric::from_legacy_metric(metric))` instead of
+`Event::Metric(metric)`.
 
-**Mapping:**
+This means **every** metric source that creates a `Metric` and converts it to
+an `Event` (via `.into()`, `Event::from()`, or `send_batch(Vec<Metric>)`) now
+automatically emits `Event::OtelMetric`.
 
-| Source | Current Vector type | OTel type |
-|--------|-------------------|-----------|
-| `statsd/parser.rs` | Counter/Gauge/Distribution/Set | Sum/Gauge/ExponentialHistogram/Gauge |
-| `prometheus/parser.rs` | Counter/Gauge/AggregatedHistogram/AggregatedSummary | Sum/Gauge/Histogram/Summary |
-| `prometheus/remote_write.rs` | Same | Same |
-| `prometheus/pushgateway.rs` | Same | Same |
-| `host_metrics/mod.rs` | Gauge/Counter | Gauge/Sum |
-| `apache_metrics/parser.rs` | Gauge/Counter | Gauge/Sum |
-| `nginx_metrics/mod.rs` | Gauge/Counter | Gauge/Sum |
-| `postgresql_metrics.rs` | Gauge/Counter | Gauge/Sum |
-| `mongodb_metrics/mod.rs` | Gauge/Counter | Gauge/Sum |
-| `aws_ecs_metrics/parser.rs` | Gauge/Counter | Gauge/Sum |
-| `eventstoredb_metrics/types.rs` | Gauge/Counter | Gauge/Sum |
-| `datadog_agent/metrics.rs` | Already migrated (Step 3) | — |
+**Key changes:**
 
-#### 6c — Migrate trace source (`datadog_agent/traces.rs`)
+| File | Change |
+|------|--------|
+| `lib/vector-core/src/event/otel_event.rs` | Added `OtelMetric::from_legacy_metric(Metric)` — converts MetricValue variants to OTel metric data types (Counter→Sum, Gauge→Gauge, AggregatedHistogram→Histogram, AggregatedSummary→Summary, Distribution→Histogram, Set→Gauge cardinality) |
+| `lib/vector-core/src/event/otel_event.rs` | Added `OtelMetric::to_legacy_metric()` — reverse bridge for sinks/transforms that still use `try_into_metric()` |
+| `lib/vector-core/src/event/otel_event.rs` | Added `otel_value_to_tag_string()` helper for tag conversion |
+| `lib/vector-core/src/event/mod.rs` | Changed `impl From<Metric> for Event` to produce `Event::OtelMetric` |
+| `lib/vector-core/src/event/mod.rs` | Updated `into_metric()` and `try_into_metric()` to handle `Event::OtelMetric` via `to_legacy_metric()` |
+| `src/sources/statsd/mod.rs` | Changed `Event::Metric(metric)` to `Event::from(metric)` |
 
-Already partly migrated in Step 3. Verify it emits `OtelSpan` exclusively.
+**Temporary bridge**: `try_into_metric()` and `into_metric()` on `Event` now
+also accept `Event::OtelMetric` by converting back to legacy `Metric` via
+`to_legacy_metric()`. This means all existing sinks and transforms that use
+`try_into_metric()` (prometheus, influxdb, statsd, greptimedb, etc.) continue
+to work without modification. The bridge will be removed in Step 6e when sinks
+are migrated to accept `OtelMetric` natively.
+
+**Validation:**
+- Full workspace `cargo check` passes (0 errors)
+- 16/16 otel_event tests pass (4 new round-trip tests)
+- 114/114 event module tests pass
+- 5/5 OTel proto metrics tests pass
+
+#### 6c — Verify trace source emits `OtelSpan` exclusively — COMPLETE
+
+Verified: The OpenTelemetry source (`src/sources/opentelemetry/`) uses
+`into_otel_event_iter()` for all signals, producing `Event::OtelSpan` for
+traces. No other source creates trace events, except `datadog_agent/traces.rs`
+which creates `Event::Trace` — this will be addressed in Step 7 (Datadog
+re-integration as OTel adapter).
 
 #### 6d — Migrate transforms off legacy types (~14 files)
 
@@ -1904,7 +1922,9 @@ Based on actual file counts from source. Items marked ✓ have actual line count
 | Step 5g: Rename + type alias cleanup | 0 | 173 actual (net +5) | ✓ COMPLETE |
 | Step 5h: OTLP HTTP JSON + dep upgrades | 559 actual | 1,464 actual | ✓ COMPLETE |
 | Step 6a: Log source OtelLog migration (40 files) | 790 actual | 1,446 actual | ✓ COMPLETE |
-| Step 6b–6g: Remaining legacy removal (~113 files) | ~5,200 est. | ~1,600 est. | NEXT |
+| Step 6b: Metric source OtelMetric migration | 28 actual | 481 actual | ✓ COMPLETE |
+| Step 6c: Trace source OtelSpan verification | 0 | 0 | ✓ COMPLETE (already done) |
+| Step 6d–6g: Remaining legacy removal (~113 files) | ~5,200 est. | ~1,600 est. | NEXT |
 | Step 7: Vector + DD sink/source re-integration | 0 | ~2,500 est. | Pending |
 | Tail sampling + LB sink + pipeline telemetry (Step 4) | 0 | ~2,800 est. | Pending |
 | Buffer toggle + OtlpBufferBatch | 0 | ~300 est. | ✓ COMPLETE |

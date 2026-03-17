@@ -237,20 +237,24 @@ impl Event {
     ///
     /// # Panics
     ///
-    /// This function panics if self is anything other than an `Event::Metric`.
+    /// This function panics if self is anything other than an `Event::Metric`
+    /// or `Event::OtelMetric`.
     pub fn into_metric(self) -> Metric {
         match self {
             Event::Metric(metric) => metric,
+            Event::OtelMetric(otel) => otel.to_legacy_metric(),
             _ => panic!("Failed type coercion, {self:?} is not a metric"),
         }
     }
 
     /// Fallibly coerces self into a `Metric`
     ///
-    /// If the event is a `Metric`, then `Some(metric)` is returned, otherwise `None`.
+    /// If the event is a `Metric` or `OtelMetric`, then `Some(metric)` is returned,
+    /// otherwise `None`.
     pub fn try_into_metric(self) -> Option<Metric> {
         match self {
             Event::Metric(metric) => Some(metric),
+            Event::OtelMetric(otel) => Some(otel.to_legacy_metric()),
             _ => None,
         }
     }
@@ -641,7 +645,7 @@ impl From<LogEvent> for Event {
 
 impl From<Metric> for Event {
     fn from(metric: Metric) -> Self {
-        Event::Metric(metric)
+        Event::OtelMetric(OtelMetric::from_legacy_metric(metric))
     }
 }
 

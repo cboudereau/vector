@@ -233,6 +233,19 @@ impl Event {
         }
     }
 
+    /// Convert self to a legacy `Metric`, handling both `Event::Metric` and `Event::OtelMetric`.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if self is not a metric-like event.
+    pub fn to_metric(&self) -> Metric {
+        match self {
+            Event::Metric(metric) => metric.clone(),
+            Event::OtelMetric(otel) => otel.clone().to_legacy_metric(),
+            _ => panic!("Failed type coercion, {self:?} is not a metric"),
+        }
+    }
+
     /// Coerces self into `Metric`
     ///
     /// # Panics

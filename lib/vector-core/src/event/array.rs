@@ -110,7 +110,7 @@ impl EventContainer for Metric {
     }
 
     fn into_events(self) -> Self::IntoIter {
-        iter::once(self.into())
+        iter::once(Event::Metric(self))
     }
 }
 
@@ -134,7 +134,7 @@ impl EventContainer for MetricArray {
     }
 
     fn into_events(self) -> Self::IntoIter {
-        self.into_iter().map(Into::into)
+        self.into_iter().map(Event::Metric)
     }
 }
 
@@ -477,7 +477,7 @@ impl Iterator for EventArrayIntoIter {
     fn next(&mut self) -> Option<Self::Item> {
         match self {
             Self::Logs(i) => i.next().map(Into::into),
-            Self::Metrics(i) => i.next().map(Into::into),
+            Self::Metrics(i) => i.next().map(Event::Metric),
             Self::Traces(i) => i.next().map(Event::Trace),
             Self::OtelLogs(i) => i.next().map(Event::OtelLog),
             Self::OtelMetrics(i) => i.next().map(Event::OtelMetric),

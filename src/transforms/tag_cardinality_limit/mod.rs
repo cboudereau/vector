@@ -128,6 +128,14 @@ impl TagCardinalityLimit {
     }
 
     fn transform_one(&mut self, mut event: Event) -> Option<Event> {
+        let was_otel = matches!(event, Event::OtelMetric(_));
+        if was_otel {
+            let otel = match event {
+                Event::OtelMetric(o) => o,
+                _ => unreachable!(),
+            };
+            event = Event::Metric(otel.to_legacy_metric());
+        }
         if !matches!(event, Event::Metric(_)) {
             return Some(event);
         }
@@ -182,7 +190,15 @@ impl TagCardinalityLimit {
                 }
             }
         }
-        Some(event)
+        if was_otel {
+            let metric = match event {
+                Event::Metric(m) => m,
+                _ => unreachable!(),
+            };
+            Some(metric.into())
+        } else {
+            Some(event)
+        }
     }
 }
 

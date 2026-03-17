@@ -29,7 +29,7 @@ fn generate_config() {
 fn make_metric_with_name(tags: MetricTags, name: &str) -> Event {
     let event_metadata = EventMetadata::default().with_source_type("unit_test_stream");
 
-    Event::Metric(
+    Event::from(
         Metric::new_with_metadata(
             name,
             metric::MetricKind::Incremental,
@@ -217,10 +217,11 @@ async fn drop_tag(config: TagCardinalityLimitConfig) {
         assert_ne!(new_event3, Some(event3));
 
         let new_event3 = new_event3.unwrap();
-        assert!(!new_event3.as_metric().tags().unwrap().contains_key("tag1"));
+        let m3 = new_event3.to_metric();
+        assert!(!m3.tags().unwrap().contains_key("tag1"));
         assert_eq!(
             "val1",
-            new_event3.as_metric().tags().unwrap().get("tag2").unwrap()
+            m3.tags().unwrap().get("tag2").unwrap()
         );
     })
     .await;
@@ -527,43 +528,13 @@ async fn separate_value_limit_per_metric_name(config: TagCardinalityLimitConfig)
         }
 
         assert_eq!(new_event_a1, Some(event_a1));
-        // The second event should have been modified to remove "tag1"
-        let new_event_a2 = new_event_a2.unwrap();
-        assert!(
-            !new_event_a2
-                .as_metric()
-                .tags()
-                .unwrap()
-                .contains_key("tag1")
-        );
-        assert_eq!(
-            "val1",
-            new_event_a2
-                .as_metric()
-                .tags()
-                .unwrap()
-                .get("tag2")
-                .unwrap()
-        );
+        let m_a2 = new_event_a2.unwrap().to_metric();
+        assert!(!m_a2.tags().unwrap().contains_key("tag1"));
+        assert_eq!("val1", m_a2.tags().unwrap().get("tag2").unwrap());
 
-        // The third event should have been modified to remove "tag2"
-        let new_event_a3 = new_event_a3.unwrap();
-        assert!(
-            !new_event_a3
-                .as_metric()
-                .tags()
-                .unwrap()
-                .contains_key("tag2")
-        );
-        assert_eq!(
-            "val1",
-            new_event_a3
-                .as_metric()
-                .tags()
-                .unwrap()
-                .get("tag1")
-                .unwrap()
-        );
+        let m_a3 = new_event_a3.unwrap().to_metric();
+        assert!(!m_a3.tags().unwrap().contains_key("tag2"));
+        assert_eq!("val1", m_a3.tags().unwrap().get("tag1").unwrap());
 
         assert_eq!(new_event_b1, Some(event_b1));
         assert_eq!(new_event_b2, Some(event_b2));
@@ -571,24 +542,9 @@ async fn separate_value_limit_per_metric_name(config: TagCardinalityLimitConfig)
 
         assert_eq!(new_event_c1, Some(event_c1));
         assert_eq!(new_event_c2, Some(event_c2));
-        // The third event should have been modified to remove "tag2"
-        let new_event_c3 = new_event_c3.unwrap();
-        assert!(
-            !new_event_c3
-                .as_metric()
-                .tags()
-                .unwrap()
-                .contains_key("tag2")
-        );
-        assert_eq!(
-            "val1",
-            new_event_c3
-                .as_metric()
-                .tags()
-                .unwrap()
-                .get("tag1")
-                .unwrap()
-        );
+        let m_c3 = new_event_c3.unwrap().to_metric();
+        assert!(!m_c3.tags().unwrap().contains_key("tag2"));
+        assert_eq!("val1", m_c3.tags().unwrap().get("tag1").unwrap());
     })
     .await;
 }

@@ -26,6 +26,9 @@ use vector_lib::{
 };
 use vrl::value::{Kind, kind::Collection};
 
+use opentelemetry_proto::tonic::common::v1::KeyValue;
+use vector_lib::event::string_value;
+
 use crate::{
     config::{
         DataType, Input, OutputId, ProxyConfig, TransformConfig, TransformContext, TransformOutput,
@@ -330,7 +333,35 @@ impl Ec2MetadataTransform {
                         .replace_tag(k.metric_tag.clone(), String::from_utf8_lossy(v).to_string());
                 });
             }
-            Event::Trace(_) | Event::OtelLog(_) | Event::OtelMetric(_) | Event::OtelSpan(_) => {}
+            Event::OtelLog(ref mut otel_log) => {
+                state.iter().for_each(|(k, v)| {
+                    otel_log.set_resource_attribute(
+                        k.metric_tag.clone(),
+                        string_value(String::from_utf8_lossy(v)),
+                    );
+                });
+            }
+            Event::OtelMetric(ref mut otel_metric) => {
+                let resource = otel_metric.resource_mut();
+                state.iter().for_each(|(k, v)| {
+                    let kv = KeyValue {
+                        key: k.metric_tag.clone(),
+                        value: Some(string_value(String::from_utf8_lossy(v).into_owned())),
+                    };
+                    resource.attributes.push(kv);
+                });
+            }
+            Event::OtelSpan(ref mut otel_span) => {
+                let resource = otel_span.resource_mut();
+                state.iter().for_each(|(k, v)| {
+                    let kv = KeyValue {
+                        key: k.metric_tag.clone(),
+                        value: Some(string_value(String::from_utf8_lossy(v).into_owned())),
+                    };
+                    resource.attributes.push(kv);
+                });
+            }
+            Event::Trace(_) => {}
         }
         event
     }
@@ -1184,7 +1215,7 @@ mod integration_tests {
                 let event = out.recv().await.unwrap();
                 assert_eq!(
                     event
-                        .as_metric()
+                        .to_metric()
                         .tag_value("ec2.metadata.availability-zone"),
                     Some("us-east-1a".to_string())
                 );
@@ -1218,7 +1249,7 @@ mod integration_tests {
 
                 let event = out.recv().await.unwrap();
                 assert_eq!(
-                    event.as_metric().tag_value(AVAILABILITY_ZONE_KEY),
+                    event.to_metric().tag_value(AVAILABILITY_ZONE_KEY),
                     Some("us-east-1a".to_string())
                 );
 

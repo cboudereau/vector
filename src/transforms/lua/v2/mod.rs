@@ -984,7 +984,7 @@ mod tests {
 
                 tx.send(metric.into()).await.unwrap();
 
-                assert_eq!(next_event(&out, "in").await.as_metric(), &expected);
+                assert_eq!(next_event(&out, "in").await.to_metric(), expected);
             },
         )
         .await;

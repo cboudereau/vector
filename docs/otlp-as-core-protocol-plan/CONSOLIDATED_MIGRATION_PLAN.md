@@ -385,7 +385,7 @@ Step 5d²  Migrate metrics batch 2+: other sources, transforms, sinks           
 Step 5f   Ship VRL migration tool                                              — COMPLETE
 Step 5g   Rename OtelXxxEvent → OtelXxx + type alias cleanup                   — COMPLETE
 Step 5h   OTLP HTTP JSON ingestion + dependency upgrades                       — COMPLETE
-Step 6    Full legacy removal: sources → sinks → core → native codecs          — IN PROGRESS (6a–6c COMPLETE)
+Step 6    Full legacy removal: sources → sinks → core → native codecs          — IN PROGRESS (6a–6d COMPLETE)
 Step 7    Re-integration: Vector + DataDog sinks/sources as OTel adapters
 Step 4    Tail sampling + load-balancing sink + pipeline telemetry
 ```
@@ -1690,25 +1690,51 @@ traces. No other source creates trace events, except `datadog_agent/traces.rs`
 which creates `Event::Trace` — this will be addressed in Step 7 (Datadog
 re-integration as OTel adapter).
 
-#### 6d — Migrate transforms off legacy types (~14 files)
+#### 6d — Migrate transforms off legacy types (~14 files) ✓ COMPLETE
 
-Most transforms already handle OTel events (Step 5c²d). This phase removes
-the legacy match arms so transforms ONLY accept OTel types.
+**Strategy**: Rather than removing all legacy handling (which would break the
+temporary bridge), the approach was:
+
+1. **Metric-only transforms** (aggregate, tag_cardinality_limit,
+   incremental_to_absolute, metric_to_log) — updated to recognize
+   `Event::OtelMetric` via `to_legacy_metric()` bridge so they process
+   OtelMetric events arriving from the Step 6b `From<Metric>` change.
+
+2. **aws_ec2_metadata** — now enriches `OtelLog`, `OtelMetric`, `OtelSpan`
+   via resource attributes instead of silently passing through.
+
+3. **remap annotate_dropped** — now sets vector.dropped.* attributes on
+   `OtelLog` events.
+
+4. **EventArray infrastructure** — fixed `EventArrayIntoIter::Metrics` and
+   `MetricArray::into_events()` to preserve `Event::Metric` identity
+   (bypassing `From<Metric> for Event → OtelMetric` conversion in the
+   output buffer drain path).
+
+5. **OtelMetric round-trip improvements**:
+   - Namespace stored as `metric.namespace` resource attribute (not
+     concatenated into name) for lossless round-trip.
+   - Multi-value tags mapped to OTLP array attributes (round-trip
+     fidelity via `insert_otel_attr_as_tag` helper).
+   - `time_unix_nano = 0` mapped to `None` timestamp (not epoch).
+   - Added `resource_mut()` on `OtelSpan` and `OtelMetric`.
+   - Added `Event::to_metric()` convenience method for tests.
+
+6. **Test updates**: ~50 test assertions updated to use `to_metric()` or
+   `Event::from(Metric)` instead of `Event::Metric(Metric)` / `as_metric()`.
 
 | Transform | Change |
 |-----------|--------|
-| `remap.rs` | Remove `VrlTarget::LogEvent`, `VrlTarget::Metric`, `VrlTarget::Trace` arms |
-| `reduce/transform.rs` | Accept `OtelLog` directly (remove `into_log_coerce()`) |
-| `dedupe/transform.rs` | Accept `OtelLog` directly |
-| `log_to_metric.rs` | Accept `OtelLog` → emit `OtelMetric` |
-| `metric_to_log.rs` | Accept `OtelMetric` → emit `OtelLog` |
-| `trace_to_log.rs` | Accept `OtelSpan` → emit `OtelLog` |
-| `aggregate.rs` | Accept `OtelMetric` directly |
-| `sample/transform.rs` | Remove legacy match arms |
-| `tag_cardinality_limit` | Accept `OtelMetric` directly |
-| `incremental_to_absolute` | Accept `OtelMetric` directly |
-| `aws_ec2_metadata.rs` | Enrich `OtelLog`/`OtelMetric`/`OtelSpan` resource attributes |
-| `lua/v1/mod.rs`, `lua/v2/mod.rs` | Lua bindings for OTel types (or deprecate) |
+| `aggregate.rs` | `Event::OtelMetric` recognized in `record()` + `flush_into()` emits via `.into()` |
+| `tag_cardinality_limit` | OtelMetric→Metric bridge, process, re-convert to OtelMetric |
+| `incremental_to_absolute` | OtelMetric→Metric bridge for `make_absolute()` |
+| `metric_to_log.rs` | `Event::OtelMetric` → `to_legacy_metric()` → serialize to log |
+| `log_to_metric.rs` | `Event::OtelLog` handled via `to_log_event()`; output stays `Event::Metric` |
+| `aws_ec2_metadata.rs` | OtelLog/OtelMetric/OtelSpan enriched via resource attributes |
+| `remap.rs` | `annotate_dropped` sets vector.dropped.* on OtelLog |
+| `filter`, `route`, `throttle` | Already fully type-agnostic — no changes needed |
+| `sample/transform.rs` | Already has OTel stubs — no changes needed |
+| `dedupe`, `reduce` | Already coerce via `to_log_event()` / `into_log_coerce()` — no changes |
 
 #### 6e — Migrate sinks off legacy types (~25 files)
 
@@ -1924,7 +1950,8 @@ Based on actual file counts from source. Items marked ✓ have actual line count
 | Step 6a: Log source OtelLog migration (40 files) | 790 actual | 1,446 actual | ✓ COMPLETE |
 | Step 6b: Metric source OtelMetric migration | 28 actual | 481 actual | ✓ COMPLETE |
 | Step 6c: Trace source OtelSpan verification | 0 | 0 | ✓ COMPLETE (already done) |
-| Step 6d–6g: Remaining legacy removal (~113 files) | ~5,200 est. | ~1,600 est. | NEXT |
+| Step 6d: Transform migration | ~30 | ~250 | ✓ COMPLETE |
+| Step 6e–6g: Remaining legacy removal (~99 files) | ~5,100 est. | ~1,400 est. | NEXT |
 | Step 7: Vector + DD sink/source re-integration | 0 | ~2,500 est. | Pending |
 | Tail sampling + LB sink + pipeline telemetry (Step 4) | 0 | ~2,800 est. | Pending |
 | Buffer toggle + OtlpBufferBatch | 0 | ~300 est. | ✓ COMPLETE |

@@ -339,6 +339,7 @@ impl FunctionTransform for MetricToLog {
     fn transform(&mut self, output: &mut OutputBuffer, event: Event) {
         let metric = match event {
             Event::Metric(m) => m,
+            Event::OtelMetric(otel) => otel.to_legacy_metric(),
             other => {
                 output.push(other);
                 return;
@@ -387,7 +388,7 @@ mod tests {
             let (tx, rx) = mpsc::channel(1);
             let (topology, mut out) = create_topology(ReceiverStream::new(rx), config).await;
 
-            tx.send(metric.into()).await.unwrap();
+            tx.send(Event::Metric(metric)).await.unwrap();
 
             let result = out.recv().await;
 

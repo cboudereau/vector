@@ -1610,8 +1610,8 @@ mod tests {
 
         assert_eq!(2, output.len());
         assert_eq!(
-            output[0].as_metric(),
-            &Metric::new_with_metadata(
+            output[0].to_metric(),
+            Metric::new_with_metadata(
                 "local_abc_status_set",
                 MetricKind::Incremental,
                 MetricValue::Set {
@@ -1622,8 +1622,8 @@ mod tests {
             .with_timestamp(Some(ts()))
         );
         assert_eq!(
-            output[1].as_metric(),
-            &Metric::new_with_metadata(
+            output[1].to_metric(),
+            Metric::new_with_metadata(
                 "xyz_exception_total",
                 MetricKind::Incremental,
                 MetricValue::Counter { value: 1.0 },
@@ -1786,7 +1786,7 @@ mod tests {
         let log = create_log_event(json_str);
         let metric = do_transform(config, log.clone()).await.unwrap();
         assert_eq!(
-            *metric.as_metric(),
+            metric.to_metric(),
             Metric::new_with_metadata(
                 "test.transform.gauge",
                 MetricKind::Absolute,
@@ -1842,7 +1842,7 @@ mod tests {
         let log = create_log_event(json_str);
         let metric = do_transform(config, log.clone()).await.unwrap();
         assert_eq!(
-            *metric.as_metric(),
+            metric.to_metric(),
             Metric::new_with_metadata(
                 "test.transform.histogram",
                 MetricKind::Absolute,
@@ -1910,7 +1910,7 @@ mod tests {
         let log = create_log_event(json_str);
         let metric = do_transform(config, log.clone()).await.unwrap();
         assert_eq!(
-            *metric.as_metric(),
+            metric.to_metric(),
             Metric::new_with_metadata(
                 "test.transform.distribution_histogram",
                 MetricKind::Absolute,
@@ -1969,7 +1969,7 @@ mod tests {
         let log = create_log_event(json_str);
         let metric = do_transform(config, log.clone()).await.unwrap();
         assert_eq!(
-            *metric.as_metric(),
+            metric.to_metric(),
             Metric::new_with_metadata(
                 "test.transform.distribution_summary",
                 MetricKind::Absolute,
@@ -2029,7 +2029,7 @@ mod tests {
         let log = create_log_event(json_str);
         let metric = do_transform(config, log.clone()).await.unwrap();
         assert_eq!(
-            *metric.as_metric(),
+            metric.to_metric(),
             Metric::new_with_metadata(
                 "test.transform.histogram",
                 MetricKind::Absolute,
@@ -2079,7 +2079,7 @@ mod tests {
         let log = create_log_event(json_str);
         let metric = do_transform(config, log.clone()).await.unwrap();
         assert_eq!(
-            *metric.as_metric(),
+            metric.to_metric(),
             Metric::new_with_metadata(
                 "test.transform.counter",
                 MetricKind::Incremental,
@@ -2116,7 +2116,7 @@ mod tests {
         let log = create_log_event(json_str);
         let metric = do_transform(config, log.clone()).await.unwrap();
         assert_eq!(
-            *metric.as_metric(),
+            metric.to_metric(),
             Metric::new_with_metadata(
                 "test.transform.set",
                 MetricKind::Incremental,
@@ -2155,7 +2155,7 @@ mod tests {
         let log = create_log_event_with_namespace(json_str, None);
         let metric = do_transform(config, log.clone()).await.unwrap();
         assert_eq!(
-            *metric.as_metric(),
+            metric.to_metric(),
             Metric::new_with_metadata(
                 "test.transform.counter",
                 MetricKind::Incremental,

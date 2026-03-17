@@ -129,6 +129,7 @@ impl Aggregate {
     fn record(&mut self, event: Event) {
         let metric = match event {
             Event::Metric(m) => m,
+            Event::OtelMetric(otel) => otel.to_legacy_metric(),
             _ => return,
         };
         let (series, data, metadata) = metric.into_parts();
@@ -262,7 +263,7 @@ impl Aggregate {
             {
                 emit!(AggregateUpdateFailed);
             }
-            output.push(Event::Metric(metric));
+            output.push(metric.into());
         }
 
         let multi_map = std::mem::take(&mut self.multi_map);
@@ -293,7 +294,7 @@ impl Aggregate {
             match self.mode {
                 AggregationMode::Mean => {
                     let metric = Metric::from_parts(series, final_mean, final_metadata);
-                    output.push(Event::Metric(metric));
+                    output.push(metric.into());
                 }
                 AggregationMode::Stdev => {
                     let variance = entries
@@ -313,7 +314,7 @@ impl Aggregate {
                         *value = variance.sqrt()
                     }
                     let metric = Metric::from_parts(series, final_stdev, final_metadata);
-                    output.push(Event::Metric(metric));
+                    output.push(metric.into());
                 }
                 _ => (),
             }
@@ -349,7 +350,7 @@ impl TaskTransform<Event> for Aggregate {
                                 done = true;
                             }
                             Some(event) => {
-                                if matches!(&event, Event::Metric(_)) {
+                                if matches!(&event, Event::Metric(_) | Event::OtelMetric(_)) {
                                     self.record(event);
                                 } else {
                                     output.push(event);
@@ -393,7 +394,7 @@ mod tests {
     }
 
     fn make_metric(name: &'static str, kind: MetricKind, value: MetricValue) -> Event {
-        let mut event = Event::Metric(Metric::new(name, kind, value))
+        let mut event = Event::from(Metric::new(name, kind, value))
             .with_source_id(Arc::new(ComponentKey::from("in")))
             .with_upstream_id(Arc::new(OutputId::from("transform")));
         event.metadata_mut().set_schema_definition(&Arc::new(
@@ -453,7 +454,7 @@ mod tests {
         out.clear();
         agg.flush_into(&mut out);
         assert_eq!(1, out.len());
-        assert_eq!(&counter_a_summed, &out[0]);
+        assert_eq!(counter_a_summed.clone().into_metric(), out[0].clone().into_metric());
 
         let counter_b_1 = make_metric(
             "counter_b",
@@ -468,9 +469,10 @@ mod tests {
         assert_eq!(2, out.len());
         // B/c we don't know the order they'll come back
         for event in out {
-            match event.as_metric().series().name.name.as_str() {
-                "counter_a" => assert_eq!(counter_a_1, event),
-                "counter_b" => assert_eq!(counter_b_1, event),
+            let metric = event.clone().into_metric();
+            match metric.series().name.name.as_str() {
+                "counter_a" => assert_eq!(counter_a_1.clone().into_metric(), metric),
+                "counter_b" => assert_eq!(counter_b_1.clone().into_metric(), metric),
                 _ => panic!("Unexpected metric name in aggregate output"),
             }
         }
@@ -534,9 +536,10 @@ mod tests {
         assert_eq!(2, out.len());
         // B/c we don't know the order they'll come back
         for event in out {
-            match event.as_metric().series().name.name.as_str() {
-                "gauge_a" => assert_eq!(gauge_a_1, event),
-                "gauge_b" => assert_eq!(gauge_b_1, event),
+            let metric = event.clone().into_metric();
+            match metric.series().name.name.as_str() {
+                "gauge_a" => assert_eq!(gauge_a_1.clone().into_metric(), metric),
+                "gauge_b" => assert_eq!(gauge_b_1.clone().into_metric(), metric),
                 _ => panic!("Unexpected metric name in aggregate output"),
             }
         }
@@ -953,7 +956,7 @@ mod tests {
         // We should flush 1 item counter
         agg.flush_into(&mut out);
         assert_eq!(1, out.len());
-        assert_eq!(&summed, &out[0]);
+        assert_eq!(summed.into_metric(), out[0].clone().into_metric());
     }
 
     #[test]
@@ -1008,7 +1011,7 @@ mod tests {
         // We should flush 1 item incremental
         agg.flush_into(&mut out);
         assert_eq!(1, out.len());
-        assert_eq!(&summed, &out[0]);
+        assert_eq!(summed.into_metric(), out[0].clone().into_metric());
     }
 
     #[tokio::test]
@@ -1063,9 +1066,10 @@ interval_ms = 999999
         let mut count = 0_u8;
         while let Some(event) = out_stream.next().await {
             count += 1;
-            match event.as_metric().series().name.name.as_str() {
-                "counter_a" => assert_eq!(counter_a_summed, event),
-                "gauge_a" => assert_eq!(gauge_a_2, event),
+            let metric = event.clone().into_metric();
+            match metric.series().name.name.as_str() {
+                "counter_a" => assert_eq!(counter_a_summed.clone().into_metric(), metric),
+                "gauge_a" => assert_eq!(gauge_a_2.clone().into_metric(), metric),
                 _ => panic!("Unexpected metric name in aggregate output"),
             };
         }
@@ -1129,9 +1133,10 @@ interval_ms = 999999
             while count < 2 {
                 match out.next().await {
                     Some(event) => {
-                        match event.as_metric().series().name.name.as_str() {
-                            "counter_a" => assert_eq!(counter_a_summed, event),
-                            "gauge_a" => assert_eq!(gauge_a_2, event),
+                        let metric = event.clone().into_metric();
+                        match metric.series().name.name.as_str() {
+                            "counter_a" => assert_eq!(counter_a_summed.clone().into_metric(), metric),
+                            "gauge_a" => assert_eq!(gauge_a_2.clone().into_metric(), metric),
                             _ => panic!("Unexpected metric name in aggregate output"),
                         };
                         count += 1;

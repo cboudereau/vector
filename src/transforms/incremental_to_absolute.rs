@@ -76,9 +76,13 @@ impl IncrementalToAbsolute {
         })
     }
     pub fn transform_one(&mut self, event: Event) -> Option<Event> {
-        match &event {
+        match event {
             Event::Metric(m) => self.data.make_absolute(m.clone()).map(Event::Metric),
-            _ => Some(event),
+            Event::OtelMetric(otel) => {
+                let legacy = otel.to_legacy_metric();
+                self.data.make_absolute(legacy).map(|m| m.into())
+            }
+            other => Some(other),
         }
     }
 }
@@ -111,7 +115,7 @@ mod tests {
     };
 
     fn make_metric(name: &'static str, kind: MetricKind, value: MetricValue) -> Event {
-        let mut event = Event::Metric(Metric::new(name, kind, value))
+        let mut event = Event::from(Metric::new(name, kind, value))
             .with_source_id(Arc::new(ComponentKey::from("in")))
             .with_upstream_id(Arc::new(OutputId::from("transform")));
 

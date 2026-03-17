@@ -123,6 +123,29 @@ fn otel_value_to_tag_string(v: &OtelValueKind) -> String {
     }
 }
 
+/// Insert an OTel attribute as a metric tag, handling array values as multi-value tags.
+fn insert_otel_attr_as_tag(
+    tags: &mut super::MetricTags,
+    key: &str,
+    v: &OtelValueKind,
+) {
+    use super::metric::TagValue;
+    match v {
+        OtelValueKind::ArrayValue(arr) => {
+            let values: Vec<TagValue> = arr
+                .values
+                .iter()
+                .filter_map(|av| av.value.as_ref())
+                .map(|val| TagValue::Value(otel_value_to_tag_string(val)))
+                .collect();
+            tags.set_multi_value(key.to_string(), values);
+        }
+        _ => {
+            tags.insert(key.to_string(), otel_value_to_tag_string(v));
+        }
+    }
+}
+
 fn attribute_value<'a>(attrs: &'a [KeyValue], key: &str) -> Option<&'a AnyValue> {
     attrs
         .iter()
@@ -523,6 +546,13 @@ impl OtelSpan {
         self.resource = Some(resource);
     }
 
+    pub fn resource_mut(&mut self) -> &mut Resource {
+        self.resource.get_or_insert_with(|| Resource {
+            attributes: Vec::new(),
+            dropped_attributes_count: 0,
+        })
+    }
+
     pub fn scope(&self) -> Option<&InstrumentationScope> {
         self.scope.as_ref()
     }
@@ -751,10 +781,29 @@ impl OtelMetric {
             .tags
             .as_ref()
             .map(|tags| {
-                tags.iter_single()
-                    .map(|(k, v)| KeyValue {
-                        key: k.to_string(),
-                        value: Some(string_value(v.to_string())),
+                tags.iter_sets()
+                    .map(|(k, tag_set)| {
+                        use opentelemetry_proto::tonic::common::v1::{ArrayValue, any_value};
+                        let vals: Vec<String> = tag_set
+                            .into_iter()
+                            .map(|v| v.unwrap_or("").to_string())
+                            .collect();
+                        let value = if vals.len() == 1 {
+                            Some(string_value(&vals[0]))
+                        } else {
+                            Some(AnyValue {
+                                value: Some(any_value::Value::ArrayValue(ArrayValue {
+                                    values: vals
+                                        .iter()
+                                        .map(|v| string_value(v))
+                                        .collect(),
+                                })),
+                            })
+                        };
+                        KeyValue {
+                            key: k.to_string(),
+                            value,
+                        }
                     })
                     .collect()
             })
@@ -886,23 +935,36 @@ impl OtelMetric {
         };
 
         let name = series.name.name;
-        let namespace = series.name.namespace;
-        let full_name = match namespace {
-            Some(ns) => format!("{ns}_{name}"),
-            None => name,
-        };
+        let namespace = series.name.namespace.clone();
+
+        let mut resource_attrs = Vec::new();
+        if let Some(ref ns) = namespace {
+            resource_attrs.push(KeyValue {
+                key: "metric.namespace".to_string(),
+                value: Some(string_value(ns)),
+            });
+        }
 
         let otel_metric = OtelMetricProto {
-            name: full_name,
+            name,
             description: String::new(),
             unit: String::new(),
             metadata: vec![],
             data: Some(data),
         };
 
+        let resource = if resource_attrs.is_empty() {
+            None
+        } else {
+            Some(Resource {
+                attributes: resource_attrs,
+                dropped_attributes_count: 0,
+            })
+        };
+
         Self {
             metric: otel_metric,
-            resource: None,
+            resource,
             scope: None,
             metadata,
         }
@@ -949,6 +1011,13 @@ impl OtelMetric {
         self.resource = Some(resource);
     }
 
+    pub fn resource_mut(&mut self) -> &mut Resource {
+        self.resource.get_or_insert_with(|| Resource {
+            attributes: Vec::new(),
+            dropped_attributes_count: 0,
+        })
+    }
+
     pub fn scope(&self) -> Option<&InstrumentationScope> {
         self.scope.as_ref()
     }
@@ -987,18 +1056,31 @@ impl OtelMetric {
     ///
     /// Temporary bridge for sinks/transforms that still expect `Event::Metric`.
     pub fn to_legacy_metric(self) -> super::Metric {
-        use chrono::{TimeZone, Utc};
+        use chrono::{DateTime, TimeZone, Utc};
         use opentelemetry_proto::tonic::metrics::v1::{
             metric, number_data_point::Value as NDPValue, AggregationTemporality,
         };
         use super::{MetricKind, MetricValue, MetricTags};
         use super::metric::{Bucket, Quantile};
 
-        let name = self.metric.name.clone();
+        let nanos_to_ts = |nanos: u64| -> Option<DateTime<Utc>> {
+            if nanos == 0 { None } else { Some(Utc.timestamp_nanos(nanos as i64)) }
+        };
+
+        let metric_name = self.metric.name.clone();
+        let mut namespace: Option<String> = None;
 
         let mut tags = MetricTags::default();
         if let Some(ref res) = self.resource {
+            if let Some(ns_val) = attribute_value(&res.attributes, "metric.namespace") {
+                if let Some(OtelValueKind::StringValue(ns)) = ns_val.value.as_ref() {
+                    namespace = Some(ns.clone());
+                }
+            }
             for attr in &res.attributes {
+                if attr.key == "metric.namespace" {
+                    continue;
+                }
                 if let Some(ref val) = attr.value {
                     if let Some(ref v) = val.value {
                         tags.insert(
@@ -1030,7 +1112,7 @@ impl OtelMetric {
                 } else {
                     MetricKind::Absolute
                 };
-                let ts = dp.map(|p| Utc.timestamp_nanos(p.time_unix_nano as i64));
+                let ts = dp.and_then(|p| nanos_to_ts(p.time_unix_nano));
                 let metric_value = if sum.is_monotonic {
                     MetricValue::Counter { value: val }
                 } else {
@@ -1044,7 +1126,7 @@ impl OtelMetric {
                     NDPValue::AsDouble(f) => *f,
                     NDPValue::AsInt(i) => *i as f64,
                 }).unwrap_or(0.0);
-                let ts = dp.map(|p| Utc.timestamp_nanos(p.time_unix_nano as i64));
+                let ts = dp.and_then(|p| nanos_to_ts(p.time_unix_nano));
                 (MetricKind::Absolute, MetricValue::Gauge { value: val }, ts, dp.map(|p| p.attributes.clone()))
             }
             Some(metric::Data::Histogram(hist)) => {
@@ -1065,7 +1147,7 @@ impl OtelMetric {
                         (buckets, p.count, p.sum.unwrap_or(0.0))
                     })
                     .unwrap_or_default();
-                let ts = dp.map(|p| Utc.timestamp_nanos(p.time_unix_nano as i64));
+                let ts = dp.and_then(|p| nanos_to_ts(p.time_unix_nano));
                 (kind, MetricValue::AggregatedHistogram { buckets, count, sum: sum_val }, ts, dp.map(|p| p.attributes.clone()))
             }
             Some(metric::Data::Summary(summary)) => {
@@ -1078,7 +1160,7 @@ impl OtelMetric {
                         (quantiles, p.count, p.sum)
                     })
                     .unwrap_or_default();
-                let ts = dp.map(|p| Utc.timestamp_nanos(p.time_unix_nano as i64));
+                let ts = dp.and_then(|p| nanos_to_ts(p.time_unix_nano));
                 (MetricKind::Absolute, MetricValue::AggregatedSummary { quantiles, count, sum: sum_val }, ts, dp.map(|p| p.attributes.clone()))
             }
             Some(metric::Data::ExponentialHistogram(exp)) => {
@@ -1111,7 +1193,7 @@ impl OtelMetric {
                         (buckets, p.count, p.sum.unwrap_or(0.0))
                     })
                     .unwrap_or_default();
-                let ts = dp.map(|p| Utc.timestamp_nanos(p.time_unix_nano as i64));
+                let ts = dp.and_then(|p| nanos_to_ts(p.time_unix_nano));
                 (kind, MetricValue::AggregatedHistogram { buckets, count, sum: sum_val }, ts, dp.map(|p| p.attributes.clone()))
             }
             None => (MetricKind::Absolute, MetricValue::Gauge { value: 0.0 }, None, None),
@@ -1121,14 +1203,15 @@ impl OtelMetric {
             for attr in dp_attrs {
                 if let Some(ref val) = attr.value {
                     if let Some(ref v) = val.value {
-                        tags.insert(attr.key.clone(), otel_value_to_tag_string(v));
+                        insert_otel_attr_as_tag(&mut tags, &attr.key, v);
                     }
                 }
             }
         }
 
         let has_tags = !tags.is_empty();
-        super::Metric::new_with_metadata(name, kind, value, self.metadata)
+        super::Metric::new_with_metadata(metric_name, kind, value, self.metadata)
+            .with_namespace(namespace)
             .with_tags(has_tags.then_some(tags))
             .with_timestamp(timestamp)
     }
@@ -1544,10 +1627,11 @@ mod tests {
             .with_timestamp(Some(Utc::now()));
 
         let otel = OtelMetric::from_legacy_metric(m.clone());
-        assert_eq!(otel.name(), "http_requests_total");
+        assert_eq!(otel.name(), "requests_total");
 
         let back = otel.to_legacy_metric();
-        assert_eq!(back.name(), "http_requests_total");
+        assert_eq!(back.name(), "requests_total");
+        assert_eq!(back.namespace(), Some("http"));
         assert_eq!(back.kind(), MetricKind::Incremental);
         match back.value() {
             MetricValue::Counter { value } => assert!((value - 42.0).abs() < f64::EPSILON),

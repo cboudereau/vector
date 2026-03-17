@@ -37,7 +37,7 @@ use crate::{
         ComponentKey, DataType, Input, OutputId, TransformConfig, TransformContext,
         TransformOutput, log_schema,
     },
-    event::{Event, TargetEvents, VrlTarget},
+    event::{Event, TargetEvents, VrlTarget, string_value},
     format_vrl_diagnostics,
     internal_events::{RemapMappingAbort, RemapMappingError},
     schema,
@@ -553,7 +553,30 @@ where
                     self.dropped_data(reason, error).into()
                 });
             }
-            Event::OtelLog(_) | Event::OtelMetric(_) | Event::OtelSpan(_) => {}
+            Event::OtelLog(otel_log) => {
+                let component_id = self
+                    .component_key
+                    .as_ref()
+                    .map(ToString::to_string)
+                    .unwrap_or_default();
+                otel_log.set_attribute(
+                    "vector.dropped.reason".to_string(),
+                    string_value(reason),
+                );
+                otel_log.set_attribute(
+                    "vector.dropped.component_id".to_string(),
+                    string_value(component_id),
+                );
+                otel_log.set_attribute(
+                    "vector.dropped.component_type".to_string(),
+                    string_value("remap"),
+                );
+                otel_log.set_attribute(
+                    "vector.dropped.component_kind".to_string(),
+                    string_value("transform"),
+                );
+            }
+            Event::OtelMetric(_) | Event::OtelSpan(_) => {}
         }
     }
 
@@ -1080,8 +1103,6 @@ mod tests {
                     "zork",
                     MetricKind::Incremental,
                     MetricValue::Counter { value: 1.0 },
-                    // The schema definition is set in the topology, which isn't used in this test. Setting the definition
-                    // to the actual value to skip the assertion here
                     metadata
                 )
                 .with_namespace(Some("zerk"))

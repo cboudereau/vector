@@ -385,7 +385,8 @@ Step 5d²  Migrate metrics batch 2+: other sources, transforms, sinks           
 Step 5f   Ship VRL migration tool                                              — COMPLETE
 Step 5g   Rename OtelXxxEvent → OtelXxx + type alias cleanup                   — COMPLETE
 Step 5h   OTLP HTTP JSON ingestion + dependency upgrades                       — COMPLETE
-Step 6    Full legacy removal: sources → sinks → core → native codecs          — IN PROGRESS (6a–6d COMPLETE)
+Step 6    Full legacy removal: sources → sinks → core → native codecs          — IN PROGRESS (6a–6g COMPLETE)
+Step 6h   Fix remaining test failures (~135): source tests, metric round-trip, misc — NOT STARTED
 Step 7    Re-integration: Vector + DataDog sinks/sources as OTel adapters
 Step 4    Tail sampling + load-balancing sink + pipeline telemetry
 ```
@@ -1840,7 +1841,38 @@ instances.
 - ✅ Core crate tests pass: vector-core (186 pass), codecs (171 pass), opentelemetry-proto (22 pass), vector-tap (1 pass).
 - ✅ Transform tests: 188 passed, 17 ignored (lossy metric round-trips + VRL integration).
 - ⚠️ `LogEvent` and `TraceEvent` still exist as backward-compat types used by bridge methods (`from_log_event`/`to_log_event`). To be removed once all serializers use OTLP natively.
-- ⚠️ ~115 source tests have runtime assertion failures due to `LogEvent ↔ OtelLog` round-trip field structure differences. These are not compilation errors — they are semantic mismatches that will be addressed in a follow-up pass.
+- ⚠️ ~117 source tests have runtime assertion failures due to `LogEvent ↔ OtelLog` round-trip field structure differences. These are not compilation errors — they are semantic mismatches that will be addressed in Step 6h.
+
+---
+
+#### 6h — Fix remaining test failures (~135) — NOT STARTED
+
+With the core protocol migration and legacy removal complete, ~135 tests still fail
+at runtime due to semantic mismatches between the old `LogEvent`-based world and the
+new `OtelLog`-native world. These are NOT compilation errors — every test compiles
+cleanly. They are assertion mismatches caused by structural differences in how fields
+are stored, accessed, and round-tripped.
+
+**Breakdown by category:**
+
+| Category | Count | Root cause | Fix strategy |
+|---|---|---|---|
+| Source tests (socket, file, syslog, http_server, fluent, k8s, etc.) | ~117 | `OtelLog::value()` returns full reconstructed Object instead of raw body; `source_type`/`host` stored in resource attributes instead of metadata; `get()` field paths differ | Update test assertions to use OTLP-native accessors (`get_source_type()`, `get_host()`, `body()`) or update `OtelLog::value()` to respect log namespace mode |
+| Metric round-trip (prometheus, statsd, humio, new_relic) | ~8 | `Metric → OtelMetric → legacy Metric` is lossy: Distribution→AggregatedHistogram, Set→Gauge(cardinality), gauge value accumulation | Either (a) make `to_legacy_metric()` lossless for supported types, or (b) update sinks to consume `OtelMetric` directly without legacy conversion |
+| VRL condition + template + loki | ~4 | `OtelLog::get_timestamp()` uses `time_unix_nano` instead of schema-defined timestamp meaning; VRL metric field access (`.name`, `.tags.host`) differs on `OtelMetric` | Implement schema-aware timestamp resolution; implement VRL Target for `OtelMetric` |
+| Secrets exec | ~3 | Pre-existing env issue (`/usr/bin/secret-backend` not found) — NOT a migration regression | No fix needed |
+| File source (flaky) | ~1 | Intermittent file-system timing in `file_start_position_server_restart_unfinalized` | No fix needed (pre-existing flake) |
+
+**Approach:** Fix source tests first (biggest batch, most repetitive pattern), then
+metric sinks, then misc. Target: ≤ 5 residual failures (all pre-existing or flaky).
+
+**Prerequisite:** Step 6g complete (native codecs removed).
+
+### Validation gate (Step 6h)
+
+- `cargo test --lib` passes with ≤ 5 failures (all pre-existing/flaky, not migration-related)
+- Zero new regressions vs pre-migration baseline
+- OTLP source → OTLP sink integration tests still pass
 
 ---
 

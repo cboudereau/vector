@@ -100,17 +100,10 @@ impl<T: FrameHandler + Clone> FrameHandler for DnstapFrameHandler<T> {
             .handle_event(received_from, frame)
             .map(|event| {
                 match &event {
-                    Event::OtelLog(otel_log) => {
+                    Event::Log(otel_log) => {
                         emit!(SocketEventsReceived {
                             mode: SocketMode::Unix,
                             byte_size: otel_log.estimated_json_encoded_size_of(),
-                            count: 1
-                        });
-                    }
-                    Event::Log(log_event) => {
-                        emit!(SocketEventsReceived {
-                            mode: SocketMode::Unix,
-                            byte_size: log_event.estimated_json_encoded_size_of(),
                             count: 1
                         });
                     }

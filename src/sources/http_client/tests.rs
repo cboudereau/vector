@@ -548,7 +548,7 @@ async fn post_with_body() {
         assert_eq!(log.get("key").unwrap().as_str().unwrap(), "value");
         let number = log.get("number").unwrap();
         match number {
-            vector_lib::event::Value::Integer(n) => assert_eq!(*n, 42),
+            vector_lib::event::Value::Integer(n) => assert_eq!(n, 42),
             _ => panic!("Expected integer value"),
         }
     }
@@ -656,7 +656,7 @@ async fn post_with_vrl_body() {
         assert_eq!(log.get("message").unwrap().as_str().unwrap(), "HELLO");
         let value = log.get("value").unwrap();
         match value {
-            vector_lib::event::Value::Integer(n) => assert_eq!(*n, 42),
+            vector_lib::event::Value::Integer(n) => assert_eq!(n, 42),
             _ => panic!("Expected integer value"),
         }
     }

@@ -257,17 +257,17 @@ impl HttpEventEncoder<BytesMut> for InfluxDbLogsEncoder {
         // the original value that was assigned to the root. To avoid this we intentionally rename
         // the path that points to "message" such that it has a dedicated key.
         // TODO: add a `TargetPath::is_event_root()` to conditionally rename?
-        if let Some(message_path) = log.message_path().cloned().as_ref() {
+        if let Some(message_path) = log.message_path().as_ref() {
             log.rename_key(message_path, (PathPrefix::Event, &self.message_key));
         }
         // Add the `host` and `source_type` to the HashSet of tags to include
         // Ensure those paths are on the event to be encoded, rather than metadata
-        if let Some(host_path) = log.host_path().cloned().as_ref() {
+        if let Some(host_path) = log.host_path().as_ref() {
             self.tags.replace(host_path.path.to_string().into());
             log.rename_key(host_path, (PathPrefix::Event, &self.host_key));
         }
 
-        if let Some(source_type_path) = log.source_type_path().cloned().as_ref() {
+        if let Some(source_type_path) = log.source_type_path().as_ref() {
             self.tags.replace(source_type_path.path.to_string().into());
             log.rename_key(source_type_path, (PathPrefix::Event, &self.source_type_key));
         }
@@ -290,13 +290,13 @@ impl HttpEventEncoder<BytesMut> for InfluxDbLogsEncoder {
         // Tags + Fields
         let mut tags = MetricTags::default();
         let mut fields: HashMap<KeyString, Field> = HashMap::new();
-        log.convert_to_fields().for_each(|(key, value)| {
+        for (key, value) in log.convert_to_fields() {
             if self.tags.contains(&key[..]) {
                 tags.replace(key.into(), value.to_string_lossy().into_owned());
             } else {
-                fields.insert(key, to_field(value));
+                fields.insert(key, to_field(&value));
             }
-        });
+        }
 
         let mut output = BytesMut::new();
         if let Err(error_message) = influx_line_protocol(
@@ -446,7 +446,7 @@ mod tests {
 
     #[test]
     fn test_encode_event_apply_rules() {
-        let mut event = Event::Log(LogEvent::from("hello"));
+        let mut event = Event::from(LogEvent::from("hello"));
         event.as_mut_log().insert("host", "aws.cloud.eur");
         event.as_mut_log().insert("timestamp", ts());
 
@@ -487,7 +487,7 @@ mod tests {
 
     #[test]
     fn test_encode_event_v1() {
-        let mut event = Event::Log(LogEvent::from("hello"));
+        let mut event = Event::from(LogEvent::from("hello"));
         event.as_mut_log().insert("host", "aws.cloud.eur");
         event.as_mut_log().insert("source_type", "file");
 
@@ -532,7 +532,7 @@ mod tests {
 
     #[test]
     fn test_encode_event() {
-        let mut event = Event::Log(LogEvent::from("hello"));
+        let mut event = Event::from(LogEvent::from("hello"));
         event.as_mut_log().insert("host", "aws.cloud.eur");
         event.as_mut_log().insert("source_type", "file");
 
@@ -577,7 +577,7 @@ mod tests {
 
     #[test]
     fn test_encode_event_without_tags() {
-        let mut event = Event::Log(LogEvent::from("hello"));
+        let mut event = Event::from(LogEvent::from("hello"));
 
         event.as_mut_log().insert("value", 100);
         event.as_mut_log().insert("timestamp", ts());
@@ -656,7 +656,7 @@ mod tests {
 
     #[test]
     fn test_add_tag() {
-        let mut event = Event::Log(LogEvent::from("hello"));
+        let mut event = Event::from(LogEvent::from("hello"));
         event.as_mut_log().insert("source_type", "file");
 
         event.as_mut_log().insert("as_a_tag", 10);
@@ -791,7 +791,7 @@ mod tests {
             event.insert("timestamp", timestamp);
             event.insert("source_type", "file");
 
-            events.push(Event::Log(event));
+            events.push(Event::from(event));
         }
         drop(batch);
 

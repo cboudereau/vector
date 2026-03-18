@@ -19,16 +19,15 @@ use tracing::Instrument;
 use vector_lib::{
     EstimatedJsonEncodedSizeOf,
     codecs::{ReadyFrames, StreamDecodingError, internal_events::DecoderFramingError},
-    config::{LegacyKey, LogNamespace, SourceAcknowledgementsConfig},
+    config::{LogNamespace, SourceAcknowledgementsConfig},
     event::{BatchNotifier, BatchStatus, Event},
     finalization::AddBatchNotifier,
-    lookup::{OwnedValuePath, path},
+    lookup::OwnedValuePath,
     shutdown::ShutdownSignal,
     source_sender::SourceSender,
     tcp::TcpKeepaliveConfig,
     tls::{CertificateMetadata, MaybeTlsIncomingStream, MaybeTlsListener, MaybeTlsSettings},
 };
-use vrl::value::ObjectMap;
 
 use self::request_limiter::RequestLimiter;
 use super::SocketListenAddr;
@@ -246,9 +245,9 @@ async fn handle_stream<T>(
     mut out: SourceSender,
     acknowledgements: bool,
     request_limiter: RequestLimiter,
-    tls_client_metadata_key: Option<OwnedValuePath>,
-    source_name: &'static str,
-    log_namespace: LogNamespace,
+    _tls_client_metadata_key: Option<OwnedValuePath>,
+    _source_name: &'static str,
+    _log_namespace: LogNamespace,
 ) where
     <<T as TcpSource>::Decoder as tokio_util::codec::Decoder>::Item: std::marker::Send,
     T: TcpSource,
@@ -368,18 +367,13 @@ async fn handle_stream<T>(
 
 
                         if let Some(certificate_metadata) = &certificate_metadata {
-                            let mut metadata = ObjectMap::new();
-                            metadata.insert("subject".into(), certificate_metadata.subject().into());
                             for event in &mut events {
-                                let log = event.as_mut_log();
-
-                                log_namespace.insert_source_metadata(
-                                    source_name,
-                                    log,
-                                    tls_client_metadata_key.as_ref().map(LegacyKey::Overwrite),
-                                    path!("tls_client_metadata"),
-                                    metadata.clone()
-                                );
+                                if let Event::Log(otel_log) = event {
+                                    otel_log.set_attribute(
+                                        "tls_client_metadata.subject".to_string(),
+                                        crate::event::string_value(certificate_metadata.subject()),
+                                    );
+                                }
                             }
                         }
 

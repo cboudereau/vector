@@ -176,7 +176,9 @@ impl Default for FieldsSpec {
 /// Annotate the event with pod metadata.
 pub struct PodMetadataAnnotator {
     pods_state_reader: Store<Pod>,
+    #[allow(dead_code)]
     fields_spec: FieldsSpec,
+    #[allow(dead_code)]
     log_namespace: LogNamespace,
 }
 
@@ -203,7 +205,7 @@ impl PodMetadataAnnotator {
         let resource = self.pods_state_reader.get(&obj)?;
         let pod: &Pod = resource.as_ref();
 
-        if let Event::OtelLog(otel_log) = event {
+        if let Event::Log(otel_log) = event {
             annotate_otel_from_file_info(otel_log, &file_info);
             annotate_otel_from_metadata(otel_log, &pod.metadata);
             if let Some(ref pod_spec) = pod.spec {
@@ -227,44 +229,12 @@ impl PodMetadataAnnotator {
                     }
                 }
             }
-        } else {
-            let log = event.as_mut_log();
-            annotate_from_file_info(log, &self.fields_spec, &file_info, self.log_namespace);
-            annotate_from_metadata(log, &self.fields_spec, &pod.metadata, self.log_namespace);
-
-            if let Some(ref pod_spec) = pod.spec {
-                annotate_from_pod_spec(log, &self.fields_spec, pod_spec, self.log_namespace);
-
-                if let Some(container) = pod_spec
-                    .containers
-                    .iter()
-                    .find(|c| c.name == file_info.container_name)
-                {
-                    annotate_from_container(log, &self.fields_spec, container, self.log_namespace);
-                }
-            }
-
-            if let Some(ref pod_status) = pod.status {
-                annotate_from_pod_status(log, &self.fields_spec, pod_status, self.log_namespace);
-                if let Some(ref container_statuses) = pod_status.container_statuses {
-                    if let Some(container_status) = container_statuses
-                        .iter()
-                        .find(|c| c.name == file_info.container_name)
-                    {
-                        annotate_from_container_status(
-                            log,
-                            &self.fields_spec,
-                            container_status,
-                            self.log_namespace,
-                        )
-                    }
-                }
-            }
         }
         Some(file_info)
     }
 }
 
+#[allow(dead_code)]
 fn annotate_from_file_info(
     log: &mut LogEvent,
     fields_spec: &FieldsSpec,
@@ -287,6 +257,7 @@ fn annotate_from_file_info(
     );
 }
 
+#[allow(dead_code)]
 fn annotate_from_metadata(
     log: &mut LogEvent,
     fields_spec: &FieldsSpec,
@@ -377,6 +348,7 @@ fn annotate_from_metadata(
     }
 }
 
+#[allow(dead_code)]
 fn annotate_from_pod_spec(
     log: &mut LogEvent,
     fields_spec: &FieldsSpec,
@@ -401,6 +373,7 @@ fn annotate_from_pod_spec(
     }
 }
 
+#[allow(dead_code)]
 fn annotate_from_pod_status(
     log: &mut LogEvent,
     fields_spec: &FieldsSpec,
@@ -441,6 +414,7 @@ fn annotate_from_pod_status(
     }
 }
 
+#[allow(dead_code)]
 fn annotate_from_container_status(
     log: &mut LogEvent,
     fields_spec: &FieldsSpec,
@@ -480,6 +454,7 @@ fn annotate_from_container_status(
     )
 }
 
+#[allow(dead_code)]
 fn annotate_from_container(
     log: &mut LogEvent,
     fields_spec: &FieldsSpec,

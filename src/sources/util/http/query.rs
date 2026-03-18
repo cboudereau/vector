@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 
 use vector_lib::{
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     event::Event,
-    lookup::path,
 };
 
 use crate::{
@@ -15,8 +14,8 @@ pub fn add_query_parameters(
     events: &mut [Event],
     query_parameters_config: &[HttpConfigParamKind],
     query_parameters: &HashMap<String, String>,
-    log_namespace: LogNamespace,
-    source_name: &'static str,
+    _log_namespace: LogNamespace,
+    _source_name: &'static str,
 ) {
     for qp in query_parameters_config {
         match qp {
@@ -28,7 +27,7 @@ pub fn add_query_parameters(
 
                 for event in events.iter_mut() {
                     match event {
-                        Event::OtelLog(otel_log) => {
+                        Event::Log(otel_log) => {
                             if let Some(v) = value {
                                 otel_log.set_attribute(
                                     format!("http.query.{query_parameter_name}"),
@@ -36,21 +35,10 @@ pub fn add_query_parameters(
                                 );
                             }
                         }
-                        Event::Log(log) => {
-                            log_namespace.insert_source_metadata(
-                                source_name,
-                                log,
-                                Some(LegacyKey::Overwrite(path!(query_parameter_name))),
-                                path!("query_parameters", query_parameter_name),
-                                crate::event::Value::from(value.map(String::to_owned)),
-                            );
-                        }
                         _ => {}
                     }
                 }
             }
-            // Add all query_parameters that match against wildcard pattens specified
-            // in the `query_parameters` config option to the event.
             HttpConfigParamKind::Glob(query_parameter_pattern) => {
                 for query_parameter_name in query_parameters.keys() {
                     if query_parameter_pattern
@@ -60,22 +48,13 @@ pub fn add_query_parameters(
 
                         for event in events.iter_mut() {
                             match event {
-                                Event::OtelLog(otel_log) => {
+                                Event::Log(otel_log) => {
                                     if let Some(v) = value {
                                         otel_log.set_attribute(
                                             format!("http.query.{query_parameter_name}"),
                                             string_value(v),
                                         );
                                     }
-                                }
-                                Event::Log(log) => {
-                                    log_namespace.insert_source_metadata(
-                                        source_name,
-                                        log,
-                                        Some(LegacyKey::Overwrite(path!(query_parameter_name))),
-                                        path!("query_parameters", query_parameter_name),
-                                        crate::event::Value::from(value.map(String::to_owned)),
-                                    );
                                 }
                                 _ => {}
                             }
@@ -134,6 +113,7 @@ mod tests {
                 .value()
                 .get(path!("test", "query_parameters"))
                 .unwrap()
+                .clone()
         );
     }
     #[test]
@@ -170,21 +150,22 @@ mod tests {
                 .metadata()
                 .value()
                 .get(path!("test", "query_parameters"))
-                .unwrap(),
+                .unwrap()
+                .clone(),
             "Checking legacy and namespaced log contain query parameters string"
         );
         assert_eq!(
-            log["param1"],
+            log.get("param1").unwrap(),
             "value1".into(),
             "Checking log contains first query parameter"
         );
         assert_eq!(
-            log["param2"],
+            log.get("param2").unwrap(),
             "value2".into(),
             "Checking log contains second query parameter"
         );
         assert_eq!(
-            log["param3"],
+            log.get("param3").unwrap(),
             "value3".into(),
             "Checking log contains third query parameter"
         );

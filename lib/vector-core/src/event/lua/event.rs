@@ -15,20 +15,26 @@ impl IntoLua for LuaEvent {
     fn into_lua(self, lua: &Lua) -> LuaResult<LuaValue> {
         let table = lua.create_table()?;
         match self.event {
-            Event::Log(log) => table.raw_set("log", log.into_lua(lua)?)?,
-            Event::Metric(metric) => table.raw_set(
-                "metric",
-                LuaMetric {
-                    metric,
-                    multi_value_tags: self.metric_multi_value_tags,
-                }
-                .into_lua(lua)?,
-            )?,
-            Event::Trace(_) | Event::OtelLog(_) | Event::OtelMetric(_) | Event::OtelSpan(_) => {
+            Event::Log(otel_log) => {
+                let log_event = otel_log.to_log_event();
+                table.raw_set("log", log_event.into_lua(lua)?)?
+            }
+            Event::Metric(otel_metric) => {
+                let metric = otel_metric.to_legacy_metric();
+                table.raw_set(
+                    "metric",
+                    LuaMetric {
+                        metric,
+                        multi_value_tags: self.metric_multi_value_tags,
+                    }
+                    .into_lua(lua)?,
+                )?
+            }
+            Event::Trace(_) => {
                 return Err(LuaError::ToLuaConversionError {
                     from: String::from("Event"),
                     to: "table",
-                    message: Some("Trace/OTel events are not supported in Lua".to_string()),
+                    message: Some("Trace events are not supported in Lua".to_string()),
                 });
             }
         }
@@ -47,12 +53,13 @@ impl FromLua for Event {
         };
         match (table.raw_get("log")?, table.raw_get("metric")?) {
             (LuaValue::Table(log), LuaValue::Nil) => {
-                Ok(Event::Log(LogEvent::from_lua(LuaValue::Table(log), lua)?))
+                let log_event = LogEvent::from_lua(LuaValue::Table(log), lua)?;
+                Ok(Event::from(log_event))
             }
-            (LuaValue::Nil, LuaValue::Table(metric)) => Ok(Event::Metric(Metric::from_lua(
-                LuaValue::Table(metric),
-                lua,
-            )?)),
+            (LuaValue::Nil, LuaValue::Table(metric)) => {
+                let metric = Metric::from_lua(LuaValue::Table(metric), lua)?;
+                Ok(Event::from(metric))
+            }
             _ => Err(LuaError::FromLuaConversionError {
                 from: value.type_name(),
                 to: String::from("Event"),
@@ -110,7 +117,7 @@ mod test {
 
     #[test]
     fn into_lua_metric() {
-        let event = Event::Metric(Metric::new(
+        let event = Event::from(Metric::new(
             "example counter",
             MetricKind::Absolute,
             MetricValue::Counter {
@@ -142,7 +149,7 @@ mod test {
         }"#;
 
         let event = Lua::new().load(lua_event).eval::<Event>().unwrap();
-        let log = event.as_log();
+        let log = event.as_log().to_log_event();
         assert_eq!(log["field"], Value::Bytes("example".into()));
         assert_eq!(log["nested.field"], Value::Bytes("another example".into()));
     }
@@ -158,7 +165,7 @@ mod test {
                 }
             }
         }"#;
-        let expected = Event::Metric(Metric::new(
+        let expected = Event::from(Metric::new(
             "example counter",
             MetricKind::Absolute,
             MetricValue::Counter {

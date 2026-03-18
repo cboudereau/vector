@@ -140,18 +140,14 @@ fn map_timestamp(mut events: EventArray) -> EventArray {
     match &mut events {
         EventArray::Logs(logs) => {
             for log in logs {
-                if let Some(path) = log.timestamp_path().cloned().as_ref() {
+                if let Some(path) = log.timestamp_path().as_ref() {
                     log.rename_key(path, event_path!("@timestamp"));
                 }
 
-                if let Some(path) = log.host_path().cloned().as_ref() {
+                if let Some(path) = log.host_path().as_ref() {
                     log.rename_key(path, event_path!("os.host"));
                 }
             }
-        }
-        EventArray::OtelLogs(otel_logs) => {
-            let logs: Vec<_> = otel_logs.drain(..).map(|o| o.to_log_event()).collect();
-            return map_timestamp(EventArray::Logs(logs));
         }
         _ => {}
     }

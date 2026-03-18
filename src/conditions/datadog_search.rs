@@ -71,7 +71,7 @@ impl TryFrom<&DatadogSearchConfig> for DatadogSearchRunner {
 impl DatadogSearchRunner {
     pub fn matches<'a>(&self, event: impl Into<EventRef<'a>>) -> bool {
         match event.into() {
-            EventRef::Log(log) => self.matcher.run(log),
+            EventRef::Log(log) => self.matcher.run(&log.to_log_event()),
             _ => false,
         }
     }
@@ -837,12 +837,12 @@ mod test {
             (
                 "@a.b:x",
                 log_event!["a" => serde_json::json!({"b": "x"})],
-                Event::Log(LogEvent::from(Value::from(serde_json::json!({"a.b": "x"})))),
+                Event::from(LogEvent::from(Value::from(serde_json::json!({"a.b": "x"})))),
             ),
             // Attribute with dot in name (flattened key) - requires escaped quotes.
             (
                 r#"@\"a.b\":x"#,
-                Event::Log(LogEvent::from(Value::from(serde_json::json!({"a.b": "x"})))),
+                Event::from(LogEvent::from(Value::from(serde_json::json!({"a.b": "x"})))),
                 log_event!["a" => serde_json::json!({"b": "x"})],
             ),
             // Wildcard prefix.
@@ -1626,7 +1626,7 @@ mod test {
     #[test]
     /// Parse each Datadog Search Syntax query and check that it passes/fails.
     fn event_filter() {
-        test_filter(EventFilter, |ev| ev.into_log())
+        test_filter(EventFilter, |ev| ev.into_log().to_log_event())
     }
 
     #[test]

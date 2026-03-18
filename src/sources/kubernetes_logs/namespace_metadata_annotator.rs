@@ -46,7 +46,9 @@ impl Default for FieldsSpec {
 /// Annotate the event with namespace metadata.
 pub struct NamespaceMetadataAnnotator {
     namespace_state_reader: Store<Namespace>,
+    #[allow(dead_code)]
     fields_spec: FieldsSpec,
+    #[allow(dead_code)]
     log_namespace: LogNamespace,
 }
 
@@ -72,21 +74,14 @@ impl NamespaceMetadataAnnotator {
         let resource = self.namespace_state_reader.get(&obj)?;
         let namespace: &Namespace = resource.as_ref();
 
-        if let Event::OtelLog(otel_log) = event {
+        if let Event::Log(otel_log) = event {
             annotate_otel_from_metadata(otel_log, &namespace.metadata);
-        } else {
-            let log = event.as_mut_log();
-            annotate_from_metadata(
-                log,
-                &self.fields_spec,
-                &namespace.metadata,
-                self.log_namespace,
-            );
         }
         Some(())
     }
 }
 
+#[allow(dead_code)]
 fn annotate_from_metadata(
     log: &mut LogEvent,
     fields_spec: &FieldsSpec,

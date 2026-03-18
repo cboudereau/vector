@@ -2,9 +2,8 @@ use itertools::Itertools;
 use rumqttc::{Event as MqttEvent, Incoming, Publish, QoS, SubscribeFilter};
 use vector_lib::{
     codecs::Decoder,
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     internal_event::EventsReceived,
-    lookup::path,
 };
 
 use chrono::Utc;
@@ -124,21 +123,9 @@ impl MqttSource {
     }
 
     fn apply_metadata(&self, publish: &Publish, event: &mut Event) {
-        if let Event::OtelLog(otel_log) = event {
+        if let Event::Log(otel_log) = event {
             otel_log.set_source_metadata(MqttSourceConfig::NAME, Utc::now());
             otel_log.set_attribute("topic".to_string(), string_value(publish.topic.clone()));
-        } else if let Event::Log(log) = event {
-            self.log_namespace.insert_source_metadata(
-                MqttSourceConfig::NAME,
-                log,
-                self.config
-                    .topic_key
-                    .path
-                    .as_ref()
-                    .map(LegacyKey::Overwrite),
-                path!("topic"),
-                publish.topic.clone(),
-            );
         }
     }
 }

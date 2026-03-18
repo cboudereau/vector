@@ -146,7 +146,8 @@ mod tests {
             assert_eq!(
                 Some("hello world".into()),
                 event.map(
-                    |event| event.as_log()[log_schema().message_key().unwrap().to_string()]
+                    |event| event.as_log().get(log_schema().message_key().unwrap().to_string().as_str())
+                        .unwrap()
                         .to_string_lossy()
                         .into_owned()
                 )
@@ -156,7 +157,8 @@ mod tests {
             assert_eq!(
                 Some("hello world again".into()),
                 event.map(
-                    |event| event.as_log()[log_schema().message_key().unwrap().to_string()]
+                    |event| event.as_log().get(log_schema().message_key().unwrap().to_string().as_str())
+                        .unwrap()
                         .to_string_lossy()
                         .into_owned()
                 )
@@ -188,7 +190,7 @@ mod tests {
             let log = event.as_log();
             let meta = log.metadata().value();
 
-            assert_eq!(&value!("hello world"), log.value());
+            assert_eq!(value!("hello world"), log.value());
             assert_eq!(
                 meta.get(path!("vector", "source_type")).unwrap(),
                 &value!("stdin")
@@ -203,7 +205,7 @@ mod tests {
             let event = event.unwrap();
             let log = event.as_log();
 
-            assert_eq!(&value!("hello world again"), log.value());
+            assert_eq!(value!("hello world again"), log.value());
 
             let event = stream.next().await;
             assert!(event.is_none());

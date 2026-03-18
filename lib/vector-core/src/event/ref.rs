@@ -3,73 +3,66 @@
 use vector_common::EventDataEq;
 
 use super::{
-    Event, EventMetadata, LogEvent, Metric, OtelLog, OtelMetric, OtelSpan,
-    TraceEvent,
+    Event, EventMetadata, Metric, OtelLog, OtelMetric, OtelSpan,
 };
 
 /// A wrapper for references to inner event types, where reconstituting
-/// a full `Event` from a `LogEvent` or `Metric` might be inconvenient.
+/// a full `Event` from an `OtelLog` or `OtelMetric` might be inconvenient.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum EventRef<'a> {
-    /// Reference to a `LogEvent`
-    Log(&'a LogEvent),
-    /// Reference to a `Metric`
-    Metric(&'a Metric),
-    /// Reference to a `TraceEvent`
-    Trace(&'a TraceEvent),
     /// Reference to an `OtelLog`
-    OtelLog(&'a OtelLog),
+    Log(&'a OtelLog),
     /// Reference to an `OtelMetric`
-    OtelMetric(&'a OtelMetric),
+    Metric(&'a OtelMetric),
     /// Reference to an `OtelSpan`
-    OtelSpan(&'a OtelSpan),
+    Trace(&'a OtelSpan),
 }
 
 impl<'a> EventRef<'a> {
-    /// Extract the `LogEvent` reference in this.
+    /// Extract the `OtelLog` reference in this.
     ///
     /// # Panics
     ///
-    /// This will panic if this is not a `LogEvent` reference.
-    pub fn as_log(self) -> &'a LogEvent {
+    /// This will panic if this is not a `Log` reference.
+    pub fn as_log(self) -> &'a OtelLog {
         match self {
             Self::Log(log) => log,
             _ => panic!("Failed type coercion, {self:?} is not a log reference"),
         }
     }
 
-    /// Convert this reference into a new `LogEvent` by cloning.
+    /// Convert this reference into a new `OtelLog` by cloning.
     ///
     /// # Panics
     ///
-    /// This will panic if this is not a `LogEvent` reference.
-    pub fn into_log(self) -> LogEvent {
+    /// This will panic if this is not a `Log` reference.
+    pub fn into_log(self) -> OtelLog {
         match self {
             Self::Log(log) => log.clone(),
             _ => panic!("Failed type coercion, {self:?} is not a log reference"),
         }
     }
 
-    /// Extract the `Metric` reference in this.
+    /// Extract the `OtelMetric` reference in this.
     ///
     /// # Panics
     ///
     /// This will panic if this is not a `Metric` reference.
-    pub fn as_metric(self) -> &'a Metric {
+    pub fn as_metric(self) -> &'a OtelMetric {
         match self {
             Self::Metric(metric) => metric,
             _ => panic!("Failed type coercion, {self:?} is not a metric reference"),
         }
     }
 
-    /// Convert this reference into a new `Metric` by cloning.
+    /// Convert this reference into a legacy `Metric` by cloning and converting.
     ///
     /// # Panics
     ///
     /// This will panic if this is not a `Metric` reference.
     pub fn into_metric(self) -> Metric {
         match self {
-            Self::Metric(metric) => metric.clone(),
+            Self::Metric(metric) => metric.clone().to_legacy_metric(),
             _ => panic!("Failed type coercion, {self:?} is not a metric reference"),
         }
     }
@@ -78,33 +71,31 @@ impl<'a> EventRef<'a> {
 impl<'a> From<&'a Event> for EventRef<'a> {
     fn from(event: &'a Event) -> Self {
         match event {
-            Event::Log(log) => EventRef::Log(log),
-            Event::Metric(metric) => EventRef::Metric(metric),
-            Event::Trace(trace) => EventRef::Trace(trace),
-            Event::OtelLog(e) => EventRef::OtelLog(e),
-            Event::OtelMetric(e) => EventRef::OtelMetric(e),
-            Event::OtelSpan(e) => EventRef::OtelSpan(e),
+            Event::Log(e) => EventRef::Log(e),
+            Event::Metric(e) => EventRef::Metric(e),
+            Event::Trace(e) => EventRef::Trace(e),
         }
     }
 }
 
-impl<'a> From<&'a LogEvent> for EventRef<'a> {
-    fn from(log: &'a LogEvent) -> Self {
+impl<'a> From<&'a OtelLog> for EventRef<'a> {
+    fn from(log: &'a OtelLog) -> Self {
         Self::Log(log)
     }
 }
 
-impl<'a> From<&'a Metric> for EventRef<'a> {
-    fn from(metric: &'a Metric) -> Self {
+impl<'a> From<&'a OtelMetric> for EventRef<'a> {
+    fn from(metric: &'a OtelMetric) -> Self {
         Self::Metric(metric)
     }
 }
 
-impl<'a> From<&'a TraceEvent> for EventRef<'a> {
-    fn from(trace: &'a TraceEvent) -> Self {
+impl<'a> From<&'a OtelSpan> for EventRef<'a> {
+    fn from(trace: &'a OtelSpan) -> Self {
         Self::Trace(trace)
     }
 }
+
 
 impl EventDataEq<Event> for EventRef<'_> {
     fn event_data_eq(&self, that: &Event) -> bool {
@@ -118,68 +109,62 @@ impl EventDataEq<Event> for EventRef<'_> {
 }
 
 /// A wrapper for mutable references to inner event types, where reconstituting
-/// a full `Event` from a `LogEvent` or `Metric` might be inconvenient.
+/// a full `Event` from an `OtelLog` or `OtelMetric` might be inconvenient.
 #[derive(Debug)]
 pub enum EventMutRef<'a> {
-    /// Reference to a `LogEvent`
-    Log(&'a mut LogEvent),
-    /// Reference to a `Metric`
-    Metric(&'a mut Metric),
-    /// Reference to a `TraceEvent`
-    Trace(&'a mut TraceEvent),
     /// Reference to an `OtelLog`
-    OtelLog(&'a mut OtelLog),
+    Log(&'a mut OtelLog),
     /// Reference to an `OtelMetric`
-    OtelMetric(&'a mut OtelMetric),
+    Metric(&'a mut OtelMetric),
     /// Reference to an `OtelSpan`
-    OtelSpan(&'a mut OtelSpan),
+    Trace(&'a mut OtelSpan),
 }
 
 impl<'a> EventMutRef<'a> {
-    /// Extract the `LogEvent` reference in this.
+    /// Extract the `OtelLog` reference in this.
     ///
     /// # Panics
     ///
-    /// This will panic if this is not a `LogEvent` reference.
-    pub fn as_log(self) -> &'a LogEvent {
+    /// This will panic if this is not a `Log` reference.
+    pub fn as_log(self) -> &'a OtelLog {
         match self {
             Self::Log(log) => log,
             _ => panic!("Failed type coercion, {self:?} is not a log reference"),
         }
     }
 
-    /// Convert this reference into a new `LogEvent` by cloning.
+    /// Convert this reference into a new `OtelLog` by cloning.
     ///
     /// # Panics
     ///
-    /// This will panic if this is not a `LogEvent` reference.
-    pub fn into_log(self) -> LogEvent {
+    /// This will panic if this is not a `Log` reference.
+    pub fn into_log(self) -> OtelLog {
         match self {
             Self::Log(log) => log.clone(),
             _ => panic!("Failed type coercion, {self:?} is not a log reference"),
         }
     }
 
-    /// Extract the `Metric` reference in this.
+    /// Extract the `OtelMetric` reference in this.
     ///
     /// # Panics
     ///
     /// This will panic if this is not a `Metric` reference.
-    pub fn as_metric(self) -> &'a Metric {
+    pub fn as_metric(self) -> &'a OtelMetric {
         match self {
             Self::Metric(metric) => metric,
             _ => panic!("Failed type coercion, {self:?} is not a metric reference"),
         }
     }
 
-    /// Convert this reference into a new `Metric` by cloning.
+    /// Convert this reference into a legacy `Metric` by cloning and converting.
     ///
     /// # Panics
     ///
     /// This will panic if this is not a `Metric` reference.
     pub fn into_metric(self) -> Metric {
         match self {
-            Self::Metric(metric) => metric.clone(),
+            Self::Metric(metric) => metric.clone().to_legacy_metric(),
             _ => panic!("Failed type coercion, {self:?} is not a metric reference"),
         }
     }
@@ -190,9 +175,6 @@ impl<'a> EventMutRef<'a> {
             Self::Log(event) => event.metadata(),
             Self::Metric(event) => event.metadata(),
             Self::Trace(event) => event.metadata(),
-            Self::OtelLog(event) => event.metadata(),
-            Self::OtelMetric(event) => event.metadata(),
-            Self::OtelSpan(event) => event.metadata(),
         }
     }
 
@@ -202,9 +184,6 @@ impl<'a> EventMutRef<'a> {
             Self::Log(event) => event.metadata_mut(),
             Self::Metric(event) => event.metadata_mut(),
             Self::Trace(event) => event.metadata_mut(),
-            Self::OtelLog(event) => event.metadata_mut(),
-            Self::OtelMetric(event) => event.metadata_mut(),
-            Self::OtelSpan(event) => event.metadata_mut(),
         }
     }
 }
@@ -212,30 +191,27 @@ impl<'a> EventMutRef<'a> {
 impl<'a> From<&'a mut Event> for EventMutRef<'a> {
     fn from(event: &'a mut Event) -> Self {
         match event {
-            Event::Log(event) => event.into(),
-            Event::Metric(event) => event.into(),
-            Event::Trace(event) => event.into(),
-            Event::OtelLog(event) => EventMutRef::OtelLog(event),
-            Event::OtelMetric(event) => EventMutRef::OtelMetric(event),
-            Event::OtelSpan(event) => EventMutRef::OtelSpan(event),
+            Event::Log(event) => EventMutRef::Log(event),
+            Event::Metric(event) => EventMutRef::Metric(event),
+            Event::Trace(event) => EventMutRef::Trace(event),
         }
     }
 }
 
-impl<'a> From<&'a mut LogEvent> for EventMutRef<'a> {
-    fn from(log: &'a mut LogEvent) -> Self {
+impl<'a> From<&'a mut OtelLog> for EventMutRef<'a> {
+    fn from(log: &'a mut OtelLog) -> Self {
         Self::Log(log)
     }
 }
 
-impl<'a> From<&'a mut Metric> for EventMutRef<'a> {
-    fn from(metric: &'a mut Metric) -> Self {
+impl<'a> From<&'a mut OtelMetric> for EventMutRef<'a> {
+    fn from(metric: &'a mut OtelMetric) -> Self {
         Self::Metric(metric)
     }
 }
 
-impl<'a> From<&'a mut TraceEvent> for EventMutRef<'a> {
-    fn from(trace: &'a mut TraceEvent) -> Self {
+impl<'a> From<&'a mut OtelSpan> for EventMutRef<'a> {
+    fn from(trace: &'a mut OtelSpan) -> Self {
         Self::Trace(trace)
     }
 }

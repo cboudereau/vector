@@ -97,7 +97,7 @@ fn line_generator(index: usize) -> String {
 }
 
 fn event_generator(index: usize) -> Event {
-    Event::Log(LogEvent::from(line_generator(index)))
+    Event::from(LogEvent::from(line_generator(index)))
 }
 
 /// A generator that creates a timestamp in the given field.
@@ -453,7 +453,7 @@ async fn many_tenants() {
     let mut events = lines
         .clone()
         .into_iter()
-        .map(|e| Event::Log(LogEvent::from(e)))
+        .map(|e| Event::from(LogEvent::from(e)))
         .collect::<Vec<_>>();
 
     for (i, event) in events.iter_mut().enumerate() {
@@ -489,7 +489,7 @@ async fn out_of_order_drop() {
     let mut events = lines
         .clone()
         .into_iter()
-        .map(|e| Event::Log(LogEvent::from(e)))
+        .map(|e| Event::from(LogEvent::from(e)))
         .collect::<Vec<_>>();
 
     let base = Utc::now() - Duration::seconds(20);
@@ -519,7 +519,7 @@ async fn out_of_order_accept() {
     let mut events = lines
         .clone()
         .into_iter()
-        .map(|e| Event::Log(LogEvent::from(e)))
+        .map(|e| Event::from(LogEvent::from(e)))
         .collect::<Vec<_>>();
 
     let base = Utc::now() - Duration::seconds(20);
@@ -551,7 +551,7 @@ async fn out_of_order_rewrite() {
     let mut events = lines
         .clone()
         .into_iter()
-        .map(|e| Event::Log(LogEvent::from(e)))
+        .map(|e| Event::from(LogEvent::from(e)))
         .collect::<Vec<_>>();
 
     let base = Utc::now() - Duration::seconds(20);
@@ -593,7 +593,7 @@ async fn out_of_order_per_partition() {
     let mut events = big_lines
         .into_iter()
         .chain(small_lines)
-        .map(|e| Event::Log(LogEvent::from(e)))
+        .map(|e| Event::from(LogEvent::from(e)))
         .collect::<Vec<_>>();
 
     let base = Utc::now() - Duration::seconds(30);

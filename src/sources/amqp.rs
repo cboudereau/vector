@@ -237,6 +237,7 @@ pub(crate) async fn amqp_source(
     )))
 }
 
+#[allow(dead_code)]
 struct Keys<'a> {
     routing_key_field: &'a OptionalValuePath,
     routing: &'a str,
@@ -247,6 +248,7 @@ struct Keys<'a> {
 }
 
 /// Populates the decoded event with extra metadata.
+#[allow(dead_code)]
 fn populate_log_event(
     log: &mut LogEvent,
     timestamp: Option<chrono::DateTime<Utc>>,
@@ -325,7 +327,7 @@ async fn receive_event(
     let mut stream = FramedRead::new(payload, decoder);
 
     // Extract timestamp from AMQP message
-    let timestamp = msg
+    let _timestamp = msg
         .properties
         .timestamp()
         .and_then(|millis| Utc.timestamp_millis_opt(millis as _).latest());
@@ -358,7 +360,7 @@ async fn receive_event(
 
                     let now = Utc::now();
                     for mut event in events {
-                        if let Event::OtelLog(ref mut otel_log) = event {
+                        if let Event::Log(ref mut otel_log) = event {
                             otel_log.set_source_metadata(AmqpSourceConfig::NAME, now);
                             otel_log.set_attribute(
                                 "routing".to_string(),
@@ -372,11 +374,6 @@ async fn receive_event(
                                 "offset".to_string(),
                                 int_value(keys.delivery_tag),
                             );
-                        } else if let Event::Log(ref mut log) = event {
-                            populate_log_event(log,
-                                        timestamp,
-                                        &keys,
-                                        log_namespace);
                         }
 
                         yield event;

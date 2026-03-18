@@ -226,7 +226,6 @@ mod test {
 
     use super::*;
     cfg_if! { if #[cfg(unix)] {
-        use vector_lib::codecs::NativeJsonSerializerConfig;
         use crate::test_util::random_metrics_with_stream;
         use std::path::PathBuf;
     } }
@@ -289,7 +288,7 @@ mod test {
         assert_sink_compliance(&SINK_TAGS, async move {
             let (sink, _healthcheck) = config.build(context).await.unwrap();
 
-            let event = Event::Log(LogEvent::from("raw log line"));
+            let event = Event::from(LogEvent::from("raw log line"));
             sink.run(stream::once(ready(event.into()))).await
         })
         .await
@@ -388,7 +387,7 @@ mod test {
         let config = SocketSinkConfig {
             mode: Mode::UnixStream(UnixMode {
                 config: UnixSinkConfig::new(out_path),
-                encoding: (None::<FramingConfig>, NativeJsonSerializerConfig).into(),
+                encoding: (None::<FramingConfig>, JsonSerializerConfig::default()).into(),
             }),
             acknowledgements: Default::default(),
         };

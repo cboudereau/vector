@@ -34,16 +34,13 @@ use vector_lib::{
     },
     lookup::owned_value_path,
 };
-use vrl::{
-    path,
-    value::{Kind, kind::Collection},
-};
+use vrl::value::{Kind, kind::Collection};
 
 use crate::{
     SourceSender,
     codecs::{Decoder, DecodingConfig},
     config::{DataType, SourceAcknowledgementsConfig, SourceConfig, SourceContext, SourceOutput},
-    event::{BatchNotifier, BatchStatus, Event, MaybeAsLogMut, Value},
+    event::{BatchNotifier, BatchStatus, Event, Value, string_value},
     gcp::{GcpAuthConfig, GcpAuthenticator, PUBSUB_URL, Scope},
     internal_events::{
         GcpPubsubConnectError, GcpPubsubReceiveError, GcpPubsubStreamingPullError,
@@ -691,21 +688,13 @@ impl PubsubSource {
             &self.events_received,
         )
         .map(move |mut event| {
-            if let Some(log) = event.maybe_as_log_mut() {
-                log_namespace.insert_source_metadata(
-                    PubsubConfig::NAME,
-                    log,
-                    Some(LegacyKey::Overwrite(path!("message_id"))),
-                    path!("message_id"),
-                    message.message_id.clone(),
+            if let Event::Log(ref mut otel_log) = event {
+                otel_log.set_attribute(
+                    "message_id".to_string(),
+                    string_value(message.message_id.clone()),
                 );
-                log_namespace.insert_source_metadata(
-                    PubsubConfig::NAME,
-                    log,
-                    Some(LegacyKey::Overwrite(path!("attributes"))),
-                    path!("attributes"),
-                    attributes.clone(),
-                )
+                let attrs_value = crate::event::vrl_value_to_any_value(&attributes);
+                otel_log.set_attribute("attributes".to_string(), attrs_value);
             }
             event
         })

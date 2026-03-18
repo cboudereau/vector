@@ -571,7 +571,7 @@ mod test {
 
         let metric = output[0].as_metric();
         assert_eq!(metric.name(), "test_metric_valid");
-        assert_eq!(metric.value(), &MetricValue::Gauge { value: 42.0 });
+        assert_eq!(metric.value(), MetricValue::Gauge { value: 42.0 });
     }
 
     #[tokio::test]
@@ -656,7 +656,7 @@ mod test {
         // Check the valid metric
         let valid_metric = output[1].as_metric();
         assert_eq!(valid_metric.name(), "test_metric_valid");
-        assert_eq!(valid_metric.value(), &MetricValue::Gauge { value: 42.0 });
+        assert_eq!(valid_metric.value(), MetricValue::Gauge { value: 42.0 });
     }
 
     #[tokio::test]
@@ -779,7 +779,7 @@ mod test {
 
         let metric = output[0].as_metric();
         assert_eq!(metric.name(), "test_metric");
-        assert_eq!(metric.value(), &MetricValue::Gauge { value: 42.0 });
+        assert_eq!(metric.value(), MetricValue::Gauge { value: 42.0 });
     }
 
     #[tokio::test]
@@ -860,7 +860,7 @@ mod test {
 
         let metric = output[0].as_metric();
         assert_eq!(metric.name(), "test_metric");
-        assert_eq!(metric.value(), &MetricValue::Gauge { value: 42.0 });
+        assert_eq!(metric.value(), MetricValue::Gauge { value: 42.0 });
     }
 
     #[tokio::test]

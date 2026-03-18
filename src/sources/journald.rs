@@ -1316,7 +1316,7 @@ mod tests {
             Value::Bytes("System Initialization".into())
         );
         assert_eq!(
-            received[0].as_log()[log_schema().source_type_key().unwrap().to_string()],
+            received[0].as_log().get(log_schema().source_type_key().unwrap().to_string().as_str()).unwrap(),
             "journald".into()
         );
         assert_eq!(timestamp(&received[0]), value_ts(1578529839, 140001000));
@@ -1417,7 +1417,7 @@ mod tests {
         let received = run_with_units(&["syslog.service"], &[], None).await;
         assert_eq!(received.len(), 1);
         assert_eq!(
-            received[0].as_log()["SYSLOG_RAW"],
+            received[0].as_log().get("SYSLOG_RAW").unwrap(),
             Value::Bytes("¿World?".into())
         );
     }
@@ -1427,7 +1427,7 @@ mod tests {
         let received = run_with_units(&["NetworkManager.service"], &[], None).await;
         assert_eq!(received.len(), 1);
         assert_eq!(
-            received[0].as_log()["SYSLOG_FACILITY"],
+            received[0].as_log().get("SYSLOG_FACILITY").unwrap(),
             Value::Bytes(r#"["DHCP4","DHCP6"]"#.into())
         );
     }
@@ -1687,15 +1687,15 @@ mod tests {
     }
 
     fn message(event: &Event) -> Value {
-        event.as_log()[log_schema().message_key().unwrap().to_string()].clone()
+        event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap()
     }
 
     fn timestamp(event: &Event) -> Value {
-        event.as_log()[log_schema().timestamp_key().unwrap().to_string()].clone()
+        event.as_log().get(log_schema().timestamp_key().unwrap().to_string().as_str()).unwrap()
     }
 
     fn cursor(event: &Event) -> Value {
-        event.as_log()[CURSOR].clone()
+        event.as_log().get(CURSOR).unwrap()
     }
 
     fn value_ts(secs: i64, usecs: u32) -> Value {
@@ -1708,7 +1708,7 @@ mod tests {
     }
 
     fn priority(event: &Event) -> Value {
-        event.as_log()["PRIORITY"].clone()
+        event.as_log().get("PRIORITY").unwrap()
     }
 
     #[test]

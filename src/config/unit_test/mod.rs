@@ -606,7 +606,7 @@ fn build_outputs(
 fn build_input_event(input: &TestInput) -> Result<Event, String> {
     match input.type_str.as_ref() {
         "raw" => match input.value.as_ref() {
-            Some(v) => Ok(Event::Log(LogEvent::from_str_legacy(v.clone()))),
+            Some(v) => Ok(Event::from(LogEvent::from_str_legacy(v.clone()))),
             None => Err("input type 'raw' requires the field 'value'".to_string()),
         },
         "vrl" => {
@@ -628,7 +628,7 @@ fn build_input_event(input: &TestInput) -> Result<Event, String> {
                     .program
                     .resolve(&mut ctx)
                     .map(|_| {
-                        Event::Log(LogEvent::from_parts(
+                        Event::from(LogEvent::from_parts(
                             target.value.clone(),
                             EventMetadata::default_with_value(target.metadata.clone()),
                         ))
@@ -653,7 +653,7 @@ fn build_input_event(input: &TestInput) -> Result<Event, String> {
         }
         "metric" => {
             if let Some(metric) = &input.metric {
-                Ok(Event::Metric(metric.clone()))
+                Ok(Event::from(metric.clone()))
             } else {
                 Err("input type 'metric' requires the field 'metric'".to_string())
             }

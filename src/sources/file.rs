@@ -1092,19 +1092,19 @@ mod tests {
         let mut goodbye_i = 0;
 
         for event in received {
-            let line =
-                event.as_log()[log_schema().message_key().unwrap().to_string()].to_string_lossy();
+            let val = event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap();
+            let line = val.to_string_lossy();
             if line.starts_with("hello") {
                 assert_eq!(line, format!("hello {}", hello_i));
                 assert_eq!(
-                    event.as_log()["file"].to_string_lossy(),
+                    event.as_log().get("file").unwrap().to_string_lossy(),
                     path1.to_str().unwrap()
                 );
                 hello_i += 1;
             } else {
                 assert_eq!(line, format!("goodbye {}", goodbye_i));
                 assert_eq!(
-                    event.as_log()["file"].to_string_lossy(),
+                    event.as_log().get("file").unwrap().to_string_lossy(),
                     path2.to_str().unwrap()
                 );
                 goodbye_i += 1;
@@ -1183,12 +1183,12 @@ mod tests {
 
         for event in received {
             assert_eq!(
-                event.as_log()["file"].to_string_lossy(),
+                event.as_log().get("file").unwrap().to_string_lossy(),
                 path.to_str().unwrap()
             );
 
-            let line =
-                event.as_log()[log_schema().message_key().unwrap().to_string()].to_string_lossy();
+            let val = event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap();
+            let line = val.to_string_lossy();
 
             if pre_trunc {
                 assert_eq!(line, format!("pretrunc {}", i));
@@ -1248,12 +1248,12 @@ mod tests {
 
         for event in received {
             assert_eq!(
-                event.as_log()["file"].to_string_lossy(),
+                event.as_log().get("file").unwrap().to_string_lossy(),
                 path.to_str().unwrap()
             );
 
-            let line =
-                event.as_log()[log_schema().message_key().unwrap().to_string()].to_string_lossy();
+            let val = event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap();
+            let line = val.to_string_lossy();
 
             if pre_rot {
                 assert_eq!(line, format!("prerot {}", i));
@@ -1308,8 +1308,8 @@ mod tests {
         let mut is = [0; 3];
 
         for event in received {
-            let line =
-                event.as_log()[log_schema().message_key().unwrap().to_string()].to_string_lossy();
+            let val = event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap();
+            let line = val.to_string_lossy();
             let mut split = line.split(' ');
             let file = split.next().unwrap().parse::<usize>().unwrap();
             assert_ne!(file, 4);
@@ -1354,8 +1354,8 @@ mod tests {
         let mut is = [0; 1];
 
         for event in received {
-            let line =
-                event.as_log()[log_schema().message_key().unwrap().to_string()].to_string_lossy();
+            let val = event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap();
+            let line = val.to_string_lossy();
             let mut split = line.split(' ');
             let file = split.next().unwrap().parse::<usize>().unwrap();
             assert_ne!(file, 4);
@@ -1400,7 +1400,7 @@ mod tests {
 
             assert_eq!(received.len(), 1);
             assert_eq!(
-                received[0].as_log()["file"].to_string_lossy(),
+                received[0].as_log().get("file").unwrap().to_string_lossy(),
                 path.to_str().unwrap()
             );
         }
@@ -1427,7 +1427,7 @@ mod tests {
 
             assert_eq!(received.len(), 1);
             assert_eq!(
-                received[0].as_log()["source"].to_string_lossy(),
+                received[0].as_log().get("source").unwrap().to_string_lossy(),
                 path.to_str().unwrap()
             );
         }
@@ -1745,20 +1745,20 @@ mod tests {
         })
         .await;
 
-        let before_lines = received
+        let before_lines: Vec<String> = received
             .iter()
-            .filter(|event| event.as_log()["file"].to_string_lossy().ends_with("before"))
+            .filter(|event| event.as_log().get("file").unwrap().to_string_lossy().ends_with("before"))
             .map(|event| {
-                event.as_log()[log_schema().message_key().unwrap().to_string()].to_string_lossy()
+                event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap().to_string_lossy().into_owned()
             })
-            .collect::<Vec<_>>();
-        let after_lines = received
+            .collect();
+        let after_lines: Vec<String> = received
             .iter()
-            .filter(|event| event.as_log()["file"].to_string_lossy().ends_with("after"))
+            .filter(|event| event.as_log().get("file").unwrap().to_string_lossy().ends_with("after"))
             .map(|event| {
-                event.as_log()[log_schema().message_key().unwrap().to_string()].to_string_lossy()
+                event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap().to_string_lossy().into_owned()
             })
-            .collect::<Vec<_>>();
+            .collect();
         assert_eq!(before_lines, vec!["second line"]);
         assert_eq!(after_lines, vec!["_first line", "_second line"]);
     }
@@ -1953,7 +1953,7 @@ mod tests {
         )
         .await;
 
-        assert_eq!(received[0].as_log()["offset"], 0.into());
+        assert_eq!(received[0].as_log().get("offset").unwrap(), 0.into());
 
         let lines = extract_messages_string(received);
         assert_eq!(lines, vec!["INFO hello\npart of hello"]);
@@ -1967,7 +1967,7 @@ mod tests {
             })
             .await;
         assert_eq!(
-            received_after_restart[0].as_log()["offset"],
+            received_after_restart[0].as_log().get("offset").unwrap(),
             (lines[0].len() + 1).into()
         );
         let lines = extract_messages_string(received_after_restart);
@@ -2438,7 +2438,7 @@ mod tests {
         received
             .into_iter()
             .map(Event::into_log)
-            .map(|log| log.get_message().unwrap().clone())
+            .map(|log| log.get_message().unwrap())
             .collect()
     }
 }

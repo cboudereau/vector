@@ -279,53 +279,51 @@ mod tests {
         sleep(Duration::from_millis(1)).await;
         let mut events = collect_ready(rx).await;
         let test_id = Value::from(test_id.to_string());
-        events.retain(|event| event.as_log().get("test_id") == Some(&test_id));
+        events.retain(|event| event.as_log().get("test_id") == Some(test_id.clone()));
 
         let end = chrono::Utc::now();
 
         assert_eq!(events.len(), 4);
 
         assert_eq!(
-            events[0].as_log()["message"],
+            events[0].as_log().get("message").unwrap(),
             "Before source started without span.".into()
         );
         assert_eq!(
-            events[1].as_log()["message"],
+            events[1].as_log().get("message").unwrap(),
             "Before source started.".into()
         );
         assert_eq!(
-            events[2].as_log()["message"],
+            events[2].as_log().get("message").unwrap(),
             "After source started.".into()
         );
-        assert_eq!(events[3].as_log()["message"], "In a nested span.".into());
+        assert_eq!(events[3].as_log().get("message").unwrap(), "In a nested span.".into());
 
         for (i, event) in events.iter().enumerate() {
             let log = event.as_log();
-            let timestamp = *log["timestamp"]
+            let timestamp = log.get("timestamp").unwrap()
                 .as_timestamp()
-                .expect("timestamp isn't a timestamp");
+                .expect("timestamp isn't a timestamp")
+                .to_owned();
             assert!(timestamp >= start);
             assert!(timestamp <= end);
-            assert_eq!(log["metadata.kind"], "event".into());
-            assert_eq!(log["metadata.level"], "ERROR".into());
+            assert_eq!(log.get("metadata.kind").unwrap(), "event".into());
+            assert_eq!(log.get("metadata.level").unwrap(), "ERROR".into());
             // The first log event occurs outside our custom span
             if i == 0 {
                 assert!(log.get("vector.component_id").is_none());
                 assert!(log.get("vector.component_kind").is_none());
                 assert!(log.get("vector.component_type").is_none());
             } else if i < 3 {
-                assert_eq!(log["vector.component_id"], "foo".into());
-                assert_eq!(log["vector.component_kind"], "source".into());
-                assert_eq!(log["vector.component_type"], "internal_logs".into());
+                assert_eq!(log.get("vector.component_id").unwrap(), "foo".into());
+                assert_eq!(log.get("vector.component_kind").unwrap(), "source".into());
+                assert_eq!(log.get("vector.component_type").unwrap(), "internal_logs".into());
             } else {
-                // The last event occurs in a nested span. Here, we expect
-                // parent fields to be preserved (unless overwritten), new
-                // fields to be added, and filtered fields to not exist.
-                assert_eq!(log["vector.component_id"], "foo".into());
-                assert_eq!(log["vector.component_kind"], "bar".into());
-                assert_eq!(log["vector.component_type"], "internal_logs".into());
-                assert_eq!(log["vector.component_new_field"], "baz".into());
-                assert_eq!(log["vector.component_numerical_field"], 1.into());
+                assert_eq!(log.get("vector.component_id").unwrap(), "foo".into());
+                assert_eq!(log.get("vector.component_kind").unwrap(), "bar".into());
+                assert_eq!(log.get("vector.component_type").unwrap(), "internal_logs".into());
+                assert_eq!(log.get("vector.component_new_field").unwrap(), "baz".into());
+                assert_eq!(log.get("vector.component_numerical_field").unwrap(), 1.into());
                 assert!(log.get("vector.ignored_field").is_none());
             }
         }

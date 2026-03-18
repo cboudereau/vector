@@ -213,7 +213,7 @@ async fn cloudwatch_insert_out_of_range_timestamp() {
             log_schema().timestamp_key_target_path().unwrap(),
             now + offset,
         );
-        events.push(Event::Log(event));
+        events.push(Event::from(event));
         line
     };
 

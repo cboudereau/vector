@@ -9,7 +9,7 @@ use vector_config::configurable_component;
 use vector_lib::{
     codecs::decoding::{DeserializerConfig, format::Deserializer as _},
     event::{Event, MaybeAsLogMut},
-    lookup::lookup_v2::ConfigValuePath,
+    lookup::{PathPrefix, lookup_v2::ConfigValuePath},
 };
 use vrl::prelude::VrlValueConvert;
 
@@ -241,8 +241,7 @@ impl WsMessageBufferConfig for Option<MessageBufferingConfig> {
         {
             let mut buffer = [0; 36];
             let uuid = message_id.hyphenated().encode_lower(&mut buffer);
-            log.value_mut()
-                .insert(message_id_path, Bytes::copy_from_slice(uuid.as_bytes()));
+            log.insert((PathPrefix::Event, message_id_path), Bytes::copy_from_slice(uuid.as_bytes()));
         }
         message_id
     }
@@ -260,12 +259,9 @@ impl WsMessageBufferConfig for Option<MessageBufferingConfig> {
             })
             .ok()?;
 
-        let Some(message_id_field) = parsed_message
-            .first()?
-            .maybe_as_log()?
-            .value()
-            .get(&ack_config.message_id_path)
-        else {
+        let log = parsed_message.first()?.maybe_as_log()?;
+        let message_id_field = log.get((PathPrefix::Event, &ack_config.message_id_path));
+        let Some(message_id_field) = message_id_field else {
             debug!("Couldn't find message ID in ACK request.");
             return None;
         };

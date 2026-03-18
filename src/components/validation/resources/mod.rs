@@ -165,8 +165,6 @@ fn deserializer_config_to_serializer(config: &DeserializerConfig) -> encoding::S
         // immediately barfing.
         #[cfg(feature = "codecs-syslog")]
         DeserializerConfig::Syslog { .. } => SerializerConfig::Logfmt,
-        DeserializerConfig::Native => SerializerConfig::Native,
-        DeserializerConfig::NativeJson { .. } => SerializerConfig::NativeJson,
         DeserializerConfig::Gelf { .. } => SerializerConfig::Gelf(Default::default()),
         DeserializerConfig::Avro { avro } => SerializerConfig::Avro { avro: avro.into() },
         // TODO: Influxdb has no serializer yet
@@ -224,8 +222,6 @@ fn serializer_config_to_deserializer(
         SerializerConfig::Gelf { .. } => DeserializerConfig::Gelf(Default::default()),
         SerializerConfig::Json(_) => DeserializerConfig::Json(Default::default()),
         SerializerConfig::Logfmt => todo!(),
-        SerializerConfig::Native => DeserializerConfig::Native,
-        SerializerConfig::NativeJson => DeserializerConfig::NativeJson(Default::default()),
         SerializerConfig::Protobuf(config) => {
             DeserializerConfig::Protobuf(vector_lib::codecs::decoding::ProtobufDeserializerConfig {
                 protobuf: vector_lib::codecs::decoding::ProtobufDeserializerOptions {

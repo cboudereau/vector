@@ -1,7 +1,7 @@
 use serde::Serialize;
 use vector_lib::{
     ByteSizeOf, EstimatedJsonEncodedSizeOf,
-    event::{EventFinalizers, Finalizable, LogEvent, MaybeAsLogMut},
+    event::{EventFinalizers, Finalizable, MaybeAsLogMut},
     internal_event::TaggedEventsSent,
     json_size::JsonSize,
     request_metadata::GetEventCountTags,
@@ -19,7 +19,7 @@ impl<E, M> MaybeAsLogMut for ProcessedEvent<E, M>
 where
     E: MaybeAsLogMut,
 {
-    fn maybe_as_log_mut(&mut self) -> Option<&mut LogEvent> {
+    fn maybe_as_log_mut(&mut self) -> Option<&mut vector_lib::event::OtelLog> {
         self.event.maybe_as_log_mut()
     }
 }

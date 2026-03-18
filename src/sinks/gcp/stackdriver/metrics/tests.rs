@@ -1,7 +1,7 @@
 use chrono::Utc;
 use futures::{future::ready, stream};
 use serde::Deserialize;
-use vector_lib::event::{Metric, MetricKind, MetricValue};
+use vector_lib::event::{Metric, MetricKind, MetricValue, OtelMetric};
 
 use super::config::StackdriverConfig;
 use crate::{
@@ -39,11 +39,11 @@ async fn component_spec_compliance() {
     let context = SinkContext::default();
     let (sink, _healthcheck) = config.build(context).await.unwrap();
 
-    let event = Event::Metric(Metric::new(
+    let event = Event::Metric(OtelMetric::from_legacy_metric(Metric::new(
         "gauge-test",
         MetricKind::Absolute,
         MetricValue::Gauge { value: 1_f64 },
-    ));
+    )));
     run_and_assert_sink_compliance(sink, stream::once(ready(event)), &SINK_TAGS).await;
 }
 
@@ -66,14 +66,14 @@ async fn sends_metric() {
     let (sink, _healthcheck) = config.build(context).await.unwrap();
     let timestamp = Utc::now();
 
-    let event = Event::Metric(
+    let event = Event::Metric(OtelMetric::from_legacy_metric(
         Metric::new(
             "gauge-test",
             MetricKind::Absolute,
             MetricValue::Gauge { value: 1_f64 },
         )
         .with_timestamp(Some(timestamp)),
-    );
+    ));
     run_and_assert_sink_compliance(sink, stream::once(ready(event)), &SINK_TAGS).await;
 
     drop(trigger);
@@ -130,22 +130,22 @@ async fn sends_multiple_metrics() {
     let timestamp2 = Utc::now();
 
     let event = vec![
-        Event::Metric(
+        Event::Metric(OtelMetric::from_legacy_metric(
             Metric::new(
                 "gauge1",
                 MetricKind::Absolute,
                 MetricValue::Gauge { value: 1_f64 },
             )
             .with_timestamp(Some(timestamp1)),
-        ),
-        Event::Metric(
+        )),
+        Event::Metric(OtelMetric::from_legacy_metric(
             Metric::new(
                 "gauge2",
                 MetricKind::Absolute,
                 MetricValue::Gauge { value: 5_f64 },
             )
             .with_timestamp(Some(timestamp2)),
-        ),
+        )),
     ];
     run_and_assert_sink_compliance(sink, stream::iter(event), &SINK_TAGS).await;
 
@@ -217,22 +217,22 @@ async fn does_not_aggregate_metrics() {
     let timestamp2 = Utc::now();
 
     let event = vec![
-        Event::Metric(
+        Event::Metric(OtelMetric::from_legacy_metric(
             Metric::new(
                 "gauge",
                 MetricKind::Absolute,
                 MetricValue::Gauge { value: 1_f64 },
             )
             .with_timestamp(Some(timestamp1)),
-        ),
-        Event::Metric(
+        )),
+        Event::Metric(OtelMetric::from_legacy_metric(
             Metric::new(
                 "gauge",
                 MetricKind::Absolute,
                 MetricValue::Gauge { value: 5_f64 },
             )
             .with_timestamp(Some(timestamp2)),
-        ),
+        )),
     ];
     run_and_assert_sink_compliance(sink, stream::iter(event), &SINK_TAGS).await;
 

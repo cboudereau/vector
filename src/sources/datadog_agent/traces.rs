@@ -16,7 +16,7 @@ use warp::{Filter, Rejection, Reply, filters::BoxedFilter, path, path::FullPath,
 use super::{ApiKeyQueryParams, DatadogAgentSource, RequestHandler, ddtrace_proto};
 use crate::{
     common::http::ErrorMessage,
-    event::{Event, ObjectMap, TraceEvent, Value},
+    event::{Event, ObjectMap, OtelSpan, TraceEvent, Value},
 };
 
 pub(super) fn build_warp_filter(
@@ -157,7 +157,7 @@ fn handle_dd_trace_payload_v1(
             } else {
                 trace_event.insert(event_path!("tags"), Value::from(tags.clone()));
             }
-            Event::Trace(trace_event)
+            Event::Trace(OtelSpan::from_trace_event(trace_event))
         })
         .collect();
     Ok(enriched_events)
@@ -268,7 +268,7 @@ fn handle_dd_trace_payload_v0(
             trace_event.insert(event_path!("payload_version"), "v1".to_string());
             trace_event.insert(&source.log_schema_host_key, hostname.clone());
             trace_event.insert(event_path!("env"), env.clone());
-            Event::Trace(trace_event)
+            Event::Trace(OtelSpan::from_trace_event(trace_event))
         })
         .collect();
 

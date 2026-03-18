@@ -8,8 +8,6 @@ mod bytes;
 mod gelf;
 mod influxdb;
 mod json;
-mod native;
-mod native_json;
 #[cfg(feature = "opentelemetry")]
 mod otlp;
 mod protobuf;
@@ -23,10 +21,6 @@ use dyn_clone::DynClone;
 pub use gelf::{GelfDeserializer, GelfDeserializerConfig, GelfDeserializerOptions};
 pub use influxdb::{InfluxdbDeserializer, InfluxdbDeserializerConfig};
 pub use json::{JsonDeserializer, JsonDeserializerConfig, JsonDeserializerOptions};
-pub use native::{NativeDeserializer, NativeDeserializerConfig};
-pub use native_json::{
-    NativeJsonDeserializer, NativeJsonDeserializerConfig, NativeJsonDeserializerOptions,
-};
 #[cfg(feature = "opentelemetry")]
 pub use otlp::{OtlpDeserializer, OtlpDeserializerConfig, OtlpSignalType};
 pub use protobuf::{ProtobufDeserializer, ProtobufDeserializerConfig, ProtobufDeserializerOptions};

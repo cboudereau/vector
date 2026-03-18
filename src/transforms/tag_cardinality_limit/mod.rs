@@ -127,21 +127,14 @@ impl TagCardinalityLimit {
             .insert(value.clone());
     }
 
-    fn transform_one(&mut self, mut event: Event) -> Option<Event> {
-        let was_otel = matches!(event, Event::OtelMetric(_));
-        if was_otel {
-            let otel = match event {
-                Event::OtelMetric(o) => o,
-                _ => unreachable!(),
-            };
-            event = Event::Metric(otel.to_legacy_metric());
-        }
-        if !matches!(event, Event::Metric(_)) {
-            return Some(event);
-        }
-        let metric = event.as_mut_metric();
-        let metric_name = metric.name().to_string();
-        let metric_namespace = metric.namespace().map(|n| n.to_string());
+    fn transform_one(&mut self, event: Event) -> Option<Event> {
+        let otel_metric = match event {
+            Event::Metric(otel) => otel,
+            _ => return Some(event),
+        };
+        let mut legacy_metric = otel_metric.to_legacy_metric();
+        let metric_name = legacy_metric.name().to_string();
+        let metric_namespace = legacy_metric.namespace().map(|n| n.to_string());
         let has_per_metric_config = self.config.per_metric_limits.iter().any(|(name, config)| {
             *name == metric_name
                 && (config.namespace.is_none() || config.namespace == metric_namespace)
@@ -151,15 +144,12 @@ impl TagCardinalityLimit {
         } else {
             None
         };
-        if let Some(tags_map) = metric.tags_mut() {
+        if let Some(tags_map) = legacy_metric.tags_mut() {
             match self
                 .get_config_for_metric(metric_key.as_ref())
                 .limit_exceeded_action
             {
                 LimitExceededAction::DropEvent => {
-                    // This needs to check all the tags, to ensure that the ordering of tag names
-                    // doesn't change the behavior of the check.
-
                     for (key, value) in tags_map.iter_sets() {
                         if self.tag_limit_exceeded(metric_key.as_ref(), key, value) {
                             emit!(TagCardinalityLimitRejectingEvent {
@@ -190,15 +180,7 @@ impl TagCardinalityLimit {
                 }
             }
         }
-        if was_otel {
-            let metric = match event {
-                Event::Metric(m) => m,
-                _ => unreachable!(),
-            };
-            Some(metric.into())
-        } else {
-            Some(event)
-        }
+        Some(Event::from(legacy_metric))
     }
 }
 

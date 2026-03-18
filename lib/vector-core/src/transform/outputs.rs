@@ -266,15 +266,6 @@ impl OutputBuffer {
             (Event::Trace(trace), Some(EventArray::Traces(traces))) => {
                 traces.push(trace);
             }
-            (Event::OtelLog(e), Some(EventArray::OtelLogs(a))) => {
-                a.push(e);
-            }
-            (Event::OtelMetric(e), Some(EventArray::OtelMetrics(a))) => {
-                a.push(e);
-            }
-            (Event::OtelSpan(e), Some(EventArray::OtelSpans(a))) => {
-                a.push(e);
-            }
             (event, _) => {
                 self.0.push(event.into());
             }
@@ -307,12 +298,9 @@ impl OutputBuffer {
 
     pub fn first(&self) -> Option<EventRef<'_>> {
         self.0.first().and_then(|first| match first {
-            EventArray::Logs(l) => l.first().map(Into::into),
-            EventArray::Metrics(m) => m.first().map(Into::into),
-            EventArray::Traces(t) => t.first().map(Into::into),
-            EventArray::OtelLogs(l) => l.first().map(EventRef::OtelLog),
-            EventArray::OtelMetrics(m) => m.first().map(EventRef::OtelMetric),
-            EventArray::OtelSpans(s) => s.first().map(EventRef::OtelSpan),
+            EventArray::Logs(l) => l.first().map(EventRef::Log),
+            EventArray::Metrics(m) => m.first().map(EventRef::Metric),
+            EventArray::Traces(t) => t.first().map(EventRef::Trace),
         })
     }
 

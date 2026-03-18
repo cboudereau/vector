@@ -1,7 +1,7 @@
 use crate::event::Event;
 
 pub(crate) const fn check_is_metric(e: Event) -> (bool, Event) {
-    (matches!(e, Event::Metric(_) | Event::OtelMetric(_)), e)
+    (matches!(e, Event::Metric(_)), e)
 }
 
 pub(crate) fn check_is_metric_with_context(e: Event) -> (Result<(), String>, Event) {
@@ -37,7 +37,7 @@ mod test {
 
     #[test]
     fn is_metric_matches_otel_metric() {
-        let event = Event::OtelMetric(OtelMetric::new(OtelMetricProto {
+        let event = Event::Metric(OtelMetric::new(OtelMetricProto {
             name: "http.duration".to_string(),
             ..Default::default()
         }));

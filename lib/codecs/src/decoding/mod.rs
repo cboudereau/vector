@@ -17,8 +17,7 @@ pub use format::{
     BoxedDeserializer, BytesDeserializer, BytesDeserializerConfig, GelfDeserializer,
     GelfDeserializerConfig, GelfDeserializerOptions, InfluxdbDeserializer,
     InfluxdbDeserializerConfig, JsonDeserializer, JsonDeserializerConfig, JsonDeserializerOptions,
-    NativeDeserializer, NativeDeserializerConfig, NativeJsonDeserializer,
-    NativeJsonDeserializerConfig, NativeJsonDeserializerOptions, ProtobufDeserializer,
+    ProtobufDeserializer,
     ProtobufDeserializerConfig, ProtobufDeserializerOptions,
 };
 #[cfg(feature = "opentelemetry")]
@@ -268,26 +267,6 @@ pub enum DeserializerConfig {
     /// [rfc5424]: https://www.ietf.org/rfc/rfc5424.txt
     Syslog(SyslogDeserializerConfig),
 
-    /// Decodes the raw bytes as [native Protocol Buffers format][vector_native_protobuf].
-    ///
-    /// This decoder can output all types of events (logs, metrics, traces).
-    ///
-    /// This codec is **[experimental][experimental]**.
-    ///
-    /// [vector_native_protobuf]: https://github.com/vectordotdev/vector/blob/master/lib/vector-core/proto/event.proto
-    /// [experimental]: https://vector.dev/highlights/2022-03-31-native-event-codecs
-    Native,
-
-    /// Decodes the raw bytes as [native JSON format][vector_native_json].
-    ///
-    /// This decoder can output all types of events (logs, metrics, traces).
-    ///
-    /// This codec is **[experimental][experimental]**.
-    ///
-    /// [vector_native_json]: https://github.com/vectordotdev/vector/blob/master/lib/codecs/tests/data/native_encoding/schema.cue
-    /// [experimental]: https://vector.dev/highlights/2022-03-31-native-event-codecs
-    NativeJson(NativeJsonDeserializerConfig),
-
     /// Decodes the raw bytes as a [GELF][gelf] message.
     ///
     /// This codec is experimental for the following reason:
@@ -350,18 +329,6 @@ impl From<GelfDeserializerConfig> for DeserializerConfig {
     }
 }
 
-impl From<NativeDeserializerConfig> for DeserializerConfig {
-    fn from(_: NativeDeserializerConfig) -> Self {
-        Self::Native
-    }
-}
-
-impl From<NativeJsonDeserializerConfig> for DeserializerConfig {
-    fn from(config: NativeJsonDeserializerConfig) -> Self {
-        Self::NativeJson(config)
-    }
-}
-
 impl From<InfluxdbDeserializerConfig> for DeserializerConfig {
     fn from(config: InfluxdbDeserializerConfig) -> Self {
         Self::Influxdb(config)
@@ -385,10 +352,6 @@ impl DeserializerConfig {
             DeserializerConfig::Otlp(config) => Ok(Deserializer::Otlp(config.build())),
             #[cfg(feature = "syslog")]
             DeserializerConfig::Syslog(config) => Ok(Deserializer::Syslog(config.build())),
-            DeserializerConfig::Native => {
-                Ok(Deserializer::Native(NativeDeserializerConfig.build()))
-            }
-            DeserializerConfig::NativeJson(config) => Ok(Deserializer::NativeJson(config.build())),
             DeserializerConfig::Gelf(config) => Ok(Deserializer::Gelf(config.build())),
             DeserializerConfig::Influxdb(config) => Ok(Deserializer::Influxdb(config.build())),
             DeserializerConfig::Vrl(config) => Ok(Deserializer::Vrl(config.build()?)),
@@ -399,11 +362,9 @@ impl DeserializerConfig {
     pub fn default_stream_framing(&self) -> FramingConfig {
         match self {
             DeserializerConfig::Avro { .. } => FramingConfig::Bytes,
-            DeserializerConfig::Native => FramingConfig::LengthDelimited(Default::default()),
             DeserializerConfig::Bytes
             | DeserializerConfig::Json(_)
-            | DeserializerConfig::Influxdb(_)
-            | DeserializerConfig::NativeJson(_) => {
+            | DeserializerConfig::Influxdb(_) => {
                 FramingConfig::NewlineDelimited(Default::default())
             }
             DeserializerConfig::Protobuf(_) => FramingConfig::Bytes,
@@ -440,8 +401,6 @@ impl DeserializerConfig {
             DeserializerConfig::Otlp(config) => config.output_type(),
             #[cfg(feature = "syslog")]
             DeserializerConfig::Syslog(config) => config.output_type(),
-            DeserializerConfig::Native => NativeDeserializerConfig.output_type(),
-            DeserializerConfig::NativeJson(config) => config.output_type(),
             DeserializerConfig::Gelf(config) => config.output_type(),
             DeserializerConfig::Vrl(config) => config.output_type(),
             DeserializerConfig::Influxdb(config) => config.output_type(),
@@ -462,8 +421,6 @@ impl DeserializerConfig {
             DeserializerConfig::Otlp(config) => config.schema_definition(log_namespace),
             #[cfg(feature = "syslog")]
             DeserializerConfig::Syslog(config) => config.schema_definition(log_namespace),
-            DeserializerConfig::Native => NativeDeserializerConfig.schema_definition(log_namespace),
-            DeserializerConfig::NativeJson(config) => config.schema_definition(log_namespace),
             DeserializerConfig::Gelf(config) => config.schema_definition(log_namespace),
             DeserializerConfig::Influxdb(config) => config.schema_definition(log_namespace),
             DeserializerConfig::Vrl(config) => config.schema_definition(log_namespace),
@@ -474,13 +431,12 @@ impl DeserializerConfig {
     pub const fn content_type(&self, framer: &FramingConfig) -> &'static str {
         match (&self, framer) {
             (
-                DeserializerConfig::Json(_) | DeserializerConfig::NativeJson(_),
+                DeserializerConfig::Json(_),
                 FramingConfig::NewlineDelimited(_),
             ) => "application/x-ndjson",
             (
                 DeserializerConfig::Gelf(_)
-                | DeserializerConfig::Json(_)
-                | DeserializerConfig::NativeJson(_),
+                | DeserializerConfig::Json(_),
                 FramingConfig::CharacterDelimited(CharacterDelimitedDecoderConfig {
                     character_delimited:
                         CharacterDelimitedDecoderOptions {
@@ -489,7 +445,7 @@ impl DeserializerConfig {
                         },
                 }),
             ) => "application/json",
-            (DeserializerConfig::Native, _) | (DeserializerConfig::Avro { .. }, _) => {
+            (DeserializerConfig::Avro { .. }, _) => {
                 "application/octet-stream"
             }
             (DeserializerConfig::Protobuf(_), _) => "application/octet-stream",
@@ -497,7 +453,6 @@ impl DeserializerConfig {
             (DeserializerConfig::Otlp(_), _) => "application/x-protobuf",
             (
                 DeserializerConfig::Json(_)
-                | DeserializerConfig::NativeJson(_)
                 | DeserializerConfig::Bytes
                 | DeserializerConfig::Gelf(_)
                 | DeserializerConfig::Influxdb(_)
@@ -528,10 +483,6 @@ pub enum Deserializer {
     #[cfg(feature = "syslog")]
     /// Uses a `SyslogDeserializer` for deserialization.
     Syslog(SyslogDeserializer),
-    /// Uses a `NativeDeserializer` for deserialization.
-    Native(NativeDeserializer),
-    /// Uses a `NativeDeserializer` for deserialization.
-    NativeJson(NativeJsonDeserializer),
     /// Uses an opaque `Deserializer` implementation for deserialization.
     Boxed(BoxedDeserializer),
     /// Uses a `GelfDeserializer` for deserialization.
@@ -557,8 +508,6 @@ impl format::Deserializer for Deserializer {
             Deserializer::Otlp(deserializer) => deserializer.parse(bytes, log_namespace),
             #[cfg(feature = "syslog")]
             Deserializer::Syslog(deserializer) => deserializer.parse(bytes, log_namespace),
-            Deserializer::Native(deserializer) => deserializer.parse(bytes, log_namespace),
-            Deserializer::NativeJson(deserializer) => deserializer.parse(bytes, log_namespace),
             Deserializer::Boxed(deserializer) => deserializer.parse(bytes, log_namespace),
             Deserializer::Gelf(deserializer) => deserializer.parse(bytes, log_namespace),
             Deserializer::Influxdb(deserializer) => deserializer.parse(bytes, log_namespace),

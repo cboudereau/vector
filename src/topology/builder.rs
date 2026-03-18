@@ -1081,11 +1081,9 @@ impl TopologyPieces {
 
 const fn filter_events_type(events: &EventArray, data_type: DataType) -> bool {
     match events {
-        EventArray::Logs(_) | EventArray::OtelLogs(_) => data_type.contains(DataType::Log),
-        EventArray::Metrics(_) | EventArray::OtelMetrics(_) => {
-            data_type.contains(DataType::Metric)
-        }
-        EventArray::Traces(_) | EventArray::OtelSpans(_) => data_type.contains(DataType::Trace),
+        EventArray::Logs(_) => data_type.contains(DataType::Log),
+        EventArray::Metrics(_) => data_type.contains(DataType::Metric),
+        EventArray::Traces(_) => data_type.contains(DataType::Trace),
     }
 }
 

@@ -4,7 +4,7 @@ use vector_lib::configurable::configurable_component;
 use crate::config::OutputId;
 use crate::{
     config::{DataType, GenerateConfig, Input, TransformConfig, TransformContext, TransformOutput},
-    event::{Event, LogEvent},
+    event::Event,
     schema::Definition,
     transforms::{FunctionTransform, OutputBuffer, Transform},
 };
@@ -66,8 +66,7 @@ pub struct TraceToLog;
 impl FunctionTransform for TraceToLog {
     fn transform(&mut self, output: &mut OutputBuffer, event: Event) {
         match event {
-            Event::Trace(trace) => output.push(Event::Log(LogEvent::from(trace))),
-            Event::OtelSpan(span) => output.push(Event::Log(span.to_log_event())),
+            Event::Trace(span) => output.push(Event::from(span.to_log_event())),
             _ => {}
         }
     }
@@ -80,7 +79,7 @@ mod tests {
     use crate::transforms::test::create_topology;
     use tokio::sync::mpsc;
     use tokio_stream::wrappers::ReceiverStream;
-    use vector_lib::event::TraceEvent;
+    use vector_lib::event::{LogEvent, TraceEvent};
 
     #[test]
     fn generate_config() {
@@ -106,7 +105,7 @@ mod tests {
             result
         })
         .await
-        .map(|e| e.into_log())
+        .map(|e| e.into_log().to_log_event())
     }
 
     #[tokio::test]
@@ -122,7 +121,7 @@ mod tests {
 
         let (expected_map, _) = trace.clone().into_parts();
 
-        let log = do_transform(trace).await.unwrap();
+        let log: LogEvent = do_transform(trace).await.unwrap();
         let (actual_value, _) = log.into_parts();
         let actual_map = actual_value
             .into_object()

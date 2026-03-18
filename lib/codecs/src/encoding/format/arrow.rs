@@ -302,8 +302,7 @@ fn build_record_batch(
     let projected: Vec<LogEvent> = events
         .iter()
         .filter_map(|e| match e {
-            Event::Log(log) => Some(log.clone()),
-            Event::OtelLog(otel) => Some(otel.to_log_event()),
+            Event::Log(otel_log) => Some(otel_log.to_log_event()),
             _ => None,
         })
         .collect();
@@ -436,7 +435,7 @@ mod tests {
         for (key, value) in fields {
             log.insert(key, value.into());
         }
-        Event::Log(log)
+        Event::from(log)
     }
 
     /// Assert a primitive value at a specific column and row
@@ -512,7 +511,7 @@ mod tests {
             log.insert("named_struct_field", Value::Object(named_tuple_value));
             log.insert("map_field", Value::Object(map_value));
 
-            let events = vec![Event::Log(log)];
+            let events = vec![Event::from(log)];
 
             // Build schema with all supported types
             let struct_fields = arrow::datatypes::Fields::from(vec![
@@ -732,7 +731,7 @@ mod tests {
             log.insert("ts_micro", now);
             log.insert("ts_nano", now);
 
-            let events = vec![Event::Log(log)];
+            let events = vec![Event::from(log)];
 
             let schema = SchemaRef::new(Schema::new(vec![
                 Field::new(
@@ -812,7 +811,7 @@ mod tests {
             let mut log3 = LogEvent::default();
             log3.insert("ts", 1729594724256000000_i64); // Integer (nanoseconds)
 
-            let events = vec![Event::Log(log1), Event::Log(log2), Event::Log(log3)];
+            let events = vec![Event::from(log1), Event::from(log2), Event::from(log3)];
 
             // Use Some("UTC") to enable serde_arrow's RFC3339 string parsing
             let schema = SchemaRef::new(Schema::new(vec![Field::new(
@@ -860,7 +859,7 @@ mod tests {
             let mut log1 = LogEvent::default();
             log1.insert("strict_field", 42);
             let log2 = LogEvent::default();
-            let events = vec![Event::Log(log1), Event::Log(log2)];
+            let events = vec![Event::from(log1), Event::from(log2)];
 
             let schema = Schema::new(vec![Field::new("strict_field", DataType::Int64, false)]);
 

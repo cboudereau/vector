@@ -1,17 +1,12 @@
 use chrono::{DateTime, Utc};
 use derivative::Derivative;
-use vector_lib::{
-    config::{LegacyKey, LogNamespace, log_schema},
-    conversion,
-    lookup::path,
-};
+use vector_lib::{config::LogNamespace, conversion};
 
 use crate::{
-    event::{self, Event, Value},
+    event::{self, Event},
     internal_events::{
         DROP_EVENT, ParserConversionError, ParserMatchError, ParserMissingFieldError,
     },
-    sources::kubernetes_logs::{Config, transform_utils::get_message_path},
     transforms::{FunctionTransform, OutputBuffer},
 };
 
@@ -42,63 +37,38 @@ impl Cri {
 
 impl FunctionTransform for Cri {
     fn transform(&mut self, output: &mut OutputBuffer, mut event: Event) {
-        let message_path = get_message_path(self.log_namespace);
-
-        // Get the log field with the message, if it exists, and coerce it to bytes.
-        let log = event.as_mut_log();
-        let value = log.remove(&message_path).map(|s| s.coerce_to_bytes());
-        match value {
-            None => {
-                // The message field was missing, inexplicably. If we can't find the message field, there's nothing for
-                // us to actually decode, so there's no event we could emit, and so we just emit the error and return.
+        if let Event::Log(ref mut otel_log) = event {
+            let body = otel_log.body_string();
+            if body.is_empty() {
                 emit!(ParserMissingFieldError::<DROP_EVENT> {
-                    field: &message_path.to_string()
+                    field: "body"
                 });
                 return;
             }
-            Some(s) => match parse_log_line(&s) {
+            let s = bytes::Bytes::from(body);
+            match parse_log_line(&s) {
                 None => {
                     emit!(ParserMatchError { value: &s[..] });
                     return;
                 }
                 Some(parsed_log) => {
-                    // For all fields except `timestamp`, simply treat them as `Value::Bytes`. For
-                    // `timestamp`, however, we actually make sure we can convert it correctly and feed it
-                    // in as `Value::Timestamp`.
+                    otel_log.set_body(crate::event::string_value(
+                        String::from_utf8_lossy(parsed_log.message),
+                    ));
 
-                    // MESSAGE
-                    // Insert either directly into `.` or `log_schema().message_key()`,
-                    // overwriting the original "full" CRI log that included additional fields.
-                    drop(log.insert(&message_path, Value::Bytes(s.slice_ref(parsed_log.message))));
-
-                    // MULTILINE_TAG
-                    // If the MULTILINE_TAG is 'P' (partial), insert our generic `_partial` key.
-                    // This is safe to `unwrap()` as we've just ensured this value is a Value::Bytes
-                    // during the above capturing and mapping.
                     if parsed_log.multiline_tag[0] == b'P' {
-                        self.log_namespace.insert_source_metadata(
-                            Config::NAME,
-                            log,
-                            Some(LegacyKey::Overwrite(path!(event::PARTIAL))),
-                            path!(event::PARTIAL),
-                            true,
+                        otel_log.set_attribute(
+                            event::PARTIAL.to_string(),
+                            crate::event::string_value("true"),
                         );
                     }
 
-                    // TIMESTAMP_TAG
                     let ds = String::from_utf8_lossy(parsed_log.timestamp);
                     match DateTime::parse_from_str(&ds, "%+") {
-                        Ok(dt) =>
-                        // Insert the TIMESTAMP_TAG parsed out of the CRI log, this is the timestamp of
-                        // when the runtime processed this message.
-                        {
-                            self.log_namespace.insert_source_metadata(
-                                Config::NAME,
-                                log,
-                                log_schema().timestamp_key().map(LegacyKey::Overwrite),
-                                path!(TIMESTAMP_KEY),
-                                Value::Timestamp(dt.with_timezone(&Utc)),
-                            )
+                        Ok(dt) => {
+                            let ts = dt.with_timezone(&Utc);
+                            otel_log.record_mut().time_unix_nano =
+                                ts.timestamp_nanos_opt().unwrap_or(0) as u64;
                         }
                         Err(e) => {
                             emit!(ParserConversionError {
@@ -111,16 +81,14 @@ impl FunctionTransform for Cri {
                         }
                     }
 
-                    // STREAM_TAG
-                    self.log_namespace.insert_source_metadata(
-                        Config::NAME,
-                        log,
-                        Some(LegacyKey::Overwrite(path!(STREAM_KEY))),
-                        path!(STREAM_KEY),
-                        Value::Bytes(s.slice_ref(parsed_log.stream)),
+                    otel_log.set_attribute(
+                        STREAM_KEY.to_string(),
+                        crate::event::string_value(
+                            String::from_utf8_lossy(parsed_log.stream),
+                        ),
                     );
                 }
-            },
+            }
         }
 
         output.push(event);
@@ -286,7 +254,7 @@ pub mod tests {
         trace_init();
         test_util::test_parser(
             || Cri::new(LogNamespace::Vector),
-            |bytes| Event::Log(LogEvent::from(value!(bytes))),
+            |bytes| Event::from(LogEvent::from(value!(bytes))),
             valid_cases(LogNamespace::Vector),
         );
     }
@@ -296,7 +264,7 @@ pub mod tests {
         trace_init();
         test_util::test_parser(
             || Cri::new(LogNamespace::Legacy),
-            |bytes| Event::Log(LogEvent::from(bytes)),
+            |bytes| Event::from(LogEvent::from(bytes)),
             valid_cases(LogNamespace::Legacy),
         );
     }

@@ -41,7 +41,7 @@ async fn component_spec_compliance() {
         .await
         .unwrap();
 
-    let event = Event::Log(LogEvent::from("simple message"));
+    let event = Event::from(LogEvent::from("simple message"));
     run_and_assert_sink_compliance(sink, stream::once(ready(event)), &SINK_TAGS).await;
 }
 

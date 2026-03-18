@@ -44,6 +44,7 @@ type WebSocketStream = Pin<Box<dyn Stream<Item = Result<Message, TungsteniteErro
 pub(crate) struct WebSocketSourceParams {
     pub connector: WebSocketConnector,
     pub decoder: Decoder,
+    #[allow(dead_code)]
     pub log_namespace: LogNamespace,
 }
 
@@ -237,10 +238,8 @@ impl WebSocketSource {
 
                     let now = Utc::now();
                     let events_with_meta = events.into_iter().map(|mut event| {
-                        if let Event::OtelLog(ref mut otel_log) = event {
+                        if let Event::Log(ref mut otel_log) = event {
                             otel_log.set_source_metadata(WebSocketConfig::NAME, now);
-                        } else if let Event::Log(ref mut log_event) = event {
-                            self.add_metadata(log_event, now);
                         }
                         event
                     });
@@ -258,6 +257,8 @@ impl WebSocketSource {
         }
     }
 
+    #[allow(dead_code)]
+    #[allow(dead_code)]
     fn add_metadata(&self, event: &mut LogEvent, now: DateTime<Utc>) {
         self.params
             .log_namespace
@@ -581,10 +582,10 @@ mod tests {
         );
 
         let event = events[0].as_log();
-        assert_eq!(event["message"], "first message".into());
+        assert_eq!(event.get("message").unwrap(), "first message".into());
 
         let event = events[1].as_log();
-        assert_eq!(event["message"], "second message".into());
+        assert_eq!(event.get("message").unwrap(), "second message".into());
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -599,8 +600,8 @@ mod tests {
 
         assert!(!events.is_empty(), "No events received from source");
         let event = events[0].as_log();
-        assert_eq!(event["message"], "binary data".into());
-        assert_eq!(*event.get_source_type().unwrap(), "websocket".into());
+        assert_eq!(event.get("message").unwrap(), "binary data".into());
+        assert_eq!(event.get_source_type().unwrap(), "websocket".into());
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -615,8 +616,8 @@ mod tests {
         // Now assert that the event was received and is correct.
         assert!(!events.is_empty(), "No events received from source");
         let event = events[0].as_log();
-        assert_eq!(event["message"], "message from server".into());
-        assert_eq!(*event.get_source_type().unwrap(), "websocket".into());
+        assert_eq!(event.get("message").unwrap(), "message from server".into());
+        assert_eq!(event.get_source_type().unwrap(), "websocket".into());
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -633,8 +634,8 @@ mod tests {
 
         assert!(!events.is_empty(), "No events received from source");
         let event = events[0].as_log();
-        assert_eq!(event["message"], response_msg.into());
-        assert_eq!(*event.get_source_type().unwrap(), "websocket".into());
+        assert_eq!(event.get("message").unwrap(), response_msg.into());
+        assert_eq!(event.get_source_type().unwrap(), "websocket".into());
     }
 
     async fn start_reject_initial_message_server() -> String {

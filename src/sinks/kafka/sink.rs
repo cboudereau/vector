@@ -79,10 +79,7 @@ impl KafkaSink {
         };
 
         input
-            .map(|event| match event {
-                Event::OtelLog(otel) => Event::Log(otel.to_log_event()),
-                other => other,
-            })
+            .map(|event| event)
             .filter_map(|event| {
                 future::ready(
                     self.topic
@@ -123,7 +120,7 @@ pub(crate) async fn healthcheck(
     let client_config = config.to_rdkafka().unwrap();
     let topic: Option<String> = match config.healthcheck_topic {
         Some(topic) => Some(topic),
-        _ => match config.topic.render_string(&LogEvent::from_str_legacy("")) {
+        _ => match config.topic.render_string_from_log(&LogEvent::from_str_legacy("")) {
             Ok(topic) => Some(topic),
             Err(error) => {
                 warn!(

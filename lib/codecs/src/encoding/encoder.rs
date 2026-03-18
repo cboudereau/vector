@@ -160,7 +160,7 @@ impl Encoder<Framer> {
                 Framer::CharacterDelimited(crate::encoding::CharacterDelimitedEncoder {
                     delimiter: b',',
                 }),
-                Serializer::Json(_) | Serializer::NativeJson(_),
+                Serializer::Json(_),
             ) => b"[",
             _ => &[],
         }
@@ -173,7 +173,7 @@ impl Encoder<Framer> {
                 Framer::CharacterDelimited(crate::encoding::CharacterDelimitedEncoder {
                     delimiter: b',',
                 }),
-                Serializer::Json(_) | Serializer::NativeJson(_),
+                Serializer::Json(_),
                 _,
             ) => b"]",
             (Framer::NewlineDelimited(_), _, false) => b"\n",
@@ -184,16 +184,16 @@ impl Encoder<Framer> {
     /// Get the HTTP content type.
     pub const fn content_type(&self) -> &'static str {
         match (&self.serializer, &self.framer) {
-            (Serializer::Json(_) | Serializer::NativeJson(_), Framer::NewlineDelimited(_)) => {
+            (Serializer::Json(_), Framer::NewlineDelimited(_)) => {
                 "application/x-ndjson"
             }
             (
-                Serializer::Gelf(_) | Serializer::Json(_) | Serializer::NativeJson(_),
+                Serializer::Gelf(_) | Serializer::Json(_),
                 Framer::CharacterDelimited(crate::encoding::CharacterDelimitedEncoder {
                     delimiter: b',',
                 }),
             ) => "application/json",
-            (Serializer::Native(_), _) | (Serializer::Protobuf(_), _) => "application/octet-stream",
+            (Serializer::Protobuf(_), _) => "application/octet-stream",
             (
                 Serializer::Avro(_)
                 | Serializer::Cef(_)
@@ -201,7 +201,6 @@ impl Encoder<Framer> {
                 | Serializer::Gelf(_)
                 | Serializer::Json(_)
                 | Serializer::Logfmt(_)
-                | Serializer::NativeJson(_)
                 | Serializer::RawMessage(_)
                 | Serializer::Text(_),
                 _,
@@ -339,9 +338,9 @@ mod tests {
                 .into(),
         );
         let source = futures::stream::iter(vec![
-            Event::Log(LogEvent::from("foo")),
-            Event::Log(LogEvent::from("bar")),
-            Event::Log(LogEvent::from("baz")),
+            Event::from(LogEvent::from("foo")),
+            Event::from(LogEvent::from("bar")),
+            Event::from(LogEvent::from("baz")),
         ])
         .map(Ok);
         let sink = Vec::new();
@@ -360,9 +359,9 @@ mod tests {
                 .into(),
         );
         let source = futures::stream::iter(vec![
-            Event::Log(LogEvent::from("bar")),
-            Event::Log(LogEvent::from("baz")),
-            Event::Log(LogEvent::from("bat")),
+            Event::from(LogEvent::from("bar")),
+            Event::from(LogEvent::from("baz")),
+            Event::from(LogEvent::from("bat")),
         ])
         .map(Ok);
         let sink = Vec::from("(foo)");
@@ -381,9 +380,9 @@ mod tests {
                 .into(),
         );
         let source = futures::stream::iter(vec![
-            Event::Log(LogEvent::from("foo")),
-            Event::Log(LogEvent::from("bar")),
-            Event::Log(LogEvent::from("baz")),
+            Event::from(LogEvent::from("foo")),
+            Event::from(LogEvent::from("bar")),
+            Event::from(LogEvent::from("baz")),
         ])
         .map(Ok);
         let sink = Vec::new();
@@ -403,9 +402,9 @@ mod tests {
                 .into(),
         );
         let source = futures::stream::iter(vec![
-            Event::Log(LogEvent::from("bar")),
-            Event::Log(LogEvent::from("baz")),
-            Event::Log(LogEvent::from("bat")),
+            Event::from(LogEvent::from("bar")),
+            Event::from(LogEvent::from("baz")),
+            Event::from(LogEvent::from("bat")),
         ])
         .map(Ok);
         let sink = Vec::from("(foo)");
@@ -425,9 +424,9 @@ mod tests {
                 .into(),
         );
         let source = futures::stream::iter(vec![
-            Event::Log(LogEvent::from("bar")),
-            Event::Log(LogEvent::from("baz")),
-            Event::Log(LogEvent::from("bat")),
+            Event::from(LogEvent::from("bar")),
+            Event::from(LogEvent::from("baz")),
+            Event::from(LogEvent::from("bat")),
         ])
         .map(Ok);
         let sink: Vec<u8> = Vec::new();

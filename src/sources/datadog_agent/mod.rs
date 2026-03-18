@@ -374,11 +374,13 @@ pub(crate) struct DatadogAgentSource {
     pub(crate) api_key_extractor: ApiKeyExtractor,
     pub(crate) log_schema_host_key: OwnedTargetPath,
     pub(crate) log_schema_source_type_key: OwnedTargetPath,
+    #[allow(dead_code)]
     pub(crate) log_namespace: LogNamespace,
     pub(crate) decoder: Decoder,
     protocol: &'static str,
     logs_schema_definition: Option<Arc<schema::Definition>>,
     events_received: Registered<EventsReceived>,
+    #[allow(dead_code)]
     parse_ddtags: bool,
     split_metric_namespace: bool,
 }

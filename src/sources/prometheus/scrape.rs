@@ -5,7 +5,7 @@ use futures_util::FutureExt;
 use http::{Uri, response::Parts};
 use serde_with::serde_as;
 use snafu::ResultExt;
-use vector_lib::{config::LogNamespace, configurable::configurable_component, event::Event};
+use vector_lib::{config::LogNamespace, configurable::configurable_component, event::{Event, OtelMetric}};
 
 use super::parser;
 use crate::{
@@ -243,39 +243,49 @@ struct PrometheusScrapeContext {
 impl HttpClientContext for PrometheusScrapeContext {
     fn enrich_events(&mut self, events: &mut Vec<Event>) {
         for event in events.iter_mut() {
-            let metric = event.as_mut_metric();
-            if let Some(InstanceInfo {
-                tag,
-                instance,
-                honor_label,
-            }) = &self.instance_info
-            {
-                match (honor_label, metric.tag_value(tag)) {
-                    (false, Some(old_instance)) => {
-                        metric.replace_tag(format!("exported_{tag}"), old_instance);
-                        metric.replace_tag(tag.clone(), instance.clone());
-                    }
-                    (true, Some(_)) => {}
-                    (_, None) => {
-                        metric.replace_tag(tag.clone(), instance.clone());
+            if let Event::Metric(otel_metric) = event {
+                let mut legacy = otel_metric.clone().to_legacy_metric();
+                let mut changed = false;
+                if let Some(InstanceInfo {
+                    tag,
+                    instance,
+                    honor_label,
+                }) = &self.instance_info
+                {
+                    match (honor_label, legacy.tag_value(tag)) {
+                        (false, Some(old_instance)) => {
+                            legacy.replace_tag(format!("exported_{tag}"), old_instance);
+                            legacy.replace_tag(tag.clone(), instance.clone());
+                            changed = true;
+                        }
+                        (true, Some(_)) => {}
+                        (_, None) => {
+                            legacy.replace_tag(tag.clone(), instance.clone());
+                            changed = true;
+                        }
                     }
                 }
-            }
-            if let Some(EndpointInfo {
-                tag,
-                endpoint,
-                honor_label,
-            }) = &self.endpoint_info
-            {
-                match (honor_label, metric.tag_value(tag)) {
-                    (false, Some(old_endpoint)) => {
-                        metric.replace_tag(format!("exported_{tag}"), old_endpoint);
-                        metric.replace_tag(tag.clone(), endpoint.clone());
+                if let Some(EndpointInfo {
+                    tag,
+                    endpoint,
+                    honor_label,
+                }) = &self.endpoint_info
+                {
+                    match (honor_label, legacy.tag_value(tag)) {
+                        (false, Some(old_endpoint)) => {
+                            legacy.replace_tag(format!("exported_{tag}"), old_endpoint);
+                            legacy.replace_tag(tag.clone(), endpoint.clone());
+                            changed = true;
+                        }
+                        (true, Some(_)) => {}
+                        (_, None) => {
+                            legacy.replace_tag(tag.clone(), endpoint.clone());
+                            changed = true;
+                        }
                     }
-                    (true, Some(_)) => {}
-                    (_, None) => {
-                        metric.replace_tag(tag.clone(), endpoint.clone());
-                    }
+                }
+                if changed {
+                    *otel_metric = OtelMetric::from_legacy_metric(legacy);
                 }
             }
         }

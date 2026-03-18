@@ -5,10 +5,10 @@ use ipnet::IpNet;
 use serde_with::serde_as;
 use vector_lib::{
     EstimatedJsonEncodedSizeOf,
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     configurable::configurable_component,
     ipallowlist::IpAllowlistConfig,
-    lookup::{lookup_v2::OptionalValuePath, owned_value_path, path},
+    lookup::{lookup_v2::OptionalValuePath, owned_value_path},
     tcp::TcpKeepaliveConfig,
     tls::{CertificateMetadata, MaybeTlsSettings, TlsSourceConfig},
 };
@@ -136,6 +136,7 @@ pub struct DnstapFrameHandler<T: FrameHandler + Clone> {
     max_connection_duration_secs: Option<u64>,
     max_connections: Option<u32>,
     allowlist: Option<Vec<IpNet>>,
+    #[allow(dead_code)]
     log_namespace: LogNamespace,
 }
 
@@ -187,7 +188,7 @@ impl<T: FrameHandler + Clone> FrameHandler for DnstapFrameHandler<T> {
             .handle_event(received_from, frame)
             .map(|mut event| {
                 match &mut event {
-                    Event::OtelLog(otel_log) => {
+                    Event::Log(otel_log) => {
                         if let Some(tls_client_metadata) = &self.tls_client_metadata {
                             for (k, v) in tls_client_metadata.iter() {
                                 otel_log.set_attribute(
@@ -200,25 +201,6 @@ impl<T: FrameHandler + Clone> FrameHandler for DnstapFrameHandler<T> {
                         emit!(SocketEventsReceived {
                             mode: SocketMode::Tcp,
                             byte_size: otel_log.estimated_json_encoded_size_of(),
-                            count: 1
-                        });
-                    }
-                    Event::Log(log_event) => {
-                        if let Some(tls_client_metadata) = &self.tls_client_metadata {
-                            self.log_namespace.insert_source_metadata(
-                                super::DnstapConfig::NAME,
-                                log_event,
-                                self.tls_client_metadata_key
-                                    .as_ref()
-                                    .map(LegacyKey::Overwrite),
-                                path!("tls_client_metadata"),
-                                tls_client_metadata.clone(),
-                            );
-                        }
-
-                        emit!(SocketEventsReceived {
-                            mode: SocketMode::Tcp,
-                            byte_size: log_event.estimated_json_encoded_size_of(),
                             count: 1
                         });
                     }

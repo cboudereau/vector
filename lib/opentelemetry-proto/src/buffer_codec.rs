@@ -81,29 +81,17 @@ impl OtlpCodec for VectorOtlpCodec {
 fn event_array_to_batch(array: &EventArray) -> OtlpBufferBatch {
     match array {
         EventArray::Logs(logs) => OtlpBufferBatch {
-            logs: Some(logs_to_export(logs)),
+            logs: Some(otel_logs_to_export(logs)),
             ..Default::default()
         },
         EventArray::Metrics(metrics) => OtlpBufferBatch {
-            metrics: Some(metrics_to_export(metrics)),
+            metrics: Some(otel_metrics_to_export(metrics)),
             ..Default::default()
         },
         EventArray::Traces(traces) => OtlpBufferBatch {
-            traces: Some(traces_to_export(traces)),
+            traces: Some(otel_spans_to_export(traces)),
             ..Default::default()
         },
-        EventArray::OtelLogs(otel_logs) => OtlpBufferBatch {
-            logs: Some(otel_logs_to_export(otel_logs)),
-            ..Default::default()
-        },
-        EventArray::OtelMetrics(otel_metrics) => OtlpBufferBatch {
-            metrics: Some(otel_metrics_to_export(otel_metrics)),
-            ..Default::default()
-        },
-        EventArray::OtelSpans(otel_spans) => OtlpBufferBatch {
-            traces: Some(otel_spans_to_export(otel_spans)),
-            ..Default::default()
-        }
     }
 }
 
@@ -192,7 +180,8 @@ fn otel_spans_to_export(otel_spans: &OtelSpanArray) -> ExportTraceServiceRequest
 
 // --- Logs -------------------------------------------------------------------
 
-fn logs_to_export(logs: &LogArray) -> ExportLogsServiceRequest {
+#[allow(dead_code)]
+fn logs_to_export(logs: &[vector_core::event::LogEvent]) -> ExportLogsServiceRequest {
     ExportLogsServiceRequest {
         resource_logs: logs.iter().map(log_event_to_resource_logs).collect(),
     }
@@ -277,7 +266,8 @@ pub fn log_event_to_log_record(log: &vector_core::event::LogEvent) -> LogRecord 
 
 // --- Metrics ----------------------------------------------------------------
 
-fn metrics_to_export(metrics: &MetricArray) -> ExportMetricsServiceRequest {
+#[allow(dead_code)]
+fn metrics_to_export(metrics: &[vector_core::event::Metric]) -> ExportMetricsServiceRequest {
     use crate::proto::metrics::v1::{ResourceMetrics, ScopeMetrics};
 
     let otel_metrics: Vec<crate::proto::metrics::v1::Metric> = metrics
@@ -300,7 +290,8 @@ fn metrics_to_export(metrics: &MetricArray) -> ExportMetricsServiceRequest {
 
 // --- Traces -----------------------------------------------------------------
 
-fn traces_to_export(traces: &TraceArray) -> ExportTraceServiceRequest {
+#[allow(dead_code)]
+fn traces_to_export(traces: &[vector_core::event::TraceEvent]) -> ExportTraceServiceRequest {
     ExportTraceServiceRequest {
         resource_spans: traces.iter().map(trace_event_to_resource_spans).collect(),
     }
@@ -456,7 +447,7 @@ fn batch_to_event_array(batch: OtlpBufferBatch) -> EventArray {
             .into_iter()
             .flat_map(|rm| {
                 rm.into_event_iter()
-                    .filter_map(|e| e.try_into_metric())
+                    .filter_map(|e| e.try_into_otel_metric())
             })
             .collect();
         EventArray::Metrics(metrics)
@@ -712,8 +703,8 @@ mod tests {
             EventArray::Logs(logs) => {
                 assert_eq!(logs.len(), 1);
                 assert_eq!(
-                    logs[0].value(),
-                    &Value::from("hello otlp")
+                    logs[0].body_string(),
+                    "hello otlp"
                 );
             }
             other => panic!("expected Logs, got {other:?}"),

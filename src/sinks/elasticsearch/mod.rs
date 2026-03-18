@@ -27,7 +27,7 @@ use vector_lib::{
 };
 
 use crate::{
-    event::{EventRef, LogEvent},
+    event::LogEvent,
     internal_events::TemplateRenderingError,
     template::{Template, TemplateParseError},
 };
@@ -203,7 +203,7 @@ impl ElasticsearchCommonMode {
                 template_fallback_index,
                 ..
             } => index
-                .render_string(log)
+                .render_string_from_log(log)
                 .or_else(|error| {
                     if let Some(fallback) = template_fallback_index {
                         emit!(TemplateRenderingError {
@@ -226,13 +226,13 @@ impl ElasticsearchCommonMode {
         }
     }
 
-    fn bulk_action<'a>(&self, event: impl Into<EventRef<'a>>) -> Option<BulkAction> {
+    fn bulk_action(&self, log: &LogEvent) -> Option<BulkAction> {
         match self {
             ElasticsearchCommonMode::Bulk {
                 action: bulk_action_template,
                 ..
             } => bulk_action_template
-                .render_string(event)
+                .render_string_from_log(log)
                 .map_err(|error| {
                     emit!(TemplateRenderingError {
                         error,
@@ -242,18 +242,17 @@ impl ElasticsearchCommonMode {
                 })
                 .ok()
                 .and_then(|value| BulkAction::try_from(value.as_str()).ok()),
-            // avoid the interpolation
             ElasticsearchCommonMode::DataStream(_) => Some(BulkAction::Create),
         }
     }
 
-    fn version<'a>(&self, event: impl Into<EventRef<'a>>) -> Option<u64> {
+    fn version(&self, log: &LogEvent) -> Option<u64> {
         match self {
             ElasticsearchCommonMode::Bulk {
                 version: Some(version),
                 ..
             } => version
-                .render_string(event)
+                .render_string_from_log(log)
                 .map_err(|error| {
                     emit!(TemplateRenderingError {
                         error,

@@ -15,7 +15,7 @@ use vector_lib::{
 
 use crate::{
     config::log_schema,
-    event::{EventRef, Metric, Value},
+    event::{EventRef, LogEvent, Metric, OtelLog, OtelMetric},
 };
 
 static RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\{\{(?P<key>[^\}]+)\}\}").unwrap());
@@ -174,16 +174,22 @@ impl Template {
         }
     }
 
-    fn render_event(&self, event: EventRef<'_>) -> Result<String, TemplateRenderingError> {
-        let projected;
-        let event = match event {
-            EventRef::OtelLog(otel) => {
-                projected = otel.to_log_event();
-                EventRef::Log(&projected)
-            }
-            other => other,
-        };
+    /// Renders the given template with data from a legacy `LogEvent`.
+    pub fn render_string_from_log(&self, log: &LogEvent) -> Result<String, TemplateRenderingError> {
+        let otel = OtelLog::from_log_event(log.clone());
+        self.render_string(&otel)
+    }
 
+    /// Renders the given template with data from a legacy `Metric`.
+    pub fn render_string_from_metric(
+        &self,
+        metric: &Metric,
+    ) -> Result<String, TemplateRenderingError> {
+        let otel = OtelMetric::from_legacy_metric(metric.clone());
+        self.render_string(&otel)
+    }
+
+    fn render_event(&self, event: EventRef<'_>) -> Result<String, TemplateRenderingError> {
         let mut missing_keys = Vec::new();
         let mut out = String::with_capacity(self.reserve_size);
         for part in &self.parts {
@@ -193,28 +199,23 @@ impl Template {
                     out.push_str(&render_timestamp(items, event, self.tz_offset))
                 }
                 Part::Reference(key) => {
-                    out.push_str(
-                        &match event {
-                            EventRef::Log(log) => log
-                                .parse_path_and_get_value(key)
-                                .ok()
-                                .and_then(|v| v.map(Value::to_string_lossy)),
-                            EventRef::Metric(metric) => {
-                                render_metric_field(key, metric).map(Cow::Borrowed)
-                            }
-                            EventRef::Trace(trace) => trace
-                                .parse_path_and_get_value(key)
-                                .ok()
-                                .and_then(|v| v.map(Value::to_string_lossy)),
-                            EventRef::OtelLog(_)
-                            | EventRef::OtelMetric(_)
-                            | EventRef::OtelSpan(_) => None,
+                    let resolved: Option<String> = match event {
+                        EventRef::Log(log) => log
+                            .parse_path_and_get_value(key)
+                            .ok()
+                            .and_then(|v| v.map(|val| val.to_string_lossy().into_owned())),
+                        EventRef::Metric(metric) => {
+                            render_metric_field(key, metric).map(|s| s.to_owned())
                         }
-                        .unwrap_or_else(|| {
-                            missing_keys.push(key.to_owned());
-                            Cow::Borrowed("")
-                        }),
-                    );
+                        EventRef::Trace(trace) => trace
+                            .parse_path_and_get_value(key)
+                            .ok()
+                            .and_then(|v| v.map(|val| val.to_string_lossy().into_owned())),
+                    };
+                    match resolved {
+                        Some(s) => out.push_str(&s),
+                        None => missing_keys.push(key.to_owned()),
+                    }
                 }
             }
         }
@@ -425,28 +426,23 @@ impl UnsignedIntTemplate {
             match part {
                 Part::Literal(lit) => out.push_str(lit),
                 Part::Reference(key) => {
-                    out.push_str(
-                        &match event {
-                            EventRef::Log(log) => log
-                                .parse_path_and_get_value(key)
-                                .ok()
-                                .and_then(|v| v.map(Value::to_string_lossy)),
-                            EventRef::Metric(metric) => {
-                                render_metric_field(key, metric).map(Cow::Borrowed)
-                            }
-                            EventRef::Trace(trace) => trace
-                                .parse_path_and_get_value(key)
-                                .ok()
-                                .and_then(|v| v.map(Value::to_string_lossy)),
-                            EventRef::OtelLog(_)
-                            | EventRef::OtelMetric(_)
-                            | EventRef::OtelSpan(_) => None,
+                    let resolved: Option<String> = match event {
+                        EventRef::Log(log) => log
+                            .parse_path_and_get_value(key)
+                            .ok()
+                            .and_then(|v| v.map(|val| val.to_string_lossy().into_owned())),
+                        EventRef::Metric(metric) => {
+                            render_metric_field(key, metric).map(|s| s.to_owned())
                         }
-                        .unwrap_or_else(|| {
-                            missing_keys.push(key.to_owned());
-                            Cow::Borrowed("")
-                        }),
-                    );
+                        EventRef::Trace(trace) => trace
+                            .parse_path_and_get_value(key)
+                            .ok()
+                            .and_then(|v| v.map(|val| val.to_string_lossy().into_owned())),
+                    };
+                    match resolved {
+                        Some(s) => out.push_str(&s),
+                        None => missing_keys.push(key.to_owned()),
+                    }
                 }
                 Part::Strftime(items) => {
                     out.push_str(&render_timestamp(items, event, self.tz_offset))
@@ -587,11 +583,15 @@ fn parse_template(src: &str) -> Result<Vec<Part>, TemplateParseError> {
     Ok(parts)
 }
 
-fn render_metric_field<'a>(key: &str, metric: &'a Metric) -> Option<&'a str> {
+fn render_metric_field(key: &str, metric: &OtelMetric) -> Option<String> {
+    let legacy = metric.clone().to_legacy_metric();
     match key {
-        "name" => Some(metric.name()),
-        "namespace" => metric.namespace(),
-        _ if key.starts_with("tags.") => metric.tags().and_then(|tags| tags.get(&key[5..])),
+        "name" => Some(legacy.name().to_owned()),
+        "namespace" => legacy.namespace().map(|s| s.to_owned()),
+        _ if key.starts_with("tags.") => legacy
+            .tags()
+            .and_then(|tags| tags.get(&key[5..]))
+            .map(|s| s.to_owned()),
         _ => None,
     }
 }
@@ -602,19 +602,17 @@ fn render_timestamp(
     tz_offset: Option<FixedOffset>,
 ) -> String {
     let timestamp = match event {
-        EventRef::Log(log) => log.get_timestamp().and_then(Value::as_timestamp).copied(),
+        EventRef::Log(log) => log
+            .get_timestamp()
+            .and_then(|v| v.as_timestamp().copied()),
         EventRef::Metric(metric) => metric.timestamp(),
-        EventRef::Trace(trace) => {
-            log_schema()
-                .timestamp_key_target_path()
-                .and_then(|timestamp_key| {
-                    trace
-                        .get(timestamp_key)
-                        .and_then(Value::as_timestamp)
-                        .copied()
-                })
-        }
-        EventRef::OtelLog(_) | EventRef::OtelMetric(_) | EventRef::OtelSpan(_) => None,
+        EventRef::Trace(trace) => log_schema()
+            .timestamp_key_target_path()
+            .and_then(|timestamp_key| {
+                trace
+                    .get(timestamp_key)
+                    .and_then(|v| v.as_timestamp().copied())
+            }),
     }
     .unwrap_or_else(Utc::now);
 
@@ -635,11 +633,10 @@ mod tests {
     use chrono::{Offset, TimeZone, Utc};
     use chrono_tz::Tz;
     use vector_lib::{
-        config::LogNamespace,
         lookup::{PathPrefix, metadata_path},
         metric_tags,
     };
-    use vrl::event_path;
+    use vrl::{event_path, path};
 
     use super::*;
     use crate::event::{Event, LogEvent, MetricKind, MetricValue};
@@ -690,7 +687,7 @@ mod tests {
 
     #[test]
     fn render_log_static() {
-        let event = Event::Log(LogEvent::from("hello world"));
+        let event = Event::from(LogEvent::from("hello world"));
         let template = Template::try_from("foo").unwrap();
 
         assert_eq!(Ok(Bytes::from("foo")), template.render(&event))
@@ -698,7 +695,7 @@ mod tests {
 
     #[test]
     fn render_log_unsigned_number() {
-        let event = Event::Log(LogEvent::from("hello world"));
+        let event = Event::from(LogEvent::from("hello world"));
         let template = UnsignedIntTemplate::from(123);
 
         assert_eq!(Ok(123), template.render(&event))
@@ -706,7 +703,7 @@ mod tests {
 
     #[test]
     fn render_log_unsigned_number_dynamic() {
-        let mut event = Event::Log(LogEvent::from("hello world"));
+        let mut event = Event::from(LogEvent::from("hello world"));
         event.as_mut_log().insert("foo", 123);
 
         let template = UnsignedIntTemplate::try_from("{{ foo }}").unwrap();
@@ -715,7 +712,7 @@ mod tests {
 
     #[test]
     fn render_log_dynamic() {
-        let mut event = Event::Log(LogEvent::from("hello world"));
+        let mut event = Event::from(LogEvent::from("hello world"));
         event.as_mut_log().insert("log_stream", "stream");
         let template = Template::try_from("{{log_stream}}").unwrap();
 
@@ -724,7 +721,7 @@ mod tests {
 
     #[test]
     fn render_log_metadata() {
-        let mut event = Event::Log(LogEvent::from("hello world"));
+        let mut event = Event::from(LogEvent::from("hello world"));
         event
             .as_mut_log()
             .insert(metadata_path!("metadata_key"), "metadata_value");
@@ -735,7 +732,7 @@ mod tests {
 
     #[test]
     fn render_log_dynamic_with_prefix() {
-        let mut event = Event::Log(LogEvent::from("hello world"));
+        let mut event = Event::from(LogEvent::from("hello world"));
         event.as_mut_log().insert("log_stream", "stream");
         let template = Template::try_from("abcd-{{log_stream}}").unwrap();
 
@@ -744,7 +741,7 @@ mod tests {
 
     #[test]
     fn render_log_dynamic_with_postfix() {
-        let mut event = Event::Log(LogEvent::from("hello world"));
+        let mut event = Event::from(LogEvent::from("hello world"));
         event.as_mut_log().insert("log_stream", "stream");
         let template = Template::try_from("{{log_stream}}-abcd").unwrap();
 
@@ -753,7 +750,7 @@ mod tests {
 
     #[test]
     fn render_log_dynamic_missing_key() {
-        let event = Event::Log(LogEvent::from("hello world"));
+        let event = Event::from(LogEvent::from("hello world"));
         let template = Template::try_from("{{log_stream}}-{{foo}}").unwrap();
 
         assert_eq!(
@@ -766,7 +763,7 @@ mod tests {
 
     #[test]
     fn render_log_dynamic_multiple_keys() {
-        let mut event = Event::Log(LogEvent::from("hello world"));
+        let mut event = Event::from(LogEvent::from("hello world"));
         event.as_mut_log().insert("foo", "bar");
         event.as_mut_log().insert("baz", "quux");
         let template = Template::try_from("stream-{{foo}}-{{baz}}.log").unwrap();
@@ -779,7 +776,7 @@ mod tests {
 
     #[test]
     fn render_log_dynamic_weird_junk() {
-        let mut event = Event::Log(LogEvent::from("hello world"));
+        let mut event = Event::from(LogEvent::from("hello world"));
         event.as_mut_log().insert("foo", "bar");
         event.as_mut_log().insert("baz", "quux");
         let template = Template::try_from(r"{stream}{\{{}}}-{{foo}}-{{baz}}.log").unwrap();
@@ -797,7 +794,7 @@ mod tests {
             .single()
             .expect("invalid timestamp");
 
-        let mut event = Event::Log(LogEvent::from("hello world"));
+        let mut event = Event::from(LogEvent::from("hello world"));
         event
             .as_mut_log()
             .insert(log_schema().timestamp_key_target_path().unwrap(), ts);
@@ -814,10 +811,10 @@ mod tests {
             .single()
             .expect("invalid timestamp");
 
-        let mut event = Event::Log(LogEvent::from("hello world"));
+        let mut event = Event::from(LogEvent::from("hello world"));
         event.as_mut_log().insert("@timestamp", ts);
         // use Vector namespace instead of legacy
-        LogNamespace::Vector.insert_vector_metadata(event.as_mut_log(), Some("foo"), "foo", "bar");
+        event.as_mut_log().metadata_mut().value_mut().insert(path!("vector", "foo"), "bar");
         let new_schema = event
             .as_mut_log()
             .metadata()
@@ -842,7 +839,7 @@ mod tests {
             .single()
             .expect("invalid timestamp");
 
-        let mut event = Event::Log(LogEvent::from("hello world"));
+        let mut event = Event::from(LogEvent::from("hello world"));
         event
             .as_mut_log()
             .insert(log_schema().timestamp_key_target_path().unwrap(), ts);
@@ -862,7 +859,7 @@ mod tests {
             .single()
             .expect("invalid timestamp");
 
-        let mut event = Event::Log(LogEvent::from("hello world"));
+        let mut event = Event::from(LogEvent::from("hello world"));
         event.as_mut_log().insert("foo", "butts");
         event.as_mut_log().insert(
             (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
@@ -884,7 +881,7 @@ mod tests {
             .single()
             .expect("invalid timestamp");
 
-        let mut event = Event::Log(LogEvent::from("hello world"));
+        let mut event = Event::from(LogEvent::from("hello world"));
         event.as_mut_log().insert("format", "%F");
         event.as_mut_log().insert(
             (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
@@ -906,7 +903,7 @@ mod tests {
             .single()
             .expect("invalid timestamp");
 
-        let mut event = Event::Log(LogEvent::from("hello world"));
+        let mut event = Event::from(LogEvent::from("hello world"));
         event.as_mut_log().insert("\"%F\"", "foo");
         event.as_mut_log().insert(
             (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
@@ -934,10 +931,20 @@ mod tests {
     #[test]
     fn render_metric_with_tags() {
         let template = Template::try_from("name={{name}} component={{tags.component}}").unwrap();
-        let metric = sample_metric().with_tags(Some(metric_tags!(
+        let metric = Event::from(Metric::new(
+            "a-counter",
+            MetricKind::Absolute,
+            MetricValue::Counter { value: 1.1 },
+        )
+        .with_timestamp(Some(
+            Utc.with_ymd_and_hms(2002, 3, 4, 5, 6, 7)
+                .single()
+                .expect("invalid timestamp"),
+        ))
+        .with_tags(Some(metric_tags!(
             "test" => "true",
             "component" => "template",
-        )));
+        ))));
         assert_eq!(
             Ok(Bytes::from("name=a-counter component=template")),
             template.render(&metric)
@@ -958,7 +965,17 @@ mod tests {
     #[test]
     fn render_metric_with_namespace() {
         let template = Template::try_from("namespace={{namespace}} name={{name}}").unwrap();
-        let metric = sample_metric().with_namespace(Some("vector-test"));
+        let metric = Event::from(Metric::new(
+            "a-counter",
+            MetricKind::Absolute,
+            MetricValue::Counter { value: 1.1 },
+        )
+        .with_timestamp(Some(
+            Utc.with_ymd_and_hms(2002, 3, 4, 5, 6, 7)
+                .single()
+                .expect("invalid timestamp"),
+        ))
+        .with_namespace(Some("vector-test")));
         assert_eq!(
             Ok(Bytes::from("namespace=vector-test name=a-counter")),
             template.render(&metric)
@@ -982,7 +999,7 @@ mod tests {
         let ts = Utc.with_ymd_and_hms(2001, 2, 3, 4, 5, 6).unwrap();
 
         let template = Template::try_from("vector-%Y-%m-%d-%H.log").unwrap();
-        let mut event = Event::Log(LogEvent::from("hello world"));
+        let mut event = Event::from(LogEvent::from("hello world"));
         event.as_mut_log().insert(
             (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
             ts,
@@ -1001,7 +1018,7 @@ mod tests {
         let ts = Utc.with_ymd_and_hms(2001, 2, 3, 4, 5, 6).unwrap();
 
         let template = UnsignedIntTemplate::try_from("%Y%m%d%H").unwrap();
-        let mut event = Event::Log(LogEvent::from("hello world"));
+        let mut event = Event::from(LogEvent::from("hello world"));
         event.as_mut_log().insert(event_path!("timestamp"), ts);
 
         let tz: Tz = "Asia/Singapore".parse().unwrap();
@@ -1013,8 +1030,8 @@ mod tests {
         );
     }
 
-    fn sample_metric() -> Metric {
-        Metric::new(
+    fn sample_metric() -> Event {
+        Event::from(Metric::new(
             "a-counter",
             MetricKind::Absolute,
             MetricValue::Counter { value: 1.1 },
@@ -1023,7 +1040,7 @@ mod tests {
             Utc.with_ymd_and_hms(2002, 3, 4, 5, 6, 7)
                 .single()
                 .expect("invalid timestamp"),
-        ))
+        )))
     }
 
     #[test]
@@ -1039,7 +1056,7 @@ mod tests {
         let template = UnsignedIntTemplate::try_from("a-%s").unwrap();
         let ts = Utc.with_ymd_and_hms(2001, 2, 3, 4, 5, 6).unwrap();
 
-        let mut event = Event::Log(LogEvent::from("hello world"));
+        let mut event = Event::from(LogEvent::from("hello world"));
         event.as_mut_log().insert(event_path!("timestamp"), ts);
 
         assert_eq!(

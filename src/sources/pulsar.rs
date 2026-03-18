@@ -31,7 +31,7 @@ use vector_lib::{
     sensitive_string::SensitiveString,
     shutdown::ShutdownSignal,
 };
-use vrl::{owned_value_path, path, value::Kind};
+use vrl::{owned_value_path, value::Kind};
 
 use crate::{
     SourceSender,
@@ -379,7 +379,7 @@ async fn parse_message(
     finalizer: &Option<OrderedFinalizer<FinalizerEntry>>,
     out: &mut SourceSender,
     consumer: &mut Consumer<String, TokioExecutor>,
-    log_namespace: LogNamespace,
+    _log_namespace: LogNamespace,
     events_received: &Registered<EventsReceived>,
     pulsar_error_events: &Registered<PulsarErrorEvent>,
 ) {
@@ -402,7 +402,7 @@ async fn parse_message(
                     let now = chrono::Utc::now();
 
                     let events = events.into_iter().map(|mut event| {
-                        if let Event::OtelLog(ref mut otel_log) = event {
+                        if let Event::Log(ref mut otel_log) = event {
                             otel_log.set_source_metadata(PulsarSourceConfig::NAME, now);
                             if let Some(pt) = publish_time {
                                 otel_log.set_attribute(
@@ -417,36 +417,6 @@ async fn parse_message(
                             otel_log.set_attribute(
                                 "producer_name".to_string(),
                                 string_value(producer_name.clone()),
-                            );
-                        } else if let Event::Log(ref mut log) = event {
-                            log_namespace.insert_standard_vector_source_metadata(
-                                log,
-                                PulsarSourceConfig::NAME,
-                                now,
-                            );
-
-                            log_namespace.insert_source_metadata(
-                                PulsarSourceConfig::NAME,
-                                log,
-                                Some(LegacyKey::InsertIfEmpty(path!("publish_time"))),
-                                path!("publish_time"),
-                                publish_time,
-                            );
-
-                            log_namespace.insert_source_metadata(
-                                PulsarSourceConfig::NAME,
-                                log,
-                                Some(LegacyKey::InsertIfEmpty(path!("topic"))),
-                                path!("topic"),
-                                topic.clone(),
-                            );
-
-                            log_namespace.insert_source_metadata(
-                                PulsarSourceConfig::NAME,
-                                log,
-                                Some(LegacyKey::InsertIfEmpty(path!("producer_name"))),
-                                path!("producer_name"),
-                                producer_name.clone(),
                             );
                         }
                         event

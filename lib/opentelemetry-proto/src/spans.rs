@@ -62,7 +62,7 @@ impl ResourceSpans {
                 let resource = resource.clone();
                 scope_spans.spans.into_iter().map(move |span| {
                     let otel_span = proto_convert_span(span);
-                    Event::OtelSpan(OtelSpan::from_parts(
+                    Event::Trace(OtelSpan::from_parts(
                         otel_span,
                         resource.clone(),
                         scope.clone(),
@@ -273,12 +273,12 @@ mod tests {
         let trace = events.into_iter().next().unwrap().into_trace();
         assert_eq!(
             trace.get(event_path!(SCOPE_KEY, SCOPE_NAME_KEY)),
-            Some(&vrl::value::Value::from("my-library")),
+            Some(vrl::value::Value::from("my-library")),
             "scope.name must be stored on the TraceEvent"
         );
         assert_eq!(
             trace.get(event_path!(SCOPE_KEY, SCOPE_VERSION_KEY)),
-            Some(&vrl::value::Value::from("1.2.3")),
+            Some(vrl::value::Value::from("1.2.3")),
             "scope.version must be stored on the TraceEvent"
         );
         let attrs = trace

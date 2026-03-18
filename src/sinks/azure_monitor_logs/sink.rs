@@ -109,10 +109,6 @@ impl crate::sinks::util::encoding::Encoder<Vec<Event>> for JsonEncoding {
         writer: &mut dyn io::Write,
     ) -> io::Result<(usize, GroupedCountByteSize)> {
         for event in input.iter_mut() {
-            if matches!(event, Event::OtelLog(_)) {
-                let owned = std::mem::replace(event, Event::Log(LogEvent::default()));
-                *event = Event::Log(owned.into_log_coerce());
-            }
             let log = event.as_mut_log();
 
             // `.remove_timestamp()` will return the `timestamp` value regardless of location in Event or

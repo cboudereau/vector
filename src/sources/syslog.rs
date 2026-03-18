@@ -14,13 +14,12 @@ use vector_lib::{
         BytesDecoder, OctetCountingDecoder, SyslogDeserializerConfig,
         decoding::{Deserializer, Framer},
     },
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     configurable::configurable_component,
     internal_event::{ByteSize, BytesReceived, InternalEventHandle as _, Protocol},
     ipallowlist::IpAllowlistConfig,
-    lookup::{OwnedValuePath, lookup_v2::OptionalValuePath, path},
+    lookup::{OwnedValuePath, lookup_v2::OptionalValuePath},
 };
-use vrl::event_path;
 
 #[cfg(unix)]
 use crate::sources::util::build_unix_stream_source;
@@ -413,11 +412,11 @@ fn handle_events(
 
 fn enrich_syslog_event(
     event: &mut Event,
-    host_key: &Option<OwnedValuePath>,
+    _host_key: &Option<OwnedValuePath>,
     default_host: Option<Bytes>,
-    log_namespace: LogNamespace,
+    _log_namespace: LogNamespace,
 ) {
-    if let Event::OtelLog(otel_log) = event {
+    if let Event::Log(otel_log) = event {
         let now = Utc::now();
         otel_log.set_source_metadata(SyslogConfig::NAME, now);
         if let Some(ref host) = default_host {
@@ -429,42 +428,6 @@ fn enrich_syslog_event(
                 "host.name".to_string(),
                 string_value(String::from_utf8_lossy(host).into_owned()),
             );
-        }
-    } else if let Event::Log(log) = event {
-        if let Some(default_host) = &default_host {
-            log_namespace.insert_source_metadata(
-                SyslogConfig::NAME,
-                log,
-                Some(LegacyKey::Overwrite(path!("source_ip"))),
-                path!("source_ip"),
-                default_host.clone(),
-            );
-        }
-
-        let parsed_hostname = log
-            .get(event_path!("hostname"))
-            .map(|hostname| hostname.coerce_to_bytes());
-
-        if let Some(parsed_host) = parsed_hostname.or(default_host) {
-            let legacy_host_key = host_key.as_ref().map(LegacyKey::Overwrite);
-
-            log_namespace.insert_source_metadata(
-                SyslogConfig::NAME,
-                log,
-                legacy_host_key,
-                path!("host"),
-                parsed_host,
-            );
-        }
-
-        log_namespace.insert_standard_vector_source_metadata(log, SyslogConfig::NAME, Utc::now());
-
-        if log_namespace == LogNamespace::Legacy {
-            let timestamp = log
-                .get(event_path!("timestamp"))
-                .and_then(|timestamp| timestamp.as_timestamp().cloned())
-                .unwrap_or_else(Utc::now);
-            log.maybe_insert(log_schema().timestamp_key_target_path(), timestamp);
         }
     }
 
@@ -836,7 +799,7 @@ mod test {
             msg
         );
 
-        let mut expected = Event::Log(LogEvent::from(msg));
+        let mut expected = Event::from(LogEvent::from(msg));
 
         {
             let expected = expected.as_mut_log();
@@ -887,7 +850,7 @@ mod test {
             r"[incorrect x]", msg
         );
 
-        let mut expected = Event::Log(LogEvent::from(msg));
+        let mut expected = Event::from(LogEvent::from(msg));
         {
             let expected = expected.as_mut_log();
             expected.insert(
@@ -1008,7 +971,7 @@ mod test {
             event_from_bytes("host", None, raw.to_owned().into(), LogNamespace::Legacy).unwrap();
         assert_eq!(
             event.as_log().get(r#"origin."foo.bar""#),
-            Some(&Value::from("baz"))
+            Some(Value::from("baz"))
         );
     }
 
@@ -1024,7 +987,7 @@ mod test {
         )
         .unwrap();
 
-        let mut expected = Event::Log(LogEvent::from(msg));
+        let mut expected = Event::from(LogEvent::from(msg));
         {
             let value = event.as_log().get("timestamp").unwrap();
             let year = value.as_timestamp().unwrap().naive_local().year();
@@ -1073,7 +1036,7 @@ mod test {
         )
         .unwrap();
 
-        let mut expected = Event::Log(LogEvent::from(msg));
+        let mut expected = Event::from(LogEvent::from(msg));
         {
             let value = event.as_log().get("timestamp").unwrap();
             let year = value.as_timestamp().unwrap().naive_local().year();
@@ -1114,7 +1077,7 @@ mod test {
             r#"<190>2019-02-13T21:53:30.605850+00:00 74794bfb6795 liblogging-stdlog:  [origin software="rsyslogd" swVersion="8.24.0" x-pid="9043" x-info="http://www.rsyslog.com"] {msg}"#
         );
 
-        let mut expected = Event::Log(LogEvent::from(msg));
+        let mut expected = Event::from(LogEvent::from(msg));
         {
             let expected = expected.as_mut_log();
             expected.insert(
@@ -1500,7 +1463,8 @@ mod test {
 
     impl From<Event> for SyslogMessageRfc5424 {
         fn from(e: Event) -> Self {
-            let (value, _) = e.into_log().into_parts();
+            let log_event = e.into_log().to_log_event();
+            let (value, _) = log_event.into_parts();
             let mut fields = value.into_object().unwrap();
 
             Self {
@@ -1508,17 +1472,17 @@ mod test {
                 severity: fields
                     .remove("severity")
                     .map(value_to_string)
-                    .and_then(|s| Severity::from_str(s.as_str()))
+                    .and_then(|s: String| Severity::from_str(s.as_str()))
                     .unwrap(),
                 facility: fields
                     .remove("facility")
                     .map(value_to_string)
-                    .and_then(|s| Facility::from_str(s.as_str()))
+                    .and_then(|s: String| Facility::from_str(s.as_str()))
                     .unwrap(),
                 version: fields
                     .remove("version")
                     .map(value_to_string)
-                    .map(|s| u8::from_str(s.as_str()).unwrap())
+                    .map(|s: String| u8::from_str(s.as_str()).unwrap())
                     .unwrap(),
                 timestamp: fields.remove("timestamp").map(value_to_string).unwrap(),
                 host: fields.remove("host").map(value_to_string).unwrap(),
@@ -1527,7 +1491,7 @@ mod test {
                 procid: fields
                     .remove("procid")
                     .map(value_to_string)
-                    .map(|s| usize::from_str(s.as_str()).unwrap())
+                    .map(|s: String| usize::from_str(s.as_str()).unwrap())
                     .unwrap(),
                 message: fields.remove("message").map(value_to_string).unwrap(),
                 structured_data: structured_data_from_fields(fields),

@@ -295,7 +295,7 @@ impl Memory {
             memory: self.clone(),
             shutdown,
             out,
-            log_namespace,
+            _log_namespace: log_namespace,
         }
     }
 }
@@ -417,7 +417,7 @@ impl StreamSink<Event> for Memory {
 
                     let finalizers = event.take_finalizers();
 
-                    let log = event.into_log_coerce();
+                    let log = event.into_log_coerce().to_log_event();
 
                     if let (Value::Object(map), _) = log.into_parts() {
                         self.handle_value(map)
@@ -452,7 +452,7 @@ mod tests {
     use tokio::time;
 
     use vector_lib::{
-        event::{EventContainer, MetricValue},
+        event::MetricValue,
         lookup::lookup_v2::OptionalValuePath,
         metrics::Controller,
         sink::VectorSink,
@@ -786,7 +786,7 @@ mod tests {
 
     #[tokio::test]
     async fn sink_spec_compliance() {
-        let event = Event::Log(LogEvent::from(ObjectMap::from([(
+        let event = Event::from(LogEvent::from(ObjectMap::from([(
             "test_key".into(),
             Value::from(5),
         )])));
@@ -803,7 +803,7 @@ mod tests {
 
     #[tokio::test]
     async fn flush_metrics_without_interval() {
-        let event = Event::Log(LogEvent::from(ObjectMap::from([(
+        let event = Event::from(LogEvent::from(ObjectMap::from([(
             "test_key".into(),
             Value::from(5),
         )])));
@@ -867,12 +867,12 @@ mod tests {
         assert_eq!(*insertions_count, 1.0);
         assert_eq!(*flushes_count, 1.0);
         assert_eq!(*object_count, 1.0);
-        assert!(!byte_size_gauge.is_empty());
+        assert!(!byte_size_gauge.value().is_empty());
     }
 
     #[tokio::test]
     async fn flush_metrics_with_interval() {
-        let event = Event::Log(LogEvent::from(ObjectMap::from([(
+        let event = Event::from(LogEvent::from(ObjectMap::from([(
             "test_key".into(),
             Value::from(5),
         )])));
@@ -945,12 +945,12 @@ mod tests {
         // One is done right away and the next one after the interval
         assert_eq!(*flushes_count, 2.0);
         assert_eq!(*object_count, 1.0);
-        assert!(!byte_size_gauge.is_empty());
+        assert!(!byte_size_gauge.value().is_empty());
     }
 
     #[tokio::test]
     async fn flush_metrics_with_key() {
-        let event = Event::Log(LogEvent::from(ObjectMap::from([(
+        let event = Event::from(LogEvent::from(ObjectMap::from([(
             "test_key".into(),
             Value::from(5),
         )])));
@@ -982,7 +982,7 @@ mod tests {
 
     #[tokio::test]
     async fn flush_metrics_without_key() {
-        let event = Event::Log(LogEvent::from(ObjectMap::from([(
+        let event = Event::from(LogEvent::from(ObjectMap::from([(
             "test_key".into(),
             Value::from(5),
         )])));

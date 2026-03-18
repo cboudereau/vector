@@ -7,7 +7,7 @@ use tokio_stream::wrappers::IntervalStream;
 use vector_lib::{
     ByteSizeOf, EstimatedJsonEncodedSizeOf,
     config::LogNamespace,
-    event::{Event, EventMetadata, LogEvent},
+    event::{Event, EventMetadata, LogEvent, OtelLog},
     internal_event::{
         ByteSize, BytesReceived, BytesReceivedHandle, CountByteSize, EventsReceived,
         EventsReceivedHandle, InternalEventHandle, Protocol,
@@ -29,7 +29,7 @@ pub(crate) struct MemorySource {
     pub(super) memory: Memory,
     pub(super) shutdown: ShutdownSignal,
     pub(super) out: SourceSender,
-    pub(super) log_namespace: LogNamespace,
+    pub(super) _log_namespace: LogNamespace,
 }
 
 impl MemorySource {
@@ -102,16 +102,14 @@ impl MemorySource {
                             v.get_one().map(|v| (k, v))
                         })
                         .filter_map(|(k, v)| {
-                            let mut event = Event::Log(LogEvent::from_map(
+                            let log_event = LogEvent::from_map(
                                 v.as_object_map(now, k).ok()?,
                                 EventMetadata::default(),
-                            ));
-                            let log = event.as_mut_log();
-                            self.log_namespace.insert_standard_vector_source_metadata(
-                                log,
-                                MemoryConfig::NAME,
-                                utc_now,
                             );
+                            let mut event = Event::Log(OtelLog::from_log_event(log_event));
+                            if let Event::Log(ref mut otel_log) = event {
+                                otel_log.set_source_metadata(MemoryConfig::NAME, utc_now);
+                            }
 
                             Some(event)
                         })
@@ -153,16 +151,14 @@ impl MemorySource {
                      key,
                      entry: expired_event,
                  }| {
-                    let mut event = Event::Log(LogEvent::from_map(
+                    let log_event = LogEvent::from_map(
                         expired_event.as_object_map(now, &key).ok()?,
                         EventMetadata::default(),
-                    ));
-                    let log = event.as_mut_log();
-                    self.log_namespace.insert_standard_vector_source_metadata(
-                        log,
-                        MemoryConfig::NAME,
-                        Utc::now(),
                     );
+                    let mut event = Event::Log(OtelLog::from_log_event(log_event));
+                    if let Event::Log(ref mut otel_log) = event {
+                        otel_log.set_source_metadata(MemoryConfig::NAME, Utc::now());
+                    }
                     Some(event)
                 },
             )

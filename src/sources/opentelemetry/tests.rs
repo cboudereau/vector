@@ -166,7 +166,7 @@ async fn receive_grpc_logs_legacy_namespace() {
         assert_eq!(output.len(), 1);
         let actual_event = output.pop().unwrap();
 
-        // OTel source now always emits Event::OtelLog regardless of namespace
+        // OTel source now always emits Event::Log regardless of namespace
         let otel_log = actual_event.as_otel_log();
         assert_eq!(otel_log.severity_text(), "info");
         assert_eq!(otel_log.severity_number(), 9);
@@ -965,7 +965,7 @@ async fn http_logs_emits_otel_native_events() {
         assert_eq!(output.len(), 1);
         let actual_event = output.pop().unwrap();
 
-        // OTel source now emits Event::OtelLog; header enrichment is not
+        // OTel source now emits Event::Log; header enrichment is not
         // applicable to OTel-native events (headers are a transport concern).
         let otel_log = actual_event.as_otel_log();
         assert_eq!(otel_log.severity_text(), "info");

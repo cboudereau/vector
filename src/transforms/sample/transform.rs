@@ -1,13 +1,10 @@
 use std::{collections::HashMap, fmt};
 
-use vector_lib::{
-    config::LegacyKey,
-    lookup::{OwnedTargetPath, lookup_v2::OptionalValuePath},
-};
+use vector_lib::lookup::lookup_v2::OptionalValuePath;
 
 use crate::{
     conditions::Condition,
-    event::{Event, Value},
+    event::{Event, Value, string_value},
     internal_events::SampleEventDiscarded,
     sinks::prelude::TemplateRenderingError,
     template::Template,
@@ -104,6 +101,7 @@ impl fmt::Display for SampleMode {
 
 #[derive(Clone)]
 pub struct Sample {
+    #[allow(dead_code)]
     name: String,
     rate: SampleMode,
     key_field: Option<String>,
@@ -160,16 +158,21 @@ impl FunctionTransform for Sample {
         };
 
         let value = self.key_field.as_ref().and_then(|key_field| match &event {
-            Event::Log(event) => event
-                .parse_path_and_get_value(key_field.as_str())
-                .ok()
-                .flatten(),
-            Event::Trace(event) => event
-                .parse_path_and_get_value(key_field.as_str())
-                .ok()
-                .flatten(),
-            Event::OtelLog(_) | Event::OtelSpan(_) => None,
-            Event::Metric(_) | Event::OtelMetric(_) => {
+            Event::Log(otel_log) => {
+                let log = otel_log.to_log_event();
+                log.parse_path_and_get_value(key_field.as_str())
+                    .ok()
+                    .flatten()
+                    .cloned()
+            }
+            Event::Trace(otel_span) => {
+                let log = otel_span.to_log_event();
+                log.parse_path_and_get_value(key_field.as_str())
+                    .ok()
+                    .flatten()
+                    .cloned()
+            }
+            Event::Metric(_) => {
                 panic!("component can never receive metric events")
             }
         });
@@ -177,10 +180,9 @@ impl FunctionTransform for Sample {
         // Fetch actual field value if group_by option is set.
         let group_by_key = self.group_by.as_ref().and_then(|group_by| {
             match &event {
-                Event::Log(event) => group_by.render_string(event),
-                Event::Trace(event) => group_by.render_string(event),
-                Event::OtelLog(_) | Event::OtelSpan(_) => Ok(String::new()),
-                Event::Metric(_) | Event::OtelMetric(_) => {
+                Event::Log(otel_log) => group_by.render_string(otel_log),
+                Event::Trace(otel_span) => group_by.render_string(otel_span),
+                Event::Metric(_) => {
                     panic!("component can never receive metric events")
                 }
             }
@@ -194,23 +196,22 @@ impl FunctionTransform for Sample {
             .ok()
         });
 
-        if self.rate.increment(group_by_key, value) {
+        if self.rate.increment(group_by_key, value.as_ref()) {
             if let Some(path) = &self.sample_rate_key.path {
                 match event {
-                    Event::Log(ref mut event) => {
-                        event.namespace().insert_source_metadata(
-                            self.name.as_str(),
-                            event,
-                            Some(LegacyKey::Overwrite(path)),
-                            path,
-                            self.rate.to_string(),
+                    Event::Log(ref mut otel_log) => {
+                        otel_log.set_attribute(
+                            path.to_string(),
+                            string_value(self.rate.to_string()),
                         );
                     }
-                    Event::Trace(ref mut event) => {
-                        event.insert(&OwnedTargetPath::event(path.clone()), self.rate.to_string());
+                    Event::Trace(ref mut otel_span) => {
+                        otel_span.set_attribute(
+                            path.to_string(),
+                            string_value(self.rate.to_string()),
+                        );
                     }
-                    Event::OtelLog(_) | Event::OtelSpan(_) => {}
-                    Event::Metric(_) | Event::OtelMetric(_) => {
+                    Event::Metric(_) => {
                         panic!("component can never receive metric events")
                     }
                 };

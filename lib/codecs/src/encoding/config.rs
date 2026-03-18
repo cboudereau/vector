@@ -109,7 +109,7 @@ impl EncodingConfigWithFraming {
                 SinkType::StreamBased => NewlineDelimitedEncoder::default().into(),
                 SinkType::MessageBased => CharacterDelimitedEncoder::new(b',').into(),
             },
-            (None, Serializer::Avro(_) | Serializer::Native(_)) => {
+            (None, Serializer::Avro(_)) => {
                 LengthDelimitedEncoder::default().into()
             }
             (None, Serializer::Gelf(_)) => {
@@ -127,7 +127,6 @@ impl EncodingConfigWithFraming {
                 Serializer::Cef(_)
                 | Serializer::Csv(_)
                 | Serializer::Logfmt(_)
-                | Serializer::NativeJson(_)
                 | Serializer::RawMessage(_)
                 | Serializer::Text(_),
             ) => NewlineDelimitedEncoder::default().into(),

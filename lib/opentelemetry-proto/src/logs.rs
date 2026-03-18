@@ -56,7 +56,7 @@ impl ResourceLogs {
             let resource = resource.clone();
             scope_log.log_records.into_iter().map(move |log_record| {
                 let otel_record = proto_convert_log_record(log_record);
-                Event::OtelLog(OtelLog::from_parts(
+                Event::Log(OtelLog::from_parts(
                     otel_record,
                     resource.clone(),
                     scope.clone(),

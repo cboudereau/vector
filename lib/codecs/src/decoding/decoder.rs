@@ -130,15 +130,15 @@ mod tests {
         let mut stream = FramedRead::new(reader, decoder);
 
         let next = stream.next().await.unwrap();
-        let event = next.unwrap().0.pop().unwrap().into_log();
-        assert_eq!(event.get("foo").unwrap(), &Value::from(1));
+        let log = next.unwrap().0.pop().unwrap().into_log().to_log_event();
+        assert_eq!(log.get("foo").unwrap(), &Value::from(1));
 
         let next = stream.next().await.unwrap();
         let error = next.unwrap_err();
         assert!(error.can_continue());
 
         let next = stream.next().await.unwrap();
-        let event = next.unwrap().0.pop().unwrap().into_log();
-        assert_eq!(event.get("bar").unwrap(), &Value::from(2));
+        let log = next.unwrap().0.pop().unwrap().into_log().to_log_event();
+        assert_eq!(log.get("bar").unwrap(), &Value::from(2));
     }
 }

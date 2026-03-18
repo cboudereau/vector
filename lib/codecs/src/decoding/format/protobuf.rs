@@ -145,23 +145,18 @@ impl Deserializer for ProtobufDeserializer {
         log_namespace: LogNamespace,
     ) -> vector_common::Result<SmallVec<[Event; 1]>> {
         let vrl_value = extract_vrl_value(bytes, &self.message_descriptor, &self.options)?;
-        let mut event = Event::Log(LogEvent::from(vrl_value));
+        let mut log = LogEvent::from(vrl_value);
 
-        let event = match log_namespace {
-            LogNamespace::Vector => event,
-            LogNamespace::Legacy => {
-                let timestamp = Utc::now();
-                if let Some(timestamp_key) = log_schema().timestamp_key_target_path() {
-                    let log = event.as_mut_log();
-                    if !log.contains(timestamp_key) {
-                        log.insert(timestamp_key, timestamp);
-                    }
+        if log_namespace == LogNamespace::Legacy {
+            let timestamp = Utc::now();
+            if let Some(timestamp_key) = log_schema().timestamp_key_target_path() {
+                if !log.contains(timestamp_key) {
+                    log.insert(timestamp_key, timestamp);
                 }
-                event
             }
-        };
+        }
 
-        Ok(smallvec![event])
+        Ok(smallvec![Event::from(log)])
     }
 }
 
@@ -209,8 +204,8 @@ mod tests {
 
             {
                 let event = events.next().unwrap();
-                let log = event.as_log();
-                validate_log(log);
+                let log = event.as_log().to_log_event();
+                validate_log(&log);
                 assert_eq!(
                     log.get(log_schema().timestamp_key_target_path().unwrap())
                         .is_some(),

@@ -15,7 +15,7 @@ use vector_lib::{
     configurable::NamedComponent,
     event::{Event, string_value},
     internal_event::{ByteSize, BytesReceived, CountByteSize, InternalEventHandle as _, Protocol},
-    lookup::{OwnedValuePath, lookup_v2::OptionalValuePath, owned_value_path, path},
+    lookup::{OwnedValuePath, lookup_v2::OptionalValuePath, owned_value_path},
 };
 use vrl::value::Kind;
 
@@ -118,10 +118,10 @@ async fn process_stream(
     decoder: Decoder,
     mut out: SourceSender,
     shutdown: ShutdownSignal,
-    host_key: Option<OwnedValuePath>,
+    _host_key: Option<OwnedValuePath>,
     source_type: &'static str,
     hostname: Option<String>,
-    log_namespace: LogNamespace,
+    _log_namespace: LogNamespace,
 ) -> Result<(), ()> {
     let bytes_received = register!(BytesReceived::from(Protocol::NONE));
     let events_received = register!(EventsReceived);
@@ -145,42 +145,16 @@ async fn process_stream(
                     let now = Utc::now();
 
                     for mut event in events {
-                        match event{
-                            Event::OtelLog(ref mut otel_log) => {
-                                otel_log.set_source_metadata(source_type, now);
-                                if let Some(hostname) = &hostname {
-                                    otel_log.set_resource_attribute(
-                                        "host.name".to_string(),
-                                        string_value(hostname.clone()),
-                                    );
-                                }
-                                yield event;
-                            },
-                            Event::Log(_) => {
-                                let log = event.as_mut_log();
-
-                                log_namespace.insert_standard_vector_source_metadata(
-                                    log,
-                                    source_type,
-                                    now
+                        if let Event::Log(ref mut otel_log) = event {
+                            otel_log.set_source_metadata(source_type, now);
+                            if let Some(hostname) = &hostname {
+                                otel_log.set_resource_attribute(
+                                    "host.name".to_string(),
+                                    string_value(hostname.clone()),
                                 );
-
-                                if let Some(hostname) = &hostname {
-                                    log_namespace.insert_source_metadata(
-                                        source_type,
-                                        log,
-                                        host_key.as_ref().map(LegacyKey::InsertIfEmpty),
-                                        path!("host"),
-                                        hostname.clone()
-                                    );
-                                }
-
-                                yield event;
-                            },
-                            _ => {
-                                yield event;
                             }
                         }
+                        yield event;
                     }
                 }
                 Err(error) => {

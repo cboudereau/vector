@@ -8,7 +8,7 @@ use smallvec::{SmallVec, smallvec};
 use vector_config::{configurable_component, indexmap::IndexSet};
 use vector_core::{
     config::{DataType, LogNamespace},
-    event::Event,
+    event::{Event, OtelSpan},
     schema,
 };
 use vrl::{protobuf::parse::Options, value::Kind};
@@ -162,8 +162,8 @@ impl Deserializer for OtlpDeserializer {
             match signal_type {
                 OtlpSignalType::Logs => {
                     if let Ok(events) = self.logs_deserializer.parse(bytes.clone(), log_namespace)
-                        && let Some(Event::Log(log)) = events.first()
-                        && log.get(RESOURCE_LOGS_JSON_FIELD).is_some()
+                        && let Some(event) = events.first()
+                        && event.as_log().to_log_event().get(RESOURCE_LOGS_JSON_FIELD).is_some()
                     {
                         return Ok(events);
                     }
@@ -172,8 +172,8 @@ impl Deserializer for OtlpDeserializer {
                     if let Ok(events) = self
                         .metrics_deserializer
                         .parse(bytes.clone(), log_namespace)
-                        && let Some(Event::Log(log)) = events.first()
-                        && log.get(RESOURCE_METRICS_JSON_FIELD).is_some()
+                        && let Some(event) = events.first()
+                        && event.as_log().to_log_event().get(RESOURCE_METRICS_JSON_FIELD).is_some()
                     {
                         return Ok(events);
                     }
@@ -181,12 +181,11 @@ impl Deserializer for OtlpDeserializer {
                 OtlpSignalType::Traces => {
                     if let Ok(mut events) =
                         self.traces_deserializer.parse(bytes.clone(), log_namespace)
-                        && let Some(Event::Log(log)) = events.first()
-                        && log.get(RESOURCE_SPANS_JSON_FIELD).is_some()
+                        && let Some(event) = events.first()
+                        && event.as_log().to_log_event().get(RESOURCE_SPANS_JSON_FIELD).is_some()
                     {
-                        // Convert the log event to a trace event by taking ownership
-                        if let Some(Event::Log(log)) = events.pop() {
-                            let trace_event = Event::Trace(log.into());
+                        if let Some(Event::Log(otel_log)) = events.pop() {
+                            let trace_event = Event::Trace(OtelSpan::from_trace_event(otel_log.to_log_event().into()));
                             return Ok(smallvec![trace_event]);
                         }
                     }

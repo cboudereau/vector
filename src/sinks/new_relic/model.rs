@@ -285,21 +285,15 @@ impl TryFrom<Vec<Event>> for LogsApiModel {
         let logs_array: Vec<LogMessage> = buf_events
             .into_iter()
             .filter_map(|event| {
-                let Some(mut log) = event.try_into_log_coerce() else {
+                let Some(otel_log) = event.try_into_log_coerce() else {
                     num_non_log_events += 1;
                     return None;
                 };
+                let mut log = otel_log.to_log_event();
 
                 let message = get_message_string(log.remove(message_key));
                 let timestamp = log.remove(timestamp_key).and_then(map_timestamp_value);
 
-                // We convert the log event into a logs API model simply by transmuting the type
-                // wrapper and dropping all arrays, which are not supported by the API. We could
-                // flatten out the keys, as this is what New Relic does internally, and we used to
-                // do that, but the flattening iterator accessed through
-                // `LogEvent::convert_to_fields` adds quotes to dotted fields names, which produces
-                // broken attributes in New Relic, and nesting objects is actually a (slightly) more
-                // efficient representation of the key names.
                 let (value, _metadata) = log.into_parts();
                 let Some(mut attributes) = value.into_object() else {
                     num_non_object_events += 1;

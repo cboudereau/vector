@@ -5,7 +5,7 @@ use tokio::{net::UdpSocket, sync::mpsc};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::{codec::BytesCodec, udp::UdpFramed};
 use vector_lib::{
-    event::{Event, Metric, MetricKind, MetricTags, MetricValue, StatisticKind, metric::TagValue},
+    event::{Event, Metric, MetricKind, MetricTags, MetricValue, OtelMetric, StatisticKind, metric::TagValue},
     metric_tags,
 };
 
@@ -48,7 +48,7 @@ async fn test_send_to_statsd() {
     };
 
     let events = vec![
-        Event::Metric(
+        Event::Metric(OtelMetric::from_legacy_metric(
             Metric::new(
                 "counter",
                 MetricKind::Incremental,
@@ -56,8 +56,8 @@ async fn test_send_to_statsd() {
             )
             .with_namespace(Some("vector"))
             .with_tags(Some(tags())),
-        ),
-        Event::Metric(
+        )),
+        Event::Metric(OtelMetric::from_legacy_metric(
             Metric::new(
                 "histogram",
                 MetricKind::Incremental,
@@ -67,7 +67,7 @@ async fn test_send_to_statsd() {
                 },
             )
             .with_namespace(Some("vector")),
-        ),
+        )),
     ];
     let (tx, rx) = mpsc::channel(1);
 

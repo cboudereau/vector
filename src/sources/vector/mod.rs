@@ -6,7 +6,7 @@ use futures::TryFutureExt;
 use tonic::{Request, Response, Status};
 use vector_lib::{
     EstimatedJsonEncodedSizeOf,
-    codecs::NativeDeserializerConfig,
+    codecs::BytesDeserializerConfig,
     config::LogNamespace,
     configurable::configurable_component,
     event::{BatchNotifier, BatchStatus, BatchStatusReceiver, Event},
@@ -39,6 +39,7 @@ enum VectorConfigVersion {
 struct Service {
     pipeline: SourceSender,
     acknowledgements: bool,
+    #[allow(dead_code)]
     log_namespace: LogNamespace,
 }
 
@@ -57,12 +58,8 @@ impl proto::Service for Service {
 
         let now = Utc::now();
         for event in &mut events {
-            if let Event::Log(log) = event {
-                self.log_namespace.insert_standard_vector_source_metadata(
-                    log,
-                    VectorConfig::NAME,
-                    now,
-                );
+            if let Event::Log(otel_log) = event {
+                otel_log.set_source_metadata(VectorConfig::NAME, now);
             }
         }
 
@@ -196,7 +193,7 @@ impl SourceConfig for VectorConfig {
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
         let log_namespace = global_log_namespace.merge(self.log_namespace);
 
-        let schema_definition = NativeDeserializerConfig
+        let schema_definition = BytesDeserializerConfig
             .schema_definition(log_namespace)
             .with_standard_vector_source_metadata();
 

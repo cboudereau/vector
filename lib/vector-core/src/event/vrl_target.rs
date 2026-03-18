@@ -216,64 +216,13 @@ fn hex_decode_value(val: &Value) -> Vec<u8> {
 // ---------------------------------------------------------------------------
 
 fn otel_log_event_to_value(event: &OtelLog) -> Value {
-    let record = event.record();
-    let mut map = ObjectMap::new();
-    map.insert("time_unix_nano".into(), Value::Integer(record.time_unix_nano as i64));
-    map.insert("observed_time_unix_nano".into(), Value::Integer(record.observed_time_unix_nano as i64));
-    map.insert("severity_number".into(), Value::Integer(record.severity_number as i64));
-    map.insert("severity_text".into(), Value::Bytes(record.severity_text.clone().into()));
-    map.insert(
-        "body".into(),
-        record.body.as_ref().map(otel_any_value_to_vrl).unwrap_or(Value::Null),
-    );
-    map.insert(
-        "attributes".into(),
-        Value::Object(otel_kvlist_to_object_map(&record.attributes)),
-    );
-    map.insert("dropped_attributes_count".into(), Value::Integer(record.dropped_attributes_count as i64));
-    map.insert("flags".into(), Value::Integer(record.flags as i64));
-    map.insert("trace_id".into(), hex_encode_bytes(&record.trace_id));
-    map.insert("span_id".into(), hex_encode_bytes(&record.span_id));
-
-    if let Some(resource) = event.resource() {
-        map.insert("resource".into(), otel_resource_to_value(resource));
-    }
-    if let Some(scope) = event.scope() {
-        map.insert("scope".into(), otel_scope_to_value(scope));
-    }
-
-    Value::Object(map)
+    let log_event = event.to_log_event();
+    log_event.into_parts().0
 }
 
 fn value_to_otel_log_event(value: Value, metadata: EventMetadata) -> OtelLog {
-    use opentelemetry_proto::tonic::logs::v1::LogRecord;
-
-    let map = match value {
-        Value::Object(m) => m,
-        _ => ObjectMap::new(),
-    };
-
-    let body = map.get("body").and_then(|v| {
-        if v.is_null() { None } else { Some(vrl_value_to_otel_any_value(v)) }
-    });
-
-    let record = LogRecord {
-        time_unix_nano: map.get("time_unix_nano").and_then(|v| v.as_integer()).unwrap_or(0) as u64,
-        observed_time_unix_nano: map.get("observed_time_unix_nano").and_then(|v| v.as_integer()).unwrap_or(0) as u64,
-        severity_number: map.get("severity_number").and_then(|v| v.as_integer()).unwrap_or(0) as i32,
-        severity_text: map.get("severity_text").and_then(|v| v.as_bytes()).map(|b| String::from_utf8_lossy(b).into_owned()).unwrap_or_default(),
-        body,
-        attributes: map.get("attributes").and_then(|v| v.as_object()).map(object_map_to_otel_kvlist).unwrap_or_default(),
-        dropped_attributes_count: map.get("dropped_attributes_count").and_then(|v| v.as_integer()).unwrap_or(0) as u32,
-        flags: map.get("flags").and_then(|v| v.as_integer()).unwrap_or(0) as u32,
-        trace_id: map.get("trace_id").map(hex_decode_value).unwrap_or_default(),
-        span_id: map.get("span_id").map(hex_decode_value).unwrap_or_default(),
-    };
-
-    let resource = map.get("resource").and_then(value_to_otel_resource);
-    let scope = map.get("scope").and_then(value_to_otel_scope);
-
-    OtelLog::from_parts(record, resource, scope, metadata)
+    let log_event = LogEvent::from_parts(value, metadata);
+    OtelLog::from_log_event(log_event)
 }
 
 // ---------------------------------------------------------------------------
@@ -534,7 +483,7 @@ impl Iterator for TargetIter<OtelLog> {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.next().map(|v| {
-            Event::OtelLog(value_to_otel_log_event(v, self.metadata.clone()))
+            Event::Log(value_to_otel_log_event(v, self.metadata.clone()))
         })
     }
 }
@@ -544,42 +493,25 @@ impl Iterator for TargetIter<OtelSpan> {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.next().map(|v| {
-            Event::OtelSpan(value_to_otel_span_event(v, self.metadata.clone()))
+            Event::Trace(value_to_otel_span_event(v, self.metadata.clone()))
         })
     }
 }
 
 impl VrlTarget {
-    pub fn new(event: Event, info: &ProgramInfo, multi_value_metric_tags: bool) -> Self {
+    pub fn new(event: Event, info: &ProgramInfo, _multi_value_metric_tags: bool) -> Self {
         match event {
             Event::Log(event) => {
-                let (value, metadata) = event.into_parts();
-                VrlTarget::LogEvent(value, metadata)
-            }
-            Event::Metric(metric) => {
-                let value = precompute_metric_value(&metric, info, multi_value_metric_tags);
-
-                VrlTarget::Metric {
-                    metric,
-                    value,
-                    multi_value_tags: multi_value_metric_tags,
-                }
-            }
-            Event::Trace(event) => {
-                let (fields, metadata) = event.into_parts();
-                VrlTarget::Trace(Value::Object(fields), metadata)
-            }
-            Event::OtelLog(event) => {
                 let metadata = event.metadata().clone();
                 let value = otel_log_event_to_value(&event);
                 VrlTarget::OtelLog(value, metadata)
             }
-            Event::OtelSpan(event) => {
+            Event::Trace(event) => {
                 let metadata = event.metadata().clone();
                 let value = otel_span_event_to_value(&event);
                 VrlTarget::OtelSpan(value, metadata)
             }
-            Event::OtelMetric(event) => {
+            Event::Metric(event) => {
                 let value = precompute_otel_metric_value(&event, info);
                 VrlTarget::OtelMetric { event, value }
             }
@@ -639,10 +571,12 @@ impl VrlTarget {
 
                 v => TargetEvents::One(create_log_event(v, metadata).into()),
             },
-            VrlTarget::Metric { metric, .. } => TargetEvents::One(Event::Metric(metric)),
+            VrlTarget::Metric { metric, .. } => {
+                TargetEvents::One(Event::Metric(OtelMetric::from_legacy_metric(metric)))
+            }
             VrlTarget::OtelLog(value, metadata) => match value {
                 value @ Value::Object(_) => {
-                    TargetEvents::One(Event::OtelLog(value_to_otel_log_event(value, metadata)))
+                    TargetEvents::One(Event::Log(value_to_otel_log_event(value, metadata)))
                 }
                 Value::Array(values) => TargetEvents::OtelLogs(TargetIter {
                     iter: values.into_iter(),
@@ -651,12 +585,12 @@ impl VrlTarget {
                     log_namespace,
                 }),
                 value => {
-                    TargetEvents::One(Event::OtelLog(value_to_otel_log_event(value, metadata)))
+                    TargetEvents::One(Event::Log(value_to_otel_log_event(value, metadata)))
                 }
             },
             VrlTarget::OtelSpan(value, metadata) => match value {
                 value @ Value::Object(_) => {
-                    TargetEvents::One(Event::OtelSpan(value_to_otel_span_event(value, metadata)))
+                    TargetEvents::One(Event::Trace(value_to_otel_span_event(value, metadata)))
                 }
                 Value::Array(values) => TargetEvents::OtelSpans(TargetIter {
                     iter: values.into_iter(),
@@ -665,10 +599,10 @@ impl VrlTarget {
                     log_namespace,
                 }),
                 value => {
-                    TargetEvents::One(Event::OtelSpan(value_to_otel_span_event(value, metadata)))
+                    TargetEvents::One(Event::Trace(value_to_otel_span_event(value, metadata)))
                 }
             },
-            VrlTarget::OtelMetric { event, .. } => TargetEvents::One(Event::OtelMetric(event)),
+            VrlTarget::OtelMetric { event, .. } => TargetEvents::One(Event::Metric(event)),
         }
     }
 
@@ -1179,10 +1113,7 @@ fn target_get_mut_otel_metric<'a>(
     }
 }
 
-/// pre-compute the `Value` structure of the metric.
-///
-/// This structure is partially populated based on the fields accessed by
-/// the VRL program as informed by `ProgramInfo`.
+#[allow(dead_code)]
 fn precompute_metric_value(metric: &Metric, info: &ProgramInfo, multi_value_tags: bool) -> Value {
     struct MetricProperty {
         property: &'static str,
@@ -1455,7 +1386,7 @@ mod test {
                 target_queries: vec![],
                 target_assignments: vec![],
             };
-            let target = VrlTarget::new(Event::Log(LogEvent::from(value)), &info, false);
+            let target = VrlTarget::new(Event::from(LogEvent::from(value)), &info, false);
             let path = OwnedTargetPath::event(path);
 
             assert_eq!(
@@ -1559,7 +1490,7 @@ mod test {
                 target_queries: vec![],
                 target_assignments: vec![],
             };
-            let mut target = VrlTarget::new(Event::Log(LogEvent::from(object)), &info, false);
+            let mut target = VrlTarget::new(Event::from(LogEvent::from(object)), &info, false);
             let expect = LogEvent::from(expect);
             let value: Value = value;
             let path = OwnedTargetPath::event(path);
@@ -1660,7 +1591,7 @@ mod test {
                 target_queries: vec![],
                 target_assignments: vec![],
             };
-            let mut target = VrlTarget::new(Event::Log(LogEvent::from(object)), &info, false);
+            let mut target = VrlTarget::new(Event::from(LogEvent::from(object)), &info, false);
             let path = OwnedTargetPath::event(path);
             let removed = Target::target_get(&target, &path).unwrap().cloned();
 
@@ -1713,7 +1644,7 @@ mod test {
                 target_assignments: vec![],
             };
             let mut target = VrlTarget::new(
-                Event::Log(LogEvent::new_with_metadata(metadata.clone())),
+                Event::from(LogEvent::new_with_metadata(metadata.clone())),
                 &info,
                 false,
             );
@@ -1730,7 +1661,7 @@ mod test {
                 },
                 expect
                     .into_iter()
-                    .map(|v| Event::Log(LogEvent::from_map(v, metadata.clone())))
+                    .map(|v| Event::from(LogEvent::from_map(v, metadata.clone())))
                     .collect::<Vec<_>>()
             );
         }
@@ -2076,7 +2007,7 @@ mod test {
             ..Default::default()
         });
         let info = make_empty_info();
-        let target = VrlTarget::new(Event::OtelLog(event), &info, false);
+        let target = VrlTarget::new(Event::Log(event), &info, false);
 
         let path = OwnedTargetPath::event(owned_value_path!("severity_text"));
         let result = Target::target_get(&target, &path).unwrap();
@@ -2096,7 +2027,7 @@ mod test {
             ..Default::default()
         });
         let info = make_empty_info();
-        let target = VrlTarget::new(Event::OtelLog(event), &info, false);
+        let target = VrlTarget::new(Event::Log(event), &info, false);
 
         let path = OwnedTargetPath::event(owned_value_path!("attributes", "host.name"));
         let result = Target::target_get(&target, &path).unwrap();
@@ -2108,7 +2039,7 @@ mod test {
         use opentelemetry_proto::tonic::logs::v1::LogRecord;
         let event = OtelLog::new(LogRecord::default());
         let info = make_empty_info();
-        let mut target = VrlTarget::new(Event::OtelLog(event), &info, false);
+        let mut target = VrlTarget::new(Event::Log(event), &info, false);
 
         let path = OwnedTargetPath::event(owned_value_path!("attributes", "host.name"));
         Target::target_insert(&mut target, &path, Value::Bytes("myhost".into())).unwrap();
@@ -2133,7 +2064,7 @@ mod test {
             ..Default::default()
         });
         let info = make_empty_info();
-        let target = VrlTarget::new(Event::OtelLog(event), &info, false);
+        let target = VrlTarget::new(Event::Log(event), &info, false);
 
         let events: Vec<Event> = match target.into_events(LogNamespace::Vector) {
             TargetEvents::One(e) => vec![e],
@@ -2142,7 +2073,7 @@ mod test {
         assert_eq!(events.len(), 1);
 
         let restored = match &events[0] {
-            Event::OtelLog(e) => e,
+            Event::Log(e) => e,
             _ => panic!("expected OtelLog"),
         };
         assert_eq!(restored.severity_text(), "INFO");
@@ -2160,7 +2091,7 @@ mod test {
             ..Default::default()
         });
         let info = make_empty_info();
-        let mut target = VrlTarget::new(Event::OtelLog(event), &info, false);
+        let mut target = VrlTarget::new(Event::Log(event), &info, false);
 
         let path = OwnedTargetPath::event(owned_value_path!("severity_text"));
         Target::target_insert(&mut target, &path, Value::Bytes("WARN".into())).unwrap();
@@ -2171,7 +2102,7 @@ mod test {
         };
 
         let restored = match &events[0] {
-            Event::OtelLog(e) => e,
+            Event::Log(e) => e,
             _ => panic!("expected OtelLog"),
         };
         assert_eq!(restored.severity_text(), "WARN");
@@ -2186,7 +2117,7 @@ mod test {
             ..Default::default()
         });
         let info = make_empty_info();
-        let target = VrlTarget::new(Event::OtelSpan(event), &info, false);
+        let target = VrlTarget::new(Event::Trace(event), &info, false);
 
         let path = OwnedTargetPath::event(owned_value_path!("name"));
         let result = Target::target_get(&target, &path).unwrap();
@@ -2208,7 +2139,7 @@ mod test {
             ..Default::default()
         });
         let info = make_empty_info();
-        let target = VrlTarget::new(Event::OtelSpan(event), &info, false);
+        let target = VrlTarget::new(Event::Trace(event), &info, false);
 
         let events: Vec<Event> = match target.into_events(LogNamespace::Vector) {
             TargetEvents::One(e) => vec![e],
@@ -2216,7 +2147,7 @@ mod test {
         };
 
         let restored = match &events[0] {
-            Event::OtelSpan(e) => e,
+            Event::Trace(e) => e,
             _ => panic!("expected OtelSpan"),
         };
         assert_eq!(restored.name(), "test-span");
@@ -2235,7 +2166,7 @@ mod test {
             ..Default::default()
         });
         let info = make_info_with_queries(&[".name", ".description", ".unit"]);
-        let target = VrlTarget::new(Event::OtelMetric(event), &info, false);
+        let target = VrlTarget::new(Event::Metric(event), &info, false);
 
         let path = OwnedTargetPath::event(owned_value_path!("name"));
         let result = Target::target_get(&target, &path).unwrap();
@@ -2254,7 +2185,7 @@ mod test {
             ..Default::default()
         });
         let info = make_info_with_queries(&[".name"]);
-        let mut target = VrlTarget::new(Event::OtelMetric(event), &info, false);
+        let mut target = VrlTarget::new(Event::Metric(event), &info, false);
 
         let path = OwnedTargetPath::event(owned_value_path!("name"));
         Target::target_insert(&mut target, &path, Value::Bytes("new.name".into())).unwrap();
@@ -2265,7 +2196,7 @@ mod test {
         };
 
         let restored = match &events[0] {
-            Event::OtelMetric(e) => e,
+            Event::Metric(e) => e,
             _ => panic!("expected OtelMetric"),
         };
         assert_eq!(restored.name(), "new.name");
@@ -2291,7 +2222,7 @@ mod test {
         });
 
         let info = make_empty_info();
-        let target = VrlTarget::new(Event::OtelLog(event), &info, false);
+        let target = VrlTarget::new(Event::Log(event), &info, false);
 
         let path = OwnedTargetPath::event(owned_value_path!("resource", "attributes", "service.name"));
         let result = Target::target_get(&target, &path).unwrap();
@@ -2307,7 +2238,7 @@ mod test {
         };
 
         let restored = match &events[0] {
-            Event::OtelLog(e) => e,
+            Event::Log(e) => e,
             _ => panic!("expected OtelLog"),
         };
         assert!(restored.resource().is_some());

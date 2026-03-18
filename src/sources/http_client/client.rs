@@ -17,7 +17,7 @@ use vector_lib::{
         decoding::{DeserializerConfig, FramingConfig},
     },
     compile_vrl,
-    config::{LogNamespace, SourceOutput, log_schema},
+    config::{LogNamespace, SourceOutput},
     configurable::configurable_component,
     event::{Event, LogEvent, VrlTarget},
 };
@@ -461,7 +461,7 @@ impl HttpClientBuilder for HttpClientContext {
 }
 
 fn resolve_vrl(value: &str, program: &Program) -> Option<String> {
-    let mut target = VrlTarget::new(Event::Log(LogEvent::default()), program.info(), false);
+    let mut target = VrlTarget::new(Event::from(LogEvent::default()), program.info(), false);
     let timezone = TimeZone::default();
 
     Runtime::default()
@@ -564,33 +564,10 @@ impl http_client::HttpClientContext for HttpClientContext {
 
         for event in events {
             match event {
-                Event::Log(log) => {
-                    self.log_namespace.insert_standard_vector_source_metadata(
-                        log,
-                        HttpClientConfig::NAME,
-                        now,
-                    );
-                }
-                Event::Metric(metric) => {
-                    if let Some(source_type_key) = log_schema().source_type_key() {
-                        metric.replace_tag(
-                            source_type_key.to_string(),
-                            HttpClientConfig::NAME.to_string(),
-                        );
-                    }
-                }
-                Event::Trace(trace) => {
-                    trace.maybe_insert(log_schema().source_type_key_target_path(), || {
-                        Bytes::from(HttpClientConfig::NAME).into()
-                    });
-                }
-                Event::OtelLog(otel_log) => {
+                Event::Log(otel_log) => {
                     otel_log.set_source_metadata(HttpClientConfig::NAME, now);
                 }
-                Event::OtelMetric(_) | Event::OtelSpan(_) => {
-                    // OtelMetric and OtelSpan don't need source_type enrichment
-                    // since they carry resource attributes from the OTel protocol.
-                }
+                Event::Metric(_) | Event::Trace(_) => {}
             }
         }
     }

@@ -75,7 +75,7 @@ impl Deserializer for BytesDeserializer {
         log_namespace: LogNamespace,
     ) -> vector_common::Result<SmallVec<[Event; 1]>> {
         let otel_log = self.parse_single(bytes, log_namespace);
-        Ok(smallvec![Event::OtelLog(otel_log)])
+        Ok(smallvec![Event::Log(otel_log)])
     }
 }
 
@@ -93,11 +93,11 @@ mod tests {
             assert_eq!(events.len(), 1);
 
             let event = &events[0];
-            assert!(matches!(event, Event::OtelLog(_)), "expected OtelLog");
+            assert!(matches!(event, Event::Log(_)), "expected Log(OtelLog)");
 
             let otel_log = match event {
-                Event::OtelLog(log) => log,
-                _ => panic!("expected OtelLog"),
+                Event::Log(log) => log,
+                _ => panic!("expected Log(OtelLog)"),
             };
             assert_eq!(otel_log.body_string(), "foo");
         }

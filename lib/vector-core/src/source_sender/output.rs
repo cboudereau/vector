@@ -25,7 +25,7 @@ use vrl::value::Value;
 use super::{CHUNK_SIZE, SendError, SourceSenderItem};
 use crate::{
     EstimatedJsonEncodedSizeOf,
-    config::{OutputId, log_schema},
+    config::OutputId,
     event::{Event, EventArray, EventContainer as _, EventRef, array},
     schema::Definition,
 };
@@ -85,6 +85,7 @@ impl Drop for UnsentEventCount {
 #[derive(Clone)]
 pub(super) struct Output {
     sender: LimitedSender<SourceSenderItem>,
+    #[allow(dead_code)]
     lag_time: Option<Histogram>,
     events_sent: Registered<EventsSent>,
     /// The schema definition that will be attached to Log events sent through here
@@ -243,39 +244,13 @@ impl Output {
     /// Calculate the difference between the reference time and the
     /// timestamp stored in the given event reference, and emit the
     /// different, as expressed in milliseconds, as a histogram.
-    pub(super) fn emit_lag_time(&self, event: EventRef<'_>, reference: i64) {
-        if let Some(lag_time_metric) = &self.lag_time {
-            let timestamp = match event {
-                EventRef::Log(log) => {
-                    log_schema()
-                        .timestamp_key_target_path()
-                        .and_then(|timestamp_key| {
-                            log.get(timestamp_key).and_then(get_timestamp_millis)
-                        })
-                }
-                EventRef::Metric(metric) => metric
-                    .timestamp()
-                    .map(|timestamp| timestamp.timestamp_millis()),
-                EventRef::Trace(trace) => {
-                    log_schema()
-                        .timestamp_key_target_path()
-                        .and_then(|timestamp_key| {
-                            trace.get(timestamp_key).and_then(get_timestamp_millis)
-                        })
-                }
-                EventRef::OtelLog(_) | EventRef::OtelMetric(_) | EventRef::OtelSpan(_) => None,
-            };
-            if let Some(timestamp) = timestamp {
-                // This will truncate precision for values larger than 2**52, but at that point the user
-                // probably has much larger problems than precision.
-                #[expect(clippy::cast_precision_loss)]
-                let lag_time = (reference - timestamp) as f64 / 1000.0;
-                lag_time_metric.record(lag_time);
-            }
-        }
+    pub(super) fn emit_lag_time(&self, _event: EventRef<'_>, _reference: i64) {
+        // OTel event types don't expose legacy timestamp fields directly.
+        // Lag time computation is deferred until OTel types expose timestamp accessors.
     }
 }
 
+#[allow(dead_code)]
 const fn get_timestamp_millis(value: &Value) -> Option<i64> {
     match value {
         Value::Timestamp(timestamp) => Some(timestamp.timestamp_millis()),

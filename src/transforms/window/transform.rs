@@ -394,7 +394,7 @@ mod test {
 
     async fn assert_event(message: &str, event: Option<Event>) {
         assert_eq!(
-            &Value::from(message),
+            Value::from(message),
             event.unwrap().as_log().get("message").unwrap()
         );
     }

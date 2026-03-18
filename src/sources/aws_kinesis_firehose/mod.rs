@@ -642,7 +642,7 @@ mod tests {
                     let meta = log.metadata();
 
                     // event data, currently assumes default bytes deserializer
-                    assert_eq!(log.value(), &value!(Bytes::from(expected.to_owned())));
+                    assert_eq!(log.value(), value!(Bytes::from(expected.to_owned())));
 
                     // vector metadata
                     assert_eq!(

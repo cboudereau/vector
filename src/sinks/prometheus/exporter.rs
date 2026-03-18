@@ -1123,9 +1123,9 @@ mod tests {
         let m2 = m1.clone().with_tags(Some(metric_tags!("tag1" => "value2")));
 
         let events = vec![
-            Event::Metric(m1.clone().with_value(MetricValue::Counter { value: 32. })),
-            Event::Metric(m2.clone().with_value(MetricValue::Counter { value: 33. })),
-            Event::Metric(m1.clone().with_value(MetricValue::Counter { value: 40. })),
+            Event::from(m1.clone().with_value(MetricValue::Counter { value: 32. })),
+            Event::from(m2.clone().with_value(MetricValue::Counter { value: 33. })),
+            Event::from(m1.clone().with_value(MetricValue::Counter { value: 40. })),
         ];
 
         let metrics_handle = Arc::clone(&sink.metrics);
@@ -1240,7 +1240,7 @@ mod tests {
         let events = metrics
             .iter()
             .cloned()
-            .map(Event::Metric)
+            .map(Event::from)
             .collect::<Vec<_>>();
 
         let sink = VectorSink::from_event_streamsink(sink);
@@ -1356,7 +1356,7 @@ mod tests {
         let events = metrics
             .iter()
             .cloned()
-            .map(Event::Metric)
+            .map(Event::from)
             .collect::<Vec<_>>();
 
         let sink = VectorSink::from_event_streamsink(sink);
@@ -1425,7 +1425,7 @@ mod tests {
         let events = metrics
             .iter()
             .cloned()
-            .map(Event::Metric)
+            .map(Event::from)
             .collect::<Vec<_>>();
 
         let sink = VectorSink::from_event_streamsink(sink);

@@ -4,9 +4,9 @@ use bytes::Bytes;
 use chrono::Utc;
 use vector_lib::{
     codecs::decoding::{DeserializerConfig, FramingConfig},
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     configurable::configurable_component,
-    lookup::{lookup_v2::OptionalValuePath, path},
+    lookup::lookup_v2::OptionalValuePath,
     shutdown::ShutdownSignal,
 };
 
@@ -93,39 +93,20 @@ impl UnixConfig {
 /// Takes a single line of a received message and handles an `Event` object.
 fn handle_events(
     events: &mut [Event],
-    host_key: &OptionalValuePath,
+    _host_key: &OptionalValuePath,
     received_from: Option<Bytes>,
-    log_namespace: LogNamespace,
+    _log_namespace: LogNamespace,
 ) {
     let now = Utc::now();
 
     for event in events {
         match event {
-            Event::OtelLog(otel_log) => {
+            Event::Log(otel_log) => {
                 otel_log.set_source_metadata(SocketConfig::NAME, now);
                 if let Some(ref host) = received_from {
                     otel_log.set_resource_attribute(
                         "host.name".to_string(),
                         string_value(String::from_utf8_lossy(host).into_owned()),
-                    );
-                }
-            }
-            Event::Log(log) => {
-                log_namespace.insert_standard_vector_source_metadata(
-                    log,
-                    SocketConfig::NAME,
-                    now,
-                );
-
-                if let Some(ref host) = received_from {
-                    let legacy_host_key = host_key.clone().path;
-
-                    log_namespace.insert_source_metadata(
-                        SocketConfig::NAME,
-                        log,
-                        legacy_host_key.as_ref().map(LegacyKey::InsertIfEmpty),
-                        path!("host"),
-                        host.clone(),
                     );
                 }
             }

@@ -14,7 +14,7 @@ use vrl::value::Kind;
 use crate::{
     codecs::Transformer,
     config::{AcknowledgementsConfig, DataType, Input, SinkConfig, SinkContext},
-    event::{EventRef, LogEvent, Value},
+    event::{LogEvent, Value},
     http::{HttpClient, QueryParameters},
     internal_events::TemplateRenderingError,
     sinks::{
@@ -430,9 +430,9 @@ impl DataStreamConfig {
         }
     }
 
-    pub fn dtype<'a>(&self, event: impl Into<EventRef<'a>>) -> Option<String> {
+    pub fn dtype(&self, log: &LogEvent) -> Option<String> {
         self.dtype
-            .render_string(event)
+            .render_string_from_log(log)
             .map_err(|error| {
                 emit!(TemplateRenderingError {
                     error,
@@ -443,9 +443,9 @@ impl DataStreamConfig {
             .ok()
     }
 
-    pub fn dataset<'a>(&self, event: impl Into<EventRef<'a>>) -> Option<String> {
+    pub fn dataset(&self, log: &LogEvent) -> Option<String> {
         self.dataset
-            .render_string(event)
+            .render_string_from_log(log)
             .map_err(|error| {
                 emit!(TemplateRenderingError {
                     error,
@@ -456,9 +456,9 @@ impl DataStreamConfig {
             .ok()
     }
 
-    pub fn namespace<'a>(&self, event: impl Into<EventRef<'a>>) -> Option<String> {
+    pub fn namespace(&self, log: &LogEvent) -> Option<String> {
         self.namespace
-            .render_string(event)
+            .render_string_from_log(log)
             .map_err(|error| {
                 emit!(TemplateRenderingError {
                     error,

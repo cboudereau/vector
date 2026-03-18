@@ -322,18 +322,7 @@ impl Ec2MetadataTransform {
     fn transform_one(&mut self, mut event: Event) -> Event {
         let state = self.state.load();
         match event {
-            Event::Log(ref mut log) => {
-                state.iter().for_each(|(k, v)| {
-                    log.insert(&k.log_path, v.clone());
-                });
-            }
-            Event::Metric(ref mut metric) => {
-                state.iter().for_each(|(k, v)| {
-                    metric
-                        .replace_tag(k.metric_tag.clone(), String::from_utf8_lossy(v).to_string());
-                });
-            }
-            Event::OtelLog(ref mut otel_log) => {
+            Event::Log(ref mut otel_log) => {
                 state.iter().for_each(|(k, v)| {
                     otel_log.set_resource_attribute(
                         k.metric_tag.clone(),
@@ -341,7 +330,7 @@ impl Ec2MetadataTransform {
                     );
                 });
             }
-            Event::OtelMetric(ref mut otel_metric) => {
+            Event::Metric(ref mut otel_metric) => {
                 let resource = otel_metric.resource_mut();
                 state.iter().for_each(|(k, v)| {
                     let kv = KeyValue {
@@ -351,7 +340,7 @@ impl Ec2MetadataTransform {
                     resource.attributes.push(kv);
                 });
             }
-            Event::OtelSpan(ref mut otel_span) => {
+            Event::Trace(ref mut otel_span) => {
                 let resource = otel_span.resource_mut();
                 state.iter().for_each(|(k, v)| {
                     let kv = KeyValue {
@@ -361,7 +350,6 @@ impl Ec2MetadataTransform {
                     resource.attributes.push(kv);
                 });
             }
-            Event::Trace(_) => {}
         }
         event
     }

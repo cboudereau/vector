@@ -11,16 +11,14 @@ use vector_common::constants::GZIP_MAGIC;
 use vector_lib::{
     EstimatedJsonEncodedSizeOf,
     codecs::StreamDecodingError,
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     event::BatchNotifier,
     finalization::AddBatchNotifier,
     internal_event::{
         ByteSize, BytesReceived, CountByteSize, InternalEventHandle as _, Registered,
     },
-    lookup::{PathPrefix, metadata_path, path},
     source_sender::SendError,
 };
-use vrl::compiler::SecretTarget;
 use warp::reject;
 
 use super::{
@@ -31,7 +29,6 @@ use super::{
 use crate::{
     SourceSender,
     codecs::Decoder,
-    config::log_schema,
     event::{BatchStatus, Event, string_value},
     internal_events::{
         AwsKinesisFirehoseAutomaticRecordDecodeError, EventsReceived, StreamClosedError,
@@ -42,6 +39,7 @@ use crate::{
 #[derive(Clone)]
 pub(super) struct Context {
     pub(super) compression: Compression,
+    #[allow(dead_code)]
     pub(super) store_access_key: bool,
     pub(super) decoder: Decoder,
     pub(super) acknowledgements: bool,
@@ -57,7 +55,7 @@ pub(super) async fn firehose(
     request: FirehoseRequest,
     mut context: Context,
 ) -> Result<impl warp::Reply, reject::Rejection> {
-    let log_namespace = context.log_namespace;
+    let _log_namespace = context.log_namespace;
     let events_received = register!(EventsReceived);
 
     for record in request.records {
@@ -91,7 +89,7 @@ pub(super) async fn firehose(
                         if let Some(batch) = &batch {
                             event.add_batch_notifier(batch.clone());
                         }
-                        if let Event::OtelLog(otel_log) = event {
+                        if let Event::Log(otel_log) = event {
                             otel_log.set_source_metadata(
                                 AwsKinesisFirehoseConfig::NAME,
                                 now,
@@ -104,53 +102,6 @@ pub(super) async fn firehose(
                                 "source_arn".to_string(),
                                 string_value(source_arn.clone()),
                             );
-                        } else if let Event::Log(log) = event {
-                            log_namespace.insert_vector_metadata(
-                                log,
-                                log_schema().source_type_key(),
-                                path!("source_type"),
-                                Bytes::from_static(AwsKinesisFirehoseConfig::NAME.as_bytes()),
-                            );
-                            match log_namespace {
-                                LogNamespace::Vector => {
-                                    log.insert(metadata_path!("vector", "ingest_timestamp"), now);
-                                    log.insert(
-                                        metadata_path!(AwsKinesisFirehoseConfig::NAME, "timestamp"),
-                                        request.timestamp,
-                                    );
-                                }
-                                LogNamespace::Legacy => {
-                                    if let Some(timestamp_key) = log_schema().timestamp_key() {
-                                        log.try_insert(
-                                            (PathPrefix::Event, timestamp_key),
-                                            request.timestamp,
-                                        );
-                                    }
-                                }
-                            };
-
-                            log_namespace.insert_source_metadata(
-                                AwsKinesisFirehoseConfig::NAME,
-                                log,
-                                Some(LegacyKey::InsertIfEmpty(path!("request_id"))),
-                                path!("request_id"),
-                                request_id.to_owned(),
-                            );
-                            log_namespace.insert_source_metadata(
-                                AwsKinesisFirehoseConfig::NAME,
-                                log,
-                                Some(LegacyKey::InsertIfEmpty(path!("source_arn"))),
-                                path!("source_arn"),
-                                source_arn.to_owned(),
-                            );
-
-                            if context.store_access_key
-                                && let Some(access_key) = &request.access_key
-                            {
-                                log.metadata_mut()
-                                    .secrets_mut()
-                                    .insert_secret("aws_kinesis_firehose_access_key", access_key);
-                            }
                         }
                     }
 

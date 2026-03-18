@@ -1,10 +1,8 @@
 use crate::encoding::ProtobufSerializer;
 use bytes::BytesMut;
 use vector_opentelemetry_proto::{
-    metrics::encode_metric_to_request,
     proto::{
         DESCRIPTOR_BYTES, LOGS_REQUEST_MESSAGE_TYPE, METRICS_REQUEST_MESSAGE_TYPE,
-        RESOURCE_LOGS_JSON_FIELD, RESOURCE_METRICS_JSON_FIELD, RESOURCE_SPANS_JSON_FIELD,
         TRACES_REQUEST_MESSAGE_TYPE,
         collector::{
             logs::v1::ExportLogsServiceRequest,
@@ -115,46 +113,18 @@ impl Encoder<Event> for OtlpSerializer {
     type Error = vector_common::Error;
 
     fn encode(&mut self, event: Event, buffer: &mut BytesMut) -> Result<(), Self::Error> {
-        // Determine which descriptor to use based on top-level OTLP fields
         match &event {
-            Event::Log(log) => {
-                if log.contains(RESOURCE_LOGS_JSON_FIELD) {
-                    self.logs_descriptor.encode(event, buffer)
-                } else if log.contains(RESOURCE_METRICS_JSON_FIELD) {
-                    // Currently the OTLP metrics are Vector logs (not metrics).
-                    self.metrics_descriptor.encode(event, buffer)
-                } else {
-                    Err(format!(
-                        "Log event does not contain OTLP top-level fields ({RESOURCE_LOGS_JSON_FIELD} or {RESOURCE_METRICS_JSON_FIELD})",
-                    )
-                        .into())
-                }
-            }
-            Event::Trace(trace) => {
-                if trace.contains(RESOURCE_SPANS_JSON_FIELD) {
-                    self.traces_descriptor.encode(event, buffer)
-                } else {
-                    Err(format!(
-                        "Trace event does not contain OTLP top-level field ({RESOURCE_SPANS_JSON_FIELD})",
-                    )
-                        .into())
-                }
-            }
-            Event::Metric(metric) => {
-                encode_metric_to_request(metric, buffer);
-                Ok(())
-            }
-            Event::OtelLog(log_event) => {
+            Event::Log(log_event) => {
                 let request = otel_log_to_export_request(log_event);
                 request.encode(buffer).map_err(|e| e.to_string())?;
                 Ok(())
             }
-            Event::OtelMetric(metric_event) => {
+            Event::Metric(metric_event) => {
                 let request = otel_metric_to_export_request(metric_event);
                 request.encode(buffer).map_err(|e| e.to_string())?;
                 Ok(())
             }
-            Event::OtelSpan(span_event) => {
+            Event::Trace(span_event) => {
                 let request = otel_span_to_export_request(span_event);
                 request.encode(buffer).map_err(|e| e.to_string())?;
                 Ok(())
@@ -227,7 +197,7 @@ mod tests {
     use prost::Message;
     use tokio_util::codec::Encoder as _;
     use vector_core::event::{
-        Event, EventMetadata, Metric, MetricKind, MetricValue, OtelLog, OtelMetric,
+        Event, EventMetadata, OtelLog, OtelMetric,
         OtelSpan, metric::Bucket,
     };
 
@@ -239,12 +209,13 @@ mod tests {
 
     #[test]
     fn encodes_counter_without_error() {
+        use vector_core::event::{Metric, MetricKind, MetricValue};
         let mut ser = make_serializer();
-        let metric = Metric::new(
+        let metric = OtelMetric::from_legacy_metric(Metric::new(
             "http_requests_total",
             MetricKind::Incremental,
             MetricValue::Counter { value: 100.0 },
-        );
+        ));
         let mut buf = BytesMut::new();
         ser.encode(Event::Metric(metric), &mut buf)
             .expect("counter encode must succeed");
@@ -253,12 +224,13 @@ mod tests {
 
     #[test]
     fn encodes_gauge_without_error() {
+        use vector_core::event::{Metric, MetricKind, MetricValue};
         let mut ser = make_serializer();
-        let metric = Metric::new(
+        let metric = OtelMetric::from_legacy_metric(Metric::new(
             "cpu_usage",
             MetricKind::Absolute,
             MetricValue::Gauge { value: 0.75 },
-        );
+        ));
         let mut buf = BytesMut::new();
         ser.encode(Event::Metric(metric), &mut buf)
             .expect("gauge encode must succeed");
@@ -267,8 +239,9 @@ mod tests {
 
     #[test]
     fn encodes_histogram_without_error() {
+        use vector_core::event::{Metric, MetricKind, MetricValue};
         let mut ser = make_serializer();
-        let metric = Metric::new(
+        let metric = OtelMetric::from_legacy_metric(Metric::new(
             "request_latency",
             MetricKind::Absolute,
             MetricValue::AggregatedHistogram {
@@ -280,7 +253,7 @@ mod tests {
                 count: 40,
                 sum: 12.5,
             },
-        );
+        ));
         let mut buf = BytesMut::new();
         ser.encode(Event::Metric(metric), &mut buf)
             .expect("histogram encode must succeed");
@@ -312,7 +285,7 @@ mod tests {
             }],
             ..Default::default()
         };
-        let event = Event::OtelLog(OtelLog::from_parts(
+        let event = Event::Log(OtelLog::from_parts(
             record,
             Some(resource),
             None,
@@ -357,7 +330,7 @@ mod tests {
                 }],
             })),
         };
-        let event = Event::OtelMetric(OtelMetric::from_parts(
+        let event = Event::Metric(OtelMetric::from_parts(
             metric,
             None,
             None,
@@ -394,7 +367,7 @@ mod tests {
             end_time_unix_nano: 2_000_000_000,
             ..Default::default()
         };
-        let event = Event::OtelSpan(OtelSpan::from_parts(
+        let event = Event::Trace(OtelSpan::from_parts(
             span,
             None,
             None,

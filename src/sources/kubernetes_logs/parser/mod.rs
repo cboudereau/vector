@@ -7,21 +7,20 @@ use vector_lib::config::LogNamespace;
 use crate::{
     event::{Event, Value},
     internal_events::KubernetesLogsFormatPickerEdgeCase,
-    sources::kubernetes_logs::transform_utils::get_message_path,
     transforms::{FunctionTransform, OutputBuffer},
 };
 
 /// For OtelLog events, convert to a temporary LogEvent for parsing,
 /// then transfer the parsed fields back as OtelLog attributes.
 fn transform_otel_event(parser: &mut ParserState, output: &mut OutputBuffer, mut event: Event) {
-    if let Event::OtelLog(ref otel_log) = event {
+    if let Event::Log(ref otel_log) = event {
         let body = otel_log.body_string();
         if body.is_empty() {
             return;
         }
         let bytes = bytes::Bytes::from(body);
-        let tmp_log = crate::event::LogEvent::from(Value::Bytes(bytes));
-        let tmp_event = Event::Log(tmp_log);
+        let tmp_otel = crate::event::OtelLog::from_bytes(bytes.clone());
+        let tmp_event = Event::Log(tmp_otel);
         let mut tmp_output = OutputBuffer::with_capacity(1);
         match parser {
             ParserState::Docker(t) => t.transform(&mut tmp_output, tmp_event),
@@ -29,8 +28,9 @@ fn transform_otel_event(parser: &mut ParserState, output: &mut OutputBuffer, mut
             _ => return,
         }
         for parsed in tmp_output.into_events() {
-            if let Event::Log(ref parsed_log) = parsed {
-                if let Event::OtelLog(ref mut otel_log) = event {
+            if let Event::Log(ref parsed_otel) = parsed {
+                if let Event::Log(ref mut otel_log) = event {
+                    let parsed_log = parsed_otel.to_log_event();
                     if let Some(msg) = parsed_log.get(".message") {
                         otel_log.set_body(crate::event::string_value(
                             msg.as_str().unwrap_or_default(),
@@ -89,53 +89,25 @@ impl Parser {
 
 impl FunctionTransform for Parser {
     fn transform(&mut self, output: &mut OutputBuffer, event: Event) {
-        let is_otel = matches!(event, Event::OtelLog(_));
-
-        let bytes_for_detection = if is_otel {
-            if let Event::OtelLog(ref otel_log) = event {
-                let s = otel_log.body_string();
-                if s.is_empty() {
-                    emit!(KubernetesLogsFormatPickerEdgeCase {
-                        what: "got an OtelLog event without a body"
-                    });
-                    return;
-                }
-                Some(bytes::Bytes::from(s))
-            } else {
-                None
+        let bytes_for_detection = if let Event::Log(ref otel_log) = event {
+            let s = otel_log.body_string();
+            if s.is_empty() {
+                emit!(KubernetesLogsFormatPickerEdgeCase {
+                    what: "got an OtelLog event without a body"
+                });
+                return;
             }
+            bytes::Bytes::from(s)
         } else {
-            None
+            emit!(KubernetesLogsFormatPickerEdgeCase {
+                what: "got a non-log event"
+            });
+            return;
         };
 
         match &mut self.state {
             ParserState::Uninitialized => {
-                let bytes = if let Some(ref b) = bytes_for_detection {
-                    b.clone()
-                } else {
-                    let message_field = get_message_path(self.log_namespace);
-                    let message = match event.as_log().get(&message_field) {
-                        Some(message) => message,
-                        None => {
-                            emit!(KubernetesLogsFormatPickerEdgeCase {
-                                what: "got an event without a message"
-                            });
-                            return;
-                        }
-                    };
-
-                    match message {
-                        Value::Bytes(bytes) => bytes.clone(),
-                        _ => {
-                            emit!(KubernetesLogsFormatPickerEdgeCase {
-                                what: "got an event with non-bytes message"
-                            });
-                            return;
-                        }
-                    }
-                };
-
-                self.state = if bytes.len() > 1 && bytes[0] == b'{' {
+                self.state = if bytes_for_detection.len() > 1 && bytes_for_detection[0] == b'{' {
                     ParserState::Docker(docker::Docker::new(self.log_namespace))
                 } else {
                     ParserState::Cri(cri::Cri::new(self.log_namespace))
@@ -143,18 +115,10 @@ impl FunctionTransform for Parser {
                 self.transform(output, event)
             }
             ParserState::Docker(t) => {
-                if is_otel {
-                    transform_otel_event(&mut ParserState::Docker(t.clone()), output, event);
-                } else {
-                    t.transform(output, event);
-                }
+                transform_otel_event(&mut ParserState::Docker(t.clone()), output, event);
             }
             ParserState::Cri(t) => {
-                if is_otel {
-                    transform_otel_event(&mut ParserState::Cri(t.clone()), output, event);
-                } else {
-                    t.transform(output, event);
-                }
+                transform_otel_event(&mut ParserState::Cri(t.clone()), output, event);
             }
         }
     }
@@ -191,7 +155,7 @@ mod tests {
         trace_init();
         test_util::test_parser(
             || Parser::new(LogNamespace::Vector),
-            |bytes| Event::Log(LogEvent::from(value!(bytes))),
+            |bytes| Event::from(LogEvent::from(value!(bytes))),
             valid_cases(LogNamespace::Vector),
         );
     }
@@ -201,7 +165,7 @@ mod tests {
         trace_init();
         test_util::test_parser(
             || Parser::new(LogNamespace::Legacy),
-            |bytes| Event::Log(LogEvent::from(bytes)),
+            |bytes| Event::from(LogEvent::from(bytes)),
             valid_cases(LogNamespace::Legacy),
         );
     }

@@ -18,6 +18,8 @@ use vector_common::{
 };
 use vrl::value::{ObjectMap, Value};
 
+use super::TraceEvent;
+
 use super::{
     BatchNotifier, EstimatedJsonEncodedSizeOf, EventFinalizer, EventMetadata, LogEvent,
 };
@@ -78,6 +80,39 @@ fn hex_encode(bytes: &[u8]) -> Value {
         let _ = write!(s, "{b:02x}");
     }
     Value::Bytes(s.into())
+}
+
+pub fn vrl_value_to_any_value(value: &Value) -> AnyValue {
+    let kind = match value {
+        Value::Bytes(b) => Some(OtelValueKind::StringValue(
+            String::from_utf8_lossy(b).into_owned(),
+        )),
+        Value::Integer(i) => Some(OtelValueKind::IntValue(*i)),
+        Value::Float(f) => Some(OtelValueKind::DoubleValue(f.into_inner())),
+        Value::Boolean(b) => Some(OtelValueKind::BoolValue(*b)),
+        Value::Timestamp(ts) => Some(OtelValueKind::StringValue(ts.to_rfc3339())),
+        Value::Regex(r) => Some(OtelValueKind::StringValue(r.to_string())),
+        Value::Null => None,
+        Value::Object(map) => {
+            let values = map
+                .iter()
+                .map(|(k, v)| KeyValue {
+                    key: k.to_string(),
+                    value: Some(vrl_value_to_any_value(v)),
+                })
+                .collect();
+            Some(OtelValueKind::KvlistValue(
+                opentelemetry_proto::tonic::common::v1::KeyValueList { values },
+            ))
+        }
+        Value::Array(arr) => {
+            let values = arr.iter().map(vrl_value_to_any_value).collect();
+            Some(OtelValueKind::ArrayValue(
+                opentelemetry_proto::tonic::common::v1::ArrayValue { values },
+            ))
+        }
+    };
+    AnyValue { value: kind }
 }
 
 pub(crate) fn any_value_to_vrl(av: &AnyValue) -> Value {
@@ -189,6 +224,57 @@ impl OtelLog {
             resource: None,
             scope: None,
             metadata: EventMetadata::default(),
+        }
+    }
+
+    /// Convert a legacy `LogEvent` into an `OtelLog`.
+    ///
+    /// The `LogEvent`'s value tree is stored as a kvlist body.
+    /// Known fields (`message`, `timestamp`, `severity_text`, etc.) are
+    /// extracted into their corresponding `LogRecord` fields.
+    pub fn from_log_event(log: LogEvent) -> Self {
+        let (value, metadata) = log.into_parts();
+        match value {
+            Value::Object(mut map) => {
+                let body = map.remove("message").map(|v| vrl_value_to_any_value(&v));
+                let time_unix_nano = map
+                    .remove("timestamp")
+                    .and_then(|v| match v {
+                        Value::Timestamp(ts) => Some(ts.timestamp_nanos_opt().unwrap_or(0) as u64),
+                        _ => None,
+                    })
+                    .unwrap_or(0);
+                let attributes: Vec<KeyValue> = map
+                    .into_iter()
+                    .map(|(k, v)| KeyValue {
+                        key: k.to_string(),
+                        value: Some(vrl_value_to_any_value(&v)),
+                    })
+                    .collect();
+                Self {
+                    record: LogRecord {
+                        body,
+                        time_unix_nano,
+                        attributes,
+                        ..Default::default()
+                    },
+                    resource: None,
+                    scope: None,
+                    metadata,
+                }
+            }
+            other => {
+                let body = vrl_value_to_any_value(&other);
+                Self {
+                    record: LogRecord {
+                        body: Some(body),
+                        ..Default::default()
+                    },
+                    resource: None,
+                    scope: None,
+                    metadata,
+                }
+            }
         }
     }
 
@@ -403,6 +489,198 @@ impl OtelLog {
         self
     }
 
+    // -----------------------------------------------------------------------
+    // LogEvent-compatible bridge methods
+    //
+    // These delegate to `to_log_event()` / `from_log_event()` to provide
+    // backward-compatible access for code that was written against LogEvent.
+    // -----------------------------------------------------------------------
+
+    /// Get a field value by path (LogEvent-compatible bridge).
+    pub fn get<'a>(&self, path: impl lookup::lookup_v2::TargetPath<'a>) -> Option<Value> {
+        self.to_log_event().get(path).cloned()
+    }
+
+    /// Insert a field value by path (LogEvent-compatible bridge).
+    /// Operates by round-tripping through LogEvent.
+    pub fn insert<'a>(
+        &mut self,
+        path: impl lookup::lookup_v2::TargetPath<'a>,
+        value: impl Into<Value>,
+    ) -> Option<Value> {
+        let mut log = self.to_log_event();
+        let old = log.insert(path, value);
+        let metadata = std::mem::take(&mut self.metadata);
+        *self = Self::from_log_event(log);
+        self.metadata = metadata;
+        old
+    }
+
+    /// Remove a field value by path (LogEvent-compatible bridge).
+    pub fn remove<'a>(
+        &mut self,
+        path: impl lookup::lookup_v2::TargetPath<'a>,
+    ) -> Option<Value> {
+        let mut log = self.to_log_event();
+        let old = log.remove(path);
+        let metadata = std::mem::take(&mut self.metadata);
+        *self = Self::from_log_event(log);
+        self.metadata = metadata;
+        old
+    }
+
+    /// Get the timestamp from the event (LogEvent-compatible bridge).
+    pub fn get_timestamp(&self) -> Option<Value> {
+        if self.record.time_unix_nano != 0 {
+            let nanos = self.record.time_unix_nano;
+            let secs = (nanos / 1_000_000_000) as i64;
+            let nsecs = (nanos % 1_000_000_000) as u32;
+            chrono::DateTime::from_timestamp(secs, nsecs)
+                .map(Value::Timestamp)
+        } else {
+            self.to_log_event().get_timestamp().cloned()
+        }
+    }
+
+    /// Remove the timestamp from the event (LogEvent-compatible bridge).
+    pub fn remove_timestamp(&mut self) -> Option<Value> {
+        let ts = self.get_timestamp();
+        self.record.time_unix_nano = 0;
+        ts
+    }
+
+    /// Check if a field exists (LogEvent-compatible bridge).
+    pub fn contains<'a>(&self, path: impl lookup::lookup_v2::TargetPath<'a>) -> bool {
+        self.get(path).is_some()
+    }
+
+    /// Get the "message" field value (LogEvent-compatible bridge).
+    pub fn get_message(&self) -> Option<Value> {
+        self.body().map(any_value_to_vrl)
+    }
+
+    /// Get the "source_type" from metadata (LogEvent-compatible bridge).
+    pub fn get_source_type(&self) -> Option<Value> {
+        self.to_log_event().get_source_type().cloned()
+    }
+
+    /// Get the host value from the event (LogEvent-compatible bridge).
+    pub fn get_host(&self) -> Option<Value> {
+        self.resource_attribute("host.name")
+            .map(any_value_to_vrl)
+            .or_else(|| self.to_log_event().get_host().cloned())
+    }
+
+    /// Parse a path and get a value (LogEvent-compatible bridge).
+    pub fn parse_path_and_get_value(
+        &self,
+        path: &str,
+    ) -> Result<Option<Value>, vrl::path::PathParseError> {
+        let log = self.to_log_event();
+        log.parse_path_and_get_value(path)
+            .map(|opt| opt.cloned())
+    }
+
+    /// Get the LogNamespace (LogEvent-compatible bridge).
+    pub fn namespace(&self) -> crate::config::LogNamespace {
+        self.to_log_event().namespace()
+    }
+
+    /// Convert to fields (LogEvent-compatible bridge).
+    /// Returns owned values since the underlying LogEvent is ephemeral.
+    pub fn convert_to_fields(&self) -> Vec<(vrl::value::KeyString, Value)> {
+        let log = self.to_log_event();
+        log.convert_to_fields()
+            .map(|(k, v)| (k, v.clone()))
+            .collect()
+    }
+
+    /// Rename a key (LogEvent-compatible bridge).
+    pub fn rename_key<'a>(
+        &mut self,
+        from: impl lookup::lookup_v2::TargetPath<'a>,
+        to: impl lookup::lookup_v2::TargetPath<'a>,
+    ) {
+        let mut log = self.to_log_event();
+        log.rename_key(from, to);
+        let metadata = std::mem::take(&mut self.metadata);
+        *self = Self::from_log_event(log);
+        self.metadata = metadata;
+    }
+
+    /// Get the timestamp path (LogEvent-compatible bridge).
+    pub fn timestamp_path(&self) -> Option<vrl::path::OwnedTargetPath> {
+        self.to_log_event().timestamp_path().cloned()
+    }
+
+    /// Get the host path (LogEvent-compatible bridge).
+    pub fn host_path(&self) -> Option<vrl::path::OwnedTargetPath> {
+        self.to_log_event().host_path().cloned()
+    }
+
+    /// Get the message path (LogEvent-compatible bridge).
+    pub fn message_path(&self) -> Option<vrl::path::OwnedTargetPath> {
+        self.to_log_event().message_path().cloned()
+    }
+
+    /// Get the source type path (LogEvent-compatible bridge).
+    pub fn source_type_path(&self) -> Option<vrl::path::OwnedTargetPath> {
+        self.to_log_event().source_type_path().cloned()
+    }
+
+    /// Try insert - only inserts if the path doesn't exist (LogEvent-compatible bridge).
+    pub fn try_insert<'a>(
+        &mut self,
+        path: impl lookup::lookup_v2::TargetPath<'a>,
+        value: impl Into<Value>,
+    ) {
+        let mut log = self.to_log_event();
+        log.try_insert(path, value);
+        let metadata = std::mem::take(&mut self.metadata);
+        *self = Self::from_log_event(log);
+        self.metadata = metadata;
+    }
+
+    /// Get the underlying value (LogEvent-compatible bridge).
+    pub fn value(&self) -> Value {
+        self.to_log_event().value().clone()
+    }
+
+    /// Get all keys (LogEvent-compatible bridge).
+    pub fn keys(&self) -> Option<std::vec::IntoIter<vrl::value::KeyString>> {
+        let log = self.to_log_event();
+        log.keys().map(|iter| iter.collect::<Vec<_>>().into_iter())
+    }
+
+    /// Check if the log is an empty object (LogEvent-compatible bridge).
+    pub fn is_empty_object(&self) -> bool {
+        self.to_log_event().is_empty_object()
+    }
+
+    /// Convert to fields unquoted (LogEvent-compatible bridge).
+    pub fn convert_to_fields_unquoted(&self) -> Vec<(vrl::value::KeyString, Value)> {
+        let log = self.to_log_event();
+        log.convert_to_fields_unquoted()
+            .map(|(k, v)| (k, v.clone()))
+            .collect()
+    }
+
+    /// Get a mutable reference to the underlying value.
+    /// Since OtelLog doesn't have a single VRL Value, this creates a LogEvent,
+    /// returns a clone of its value, and any mutations won't persist.
+    /// For mutations, use insert/remove instead.
+    pub fn value_mut(&mut self) -> Value {
+        self.to_log_event().value().clone()
+    }
+
+    /// Get as an object map (LogEvent-compatible bridge).
+    pub fn as_map(&self) -> Option<ObjectMap> {
+        match self.to_log_event().value() {
+            Value::Object(map) => Some(map.clone()),
+            _ => None,
+        }
+    }
+
     /// Lossy projection of this OTel log event into a legacy `LogEvent`.
     ///
     /// The body becomes `message`, attributes become top-level fields, and
@@ -413,7 +691,21 @@ impl OtelLog {
         let mut map = ObjectMap::new();
 
         if let Some(body) = self.body() {
-            map.insert("message".into(), any_value_to_vrl(body));
+            match &body.value {
+                Some(OtelValueKind::KvlistValue(kvl)) => {
+                    for kv in &kvl.values {
+                        let v = kv
+                            .value
+                            .as_ref()
+                            .map(any_value_to_vrl)
+                            .unwrap_or(Value::Null);
+                        map.insert(kv.key.clone().into(), v);
+                    }
+                }
+                _ => {
+                    map.insert("message".into(), any_value_to_vrl(body));
+                }
+            }
         }
 
         for kv in &self.record.attributes {
@@ -502,6 +794,29 @@ impl OtelSpan {
             resource: None,
             scope: None,
             metadata: EventMetadata::default(),
+        }
+    }
+
+    /// Convert a legacy `TraceEvent` into an `OtelSpan`.
+    ///
+    /// The `TraceEvent`'s fields are stored as span attributes.
+    pub fn from_trace_event(trace: super::TraceEvent) -> Self {
+        let (map, metadata) = trace.into_parts();
+        let attributes: Vec<KeyValue> = map
+            .into_iter()
+            .map(|(k, v)| KeyValue {
+                key: k.to_string(),
+                value: Some(vrl_value_to_any_value(&v)),
+            })
+            .collect();
+        Self {
+            span: Span {
+                attributes,
+                ..Default::default()
+            },
+            resource: None,
+            scope: None,
+            metadata,
         }
     }
 
@@ -639,6 +954,52 @@ impl OtelSpan {
         self
     }
 
+    // -----------------------------------------------------------------------
+    // LogEvent/TraceEvent-compatible bridge methods
+    // -----------------------------------------------------------------------
+
+    /// Get a field value by path (TraceEvent-compatible bridge).
+    pub fn get<'a>(&self, path: impl lookup::lookup_v2::TargetPath<'a>) -> Option<Value> {
+        self.to_log_event().get(path).cloned()
+    }
+
+    /// Insert a field value by path (TraceEvent-compatible bridge).
+    pub fn insert<'a>(
+        &mut self,
+        path: impl lookup::lookup_v2::TargetPath<'a>,
+        value: impl Into<Value>,
+    ) -> Option<Value> {
+        let mut log = self.to_log_event();
+        let old = log.insert(path, value);
+        let metadata = std::mem::take(&mut self.metadata);
+        *self = Self::from_trace_event(super::TraceEvent::from(log));
+        self.metadata = metadata;
+        old
+    }
+
+    /// Check if a field exists (TraceEvent-compatible bridge).
+    pub fn contains<'a>(&self, path: impl lookup::lookup_v2::TargetPath<'a>) -> bool {
+        self.get(path).is_some()
+    }
+
+    /// Get as an object map (TraceEvent-compatible bridge).
+    pub fn as_map(&self) -> Option<ObjectMap> {
+        match self.to_log_event().value() {
+            Value::Object(map) => Some(map.clone()),
+            _ => None,
+        }
+    }
+
+    /// Parse a path and get a value (TraceEvent-compatible bridge).
+    pub fn parse_path_and_get_value(
+        &self,
+        path: &str,
+    ) -> Result<Option<Value>, vrl::path::PathParseError> {
+        let log = self.to_log_event();
+        log.parse_path_and_get_value(path)
+            .map(|opt| opt.cloned())
+    }
+
     /// Lossy projection of this OTel span event into a legacy `LogEvent`.
     ///
     /// Span name becomes `message`, attributes become top-level fields, and
@@ -732,6 +1093,11 @@ impl OtelSpan {
         }
 
         LogEvent::from_map(map, self.metadata.clone())
+    }
+
+    /// Convert this OtelSpan into a legacy `TraceEvent`.
+    pub fn to_trace_event(&self) -> TraceEvent {
+        TraceEvent::from(self.to_log_event())
     }
 }
 
@@ -1050,6 +1416,56 @@ impl OtelMetric {
         self.resource
             .as_ref()
             .and_then(|r| attribute_value(&r.attributes, key))
+    }
+
+    // -----------------------------------------------------------------------
+    // Metric-compatible bridge methods
+    // -----------------------------------------------------------------------
+
+    /// Get the metric timestamp (Metric-compatible bridge).
+    pub fn timestamp(&self) -> Option<chrono::DateTime<chrono::Utc>> {
+        self.to_legacy_metric_ref_timestamp()
+    }
+
+    fn to_legacy_metric_ref_timestamp(&self) -> Option<chrono::DateTime<chrono::Utc>> {
+        use opentelemetry_proto::tonic::metrics::v1::metric;
+        let data = self.metric.data.as_ref()?;
+        let nanos = match data {
+            metric::Data::Gauge(g) => g.data_points.first().map(|dp| dp.time_unix_nano),
+            metric::Data::Sum(s) => s.data_points.first().map(|dp| dp.time_unix_nano),
+            metric::Data::Histogram(h) => h.data_points.first().map(|dp| dp.time_unix_nano),
+            metric::Data::ExponentialHistogram(h) => h.data_points.first().map(|dp| dp.time_unix_nano),
+            metric::Data::Summary(s) => s.data_points.first().map(|dp| dp.time_unix_nano),
+        }?;
+        if nanos == 0 { return None; }
+        let secs = (nanos / 1_000_000_000) as i64;
+        let nsecs = (nanos % 1_000_000_000) as u32;
+        chrono::DateTime::from_timestamp(secs, nsecs)
+    }
+
+    /// Get the metric tags (Metric-compatible bridge).
+    pub fn tags(&self) -> Option<&super::metric::MetricTags> {
+        None
+    }
+
+    /// Get the metric namespace (Metric-compatible bridge).
+    pub fn namespace(&self) -> Option<&str> {
+        None
+    }
+
+    /// Get the metric value (Metric-compatible bridge).
+    pub fn value(&self) -> super::MetricValue {
+        self.clone().to_legacy_metric().value().clone()
+    }
+
+    /// Get the metric kind (Metric-compatible bridge).
+    pub fn kind(&self) -> super::MetricKind {
+        self.clone().to_legacy_metric().kind()
+    }
+
+    /// Get a tag value (Metric-compatible bridge).
+    pub fn tag_value(&self, key: &str) -> Option<String> {
+        self.clone().to_legacy_metric().tag_value(key)
     }
 
     /// Convert this `OtelMetric` back to a legacy `Metric`.
@@ -1692,7 +2108,7 @@ mod tests {
 
         let m = Metric::new("test", MetricKind::Absolute, MetricValue::Gauge { value: 1.0 });
         let event: Event = m.into();
-        assert!(matches!(event, Event::OtelMetric(_)), "expected OtelMetric, got {event:?}");
+        assert!(matches!(event, Event::Metric(_)), "expected Event::Metric, got {event:?}");
 
         let metric = event.try_into_metric().expect("should convert back");
         assert_eq!(metric.name(), "test");

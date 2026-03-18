@@ -1423,12 +1423,12 @@ mod test {
         assert!(
             events
                 .iter()
-                .any(|e| e.as_log()[&message_key] == "hello".into())
+                .any(|e| e.as_log().get(message_key.as_str()).unwrap() == "hello".into())
         );
         assert!(
             events
                 .iter()
-                .any(|e| e.as_log()[&message_key] == "world".into())
+                .any(|e| e.as_log().get(message_key.as_str()).unwrap() == "world".into())
         );
 
         drop(sock_stream); //explicitly drop the stream so we don't get warnings about not using it
@@ -1688,11 +1688,11 @@ mod test {
         send_control_frame(&mut sock_sink, create_control_frame(ControlHeader::Stop)).await;
 
         assert_eq!(
-            events[0].as_log()[log_schema().message_key().unwrap().to_string()],
+            events[0].as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
             "hello".into(),
         );
         assert_eq!(
-            events[1].as_log()[log_schema().message_key().unwrap().to_string()],
+            events[1].as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
             "world".into(),
         );
 
@@ -1728,11 +1728,11 @@ mod test {
         send_control_frame(&mut sock_sink, create_control_frame(ControlHeader::Stop)).await;
 
         assert_eq!(
-            events[0].as_log()[log_schema().message_key().unwrap().to_string()],
+            events[0].as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
             "hello".into(),
         );
         assert_eq!(
-            events[1].as_log()[log_schema().message_key().unwrap().to_string()],
+            events[1].as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
             "world".into(),
         );
 

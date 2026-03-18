@@ -221,7 +221,7 @@ fn make_remote_write_event(
 ) -> Option<RemoteWriteMetric> {
     let tenant_id = tenant_id.and_then(|template| {
         template
-            .render_string(&metric)
+            .render_string_from_metric(&metric)
             .map_err(|error| {
                 emit!(TemplateRenderingError {
                     error,

@@ -40,12 +40,7 @@ impl Encoder<Event> for RawMessageSerializer {
 
     fn encode(&mut self, event: Event, buffer: &mut BytesMut) -> Result<(), Self::Error> {
         match &event {
-            Event::Log(log) => {
-                if let Some(bytes) = log.get_message().map(|value| value.coerce_to_bytes()) {
-                    buffer.put(bytes);
-                }
-            }
-            Event::OtelLog(otel_log) => {
+            Event::Log(otel_log) => {
                 let s = otel_log.body_string();
                 if !s.is_empty() {
                     buffer.put(s.as_bytes());
@@ -80,7 +75,7 @@ mod tests {
         use opentelemetry_proto::tonic::common::v1::AnyValue;
         use vector_core::event::OtelLog;
 
-        let event = Event::OtelLog(OtelLog::new(
+        let event = Event::Log(OtelLog::new(
             opentelemetry_proto::tonic::logs::v1::LogRecord {
                 body: Some(AnyValue {
                     value: Some(

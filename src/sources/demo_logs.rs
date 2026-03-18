@@ -17,7 +17,7 @@ use vector_lib::{
     config::{DataType, LegacyKey, LogNamespace},
     configurable::configurable_component,
     internal_event::{ByteSize, BytesReceived, CountByteSize, InternalEventHandle as _, Protocol},
-    lookup::{owned_value_path, path},
+    lookup::owned_value_path,
 };
 use vrl::value::Kind;
 
@@ -215,7 +215,7 @@ async fn demo_logs_source(
     decoder: Decoder,
     mut shutdown: ShutdownSignal,
     mut out: SourceSender,
-    log_namespace: LogNamespace,
+    _log_namespace: LogNamespace,
 ) -> Result<(), ()> {
     let interval: Option<Duration> = (interval != Duration::ZERO).then_some(interval);
     let mut interval = interval.map(time::interval);
@@ -245,7 +245,7 @@ async fn demo_logs_source(
                     let now = Utc::now();
 
                     let events = events.into_iter().map(|mut event| {
-                        if let Event::OtelLog(ref mut otel_log) = event {
+                        if let Event::Log(ref mut otel_log) = event {
                             otel_log.set_source_metadata(DemoLogsConfig::NAME, now);
                             otel_log.set_attribute(
                                 "service".to_string(),
@@ -254,26 +254,6 @@ async fn demo_logs_source(
                             otel_log.set_resource_attribute(
                                 "host.name".to_string(),
                                 string_value("localhost"),
-                            );
-                        } else if let Event::Log(ref mut log) = event {
-                            log_namespace.insert_standard_vector_source_metadata(
-                                log,
-                                DemoLogsConfig::NAME,
-                                now,
-                            );
-                            log_namespace.insert_source_metadata(
-                                DemoLogsConfig::NAME,
-                                log,
-                                Some(LegacyKey::InsertIfEmpty(path!("service"))),
-                                path!("service"),
-                                "vector",
-                            );
-                            log_namespace.insert_source_metadata(
-                                DemoLogsConfig::NAME,
-                                log,
-                                Some(LegacyKey::InsertIfEmpty(path!("host"))),
-                                path!("host"),
-                                "localhost",
                             );
                         }
 
@@ -432,7 +412,8 @@ mod tests {
                 _ => unreachable!(),
             };
             let log = event.as_log();
-            let message = log[&message_key].to_string_lossy();
+            let val = log.get(message_key.as_str()).unwrap();
+            let message = val.to_string_lossy();
             assert!(lines.contains(&&*message));
         }
 
@@ -471,7 +452,8 @@ mod tests {
                 _ => unreachable!(),
             };
             let log = event.as_log();
-            let message = log[&message_key].to_string_lossy();
+            let val = log.get(message_key.as_str()).unwrap();
+            let message = val.to_string_lossy();
             assert!(message.starts_with(&n.to_string()));
         }
 
@@ -512,7 +494,8 @@ mod tests {
             _ => unreachable!(),
         };
         let log = event.as_log();
-        let host = log[&host_key].to_string_lossy();
+        let val = log.get(host_key.as_str()).unwrap();
+        let host = val.to_string_lossy();
         assert_eq!("localhost", host);
     }
 
@@ -587,7 +570,8 @@ mod tests {
                 _ => unreachable!(),
             };
             let log = event.as_log();
-            let message = log[&message_key].to_string_lossy();
+            let val = log.get(message_key.as_str()).unwrap();
+            let message = val.to_string_lossy();
             assert!(serde_json::from_str::<serde_json::Value>(&message).is_ok());
         }
         assert_eq!(poll!(rx.next()), Poll::Ready(None));

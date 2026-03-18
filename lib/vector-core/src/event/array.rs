@@ -19,23 +19,22 @@ use super::{
     EventRef, LogEvent, Metric, OtelLog, OtelMetric, OtelSpan, TraceEvent,
 };
 
-/// The type alias for an array of `LogEvent` elements.
-pub type LogArray = Vec<LogEvent>;
-
-/// The type alias for an array of `TraceEvent` elements.
-pub type TraceArray = Vec<TraceEvent>;
-
-/// The type alias for an array of `Metric` elements.
-pub type MetricArray = Vec<Metric>;
-
 /// The type alias for an array of `OtelLog` elements.
-pub type OtelLogArray = Vec<OtelLog>;
-
-/// The type alias for an array of `OtelSpan` elements.
-pub type OtelSpanArray = Vec<OtelSpan>;
+pub type LogArray = Vec<OtelLog>;
 
 /// The type alias for an array of `OtelMetric` elements.
-pub type OtelMetricArray = Vec<OtelMetric>;
+pub type MetricArray = Vec<OtelMetric>;
+
+/// The type alias for an array of `OtelSpan` elements.
+pub type TraceArray = Vec<OtelSpan>;
+
+/// Backward-compat aliases.
+#[allow(missing_docs)]
+pub type OtelLogArray = LogArray;
+#[allow(missing_docs)]
+pub type OtelMetricArray = MetricArray;
+#[allow(missing_docs)]
+pub type OtelSpanArray = TraceArray;
 
 /// The core trait to abstract over any type that may work as an array
 /// of events. This is effectively the same as the standard
@@ -82,7 +81,7 @@ impl EventContainer for Event {
     }
 }
 
-impl EventContainer for LogEvent {
+impl EventContainer for OtelLog {
     type IntoIter = iter::Once<Event>;
 
     fn len(&self) -> usize {
@@ -98,24 +97,8 @@ impl EventContainer for LogEvent {
     }
 }
 
-impl EventContainer for Metric {
-    type IntoIter = iter::Once<Event>;
-
-    fn len(&self) -> usize {
-        1
-    }
-
-    fn is_empty(&self) -> bool {
-        false
-    }
-
-    fn into_events(self) -> Self::IntoIter {
-        iter::once(Event::Metric(self))
-    }
-}
-
 impl EventContainer for LogArray {
-    type IntoIter = iter::Map<vec::IntoIter<LogEvent>, fn(LogEvent) -> Event>;
+    type IntoIter = iter::Map<vec::IntoIter<OtelLog>, fn(OtelLog) -> Event>;
 
     fn len(&self) -> usize {
         self.len()
@@ -127,7 +110,7 @@ impl EventContainer for LogArray {
 }
 
 impl EventContainer for MetricArray {
-    type IntoIter = iter::Map<vec::IntoIter<Metric>, fn(Metric) -> Event>;
+    type IntoIter = iter::Map<vec::IntoIter<OtelMetric>, fn(OtelMetric) -> Event>;
 
     fn len(&self) -> usize {
         self.len()
@@ -141,18 +124,22 @@ impl EventContainer for MetricArray {
 /// An array of one of the `Event` variants exclusively.
 #[derive(Clone, Debug, PartialEq)]
 pub enum EventArray {
-    /// An array of type `LogEvent`
-    Logs(LogArray),
-    /// An array of type `Metric`
-    Metrics(MetricArray),
-    /// An array of type `TraceEvent`
-    Traces(TraceArray),
     /// An array of type `OtelLog`
-    OtelLogs(OtelLogArray),
+    Logs(LogArray),
     /// An array of type `OtelMetric`
-    OtelMetrics(OtelMetricArray),
+    Metrics(MetricArray),
     /// An array of type `OtelSpan`
-    OtelSpans(OtelSpanArray),
+    Traces(TraceArray),
+}
+
+/// Backward-compat: these used to be separate variants.
+impl EventArray {
+    /// Backward-compat alias for `EventArray::Logs`.
+    pub fn is_otel_logs(&self) -> bool { matches!(self, Self::Logs(_)) }
+    /// Backward-compat alias for `EventArray::Metrics`.
+    pub fn is_otel_metrics(&self) -> bool { matches!(self, Self::Metrics(_)) }
+    /// Backward-compat alias for `EventArray::Traces`.
+    pub fn is_otel_spans(&self) -> bool { matches!(self, Self::Traces(_)) }
 }
 
 impl EventArray {
@@ -162,9 +149,6 @@ impl EventArray {
             Self::Logs(array) => EventArrayIter::Logs(array.iter()),
             Self::Metrics(array) => EventArrayIter::Metrics(array.iter()),
             Self::Traces(array) => EventArrayIter::Traces(array.iter()),
-            Self::OtelLogs(array) => EventArrayIter::OtelLogs(array.iter()),
-            Self::OtelMetrics(array) => EventArrayIter::OtelMetrics(array.iter()),
-            Self::OtelSpans(array) => EventArrayIter::OtelSpans(array.iter()),
         }
     }
 
@@ -174,14 +158,11 @@ impl EventArray {
             Self::Logs(array) => EventArrayIterMut::Logs(array.iter_mut()),
             Self::Metrics(array) => EventArrayIterMut::Metrics(array.iter_mut()),
             Self::Traces(array) => EventArrayIterMut::Traces(array.iter_mut()),
-            Self::OtelLogs(array) => EventArrayIterMut::OtelLogs(array.iter_mut()),
-            Self::OtelMetrics(array) => EventArrayIterMut::OtelMetrics(array.iter_mut()),
-            Self::OtelSpans(array) => EventArrayIterMut::OtelSpans(array.iter_mut()),
         }
     }
 
     /// Iterate over references to the logs in this array.
-    pub fn iter_logs_mut(&mut self) -> impl Iterator<Item = &mut LogEvent> {
+    pub fn iter_logs_mut(&mut self) -> impl Iterator<Item = &mut OtelLog> {
         match self {
             Self::Logs(array) => TypedArrayIterMut(Some(array.iter_mut())),
             _ => TypedArrayIterMut(None),
@@ -191,12 +172,9 @@ impl EventArray {
     /// Applies a closure to each event's metadata in this array.
     pub fn for_each_metadata_mut(&mut self, mut f: impl FnMut(&mut EventMetadata)) {
         match self {
-            Self::Logs(logs) => logs.iter_mut().for_each(|e| f(e.metadata_mut())),
-            Self::Metrics(metrics) => metrics.iter_mut().for_each(|e| f(e.metadata_mut())),
-            Self::Traces(traces) => traces.iter_mut().for_each(|e| f(e.metadata_mut())),
-            Self::OtelLogs(a) => a.iter_mut().for_each(|e| f(e.metadata_mut())),
-            Self::OtelMetrics(a) => a.iter_mut().for_each(|e| f(e.metadata_mut())),
-            Self::OtelSpans(a) => a.iter_mut().for_each(|e| f(e.metadata_mut())),
+            Self::Logs(a) => a.iter_mut().for_each(|e| f(e.metadata_mut())),
+            Self::Metrics(a) => a.iter_mut().for_each(|e| f(e.metadata_mut())),
+            Self::Traces(a) => a.iter_mut().for_each(|e| f(e.metadata_mut())),
         }
     }
 }
@@ -204,13 +182,28 @@ impl EventArray {
 impl From<Event> for EventArray {
     fn from(event: Event) -> Self {
         match event {
-            Event::Log(log) => Self::Logs(vec![log]),
-            Event::Metric(metric) => Self::Metrics(vec![metric]),
-            Event::Trace(trace) => Self::Traces(vec![trace]),
-            Event::OtelLog(e) => Self::OtelLogs(vec![e]),
-            Event::OtelMetric(e) => Self::OtelMetrics(vec![e]),
-            Event::OtelSpan(e) => Self::OtelSpans(vec![e]),
+            Event::Log(e) => Self::Logs(vec![e]),
+            Event::Metric(e) => Self::Metrics(vec![e]),
+            Event::Trace(e) => Self::Traces(vec![e]),
         }
+    }
+}
+
+impl From<OtelLog> for EventArray {
+    fn from(log: OtelLog) -> Self {
+        Self::Logs(vec![log])
+    }
+}
+
+impl From<OtelMetric> for EventArray {
+    fn from(metric: OtelMetric) -> Self {
+        Self::Metrics(vec![metric])
+    }
+}
+
+impl From<OtelSpan> for EventArray {
+    fn from(span: OtelSpan) -> Self {
+        Self::Traces(vec![span])
     }
 }
 
@@ -257,9 +250,6 @@ impl AddBatchNotifier for EventArray {
             Self::Logs(a) => add_notifier!(a, batch),
             Self::Metrics(a) => add_notifier!(a, batch),
             Self::Traces(a) => add_notifier!(a, batch),
-            Self::OtelLogs(a) => add_notifier!(a, batch),
-            Self::OtelMetrics(a) => add_notifier!(a, batch),
-            Self::OtelSpans(a) => add_notifier!(a, batch),
         }
     }
 }
@@ -270,9 +260,6 @@ impl ByteSizeOf for EventArray {
             Self::Logs(a) => a.allocated_bytes(),
             Self::Metrics(a) => a.allocated_bytes(),
             Self::Traces(a) => a.allocated_bytes(),
-            Self::OtelLogs(a) => a.allocated_bytes(),
-            Self::OtelMetrics(a) => a.allocated_bytes(),
-            Self::OtelSpans(a) => a.allocated_bytes(),
         }
     }
 }
@@ -283,9 +270,6 @@ impl EstimatedJsonEncodedSizeOf for EventArray {
             Self::Logs(v) => v.estimated_json_encoded_size_of(),
             Self::Metrics(v) => v.estimated_json_encoded_size_of(),
             Self::Traces(v) => v.estimated_json_encoded_size_of(),
-            Self::OtelLogs(v) => v.estimated_json_encoded_size_of(),
-            Self::OtelMetrics(v) => v.estimated_json_encoded_size_of(),
-            Self::OtelSpans(v) => v.estimated_json_encoded_size_of(),
         }
     }
 }
@@ -296,9 +280,6 @@ impl EventCount for EventArray {
             Self::Logs(a) => a.len(),
             Self::Metrics(a) => a.len(),
             Self::Traces(a) => a.len(),
-            Self::OtelLogs(a) => a.len(),
-            Self::OtelMetrics(a) => a.len(),
-            Self::OtelSpans(a) => a.len(),
         }
     }
 }
@@ -311,9 +292,6 @@ impl EventContainer for EventArray {
             Self::Logs(a) => a.len(),
             Self::Metrics(a) => a.len(),
             Self::Traces(a) => a.len(),
-            Self::OtelLogs(a) => a.len(),
-            Self::OtelMetrics(a) => a.len(),
-            Self::OtelSpans(a) => a.len(),
         }
     }
 
@@ -322,9 +300,6 @@ impl EventContainer for EventArray {
             Self::Logs(a) => EventArrayIntoIter::Logs(a.into_iter()),
             Self::Metrics(a) => EventArrayIntoIter::Metrics(a.into_iter()),
             Self::Traces(a) => EventArrayIntoIter::Traces(a.into_iter()),
-            Self::OtelLogs(a) => EventArrayIntoIter::OtelLogs(a.into_iter()),
-            Self::OtelMetrics(a) => EventArrayIntoIter::OtelMetrics(a.into_iter()),
-            Self::OtelSpans(a) => EventArrayIntoIter::OtelSpans(a.into_iter()),
         }
     }
 }
@@ -335,9 +310,6 @@ impl EventDataEq for EventArray {
             (Self::Logs(a), Self::Logs(b)) => a.event_data_eq(b),
             (Self::Metrics(a), Self::Metrics(b)) => a.event_data_eq(b),
             (Self::Traces(a), Self::Traces(b)) => a.event_data_eq(b),
-            (Self::OtelLogs(a), Self::OtelLogs(b)) => a.event_data_eq(b),
-            (Self::OtelMetrics(a), Self::OtelMetrics(b)) => a.event_data_eq(b),
-            (Self::OtelSpans(a), Self::OtelSpans(b)) => a.event_data_eq(b),
             _ => false,
         }
     }
@@ -349,9 +321,6 @@ impl Finalizable for EventArray {
             Self::Logs(a) => a.iter_mut().map(Finalizable::take_finalizers).collect(),
             Self::Metrics(a) => a.iter_mut().map(Finalizable::take_finalizers).collect(),
             Self::Traces(a) => a.iter_mut().map(Finalizable::take_finalizers).collect(),
-            Self::OtelLogs(a) => a.iter_mut().map(Finalizable::take_finalizers).collect(),
-            Self::OtelMetrics(a) => a.iter_mut().map(Finalizable::take_finalizers).collect(),
-            Self::OtelSpans(a) => a.iter_mut().map(Finalizable::take_finalizers).collect(),
         }
     }
 }
@@ -361,18 +330,16 @@ impl Arbitrary for EventArray {
     fn arbitrary(g: &mut Gen) -> Self {
         let len = u8::arbitrary(g) as usize;
         let choice: u8 = u8::arbitrary(g);
-        // Quickcheck can't derive Arbitrary for enums, see
-        // https://github.com/BurntSushi/quickcheck/issues/98
         if choice.is_multiple_of(2) {
             let mut logs = Vec::new();
             for _ in 0..len {
-                logs.push(LogEvent::arbitrary(g));
+                logs.push(OtelLog::from_log_event(LogEvent::arbitrary(g)));
             }
             EventArray::Logs(logs)
         } else {
             let mut metrics = Vec::new();
             for _ in 0..len {
-                metrics.push(Metric::arbitrary(g));
+                metrics.push(OtelMetric::from_legacy_metric(Metric::arbitrary(g)));
             }
             EventArray::Metrics(metrics)
         }
@@ -380,12 +347,9 @@ impl Arbitrary for EventArray {
 
     fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
         match self {
-            EventArray::Logs(logs) => Box::new(logs.shrink().map(EventArray::Logs)),
-            EventArray::Metrics(metrics) => Box::new(metrics.shrink().map(EventArray::Metrics)),
-            EventArray::Traces(traces) => Box::new(traces.shrink().map(EventArray::Traces)),
-            EventArray::OtelLogs(_)
-            | EventArray::OtelMetrics(_)
-            | EventArray::OtelSpans(_) => Box::new(std::iter::empty()),
+            EventArray::Logs(_) | EventArray::Metrics(_) | EventArray::Traces(_) => {
+                Box::new(std::iter::empty())
+            }
         }
     }
 }
@@ -393,18 +357,12 @@ impl Arbitrary for EventArray {
 /// The iterator type for `EventArray::iter_events`.
 #[derive(Debug)]
 pub enum EventArrayIter<'a> {
-    /// An iterator over type `LogEvent`.
-    Logs(slice::Iter<'a, LogEvent>),
-    /// An iterator over type `Metric`.
-    Metrics(slice::Iter<'a, Metric>),
-    /// An iterator over type `Trace`.
-    Traces(slice::Iter<'a, TraceEvent>),
     /// An iterator over type `OtelLog`.
-    OtelLogs(slice::Iter<'a, OtelLog>),
+    Logs(slice::Iter<'a, OtelLog>),
     /// An iterator over type `OtelMetric`.
-    OtelMetrics(slice::Iter<'a, OtelMetric>),
+    Metrics(slice::Iter<'a, OtelMetric>),
     /// An iterator over type `OtelSpan`.
-    OtelSpans(slice::Iter<'a, OtelSpan>),
+    Traces(slice::Iter<'a, OtelSpan>),
 }
 
 impl<'a> Iterator for EventArrayIter<'a> {
@@ -412,12 +370,9 @@ impl<'a> Iterator for EventArrayIter<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         match self {
-            Self::Logs(i) => i.next().map(EventRef::from),
-            Self::Metrics(i) => i.next().map(EventRef::from),
-            Self::Traces(i) => i.next().map(EventRef::from),
-            Self::OtelLogs(i) => i.next().map(EventRef::OtelLog),
-            Self::OtelMetrics(i) => i.next().map(EventRef::OtelMetric),
-            Self::OtelSpans(i) => i.next().map(EventRef::OtelSpan),
+            Self::Logs(i) => i.next().map(EventRef::Log),
+            Self::Metrics(i) => i.next().map(EventRef::Metric),
+            Self::Traces(i) => i.next().map(EventRef::Trace),
         }
     }
 }
@@ -425,18 +380,12 @@ impl<'a> Iterator for EventArrayIter<'a> {
 /// The iterator type for `EventArray::iter_events_mut`.
 #[derive(Debug)]
 pub enum EventArrayIterMut<'a> {
-    /// An iterator over type `LogEvent`.
-    Logs(slice::IterMut<'a, LogEvent>),
-    /// An iterator over type `Metric`.
-    Metrics(slice::IterMut<'a, Metric>),
-    /// An iterator over type `Trace`.
-    Traces(slice::IterMut<'a, TraceEvent>),
     /// An iterator over type `OtelLog`.
-    OtelLogs(slice::IterMut<'a, OtelLog>),
+    Logs(slice::IterMut<'a, OtelLog>),
     /// An iterator over type `OtelMetric`.
-    OtelMetrics(slice::IterMut<'a, OtelMetric>),
+    Metrics(slice::IterMut<'a, OtelMetric>),
     /// An iterator over type `OtelSpan`.
-    OtelSpans(slice::IterMut<'a, OtelSpan>),
+    Traces(slice::IterMut<'a, OtelSpan>),
 }
 
 impl<'a> Iterator for EventArrayIterMut<'a> {
@@ -444,12 +393,9 @@ impl<'a> Iterator for EventArrayIterMut<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         match self {
-            Self::Logs(i) => i.next().map(EventMutRef::from),
-            Self::Metrics(i) => i.next().map(EventMutRef::from),
-            Self::Traces(i) => i.next().map(EventMutRef::from),
-            Self::OtelLogs(i) => i.next().map(EventMutRef::OtelLog),
-            Self::OtelMetrics(i) => i.next().map(EventMutRef::OtelMetric),
-            Self::OtelSpans(i) => i.next().map(EventMutRef::OtelSpan),
+            Self::Logs(i) => i.next().map(EventMutRef::Log),
+            Self::Metrics(i) => i.next().map(EventMutRef::Metric),
+            Self::Traces(i) => i.next().map(EventMutRef::Trace),
         }
     }
 }
@@ -457,18 +403,12 @@ impl<'a> Iterator for EventArrayIterMut<'a> {
 /// The iterator type for `EventArray::into_events`.
 #[derive(Debug)]
 pub enum EventArrayIntoIter {
-    /// An iterator over type `LogEvent`.
-    Logs(vec::IntoIter<LogEvent>),
-    /// An iterator over type `Metric`.
-    Metrics(vec::IntoIter<Metric>),
-    /// An iterator over type `TraceEvent`.
-    Traces(vec::IntoIter<TraceEvent>),
     /// An iterator over type `OtelLog`.
-    OtelLogs(vec::IntoIter<OtelLog>),
+    Logs(vec::IntoIter<OtelLog>),
     /// An iterator over type `OtelMetric`.
-    OtelMetrics(vec::IntoIter<OtelMetric>),
+    Metrics(vec::IntoIter<OtelMetric>),
     /// An iterator over type `OtelSpan`.
-    OtelSpans(vec::IntoIter<OtelSpan>),
+    Traces(vec::IntoIter<OtelSpan>),
 }
 
 impl Iterator for EventArrayIntoIter {
@@ -476,12 +416,9 @@ impl Iterator for EventArrayIntoIter {
 
     fn next(&mut self) -> Option<Self::Item> {
         match self {
-            Self::Logs(i) => i.next().map(Into::into),
+            Self::Logs(i) => i.next().map(Event::Log),
             Self::Metrics(i) => i.next().map(Event::Metric),
             Self::Traces(i) => i.next().map(Event::Trace),
-            Self::OtelLogs(i) => i.next().map(Event::OtelLog),
-            Self::OtelMetrics(i) => i.next().map(Event::OtelMetric),
-            Self::OtelSpans(i) => i.next().map(Event::OtelSpan),
         }
     }
 }
@@ -526,24 +463,6 @@ impl EventArrayBuffer {
                 None
             }
             (Event::Trace(event), Some(EventArray::Traces(array)))
-                if array.len() < self.max_size =>
-            {
-                array.push(event);
-                None
-            }
-            (Event::OtelLog(event), Some(EventArray::OtelLogs(array)))
-                if array.len() < self.max_size =>
-            {
-                array.push(event);
-                None
-            }
-            (Event::OtelMetric(event), Some(EventArray::OtelMetrics(array)))
-                if array.len() < self.max_size =>
-            {
-                array.push(event);
-                None
-            }
-            (Event::OtelSpan(event), Some(EventArray::OtelSpans(array)))
                 if array.len() < self.max_size =>
             {
                 array.push(event);

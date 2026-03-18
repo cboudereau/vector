@@ -171,13 +171,6 @@ impl TapTransformer {
             EventArray::Logs(logs) => TapPayload::Log(self.output.clone(), logs),
             EventArray::Metrics(metrics) => TapPayload::Metric(self.output.clone(), metrics),
             EventArray::Traces(traces) => TapPayload::Trace(self.output.clone(), traces),
-            EventArray::OtelLogs(otel_logs) => {
-                let logs: LogArray = otel_logs.into_iter().map(|o| o.to_log_event()).collect();
-                TapPayload::Log(self.output.clone(), logs)
-            }
-            EventArray::OtelMetrics(_) | EventArray::OtelSpans(_) => {
-                return;
-            }
         };
 
         if let Err(TrySendError::Closed(payload)) = self.tap_tx.try_send(payload) {

@@ -28,7 +28,9 @@ where
         input
             .filter_map(move |event| {
                 ready(if let Event::Metric(metric) = event {
-                    normalizer.normalize(metric).map(Event::Metric)
+                    normalizer
+                        .normalize(metric.to_legacy_metric())
+                        .map(|m| Event::from(m))
                 } else {
                     Some(event)
                 })

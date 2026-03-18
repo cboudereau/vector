@@ -113,9 +113,9 @@ impl Deserializer for JsonDeserializer {
         let events = match json {
             serde_json::Value::Array(values) => values
                 .into_iter()
-                .map(|json| Event::OtelLog(OtelLog::from_json_value(json)))
+                .map(|json| Event::Log(OtelLog::from_json_value(json)))
                 .collect::<SmallVec<[Event; 1]>>(),
-            _ => smallvec![Event::OtelLog(OtelLog::from_json_value(json))],
+            _ => smallvec![Event::Log(OtelLog::from_json_value(json))],
         };
 
         Ok(events)
@@ -138,7 +138,7 @@ mod tests {
 
     fn get_body_kvlist_value(event: &Event, key: &str) -> Option<OtelValueKind> {
         match event {
-            Event::OtelLog(otel_log) => {
+            Event::Log(otel_log) => {
                 if let Some(body) = otel_log.body() {
                     if let Some(OtelValueKind::KvlistValue(kvlist)) = &body.value {
                         return kvlist
@@ -165,7 +165,7 @@ mod tests {
             assert_eq!(events.len(), 1);
 
             let event = &events[0];
-            assert!(matches!(event, Event::OtelLog(_)), "expected OtelLog");
+            assert!(matches!(event, Event::Log(_)), "expected Log(OtelLog)");
 
             let val = get_body_kvlist_value(event, "foo");
             assert_eq!(val, Some(OtelValueKind::IntValue(123)));
@@ -181,8 +181,8 @@ mod tests {
             let events = deserializer.parse(input.clone(), namespace).unwrap();
             assert_eq!(events.len(), 2);
 
-            assert!(matches!(&events[0], Event::OtelLog(_)));
-            assert!(matches!(&events[1], Event::OtelLog(_)));
+            assert!(matches!(&events[0], Event::Log(_)));
+            assert!(matches!(&events[1], Event::Log(_)));
 
             let foo = get_body_kvlist_value(&events[0], "foo");
             assert_eq!(foo, Some(OtelValueKind::IntValue(123)));
@@ -231,7 +231,7 @@ mod tests {
         for namespace in [LogNamespace::Legacy, LogNamespace::Vector] {
             let events = deserializer.parse(input.clone(), namespace).unwrap();
             assert_eq!(events.len(), 1);
-            assert!(matches!(&events[0], Event::OtelLog(_)));
+            assert!(matches!(&events[0], Event::Log(_)));
         }
     }
 }

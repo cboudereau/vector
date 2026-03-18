@@ -27,6 +27,7 @@ pub const TIMESTAMP_KEY: &str = "time";
 /// Normalizes parsed data for consistency.
 #[derive(Clone, Debug)]
 pub(super) struct Docker {
+    #[allow(dead_code)]
     log_namespace: LogNamespace,
 }
 
@@ -38,20 +39,22 @@ impl Docker {
 
 impl FunctionTransform for Docker {
     fn transform(&mut self, output: &mut OutputBuffer, mut event: Event) {
-        let log = event.as_mut_log();
-        if let Err(err) = parse_json(log, self.log_namespace) {
-            emit!(KubernetesLogsDockerFormatParseError { error: &err });
-            return;
-        }
-        if let Err(err) = normalize_event(log, self.log_namespace) {
-            emit!(KubernetesLogsDockerFormatParseError { error: &err });
-            return;
+        if let Event::Log(ref mut otel_log) = event {
+            if let Err(err) = parse_json_otel(otel_log) {
+                emit!(KubernetesLogsDockerFormatParseError { error: &err });
+                return;
+            }
+            if let Err(err) = normalize_event_otel(otel_log) {
+                emit!(KubernetesLogsDockerFormatParseError { error: &err });
+                return;
+            }
         }
         output.push(event);
     }
 }
 
 /// Parses `message` as json object and removes it.
+#[allow(dead_code)]
 fn parse_json(log: &mut LogEvent, log_namespace: LogNamespace) -> Result<(), ParsingError> {
     let target_path = get_message_path(log_namespace);
 
@@ -96,8 +99,93 @@ fn parse_json(log: &mut LogEvent, log_namespace: LogNamespace) -> Result<(), Par
     }
 }
 
+fn parse_json_otel(otel_log: &mut crate::event::OtelLog) -> Result<(), ParsingError> {
+    let body = otel_log.body_string();
+    if body.is_empty() {
+        return Err(ParsingError::NoMessageField);
+    }
+
+    match serde_json::from_str::<JsonValue>(&body) {
+        Ok(JsonValue::Object(object)) => {
+            for (key, value) in object {
+                match key.as_str() {
+                    MESSAGE_KEY => {
+                        let s = match value {
+                            JsonValue::String(s) => s,
+                            other => other.to_string(),
+                        };
+                        otel_log.set_body(crate::event::string_value(s));
+                    }
+                    STREAM_KEY => {
+                        let s = match value {
+                            JsonValue::String(s) => s,
+                            other => other.to_string(),
+                        };
+                        otel_log.set_attribute(STREAM_KEY.to_string(), crate::event::string_value(s));
+                    }
+                    TIMESTAMP_KEY => {
+                        let s = match value {
+                            JsonValue::String(s) => s,
+                            other => other.to_string(),
+                        };
+                        otel_log.set_attribute(TIMESTAMP_KEY.to_string(), crate::event::string_value(s));
+                    }
+                    _ => unreachable!("all json-file keys should be matched"),
+                };
+            }
+            Ok(())
+        }
+        Ok(_) => Err(ParsingError::NotAnObject {
+            message: Bytes::from(body),
+        }),
+        Err(err) => Err(ParsingError::InvalidJson {
+            source: err,
+            message: Bytes::from(body),
+        }),
+    }
+}
+
 const DOCKER_MESSAGE_SPLIT_THRESHOLD: usize = 16 * 1024; // 16 Kib
 
+fn normalize_event_otel(otel_log: &mut crate::event::OtelLog) -> Result<(), NormalizationError> {
+    if let Some(time_attr) = otel_log.remove_attribute(TIMESTAMP_KEY) {
+        if let Some(crate::event::OtelValueKind::StringValue(time_str)) = time_attr.value {
+            match DateTime::parse_from_rfc3339(&time_str) {
+                Ok(dt) => {
+                    let ts = dt.with_timezone(&Utc);
+                    otel_log.record_mut().time_unix_nano =
+                        ts.timestamp_nanos_opt().unwrap_or(0) as u64;
+                }
+                Err(_) => {}
+            }
+        }
+    }
+
+    let body = otel_log.body_string();
+    if body.is_empty() {
+        return Err(NormalizationError::LogFieldMissing);
+    }
+    let mut message = Bytes::from(body);
+    let mut is_partial = message.len() == DOCKER_MESSAGE_SPLIT_THRESHOLD;
+    if message.last().map(|&b| b as char == '\n').unwrap_or(false) {
+        message.truncate(message.len() - 1);
+        is_partial = false;
+    }
+    otel_log.set_body(crate::event::string_value(
+        String::from_utf8_lossy(&message),
+    ));
+
+    if is_partial {
+        otel_log.set_attribute(
+            event::PARTIAL.to_string(),
+            crate::event::string_value("true"),
+        );
+    }
+
+    Ok(())
+}
+
+#[allow(dead_code)]
 fn normalize_event(
     log: &mut LogEvent,
     log_namespace: LogNamespace,
@@ -187,6 +275,7 @@ enum ParsingError {
 }
 
 #[derive(Debug, Snafu)]
+#[allow(dead_code)]
 enum NormalizationError {
     TimeFieldMissing,
     TimeValueUnexpectedType,
@@ -311,7 +400,7 @@ pub mod tests {
             || Docker {
                 log_namespace: LogNamespace::Vector,
             },
-            |bytes| Event::Log(LogEvent::from(value!(bytes))),
+            |bytes| Event::from(LogEvent::from(value!(bytes))),
             valid_cases(LogNamespace::Vector),
         );
     }
@@ -324,7 +413,7 @@ pub mod tests {
             || Docker {
                 log_namespace: LogNamespace::Legacy,
             },
-            |bytes| Event::Log(LogEvent::from(bytes)),
+            |bytes| Event::from(LogEvent::from(bytes)),
             valid_cases(LogNamespace::Legacy),
         );
     }

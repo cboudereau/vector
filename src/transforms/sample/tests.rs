@@ -7,7 +7,7 @@ use vrl::owned_value_path;
 use crate::{
     conditions::{Condition, ConditionalConfig, VrlConfig},
     config::log_schema,
-    event::{Event, LogEvent, TraceEvent},
+    event::{Event, LogEvent, TraceEvent, Value},
     template::Template,
     test_util::{components::assert_transform_compliance, random_lines},
     transforms::{
@@ -136,7 +136,7 @@ fn hash_consistently_samples_the_same_events() {
 #[test]
 fn always_passes_events_matching_pass_list() {
     for key_field in &[None, log_schema().message_key().map(ToString::to_string)] {
-        let event = Event::Log(LogEvent::from("i am important"));
+        let event = Event::from(LogEvent::from("i am important"));
         let mut sampler = Sample::new(
             "sample".to_string(),
             SampleMode::new_rate(0),
@@ -161,7 +161,7 @@ fn always_passes_events_matching_pass_list() {
 #[test]
 fn handles_group_by() {
     for group_by in &[None, Some(Template::try_from("{{ other_field }}").unwrap())] {
-        let mut event = Event::Log(LogEvent::from("nananana"));
+        let mut event = Event::from(LogEvent::from("nananana"));
         let log = event.as_mut_log();
         log.insert("other_field", "foo");
         let mut sampler = Sample::new(
@@ -188,7 +188,7 @@ fn handles_group_by() {
 #[test]
 fn handles_key_field() {
     for key_field in &[None, Some("other_field".into())] {
-        let mut event = Event::Log(LogEvent::from("nananana"));
+        let mut event = Event::from(LogEvent::from("nananana"));
         let log = event.as_mut_log();
         log.insert("other_field", "foo");
         let mut sampler = Sample::new(
@@ -224,10 +224,10 @@ fn sampler_adds_sampling_rate_to_event() {
         );
         let passing = events
             .into_iter()
-            .filter(|s| !s.as_log()[&message_key].to_string_lossy().contains("na"))
+            .filter(|s| !s.as_log().get(message_key.as_str()).unwrap().to_string_lossy().contains("na"))
             .find_map(|event| transform_one(&mut sampler, event))
             .unwrap();
-        assert_eq!(passing.as_log()["sample_rate"], "0.1".into());
+        assert_eq!(passing.as_log().get("sample_rate").unwrap(), Value::from("0.1"));
 
         let events = random_events(10000);
         let mut sampler = Sample::new(
@@ -240,10 +240,10 @@ fn sampler_adds_sampling_rate_to_event() {
         );
         let passing = events
             .into_iter()
-            .filter(|s| !s.as_log()[&message_key].to_string_lossy().contains("na"))
+            .filter(|s| !s.as_log().get(message_key.as_str()).unwrap().to_string_lossy().contains("na"))
             .find_map(|event| transform_one(&mut sampler, event))
             .unwrap();
-        assert_eq!(passing.as_log()["custom_sample_rate"], "25".into());
+        assert_eq!(passing.as_log().get("custom_sample_rate").unwrap(), Value::from("25"));
         assert!(passing.as_log().get("sample_rate").is_none());
 
         let events = random_events(10000);
@@ -257,7 +257,7 @@ fn sampler_adds_sampling_rate_to_event() {
         );
         let passing = events
             .into_iter()
-            .filter(|s| !s.as_log()[&message_key].to_string_lossy().contains("na"))
+            .filter(|s| !s.as_log().get(message_key.as_str()).unwrap().to_string_lossy().contains("na"))
             .find_map(|event| transform_one(&mut sampler, event))
             .unwrap();
         assert!(passing.as_log().get("sample_rate").is_none());
@@ -271,7 +271,7 @@ fn sampler_adds_sampling_rate_to_event() {
             Some(condition_contains(&message_key, "na")),
             default_sample_rate_key(),
         );
-        let event = Event::Log(LogEvent::from("nananana"));
+        let event = Event::from(LogEvent::from("nananana"));
         let passing = transform_one(&mut sampler, event).unwrap();
         assert!(passing.as_log().get("sample_rate").is_none());
     }
@@ -280,7 +280,7 @@ fn sampler_adds_sampling_rate_to_event() {
 #[test]
 fn handles_trace_event() {
     let event: TraceEvent = LogEvent::from("trace").into();
-    let trace = Event::Trace(event);
+    let trace = Event::from(event);
 
     let mut sampler = Sample::new(
         "sample".to_string(),
@@ -338,6 +338,6 @@ fn condition_contains(key: &str, needle: &str) -> Condition {
 fn random_events(n: usize) -> Vec<Event> {
     random_lines(10)
         .take(n)
-        .map(|e| Event::Log(LogEvent::from(e)))
+        .map(|e| Event::from(LogEvent::from(e)))
         .collect()
 }

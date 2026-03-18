@@ -59,10 +59,7 @@ pub struct CloudwatchRequestBuilder {
 
 impl CloudwatchRequestBuilder {
     pub fn build(&mut self, event: Event) -> Option<CloudwatchRequest> {
-        let mut event = match event {
-            Event::OtelLog(otel) => Event::Log(otel.to_log_event()),
-            other => other,
-        };
+        let mut event = event;
         let group = match self.group_template.render_string(&event) {
             Ok(b) => b,
             Err(error) => {

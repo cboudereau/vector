@@ -33,7 +33,6 @@ use vector_lib::{
     codecs::decoding::FramingError,
     config::{LegacyKey, LogNamespace, log_schema},
     configurable::configurable_component,
-    event::MaybeAsLogMut,
     internal_event::{
         ByteSize, BytesReceived, CountByteSize, InternalEventHandle as _, Protocol, Registered,
     },
@@ -630,7 +629,7 @@ impl IngestorProcess {
     async fn handle_s3_event_record(
         &mut self,
         s3_event: S3EventRecord,
-        log_namespace: LogNamespace,
+        _log_namespace: LogNamespace,
     ) -> Result<(), ProcessingError> {
         let event_version: semver::Version = s3_event.event_version.clone().into();
         if !SUPPORTED_S3_EVENT_VERSION.matches(&event_version) {
@@ -693,9 +692,9 @@ impl IngestorProcess {
             key = s3_event.s3.object.key,
         );
 
-        let metadata = object.metadata;
+        let _metadata = object.metadata;
 
-        let timestamp = object.last_modified.map(|ts| {
+        let _timestamp = object.last_modified.map(|ts| {
             Utc.timestamp_opt(ts.secs(), ts.subsec_nanos())
                 .single()
                 .expect("invalid timestamp")
@@ -766,7 +765,7 @@ impl IngestorProcess {
                 .into_iter()
                 .map(|mut event: Event| {
                     event = event.with_batch_notifier_option(&batch);
-                    if let Event::OtelLog(ref mut otel_log) = event {
+                    if let Event::Log(ref mut otel_log) = event {
                         let now = Utc::now();
                         otel_log.set_source_metadata(AwsS3Config::NAME, now);
                         otel_log.set_attribute(
@@ -780,14 +779,6 @@ impl IngestorProcess {
                         otel_log.set_attribute(
                             "region".to_string(),
                             string_value(s3_event.aws_region.clone()),
-                        );
-                    } else if let Some(log_event) = event.maybe_as_log_mut() {
-                        handle_single_log(
-                            log_event,
-                            log_namespace,
-                            &s3_event,
-                            &metadata,
-                            timestamp,
                         );
                     }
                     events_received.emit(CountByteSize(1, event.estimated_json_encoded_size_of()));
@@ -921,6 +912,7 @@ impl IngestorProcess {
     }
 }
 
+#[allow(dead_code)]
 fn handle_single_log(
     log: &mut LogEvent,
     log_namespace: LogNamespace,

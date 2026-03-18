@@ -16,7 +16,7 @@ use vector_lib::{
     },
     config::{DataType, LegacyKey, LogNamespace},
     configurable::configurable_component,
-    lookup::{lookup_v2::parse_value_path, owned_value_path, path},
+    lookup::{lookup_v2::parse_value_path, owned_value_path},
     schema::Definition,
 };
 use vrl::value::{Kind, kind::Collection};
@@ -331,7 +331,7 @@ fn header_error_message(name: &str, msg: &str) -> ErrorMessage {
 
 fn line_to_events(
     mut decoder: Decoder,
-    log_namespace: LogNamespace,
+    _log_namespace: LogNamespace,
     line: String,
 ) -> SmallVec<[Event; 1]> {
     let parts = line.splitn(8, ' ').collect::<Vec<&str>>();
@@ -348,15 +348,15 @@ fn line_to_events(
         let mut buffer = BytesMut::new();
         buffer.put(message.as_bytes());
 
-        let legacy_host_key = log_schema().host_key().cloned();
-        let legacy_app_key = parse_value_path("app_name").ok();
-        let legacy_proc_key = parse_value_path("proc_id").ok();
+        let _legacy_host_key = log_schema().host_key().cloned();
+        let _legacy_app_key = parse_value_path("app_name").ok();
+        let _legacy_proc_key = parse_value_path("proc_id").ok();
 
         loop {
             match decoder.decode_eof(&mut buffer) {
                 Ok(Some((decoded, _byte_size))) => {
                     for mut event in decoded {
-                        if let Event::OtelLog(ref mut otel_log) = event {
+                        if let Event::Log(ref mut otel_log) = event {
                             if let Ok(ts) = timestamp.parse::<DateTime<Utc>>() {
                                 otel_log.record_mut().time_unix_nano =
                                     ts.timestamp_nanos_opt().unwrap_or(0) as u64;
@@ -372,39 +372,6 @@ fn line_to_events(
                             otel_log.set_attribute(
                                 "proc_id".to_string(),
                                 string_value(proc_id),
-                            );
-                        } else if let Event::Log(ref mut log) = event {
-                            if let Ok(ts) = timestamp.parse::<DateTime<Utc>>() {
-                                log_namespace.insert_vector_metadata(
-                                    log,
-                                    log_schema().timestamp_key(),
-                                    path!("timestamp"),
-                                    ts,
-                                );
-                            }
-
-                            log_namespace.insert_source_metadata(
-                                LogplexConfig::NAME,
-                                log,
-                                legacy_host_key.as_ref().map(LegacyKey::InsertIfEmpty),
-                                path!("host"),
-                                hostname.to_owned(),
-                            );
-
-                            log_namespace.insert_source_metadata(
-                                LogplexConfig::NAME,
-                                log,
-                                legacy_app_key.as_ref().map(LegacyKey::InsertIfEmpty),
-                                path!("app_name"),
-                                app_name.to_owned(),
-                            );
-
-                            log_namespace.insert_source_metadata(
-                                LogplexConfig::NAME,
-                                log,
-                                legacy_proc_key.as_ref().map(LegacyKey::InsertIfEmpty),
-                                path!("proc_id"),
-                                proc_id.to_owned(),
                             );
                         }
 
@@ -431,10 +398,8 @@ fn line_to_events(
     let now = Utc::now();
 
     for event in &mut events {
-        if let Event::OtelLog(otel_log) = event {
+        if let Event::Log(otel_log) = event {
             otel_log.set_source_metadata(LogplexConfig::NAME, now);
-        } else if let Event::Log(log) = event {
-            log_namespace.insert_standard_vector_source_metadata(log, LogplexConfig::NAME, now);
         }
     }
 
@@ -565,20 +530,20 @@ mod tests {
             let log = event.as_log();
 
             assert_eq!(
-                *log.get_message().unwrap(),
+                log.get_message().unwrap(),
                 r#"at=info method=GET path="/cart_link" host=lumberjack-store.timber.io request_id=05726858-c44e-4f94-9a20-37df73be9006 fwd="73.75.38.87" dyno=web.1 connect=1ms service=22ms status=304 bytes=656 protocol=http"#.into()
             );
             assert_eq!(
-                log[log_schema().timestamp_key().unwrap().to_string()],
+                log.get(log_schema().timestamp_key().unwrap().to_string().as_str()).unwrap(),
                 "2020-01-08T22:33:57.353034+00:00"
                     .parse::<DateTime<Utc>>()
                     .unwrap()
                     .into()
             );
-            assert_eq!(*log.get_host().unwrap(), "host".into());
-            assert_eq!(*log.get_source_type().unwrap(), "heroku_logs".into());
-            assert_eq!(log["appname"], "lumberjack-store".into());
-            assert_eq!(log["absent"], Value::Null);
+            assert_eq!(log.get_host().unwrap(), "host".into());
+            assert_eq!(log.get_source_type().unwrap(), "heroku_logs".into());
+            assert_eq!(log.get("appname").unwrap(), "lumberjack-store".into());
+            assert_eq!(log.get("absent").unwrap(), Value::Null);
         }).await;
     }
 
@@ -611,19 +576,19 @@ mod tests {
             let log = event.as_log();
 
             assert_eq!(
-                *log.get_message().unwrap(),
+                log.get_message().unwrap(),
                 r#"at=info method=GET path="/cart_link" host=lumberjack-store.timber.io request_id=05726858-c44e-4f94-9a20-37df73be9006 fwd="73.75.38.87" dyno=web.1 connect=1ms service=22ms status=304 bytes=656 protocol=http"#.into()
             );
             assert_eq!(
-                log[log_schema().timestamp_key().unwrap().to_string()],
+                log.get(log_schema().timestamp_key().unwrap().to_string().as_str()).unwrap(),
                 "2020-01-08T22:33:57.353034+00:00"
                     .parse::<DateTime<Utc>>()
                     .unwrap()
                     .into()
             );
-            assert_eq!(*log.get_host().unwrap(), "host".into());
-            assert_eq!(*log.get_source_type().unwrap(), "heroku_logs".into());
-            assert_eq!(log["appname"], "lumberjack-store".into());
+            assert_eq!(log.get_host().unwrap(), "host".into());
+            assert_eq!(log.get_source_type().unwrap(), "heroku_logs".into());
+            assert_eq!(log.get("appname").unwrap(), "lumberjack-store".into());
         }).await;
     }
 
@@ -698,16 +663,16 @@ mod tests {
         let events = super::line_to_events(Default::default(), log_namespace, body.into());
         let log = events[0].as_log();
 
-        assert_eq!(*log.get_message().unwrap(), "foo bar baz".into());
+        assert_eq!(log.get_message().unwrap(), "foo bar baz".into());
         assert_eq!(
-            log[log_schema().timestamp_key().unwrap().to_string()],
+            log.get(log_schema().timestamp_key().unwrap().to_string().as_str()).unwrap(),
             "2020-01-08T22:33:57.353034+00:00"
                 .parse::<DateTime<Utc>>()
                 .unwrap()
                 .into()
         );
-        assert_eq!(*log.get_host().unwrap(), "host".into());
-        assert_eq!(*log.get_source_type().unwrap(), "heroku_logs".into());
+        assert_eq!(log.get_host().unwrap(), "host".into());
+        assert_eq!(log.get_source_type().unwrap(), "heroku_logs".into());
     }
 
     #[test]
@@ -717,9 +682,9 @@ mod tests {
         let events = super::line_to_events(Default::default(), log_namespace, body.into());
         let log = events[0].as_log();
 
-        assert_eq!(*log.get_message().unwrap(), "what am i doing here".into());
+        assert_eq!(log.get_message().unwrap(), "what am i doing here".into());
         assert!(log.get_timestamp().is_some());
-        assert_eq!(*log.get_source_type().unwrap(), "heroku_logs".into());
+        assert_eq!(log.get_source_type().unwrap(), "heroku_logs".into());
     }
 
     #[test]
@@ -729,16 +694,16 @@ mod tests {
         let events = super::line_to_events(Default::default(), log_namespace, body.into());
         let log = events[0].as_log();
 
-        assert_eq!(*log.get_message().unwrap(), "i'm not that long".into());
+        assert_eq!(log.get_message().unwrap(), "i'm not that long".into());
         assert_eq!(
-            log[log_schema().timestamp_key().unwrap().to_string()],
+            log.get(log_schema().timestamp_key().unwrap().to_string().as_str()).unwrap(),
             "2020-01-08T22:33:57.353034+00:00"
                 .parse::<DateTime<Utc>>()
                 .unwrap()
                 .into()
         );
-        assert_eq!(*log.get_host().unwrap(), "host".into());
-        assert_eq!(*log.get_source_type().unwrap(), "heroku_logs".into());
+        assert_eq!(log.get_host().unwrap(), "host".into());
+        assert_eq!(log.get_source_type().unwrap(), "heroku_logs".into());
     }
 
     #[test]

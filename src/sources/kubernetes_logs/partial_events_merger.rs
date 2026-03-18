@@ -9,16 +9,13 @@ use bytes::BytesMut;
 use futures::{Stream, StreamExt};
 use vector_lib::{
     config::LogNamespace,
-    lookup::OwnedTargetPath,
     stream::expiration_map::{Emitter, map_with_expiration},
 };
-use vrl::owned_value_path;
 
 use crate::{
     event,
-    event::{Event, LogEvent, Value},
+    event::{Event, OtelLog, Value},
     internal_events::KubernetesMergedLineTooBigError,
-    sources::kubernetes_logs::transform_utils::get_message_path,
 };
 
 /// The key we use for `file` field.
@@ -34,59 +31,48 @@ struct PartialEventMergeState {
 impl PartialEventMergeState {
     fn add_event(
         &mut self,
-        event: LogEvent,
+        event: OtelLog,
         file: &str,
-        message_path: &OwnedTargetPath,
         expiration_time: Duration,
     ) {
-        let mut bytes_mut = BytesMut::new();
+        let new_body = event.body_string();
+        let new_body_bytes = bytes::Bytes::from(new_body);
+
         if let Some(bucket) = self.buckets.get_mut(file) {
-            // don't bother continuing to process new partial events that match existing ones that are already too big
             if bucket.exceeds_max_merged_line_limit {
                 return;
             }
 
-            // merging with existing event
+            let prev_body = bucket.event.body_string();
+            let mut bytes_mut = BytesMut::new();
+            bytes_mut.extend_from_slice(prev_body.as_bytes());
+            bytes_mut.extend_from_slice(&new_body_bytes);
 
-            if let (Some(Value::Bytes(prev_value)), Some(Value::Bytes(new_value))) =
-                (bucket.event.get_mut(message_path), event.get(message_path))
+            if let Some(max_merged_line_bytes) = self.maybe_max_merged_line_bytes
+                && bytes_mut.len() > max_merged_line_bytes
             {
-                bytes_mut.extend_from_slice(prev_value);
-                bytes_mut.extend_from_slice(new_value);
-
-                // drop event if it's bigger than max allowed
-                if let Some(max_merged_line_bytes) = self.maybe_max_merged_line_bytes
-                    && bytes_mut.len() > max_merged_line_bytes
-                {
-                    bucket.exceeds_max_merged_line_limit = true;
-                    // perf impact of clone should be minimal since being here means no further processing of this event will occur
-                    emit!(KubernetesMergedLineTooBigError {
-                        event: &Value::Bytes(new_value.clone()),
-                        configured_limit: max_merged_line_bytes,
-                        encountered_size_so_far: bytes_mut.len()
-                    });
-                }
-
-                *prev_value = bytes_mut.freeze();
+                bucket.exceeds_max_merged_line_limit = true;
+                emit!(KubernetesMergedLineTooBigError {
+                    event: &Value::Bytes(new_body_bytes),
+                    configured_limit: max_merged_line_bytes,
+                    encountered_size_so_far: bytes_mut.len()
+                });
             }
-        } else {
-            // new event
 
+            bucket.event.set_body(crate::event::string_value(
+                String::from_utf8_lossy(&bytes_mut),
+            ));
+        } else {
             let mut exceeds_max_merged_line_limit = false;
 
-            if let Some(Value::Bytes(event_bytes)) = event.get(message_path) {
-                bytes_mut.extend_from_slice(event_bytes);
-                if let Some(max_merged_line_bytes) = self.maybe_max_merged_line_bytes {
-                    exceeds_max_merged_line_limit = bytes_mut.len() > max_merged_line_bytes;
-
-                    if exceeds_max_merged_line_limit {
-                        // perf impact of clone should be minimal since being here means no further processing of this event will occur
-                        emit!(KubernetesMergedLineTooBigError {
-                            event: &Value::Bytes(event_bytes.clone()),
-                            configured_limit: max_merged_line_bytes,
-                            encountered_size_so_far: bytes_mut.len()
-                        });
-                    }
+            if let Some(max_merged_line_bytes) = self.maybe_max_merged_line_bytes {
+                exceeds_max_merged_line_limit = new_body_bytes.len() > max_merged_line_bytes;
+                if exceeds_max_merged_line_limit {
+                    emit!(KubernetesMergedLineTooBigError {
+                        event: &Value::Bytes(new_body_bytes.clone()),
+                        configured_limit: max_merged_line_bytes,
+                        encountered_size_so_far: new_body_bytes.len()
+                    });
                 }
             }
 
@@ -101,14 +87,14 @@ impl PartialEventMergeState {
         }
     }
 
-    fn remove_event(&mut self, file: &str) -> Option<LogEvent> {
+    fn remove_event(&mut self, file: &str) -> Option<OtelLog> {
         self.buckets
             .remove(file)
             .filter(|bucket| !bucket.exceeds_max_merged_line_limit)
             .map(|bucket| bucket.event)
     }
 
-    fn emit_expired_events(&mut self, emitter: &mut Emitter<LogEvent>) {
+    fn emit_expired_events(&mut self, emitter: &mut Emitter<OtelLog>) {
         let now = Instant::now();
         self.buckets.retain(|_key, bucket| {
             let expired = now >= bucket.expiration;
@@ -119,7 +105,7 @@ impl PartialEventMergeState {
         });
     }
 
-    fn flush_events(&mut self, emitter: &mut Emitter<LogEvent>) {
+    fn flush_events(&mut self, emitter: &mut Emitter<OtelLog>) {
         for (_, bucket) in self.buckets.drain() {
             if !bucket.exceeds_max_merged_line_limit {
                 emitter.emit(bucket.event);
@@ -129,7 +115,7 @@ impl PartialEventMergeState {
 }
 
 struct Bucket {
-    event: LogEvent,
+    event: OtelLog,
     expiration: Instant,
     exceeds_max_merged_line_limit: bool,
 }
@@ -150,61 +136,43 @@ pub fn merge_partial_events(
 // internal function that allows customizing the expiration time (for testing)
 fn merge_partial_events_with_custom_expiration(
     stream: impl Stream<Item = Event> + 'static,
-    log_namespace: LogNamespace,
+    _log_namespace: LogNamespace,
     expiration_time: Duration,
     maybe_max_merged_line_bytes: Option<usize>,
 ) -> impl Stream<Item = Event> {
-    let partial_flag_path = match log_namespace {
-        LogNamespace::Vector => {
-            OwnedTargetPath::metadata(owned_value_path!(super::Config::NAME, event::PARTIAL))
-        }
-        LogNamespace::Legacy => OwnedTargetPath::event(owned_value_path!(event::PARTIAL)),
-    };
-
-    let file_path = match log_namespace {
-        LogNamespace::Vector => {
-            OwnedTargetPath::metadata(owned_value_path!(super::Config::NAME, FILE_KEY))
-        }
-        LogNamespace::Legacy => OwnedTargetPath::event(owned_value_path!(FILE_KEY)),
-    };
-
     let state = PartialEventMergeState {
         buckets: HashMap::new(),
         maybe_max_merged_line_bytes,
     };
-
-    let message_path = get_message_path(log_namespace);
 
     map_with_expiration(
         state,
         stream.map(|e| e.into_log_coerce()),
         Duration::from_secs(1),
         move |state: &mut PartialEventMergeState,
-              event: LogEvent,
-              emitter: &mut Emitter<LogEvent>| {
-            // called for each event
-            let is_partial = event
-                .get(&partial_flag_path)
-                .and_then(|x| x.as_boolean())
+              otel_log: OtelLog,
+              emitter: &mut Emitter<OtelLog>| {
+            use crate::event::OtelValueKind;
+            let is_partial = otel_log.attribute(event::PARTIAL)
+                .and_then(|av| av.value.as_ref())
+                .map(|v| matches!(v, OtelValueKind::StringValue(s) if s == "true" || s == "1")
+                    || matches!(v, OtelValueKind::BoolValue(true)))
                 .unwrap_or(false);
 
-            let file = event
-                .get(&file_path)
-                .and_then(|x| x.as_str())
-                .map(|x| x.to_string())
+            let file = otel_log.attribute(FILE_KEY)
+                .and_then(|av| av.value.as_ref())
+                .and_then(|v| if let OtelValueKind::StringValue(s) = v { Some(s.clone()) } else { None })
                 .unwrap_or_default();
 
-            state.add_event(event, &file, &message_path, expiration_time);
-            if !is_partial && let Some(log_event) = state.remove_event(&file) {
-                emitter.emit(log_event);
+            state.add_event(otel_log, &file, expiration_time);
+            if !is_partial && let Some(merged) = state.remove_event(&file) {
+                emitter.emit(merged);
             }
         },
-        |state: &mut PartialEventMergeState, emitter: &mut Emitter<LogEvent>| {
-            // check for expired events
+        |state: &mut PartialEventMergeState, emitter: &mut Emitter<OtelLog>| {
             state.emit_expired_events(emitter)
         },
-        |state: &mut PartialEventMergeState, emitter: &mut Emitter<LogEvent>| {
-            // the source is ending, flush all pending events
+        |state: &mut PartialEventMergeState, emitter: &mut Emitter<OtelLog>| {
             state.flush_events(emitter);
         },
     )
@@ -231,7 +199,7 @@ mod test {
         assert_eq!(output.len(), 1);
         assert_eq!(
             output[0].as_log().get(".message"),
-            Some(&value!("test message 1"))
+            Some(value!("test message 1"))
         );
     }
 
@@ -263,7 +231,7 @@ mod test {
         assert_eq!(output.len(), 1);
         assert_eq!(
             output[0].as_log().get(".message"),
-            Some(&value!("test message 1test message 2"))
+            Some(value!("test message 1test message 2"))
         );
     }
 
@@ -301,7 +269,7 @@ mod test {
         assert_eq!(output.len(), 1);
         assert_eq!(
             output[0].as_log().get(".message"),
-            Some(&value!("test message 1test message 2"))
+            Some(value!("test message 1test message 2"))
         );
     }
 
@@ -348,11 +316,11 @@ mod test {
         assert_eq!(output.len(), 2);
         assert_eq!(
             output[0].as_log().get(".message"),
-            Some(&value!("test message"))
+            Some(value!("test message"))
         );
         assert_eq!(
             output[1].as_log().get(".message"),
-            Some(&value!("test message"))
+            Some(value!("test message"))
         );
     }
 
@@ -369,10 +337,10 @@ mod test {
 
         let output: Vec<Event> = output_stream.collect().await;
         assert_eq!(output.len(), 1);
-        assert_eq!(output[0].as_log().get("."), Some(&value!("test message 1")));
+        assert_eq!(output[0].as_log().get("."), Some(value!("test message 1")));
         assert_eq!(
             output[0].as_log().get("%kubernetes_logs.file"),
-            Some(&value!("foo1"))
+            Some(value!("foo1"))
         );
     }
 
@@ -401,11 +369,11 @@ mod test {
         assert_eq!(output.len(), 1);
         assert_eq!(
             output[0].as_log().get("."),
-            Some(&value!("test message 1test message 2"))
+            Some(value!("test message 1test message 2"))
         );
         assert_eq!(
             output[0].as_log().get("%kubernetes_logs.file"),
-            Some(&value!("foo1"))
+            Some(value!("foo1"))
         );
     }
 }

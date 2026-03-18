@@ -8,7 +8,7 @@ use smallvec::SmallVec;
 use vector_config::configurable_component;
 use vector_core::{
     config::{DataType, LogNamespace},
-    event::{Event, Metric, MetricKind, MetricTags, MetricValue},
+    event::{Event, Metric, MetricKind, MetricTags, MetricValue, OtelMetric},
     schema,
 };
 use vrl::value::{Kind, kind::Collection};
@@ -124,7 +124,7 @@ impl Deserializer for InfluxdbDeserializer {
                             }
                             FieldValue::String(_) => return None, // String values cannot be modelled in our schema
                         };
-                        Some(Event::Metric(
+                        Some(Event::Metric(OtelMetric::from_legacy_metric(
                             Metric::new(
                                 format!("{0}_{1}", measurement, f.0),
                                 MetricKind::Absolute,
@@ -136,7 +136,7 @@ impl Deserializer for InfluxdbDeserializer {
                                 )
                             }))
                             .with_timestamp(timestamp.map(DateTime::from_timestamp_nanos)),
-                        ))
+                        )))
                     })
                     .collect::<Vec<_>>()
             })
@@ -175,9 +175,10 @@ mod tests {
         let events = deser.parse(buffer, LogNamespace::default()).unwrap();
         assert_eq!(events.len(), 2);
 
+        let m0 = events[0].as_metric().clone().to_legacy_metric();
         assert_eq!(
-            events[0].as_metric(),
-            &Metric::new(
+            m0,
+            Metric::new(
                 "cpu_usage_system",
                 MetricKind::Absolute,
                 MetricValue::Gauge { value: 64. },
@@ -188,9 +189,10 @@ mod tests {
             ])))
             .with_timestamp(Some(now))
         );
+        let m1 = events[1].as_metric().clone().to_legacy_metric();
         assert_eq!(
-            events[1].as_metric(),
-            &Metric::new(
+            m1,
+            Metric::new(
                 "cpu_usage_user",
                 MetricKind::Absolute,
                 MetricValue::Gauge { value: 10. },

@@ -63,7 +63,7 @@ impl ResourceMetrics {
 
                 scope_metrics.metrics.into_iter().map(move |metric| {
                     let otel_metric = proto_convert_metric(metric);
-                    Event::OtelMetric(OtelMetric::from_parts(
+                    Event::Metric(OtelMetric::from_parts(
                         otel_metric,
                         resource.clone(),
                         scope.clone(),

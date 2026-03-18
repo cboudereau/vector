@@ -80,7 +80,7 @@ mod test {
 
     #[tokio::test]
     async fn component_spec_compliance() {
-        let event = Event::Log(LogEvent::from("foo"));
+        let event = Event::from(LogEvent::from("foo"));
 
         let encoder = Encoder::<Framer>::new(
             NewlineDelimitedEncoder::default().into(),

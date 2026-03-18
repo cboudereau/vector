@@ -128,8 +128,7 @@ impl Aggregate {
 
     fn record(&mut self, event: Event) {
         let metric = match event {
-            Event::Metric(m) => m,
-            Event::OtelMetric(otel) => otel.to_legacy_metric(),
+            Event::Metric(otel) => otel.to_legacy_metric(),
             _ => return,
         };
         let (series, data, metadata) = metric.into_parts();
@@ -350,7 +349,7 @@ impl TaskTransform<Event> for Aggregate {
                                 done = true;
                             }
                             Some(event) => {
-                                if matches!(&event, Event::Metric(_) | Event::OtelMetric(_)) {
+                                if matches!(&event, Event::Metric(_)) {
                                     self.record(event);
                                 } else {
                                     output.push(event);

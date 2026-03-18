@@ -353,7 +353,7 @@ fn json_decode_logs(body: Bytes) -> Result<Vec<Event>, ErrorMessage> {
                 let scope = sl.scope.clone();
                 let resource = resource.clone();
                 sl.log_records.into_iter().map(move |record| {
-                    Event::OtelLog(OtelLog::from_parts(
+                    Event::Log(OtelLog::from_parts(
                         record,
                         resource.clone(),
                         scope.clone(),
@@ -379,7 +379,7 @@ fn json_decode_metrics(body: Bytes) -> Result<Vec<Event>, ErrorMessage> {
                 let scope = sm.scope.clone();
                 let resource = resource.clone();
                 sm.metrics.into_iter().map(move |metric| {
-                    Event::OtelMetric(OtelMetric::from_parts(
+                    Event::Metric(OtelMetric::from_parts(
                         metric,
                         resource.clone(),
                         scope.clone(),
@@ -405,7 +405,7 @@ fn json_decode_traces(body: Bytes) -> Result<Vec<Event>, ErrorMessage> {
                 let scope = ss.scope.clone();
                 let resource = resource.clone();
                 ss.spans.into_iter().map(move |span| {
-                    Event::OtelSpan(OtelSpan::from_parts(
+                    Event::Trace(OtelSpan::from_parts(
                         span,
                         resource.clone(),
                         scope.clone(),

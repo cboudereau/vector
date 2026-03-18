@@ -11,10 +11,10 @@ use vector_lib::{
         StreamDecodingError,
         decoding::{DeserializerConfig, FramingConfig},
     },
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     configurable::configurable_component,
     internal_event::{ByteSize, BytesReceived, InternalEventHandle as _, Protocol},
-    lookup::{lookup_v2::OptionalValuePath, owned_value_path, path},
+    lookup::{lookup_v2::OptionalValuePath, owned_value_path},
 };
 
 use super::default_host_key;
@@ -158,7 +158,7 @@ pub(super) fn udp(
     decoder: Decoder,
     mut shutdown: ShutdownSignal,
     mut out: SourceSender,
-    log_namespace: LogNamespace,
+    _log_namespace: LogNamespace,
 ) -> Source {
     Box::pin(async move {
         let listenfd = ListenFd::from_env();
@@ -276,7 +276,7 @@ pub(super) fn udp(
 
                                 for event in &mut events {
                                     match event {
-                                        Event::OtelLog(otel_log) => {
+                                        Event::Log(otel_log) => {
                                             otel_log.set_source_metadata(SocketConfig::NAME, now);
                                             otel_log.set_resource_attribute(
                                                 "host.name".to_string(),
@@ -285,37 +285,6 @@ pub(super) fn udp(
                                             otel_log.set_attribute(
                                                 "net.peer.port".to_string(),
                                                 int_value(address.port() as i64),
-                                            );
-                                        }
-                                        Event::Log(log) => {
-                                            log_namespace.insert_standard_vector_source_metadata(
-                                                log,
-                                                SocketConfig::NAME,
-                                                now,
-                                            );
-
-                                            let legacy_host_key = config
-                                                .host_key
-                                                .clone()
-                                                .unwrap_or(default_host_key())
-                                                .path;
-
-                                            log_namespace.insert_source_metadata(
-                                                SocketConfig::NAME,
-                                                log,
-                                                legacy_host_key.as_ref().map(LegacyKey::InsertIfEmpty),
-                                                path!("host"),
-                                                address.ip().to_string()
-                                            );
-
-                                            let legacy_port_key = config.port_key.clone().path;
-
-                                            log_namespace.insert_source_metadata(
-                                                SocketConfig::NAME,
-                                                log,
-                                                legacy_port_key.as_ref().map(LegacyKey::InsertIfEmpty),
-                                                path!("port"),
-                                                address.port()
                                             );
                                         }
                                         _ => {}

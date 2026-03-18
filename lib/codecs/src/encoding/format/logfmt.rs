@@ -40,7 +40,7 @@ impl Encoder<Event> for LogfmtSerializer {
     type Error = vector_common::Error;
 
     fn encode(&mut self, event: Event, buffer: &mut BytesMut) -> Result<(), Self::Error> {
-        let log = event.into_log_coerce();
+        let log = event.into_log_coerce().to_log_event();
         let string = encode_logfmt::encode_value(log.value())?;
         buffer.extend_from_slice(string.as_bytes());
 
@@ -58,7 +58,7 @@ mod tests {
 
     #[test]
     fn serialize_logfmt() {
-        let event = Event::Log(LogEvent::from(btreemap! {
+        let event = Event::from(LogEvent::from(btreemap! {
             "foo" => Value::from("bar")
         }));
         let mut serializer = LogfmtSerializer;
@@ -74,7 +74,7 @@ mod tests {
         use opentelemetry_proto::tonic::common::v1::{AnyValue, KeyValue, any_value::Value as Kind};
         use vector_core::event::OtelLog;
 
-        let event = Event::OtelLog(OtelLog::new(
+        let event = Event::Log(OtelLog::new(
             opentelemetry_proto::tonic::logs::v1::LogRecord {
                 body: Some(AnyValue {
                     value: Some(Kind::StringValue("hello".into())),

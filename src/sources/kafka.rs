@@ -46,7 +46,7 @@ use vector_lib::{
     config::{LegacyKey, LogNamespace},
     configurable::configurable_component,
     finalizer::OrderedFinalizer,
-    lookup::{OwnedValuePath, lookup_v2::OptionalValuePath, owned_value_path, path},
+    lookup::{OwnedValuePath, lookup_v2::OptionalValuePath, owned_value_path},
 };
 use vrl::value::{Kind, ObjectMap, kind::Collection};
 
@@ -1097,8 +1097,8 @@ impl ReceivedMessage {
         }
     }
 
-    fn apply(&self, keys: &Keys, event: &mut Event, log_namespace: LogNamespace) {
-        if let Event::OtelLog(otel_log) = event {
+    fn apply(&self, _keys: &Keys, event: &mut Event, _log_namespace: LogNamespace) {
+        if let Event::Log(otel_log) = event {
             otel_log.set_source_metadata(KafkaSourceConfig::NAME, Utc::now());
             otel_log.set_attribute("topic".to_string(), string_value(&self.topic));
             otel_log.set_attribute("partition".to_string(), int_value(self.partition as i64));
@@ -1121,69 +1121,6 @@ impl ReceivedMessage {
                 otel_log.record_mut().time_unix_nano =
                     ts.timestamp_nanos_opt().unwrap_or(0) as u64;
             }
-        } else if let Event::Log(log) = event {
-            match log_namespace {
-                LogNamespace::Vector => {
-                    log_namespace.insert_standard_vector_source_metadata(
-                        log,
-                        KafkaSourceConfig::NAME,
-                        Utc::now(),
-                    );
-                }
-                LogNamespace::Legacy => {
-                    if let Some(source_type_key) = log_schema().source_type_key_target_path() {
-                        log.insert(source_type_key, KafkaSourceConfig::NAME);
-                    }
-                }
-            }
-
-            log_namespace.insert_source_metadata(
-                KafkaSourceConfig::NAME,
-                log,
-                keys.key_field.as_ref().map(LegacyKey::Overwrite),
-                path!("message_key"),
-                self.key.clone(),
-            );
-
-            log_namespace.insert_source_metadata(
-                KafkaSourceConfig::NAME,
-                log,
-                keys.timestamp.as_ref().map(LegacyKey::Overwrite),
-                path!("timestamp"),
-                self.timestamp,
-            );
-
-            log_namespace.insert_source_metadata(
-                KafkaSourceConfig::NAME,
-                log,
-                keys.topic.as_ref().map(LegacyKey::Overwrite),
-                path!("topic"),
-                self.topic.clone(),
-            );
-
-            log_namespace.insert_source_metadata(
-                KafkaSourceConfig::NAME,
-                log,
-                keys.partition.as_ref().map(LegacyKey::Overwrite),
-                path!("partition"),
-                self.partition,
-            );
-
-            log_namespace.insert_source_metadata(
-                KafkaSourceConfig::NAME,
-                log,
-                keys.offset.as_ref().map(LegacyKey::Overwrite),
-                path!("offset"),
-                self.offset,
-            );
-
-            log_namespace.insert_source_metadata(
-                KafkaSourceConfig::NAME,
-                log,
-                keys.headers.as_ref().map(LegacyKey::Overwrite),
-                path!("headers"),
-                self.headers.clone(),
-            );
         }
     }
 }

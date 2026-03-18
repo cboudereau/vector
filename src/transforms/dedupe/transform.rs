@@ -90,8 +90,7 @@ impl Dedupe {
 pub(crate) fn build_cache_entry(event: &Event, fields: &FieldMatchConfig) -> CacheEntry {
     let projected;
     let log = match event {
-        Event::Log(log) => log,
-        Event::OtelLog(otel) => {
+        Event::Log(otel) => {
             projected = otel.to_log_event();
             &projected
         }

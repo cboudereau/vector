@@ -197,27 +197,27 @@ fn validate_metric(
     )
 }
 
-fn filter_events_by_metric_and_component<'a>(
-    telemetry_events: &'a [Event],
+fn filter_events_by_metric_and_component(
+    telemetry_events: &[Event],
     metric: &ComponentMetricType,
-    component_id: &'a str,
-) -> Vec<&'a Metric> {
+    component_id: &str,
+) -> Vec<Metric> {
     info!(
         "Filter looking for metric {} {}",
         metric.to_string(),
         component_id
     );
 
-    let metrics: Vec<&Metric> = telemetry_events
+    let metrics: Vec<Metric> = telemetry_events
         .iter()
         .flat_map(|e| {
             if let vector_lib::event::Event::Metric(m) = e {
-                Some(m)
+                Some(m.clone().to_legacy_metric())
             } else {
                 None
             }
         })
-        .filter(|&m| {
+        .filter(|m| {
             if m.name() == metric.to_string() {
                 debug!("{}", m);
                 if let Some(tags) = m.tags()
@@ -238,7 +238,7 @@ fn filter_events_by_metric_and_component<'a>(
 
 fn sum_counters(
     metric_name: &ComponentMetricType,
-    metrics: &[&Metric],
+    metrics: &[Metric],
 ) -> Result<u64, Vec<String>> {
     let mut sum: f64 = 0.0;
     let mut errs = Vec::new();

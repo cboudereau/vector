@@ -35,7 +35,6 @@ use super::{
 use crate::{
     config::{LogNamespace, log_schema, telemetry},
     event::{
-        MaybeAsLogMut,
         util::log::{all_fields, all_fields_skip_array_elements, all_metadata_fields},
     },
 };
@@ -615,11 +614,8 @@ impl LogEvent {
     }
 }
 
-impl MaybeAsLogMut for LogEvent {
-    fn maybe_as_log_mut(&mut self) -> Option<&mut LogEvent> {
-        Some(self)
-    }
-}
+// LogEvent no longer implements MaybeAsLogMut since the trait now
+// returns Option<&mut OtelLog>. Use OtelLog directly instead.
 
 impl EventDataEq for LogEvent {
     fn event_data_eq(&self, other: &Self) -> bool {

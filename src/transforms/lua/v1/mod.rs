@@ -338,7 +338,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(event.as_log()["hello"], "goodbye".into());
+        assert_eq!(event.as_log().get("hello").unwrap(), Value::from("goodbye"));
     }
 
     #[test]
@@ -352,7 +352,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(event.as_log()["name"], "Bob".into());
+        assert_eq!(event.as_log().get("name").unwrap(), Value::from("Bob"));
     }
 
     #[test]
@@ -398,7 +398,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(event.as_log()["result"], "empty".into());
+        assert_eq!(event.as_log().get("result").unwrap(), Value::from("empty"));
     }
 
     #[test]
@@ -410,7 +410,7 @@ mod tests {
             LogEvent::default(),
         )
         .unwrap();
-        assert_eq!(event.as_log()["number"], Value::Integer(3));
+        assert_eq!(event.as_log().get("number").unwrap(), Value::Integer(3));
     }
 
     #[test]
@@ -422,7 +422,7 @@ mod tests {
             LogEvent::default(),
         )
         .unwrap();
-        assert_eq!(event.as_log()["number"], Value::from(3.14159));
+        assert_eq!(event.as_log().get("number").unwrap(), Value::from(3.14159));
     }
 
     #[test]
@@ -434,7 +434,7 @@ mod tests {
             LogEvent::default(),
         )
         .unwrap();
-        assert_eq!(event.as_log()["bool"], Value::Boolean(true));
+        assert_eq!(event.as_log().get("bool").unwrap(), Value::Boolean(true));
     }
 
     #[test]
@@ -557,7 +557,7 @@ mod tests {
         let mut transform =
             Lua::new(source, vec![dir.path().to_string_lossy().into_owned()]).unwrap();
         let event = transform.transform_one(LogEvent::default().into()).unwrap();
-        assert_eq!(event.as_log()["\"new field\""], "new value".into());
+        assert_eq!(event.as_log().get("\"new field\"").unwrap(), Value::from("new value"));
     }
 
     #[test]
@@ -576,8 +576,8 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(event.as_log()["name"], "nameBob".into());
-        assert_eq!(event.as_log()["friend"], "friendAlice".into());
+        assert_eq!(event.as_log().get("name").unwrap(), Value::from("nameBob"));
+        assert_eq!(event.as_log().get("friend").unwrap(), Value::from("friendAlice"));
     }
 
     fn transform_one(transform: &str, event: impl Into<Event>) -> Option<Event> {

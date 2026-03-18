@@ -54,7 +54,7 @@ pub fn make_log_event(
         }
     };
 
-    Event::Log(log)
+    Event::from(log)
 }
 
 /// Shared logic for testing parsers.

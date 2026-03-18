@@ -72,14 +72,17 @@ struct BasicTransform {
 impl FunctionTransform for BasicTransform {
     fn transform(&mut self, output: &mut OutputBuffer, mut event: Event) {
         match &mut event {
-            Event::Log(log) => {
+            Event::Log(otel_log) => {
                 if let Some(message_key) = crate::config::log_schema().message_key_target_path() {
+                    let mut log = otel_log.to_log_event();
                     let mut v = log.get(message_key).unwrap().to_string_lossy().into_owned();
                     v.push_str(&self.suffix);
                     log.insert(message_key, Value::from(v));
+                    *otel_log = vector_lib::event::OtelLog::from_log_event(log);
                 }
             }
-            Event::Metric(metric) => {
+            Event::Metric(otel_metric) => {
+                let mut metric = otel_metric.clone().to_legacy_metric();
                 let increment = match metric.value() {
                     MetricValue::Counter { .. } => Some(MetricValue::Counter {
                         value: self.increase,
@@ -111,19 +114,23 @@ impl FunctionTransform for BasicTransform {
                         value: increment,
                     }));
                 }
+                *otel_metric = vector_lib::event::OtelMetric::from_legacy_metric(metric);
             }
-            Event::Trace(trace) => {
+            Event::Trace(otel_span) => {
                 if let Some(message_key) = crate::config::log_schema().message_key_target_path() {
-                    let mut v = trace
+                    let mut log = otel_span.to_log_event();
+                    let mut v = log
                         .get(message_key)
                         .unwrap()
                         .to_string_lossy()
                         .into_owned();
                     v.push_str(&self.suffix);
-                    trace.insert(message_key, Value::from(v));
+                    log.insert(message_key, Value::from(v));
+                    *otel_span = vector_lib::event::OtelSpan::from_trace_event(
+                        vector_lib::event::TraceEvent::from(log),
+                    );
                 }
             }
-            Event::OtelLog(_) | Event::OtelMetric(_) | Event::OtelSpan(_) => {}
         };
         output.push(event);
     }

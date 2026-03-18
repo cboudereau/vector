@@ -534,6 +534,7 @@ mod tests {
         event::{LogEvent, TraceEvent},
         sink::VectorSink,
     };
+    use vrl::value::Value;
 
     use super::*;
     use crate::{
@@ -685,36 +686,36 @@ mod tests {
 
         let message_key = log_schema().message_key().unwrap().to_string();
         assert_eq!(
-            input[0].as_log()[&message_key],
-            From::<&str>::from(&output[0][0])
+            input[0].as_log().get(message_key.as_str()).unwrap(),
+            Value::from(&output[0][0] as &str)
         );
         assert_eq!(
-            input[1].as_log()[&message_key],
-            From::<&str>::from(&output[1][0])
+            input[1].as_log().get(message_key.as_str()).unwrap(),
+            Value::from(&output[1][0] as &str)
         );
         assert_eq!(
-            input[2].as_log()[&message_key],
-            From::<&str>::from(&output[0][1])
+            input[2].as_log().get(message_key.as_str()).unwrap(),
+            Value::from(&output[0][1] as &str)
         );
         assert_eq!(
-            input[3].as_log()[&message_key],
-            From::<&str>::from(&output[3][0])
+            input[3].as_log().get(message_key.as_str()).unwrap(),
+            Value::from(&output[3][0] as &str)
         );
         assert_eq!(
-            input[4].as_log()[&message_key],
-            From::<&str>::from(&output[2][0])
+            input[4].as_log().get(message_key.as_str()).unwrap(),
+            Value::from(&output[2][0] as &str)
         );
         assert_eq!(
-            input[5].as_log()[&message_key],
-            From::<&str>::from(&output[2][1])
+            input[5].as_log().get(message_key.as_str()).unwrap(),
+            Value::from(&output[2][1] as &str)
         );
         assert_eq!(
-            input[6].as_log()[&message_key],
-            From::<&str>::from(&output[4][0])
+            input[6].as_log().get(message_key.as_str()).unwrap(),
+            Value::from(&output[4][0] as &str)
         );
         assert_eq!(
-            input[7].as_log()[message_key],
-            From::<&str>::from(&output[5][0])
+            input[7].as_log().get(message_key.as_str()).unwrap(),
+            Value::from(&output[5][0] as &str)
         );
     }
 
@@ -754,7 +755,7 @@ mod tests {
 
         // send initial payload
         for line in input.clone() {
-            tx.send(Event::Log(LogEvent::from(line))).await.unwrap();
+            tx.send(Event::from(LogEvent::from(line))).await.unwrap();
         }
 
         // wait for file to go idle and be closed
@@ -891,7 +892,7 @@ mod tests {
     async fn run_assert_log_sink(config: &FileSinkConfig, events: Vec<String>) {
         run_assert_sink(
             config,
-            events.into_iter().map(LogEvent::from).map(Event::Log),
+            events.into_iter().map(LogEvent::from).map(Event::from),
         )
         .await;
     }
@@ -903,7 +904,7 @@ mod tests {
                 .into_iter()
                 .map(LogEvent::from)
                 .map(TraceEvent::from)
-                .map(Event::Trace),
+                .map(Event::from),
         )
         .await;
     }

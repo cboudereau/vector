@@ -13,7 +13,7 @@ use crate::{
     sinks::{
         prelude::*,
         splunk_hec::common::{
-            EndpointTarget, INDEX_FIELD, SOURCE_FIELD, SOURCETYPE_FIELD, render_template_string,
+            EndpointTarget, INDEX_FIELD, SOURCE_FIELD, SOURCETYPE_FIELD, render_template_string_from_log,
             request::HecRequest,
         },
         util::processed_event::ProcessedEvent,
@@ -168,21 +168,21 @@ impl Partitioner for EventPartitioner {
 
         let source = self.source.as_ref().and_then(|source| {
             source
-                .render_string(&item.event)
+                .render_string_from_log(&item.event)
                 .map_err(|error| emit_err(error, SOURCE_FIELD))
                 .ok()
         });
 
         let sourcetype = self.sourcetype.as_ref().and_then(|sourcetype| {
             sourcetype
-                .render_string(&item.event)
+                .render_string_from_log(&item.event)
                 .map_err(|error| emit_err(error, SOURCETYPE_FIELD))
                 .ok()
         });
 
         let index = self.index.as_ref().and_then(|index| {
             index
-                .render_string(&item.event)
+                .render_string_from_log(&item.event)
                 .map_err(|error| emit_err(error, INDEX_FIELD))
                 .ok()
         });
@@ -251,19 +251,19 @@ fn user_or_namespaced_path(
 }
 
 pub fn process_log(event: Event, data: &HecLogData) -> HecProcessedEvent {
-    let mut log = event.into_log_coerce();
+    let mut log = event.into_log_coerce().to_log_event();
 
     let sourcetype = data
         .sourcetype
-        .and_then(|sourcetype| render_template_string(sourcetype, &log, SOURCETYPE_FIELD));
+        .and_then(|sourcetype| render_template_string_from_log(sourcetype, &log, SOURCETYPE_FIELD));
 
     let source = data
         .source
-        .and_then(|source| render_template_string(source, &log, SOURCE_FIELD));
+        .and_then(|source| render_template_string_from_log(source, &log, SOURCE_FIELD));
 
     let index = data
         .index
-        .and_then(|index| render_template_string(index, &log, INDEX_FIELD));
+        .and_then(|index| render_template_string_from_log(index, &log, INDEX_FIELD));
 
     let host = user_or_namespaced_path(
         &log,
@@ -271,8 +271,7 @@ pub fn process_log(event: Event, data: &HecLogData) -> HecProcessedEvent {
         meaning::HOST,
         log_schema().host_key_target_path(),
     )
-    .and_then(|path| log.get(&path))
-    .cloned();
+    .and_then(|path| log.get(&path).cloned());
 
     // only extract the timestamp if this is the Event endpoint, and if the setting
     // `auto_extract_timestamp` is false (because that indicates that we should leave

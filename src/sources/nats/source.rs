@@ -6,12 +6,11 @@ use tokio_util::codec::FramedRead;
 use vector_lib::{
     EstimatedJsonEncodedSizeOf,
     codecs::decoding::StreamDecodingError,
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     internal_event::{
         ByteSize, BytesReceived, CountByteSize, EventsReceived, EventsReceivedHandle,
         InternalEventHandle as _, Protocol,
     },
-    lookup::owned_value_path,
 };
 
 use crate::{
@@ -38,9 +37,9 @@ pub enum ProcessingStatus {
 /// This function contains the common logic for both Core and JetStream NATS.
 pub async fn process_message(
     msg: &async_nats::Message,
-    config: &NatsSourceConfig,
+    _config: &NatsSourceConfig,
     decoder: &Decoder,
-    log_namespace: LogNamespace,
+    _log_namespace: LogNamespace,
     out: &mut SourceSender,
     events_received: &EventsReceivedHandle,
 ) -> ProcessingStatus {
@@ -59,29 +58,11 @@ pub async fn process_message(
                 events_received.emit(CountByteSize(count, byte_size));
                 let now = Utc::now();
                 let events = events.into_iter().map(|mut event| {
-                    if let Event::OtelLog(ref mut otel_log) = event {
+                    if let Event::Log(ref mut otel_log) = event {
                         otel_log.set_source_metadata(NatsSourceConfig::NAME, now);
                         otel_log.set_attribute(
                             "subject".to_string(),
                             string_value(msg.subject.as_str()),
-                        );
-                    } else if let Event::Log(ref mut log) = event {
-                        log_namespace.insert_standard_vector_source_metadata(
-                            log,
-                            NatsSourceConfig::NAME,
-                            now,
-                        );
-                        let legacy_subject_key_field = config
-                            .subject_key_field
-                            .path
-                            .as_ref()
-                            .map(LegacyKey::InsertIfEmpty);
-                        log_namespace.insert_source_metadata(
-                            NatsSourceConfig::NAME,
-                            log,
-                            legacy_subject_key_field,
-                            &owned_value_path!("subject"),
-                            msg.subject.as_str(),
                         );
                     }
                     event

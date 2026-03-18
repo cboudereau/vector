@@ -21,7 +21,7 @@ use vector_lib::{
     config::{LegacyKey, LogNamespace, log_schema},
     configurable::configurable_component,
     internal_event::{ByteSize, BytesReceived, InternalEventHandle as _, Protocol},
-    lookup::{owned_value_path, path},
+    lookup::owned_value_path,
 };
 use vrl::{path::OwnedValuePath, value::Kind};
 
@@ -669,9 +669,9 @@ fn handle_event(
     data_stream: &Option<String>,
     pid: Option<u32>,
     event: &mut Event,
-    log_namespace: LogNamespace,
+    _log_namespace: LogNamespace,
 ) {
-    if let Event::OtelLog(otel_log) = event {
+    if let Event::Log(otel_log) = event {
         otel_log.set_source_metadata(ExecConfig::NAME, Utc::now());
         if let Some(data_stream) = data_stream {
             otel_log.set_attribute(STREAM_KEY.to_string(), string_value(data_stream.clone()));
@@ -683,46 +683,6 @@ fn handle_event(
             otel_log.set_resource_attribute("host.name".to_string(), string_value(hostname.clone()));
         }
         otel_log.set_attribute(COMMAND_KEY.to_string(), string_value(config.command_line()));
-    } else if let Event::Log(log) = event {
-        log_namespace.insert_standard_vector_source_metadata(log, ExecConfig::NAME, Utc::now());
-
-        if let Some(data_stream) = data_stream {
-            log_namespace.insert_source_metadata(
-                ExecConfig::NAME,
-                log,
-                Some(LegacyKey::InsertIfEmpty(path!(STREAM_KEY))),
-                path!(STREAM_KEY),
-                data_stream.clone(),
-            );
-        }
-
-        if let Some(pid) = pid {
-            log_namespace.insert_source_metadata(
-                ExecConfig::NAME,
-                log,
-                Some(LegacyKey::InsertIfEmpty(path!(PID_KEY))),
-                path!(PID_KEY),
-                pid as i64,
-            );
-        }
-
-        if let Some(hostname) = hostname {
-            log_namespace.insert_source_metadata(
-                ExecConfig::NAME,
-                log,
-                log_schema().host_key().map(LegacyKey::InsertIfEmpty),
-                path!("host"),
-                hostname.clone(),
-            );
-        }
-
-        log_namespace.insert_source_metadata(
-            ExecConfig::NAME,
-            log,
-            Some(LegacyKey::InsertIfEmpty(path!(COMMAND_KEY))),
-            path!(COMMAND_KEY),
-            config.command.clone(),
-        );
     }
 }
 

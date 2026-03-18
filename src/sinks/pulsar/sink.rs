@@ -73,7 +73,7 @@ impl EstimatedJsonEncodedSizeOf for PulsarEvent {
 
 pub(crate) async fn healthcheck(config: PulsarSinkConfig) -> crate::Result<()> {
     let client = config.create_pulsar_client().await?;
-    let topic = config.topic.render_string(&LogEvent::from_str_legacy(""))?;
+    let topic = config.topic.render_string_from_log(&LogEvent::from_str_legacy(""))?;
     client.lookup_topic(topic).await?;
     Ok(())
 }

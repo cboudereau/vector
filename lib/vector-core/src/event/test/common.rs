@@ -58,19 +58,14 @@ impl Arbitrary for Event {
         // Quickcheck can't derive Arbitrary for enums, see
         // https://github.com/BurntSushi/quickcheck/issues/98
         if choice.is_multiple_of(2) {
-            Event::Log(LogEvent::arbitrary(g))
+            Event::from(LogEvent::arbitrary(g))
         } else {
-            Event::Metric(Metric::arbitrary(g))
+            Event::from(Metric::arbitrary(g))
         }
     }
 
     fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
-        match self {
-            Event::Log(log_event) => Box::new(log_event.shrink().map(Event::Log)),
-            Event::Metric(metric) => Box::new(metric.shrink().map(Event::Metric)),
-            Event::Trace(trace) => Box::new(trace.shrink().map(Event::Trace)),
-            Event::OtelLog(_) | Event::OtelMetric(_) | Event::OtelSpan(_) => empty_shrinker(),
-        }
+        empty_shrinker()
     }
 }
 

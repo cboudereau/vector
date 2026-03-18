@@ -539,7 +539,7 @@ impl Definition {
 #[cfg(any(test, feature = "test"))]
 mod test_utils {
     use super::{Definition, Kind};
-    use crate::event::{Event, LogEvent};
+    use crate::event::Event;
 
     impl Definition {
         /// Checks that the schema definition is _valid_ for the given event.
@@ -548,8 +548,8 @@ mod test_utils {
         ///
         /// If the definition is not valid, debug info will be returned.
         pub fn is_valid_for_event(&self, event: &Event) -> Result<(), String> {
-            if let Some(log) = event.maybe_as_log() {
-                let log: &LogEvent = log;
+            if let Some(otel_log) = event.maybe_as_log() {
+                let log = otel_log.to_log_event();
 
                 let actual_kind = Kind::from(log.value());
                 if let Err(path) = self.event_kind.is_superset(&actual_kind) {
@@ -563,8 +563,6 @@ mod test_utils {
 
                 let actual_metadata_kind = Kind::from(log.metadata().value());
                 if let Err(path) = self.metadata_kind.is_superset(&actual_metadata_kind) {
-                    // return Result::Err(format!("Event metadata doesn't match definition.\n\nDefinition type=\n{:?}\n\nActual event metadata type=\n{:?}\n",
-                    //                            self.metadata_kind.debug_info(), actual_metadata_kind.debug_info()));
                     return Result::Err(format!(
                         "Event METADATA value doesn't match at path: {}\n\nMetadata type at path = {:?}\n\nDefinition at path = {:?}",
                         path,
@@ -640,7 +638,7 @@ mod tests {
             TestCase {
                 title: "match",
                 definition: Definition::new(Kind::any(), Kind::any(), [LogNamespace::Legacy]),
-                event: Event::Log(LogEvent::from(BTreeMap::new())),
+                event: Event::from(LogEvent::from(BTreeMap::new())),
                 valid: true,
             },
             TestCase {
@@ -650,7 +648,7 @@ mod tests {
                     Kind::any(),
                     [LogNamespace::Legacy],
                 ),
-                event: Event::Log(LogEvent::from(BTreeMap::from([("foo".into(), 4.into())]))),
+                event: Event::from(LogEvent::from(BTreeMap::from([("foo".into(), 4.into())]))),
                 valid: false,
             },
             TestCase {
@@ -660,7 +658,7 @@ mod tests {
                     Kind::object(Collection::empty()),
                     [LogNamespace::Legacy],
                 ),
-                event: Event::Log(LogEvent::from_parts(
+                event: Event::from(LogEvent::from_parts(
                     Value::Object(BTreeMap::new()),
                     EventMetadata::default_with_value(
                         BTreeMap::from([("foo".into(), 4.into())]).into(),
@@ -671,7 +669,7 @@ mod tests {
             TestCase {
                 title: "wrong log namespace",
                 definition: Definition::new(Kind::any(), Kind::any(), []),
-                event: Event::Log(LogEvent::from(BTreeMap::new())),
+                event: Event::from(LogEvent::from(BTreeMap::new())),
                 valid: false,
             },
             TestCase {
@@ -681,7 +679,7 @@ mod tests {
                     Kind::any(),
                     [LogNamespace::Legacy],
                 ),
-                event: Event::Log(LogEvent::from(BTreeMap::from([(
+                event: Event::from(LogEvent::from(BTreeMap::from([(
                     "foo".into(),
                     Value::Null,
                 )]))),

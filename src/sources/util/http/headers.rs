@@ -1,13 +1,11 @@
-use bytes::Bytes;
 use vector_lib::{
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     event::Event,
-    lookup::path,
 };
 use warp::http::{HeaderMap, HeaderValue};
 
 use crate::{
-    event::{Value, string_value},
+    event::string_value,
     sources::http_server::HttpConfigParamKind,
 };
 
@@ -15,8 +13,8 @@ pub fn add_headers(
     events: &mut [Event],
     headers_config: &[HttpConfigParamKind],
     headers: &HeaderMap,
-    log_namespace: LogNamespace,
-    source_name: &'static str,
+    _log_namespace: LogNamespace,
+    _source_name: &'static str,
 ) {
     for h in headers_config {
         match h {
@@ -28,7 +26,7 @@ pub fn add_headers(
 
                 for event in events.iter_mut() {
                     match event {
-                        Event::OtelLog(otel_log) => {
+                        Event::Log(otel_log) => {
                             if let Some(v) = value {
                                 otel_log.set_attribute(
                                     format!("http.header.{header_name}"),
@@ -36,21 +34,10 @@ pub fn add_headers(
                                 );
                             }
                         }
-                        Event::Log(log) => {
-                            log_namespace.insert_source_metadata(
-                                source_name,
-                                log,
-                                Some(LegacyKey::InsertIfEmpty(path!(header_name))),
-                                path!("headers", header_name),
-                                Value::from(value.map(Bytes::copy_from_slice)),
-                            );
-                        }
                         _ => {}
                     }
                 }
             }
-            // Add all headers that match against wildcard pattens specified
-            // in the `headers` config option to the event.
             HttpConfigParamKind::Glob(header_pattern) => {
                 for header_name in headers.keys() {
                     if header_pattern
@@ -60,7 +47,7 @@ pub fn add_headers(
 
                         for event in events.iter_mut() {
                             match event {
-                                Event::OtelLog(otel_log) => {
+                                Event::Log(otel_log) => {
                                     if let Some(v) = value {
                                         otel_log.set_attribute(
                                             format!("http.header.{}", header_name.as_str()),
@@ -69,17 +56,6 @@ pub fn add_headers(
                                             ),
                                         );
                                     }
-                                }
-                                Event::Log(log) => {
-                                    log_namespace.insert_source_metadata(
-                                        source_name,
-                                        log,
-                                        Some(LegacyKey::InsertIfEmpty(path!(
-                                            header_name.as_str()
-                                        ))),
-                                        path!("headers", header_name.as_str()),
-                                        Value::from(value.map(Bytes::copy_from_slice)),
-                                    );
                                 }
                                 _ => {}
                             }
@@ -137,6 +113,7 @@ mod tests {
                 .value()
                 .get(path!("test", "headers"))
                 .unwrap()
+                .clone()
         );
     }
 
@@ -174,11 +151,12 @@ mod tests {
                 .metadata()
                 .value()
                 .get(path!("test", "headers"))
-                .unwrap(),
+                .unwrap()
+                .clone(),
             "Checking legacy and namespaced log contain headers string"
         );
         assert_eq!(
-            log["content-type"],
+            log.get("content-type").unwrap(),
             "application/x-protobuf".into(),
             "Checking log contains Content-Type header"
         );
@@ -187,7 +165,7 @@ mod tests {
             "Checking log does not contain User-Agent header"
         );
         assert_eq!(
-            log["content-encoding"],
+            log.get("content-encoding").unwrap(),
             "gzip".into(),
             "Checking log contains Content-Encoding header"
         );

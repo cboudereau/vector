@@ -1,7 +1,7 @@
 use crate::event::Event;
 
 pub(crate) const fn check_is_log(e: Event) -> (bool, Event) {
-    (matches!(e, Event::Log(_) | Event::OtelLog(_)), e)
+    (matches!(e, Event::Log(_)), e)
 }
 
 pub(crate) fn check_is_log_with_context(e: Event) -> (Result<(), String>, Event) {
@@ -37,7 +37,7 @@ mod test {
 
     #[test]
     fn is_log_matches_otel_log() {
-        let event = Event::OtelLog(OtelLog::new(LogRecord {
+        let event = Event::Log(OtelLog::new(LogRecord {
             severity_text: "INFO".to_string(),
             ..Default::default()
         }));

@@ -25,9 +25,6 @@ impl SinkEncoder<Vec<Event>> for KeepEncoder {
         let mut json_events: Vec<serde_json::Value> = Vec::with_capacity(n_events);
 
         for mut event in events {
-            if let Event::OtelLog(otel) = event {
-                event = Event::Log(otel.to_log_event());
-            }
             self.transformer.transform(&mut event);
 
             byte_size.add_event(&event, event.estimated_json_encoded_size_of());

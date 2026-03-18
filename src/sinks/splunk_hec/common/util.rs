@@ -7,7 +7,7 @@ use hyper::Body;
 use snafu::{ResultExt, Snafu};
 use vector_lib::{
     config::proxy::ProxyConfig,
-    event::EventRef,
+    event::{EventRef, LogEvent, Metric},
     lookup::lookup_v2::{OptionalTargetPath, OptionalValuePath},
 };
 
@@ -158,6 +158,40 @@ pub fn render_template_string<'a>(
 ) -> Option<String> {
     template
         .render_string(event)
+        .map_err(|error| {
+            emit!(TemplateRenderingError {
+                error,
+                field: Some(field_name),
+                drop_event: false
+            });
+        })
+        .ok()
+}
+
+pub fn render_template_string_from_log(
+    template: &Template,
+    log: &LogEvent,
+    field_name: &str,
+) -> Option<String> {
+    template
+        .render_string_from_log(log)
+        .map_err(|error| {
+            emit!(TemplateRenderingError {
+                error,
+                field: Some(field_name),
+                drop_event: false
+            });
+        })
+        .ok()
+}
+
+pub fn render_template_string_from_metric(
+    template: &Template,
+    metric: &Metric,
+    field_name: &str,
+) -> Option<String> {
+    template
+        .render_string_from_metric(metric)
         .map_err(|error| {
             emit!(TemplateRenderingError {
                 error,

@@ -20,7 +20,7 @@ fn pulsar_get_headers() {
     property_values.insert("a-key".into(), Value::Bytes(Bytes::from("a-value")));
     property_values.insert("b-key".into(), Value::Bytes(Bytes::from("b-value")));
 
-    let mut event = Event::Log(LogEvent::from("hello"));
+    let mut event = Event::from(LogEvent::from("hello"));
     event
         .as_mut_log()
         .insert(properties_key.path.as_ref().unwrap(), property_values);

@@ -216,7 +216,7 @@ impl GelfDeserializer {
                 }
             }
         }
-        Ok(Event::Log(log))
+        Ok(Event::from(log))
     }
 }
 
@@ -299,7 +299,7 @@ mod tests {
         let events = deserialize_gelf_input(&input, GelfDeserializerOptions::default()).unwrap();
         assert_eq!(events.len(), 1);
 
-        let log = events[0].as_log();
+        let log = events[0].as_log().to_log_event();
 
         assert_eq!(
             log.get(VERSION),
@@ -361,7 +361,7 @@ mod tests {
             let events =
                 deserialize_gelf_input(&input, GelfDeserializerOptions::default()).unwrap();
             assert_eq!(events.len(), 1);
-            let log = events[0].as_log();
+            let log = events[0].as_log().to_log_event();
             assert!(log.contains(log_schema().message_key_target_path().unwrap()));
         }
 
@@ -376,7 +376,7 @@ mod tests {
             let events =
                 deserialize_gelf_input(&input, GelfDeserializerOptions::default()).unwrap();
             assert_eq!(events.len(), 1);
-            let log = events[0].as_log();
+            let log = events[0].as_log().to_log_event();
             assert!(!log.contains(event_path!("_id")));
         }
     }
@@ -469,7 +469,7 @@ mod tests {
         .unwrap();
         assert_eq!(events.len(), 1);
 
-        let log = events[0].as_log();
+        let log = events[0].as_log().to_log_event();
 
         assert_eq!(
             log.get(VERSION),

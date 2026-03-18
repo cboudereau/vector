@@ -5,10 +5,10 @@ use serde_with::serde_as;
 use smallvec::SmallVec;
 use vector_lib::{
     codecs::decoding::{DeserializerConfig, FramingConfig},
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     configurable::configurable_component,
     ipallowlist::IpAllowlistConfig,
-    lookup::{lookup_v2::OptionalValuePath, owned_value_path, path},
+    lookup::{lookup_v2::OptionalValuePath, owned_value_path},
 };
 
 use super::{SocketConfig, default_host_key};
@@ -192,8 +192,10 @@ impl TcpConfig {
 
 #[derive(Clone)]
 pub struct RawTcpSource {
+    #[allow(dead_code)]
     config: TcpConfig,
     decoder: Decoder,
+    #[allow(dead_code)]
     log_namespace: LogNamespace,
 }
 
@@ -222,7 +224,7 @@ impl TcpSource for RawTcpSource {
 
         for event in events {
             match event {
-                Event::OtelLog(otel_log) => {
+                Event::Log(otel_log) => {
                     otel_log.set_source_metadata(SocketConfig::NAME, now);
                     otel_log.set_resource_attribute(
                         "host.name".to_string(),
@@ -231,38 +233,6 @@ impl TcpSource for RawTcpSource {
                     otel_log.set_attribute(
                         "net.peer.port".to_string(),
                         int_value(host.port() as i64),
-                    );
-                }
-                Event::Log(log) => {
-                    self.log_namespace.insert_standard_vector_source_metadata(
-                        log,
-                        SocketConfig::NAME,
-                        now,
-                    );
-
-                    let legacy_host_key = self
-                        .config
-                        .host_key
-                        .clone()
-                        .unwrap_or(default_host_key())
-                        .path;
-
-                    self.log_namespace.insert_source_metadata(
-                        SocketConfig::NAME,
-                        log,
-                        legacy_host_key.as_ref().map(LegacyKey::InsertIfEmpty),
-                        path!("host"),
-                        host.ip().to_string(),
-                    );
-
-                    let legacy_port_key = self.config.port_key.clone().path;
-
-                    self.log_namespace.insert_source_metadata(
-                        SocketConfig::NAME,
-                        log,
-                        legacy_port_key.as_ref().map(LegacyKey::InsertIfEmpty),
-                        path!("port"),
-                        host.port(),
                     );
                 }
                 _ => {}

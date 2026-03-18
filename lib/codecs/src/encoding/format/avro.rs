@@ -69,7 +69,7 @@ impl Encoder<Event> for AvroSerializer {
     type Error = vector_common::Error;
 
     fn encode(&mut self, event: Event, buffer: &mut BytesMut) -> Result<(), Self::Error> {
-        let log = event.into_log_coerce();
+        let log = event.into_log_coerce().to_log_event();
         let value = apache_avro::to_value(log)?;
         let value = value.resolve(&self.schema)?;
         let bytes = apache_avro::to_avro_datum(&self.schema, value)?;
@@ -89,7 +89,7 @@ mod tests {
 
     #[test]
     fn serialize_avro() {
-        let event = Event::Log(LogEvent::from(btreemap! {
+        let event = Event::from(LogEvent::from(btreemap! {
             "foo" => Value::from("bar")
         }));
         let schema = indoc! {r#"

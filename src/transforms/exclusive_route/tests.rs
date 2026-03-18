@@ -50,7 +50,7 @@ fn exclusive_routes() {
 
     let (output_names, mut outputs) = get_outputs_buf();
     for service in ["a", "b", "c"] {
-        let event = Event::Log(LogEvent::from(btreemap! {
+        let event = Event::from(LogEvent::from(btreemap! {
             "service" => service
         }));
         transform.transform(event.clone(), &mut outputs);

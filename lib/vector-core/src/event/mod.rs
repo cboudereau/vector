@@ -40,9 +40,10 @@ mod r#ref;
 mod ser;
 pub mod otel_event;
 pub mod otlp;
-pub use otel_event::{OtelLog, OtelMetric, OtelSpan, json_to_any_value, string_value, int_value};
+pub use otel_event::{OtelLog, OtelMetric, OtelSpan, json_to_any_value, string_value, int_value, vrl_value_to_any_value};
+pub use opentelemetry_proto::tonic::common::v1::any_value::Value as OtelValueKind;
 
-/// Backward-compat aliases — deprecated, use `OtelLog`/`OtelMetric`/`OtelSpan` directly.
+/// Backward-compat aliases.
 pub type OtelLogEvent = OtelLog;
 pub type OtelMetricEvent = OtelMetric;
 pub type OtelSpanEvent = OtelSpan;
@@ -63,23 +64,17 @@ pub const PARTIAL: &str = "_partial";
 #[serde(rename_all = "snake_case")]
 #[allow(clippy::large_enum_variant)]
 pub enum Event {
-    Log(LogEvent),
-    Metric(Metric),
-    Trace(TraceEvent),
-    OtelLog(OtelLog),
-    OtelMetric(OtelMetric),
-    OtelSpan(OtelSpan),
+    Log(OtelLog),
+    Metric(OtelMetric),
+    Trace(OtelSpan),
 }
 
 impl ByteSizeOf for Event {
     fn allocated_bytes(&self) -> usize {
         match self {
-            Event::Log(log_event) => log_event.allocated_bytes(),
-            Event::Metric(metric_event) => metric_event.allocated_bytes(),
-            Event::Trace(trace_event) => trace_event.allocated_bytes(),
-            Event::OtelLog(e) => e.allocated_bytes(),
-            Event::OtelMetric(e) => e.allocated_bytes(),
-            Event::OtelSpan(e) => e.allocated_bytes(),
+            Event::Log(e) => e.allocated_bytes(),
+            Event::Metric(e) => e.allocated_bytes(),
+            Event::Trace(e) => e.allocated_bytes(),
         }
     }
 }
@@ -87,12 +82,9 @@ impl ByteSizeOf for Event {
 impl EstimatedJsonEncodedSizeOf for Event {
     fn estimated_json_encoded_size_of(&self) -> JsonSize {
         match self {
-            Event::Log(log_event) => log_event.estimated_json_encoded_size_of(),
-            Event::Metric(metric_event) => metric_event.estimated_json_encoded_size_of(),
-            Event::Trace(trace_event) => trace_event.estimated_json_encoded_size_of(),
-            Event::OtelLog(e) => e.estimated_json_encoded_size_of(),
-            Event::OtelMetric(e) => e.estimated_json_encoded_size_of(),
-            Event::OtelSpan(e) => e.estimated_json_encoded_size_of(),
+            Event::Log(e) => e.estimated_json_encoded_size_of(),
+            Event::Metric(e) => e.estimated_json_encoded_size_of(),
+            Event::Trace(e) => e.estimated_json_encoded_size_of(),
         }
     }
 }
@@ -106,12 +98,9 @@ impl EventCount for Event {
 impl Finalizable for Event {
     fn take_finalizers(&mut self) -> EventFinalizers {
         match self {
-            Event::Log(log_event) => log_event.take_finalizers(),
-            Event::Metric(metric) => metric.take_finalizers(),
-            Event::Trace(trace_event) => trace_event.take_finalizers(),
-            Event::OtelLog(e) => e.take_finalizers(),
-            Event::OtelMetric(e) => e.take_finalizers(),
-            Event::OtelSpan(e) => e.take_finalizers(),
+            Event::Log(e) => e.take_finalizers(),
+            Event::Metric(e) => e.take_finalizers(),
+            Event::Trace(e) => e.take_finalizers(),
         }
     }
 }
@@ -119,199 +108,192 @@ impl Finalizable for Event {
 impl GetEventCountTags for Event {
     fn get_tags(&self) -> TaggedEventsSent {
         match self {
-            Event::Log(log) => log.get_tags(),
-            Event::Metric(metric) => metric.get_tags(),
-            Event::Trace(trace) => trace.get_tags(),
-            Event::OtelLog(e) => e.get_tags(),
-            Event::OtelMetric(e) => e.get_tags(),
-            Event::OtelSpan(e) => e.get_tags(),
+            Event::Log(e) => e.get_tags(),
+            Event::Metric(e) => e.get_tags(),
+            Event::Trace(e) => e.get_tags(),
         }
     }
 }
 
 impl Event {
-    /// Return self as a `LogEvent`
+    /// Return self as an `OtelLog` reference.
     ///
     /// # Panics
     ///
-    /// This function panics if self is anything other than an `Event::Log`.
-    pub fn as_log(&self) -> &LogEvent {
+    /// This function panics if self is not an `Event::Log`.
+    pub fn as_log(&self) -> &OtelLog {
         match self {
             Event::Log(log) => log,
             _ => panic!("Failed type coercion, {self:?} is not a log event"),
         }
     }
 
-    /// Return self as a mutable `LogEvent`
+    /// Return self as a mutable `OtelLog` reference.
     ///
     /// # Panics
     ///
-    /// This function panics if self is anything other than an `Event::Log`.
-    pub fn as_mut_log(&mut self) -> &mut LogEvent {
+    /// This function panics if self is not an `Event::Log`.
+    pub fn as_mut_log(&mut self) -> &mut OtelLog {
         match self {
             Event::Log(log) => log,
             _ => panic!("Failed type coercion, {self:?} is not a log event"),
         }
     }
 
-    /// Coerces self into a `LogEvent`
+    /// Coerces self into an `OtelLog`.
     ///
     /// # Panics
     ///
-    /// This function panics if self is anything other than an `Event::Log`.
-    pub fn into_log(self) -> LogEvent {
+    /// This function panics if self is not an `Event::Log`.
+    pub fn into_log(self) -> OtelLog {
         match self {
             Event::Log(log) => log,
             _ => panic!("Failed type coercion, {self:?} is not a log event"),
         }
     }
 
-    /// Fallibly coerces self into a `LogEvent`
-    ///
-    /// If the event is a `LogEvent`, then `Some(log_event)` is returned, otherwise `None`.
-    pub fn try_into_log(self) -> Option<LogEvent> {
+    /// Fallibly coerces self into an `OtelLog`.
+    pub fn try_into_log(self) -> Option<OtelLog> {
         match self {
             Event::Log(log) => Some(log),
             _ => None,
         }
     }
 
-    /// Try to coerce self into a `LogEvent`, projecting `OtelLog` lossily.
-    /// Returns `None` for non-log event types.
-    pub fn try_into_log_coerce(self) -> Option<LogEvent> {
-        match self {
-            Event::Log(log) => Some(log),
-            Event::OtelLog(otel) => Some(otel.to_log_event()),
-            _ => None,
-        }
+    /// Backward-compat alias for `try_into_log`.
+    pub fn try_into_log_coerce(self) -> Option<OtelLog> {
+        self.try_into_log()
     }
 
-    /// Coerce self into a `LogEvent`, projecting `OtelLog` events lossily.
-    ///
-    /// `Event::Log` passes through as-is.  `Event::OtelLog` is projected
-    /// into a `LogEvent` via [`OtelLog::to_log_event`].  All other
-    /// variants cause a panic.
-    pub fn into_log_coerce(self) -> LogEvent {
-        match self {
-            Event::Log(log) => log,
-            Event::OtelLog(otel) => otel.to_log_event(),
-            _ => panic!("Failed type coercion, {self:?} is not a log-like event"),
-        }
+    /// Backward-compat alias for `into_log`.
+    pub fn into_log_coerce(self) -> OtelLog {
+        self.into_log()
     }
 
-    /// Return self as a `LogEvent` if possible
-    ///
-    /// If the event is a `LogEvent`, then `Some(&log_event)` is returned, otherwise `None`.
-    pub fn maybe_as_log(&self) -> Option<&LogEvent> {
+    /// Return self as an `OtelLog` if possible.
+    pub fn maybe_as_log(&self) -> Option<&OtelLog> {
         match self {
             Event::Log(log) => Some(log),
             _ => None,
         }
     }
 
-    /// Return self as a `Metric`
+    /// Return self as an `OtelMetric` reference.
     ///
     /// # Panics
     ///
-    /// This function panics if self is anything other than an `Event::Metric`.
-    pub fn as_metric(&self) -> &Metric {
+    /// This function panics if self is not an `Event::Metric`.
+    pub fn as_metric(&self) -> &OtelMetric {
         match self {
             Event::Metric(metric) => metric,
             _ => panic!("Failed type coercion, {self:?} is not a metric"),
         }
     }
 
-    /// Return self as a mutable `Metric`
+    /// Return self as a mutable `OtelMetric` reference.
     ///
     /// # Panics
     ///
-    /// This function panics if self is anything other than an `Event::Metric`.
-    pub fn as_mut_metric(&mut self) -> &mut Metric {
+    /// This function panics if self is not an `Event::Metric`.
+    pub fn as_mut_metric(&mut self) -> &mut OtelMetric {
         match self {
             Event::Metric(metric) => metric,
             _ => panic!("Failed type coercion, {self:?} is not a metric"),
         }
     }
 
-    /// Convert self to a legacy `Metric`, handling both `Event::Metric` and `Event::OtelMetric`.
+    /// Convert self to a legacy `Metric` (for backward compat with sinks).
     ///
     /// # Panics
     ///
-    /// This function panics if self is not a metric-like event.
+    /// This function panics if self is not a metric event.
     pub fn to_metric(&self) -> Metric {
         match self {
-            Event::Metric(metric) => metric.clone(),
-            Event::OtelMetric(otel) => otel.clone().to_legacy_metric(),
+            Event::Metric(otel) => otel.clone().to_legacy_metric(),
             _ => panic!("Failed type coercion, {self:?} is not a metric"),
         }
     }
 
-    /// Coerces self into `Metric`
+    /// Coerces self into a legacy `Metric`.
     ///
     /// # Panics
     ///
-    /// This function panics if self is anything other than an `Event::Metric`
-    /// or `Event::OtelMetric`.
+    /// This function panics if self is not an `Event::Metric`.
     pub fn into_metric(self) -> Metric {
         match self {
-            Event::Metric(metric) => metric,
-            Event::OtelMetric(otel) => otel.to_legacy_metric(),
+            Event::Metric(otel) => otel.to_legacy_metric(),
             _ => panic!("Failed type coercion, {self:?} is not a metric"),
         }
     }
 
-    /// Fallibly coerces self into a `Metric`
-    ///
-    /// If the event is a `Metric` or `OtelMetric`, then `Some(metric)` is returned,
-    /// otherwise `None`.
+    /// Fallibly coerces self into a legacy `Metric`.
     pub fn try_into_metric(self) -> Option<Metric> {
         match self {
-            Event::Metric(metric) => Some(metric),
-            Event::OtelMetric(otel) => Some(otel.to_legacy_metric()),
+            Event::Metric(otel) => Some(otel.to_legacy_metric()),
             _ => None,
         }
     }
 
-    /// Return self as a `TraceEvent`
+    /// Return self as an `OtelSpan` reference.
     ///
     /// # Panics
     ///
-    /// This function panics if self is anything other than an `Event::Trace`.
-    pub fn as_trace(&self) -> &TraceEvent {
+    /// This function panics if self is not an `Event::Trace`.
+    pub fn as_trace(&self) -> &OtelSpan {
         match self {
             Event::Trace(trace) => trace,
             _ => panic!("Failed type coercion, {self:?} is not a trace event"),
         }
     }
 
-    /// Return self as a mutable `TraceEvent`
+    /// Return self as a mutable `OtelSpan` reference.
     ///
     /// # Panics
     ///
-    /// This function panics if self is anything other than an `Event::Trace`.
-    pub fn as_mut_trace(&mut self) -> &mut TraceEvent {
+    /// This function panics if self is not an `Event::Trace`.
+    pub fn as_mut_trace(&mut self) -> &mut OtelSpan {
         match self {
             Event::Trace(trace) => trace,
             _ => panic!("Failed type coercion, {self:?} is not a trace event"),
         }
     }
 
-    /// Coerces self into a `TraceEvent`
+    /// Convert to a legacy-compatible JSON value for backward-compatible serialization.
+    /// Wraps the event in `{"log": ...}`, `{"metric": ...}`, or `{"trace": ...}`.
+    pub fn to_legacy_json_value(self) -> serde_json::Value {
+        match self {
+            Event::Log(log) => {
+                let legacy = log.to_log_event();
+                let v = serde_json::to_value(legacy).unwrap_or(serde_json::Value::Null);
+                serde_json::json!({"log": v})
+            }
+            Event::Metric(metric) => {
+                let legacy = metric.to_legacy_metric();
+                let v = serde_json::to_value(legacy).unwrap_or(serde_json::Value::Null);
+                serde_json::json!({"metric": v})
+            }
+            Event::Trace(trace) => {
+                let legacy = trace.to_log_event();
+                let v = serde_json::to_value(legacy).unwrap_or(serde_json::Value::Null);
+                serde_json::json!({"trace": v})
+            }
+        }
+    }
+
+    /// Coerces self into an `OtelSpan`.
     ///
     /// # Panics
     ///
-    /// This function panics if self is anything other than an `Event::Trace`.
-    pub fn into_trace(self) -> TraceEvent {
+    /// This function panics if self is not an `Event::Trace`.
+    pub fn into_trace(self) -> OtelSpan {
         match self {
             Event::Trace(trace) => trace,
             _ => panic!("Failed type coercion, {self:?} is not a trace event"),
         }
     }
 
-    /// Fallibly coerces self into a `TraceEvent`
-    ///
-    /// If the event is a `TraceEvent`, then `Some(trace)` is returned, otherwise `None`.
-    pub fn try_into_trace(self) -> Option<TraceEvent> {
+    /// Fallibly coerces self into an `OtelSpan`.
+    pub fn try_into_trace(self) -> Option<OtelSpan> {
         match self {
             Event::Trace(trace) => Some(trace),
             _ => None,
@@ -320,152 +302,61 @@ impl Event {
 
     pub fn metadata(&self) -> &EventMetadata {
         match self {
-            Self::Log(log) => log.metadata(),
-            Self::Metric(metric) => metric.metadata(),
-            Self::Trace(trace) => trace.metadata(),
-            Self::OtelLog(e) => e.metadata(),
-            Self::OtelMetric(e) => e.metadata(),
-            Self::OtelSpan(e) => e.metadata(),
+            Self::Log(e) => e.metadata(),
+            Self::Metric(e) => e.metadata(),
+            Self::Trace(e) => e.metadata(),
         }
     }
 
     pub fn metadata_mut(&mut self) -> &mut EventMetadata {
         match self {
-            Self::Log(log) => log.metadata_mut(),
-            Self::Metric(metric) => metric.metadata_mut(),
-            Self::Trace(trace) => trace.metadata_mut(),
-            Self::OtelLog(e) => e.metadata_mut(),
-            Self::OtelMetric(e) => e.metadata_mut(),
-            Self::OtelSpan(e) => e.metadata_mut(),
+            Self::Log(e) => e.metadata_mut(),
+            Self::Metric(e) => e.metadata_mut(),
+            Self::Trace(e) => e.metadata_mut(),
         }
     }
 
     /// Destroy the event and return the metadata.
     pub fn into_metadata(self) -> EventMetadata {
         match self {
-            Self::Log(log) => log.into_parts().1,
-            Self::Metric(metric) => metric.into_parts().2,
-            Self::Trace(trace) => trace.into_parts().1,
-            Self::OtelLog(e) => e.into_parts().3,
-            Self::OtelMetric(e) => e.into_parts().3,
-            Self::OtelSpan(e) => e.into_parts().3,
+            Self::Log(e) => e.into_parts().3,
+            Self::Metric(e) => e.into_parts().3,
+            Self::Trace(e) => e.into_parts().3,
         }
     }
 
     #[must_use]
     pub fn with_batch_notifier(self, batch: &BatchNotifier) -> Self {
         match self {
-            Self::Log(log) => log.with_batch_notifier(batch).into(),
-            Self::Metric(metric) => metric.with_batch_notifier(batch).into(),
-            Self::Trace(trace) => trace.with_batch_notifier(batch).into(),
-            Self::OtelLog(e) => e.with_batch_notifier(batch).into(),
-            Self::OtelMetric(e) => e.with_batch_notifier(batch).into(),
-            Self::OtelSpan(e) => e.with_batch_notifier(batch).into(),
+            Self::Log(e) => e.with_batch_notifier(batch).into(),
+            Self::Metric(e) => e.with_batch_notifier(batch).into(),
+            Self::Trace(e) => e.with_batch_notifier(batch).into(),
         }
     }
 
     #[must_use]
     pub fn with_batch_notifier_option(self, batch: &Option<BatchNotifier>) -> Self {
         match self {
-            Self::Log(log) => log.with_batch_notifier_option(batch).into(),
-            Self::Metric(metric) => metric.with_batch_notifier_option(batch).into(),
-            Self::Trace(trace) => trace.with_batch_notifier_option(batch).into(),
-            Self::OtelLog(e) => e.with_batch_notifier_option(batch).into(),
-            Self::OtelMetric(e) => e.with_batch_notifier_option(batch).into(),
-            Self::OtelSpan(e) => e.with_batch_notifier_option(batch).into(),
+            Self::Log(e) => e.with_batch_notifier_option(batch).into(),
+            Self::Metric(e) => e.with_batch_notifier_option(batch).into(),
+            Self::Trace(e) => e.with_batch_notifier_option(batch).into(),
         }
     }
 
-    pub fn as_otel_log(&self) -> &OtelLog {
-        match self {
-            Event::OtelLog(e) => e,
-            _ => panic!("Failed type coercion, {self:?} is not an OtelLog event"),
-        }
-    }
-
-    pub fn as_mut_otel_log(&mut self) -> &mut OtelLog {
-        match self {
-            Event::OtelLog(e) => e,
-            _ => panic!("Failed type coercion, {self:?} is not an OtelLog event"),
-        }
-    }
-
-    pub fn into_otel_log(self) -> OtelLog {
-        match self {
-            Event::OtelLog(e) => e,
-            _ => panic!("Failed type coercion, {self:?} is not an OtelLog event"),
-        }
-    }
-
-    pub fn try_into_otel_log(self) -> Option<OtelLog> {
-        match self {
-            Event::OtelLog(e) => Some(e),
-            _ => None,
-        }
-    }
-
-    pub fn maybe_as_otel_log(&self) -> Option<&OtelLog> {
-        match self {
-            Event::OtelLog(e) => Some(e),
-            _ => None,
-        }
-    }
-
-    pub fn as_otel_span(&self) -> &OtelSpan {
-        match self {
-            Event::OtelSpan(e) => e,
-            _ => panic!("Failed type coercion, {self:?} is not an OtelSpan event"),
-        }
-    }
-
-    pub fn as_mut_otel_span(&mut self) -> &mut OtelSpan {
-        match self {
-            Event::OtelSpan(e) => e,
-            _ => panic!("Failed type coercion, {self:?} is not an OtelSpan event"),
-        }
-    }
-
-    pub fn into_otel_span(self) -> OtelSpan {
-        match self {
-            Event::OtelSpan(e) => e,
-            _ => panic!("Failed type coercion, {self:?} is not an OtelSpan event"),
-        }
-    }
-
-    pub fn try_into_otel_span(self) -> Option<OtelSpan> {
-        match self {
-            Event::OtelSpan(e) => Some(e),
-            _ => None,
-        }
-    }
-
-    pub fn as_otel_metric(&self) -> &OtelMetric {
-        match self {
-            Event::OtelMetric(e) => e,
-            _ => panic!("Failed type coercion, {self:?} is not an OtelMetric event"),
-        }
-    }
-
-    pub fn as_mut_otel_metric(&mut self) -> &mut OtelMetric {
-        match self {
-            Event::OtelMetric(e) => e,
-            _ => panic!("Failed type coercion, {self:?} is not an OtelMetric event"),
-        }
-    }
-
-    pub fn into_otel_metric(self) -> OtelMetric {
-        match self {
-            Event::OtelMetric(e) => e,
-            _ => panic!("Failed type coercion, {self:?} is not an OtelMetric event"),
-        }
-    }
-
-    pub fn try_into_otel_metric(self) -> Option<OtelMetric> {
-        match self {
-            Event::OtelMetric(e) => Some(e),
-            _ => None,
-        }
-    }
+    /// Backward-compat aliases — these just delegate to the renamed variants.
+    pub fn as_otel_log(&self) -> &OtelLog { self.as_log() }
+    pub fn as_mut_otel_log(&mut self) -> &mut OtelLog { self.as_mut_log() }
+    pub fn into_otel_log(self) -> OtelLog { self.into_log() }
+    pub fn try_into_otel_log(self) -> Option<OtelLog> { self.try_into_log() }
+    pub fn maybe_as_otel_log(&self) -> Option<&OtelLog> { self.maybe_as_log() }
+    pub fn as_otel_span(&self) -> &OtelSpan { self.as_trace() }
+    pub fn as_mut_otel_span(&mut self) -> &mut OtelSpan { self.as_mut_trace() }
+    pub fn into_otel_span(self) -> OtelSpan { self.into_trace() }
+    pub fn try_into_otel_span(self) -> Option<OtelSpan> { self.try_into_trace() }
+    pub fn as_otel_metric(&self) -> &OtelMetric { self.as_metric() }
+    pub fn as_mut_otel_metric(&mut self) -> &mut OtelMetric { self.as_mut_metric() }
+    pub fn into_otel_metric(self) -> OtelMetric { match self { Event::Metric(e) => e, _ => panic!("not a metric") } }
+    pub fn try_into_otel_metric(self) -> Option<OtelMetric> { match self { Event::Metric(e) => Some(e), _ => None } }
 
     /// Returns a reference to the event metadata source.
     #[must_use]
@@ -541,9 +432,6 @@ impl EventDataEq for Event {
             (Self::Log(a), Self::Log(b)) => a.event_data_eq(b),
             (Self::Metric(a), Self::Metric(b)) => a.event_data_eq(b),
             (Self::Trace(a), Self::Trace(b)) => a.event_data_eq(b),
-            (Self::OtelLog(a), Self::OtelLog(b)) => a.event_data_eq(b),
-            (Self::OtelMetric(a), Self::OtelMetric(b)) => a.event_data_eq(b),
-            (Self::OtelSpan(a), Self::OtelSpan(b)) => a.event_data_eq(b),
             _ => false,
         }
     }
@@ -553,12 +441,9 @@ impl finalization::AddBatchNotifier for Event {
     fn add_batch_notifier(&mut self, batch: BatchNotifier) {
         let finalizer = EventFinalizer::new(batch);
         match self {
-            Self::Log(log) => log.add_finalizer(finalizer),
-            Self::Metric(metric) => metric.add_finalizer(finalizer),
-            Self::Trace(trace) => trace.add_finalizer(finalizer),
-            Self::OtelLog(e) => e.add_finalizer(finalizer),
-            Self::OtelMetric(e) => e.add_finalizer(finalizer),
-            Self::OtelSpan(e) => e.add_finalizer(finalizer),
+            Self::Log(e) => e.add_finalizer(finalizer),
+            Self::Metric(e) => e.add_finalizer(finalizer),
+            Self::Trace(e) => e.add_finalizer(finalizer),
         }
     }
 }
@@ -568,12 +453,9 @@ impl TryInto<serde_json::Value> for Event {
 
     fn try_into(self) -> Result<serde_json::Value, Self::Error> {
         match self {
-            Event::Log(fields) => serde_json::to_value(fields),
-            Event::Metric(metric) => serde_json::to_value(metric),
-            Event::Trace(fields) => serde_json::to_value(fields),
-            Event::OtelLog(e) => serde_json::to_value(e),
-            Event::OtelMetric(e) => serde_json::to_value(e),
-            Event::OtelSpan(e) => serde_json::to_value(e),
+            Event::Log(e) => serde_json::to_value(e),
+            Event::Metric(e) => serde_json::to_value(e),
+            Event::Trace(e) => serde_json::to_value(e),
         }
     }
 }
@@ -650,48 +532,48 @@ impl From<proto::SummaryQuantile> for metric::Quantile {
     }
 }
 
-impl From<LogEvent> for Event {
-    fn from(log: LogEvent) -> Self {
-        Event::Log(log)
-    }
-}
-
-impl From<Metric> for Event {
-    fn from(metric: Metric) -> Self {
-        Event::OtelMetric(OtelMetric::from_legacy_metric(metric))
-    }
-}
-
-impl From<TraceEvent> for Event {
-    fn from(trace: TraceEvent) -> Self {
-        Event::Trace(trace)
-    }
-}
-
 impl From<OtelLog> for Event {
     fn from(e: OtelLog) -> Self {
-        Event::OtelLog(e)
+        Event::Log(e)
     }
 }
 
 impl From<OtelMetric> for Event {
     fn from(e: OtelMetric) -> Self {
-        Event::OtelMetric(e)
+        Event::Metric(e)
     }
 }
 
 impl From<OtelSpan> for Event {
     fn from(e: OtelSpan) -> Self {
-        Event::OtelSpan(e)
+        Event::Trace(e)
+    }
+}
+
+impl From<Metric> for Event {
+    fn from(metric: Metric) -> Self {
+        Event::Metric(OtelMetric::from_legacy_metric(metric))
+    }
+}
+
+impl From<LogEvent> for Event {
+    fn from(log: LogEvent) -> Self {
+        Event::Log(OtelLog::from_log_event(log))
+    }
+}
+
+impl From<TraceEvent> for Event {
+    fn from(trace: TraceEvent) -> Self {
+        Event::Trace(OtelSpan::from_trace_event(trace))
     }
 }
 
 pub trait MaybeAsLogMut {
-    fn maybe_as_log_mut(&mut self) -> Option<&mut LogEvent>;
+    fn maybe_as_log_mut(&mut self) -> Option<&mut OtelLog>;
 }
 
 impl MaybeAsLogMut for Event {
-    fn maybe_as_log_mut(&mut self) -> Option<&mut LogEvent> {
+    fn maybe_as_log_mut(&mut self) -> Option<&mut OtelLog> {
         match self {
             Event::Log(log) => Some(log),
             _ => None,

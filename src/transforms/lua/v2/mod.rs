@@ -547,17 +547,17 @@ mod tests {
             ),
             |tx, out| async move {
                 let line2 = random_string(9);
-                tx.send(Event::Log(LogEvent::from(line2.as_str())))
+                tx.send(Event::from(LogEvent::from(line2.as_str())))
                     .await
                     .unwrap();
                 drop(tx);
                 assert_eq!(
-                    next_event(&out, "transform").await.as_log()["message"],
-                    line1.into()
+                    next_event(&out, "transform").await.as_log().get("message").unwrap(),
+                    Value::from(line1)
                 );
                 assert_eq!(
-                    next_event(&out, "in").await.as_log()["message"],
-                    line2.into(),
+                    next_event(&out, "in").await.as_log().get("message").unwrap(),
+                    Value::from(line2),
                 );
             },
         )
@@ -576,12 +576,12 @@ mod tests {
             """
             "#,
             |tx, out| async move {
-                let event = Event::Log(LogEvent::from("program me"));
+                let event = Event::from(LogEvent::from("program me"));
                 tx.send(event).await.unwrap();
 
                 assert_eq!(
-                    next_event(&out, "in").await.as_log()["hello"],
-                    "goodbye".into()
+                    next_event(&out, "in").await.as_log().get("hello").unwrap(),
+                    Value::from("goodbye")
                 );
             },
         )
@@ -601,10 +601,10 @@ mod tests {
             """
             "#,
             |tx, out| async move {
-                let event = Event::Log(LogEvent::from("Hello, my name is Bob."));
+                let event = Event::from(LogEvent::from("Hello, my name is Bob."));
                 tx.send(event).await.unwrap();
 
-                assert_eq!(next_event(&out, "in").await.as_log()["name"], "Bob".into());
+                assert_eq!(next_event(&out, "in").await.as_log().get("name").unwrap(), Value::from("Bob"));
             },
         )
         .await;
@@ -696,8 +696,8 @@ mod tests {
                 tx.send(event.into()).await.unwrap();
 
                 assert_eq!(
-                    next_event(&out, "in").await.as_log()["result"],
-                    "empty".into()
+                    next_event(&out, "in").await.as_log().get("result").unwrap(),
+                    Value::from("empty")
                 );
             },
         )
@@ -720,7 +720,7 @@ mod tests {
                 tx.send(event.into()).await.unwrap();
 
                 assert_eq!(
-                    next_event(&out, "in").await.as_log()["number"],
+                    next_event(&out, "in").await.as_log().get("number").unwrap(),
                     Value::Integer(3)
                 );
             },
@@ -744,7 +744,7 @@ mod tests {
                 tx.send(event.into()).await.unwrap();
 
                 assert_eq!(
-                    next_event(&out, "in").await.as_log()["number"],
+                    next_event(&out, "in").await.as_log().get("number").unwrap(),
                     Value::from(3.14159)
                 );
             },
@@ -768,7 +768,7 @@ mod tests {
                 tx.send(event.into()).await.unwrap();
 
                 assert_eq!(
-                    next_event(&out, "in").await.as_log()["bool"],
+                    next_event(&out, "in").await.as_log().get("bool").unwrap(),
                     Value::Boolean(true)
                 );
             },
@@ -921,8 +921,8 @@ mod tests {
                 tx.send(event.into()).await.unwrap();
 
                 assert_eq!(
-                    next_event(&out, "in").await.as_log()["\"new field\""],
-                    "new value".into()
+                    next_event(&out, "in").await.as_log().get("\"new field\"").unwrap(),
+                    Value::from("new value")
                 );
             },
         )
@@ -950,8 +950,8 @@ mod tests {
 
                 let output = next_event(&out, "in").await;
 
-                assert_eq!(output.as_log()["name"], "nameBob".into());
-                assert_eq!(output.as_log()["friend"], "friendAlice".into());
+                assert_eq!(output.as_log().get("name").unwrap(), Value::from("nameBob"));
+                assert_eq!(output.as_log().get("friend").unwrap(), Value::from("friendAlice"));
             },
         )
         .await;
@@ -1003,7 +1003,7 @@ mod tests {
             "#,
             |tx, out| async move {
                 let n: usize = 10;
-                let events = (0..n).map(|i| Event::Log(LogEvent::from(format!("program me {i}"))));
+                let events = (0..n).map(|i| Event::from(LogEvent::from(format!("program me {i}"))));
                 for event in events {
                     tx.send(event).await.unwrap();
                     assert!(out.lock().await.recv().await.is_some());

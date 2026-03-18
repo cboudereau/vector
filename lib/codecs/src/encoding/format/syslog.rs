@@ -82,8 +82,7 @@ impl Encoder<Event> for SyslogSerializer {
 
     fn encode(&mut self, event: Event, buffer: &mut BytesMut) -> Result<(), Self::Error> {
         let log_event = match event {
-            Event::Log(log) => log,
-            Event::OtelLog(otel) => otel.to_log_event(),
+            Event::Log(otel) => otel.to_log_event(),
             _ => return Ok(()),
         };
         let syslog_message = ConfigDecanter::new(&log_event).decant_config(&self.config.syslog);
@@ -491,8 +490,7 @@ mod tests {
     use chrono::NaiveDate;
     use std::sync::Arc;
     use vector_core::config::LogNamespace;
-    use vector_core::event::Event::Metric;
-    use vector_core::event::{Event, MetricKind, MetricValue, StatisticKind};
+    use vector_core::event::{Event, MetricKind, MetricValue, OtelMetric, StatisticKind};
     use vrl::path::parse_target_path;
     use vrl::prelude::Kind;
     use vrl::{btreemap, event_path, value};
@@ -543,7 +541,7 @@ mod tests {
         )
         .unwrap();
         let log = create_simple_log();
-        let output = run_encode(config, Event::Log(log));
+        let output = run_encode(config, Event::from(log));
         let expected =
             "<14>1 2025-08-28T18:30:00.123456Z test-host.com vector - - - original message";
         assert_eq!(output, expected);
@@ -563,7 +561,7 @@ mod tests {
         )
         .unwrap();
         let log = create_test_log();
-        let output = run_encode(config, Event::Log(log));
+        let output = run_encode(config, Event::from(log));
         let expected = "<26>1 2025-08-28T18:30:00.123456Z test-host.com my-app 12345 req-abc-789 [metrics retries=\"3\"] original message";
         assert_eq!(output, expected);
     }
@@ -582,7 +580,7 @@ mod tests {
         )
         .unwrap();
         let log = create_test_log();
-        let output = run_encode(config, Event::Log(log));
+        let output = run_encode(config, Event::from(log));
         let expected = "<26>Aug 28 18:30:00 test-host.com my-app[12345]: [metrics retries=\"3\"] original message";
         assert_eq!(output, expected);
     }
@@ -646,7 +644,7 @@ mod tests {
             "A\nB\tC, Привіт D, E\u{0007}F", //newline, tab, unicode
         );
 
-        let output = run_encode(config, Event::Log(log));
+        let output = run_encode(config, Event::from(log));
         let expected_message = "A B C,        D, E F";
         assert!(output.ends_with(expected_message));
     }
@@ -700,7 +698,7 @@ mod tests {
         );
         log.insert(event_path!("proc_id"), "1234567890");
 
-        let output = run_encode(config, Event::Log(log));
+        let output = run_encode(config, Event::from(log));
         let expected_tag = "this-is-a-very-very-long-applic:";
         assert!(output.contains(expected_tag));
     }
@@ -719,7 +717,7 @@ mod tests {
         .unwrap();
 
         let log = create_simple_log();
-        let output = run_encode(config, Event::Log(log));
+        let output = run_encode(config, Event::from(log));
 
         let expected =
             "<14>1 2025-08-28T18:30:00.123456Z test-host.com vector - - - original message";
@@ -743,7 +741,7 @@ mod tests {
         log.insert(event_path!("fac"), "");
         log.insert(event_path!("sev"), "invalid_severity_name");
 
-        let output = run_encode(config, Event::Log(log));
+        let output = run_encode(config, Event::from(log));
 
         let expected_pri = "<14>";
         assert!(output.starts_with(expected_pri));
@@ -769,7 +767,7 @@ mod tests {
         log.insert(event_path!("message"), "");
         log.insert(event_path!("structured_data"), value!({}));
 
-        let output = run_encode(config, Event::Log(log));
+        let output = run_encode(config, Event::from(log));
         let expected = "<14>1 2025-08-28T18:30:00.123456Z test-host.com vector - - -";
         assert_eq!(output, expected);
     }
@@ -784,14 +782,14 @@ mod tests {
         )
         .unwrap();
 
-        let metric_event = Metric(vector_core::event::Metric::new(
+        let metric_event = Event::Metric(OtelMetric::from_legacy_metric(vector_core::event::Metric::new(
             "metric1",
             MetricKind::Incremental,
             MetricValue::Distribution {
                 samples: vector_core::samples![10.0 => 1],
                 statistic: StatisticKind::Histogram,
             },
-        ));
+        )));
 
         let mut serializer = SyslogSerializer::new(&config);
         let mut buffer = BytesMut::new();
@@ -812,7 +810,7 @@ mod tests {
         .unwrap();
         let log = LogEvent::from("");
 
-        let output = run_encode(config, Event::Log(log));
+        let output = run_encode(config, Event::from(log));
         let expected_suffix = "vector - - -";
         assert!(output.starts_with("<14>1"));
         assert!(output.ends_with(expected_suffix));

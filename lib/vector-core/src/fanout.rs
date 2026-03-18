@@ -473,12 +473,10 @@ mod tests {
             channel::{BufferReceiver, BufferSender},
         },
     };
-    use vrl::value::Value;
-
     use super::{ControlMessage, Fanout};
     use crate::{
         config::ComponentKey,
-        event::{Event, EventArray, EventContainer, LogEvent},
+        event::{Event, EventArray, EventContainer, LogEvent, OtelLog},
         test_util::{collect_ready, collect_ready_events},
     };
 
@@ -607,12 +605,8 @@ mod tests {
             .into_events()
             .next()
             .expect("must have at least one event");
-        let event = event.into_log();
-        event
-            .get("message")
-            .and_then(Value::as_bytes)
-            .and_then(|b| String::from_utf8(b.to_vec()).ok())
-            .expect("must be valid log event with `message` field")
+        let otel_log = event.into_log();
+        otel_log.body_string()
     }
 
     #[tokio::test]
@@ -919,6 +913,9 @@ mod tests {
     }
 
     fn make_event_array(count: usize) -> EventArray {
-        make_events_inner(count).collect::<Vec<_>>().into()
+        let logs: Vec<OtelLog> = make_events_inner(count)
+            .map(OtelLog::from_log_event)
+            .collect();
+        EventArray::Logs(logs)
     }
 }

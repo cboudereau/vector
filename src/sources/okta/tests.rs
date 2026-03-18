@@ -103,7 +103,7 @@ async fn okta_compliance() {
 
     for event in events.iter() {
         assert_eq!(
-            event.as_log()[log_schema().source_type_key().unwrap().to_string()],
+            event.as_log().get(log_schema().source_type_key().unwrap().to_string().as_str()).unwrap(),
             OktaConfig::NAME.into()
         );
     }
@@ -171,12 +171,12 @@ async fn okta_follows_rel() {
 
     for event in events.iter() {
         assert_eq!(
-            event.as_log()[log_schema().source_type_key().unwrap().to_string()],
+            event.as_log().get(log_schema().source_type_key().unwrap().to_string().as_str()).unwrap(),
             OktaConfig::NAME.into()
         );
     }
-    assert_eq!(events[0].as_log()["data"].as_str().unwrap(), "foo");
-    assert_eq!(events[1].as_log()["data"].as_str().unwrap(), "bar");
+    assert_eq!(events[0].as_log().get("data").unwrap().as_str().unwrap(), "foo");
+    assert_eq!(events[1].as_log().get("data").unwrap().as_str().unwrap(), "bar");
 }
 
 #[tokio::test]

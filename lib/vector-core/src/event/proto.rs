@@ -21,20 +21,30 @@ use super::metadata::{Inner, default_schema_definition};
 use super::{EventMetadata, array};
 
 impl event_array::Events {
-    // We can't use the standard `From` traits here because the actual
-    // type of `LogArray` and `TraceArray` are the same.
     fn from_logs(logs: array::LogArray) -> Self {
-        let logs = logs.into_iter().map(Into::into).collect();
+        let logs = logs
+            .into_iter()
+            .map(|otel| Log::from(otel.to_log_event()))
+            .collect();
         Self::Logs(LogArray { logs })
     }
 
     fn from_metrics(metrics: array::MetricArray) -> Self {
-        let metrics = metrics.into_iter().map(Into::into).collect();
+        let metrics = metrics
+            .into_iter()
+            .map(|otel| Metric::from(otel.to_legacy_metric()))
+            .collect();
         Self::Metrics(MetricArray { metrics })
     }
 
     fn from_traces(traces: array::TraceArray) -> Self {
-        let traces = traces.into_iter().map(Into::into).collect();
+        let traces = traces
+            .into_iter()
+            .map(|otel| {
+                let te: super::TraceEvent = super::TraceEvent::from(otel.to_log_event());
+                Trace::from(te)
+            })
+            .collect();
         Self::Traces(TraceArray { traces })
     }
 }
@@ -45,11 +55,6 @@ impl From<array::EventArray> for EventArray {
             array::EventArray::Logs(array) => event_array::Events::from_logs(array),
             array::EventArray::Metrics(array) => event_array::Events::from_metrics(array),
             array::EventArray::Traces(array) => event_array::Events::from_traces(array),
-            array::EventArray::OtelLogs(_)
-            | array::EventArray::OtelMetrics(_)
-            | array::EventArray::OtelSpans(_) => {
-                panic!("OTel-native events cannot be serialized to legacy Vector proto format")
-            }
         });
         Self { events }
     }
@@ -61,13 +66,33 @@ impl From<EventArray> for array::EventArray {
 
         match events {
             event_array::Events::Logs(logs) => {
-                array::EventArray::Logs(logs.logs.into_iter().map(Into::into).collect())
+                array::EventArray::Logs(
+                    logs.logs
+                        .into_iter()
+                        .map(|proto| super::OtelLog::from_log_event(proto.into()))
+                        .collect(),
+                )
             }
             event_array::Events::Metrics(metrics) => {
-                array::EventArray::Metrics(metrics.metrics.into_iter().map(Into::into).collect())
+                array::EventArray::Metrics(
+                    metrics
+                        .metrics
+                        .into_iter()
+                        .map(|proto| super::OtelMetric::from_legacy_metric(proto.into()))
+                        .collect(),
+                )
             }
             event_array::Events::Traces(traces) => {
-                array::EventArray::Traces(traces.traces.into_iter().map(Into::into).collect())
+                array::EventArray::Traces(
+                    traces
+                        .traces
+                        .into_iter()
+                        .map(|proto| {
+                            let te: super::TraceEvent = proto.into();
+                            super::OtelSpan::from_trace_event(te)
+                        })
+                        .collect(),
+                )
             }
         }
     }
@@ -276,9 +301,18 @@ impl From<EventWrapper> for super::Event {
         let event = proto.event.unwrap();
 
         match event {
-            Event::Log(proto) => Self::Log(proto.into()),
-            Event::Metric(proto) => Self::Metric(proto.into()),
-            Event::Trace(proto) => Self::Trace(proto.into()),
+            Event::Log(proto) => {
+                let log_event: super::LogEvent = proto.into();
+                super::Event::Log(super::OtelLog::from_log_event(log_event))
+            }
+            Event::Metric(proto) => {
+                let metric: super::Metric = proto.into();
+                super::Event::Metric(super::OtelMetric::from_legacy_metric(metric))
+            }
+            Event::Trace(proto) => {
+                let trace: super::TraceEvent = proto.into();
+                super::Event::Trace(super::OtelSpan::from_trace_event(trace))
+            }
         }
     }
 }
@@ -477,11 +511,15 @@ impl From<super::Event> for Event {
 impl From<super::Event> for WithMetadata<Event> {
     fn from(event: super::Event) -> Self {
         match event {
-            super::Event::Log(log_event) => WithMetadata::<Log>::from(log_event).into(),
-            super::Event::Metric(metric) => WithMetadata::<Metric>::from(metric).into(),
-            super::Event::Trace(trace) => WithMetadata::<Trace>::from(trace).into(),
-            super::Event::OtelLog(_) | super::Event::OtelMetric(_) | super::Event::OtelSpan(_) => {
-                panic!("OTel-native events cannot be converted to Vector proto format; use OTLP encoding instead")
+            super::Event::Log(otel_log) => {
+                WithMetadata::<Log>::from(otel_log.to_log_event()).into()
+            }
+            super::Event::Metric(otel_metric) => {
+                WithMetadata::<Metric>::from(otel_metric.to_legacy_metric()).into()
+            }
+            super::Event::Trace(otel_span) => {
+                let te: super::TraceEvent = super::TraceEvent::from(otel_span.to_log_event());
+                WithMetadata::<Trace>::from(te).into()
             }
         }
     }

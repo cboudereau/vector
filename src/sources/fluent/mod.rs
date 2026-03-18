@@ -29,7 +29,7 @@ use crate::{
         DataType, GenerateConfig, Resource, SourceAcknowledgementsConfig, SourceConfig,
         SourceContext, SourceOutput, log_schema,
     },
-    event::{Event, LogEvent},
+    event::{Event, LogEvent, string_value},
     internal_events::{FluentMessageDecodeError, FluentMessageReceived},
     serde::bool_or_struct,
     tcp::TcpKeepaliveConfig,
@@ -401,6 +401,7 @@ impl FluentConfig {
 #[derive(Debug, Clone)]
 struct FluentSource {
     log_namespace: LogNamespace,
+    #[allow(dead_code)]
     legacy_host_key_path: Option<OwnedValuePath>,
 }
 
@@ -414,20 +415,16 @@ impl FluentSource {
 
     fn handle_events_impl(&self, events: &mut [Event], host: Value) {
         for event in events {
-            let log = event.as_mut_log();
-
-            let legacy_host_key = self
-                .legacy_host_key_path
-                .as_ref()
-                .map(LegacyKey::InsertIfEmpty);
-
-            self.log_namespace.insert_source_metadata(
-                FluentConfig::NAME,
-                log,
-                legacy_host_key,
-                path!("host"),
-                host.clone(),
-            );
+            if let Event::Log(otel_log) = event {
+                let host_str = match &host {
+                    Value::Bytes(b) => String::from_utf8_lossy(b).into_owned(),
+                    other => other.to_string(),
+                };
+                otel_log.set_resource_attribute(
+                    "host.name".to_string(),
+                    string_value(host_str),
+                );
+            }
         }
     }
 }
@@ -858,7 +855,7 @@ mod tests {
     // Decode base64: https://toolslick.com/conversion/data/messagepack-to-json
 
     fn mock_event(name: &str, timestamp: &str) -> Event {
-        Event::Log(LogEvent::from(ObjectMap::from([
+        Event::from(LogEvent::from(ObjectMap::from([
             ("message".into(), Value::from(name)),
             (
                 log_schema().source_type_key().unwrap().to_string().into(),
@@ -1125,10 +1122,10 @@ mod tests {
 
         assert_eq!(events.len(), 1);
         let log = events[0].as_log();
-        assert_eq!(log.get("field").unwrap(), &msg.into());
+        assert_eq!(log.get("field").unwrap(), msg.into());
         assert!(matches!(log.get("host").unwrap(), Value::Bytes(_)));
         assert!(matches!(log.get("timestamp").unwrap(), Value::Timestamp(_)));
-        assert_eq!(log.get("tag").unwrap(), &tag.into());
+        assert_eq!(log.get("tag").unwrap(), tag.into());
 
         (result, output.into())
     }

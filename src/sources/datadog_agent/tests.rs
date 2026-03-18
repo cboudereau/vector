@@ -119,13 +119,13 @@ fn test_decode_log_body() {
         assert_eq!(events.len(), msgs.len());
         for (msg, event) in msgs.into_iter().zip(events.into_iter()) {
             let log = event.as_log();
-            assert_eq!(log["message"], msg.message.into());
-            assert_eq!(log["status"], msg.status.into());
-            assert_eq!(log["timestamp"], msg.timestamp.into());
-            assert_eq!(log["hostname"], msg.hostname.into());
-            assert_eq!(log["service"], msg.service.into());
-            assert_eq!(log["ddsource"], msg.ddsource.into());
-            assert_eq!(log["ddtags"], msg.ddtags.into());
+            assert_eq!(log.get("message").unwrap(), Value::from(msg.message));
+            assert_eq!(log.get("status").unwrap(), Value::from(msg.status));
+            assert_eq!(log.get("timestamp").unwrap(), Value::from(msg.timestamp));
+            assert_eq!(log.get("hostname").unwrap(), Value::from(msg.hostname));
+            assert_eq!(log.get("service").unwrap(), Value::from(msg.service));
+            assert_eq!(log.get("ddsource").unwrap(), Value::from(msg.ddsource));
+            assert_eq!(log.get("ddtags").unwrap(), Value::from(msg.ddtags));
 
             assert_eq!(
                 event.metadata().schema_definition().as_ref(),
@@ -179,14 +179,14 @@ fn test_decode_log_body_parse_ddtags() {
     let log = event.as_log();
     let log_msg = log_msgs[0].clone();
 
-    assert_eq!(log["message"], log_msg.message.into());
-    assert_eq!(log["status"], log_msg.status.into());
-    assert_eq!(log["timestamp"], log_msg.timestamp.into());
-    assert_eq!(log["hostname"], log_msg.hostname.into());
-    assert_eq!(log["service"], log_msg.service.into());
-    assert_eq!(log["ddsource"], log_msg.ddsource.into());
+    assert_eq!(log.get("message").unwrap(), Value::from(log_msg.message));
+    assert_eq!(log.get("status").unwrap(), Value::from(log_msg.status));
+    assert_eq!(log.get("timestamp").unwrap(), Value::from(log_msg.timestamp));
+    assert_eq!(log.get("hostname").unwrap(), Value::from(log_msg.hostname));
+    assert_eq!(log.get("service").unwrap(), Value::from(log_msg.service));
+    assert_eq!(log.get("ddsource").unwrap(), Value::from(log_msg.ddsource));
 
-    assert_eq!(log["ddtags"], value!(["wizard:the_grey", "env:staging"]));
+    assert_eq!(log.get("ddtags").unwrap(), value!(["wizard:the_grey", "env:staging"]));
 }
 
 #[test]
@@ -393,21 +393,21 @@ async fn full_payload_v1() {
         {
             let event = events.remove(0);
             let log = event.as_log();
-            assert_eq!(log["message"], "foo".into());
+            assert_eq!(log.get("message").unwrap(), "foo".into());
             assert_eq!(
-                log["timestamp"],
+                log.get("timestamp").unwrap(),
                 Utc.timestamp_opt(123, 0)
                     .single()
                     .expect("invalid timestamp")
                     .into()
             );
-            assert_eq!(log["hostname"], "festeburg".into());
-            assert_eq!(log["status"], "notice".into());
-            assert_eq!(log["service"], "vector".into());
-            assert_eq!(log["ddsource"], "curl".into());
-            assert_eq!(log["ddtags"], "one,two,three".into());
+            assert_eq!(log.get("hostname").unwrap(), "festeburg".into());
+            assert_eq!(log.get("status").unwrap(), "notice".into());
+            assert_eq!(log.get("service").unwrap(), "vector".into());
+            assert_eq!(log.get("ddsource").unwrap(), "curl".into());
+            assert_eq!(log.get("ddtags").unwrap(), "one,two,three".into());
             assert!(event.metadata().secrets().get("datadog_api_key").is_none());
-            assert_eq!(*log.get_source_type().unwrap(), "datadog_agent".into());
+            assert_eq!(log.get_source_type().unwrap(), "datadog_agent".into());
             assert_eq!(
                 event.metadata().schema_definition().as_ref(),
                 &test_logs_schema_definition()
@@ -448,21 +448,21 @@ async fn full_payload_v2() {
         {
             let event = events.remove(0);
             let log = event.as_log();
-            assert_eq!(log["message"], "foo".into());
+            assert_eq!(log.get("message").unwrap(), "foo".into());
             assert_eq!(
-                log["timestamp"],
+                log.get("timestamp").unwrap(),
                 Utc.timestamp_opt(123, 0)
                     .single()
                     .expect("invalid timestamp")
                     .into()
             );
-            assert_eq!(log["hostname"], "festeburg".into());
-            assert_eq!(log["status"], "notice".into());
-            assert_eq!(log["service"], "vector".into());
-            assert_eq!(log["ddsource"], "curl".into());
-            assert_eq!(log["ddtags"], "one,two,three".into());
+            assert_eq!(log.get("hostname").unwrap(), "festeburg".into());
+            assert_eq!(log.get("status").unwrap(), "notice".into());
+            assert_eq!(log.get("service").unwrap(), "vector".into());
+            assert_eq!(log.get("ddsource").unwrap(), "curl".into());
+            assert_eq!(log.get("ddtags").unwrap(), "one,two,three".into());
             assert!(event.metadata().secrets().get("datadog_api_key").is_none());
-            assert_eq!(*log.get_source_type().unwrap(), "datadog_agent".into());
+            assert_eq!(log.get_source_type().unwrap(), "datadog_agent".into());
             assert_eq!(
                 event.metadata().schema_definition().as_ref(),
                 &test_logs_schema_definition()
@@ -503,21 +503,21 @@ async fn no_api_key() {
         {
             let event = events.remove(0);
             let log = event.as_log();
-            assert_eq!(log["message"], "foo".into());
+            assert_eq!(log.get("message").unwrap(), "foo".into());
             assert_eq!(
-                log["timestamp"],
+                log.get("timestamp").unwrap(),
                 Utc.timestamp_opt(123, 0)
                     .single()
                     .expect("invalid timestamp")
                     .into()
             );
-            assert_eq!(log["hostname"], "festeburg".into());
-            assert_eq!(log["status"], "notice".into());
-            assert_eq!(log["service"], "vector".into());
-            assert_eq!(log["ddsource"], "curl".into());
-            assert_eq!(log["ddtags"], "one,two,three".into());
+            assert_eq!(log.get("hostname").unwrap(), "festeburg".into());
+            assert_eq!(log.get("status").unwrap(), "notice".into());
+            assert_eq!(log.get("service").unwrap(), "vector".into());
+            assert_eq!(log.get("ddsource").unwrap(), "curl".into());
+            assert_eq!(log.get("ddtags").unwrap(), "one,two,three".into());
             assert!(event.metadata().secrets().get("datadog_api_key").is_none());
-            assert_eq!(*log.get_source_type().unwrap(), "datadog_agent".into());
+            assert_eq!(log.get_source_type().unwrap(), "datadog_agent".into());
             assert_eq!(
                 event.metadata().schema_definition().as_ref(),
                 &test_logs_schema_definition()
@@ -558,20 +558,20 @@ async fn api_key_in_url() {
         {
             let event = events.remove(0);
             let log = event.as_log();
-            assert_eq!(log["message"], "bar".into());
+            assert_eq!(log.get("message").unwrap(), "bar".into());
             assert_eq!(
-                log["timestamp"],
+                log.get("timestamp").unwrap(),
                 Utc.timestamp_opt(456, 0)
                     .single()
                     .expect("invalid timestamp")
                     .into()
             );
-            assert_eq!(log["hostname"], "festeburg".into());
-            assert_eq!(log["status"], "notice".into());
-            assert_eq!(log["service"], "vector".into());
-            assert_eq!(log["ddsource"], "curl".into());
-            assert_eq!(log["ddtags"], "one,two,three".into());
-            assert_eq!(*log.get_source_type().unwrap(), "datadog_agent".into());
+            assert_eq!(log.get("hostname").unwrap(), "festeburg".into());
+            assert_eq!(log.get("status").unwrap(), "notice".into());
+            assert_eq!(log.get("service").unwrap(), "vector".into());
+            assert_eq!(log.get("ddsource").unwrap(), "curl".into());
+            assert_eq!(log.get("ddtags").unwrap(), "one,two,three".into());
+            assert_eq!(log.get_source_type().unwrap(), "datadog_agent".into());
             assert_eq!(
                 &event.metadata().secrets().get("datadog_api_key").unwrap()[..],
                 DD_API_KEY
@@ -616,20 +616,20 @@ async fn api_key_in_query_params() {
         {
             let event = events.remove(0);
             let log = event.as_log();
-            assert_eq!(log["message"], "bar".into());
+            assert_eq!(log.get("message").unwrap(), "bar".into());
             assert_eq!(
-                log["timestamp"],
+                log.get("timestamp").unwrap(),
                 Utc.timestamp_opt(456, 0)
                     .single()
                     .expect("invalid timestamp")
                     .into()
             );
-            assert_eq!(log["hostname"], "festeburg".into());
-            assert_eq!(log["status"], "notice".into());
-            assert_eq!(log["service"], "vector".into());
-            assert_eq!(log["ddsource"], "curl".into());
-            assert_eq!(log["ddtags"], "one,two,three".into());
-            assert_eq!(*log.get_source_type().unwrap(), "datadog_agent".into());
+            assert_eq!(log.get("hostname").unwrap(), "festeburg".into());
+            assert_eq!(log.get("status").unwrap(), "notice".into());
+            assert_eq!(log.get("service").unwrap(), "vector".into());
+            assert_eq!(log.get("ddsource").unwrap(), "curl".into());
+            assert_eq!(log.get("ddtags").unwrap(), "one,two,three".into());
+            assert_eq!(log.get_source_type().unwrap(), "datadog_agent".into());
             assert_eq!(
                 &event.metadata().secrets().get("datadog_api_key").unwrap()[..],
                 DD_API_KEY
@@ -674,20 +674,20 @@ async fn api_key_in_header() {
         {
             let event = events.remove(0);
             let log = event.as_log();
-            assert_eq!(log["message"], "baz".into());
+            assert_eq!(log.get("message").unwrap(), "baz".into());
             assert_eq!(
-                log["timestamp"],
+                log.get("timestamp").unwrap(),
                 Utc.timestamp_opt(789, 0)
                     .single()
                     .expect("invalid timestamp")
                     .into()
             );
-            assert_eq!(log["hostname"], "festeburg".into());
-            assert_eq!(log["status"], "notice".into());
-            assert_eq!(log["service"], "vector".into());
-            assert_eq!(log["ddsource"], "curl".into());
-            assert_eq!(log["ddtags"], "one,two,three".into());
-            assert_eq!(*log.get_source_type().unwrap(), "datadog_agent".into());
+            assert_eq!(log.get("hostname").unwrap(), "festeburg".into());
+            assert_eq!(log.get("status").unwrap(), "notice".into());
+            assert_eq!(log.get("service").unwrap(), "vector".into());
+            assert_eq!(log.get("ddsource").unwrap(), "curl".into());
+            assert_eq!(log.get("ddtags").unwrap(), "one,two,three".into());
+            assert_eq!(log.get_source_type().unwrap(), "datadog_agent".into());
             assert_eq!(
                 &event.metadata().secrets().get("datadog_api_key").unwrap()[..],
                 DD_API_KEY
@@ -863,20 +863,20 @@ async fn ignores_api_key() {
         {
             let event = events.remove(0);
             let log = event.as_log();
-            assert_eq!(log["message"], "baz".into());
+            assert_eq!(log.get("message").unwrap(), "baz".into());
             assert_eq!(
-                log["timestamp"],
+                log.get("timestamp").unwrap(),
                 Utc.timestamp_opt(789, 0)
                     .single()
                     .expect("invalid timestamp")
                     .into()
             );
-            assert_eq!(log["hostname"], "festeburg".into());
-            assert_eq!(log["status"], "notice".into());
-            assert_eq!(log["service"], "vector".into());
-            assert_eq!(log["ddsource"], "curl".into());
-            assert_eq!(log["ddtags"], "one,two,three".into());
-            assert_eq!(*log.get_source_type().unwrap(), "datadog_agent".into());
+            assert_eq!(log.get("hostname").unwrap(), "festeburg".into());
+            assert_eq!(log.get("status").unwrap(), "notice".into());
+            assert_eq!(log.get("service").unwrap(), "vector".into());
+            assert_eq!(log.get("ddsource").unwrap(), "curl".into());
+            assert_eq!(log.get("ddtags").unwrap(), "one,two,three".into());
+            assert_eq!(log.get_source_type().unwrap(), "datadog_agent".into());
             assert!(event.metadata().secrets().get("datadog_api_key").is_none());
             assert_eq!(
                 event.metadata().schema_definition().as_ref(),
@@ -978,9 +978,9 @@ async fn decode_series_endpoint_v1() {
                 )
             );
             assert_eq!(metric.kind(), MetricKind::Absolute);
-            assert_eq!(*metric.value(), MetricValue::Gauge { value: 3.14 });
+            assert_eq!(metric.value(), MetricValue::Gauge { value: 3.14 });
             assert_tags(
-                metric,
+                &metric.clone().to_legacy_metric(),
                 metric_tags!(
                     "host" => "random_host",
                     "foo" => "bar",
@@ -1004,9 +1004,9 @@ async fn decode_series_endpoint_v1() {
                 )
             );
             assert_eq!(metric.kind(), MetricKind::Absolute);
-            assert_eq!(*metric.value(), MetricValue::Gauge { value: 3.1415 });
+            assert_eq!(metric.value(), MetricValue::Gauge { value: 3.1415 });
             assert_tags(
-                metric,
+                &metric.clone().to_legacy_metric(),
                 metric_tags!(
                     "host" => "random_host",
                     "foo" => "bar",
@@ -1031,13 +1031,13 @@ async fn decode_series_endpoint_v1() {
             );
             assert_eq!(metric.kind(), MetricKind::Incremental);
             assert_eq!(
-                *metric.value(),
+                metric.value(),
                 MetricValue::Counter {
                     value: 3.14 * (10_f64)
                 }
             );
             assert_tags(
-                metric,
+                &metric.clone().to_legacy_metric(),
                 metric_tags!(
                     "host" => "another_random_host",
                     "foo" => "bar:baz",
@@ -1061,13 +1061,13 @@ async fn decode_series_endpoint_v1() {
             );
             assert_eq!(metric.kind(), MetricKind::Incremental);
             assert_eq!(
-                *metric.value(),
+                metric.value(),
                 MetricValue::Counter {
                     value: 16777216_f64
                 }
             );
             assert_tags(
-                metric,
+                &metric.clone().to_legacy_metric(),
                 metric_tags!(
                     "host" => "a_host",
                     "foobar" => TagValue::Bare,
@@ -1207,12 +1207,13 @@ async fn decode_traces() {
 
         {
             let trace_v1 = events[0].as_trace();
-            assert_eq!(trace_v1.as_map()["host"], "a_hostname".into());
-            assert_eq!(trace_v1.as_map()["env"], "an_environment".into());
-            assert_eq!(trace_v1.as_map()["language_name"], "ada".into());
+            let map_v1 = trace_v1.as_map().unwrap();
+            assert_eq!(map_v1["host"], "a_hostname".into());
+            assert_eq!(map_v1["env"], "an_environment".into());
+            assert_eq!(map_v1["language_name"], "ada".into());
             assert!(trace_v1.contains("spans"));
-            assert_eq!(trace_v1.as_map()["spans"].as_array().unwrap().len(), 1);
-            let span_from_trace_v1 = trace_v1.as_map()["spans"].as_array().unwrap()[0]
+            assert_eq!(map_v1["spans"].as_array().unwrap().len(), 1);
+            let span_from_trace_v1 = map_v1["spans"].as_array().unwrap()[0]
                 .as_object()
                 .unwrap();
             assert_eq!(span_from_trace_v1["service"], "a_service".into());
@@ -1247,10 +1248,11 @@ async fn decode_traces() {
 
             let apm_event = events[1].as_trace();
             assert!(apm_event.contains("spans"));
-            assert_eq!(apm_event.as_map()["host"], "a_hostname".into());
-            assert_eq!(apm_event.as_map()["env"], "an_environment".into());
-            assert_eq!(apm_event.as_map()["language_name"], "ada".into());
-            let span_from_apm_event = apm_event.as_map()["spans"].as_array().unwrap()[0]
+            let map_apm = apm_event.as_map().unwrap();
+            assert_eq!(map_apm["host"], "a_hostname".into());
+            assert_eq!(map_apm["env"], "an_environment".into());
+            assert_eq!(map_apm["language_name"], "ada".into());
+            let span_from_apm_event = map_apm["spans"].as_array().unwrap()[0]
                 .as_object()
                 .unwrap();
 
@@ -1264,35 +1266,36 @@ async fn decode_traces() {
             );
 
             let trace_v2 = events[2].as_trace();
-            assert_eq!(trace_v2.as_map()["host"], "a_hostname".into());
-            assert_eq!(trace_v2.as_map()["env"], "env".into());
+            let map_v2 = trace_v2.as_map().unwrap();
+            assert_eq!(map_v2["host"], "a_hostname".into());
+            assert_eq!(map_v2["env"], "env".into());
 
             assert_eq!(
-                trace_v2.as_map()["tags"],
+                map_v2["tags"],
                 Value::Object(ObjectMap::from_iter(
                     [("a".into(), "tag".into()), ("another".into(), "tag".into())].into_iter()
                 ))
             );
 
-            assert_eq!(trace_v2.as_map()["language_name"], "plop".into());
-            assert_eq!(trace_v2.as_map()["language_version"], "v33".into());
-            assert_eq!(trace_v2.as_map()["container_id"], "an_id".into());
-            assert_eq!(trace_v2.as_map()["origin"], "an_origin".into());
-            assert_eq!(trace_v2.as_map()["tracer_version"], "v577".into());
-            assert_eq!(trace_v2.as_map()["runtime_id"], "123abc".into());
-            assert_eq!(trace_v2.as_map()["app_version"], "v314".into());
-            assert_eq!(trace_v2.as_map()["priority"], Value::Integer(42));
+            assert_eq!(map_v2["language_name"], "plop".into());
+            assert_eq!(map_v2["language_version"], "v33".into());
+            assert_eq!(map_v2["container_id"], "an_id".into());
+            assert_eq!(map_v2["origin"], "an_origin".into());
+            assert_eq!(map_v2["tracer_version"], "v577".into());
+            assert_eq!(map_v2["runtime_id"], "123abc".into());
+            assert_eq!(map_v2["app_version"], "v314".into());
+            assert_eq!(map_v2["priority"], Value::Integer(42));
             assert_eq!(
-                trace_v2.as_map()["target_tps"],
+                map_v2["target_tps"],
                 Value::Float(NotNan::new(10.0f64).unwrap())
             );
             assert_eq!(
-                trace_v2.as_map()["error_tps"],
+                map_v2["error_tps"],
                 Value::Float(NotNan::new(10.0f64).unwrap())
             );
             assert!(trace_v2.contains("spans"));
-            assert_eq!(trace_v2.as_map()["spans"].as_array().unwrap().len(), 1);
-            let span_from_trace_v2 = trace_v2.as_map()["spans"].as_array().unwrap()[0]
+            assert_eq!(map_v2["spans"].as_array().unwrap().len(), 1);
+            let span_from_trace_v2 = map_v2["spans"].as_array().unwrap()[0]
                 .as_object()
                 .unwrap();
             assert_eq!(span_from_trace_v2["service"], "a_service".into());
@@ -1401,9 +1404,9 @@ async fn split_outputs() {
                 )
             );
             assert_eq!(metric.kind(), MetricKind::Absolute);
-            assert_eq!(*metric.value(), MetricValue::Gauge { value: 3.14 });
+            assert_eq!(metric.value(), MetricValue::Gauge { value: 3.14 });
             assert_tags(
-                metric,
+                &metric.clone().to_legacy_metric(),
                 metric_tags!(
                     "host" => "random_host",
                     "foo" => "bar",
@@ -1418,20 +1421,20 @@ async fn split_outputs() {
         {
             let event = log_event.remove(0);
             let log = event.as_log();
-            assert_eq!(log["message"], "baz".into());
+            assert_eq!(log.get("message").unwrap(), "baz".into());
             assert_eq!(
-                log["timestamp"],
+                log.get("timestamp").unwrap(),
                 Utc.timestamp_opt(789, 0)
                     .single()
                     .expect("invalid timestamp")
                     .into()
             );
-            assert_eq!(log["hostname"], "festeburg".into());
-            assert_eq!(log["status"], "notice".into());
-            assert_eq!(log["service"], "vector".into());
-            assert_eq!(log["ddsource"], "curl".into());
-            assert_eq!(log["ddtags"], "one,two,three".into());
-            assert_eq!(*log.get_source_type().unwrap(), "datadog_agent".into());
+            assert_eq!(log.get("hostname").unwrap(), "festeburg".into());
+            assert_eq!(log.get("status").unwrap(), "notice".into());
+            assert_eq!(log.get("service").unwrap(), "vector".into());
+            assert_eq!(log.get("ddsource").unwrap(), "curl".into());
+            assert_eq!(log.get("ddtags").unwrap(), "one,two,three".into());
+            assert_eq!(log.get_source_type().unwrap(), "datadog_agent".into());
             assert_eq!(
                 &event.metadata().secrets().get("datadog_api_key").unwrap()[..],
                 DD_API_KEY
@@ -2081,15 +2084,15 @@ async fn decode_series_endpoint_v2() {
             );
             assert_eq!(metric.kind(), MetricKind::Absolute);
             assert_eq!(
-                metric
+                metric.clone().to_legacy_metric()
                     .interval_ms()
                     .expect("should have set interval")
                     .get(),
                 10000
             );
-            assert_eq!(*metric.value(), MetricValue::Gauge { value: 3.14 });
+            assert_eq!(metric.value(), MetricValue::Gauge { value: 3.14 });
             assert_tags(
-                metric,
+                &metric.clone().to_legacy_metric(),
                 metric_tags!(
                     "host" => "random_host",
                     "foo" => "bar",
@@ -2110,16 +2113,16 @@ async fn decode_series_endpoint_v2() {
                 Some(Utc.with_ymd_and_hms(2018, 11, 14, 8, 9, 11).unwrap())
             );
             assert_eq!(metric.kind(), MetricKind::Absolute);
-            assert_eq!(*metric.value(), MetricValue::Gauge { value: 3.1415 });
+            assert_eq!(metric.value(), MetricValue::Gauge { value: 3.1415 });
             assert_eq!(
-                metric
+                metric.clone().to_legacy_metric()
                     .interval_ms()
                     .expect("should have set interval")
                     .get(),
                 10000
             );
             assert_tags(
-                metric,
+                &metric.clone().to_legacy_metric(),
                 metric_tags!(
                     "host" => "random_host",
                     "foo" => "bar",
@@ -2145,13 +2148,13 @@ async fn decode_series_endpoint_v2() {
             );
             assert_eq!(metric.kind(), MetricKind::Incremental);
             assert_eq!(
-                *metric.value(),
+                metric.value(),
                 MetricValue::Counter {
                     value: 3.14 * (10_f64)
                 }
             );
             assert_tags(
-                metric,
+                &metric.clone().to_legacy_metric(),
                 metric_tags!(
                     "host" => "another_random_host",
                     "foo" => "bar:baz",
@@ -2178,13 +2181,13 @@ async fn decode_series_endpoint_v2() {
             );
             assert_eq!(metric.kind(), MetricKind::Incremental);
             assert_eq!(
-                *metric.value(),
+                metric.value(),
                 MetricValue::Counter {
                     value: 16777216_f64
                 }
             );
             assert_tags(
-                metric,
+                &metric.clone().to_legacy_metric(),
                 metric_tags!(
                     "host" => "a_host",
                     "foobar" => TagValue::Bare,

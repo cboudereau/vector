@@ -171,13 +171,14 @@ mod tests {
     }
 
     fn assert_config_priority_eq(config: AmqpSinkConfig, event: &LogEvent, priority: u8) {
+        let otel_log = vector_lib::event::OtelLog::from_log_event(event.clone());
         assert_eq!(
             config
                 .properties
                 .unwrap()
                 .priority
                 .unwrap()
-                .render(event)
+                .render(&otel_log)
                 .unwrap(),
             priority as u64
         );

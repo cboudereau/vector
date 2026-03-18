@@ -435,14 +435,10 @@ impl Encoder<(ChroniclePartitionKey, Vec<Event>)> for ChronicleEncoder {
         let events = events
             .into_iter()
             .filter_map(|mut event| {
-                if let Event::OtelLog(otel) = event {
-                    event = Event::Log(otel.to_log_event());
-                }
                 let timestamp = event
                     .as_log()
                     .get_timestamp()
-                    .and_then(|ts| ts.as_timestamp())
-                    .cloned();
+                    .and_then(|ts| ts.as_timestamp().copied());
                 let mut bytes = BytesMut::new();
                 self.transformer.transform(&mut event);
 

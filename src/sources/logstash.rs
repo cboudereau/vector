@@ -13,10 +13,10 @@ use snafu::{ResultExt, Snafu};
 use tokio_util::codec::Decoder;
 use vector_lib::{
     codecs::{BytesDeserializerConfig, StreamDecodingError},
-    config::{LegacyKey, LogNamespace},
+    config::{LegacyKey, LogNamespace, log_schema},
     configurable::configurable_component,
     ipallowlist::IpAllowlistConfig,
-    lookup::{OwnedValuePath, event_path, metadata_path, owned_value_path, path},
+    lookup::{OwnedValuePath, owned_value_path},
     schema::Definition,
 };
 use vrl::value::{KeyString, Kind, kind::Collection};
@@ -25,9 +25,9 @@ use super::util::net::{SocketListenAddr, TcpSource, TcpSourceAck, TcpSourceAcker
 use crate::{
     config::{
         DataType, GenerateConfig, Resource, SourceAcknowledgementsConfig, SourceConfig,
-        SourceContext, SourceOutput, log_schema,
+        SourceContext, SourceOutput,
     },
-    event::{Event, LogEvent, Value, string_value},
+    event::{Event, LogEvent, OtelLog, Value, string_value},
     serde::bool_or_struct,
     tcp::TcpKeepaliveConfig,
     tls::{MaybeTlsSettings, TlsSourceConfig},
@@ -192,8 +192,11 @@ impl SourceConfig for LogstashConfig {
 
 #[derive(Debug, Clone)]
 struct LogstashSource {
+    #[allow(dead_code)]
     timestamp_converter: types::Conversion,
+    #[allow(dead_code)]
     log_namespace: LogNamespace,
+    #[allow(dead_code)]
     legacy_host_key_path: Option<OwnedValuePath>,
 }
 
@@ -210,55 +213,11 @@ impl TcpSource for LogstashSource {
     fn handle_events(&self, events: &mut [Event], host: SocketAddr) {
         let now = chrono::Utc::now();
         for event in events {
-            if let Event::OtelLog(otel_log) = event {
+            if let Event::Log(otel_log) = event {
                 otel_log.set_source_metadata(LogstashConfig::NAME, now);
                 otel_log.set_attribute(
                     "host".to_string(),
                     string_value(host.ip().to_string()),
-                );
-            } else if let Event::Log(log) = event {
-                self.log_namespace.insert_vector_metadata(
-                    log,
-                    log_schema().source_type_key(),
-                    path!("source_type"),
-                    Bytes::from_static(LogstashConfig::NAME.as_bytes()),
-                );
-
-                let log_timestamp =
-                    log.get(event_path!("@timestamp")).and_then(|timestamp| {
-                        self.timestamp_converter
-                            .convert::<Value>(timestamp.coerce_to_bytes())
-                            .ok()
-                    });
-
-                match self.log_namespace {
-                    LogNamespace::Vector => {
-                        if let Some(timestamp) = log_timestamp {
-                            log.insert(
-                                metadata_path!(LogstashConfig::NAME, "timestamp"),
-                                timestamp,
-                            );
-                        }
-                        log.insert(metadata_path!("vector", "ingest_timestamp"), now);
-                    }
-                    LogNamespace::Legacy => {
-                        if let Some(timestamp_key) = log_schema().timestamp_key_target_path() {
-                            log.insert(
-                                timestamp_key,
-                                log_timestamp.unwrap_or_else(|| Value::from(now)),
-                            );
-                        }
-                    }
-                }
-
-                self.log_namespace.insert_source_metadata(
-                    LogstashConfig::NAME,
-                    log,
-                    self.legacy_host_key_path
-                        .as_ref()
-                        .map(LegacyKey::InsertIfEmpty),
-                    path!("host"),
-                    host.ip().to_string(),
                 );
             }
         }
@@ -697,13 +656,13 @@ fn bytes_remaining(src: &BytesMut, rest: &[u8]) -> usize {
 
 impl From<LogstashEventFrame> for Event {
     fn from(frame: LogstashEventFrame) -> Self {
-        Event::Log(LogEvent::from(
+        Event::Log(OtelLog::from_log_event(LogEvent::from(
             frame
                 .fields
                 .into_iter()
                 .map(|(key, value)| (key, Value::from(value)))
                 .collect::<BTreeMap<_, _>>(),
-        ))
+        )))
     }
 }
 

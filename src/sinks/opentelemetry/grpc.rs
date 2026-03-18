@@ -467,18 +467,14 @@ fn otel_span_event_to_resource_spans(
 }
 
 fn collection_into_request(col: EventCollection) -> OtlpRequest {
-    use vector_lib::opentelemetry::{
-        buffer_codec::{log_event_to_resource_logs, trace_event_to_resource_spans},
-        metrics::metric_to_export_request,
-        proto::{
-            collector::{
-                logs::v1::ExportLogsServiceRequest,
-                metrics::v1::ExportMetricsServiceRequest,
-                trace::v1::ExportTraceServiceRequest,
-            },
-            logs::v1::ResourceLogs,
-            trace::v1::ResourceSpans,
+    use vector_lib::opentelemetry::proto::{
+        collector::{
+            logs::v1::ExportLogsServiceRequest,
+            metrics::v1::ExportMetricsServiceRequest,
+            trace::v1::ExportTraceServiceRequest,
         },
+        logs::v1::ResourceLogs,
+        trace::v1::ResourceSpans,
     };
 
     use vector_lib::opentelemetry::proto::metrics::v1::ResourceMetrics;
@@ -490,23 +486,13 @@ fn collection_into_request(col: EventCollection) -> OtlpRequest {
 
     for event in col.events {
         match event {
-            Event::Log(ref log) => {
-                log_resources.push(log_event_to_resource_logs(log));
-            }
-            Event::OtelLog(ref log_event) => {
+            Event::Log(ref log_event) => {
                 log_resources.push(otel_log_event_to_resource_logs(log_event));
             }
-            Event::Metric(ref m) => {
-                let req = metric_to_export_request(m);
-                metric_resources.extend(req.resource_metrics);
-            }
-            Event::OtelMetric(ref metric_event) => {
+            Event::Metric(ref metric_event) => {
                 metric_resources.push(otel_metric_event_to_resource_metrics(metric_event));
             }
-            Event::Trace(ref trace) => {
-                trace_resources.push(trace_event_to_resource_spans(trace));
-            }
-            Event::OtelSpan(ref span_event) => {
+            Event::Trace(ref span_event) => {
                 trace_resources.push(otel_span_event_to_resource_spans(span_event));
             }
         }

@@ -69,10 +69,11 @@ where
         input
             .scan(self.metric_to_log, |metric_to_log, event| {
                 future::ready(Some(match event {
-                    Event::Metric(metric) => metric_to_log.transform_one(metric),
-                    Event::Log(log) => Some(log),
-                    Event::OtelLog(otel) => Some(otel.to_log_event()),
-                    Event::Trace(_) | Event::OtelMetric(_) | Event::OtelSpan(_) => None,
+                    Event::Metric(metric) => {
+                        metric_to_log.transform_one(metric.to_legacy_metric())
+                    }
+                    Event::Log(log) => Some(log.to_log_event()),
+                    Event::Trace(_) => None,
                 }))
             })
             .filter_map(|x| async move { x })
@@ -144,7 +145,7 @@ pub(super) fn process_log(
     let log = {
         let mut event = Event::from(log);
         transformer.transform(&mut event);
-        event.into_log()
+        event.into_log().to_log_event()
     };
     Some(ProcessedEvent {
         index,

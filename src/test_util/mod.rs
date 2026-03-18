@@ -39,7 +39,7 @@ use vector_lib::{
     buffers::topology::channel::LimitedReceiver,
     event::{
         BatchNotifier, BatchStatusReceiver, Event, EventArray, LogEvent, Metric, MetricKind,
-        MetricTags, MetricValue,
+        MetricTags, MetricValue, OtelMetric,
     },
 };
 #[cfg(test)]
@@ -85,7 +85,7 @@ macro_rules! log_event {
     ($($key:expr_2021 => $value:expr_2021),*  $(,)?) => {
         #[allow(unused_variables)]
         {
-            let mut event = $crate::event::Event::Log($crate::event::LogEvent::default());
+            let mut event = $crate::event::Event::from($crate::event::LogEvent::default());
             let log = event.as_mut_log();
             $(
                 log.insert($key, $value);
@@ -233,12 +233,11 @@ pub fn map_event_batch_stream(
     stream.map(move |event| event.with_batch_notifier_option(&batch).into())
 }
 
-// TODO refactor to have a single implementation for `Event`, `LogEvent` and `Metric`.
 fn map_batch_stream(
-    stream: impl Stream<Item = LogEvent>,
+    stream: impl Stream<Item = Event>,
     batch: Option<BatchNotifier>,
 ) -> impl Stream<Item = EventArray> {
-    stream.map(move |log| vec![log.with_batch_notifier_option(&batch)].into())
+    stream.map(move |event| event.with_batch_notifier_option(&batch).into())
 }
 
 pub fn generate_lines_with_stream<Gen: FnMut(usize) -> String>(
@@ -248,7 +247,7 @@ pub fn generate_lines_with_stream<Gen: FnMut(usize) -> String>(
 ) -> (Vec<String>, impl Stream<Item = EventArray>) {
     let lines = (0..count).map(generator).collect::<Vec<_>>();
     let stream = map_batch_stream(
-        stream::iter(lines.clone()).map(LogEvent::from_str_legacy),
+        stream::iter(lines.clone()).map(|s| Event::from(LogEvent::from_str_legacy(s))),
         batch,
     );
     (lines, stream)
@@ -270,7 +269,7 @@ pub fn generate_events_with_stream<Gen: FnMut(usize) -> Event>(
 ) -> (Vec<Event>, impl Stream<Item = EventArray>) {
     let events = (0..count).map(generator).collect::<Vec<_>>();
     let stream = map_batch_stream(
-        stream::iter(events.clone()).map(|event| event.into_log()),
+        stream::iter(events.clone()),
         batch,
     );
     (events, stream)
@@ -311,7 +310,7 @@ pub fn random_metrics_with_stream_timestamp(
     let events: Vec<_> = (0..count)
         .map(|index| {
             let ts = timestamp + (timestamp_offset * index as u32);
-            Event::Metric(
+            Event::Metric(OtelMetric::from_legacy_metric(
                 Metric::new(
                     format!("counter_{}", rng().random::<u32>()),
                     MetricKind::Incremental,
@@ -321,7 +320,7 @@ pub fn random_metrics_with_stream_timestamp(
                 )
                 .with_timestamp(Some(ts))
                 .with_tags(tags.clone()),
-            )
+            ))
             // this ensures we get Origin Metadata, with an undefined service but that's ok.
             .with_source_type("a_source_like_none_other")
         })
@@ -340,7 +339,7 @@ pub fn random_events_with_stream(
         .map(|_| Event::from(LogEvent::from_str_legacy(random_string(len))))
         .collect::<Vec<_>>();
     let stream = map_batch_stream(
-        stream::iter(events.clone()).map(|event| event.into_log()),
+        stream::iter(events.clone()),
         batch,
     );
     (events, stream)
@@ -359,10 +358,10 @@ where
         .map(|_| LogEvent::from_str_legacy(random_string(len)))
         .enumerate()
         .map(update_fn)
-        .map(Event::Log)
+        .map(|log| Event::from(log))
         .collect::<Vec<_>>();
     let stream = map_batch_stream(
-        stream::iter(events.clone()).map(|event| event.into_log()),
+        stream::iter(events.clone()),
         batch,
     );
     (events, stream)

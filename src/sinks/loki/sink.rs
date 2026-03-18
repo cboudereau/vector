@@ -296,7 +296,6 @@ impl EventEncoder {
     pub(super) fn encode_event(&mut self, event: Event) -> Option<LokiRecord> {
         let mut event = match event {
             Event::Log(_) => event,
-            Event::OtelLog(otel) => Event::Log(otel.to_log_event()),
             _ => return None,
         };
         let tenant_id = self.key_partitioner.partition(&event);
@@ -594,7 +593,7 @@ mod tests {
             remove_structured_metadata_fields: false,
             remove_timestamp: false,
         };
-        let mut event = Event::Log(LogEvent::from("hello world"));
+        let mut event = Event::from(LogEvent::from("hello world"));
         let log = event.as_mut_log();
         log.insert(
             (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
@@ -641,7 +640,7 @@ mod tests {
             remove_structured_metadata_fields: false,
             remove_timestamp: false,
         };
-        let mut event = Event::Log(LogEvent::from("hello world"));
+        let mut event = Event::from(LogEvent::from("hello world"));
         let log = event.as_mut_log();
         log.insert(
             (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
@@ -712,7 +711,7 @@ mod tests {
         }
         "#;
         let msg: ObjectMap = serde_json::from_str(message)?;
-        let event = Event::Log(LogEvent::from(msg));
+        let event = Event::from(LogEvent::from(msg));
         let record = encoder.encode_event(event).unwrap();
 
         assert_eq!(record.labels.len(), 5);
@@ -759,7 +758,7 @@ mod tests {
         }
         "#;
         let msg: ObjectMap = serde_json::from_str(message)?;
-        let event = Event::Log(LogEvent::from(msg));
+        let event = Event::from(LogEvent::from(msg));
         let record = encoder.encode_event(event).unwrap();
 
         assert_eq!(record.labels.len(), 1);
@@ -789,7 +788,7 @@ mod tests {
         };
 
         let msg: ObjectMap = serde_json::from_str("{}")?;
-        let event = Event::Log(LogEvent::from(msg));
+        let event = Event::from(LogEvent::from(msg));
         let record = encoder.encode_event(event).unwrap();
 
         assert_eq!(record.labels.len(), 1);
@@ -810,7 +809,7 @@ mod tests {
             remove_structured_metadata_fields: false,
             remove_timestamp: true,
         };
-        let mut event = Event::Log(LogEvent::from("hello world"));
+        let mut event = Event::from(LogEvent::from("hello world"));
         let log = event.as_mut_log();
         log.insert(
             (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
@@ -844,7 +843,7 @@ mod tests {
             remove_structured_metadata_fields: false,
             remove_timestamp: false,
         };
-        let mut event = Event::Log(LogEvent::from("hello world"));
+        let mut event = Event::from(LogEvent::from("hello world"));
         let log = event.as_mut_log();
         log.insert(
             (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
@@ -899,7 +898,7 @@ mod tests {
         }
         "#;
         let msg: ObjectMap = serde_json::from_str(message)?;
-        let event = Event::Log(LogEvent::from(msg));
+        let event = Event::from(LogEvent::from(msg));
         let record = encoder.encode_event(event).unwrap();
 
         assert_eq!(record.event.structured_metadata.len(), 5);
@@ -940,7 +939,7 @@ mod tests {
         let base = chrono::Utc::now();
         let events = random_lines(100)
             .take(20)
-            .map(|e| Event::Log(LogEvent::from(e)))
+            .map(|e| Event::from(LogEvent::from(e)))
             .enumerate()
             .map(|(i, mut event)| {
                 let log = event.as_mut_log();

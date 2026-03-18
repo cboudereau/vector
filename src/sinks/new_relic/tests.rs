@@ -38,7 +38,7 @@ async fn sink() -> (VectorSink, Event) {
     let context = SinkContext::default();
     let (sink, _healthcheck) = config.build(context).await.unwrap();
 
-    let event = Event::Log(LogEvent::from("simple message"));
+    let event = Event::from(LogEvent::from("simple message"));
 
     (sink, event)
 }
@@ -74,7 +74,7 @@ async fn component_spec_compliance_data_volume() {
 
 #[test]
 fn generates_event_api_model_without_message_field() {
-    let event = Event::Log(LogEvent::from(value!({
+    let event = Event::from(LogEvent::from(value!({
         "eventType": "TestEvent",
         "user": "Joe",
         "user_id": 123456,
@@ -94,7 +94,7 @@ fn generates_event_api_model_without_message_field() {
 
 #[test]
 fn generates_event_api_model_with_message_field() {
-    let event = Event::Log(LogEvent::from(value!({
+    let event = Event::from(LogEvent::from(value!({
         "eventType": "TestEvent",
         "user": "Joe",
         "user_id": 123456,
@@ -116,7 +116,7 @@ fn generates_event_api_model_with_message_field() {
 
 #[test]
 fn generates_event_api_model_with_json_inside_message_field() {
-    let event = Event::Log(LogEvent::from(value!({
+    let event = Event::from(LogEvent::from(value!({
         "eventType": "TestEvent",
         "user": "Joe",
         "user_id": 123456,
@@ -139,7 +139,7 @@ fn generates_event_api_model_with_json_inside_message_field() {
 #[test]
 fn generates_event_api_model_with_dotted_fields() {
     let sub = value!({"two":"three"});
-    let event = Event::Log(LogEvent::from(value!({
+    let event = Event::from(LogEvent::from(value!({
         "one.two": "Joe",
         "eventType": "TestEvent",
         "four": sub,
@@ -159,7 +159,7 @@ fn generates_event_api_model_with_dotted_fields() {
 
 #[test]
 fn generates_log_api_model_without_message_field() {
-    let event = Event::Log(LogEvent::from(value!({"tag_key": "tag_value"})));
+    let event = Event::from(LogEvent::from(value!({"tag_key": "tag_value"})));
     let model = LogsApiModel::try_from(vec![event]).expect("Failed mapping logs into API model");
 
     assert_eq!(
@@ -175,7 +175,7 @@ fn generates_log_api_model_without_message_field() {
 
 #[test]
 fn generates_log_api_model_with_message_field() {
-    let event = Event::Log(LogEvent::from(value!({
+    let event = Event::from(LogEvent::from(value!({
         "tag_key": "tag_value",
         "message": "This is a message",
     })));
@@ -195,7 +195,7 @@ fn generates_log_api_model_with_message_field() {
 #[test]
 fn generates_log_api_model_with_dotted_fields() {
     let sub = value!({"four": 2});
-    let event = Event::Log(LogEvent::from(value!({
+    let event = Event::from(LogEvent::from(value!({
         "one.two": 1,
         "three": sub,
     })));
@@ -218,7 +218,7 @@ fn generates_log_api_model_with_dotted_fields() {
 #[test]
 fn generates_log_api_model_with_timestamp() {
     let stamp = Utc::now();
-    let event = Event::Log(LogEvent::from(value!({
+    let event = Event::from(LogEvent::from(value!({
         "timestamp": stamp,
         "tag_key": "tag_value",
         "message": "This is a message",
@@ -239,7 +239,7 @@ fn generates_log_api_model_with_timestamp() {
 
 #[test]
 fn generates_metric_api_model_without_timestamp() {
-    let event = Event::Metric(Metric::new(
+    let event = Event::from(Metric::new(
         "my_metric",
         MetricKind::Absolute,
         MetricValue::Counter { value: 100.0 },
@@ -270,7 +270,7 @@ fn generates_metric_api_model_with_timestamp() {
         MetricValue::Counter { value: 100.0 },
     )
     .with_timestamp(Some(stamp));
-    let event = Event::Metric(m);
+    let event = Event::from(m);
     let model =
         MetricsApiModel::try_from(vec![event]).expect("Failed mapping metrics into API model");
 
@@ -297,7 +297,7 @@ fn generates_metric_api_model_incremental_counter() {
     )
     .with_timestamp(Some(stamp))
     .with_interval_ms(NonZeroU32::new(1000));
-    let event = Event::Metric(m);
+    let event = Event::from(m);
     let model =
         MetricsApiModel::try_from(vec![event]).expect("Failed mapping metrics into API model");
 

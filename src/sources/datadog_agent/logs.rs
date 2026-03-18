@@ -7,10 +7,8 @@ use tokio_util::codec::Decoder;
 use vector_lib::{
     EstimatedJsonEncodedSizeOf,
     codecs::StreamDecodingError,
-    config::LegacyKey,
     internal_event::{CountByteSize, InternalEventHandle as _},
     json_size::JsonSize,
-    lookup::path,
 };
 use vrl::core::Value;
 use warp::{Filter, filters::BoxedFilter, path as warp_path, path::FullPath, reply::Response};
@@ -18,7 +16,7 @@ use warp::{Filter, filters::BoxedFilter, path as warp_path, path::FullPath, repl
 use super::{ApiKeyQueryParams, DatadogAgentConfig, DatadogAgentSource, LogMsg, RequestHandler};
 use crate::{
     common::{datadog::DDTAGS, http::ErrorMessage},
-    event::Event,
+    event::{Event, string_value},
     internal_events::DatadogAgentJsonParseError,
 };
 
@@ -102,71 +100,23 @@ pub(crate) fn decode_log_body(
             match decoder.decode_eof(&mut buffer) {
                 Ok(Some((events, _byte_size))) => {
                     for mut event in events {
-                        if let Event::Log(ref mut log) = event {
-                            let namespace = &source.log_namespace;
-                            let source_name = "datadog_agent";
+                        if let Event::Log(ref mut otel_log) = event {
+                            otel_log.set_source_metadata(DatadogAgentConfig::NAME, now);
+                            otel_log.set_attribute("status".to_string(), string_value(String::from_utf8_lossy(&status)));
+                            if let Some(nanos) = timestamp.timestamp_nanos_opt() {
+                                otel_log.record_mut().time_unix_nano = nanos as u64;
+                            }
+                            otel_log.set_attribute("hostname".to_string(), string_value(String::from_utf8_lossy(&hostname)));
+                            otel_log.set_attribute("service".to_string(), string_value(String::from_utf8_lossy(&service)));
+                            otel_log.set_attribute("ddsource".to_string(), string_value(String::from_utf8_lossy(&ddsource)));
 
-                            namespace.insert_source_metadata(
-                                source_name,
-                                log,
-                                Some(LegacyKey::InsertIfEmpty(path!("status"))),
-                                path!("status"),
-                                status.clone(),
-                            );
-                            namespace.insert_source_metadata(
-                                source_name,
-                                log,
-                                Some(LegacyKey::InsertIfEmpty(path!("timestamp"))),
-                                path!("timestamp"),
-                                timestamp,
-                            );
-                            namespace.insert_source_metadata(
-                                source_name,
-                                log,
-                                Some(LegacyKey::InsertIfEmpty(path!("hostname"))),
-                                path!("hostname"),
-                                hostname.clone(),
-                            );
-                            namespace.insert_source_metadata(
-                                source_name,
-                                log,
-                                Some(LegacyKey::InsertIfEmpty(path!("service"))),
-                                path!("service"),
-                                service.clone(),
-                            );
-                            namespace.insert_source_metadata(
-                                source_name,
-                                log,
-                                Some(LegacyKey::InsertIfEmpty(path!("ddsource"))),
-                                path!("ddsource"),
-                                ddsource.clone(),
-                            );
+                            let ddtags_str = String::from_utf8_lossy(&ddtags);
+                            otel_log.set_attribute(DDTAGS.to_string(), string_value(ddtags_str));
 
-                            let ddtags: Value = if source.parse_ddtags {
-                                parse_ddtags(&ddtags)
-                            } else {
-                                ddtags.clone().into()
-                            };
-
-                            namespace.insert_source_metadata(
-                                source_name,
-                                log,
-                                Some(LegacyKey::InsertIfEmpty(path!(DDTAGS))),
-                                path!(DDTAGS),
-                                ddtags,
-                            );
-
-                            // compute EstimatedJsonSizeOf before enrichment
-                            event_bytes_received += log.estimated_json_encoded_size_of();
-
-                            namespace.insert_standard_vector_source_metadata(
-                                log,
-                                DatadogAgentConfig::NAME,
-                                now,
-                            );
+                            event_bytes_received += otel_log.estimated_json_encoded_size_of();
 
                             if let Some(k) = &api_key {
-                                log.metadata_mut().secrets_mut().insert("datadog_api_key", Arc::clone(k));
+                                otel_log.metadata_mut().secrets_mut().insert("datadog_api_key", Arc::clone(k));
                             }
 
                             let logs_schema_definition = source
@@ -174,7 +124,7 @@ pub(crate) fn decode_log_body(
                                 .as_ref()
                                 .unwrap_or_else(|| panic!("registered log schema required"));
 
-                            log.metadata_mut()
+                            otel_log.metadata_mut()
                                 .set_schema_definition(logs_schema_definition);
                         }
 
@@ -206,6 +156,7 @@ pub(crate) fn decode_log_body(
 // tag-value pairs are separated by `:`.
 //
 // The output is an Array regardless of the input string.
+#[allow(dead_code)]
 fn parse_ddtags(ddtags_raw: &Bytes) -> Value {
     if ddtags_raw.is_empty() {
         return Vec::<Value>::new().into();

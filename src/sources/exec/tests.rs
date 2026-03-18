@@ -6,6 +6,8 @@ use futures::task::Poll;
 use vector_lib::event::EventMetadata;
 use vrl::value;
 
+use vrl::path;
+
 use crate::{event::LogEvent, sources::exec::*, test_util::trace_init};
 
 #[test]
@@ -31,12 +33,12 @@ fn test_scheduled_handle_event() {
     );
     let log = event.as_log();
 
-    assert_eq!(*log.get_host().unwrap(), "Some.Machine".into());
-    assert_eq!(log[STREAM_KEY], STDOUT.into());
-    assert_eq!(log[PID_KEY], (8888_i64).into());
-    assert_eq!(log[COMMAND_KEY], config.command.into());
-    assert_eq!(*log.get_message().unwrap(), "hello world".into());
-    assert_eq!(*log.get_source_type().unwrap(), "exec".into());
+    assert_eq!(log.get_host().unwrap(), "Some.Machine".into());
+    assert_eq!(log.get(STREAM_KEY).unwrap(), STDOUT.into());
+    assert_eq!(log.get(PID_KEY).unwrap(), (8888_i64).into());
+    assert_eq!(log.get(COMMAND_KEY).unwrap(), config.command.into());
+    assert_eq!(log.get_message().unwrap(), "hello world".into());
+    assert_eq!(log.get_source_type().unwrap(), "exec".into());
     assert!(log.get_timestamp().is_some());
 }
 
@@ -78,7 +80,7 @@ fn test_scheduled_handle_event_vector_namespace() {
         meta.get(path!(ExecConfig::NAME, COMMAND_KEY)).unwrap(),
         &value!(config.command)
     );
-    assert_eq!(log.value(), &value!("hello world"));
+    assert_eq!(log.value(), value!("hello world"));
     assert_eq!(
         meta.get(path!("vector", "source_type")).unwrap(),
         &value!("exec")
@@ -108,12 +110,12 @@ fn test_streaming_create_event() {
     );
     let log = event.as_log();
 
-    assert_eq!(*log.get_host().unwrap(), "Some.Machine".into());
-    assert_eq!(log[STREAM_KEY], STDOUT.into());
-    assert_eq!(log[PID_KEY], (8888_i64).into());
-    assert_eq!(log[COMMAND_KEY], config.command.into());
-    assert_eq!(*log.get_message().unwrap(), "hello world".into());
-    assert_eq!(*log.get_source_type().unwrap(), "exec".into());
+    assert_eq!(log.get_host().unwrap(), "Some.Machine".into());
+    assert_eq!(log.get(STREAM_KEY).unwrap(), STDOUT.into());
+    assert_eq!(log.get(PID_KEY).unwrap(), (8888_i64).into());
+    assert_eq!(log.get(COMMAND_KEY).unwrap(), config.command.into());
+    assert_eq!(log.get_message().unwrap(), "hello world".into());
+    assert_eq!(log.get_source_type().unwrap(), "exec".into());
     assert!(log.get_timestamp().is_some());
 }
 
@@ -155,7 +157,7 @@ fn test_streaming_create_event_vector_namespace() {
         meta.get(path!(ExecConfig::NAME, COMMAND_KEY)).unwrap(),
         &value!(config.command)
     );
-    assert_eq!(log.value(), &value!("hello world"));
+    assert_eq!(log.value(), value!("hello world"));
     assert_eq!(
         meta.get(path!("vector", "source_type")).unwrap(),
         &value!("exec")
@@ -276,7 +278,7 @@ async fn test_spawn_reader_thread() {
         assert_eq!(events.len(), 1);
         let log = events[0].as_log();
         assert_eq!(
-            *log.get_message().unwrap(),
+            log.get_message().unwrap(),
             Bytes::from("hello world").into()
         );
         assert_eq!(origin, STDOUT);
@@ -288,7 +290,7 @@ async fn test_spawn_reader_thread() {
         assert_eq!(events.len(), 1);
         let log = events[0].as_log();
         assert_eq!(
-            *log.get_message().unwrap(),
+            log.get_message().unwrap(),
             Bytes::from("hello rocket 🚀").into()
         );
         assert_eq!(origin, STDOUT);
@@ -367,15 +369,15 @@ async fn test_run_command_linux() {
 
     if let Poll::Ready(Some(event)) = futures::poll!(rx.next()) {
         let log = event.as_log();
-        assert_eq!(log[COMMAND_KEY], config.command.clone().into());
-        assert_eq!(log[STREAM_KEY], STDOUT.into());
-        assert_eq!(*log.get_source_type().unwrap(), "exec".into());
-        assert_eq!(*log.get_message().unwrap(), "Hello World!".into());
-        assert_eq!(*log.get_host().unwrap(), "Some.Machine".into());
+        assert_eq!(log.get(COMMAND_KEY).unwrap(), config.command.clone().into());
+        assert_eq!(log.get(STREAM_KEY).unwrap(), STDOUT.into());
+        assert_eq!(log.get_source_type().unwrap(), "exec".into());
+        assert_eq!(log.get_message().unwrap(), "Hello World!".into());
+        assert_eq!(log.get_host().unwrap(), "Some.Machine".into());
         assert!(log.get(PID_KEY).is_some());
         assert!(log.get_timestamp().is_some());
 
-        assert_eq!(8, log.all_event_fields().unwrap().count());
+        assert_eq!(8, log.to_log_event().all_event_fields().unwrap().count());
     } else {
         panic!("Expected to receive a linux event");
     }
@@ -424,14 +426,14 @@ async fn test_graceful_shutdown() {
 
     if let Poll::Ready(Some(event)) = futures::poll!(rx.next()) {
         let log = event.as_log();
-        assert_eq!(*log.get_message().unwrap(), "signal received".into());
+        assert_eq!(log.get_message().unwrap(), "signal received".into());
     } else {
         panic!("Expected to receive event");
     }
 
     if let Poll::Ready(Some(event)) = futures::poll!(rx.next()) {
         let log = event.as_log();
-        assert_eq!(*log.get_message().unwrap(), "slept".into());
+        assert_eq!(log.get_message().unwrap(), "slept".into());
     } else {
         panic!("Expected to receive event");
     }

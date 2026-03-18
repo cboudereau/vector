@@ -77,7 +77,7 @@ fn get_key(event: &Event, key_field: Option<&OwnedTargetPath>) -> Option<Bytes> 
 
 fn get_timestamp_millis(event: &Event) -> Option<i64> {
     match &event {
-        Event::Log(log) => log.get_timestamp().and_then(|v| v.as_timestamp()).copied(),
+        Event::Log(log) => log.get_timestamp().and_then(|v| v.as_timestamp().copied()),
         Event::Metric(metric) => metric.timestamp(),
         _ => None,
     }
@@ -89,7 +89,7 @@ fn get_headers(event: &Event, headers_key: Option<&OwnedTargetPath>) -> Option<O
         if let Event::Log(log) = event
             && let Some(headers) = log.get(headers_key)
         {
-            match headers {
+            match &headers {
                 Value::Object(headers_map) => {
                     let mut owned_headers = OwnedHeaders::new_with_capacity(headers_map.len());
                     for (key, value) in headers_map {
@@ -132,7 +132,7 @@ mod tests {
         header_values.insert("a-key".into(), Value::Bytes(Bytes::from("a-value")));
         header_values.insert("b-key".into(), Value::Bytes(Bytes::from("b-value")));
 
-        let mut event = Event::Log(LogEvent::from("hello"));
+        let mut event = Event::from(LogEvent::from("hello"));
         event.as_mut_log().insert(&headers_key, header_values);
 
         let headers = get_headers(&event, Some(&headers_key)).unwrap();

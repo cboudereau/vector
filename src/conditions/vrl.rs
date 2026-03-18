@@ -219,7 +219,7 @@ mod test {
             //     Ok(()),
             // ),
             (
-                Event::Metric(
+                Event::from(
                     Metric::new(
                         "zork",
                         MetricKind::Incremental,

@@ -1,4 +1,3 @@
-use bytes::Bytes;
 use chrono::Utc;
 use futures::StreamExt;
 use snafu::{ResultExt, Snafu};
@@ -14,12 +13,12 @@ use vector_lib::{
     internal_event::{
         ByteSize, BytesReceived, CountByteSize, InternalEventHandle as _, Protocol, Registered,
     },
-    lookup::{OwnedValuePath, lookup_v2::OptionalValuePath, owned_value_path, path},
+    lookup::{OwnedValuePath, lookup_v2::OptionalValuePath, owned_value_path},
 };
 use vrl::value::Kind;
 
 use crate::{
-    config::{GenerateConfig, SourceConfig, SourceContext, SourceOutput, log_schema},
+    config::{GenerateConfig, SourceConfig, SourceContext, SourceOutput},
     event::{Event, string_value},
     internal_events::{EventsReceived, StreamClosedError},
     serde::{default_decoding, default_framing_message_based},
@@ -230,8 +229,10 @@ struct InputHandler {
     pub bytes_received: Registered<BytesReceived>,
     pub events_received: Registered<EventsReceived>,
     pub key: String,
+    #[allow(dead_code)]
     pub redis_key: Option<OwnedValuePath>,
     pub decoder: Decoder,
+    #[allow(dead_code)]
     pub log_namespace: LogNamespace,
     pub cx: SourceContext,
 }
@@ -251,32 +252,11 @@ impl InputHandler {
                     self.events_received.emit(CountByteSize(count, byte_size));
 
                     let events = events.into_iter().map(|mut event| {
-                        if let Event::OtelLog(ref mut otel_log) = event {
+                        if let Event::Log(ref mut otel_log) = event {
                             otel_log.set_source_metadata(RedisSourceConfig::NAME, now);
                             otel_log.set_attribute(
                                 "key".to_string(),
                                 string_value(self.key.as_str()),
-                            );
-                        } else if let Event::Log(ref mut log) = event {
-                            self.log_namespace.insert_vector_metadata(
-                                log,
-                                log_schema().source_type_key(),
-                                path!("source_type"),
-                                Bytes::from(RedisSourceConfig::NAME),
-                            );
-                            self.log_namespace.insert_vector_metadata(
-                                log,
-                                log_schema().timestamp_key(),
-                                path!("ingest_timestamp"),
-                                now,
-                            );
-
-                            self.log_namespace.insert_source_metadata(
-                                RedisSourceConfig::NAME,
-                                log,
-                                self.redis_key.as_ref().map(LegacyKey::InsertIfEmpty),
-                                path!("key"),
-                                self.key.as_str(),
                             );
                         }
 

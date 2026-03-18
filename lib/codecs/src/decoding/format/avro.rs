@@ -159,21 +159,15 @@ impl Deserializer for AvroDeserializer {
             log.insert(event_path!(k.as_str()), try_from(v)?);
         }
 
-        let mut event = Event::Log(log);
-        let event = match log_namespace {
-            LogNamespace::Vector => event,
-            LogNamespace::Legacy => {
-                if let Some(timestamp_key) = log_schema().timestamp_key_target_path() {
-                    let log = event.as_mut_log();
-                    if !log.contains(timestamp_key) {
-                        let timestamp = Utc::now();
-                        log.insert(timestamp_key, timestamp);
-                    }
+        if log_namespace == LogNamespace::Legacy {
+            if let Some(timestamp_key) = log_schema().timestamp_key_target_path() {
+                if !log.contains(timestamp_key) {
+                    let timestamp = Utc::now();
+                    log.insert(timestamp_key, timestamp);
                 }
-                event
             }
-        };
-        Ok(smallvec![event])
+        }
+        Ok(smallvec![Event::from(log)])
     }
 }
 
@@ -290,8 +284,9 @@ mod tests {
             .unwrap();
         assert_eq!(events.len(), 1);
 
+        let log = events[0].as_log().to_log_event();
         assert_eq!(
-            events[0].as_log().get("message").unwrap(),
+            log.get("message").unwrap(),
             &VrlValue::from("hello from avro")
         );
     }
@@ -316,8 +311,9 @@ mod tests {
             .unwrap();
         assert_eq!(events.len(), 1);
 
+        let log = events[0].as_log().to_log_event();
         assert_eq!(
-            events[0].as_log().get("message").unwrap(),
+            log.get("message").unwrap(),
             &VrlValue::from("hello from avro")
         );
     }
@@ -343,8 +339,9 @@ mod tests {
             .parse(bytes.freeze(), LogNamespace::Vector)
             .unwrap();
         assert_eq!(events.len(), 1);
+        let log = events[0].as_log().to_log_event();
         assert_eq!(
-            events[0].as_log().get("message").unwrap(),
+            log.get("message").unwrap(),
             &VrlValue::from(uuid)
         );
     }

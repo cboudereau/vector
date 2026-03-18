@@ -229,7 +229,7 @@ impl HttpServerAuthMatcher {
         program: &Program,
     ) -> Result<(), ErrorMessage> {
         let mut target = VrlTarget::new(
-            Event::Log(LogEvent::from_map(
+            Event::from(LogEvent::from_map(
                 ObjectMap::from([
                     (
                         "headers".into(),

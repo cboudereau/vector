@@ -230,10 +230,12 @@ impl TcpSource for RawTcpSource {
                         "host.name".to_string(),
                         string_value(host.ip().to_string()),
                     );
-                    otel_log.set_attribute(
-                        "net.peer.port".to_string(),
-                        int_value(host.port() as i64),
-                    );
+                    if let Some(port_path) = self.config.port_key().path.as_ref() {
+                        otel_log.set_attribute(
+                            port_path.to_string(),
+                            int_value(host.port() as i64),
+                        );
+                    }
                 }
                 _ => {}
             }

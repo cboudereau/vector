@@ -147,6 +147,52 @@ pub(crate) fn kvlist_to_object_map(kvs: &[KeyValue]) -> ObjectMap {
         .collect()
 }
 
+/// Hoist well-known log_schema fields from `Resource` to top-level in the output map.
+/// `source_type` → top-level `source_type`, `host.name` → top-level `host`.
+/// Remaining resource attributes stay in a `resource` sub-object.
+fn hoist_resource_fields(resource: &Option<Resource>, map: &mut ObjectMap) {
+    if let Some(resource) = resource {
+        let mut res_map = kvlist_to_object_map(&resource.attributes);
+        if resource.dropped_attributes_count != 0 {
+            res_map.insert(
+                "dropped_attributes_count".into(),
+                Value::Integer(resource.dropped_attributes_count as i64),
+            );
+        }
+        if let Some(v) = res_map.remove("source_type") {
+            map.entry("source_type".into()).or_insert(v);
+        }
+        if let Some(v) = res_map.remove("host.name") {
+            map.entry("host".into()).or_insert(v);
+        }
+        if !res_map.is_empty() {
+            map.insert("resource".into(), Value::Object(res_map));
+        }
+    }
+}
+
+/// Convert scope into a `scope` sub-object in the output map (only if non-empty).
+fn hoist_scope_fields(scope: &Option<InstrumentationScope>, map: &mut ObjectMap) {
+    if let Some(scope) = scope {
+        let mut scope_map = ObjectMap::new();
+        if !scope.name.is_empty() {
+            scope_map.insert("name".into(), Value::Bytes(scope.name.clone().into()));
+        }
+        if !scope.version.is_empty() {
+            scope_map.insert("version".into(), Value::Bytes(scope.version.clone().into()));
+        }
+        if !scope.attributes.is_empty() {
+            scope_map.insert(
+                "attributes".into(),
+                Value::Object(kvlist_to_object_map(&scope.attributes)),
+            );
+        }
+        if !scope_map.is_empty() {
+            map.insert("scope".into(), Value::Object(scope_map));
+        }
+    }
+}
+
 /// Convert an OTel `any_value::Value` to a string for use as a metric tag.
 fn otel_value_to_tag_string(v: &OtelValueKind) -> String {
     match v {
@@ -249,6 +295,31 @@ impl OtelLog {
                     }
                     None => 0,
                 };
+
+                // Route well-known log_schema fields back to resource attributes
+                // so that from_log_event ↔ to_log_event round-trips are lossless.
+                let mut resource_attrs: Vec<KeyValue> = Vec::new();
+                if let Some(v) = map.remove("source_type") {
+                    resource_attrs.push(KeyValue {
+                        key: "source_type".to_string(),
+                        value: Some(vrl_value_to_any_value(&v)),
+                    });
+                }
+                if let Some(v) = map.remove("host") {
+                    resource_attrs.push(KeyValue {
+                        key: "host.name".to_string(),
+                        value: Some(vrl_value_to_any_value(&v)),
+                    });
+                }
+                let resource = if resource_attrs.is_empty() {
+                    None
+                } else {
+                    Some(Resource {
+                        attributes: resource_attrs,
+                        dropped_attributes_count: 0,
+                    })
+                };
+
                 let attributes: Vec<KeyValue> = map
                     .into_iter()
                     .map(|(k, v)| KeyValue {
@@ -263,7 +334,7 @@ impl OtelLog {
                         attributes,
                         ..Default::default()
                     },
-                    resource: None,
+                    resource,
                     scope: None,
                     metadata,
                 }
@@ -564,9 +635,11 @@ impl OtelLog {
         self.body().map(any_value_to_vrl)
     }
 
-    /// Get the "source_type" from metadata (LogEvent-compatible bridge).
+    /// Get the "source_type" from resource attributes or legacy log event bridge.
     pub fn get_source_type(&self) -> Option<Value> {
-        self.to_log_event().get_source_type().cloned()
+        self.resource_attribute("source_type")
+            .map(|av| any_value_to_vrl(&av))
+            .or_else(|| self.to_log_event().get_source_type().cloned())
     }
 
     /// Get the host value from the event (LogEvent-compatible bridge).
@@ -749,37 +822,11 @@ impl OtelLog {
             map.insert("span_id".into(), hex_encode(&self.record.span_id));
         }
 
-        if let Some(resource) = &self.resource {
-            let mut res_map = kvlist_to_object_map(&resource.attributes);
-            if resource.dropped_attributes_count != 0 {
-                res_map.insert(
-                    "dropped_attributes_count".into(),
-                    Value::Integer(resource.dropped_attributes_count as i64),
-                );
-            }
-            map.insert("resource".into(), Value::Object(res_map));
-        }
-
-        if let Some(scope) = &self.scope {
-            let mut scope_map = ObjectMap::new();
-            if !scope.name.is_empty() {
-                scope_map.insert("name".into(), Value::Bytes(scope.name.clone().into()));
-            }
-            if !scope.version.is_empty() {
-                scope_map
-                    .insert("version".into(), Value::Bytes(scope.version.clone().into()));
-            }
-            if !scope.attributes.is_empty() {
-                scope_map.insert(
-                    "attributes".into(),
-                    Value::Object(kvlist_to_object_map(&scope.attributes)),
-                );
-            }
-            map.insert("scope".into(), Value::Object(scope_map));
-        }
+        hoist_resource_fields(&self.resource, &mut map);
+        hoist_scope_fields(&self.scope, &mut map);
 
         LogEvent::from_map(map, self.metadata.clone())
-    }
+}
 }
 
 // -- OtelSpan --
@@ -1068,34 +1115,8 @@ impl OtelSpan {
             map.insert(kv.key.clone().into(), v);
         }
 
-        if let Some(resource) = &self.resource {
-            let mut res_map = kvlist_to_object_map(&resource.attributes);
-            if resource.dropped_attributes_count != 0 {
-                res_map.insert(
-                    "dropped_attributes_count".into(),
-                    Value::Integer(resource.dropped_attributes_count as i64),
-                );
-            }
-            map.insert("resource".into(), Value::Object(res_map));
-        }
-
-        if let Some(scope) = &self.scope {
-            let mut scope_map = ObjectMap::new();
-            if !scope.name.is_empty() {
-                scope_map.insert("name".into(), Value::Bytes(scope.name.clone().into()));
-            }
-            if !scope.version.is_empty() {
-                scope_map
-                    .insert("version".into(), Value::Bytes(scope.version.clone().into()));
-            }
-            if !scope.attributes.is_empty() {
-                scope_map.insert(
-                    "attributes".into(),
-                    Value::Object(kvlist_to_object_map(&scope.attributes)),
-                );
-            }
-            map.insert("scope".into(), Value::Object(scope_map));
-        }
+        hoist_resource_fields(&self.resource, &mut map);
+        hoist_scope_fields(&self.scope, &mut map);
 
         LogEvent::from_map(map, self.metadata.clone())
     }
@@ -1692,14 +1713,6 @@ macro_rules! impl_otel_event_traits {
             }
         }
 
-        impl EventDataEq for $ty {
-            fn event_data_eq(&self, other: &Self) -> bool {
-                self.$proto_field == other.$proto_field
-                    && self.resource == other.resource
-                    && self.scope == other.scope
-            }
-        }
-
         impl GetEventCountTags for $ty {
             fn get_tags(&self) -> TaggedEventsSent {
                 TaggedEventsSent::new_unspecified()
@@ -1711,6 +1724,29 @@ macro_rules! impl_otel_event_traits {
 impl_otel_event_traits!(OtelLog, record);
 impl_otel_event_traits!(OtelSpan, span);
 impl_otel_event_traits!(OtelMetric, metric);
+
+// Compare OtelLog via `to_log_event()` equivalence so that two events
+// carrying the same logical data but stored differently in proto
+// (e.g., source_type in resource vs record.attributes) compare equal.
+impl EventDataEq for OtelLog {
+    fn event_data_eq(&self, other: &Self) -> bool {
+        self.to_log_event().event_data_eq(&other.to_log_event())
+    }
+}
+
+impl EventDataEq for OtelSpan {
+    fn event_data_eq(&self, other: &Self) -> bool {
+        self.to_log_event().event_data_eq(&other.to_log_event())
+    }
+}
+
+impl EventDataEq for OtelMetric {
+    fn event_data_eq(&self, other: &Self) -> bool {
+        self.metric == other.metric
+            && self.resource == other.resource
+            && self.scope == other.scope
+    }
+}
 
 impl Serialize for OtelLog {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {

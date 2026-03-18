@@ -162,6 +162,7 @@ pub(super) fn udp(
 ) -> Source {
     Box::pin(async move {
         let listenfd = ListenFd::from_env();
+        let port_key_str = config.port_key().path.as_ref().map(|p| p.to_string());
         let socket = try_bind_udp_socket(config.address, listenfd)
             .await
             .map_err(|error| {
@@ -282,10 +283,12 @@ pub(super) fn udp(
                                                 "host.name".to_string(),
                                                 string_value(address.ip().to_string()),
                                             );
-                                            otel_log.set_attribute(
-                                                "net.peer.port".to_string(),
-                                                int_value(address.port() as i64),
-                                            );
+                                            if let Some(ref port_key) = port_key_str {
+                                                otel_log.set_attribute(
+                                                    port_key.clone(),
+                                                    int_value(address.port() as i64),
+                                                );
+                                            }
                                         }
                                         _ => {}
                                     }

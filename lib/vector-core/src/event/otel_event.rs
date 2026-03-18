@@ -90,7 +90,9 @@ pub fn vrl_value_to_any_value(value: &Value) -> AnyValue {
         Value::Integer(i) => Some(OtelValueKind::IntValue(*i)),
         Value::Float(f) => Some(OtelValueKind::DoubleValue(f.into_inner())),
         Value::Boolean(b) => Some(OtelValueKind::BoolValue(*b)),
-        Value::Timestamp(ts) => Some(OtelValueKind::StringValue(ts.to_rfc3339())),
+        Value::Timestamp(ts) => Some(OtelValueKind::StringValue(
+            ts.to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true),
+        )),
         Value::Regex(r) => Some(OtelValueKind::StringValue(r.to_string())),
         Value::Null => None,
         Value::Object(map) => {
@@ -237,13 +239,16 @@ impl OtelLog {
         match value {
             Value::Object(mut map) => {
                 let body = map.remove("message").map(|v| vrl_value_to_any_value(&v));
-                let time_unix_nano = map
-                    .remove("timestamp")
-                    .and_then(|v| match v {
-                        Value::Timestamp(ts) => Some(ts.timestamp_nanos_opt().unwrap_or(0) as u64),
-                        _ => None,
-                    })
-                    .unwrap_or(0);
+                let time_unix_nano = match map.remove("timestamp") {
+                    Some(Value::Timestamp(ts)) => {
+                        ts.timestamp_nanos_opt().unwrap_or(0) as u64
+                    }
+                    Some(other) => {
+                        map.insert("timestamp".into(), other);
+                        0
+                    }
+                    None => 0,
+                };
                 let attributes: Vec<KeyValue> = map
                     .into_iter()
                     .map(|(k, v)| KeyValue {
@@ -1709,34 +1714,19 @@ impl_otel_event_traits!(OtelMetric, metric);
 
 impl Serialize for OtelLog {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("OtelLog", 3)?;
-        state.serialize_field("record", &self.record)?;
-        state.serialize_field("resource", &self.resource)?;
-        state.serialize_field("scope", &self.scope)?;
-        state.end()
+        self.to_log_event().serialize(serializer)
     }
 }
 
 impl Serialize for OtelSpan {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("OtelSpan", 3)?;
-        state.serialize_field("span", &self.span)?;
-        state.serialize_field("resource", &self.resource)?;
-        state.serialize_field("scope", &self.scope)?;
-        state.end()
+        self.to_log_event().serialize(serializer)
     }
 }
 
 impl Serialize for OtelMetric {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("OtelMetric", 3)?;
-        state.serialize_field("metric", &self.metric)?;
-        state.serialize_field("resource", &self.resource)?;
-        state.serialize_field("scope", &self.scope)?;
-        state.end()
+        self.clone().to_legacy_metric().serialize(serializer)
     }
 }
 

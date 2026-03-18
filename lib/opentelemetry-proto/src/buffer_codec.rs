@@ -623,7 +623,9 @@ pub fn value_into_any_value(v: Value) -> any_value::Value {
         Value::Float(f) => any_value::Value::DoubleValue(f.into_inner()),
         Value::Boolean(b) => any_value::Value::BoolValue(b),
         Value::Null => any_value::Value::StringValue(String::new()),
-        Value::Timestamp(ts) => any_value::Value::StringValue(ts.to_rfc3339()),
+        Value::Timestamp(ts) => any_value::Value::StringValue(
+            ts.to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true),
+        ),
         Value::Object(map) => {
             use crate::proto::common::v1::KeyValueList;
             let kvs = map

@@ -1888,7 +1888,7 @@ Built entirely on OTel-native types. No legacy compatibility concerns.
 | Q6 | APM stats — keep or drop? | Cancelled. Replaced by pipeline telemetry (Step 4). Spec: `APM_STATS_OTLP_BACKPORT.md`. |
 | Q7 | VRL tail sampling ergonomics | `spans_any`/`spans_all` shorthand types added. |
 | Q8 | VRL migration tool coverage | ~91% after SEM-08/SEM-09 and dynamic path heuristic. |
-| Q9 | `NativeDeserializer` external exposure | `publish = false`. Internal only. |
+| Q9 | `NativeDeserializer` external exposure | ✓ Deleted in Step 6g. No longer exists. |
 | Q10 | OTel sink grouping + spans.rs scope drop | Scope drop fixed in Step 0b (15 lines). Reverse encoder in Step 2. |
 | PC1 | `use_otlp_decoding` flag | ✓ Deleted in Step 5e. `rg "use_otlp_decoding" src/` returns empty. |
 | PC2 | Step 2 ownership | Must be in flight before Step 0 closes. |
@@ -1973,7 +1973,7 @@ Based on actual file counts from source. Items marked ✓ have actual line count
 | Step 6d: Transform migration | ~30 | ~250 | ✓ COMPLETE |
 | Step 6e: Sink migration audit | 0 | 0 | ✓ COMPLETE (already handled via coercion helpers + serializers) |
 | Step 6f: Remove legacy types from core + rename OtelLog→Log etc. | ~4,500 actual | ~1,200 actual | ✓ COMPLETE |
-| Step 6g: Delete native codecs and ~7,400 test fixtures | ~2,100 est. | ~400 est. | Pending |
+| Step 6g: Delete native codecs and ~9,220 test fixtures | ~9,400 actual | 0 | ✓ COMPLETE |
 | Step 7: Vector + DD sink/source re-integration | 0 | ~2,500 est. | Pending |
 | Tail sampling + LB sink + pipeline telemetry (Step 4) | 0 | ~2,800 est. | Pending |
 | Buffer toggle + OtlpBufferBatch | 0 | ~300 est. | ✓ COMPLETE |

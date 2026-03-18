@@ -77,7 +77,9 @@ fn vrl_value_to_otel_any_value(val: &Value) -> OtelAnyValue {
         Value::Boolean(b) => Some(OtelValueKind::BoolValue(*b)),
         Value::Integer(i) => Some(OtelValueKind::IntValue(*i)),
         Value::Float(f) => Some(OtelValueKind::DoubleValue(f.into_inner())),
-        Value::Timestamp(ts) => Some(OtelValueKind::StringValue(ts.to_rfc3339())),
+        Value::Timestamp(ts) => Some(OtelValueKind::StringValue(
+            ts.to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true),
+        )),
         Value::Regex(r) => Some(OtelValueKind::StringValue(r.to_string())),
         Value::Null => None,
         Value::Object(map) => Some(OtelValueKind::KvlistValue(OtelKeyValueList {

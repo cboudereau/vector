@@ -26,6 +26,7 @@ use super::{
     errors::{ParseRecordsSnafu, RequestError},
     models::{EncodedFirehoseRecord, FirehoseRequest, FirehoseResponse},
 };
+use vector_lib::lookup;
 use crate::{
     SourceSender,
     codecs::Decoder,
@@ -55,7 +56,8 @@ pub(super) async fn firehose(
     request: FirehoseRequest,
     mut context: Context,
 ) -> Result<impl warp::Reply, reject::Rejection> {
-    let _log_namespace = context.log_namespace;
+    let log_namespace = context.log_namespace;
+    let request_timestamp = request.timestamp;
     let events_received = register!(EventsReceived);
 
     for record in request.records {
@@ -90,18 +92,38 @@ pub(super) async fn firehose(
                             event.add_batch_notifier(batch.clone());
                         }
                         if let Event::Log(otel_log) = event {
-                            otel_log.set_source_metadata(
-                                AwsKinesisFirehoseConfig::NAME,
-                                now,
-                            );
-                            otel_log.set_attribute(
-                                "request_id".to_string(),
-                                string_value(request_id.clone()),
-                            );
-                            otel_log.set_attribute(
-                                "source_arn".to_string(),
-                                string_value(source_arn.clone()),
-                            );
+                            if log_namespace == LogNamespace::Vector {
+                                otel_log.set_source_metadata_vector_ns(
+                                    AwsKinesisFirehoseConfig::NAME,
+                                    now,
+                                );
+                                let meta = otel_log.metadata_mut().value_mut();
+                                meta.insert(
+                                    lookup::path!(AwsKinesisFirehoseConfig::NAME, "request_id"),
+                                    request_id.clone(),
+                                );
+                                meta.insert(
+                                    lookup::path!(AwsKinesisFirehoseConfig::NAME, "source_arn"),
+                                    source_arn.clone(),
+                                );
+                                meta.insert(
+                                    lookup::path!(AwsKinesisFirehoseConfig::NAME, "timestamp"),
+                                    vrl::value::Value::Timestamp(request_timestamp),
+                                );
+                            } else {
+                                otel_log.set_source_metadata(
+                                    AwsKinesisFirehoseConfig::NAME,
+                                    now,
+                                );
+                                otel_log.set_attribute(
+                                    "request_id".to_string(),
+                                    string_value(request_id.clone()),
+                                );
+                                otel_log.set_attribute(
+                                    "source_arn".to_string(),
+                                    string_value(source_arn.clone()),
+                                );
+                            }
                         }
                     }
 

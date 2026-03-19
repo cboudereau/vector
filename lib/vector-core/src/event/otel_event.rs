@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use opentelemetry_proto::tonic::common::v1::{
     AnyValue, InstrumentationScope, KeyValue, any_value::Value as OtelValueKind,
 };
@@ -282,11 +283,24 @@ fn coerce_to_timestamp(v: Value) -> Value {
 /// Extract a `Timestamp` value from the map, trying the log schema timestamp
 /// key (`"timestamp"`) first, then the common `"@timestamp"` variant.
 /// Non-Timestamp values are preserved in the map. Returns nanoseconds.
-fn extract_timestamp_nanos(map: &mut ObjectMap) -> u64 {
+struct TimestampExtract {
+    nanos: u64,
+    overflow_rfc3339: Option<String>,
+}
+
+fn extract_timestamp_nanos(map: &mut ObjectMap) -> TimestampExtract {
     for key in &["timestamp", "@timestamp"] {
         match map.remove(*key) {
             Some(Value::Timestamp(ts)) => {
-                return ts.timestamp_nanos_opt().unwrap_or(0) as u64;
+                match ts.timestamp_nanos_opt() {
+                    Some(n) => {
+                        return TimestampExtract { nanos: n as u64, overflow_rfc3339: None };
+                    }
+                    None => {
+                        let rfc = ts.to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true);
+                        return TimestampExtract { nanos: 0, overflow_rfc3339: Some(rfc) };
+                    }
+                }
             }
             Some(other) => {
                 map.insert((*key).into(), other);
@@ -294,7 +308,7 @@ fn extract_timestamp_nanos(map: &mut ObjectMap) -> u64 {
             None => {}
         }
     }
-    0
+    TimestampExtract { nanos: 0, overflow_rfc3339: None }
 }
 
 // -- OtelLog --
@@ -327,7 +341,8 @@ impl OtelLog {
         match value {
             Value::Object(mut map) => {
                 let body = map.remove("message").map(|v| vrl_value_to_any_value(&v));
-                let time_unix_nano = extract_timestamp_nanos(&mut map);
+                let ts_extract = extract_timestamp_nanos(&mut map);
+                let time_unix_nano = ts_extract.nanos;
 
                 // Route well-known log_schema fields back to resource attributes
                 // so that from_log_event ↔ to_log_event round-trips are lossless.
@@ -353,13 +368,19 @@ impl OtelLog {
                     })
                 };
 
-                let attributes: Vec<KeyValue> = map
+                let mut attributes: Vec<KeyValue> = map
                     .into_iter()
                     .map(|(k, v)| KeyValue {
                         key: k.to_string(),
                         value: Some(vrl_value_to_any_value(&v)),
                     })
                     .collect();
+                if let Some(ref overflow_ts) = ts_extract.overflow_rfc3339 {
+                    attributes.push(KeyValue {
+                        key: "vector.timestamp_overflow".to_string(),
+                        value: Some(string_value(overflow_ts)),
+                    });
+                }
                 Self {
                     record: LogRecord {
                         body,
@@ -658,6 +679,13 @@ impl OtelLog {
     /// In Legacy namespace, prefers `time_unix_nano` (event time), falls
     /// back to `observed_time_unix_nano` (ingest time).
     pub fn get_timestamp(&self) -> Option<Value> {
+        if let Some(overflow) = self.attribute("vector.timestamp_overflow") {
+            if let Some(OtelValueKind::StringValue(s)) = &overflow.value {
+                if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+                    return Some(Value::Timestamp(dt.with_timezone(&chrono::Utc)));
+                }
+            }
+        }
         if self.namespace() == crate::config::LogNamespace::Vector {
             let log = self.to_log_event();
             return log.get_timestamp().map(|v| coerce_to_timestamp(v.clone()));
@@ -869,16 +897,24 @@ impl OtelLog {
             );
         }
         {
-            let nanos = if self.record.time_unix_nano != 0 {
-                self.record.time_unix_nano
+            if let Some(overflow) = attribute_value(&self.record.attributes, "vector.timestamp_overflow") {
+                if let Some(OtelValueKind::StringValue(s)) = &overflow.value {
+                    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+                        map.insert("timestamp".into(), Value::Timestamp(dt.with_timezone(&chrono::Utc)));
+                    }
+                }
             } else {
-                self.record.observed_time_unix_nano
-            };
-            if nanos != 0 {
-                let secs = (nanos / 1_000_000_000) as i64;
-                let nsecs = (nanos % 1_000_000_000) as u32;
-                if let Some(ts) = chrono::DateTime::from_timestamp(secs, nsecs) {
-                    map.insert("timestamp".into(), Value::Timestamp(ts));
+                let nanos = if self.record.time_unix_nano != 0 {
+                    self.record.time_unix_nano
+                } else {
+                    self.record.observed_time_unix_nano
+                };
+                if nanos != 0 {
+                    let secs = (nanos / 1_000_000_000) as i64;
+                    let nsecs = (nanos % 1_000_000_000) as u32;
+                    if let Some(ts) = chrono::DateTime::from_timestamp(secs, nsecs) {
+                        map.insert("timestamp".into(), Value::Timestamp(ts));
+                    }
                 }
             }
         }
@@ -1303,16 +1339,25 @@ impl OtelMetric {
                 aggregation_temporality: temporality,
                 is_monotonic: true,
             }),
-            MetricValue::Gauge { value } => metric::Data::Gauge(otel_metrics::Gauge {
-                data_points: vec![otel_metrics::NumberDataPoint {
-                    attributes: attributes.clone(),
-                    start_time_unix_nano: start_nanos,
-                    time_unix_nano: time_nanos,
-                    exemplars: vec![],
-                    flags: 0,
-                    value: Some(NDPValue::AsDouble(value)),
-                }],
-            }),
+            MetricValue::Gauge { value } => {
+                let mut dp_attrs = attributes.clone();
+                if data.kind == MetricKind::Incremental {
+                    dp_attrs.push(KeyValue {
+                        key: "vector.metric_kind".to_string(),
+                        value: Some(string_value("incremental")),
+                    });
+                }
+                metric::Data::Gauge(otel_metrics::Gauge {
+                    data_points: vec![otel_metrics::NumberDataPoint {
+                        attributes: dp_attrs,
+                        start_time_unix_nano: start_nanos,
+                        time_unix_nano: time_nanos,
+                        exemplars: vec![],
+                        flags: 0,
+                        value: Some(NDPValue::AsDouble(value)),
+                    }],
+                })
+            }
             MetricValue::AggregatedHistogram { buckets, count, sum } => {
                 let mut explicit_bounds =
                     Vec::with_capacity(buckets.len().saturating_sub(1));
@@ -1363,9 +1408,30 @@ impl OtelMetric {
                 })
             }
             MetricValue::Set { values } => {
+                let mut dp_attrs = attributes.clone();
+                dp_attrs.push(KeyValue {
+                    key: "vector.metric_type".to_string(),
+                    value: Some(string_value("set")),
+                });
+                dp_attrs.push(KeyValue {
+                    key: "vector.metric_kind".to_string(),
+                    value: Some(string_value(match data.kind {
+                        MetricKind::Incremental => "incremental",
+                        MetricKind::Absolute => "absolute",
+                    })),
+                });
+                let set_values: Vec<AnyValue> = values.iter().map(|v| string_value(v)).collect();
+                dp_attrs.push(KeyValue {
+                    key: "vector.set_values".to_string(),
+                    value: Some(AnyValue {
+                        value: Some(OtelValueKind::ArrayValue(
+                            opentelemetry_proto::tonic::common::v1::ArrayValue { values: set_values },
+                        )),
+                    }),
+                });
                 metric::Data::Gauge(otel_metrics::Gauge {
                     data_points: vec![otel_metrics::NumberDataPoint {
-                        attributes: attributes.clone(),
+                        attributes: dp_attrs,
                         start_time_unix_nano: start_nanos,
                         time_unix_nano: time_nanos,
                         exemplars: vec![],
@@ -1654,12 +1720,70 @@ impl OtelMetric {
             }
             Some(metric::Data::Gauge(gauge)) => {
                 let dp = gauge.data_points.first();
-                let val = dp.and_then(|p| p.value.as_ref()).map(|v| match v {
-                    NDPValue::AsDouble(f) => *f,
-                    NDPValue::AsInt(i) => *i as f64,
-                }).unwrap_or(0.0);
+                let is_set = dp
+                    .map(|p| {
+                        p.attributes.iter().any(|a| {
+                            a.key == "vector.metric_type"
+                                && a.value.as_ref().and_then(|v| v.value.as_ref())
+                                    == Some(&OtelValueKind::StringValue("set".into()))
+                        })
+                    })
+                    .unwrap_or(false);
                 let ts = dp.and_then(|p| nanos_to_ts(p.time_unix_nano));
-                (MetricKind::Absolute, MetricValue::Gauge { value: val }, ts, dp.map(|p| p.attributes.clone()))
+                if is_set {
+                    let values = dp
+                        .and_then(|p| attribute_value(&p.attributes, "vector.set_values"))
+                        .and_then(|av| match &av.value {
+                            Some(OtelValueKind::ArrayValue(arr)) => {
+                                let vals: BTreeSet<String> = arr
+                                    .values
+                                    .iter()
+                                    .filter_map(|v| match &v.value {
+                                        Some(OtelValueKind::StringValue(s)) => Some(s.clone()),
+                                        _ => None,
+                                    })
+                                    .collect();
+                                Some(vals)
+                            }
+                            _ => None,
+                        })
+                        .unwrap_or_default();
+                    let kind = dp
+                        .and_then(|p| attribute_value(&p.attributes, "vector.metric_kind"))
+                        .and_then(|av| match &av.value {
+                            Some(OtelValueKind::StringValue(s)) if s == "incremental" => {
+                                Some(MetricKind::Incremental)
+                            }
+                            _ => Some(MetricKind::Absolute),
+                        })
+                        .unwrap_or(MetricKind::Absolute);
+                    let mut dp_attrs = dp.map(|p| p.attributes.clone());
+                    if let Some(ref mut attrs) = dp_attrs {
+                        attrs.retain(|a| {
+                            !a.key.starts_with("vector.")
+                        });
+                    }
+                    (kind, MetricValue::Set { values }, ts, dp_attrs)
+                } else {
+                    let val = dp.and_then(|p| p.value.as_ref()).map(|v| match v {
+                        NDPValue::AsDouble(f) => *f,
+                        NDPValue::AsInt(i) => *i as f64,
+                    }).unwrap_or(0.0);
+                    let kind = dp
+                        .and_then(|p| attribute_value(&p.attributes, "vector.metric_kind"))
+                        .and_then(|av| match &av.value {
+                            Some(OtelValueKind::StringValue(s)) if s == "incremental" => {
+                                Some(MetricKind::Incremental)
+                            }
+                            _ => None,
+                        })
+                        .unwrap_or(MetricKind::Absolute);
+                    let mut dp_attrs = dp.map(|p| p.attributes.clone());
+                    if let Some(ref mut attrs) = dp_attrs {
+                        attrs.retain(|a| !a.key.starts_with("vector."));
+                    }
+                    (kind, MetricValue::Gauge { value: val }, ts, dp_attrs)
+                }
             }
             Some(metric::Data::Histogram(hist)) => {
                 let dp = hist.data_points.first();
@@ -1783,11 +1907,33 @@ impl OtelMetric {
             }
         }
 
+        let interval_ms = self.reconstruct_interval_ms();
+
         let has_tags = !tags.is_empty();
         super::Metric::new_with_metadata(metric_name, kind, value, self.metadata)
             .with_namespace(namespace)
             .with_tags(has_tags.then_some(tags))
             .with_timestamp(timestamp)
+            .with_interval_ms(interval_ms)
+    }
+
+    fn reconstruct_interval_ms(&self) -> Option<std::num::NonZeroU32> {
+        use opentelemetry_proto::tonic::metrics::v1::metric::Data as MetricData;
+        let dp_times = match self.metric.data.as_ref()? {
+            MetricData::Sum(s) => s.data_points.first().map(|p| (p.start_time_unix_nano, p.time_unix_nano)),
+            MetricData::Gauge(g) => g.data_points.first().map(|p| (p.start_time_unix_nano, p.time_unix_nano)),
+            MetricData::Histogram(h) => h.data_points.first().map(|p| (p.start_time_unix_nano, p.time_unix_nano)),
+            MetricData::Summary(s) => s.data_points.first().map(|p| (p.start_time_unix_nano, p.time_unix_nano)),
+            MetricData::ExponentialHistogram(e) => e.data_points.first().map(|p| (p.start_time_unix_nano, p.time_unix_nano)),
+        };
+        dp_times.and_then(|(start, end)| {
+            if start > 0 && end > start {
+                let diff_ms = (end - start) / 1_000_000;
+                std::num::NonZeroU32::new(diff_ms as u32)
+            } else {
+                None
+            }
+        })
     }
 
     pub fn add_finalizer(&mut self, finalizer: EventFinalizer) {

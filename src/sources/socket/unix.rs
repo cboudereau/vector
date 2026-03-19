@@ -6,7 +6,7 @@ use vector_lib::{
     codecs::decoding::{DeserializerConfig, FramingConfig},
     config::LogNamespace,
     configurable::configurable_component,
-    lookup::lookup_v2::OptionalValuePath,
+    lookup::{self, lookup_v2::OptionalValuePath},
     shutdown::ShutdownSignal,
 };
 
@@ -95,19 +95,29 @@ fn handle_events(
     events: &mut [Event],
     _host_key: &OptionalValuePath,
     received_from: Option<Bytes>,
-    _log_namespace: LogNamespace,
+    log_namespace: LogNamespace,
 ) {
     let now = Utc::now();
 
     for event in events {
         match event {
             Event::Log(otel_log) => {
-                otel_log.set_source_metadata(SocketConfig::NAME, now);
-                if let Some(ref host) = received_from {
-                    otel_log.set_resource_attribute(
-                        "host.name".to_string(),
-                        string_value(String::from_utf8_lossy(host).into_owned()),
-                    );
+                if log_namespace == LogNamespace::Vector {
+                    otel_log.set_source_metadata_vector_ns(SocketConfig::NAME, now);
+                    if let Some(ref host) = received_from {
+                        otel_log.metadata_mut().value_mut().insert(
+                            lookup::path!(SocketConfig::NAME, "host"),
+                            String::from_utf8_lossy(host).into_owned(),
+                        );
+                    }
+                } else {
+                    otel_log.set_source_metadata(SocketConfig::NAME, now);
+                    if let Some(ref host) = received_from {
+                        otel_log.set_resource_attribute(
+                            "host.name".to_string(),
+                            string_value(String::from_utf8_lossy(host).into_owned()),
+                        );
+                    }
                 }
             }
             _ => {}

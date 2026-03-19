@@ -216,6 +216,7 @@ impl SourceConfig for VectorConfig {
 mod test {
     use vector_lib::{config::LogNamespace, lookup::owned_value_path, schema::Definition};
     use vrl::value::{Kind, kind::Collection};
+    use vrl::path::OwnedTargetPath;
 
     use super::VectorConfig;
     use crate::config::SourceConfig;
@@ -235,7 +236,7 @@ mod test {
             .schema_definition(true);
 
         let expected_definition =
-            Definition::new_with_default_metadata(Kind::any(), [LogNamespace::Vector])
+            Definition::new_with_default_metadata(Kind::bytes(), [LogNamespace::Vector])
                 .with_metadata_field(
                     &owned_value_path!("vector", "source_type"),
                     Kind::bytes(),
@@ -245,7 +246,8 @@ mod test {
                     &owned_value_path!("vector", "ingest_timestamp"),
                     Kind::timestamp(),
                     None,
-                );
+                )
+                .with_meaning(OwnedTargetPath::event_root(), "message");
 
         assert_eq!(definitions, Some(expected_definition))
     }
@@ -263,6 +265,7 @@ mod test {
             Kind::object(Collection::empty()),
             [LogNamespace::Legacy],
         )
+        .with_event_field(&owned_value_path!("message"), Kind::bytes(), Some("message"))
         .with_event_field(&owned_value_path!("source_type"), Kind::bytes(), None)
         .with_event_field(&owned_value_path!("timestamp"), Kind::timestamp(), None);
 

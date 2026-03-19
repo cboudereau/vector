@@ -386,7 +386,7 @@ Step 5f   Ship VRL migration tool                                              �
 Step 5g   Rename OtelXxxEvent → OtelXxx + type alias cleanup                   — COMPLETE
 Step 5h   OTLP HTTP JSON ingestion + dependency upgrades                       — COMPLETE
 Step 6    Full legacy removal: sources → sinks → core → native codecs          — IN PROGRESS (6a–6g COMPLETE)
-Step 6h   Fix remaining test failures: 54/103 fixed (49 remaining) — IN PROGRESS
+Step 6h   Fix remaining test failures: ~73/103 fixed (30 remaining, ~7 pre-existing) — IN PROGRESS
 Step 7    Re-integration: Vector + DataDog sinks/sources as OTel adapters
 Step 4    Tail sampling + load-balancing sink + pipeline telemetry
 ```

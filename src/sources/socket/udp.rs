@@ -14,8 +14,9 @@ use vector_lib::{
     config::LogNamespace,
     configurable::configurable_component,
     internal_event::{ByteSize, BytesReceived, InternalEventHandle as _, Protocol},
-    lookup::{lookup_v2::OptionalValuePath, owned_value_path},
+    lookup::{self, lookup_v2::OptionalValuePath, owned_value_path},
 };
+use vrl::value::Value;
 
 use super::default_host_key;
 use crate::{
@@ -158,7 +159,7 @@ pub(super) fn udp(
     decoder: Decoder,
     mut shutdown: ShutdownSignal,
     mut out: SourceSender,
-    _log_namespace: LogNamespace,
+    log_namespace: LogNamespace,
 ) -> Source {
     Box::pin(async move {
         let listenfd = ListenFd::from_env();
@@ -278,16 +279,29 @@ pub(super) fn udp(
                                 for event in &mut events {
                                     match event {
                                         Event::Log(otel_log) => {
-                                            otel_log.set_source_metadata(SocketConfig::NAME, now);
-                                            otel_log.set_resource_attribute(
-                                                "host.name".to_string(),
-                                                string_value(address.ip().to_string()),
-                                            );
-                                            if let Some(ref port_key) = port_key_str {
-                                                otel_log.set_attribute(
-                                                    port_key.clone(),
-                                                    int_value(address.port() as i64),
+                                            if log_namespace == LogNamespace::Vector {
+                                                otel_log.set_source_metadata_vector_ns(SocketConfig::NAME, now);
+                                                let meta = otel_log.metadata_mut().value_mut();
+                                                meta.insert(
+                                                    lookup::path!(SocketConfig::NAME, "host"),
+                                                    address.ip().to_string(),
                                                 );
+                                                meta.insert(
+                                                    lookup::path!(SocketConfig::NAME, "port"),
+                                                    Value::Integer(address.port() as i64),
+                                                );
+                                            } else {
+                                                otel_log.set_source_metadata(SocketConfig::NAME, now);
+                                                otel_log.set_resource_attribute(
+                                                    "host.name".to_string(),
+                                                    string_value(address.ip().to_string()),
+                                                );
+                                                if let Some(ref port_key) = port_key_str {
+                                                    otel_log.set_attribute(
+                                                        port_key.clone(),
+                                                        int_value(address.port() as i64),
+                                                    );
+                                                }
                                             }
                                         }
                                         _ => {}

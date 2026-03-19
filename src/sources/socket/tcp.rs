@@ -8,8 +8,9 @@ use vector_lib::{
     config::LogNamespace,
     configurable::configurable_component,
     ipallowlist::IpAllowlistConfig,
-    lookup::{lookup_v2::OptionalValuePath, owned_value_path},
+    lookup::{self, lookup_v2::OptionalValuePath, owned_value_path},
 };
+use vrl::value::Value;
 
 use super::{SocketConfig, default_host_key};
 use crate::{
@@ -225,16 +226,29 @@ impl TcpSource for RawTcpSource {
         for event in events {
             match event {
                 Event::Log(otel_log) => {
-                    otel_log.set_source_metadata(SocketConfig::NAME, now);
-                    otel_log.set_resource_attribute(
-                        "host.name".to_string(),
-                        string_value(host.ip().to_string()),
-                    );
-                    if let Some(port_path) = self.config.port_key().path.as_ref() {
-                        otel_log.set_attribute(
-                            port_path.to_string(),
-                            int_value(host.port() as i64),
+                    if self.log_namespace == LogNamespace::Vector {
+                        otel_log.set_source_metadata_vector_ns(SocketConfig::NAME, now);
+                        let meta = otel_log.metadata_mut().value_mut();
+                        meta.insert(
+                            lookup::path!(SocketConfig::NAME, "host"),
+                            host.ip().to_string(),
                         );
+                        meta.insert(
+                            lookup::path!(SocketConfig::NAME, "port"),
+                            Value::Integer(host.port() as i64),
+                        );
+                    } else {
+                        otel_log.set_source_metadata(SocketConfig::NAME, now);
+                        otel_log.set_resource_attribute(
+                            "host.name".to_string(),
+                            string_value(host.ip().to_string()),
+                        );
+                        if let Some(port_path) = self.config.port_key().path.as_ref() {
+                            otel_log.set_attribute(
+                                port_path.to_string(),
+                                int_value(host.port() as i64),
+                            );
+                        }
                     }
                 }
                 _ => {}

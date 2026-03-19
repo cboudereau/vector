@@ -50,20 +50,32 @@ Install them on Ubuntu 24.04 with:
 
 ```bash
 sudo apt-get update && sudo apt-get install -y \
+    autoconf \
+    automake \
     build-essential \
     cmake \
     git \
     libclang-dev \
     libsasl2-dev \
     libssl-dev \
+    libtool \
     pkg-config \
     protobuf-compiler
 ```
+
+> **Why autoconf / automake / libtool?** The `rdkafka` crate enables
+> `gssapi-vendored` on Linux GNU targets, which pulls in `sasl2-sys` with the
+> `vendored` feature. That feature builds `libsasl2` from source using GNU
+> Autotools. Without these packages the build fails with
+> `configure failed: No such file or directory`.
 
 Installed versions on this machine:
 
 | Package | Version |
 |---|---|
+| autoconf | 2.71 |
+| automake | 1.16.5 |
+| libtool | 2.4.7 |
 | gcc / g++ | 13.3.0 |
 | cmake | 3.28.3 |
 | protoc (protobuf-compiler) | 3.20.2 |

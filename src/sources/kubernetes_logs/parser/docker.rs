@@ -178,7 +178,9 @@ fn normalize_event_otel(otel_log: &mut crate::event::OtelLog) -> Result<(), Norm
     if is_partial {
         otel_log.set_attribute(
             event::PARTIAL.to_string(),
-            crate::event::string_value("true"),
+            opentelemetry_proto::tonic::common::v1::AnyValue {
+                value: Some(opentelemetry_proto::tonic::common::v1::any_value::Value::BoolValue(true)),
+            },
         );
     }
 

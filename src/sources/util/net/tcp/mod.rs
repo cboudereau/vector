@@ -245,7 +245,7 @@ async fn handle_stream<T>(
     mut out: SourceSender,
     acknowledgements: bool,
     request_limiter: RequestLimiter,
-    _tls_client_metadata_key: Option<OwnedValuePath>,
+    tls_client_metadata_key: Option<OwnedValuePath>,
     _source_name: &'static str,
     _log_namespace: LogNamespace,
 ) where
@@ -367,12 +367,27 @@ async fn handle_stream<T>(
 
 
                         if let Some(certificate_metadata) = &certificate_metadata {
-                            for event in &mut events {
-                                if let Event::Log(otel_log) = event {
-                                    otel_log.set_attribute(
-                                        "tls_client_metadata.subject".to_string(),
-                                        crate::event::string_value(certificate_metadata.subject()),
-                                    );
+                            if let Some(ref key) = tls_client_metadata_key {
+                                for event in &mut events {
+                                    if let Event::Log(otel_log) = event {
+                                        let tls_obj = opentelemetry_proto::tonic::common::v1::AnyValue {
+                                            value: Some(
+                                                opentelemetry_proto::tonic::common::v1::any_value::Value::KvlistValue(
+                                                    opentelemetry_proto::tonic::common::v1::KeyValueList {
+                                                        values: vec![
+                                                            opentelemetry_proto::tonic::common::v1::KeyValue {
+                                                                key: "subject".to_string(),
+                                                                value: Some(crate::event::string_value(
+                                                                    certificate_metadata.subject(),
+                                                                )),
+                                                            },
+                                                        ],
+                                                    },
+                                                ),
+                                            ),
+                                        };
+                                        otel_log.set_attribute(key.to_string(), tls_obj);
+                                    }
                                 }
                             }
                         }

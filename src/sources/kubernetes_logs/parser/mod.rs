@@ -45,7 +45,9 @@ fn transform_otel_event(parser: &mut ParserState, output: &mut OutputBuffer, mut
                     if let Some(Value::Boolean(true)) = parsed_log.get("._partial") {
                         otel_log.set_attribute(
                             "_partial".to_string(),
-                            crate::event::string_value("true"),
+                            opentelemetry_proto::tonic::common::v1::AnyValue {
+                                value: Some(opentelemetry_proto::tonic::common::v1::any_value::Value::BoolValue(true)),
+                            },
                         );
                     }
                     if let Some(Value::Timestamp(ts)) = parsed_log.get(".timestamp") {

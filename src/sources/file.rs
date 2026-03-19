@@ -590,6 +590,17 @@ pub fn file_source(
 
     let checkpoints = checkpointer.view();
     let include_file_metric_tag = config.internal_metrics.include_file_tag;
+    let file_key_str = config
+        .file_key
+        .path
+        .as_ref()
+        .map(|p| p.to_string())
+        .unwrap_or_else(|| "file".to_string());
+    let offset_key_str = config
+        .offset_key
+        .as_ref()
+        .and_then(|k| k.path.as_ref())
+        .map(|p| p.to_string());
     Box::pin(async move {
         info!(message = "Starting file server.", include = ?include, exclude = ?exclude);
 
@@ -643,6 +654,8 @@ pub fn file_source(
                 &event_metadata,
                 log_namespace,
                 include_file_metric_tag,
+                &file_key_str,
+                offset_key_str.as_deref(),
             );
 
             if let Some(finalizer) = &finalizer {
@@ -758,6 +771,8 @@ fn create_event(
     meta: &EventMetadata,
     log_namespace: LogNamespace,
     include_file_metric_tag: bool,
+    file_key: &str,
+    offset_key: Option<&str>,
 ) -> OtelLog {
     let deserializer = BytesDeserializer;
     let mut event = deserializer.parse_single(line, log_namespace);
@@ -770,14 +785,10 @@ fn create_event(
             string_value(hostname.clone()),
         );
     }
-    event.set_attribute(
-        "file.offset".to_string(),
-        int_value(offset as i64),
-    );
-    event.set_attribute(
-        "file.path".to_string(),
-        string_value(file),
-    );
+    if let Some(offset_key) = offset_key {
+        event.set_attribute(offset_key.to_string(), int_value(offset as i64));
+    }
+    event.set_attribute(file_key.to_string(), string_value(file));
 
     emit!(FileEventsReceived {
         count: 1,
@@ -1015,7 +1026,7 @@ mod tests {
         let meta = EventMetadata {
             hostname: Some("Some.Machine".to_string()),
         };
-        let otel_log = create_event(line, offset, file, &meta, LogNamespace::Legacy, false);
+        let otel_log = create_event(line, offset, file, &meta, LogNamespace::Legacy, false, "file", Some("offset"));
 
         assert_eq!(otel_log.body_string(), "hello world");
 
@@ -1038,22 +1049,22 @@ mod tests {
             "expected host.name=Some.Machine"
         );
 
-        let file_path = otel_log.attribute("file.path");
+        let file_path = otel_log.attribute("file");
         assert!(
             matches!(
                 file_path.and_then(|av| av.value.as_ref()),
                 Some(V::StringValue(s)) if s == "some_file.rs"
             ),
-            "expected file.path=some_file.rs"
+            "expected file=some_file.rs"
         );
 
-        let file_offset = otel_log.attribute("file.offset");
+        let file_offset = otel_log.attribute("offset");
         assert!(
             matches!(
                 file_offset.and_then(|av| av.value.as_ref()),
                 Some(V::IntValue(0))
             ),
-            "expected file.offset=0"
+            "expected offset=0"
         );
 
         assert!(otel_log.observed_time_unix_nano() > 0, "expected ingest timestamp");

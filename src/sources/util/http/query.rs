@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use opentelemetry_proto::tonic::common::v1::AnyValue;
 use vector_lib::{
     config::LogNamespace,
     event::Event,
@@ -26,16 +27,21 @@ pub fn add_query_parameters(
                 let value = query_parameters.get(query_parameter_name);
 
                 for event in events.iter_mut() {
-                    match event {
-                        Event::Log(otel_log) => {
-                            if let Some(v) = value {
+                    if let Event::Log(otel_log) = event {
+                        match value {
+                            Some(v) => {
                                 otel_log.set_attribute(
-                                    format!("http.query.{query_parameter_name}"),
+                                    query_parameter_name.to_string(),
                                     string_value(v),
                                 );
                             }
+                            None => {
+                                otel_log.set_attribute(
+                                    query_parameter_name.to_string(),
+                                    AnyValue { value: None },
+                                );
+                            }
                         }
-                        _ => {}
                     }
                 }
             }
@@ -51,7 +57,7 @@ pub fn add_query_parameters(
                                 Event::Log(otel_log) => {
                                     if let Some(v) = value {
                                         otel_log.set_attribute(
-                                            format!("http.query.{query_parameter_name}"),
+                                            query_parameter_name.to_string(),
                                             string_value(v),
                                         );
                                     }
@@ -69,7 +75,7 @@ pub fn add_query_parameters(
 #[cfg(test)]
 mod tests {
     use vector_lib::config::LogNamespace;
-    use vrl::{path, value};
+    use vrl::value;
 
     use crate::{
         event::LogEvent,
@@ -89,33 +95,21 @@ mod tests {
         ]
         .into();
 
-        let mut base_log = [LogEvent::from(value!({})).into()];
+        let mut events = [LogEvent::from(value!({})).into()];
         add_query_parameters(
-            &mut base_log,
+            &mut events,
             &query_params_names,
             &query_params,
             LogNamespace::Legacy,
             "test",
         );
-        let mut namespaced_log = [LogEvent::from(value!({})).into()];
-        add_query_parameters(
-            &mut namespaced_log,
-            &query_params_names,
-            &query_params,
-            LogNamespace::Vector,
-            "test",
-        );
 
-        assert_eq!(
-            base_log[0].as_log().value(),
-            namespaced_log[0]
-                .metadata()
-                .value()
-                .get(path!("test", "query_parameters"))
-                .unwrap()
-                .clone()
-        );
+        let log = events[0].as_log();
+        assert_eq!(log.get("param1").unwrap(), "value1".into());
+        assert_eq!(log.get("param2").unwrap(), "value2".into());
+        assert!(log.get("param3").is_none());
     }
+
     #[test]
     fn multiple_query_params_wildcard() {
         let query_params_names = [HttpConfigParamKind::Glob(glob::Pattern::new("*").unwrap())];
@@ -126,34 +120,16 @@ mod tests {
         ]
         .into();
 
-        let mut base_log = [LogEvent::from(value!({})).into()];
+        let mut events = [LogEvent::from(value!({})).into()];
         add_query_parameters(
-            &mut base_log,
+            &mut events,
             &query_params_names,
             &query_params,
             LogNamespace::Legacy,
             "test",
         );
-        let mut namespaced_log = [LogEvent::from(value!({})).into()];
-        add_query_parameters(
-            &mut namespaced_log,
-            &query_params_names,
-            &query_params,
-            LogNamespace::Vector,
-            "test",
-        );
 
-        let log = base_log[0].as_log();
-        assert_eq!(
-            log.value(),
-            namespaced_log[0]
-                .metadata()
-                .value()
-                .get(path!("test", "query_parameters"))
-                .unwrap()
-                .clone(),
-            "Checking legacy and namespaced log contain query parameters string"
-        );
+        let log = events[0].as_log();
         assert_eq!(
             log.get("param1").unwrap(),
             "value1".into(),

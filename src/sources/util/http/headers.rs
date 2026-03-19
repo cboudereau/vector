@@ -1,3 +1,4 @@
+use opentelemetry_proto::tonic::common::v1::AnyValue;
 use vector_lib::{
     config::LogNamespace,
     event::Event,
@@ -25,16 +26,21 @@ pub fn add_headers(
                 let value = headers.get(header_name).map(HeaderValue::as_bytes);
 
                 for event in events.iter_mut() {
-                    match event {
-                        Event::Log(otel_log) => {
-                            if let Some(v) = value {
+                    if let Event::Log(otel_log) = event {
+                        match value {
+                            Some(v) => {
                                 otel_log.set_attribute(
-                                    format!("http.header.{header_name}"),
+                                    header_name.to_string(),
                                     string_value(String::from_utf8_lossy(v).into_owned()),
                                 );
                             }
+                            None => {
+                                otel_log.set_attribute(
+                                    header_name.to_string(),
+                                    AnyValue { value: None },
+                                );
+                            }
                         }
-                        _ => {}
                     }
                 }
             }
@@ -46,18 +52,15 @@ pub fn add_headers(
                         let value = headers.get(header_name).map(HeaderValue::as_bytes);
 
                         for event in events.iter_mut() {
-                            match event {
-                                Event::Log(otel_log) => {
-                                    if let Some(v) = value {
-                                        otel_log.set_attribute(
-                                            format!("http.header.{}", header_name.as_str()),
-                                            string_value(
-                                                String::from_utf8_lossy(v).into_owned(),
-                                            ),
-                                        );
-                                    }
+                            if let Event::Log(otel_log) = event {
+                                if let Some(v) = value {
+                                    otel_log.set_attribute(
+                                        header_name.as_str().to_string(),
+                                        string_value(
+                                            String::from_utf8_lossy(v).into_owned(),
+                                        ),
+                                    );
                                 }
-                                _ => {}
                             }
                         }
                     }
@@ -70,7 +73,7 @@ pub fn add_headers(
 #[cfg(test)]
 mod tests {
     use vector_lib::config::LogNamespace;
-    use vrl::{path, value};
+    use vrl::value;
     use warp::http::HeaderMap;
 
     use crate::{
@@ -89,32 +92,19 @@ mod tests {
         headers.insert("User-Agent", "Test".parse().unwrap());
         headers.insert("Content-Encoding", "gzip".parse().unwrap());
 
-        let mut base_log = [LogEvent::from(value!({})).into()];
+        let mut events = [LogEvent::from(value!({})).into()];
         add_headers(
-            &mut base_log,
+            &mut events,
             &header_names,
             &headers,
             LogNamespace::Legacy,
             "test",
         );
-        let mut namespaced_log = [LogEvent::from(value!({})).into()];
-        add_headers(
-            &mut namespaced_log,
-            &header_names,
-            &headers,
-            LogNamespace::Vector,
-            "test",
-        );
 
-        assert_eq!(
-            base_log[0].as_log().value(),
-            namespaced_log[0]
-                .metadata()
-                .value()
-                .get(path!("test", "headers"))
-                .unwrap()
-                .clone()
-        );
+        let log = events[0].as_log();
+        assert_eq!(log.get("Content-Type").unwrap(), "application/x-protobuf".into());
+        assert_eq!(log.get("User-Agent").unwrap(), "Test".into());
+        assert!(log.get("Content-Encoding").is_none());
     }
 
     #[test]
@@ -127,34 +117,16 @@ mod tests {
         headers.insert("User-Agent", "Test".parse().unwrap());
         headers.insert("Content-Encoding", "gzip".parse().unwrap());
 
-        let mut base_log = [LogEvent::from(value!({})).into()];
+        let mut events = [LogEvent::from(value!({})).into()];
         add_headers(
-            &mut base_log,
+            &mut events,
             &header_names,
             &headers,
             LogNamespace::Legacy,
             "test",
         );
-        let mut namespaced_log = [LogEvent::from(value!({})).into()];
-        add_headers(
-            &mut namespaced_log,
-            &header_names,
-            &headers,
-            LogNamespace::Vector,
-            "test",
-        );
 
-        let log = base_log[0].as_log();
-        assert_eq!(
-            log.value(),
-            namespaced_log[0]
-                .metadata()
-                .value()
-                .get(path!("test", "headers"))
-                .unwrap()
-                .clone(),
-            "Checking legacy and namespaced log contain headers string"
-        );
+        let log = events[0].as_log();
         assert_eq!(
             log.get("content-type").unwrap(),
             "application/x-protobuf".into(),

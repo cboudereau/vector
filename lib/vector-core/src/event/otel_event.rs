@@ -207,24 +207,30 @@ fn otel_value_to_tag_string(v: &OtelValueKind) -> String {
 }
 
 /// Insert an OTel attribute as a metric tag, handling array values as multi-value tags.
-fn insert_otel_attr_as_tag(
+/// Null values (AnyValue with value: None) are treated as bare tags.
+fn insert_otel_attr_as_tag_from_any_value(
     tags: &mut super::MetricTags,
     key: &str,
-    v: &OtelValueKind,
+    av: &AnyValue,
 ) {
     use super::metric::TagValue;
-    match v {
-        OtelValueKind::ArrayValue(arr) => {
+    match &av.value {
+        Some(OtelValueKind::ArrayValue(arr)) => {
             let values: Vec<TagValue> = arr
                 .values
                 .iter()
-                .filter_map(|av| av.value.as_ref())
-                .map(|val| TagValue::Value(otel_value_to_tag_string(val)))
+                .map(|item| match &item.value {
+                    Some(v) => TagValue::Value(otel_value_to_tag_string(v)),
+                    None => TagValue::Bare,
+                })
                 .collect();
             tags.set_multi_value(key.to_string(), values);
         }
-        _ => {
+        Some(v) => {
             tags.insert(key.to_string(), otel_value_to_tag_string(v));
+        }
+        None => {
+            tags.replace(key.to_string(), TagValue::Bare);
         }
     }
 }
@@ -253,6 +259,42 @@ fn remove_attribute(attrs: &mut Vec<KeyValue>, key: &str) -> Option<AnyValue> {
     } else {
         None
     }
+}
+
+/// Coerce a VRL `Value` to a `Timestamp` if it's a string that can be
+/// parsed as RFC 3339. This is needed because OTLP `AnyValue` has no native
+/// timestamp type, so timestamps round-trip as strings.
+fn coerce_to_timestamp(v: Value) -> Value {
+    match &v {
+        Value::Timestamp(_) => v,
+        Value::Bytes(b) => {
+            if let Ok(s) = std::str::from_utf8(b) {
+                if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+                    return Value::Timestamp(dt.with_timezone(&chrono::Utc));
+                }
+            }
+            v
+        }
+        _ => v,
+    }
+}
+
+/// Extract a `Timestamp` value from the map, trying the log schema timestamp
+/// key (`"timestamp"`) first, then the common `"@timestamp"` variant.
+/// Non-Timestamp values are preserved in the map. Returns nanoseconds.
+fn extract_timestamp_nanos(map: &mut ObjectMap) -> u64 {
+    for key in &["timestamp", "@timestamp"] {
+        match map.remove(*key) {
+            Some(Value::Timestamp(ts)) => {
+                return ts.timestamp_nanos_opt().unwrap_or(0) as u64;
+            }
+            Some(other) => {
+                map.insert((*key).into(), other);
+            }
+            None => {}
+        }
+    }
+    0
 }
 
 // -- OtelLog --
@@ -285,16 +327,7 @@ impl OtelLog {
         match value {
             Value::Object(mut map) => {
                 let body = map.remove("message").map(|v| vrl_value_to_any_value(&v));
-                let time_unix_nano = match map.remove("timestamp") {
-                    Some(Value::Timestamp(ts)) => {
-                        ts.timestamp_nanos_opt().unwrap_or(0) as u64
-                    }
-                    Some(other) => {
-                        map.insert("timestamp".into(), other);
-                        0
-                    }
-                    None => 0,
-                };
+                let time_unix_nano = extract_timestamp_nanos(&mut map);
 
                 // Route well-known log_schema fields back to resource attributes
                 // so that from_log_event ↔ to_log_event round-trips are lossless.
@@ -539,7 +572,6 @@ impl OtelLog {
     }
 
     /// Set source metadata: source_type and observed_time_unix_nano.
-    /// Equivalent to `LogNamespace::insert_standard_vector_source_metadata`.
     pub fn set_source_metadata(
         &mut self,
         source_name: &str,
@@ -547,6 +579,22 @@ impl OtelLog {
     ) {
         self.set_resource_attribute("source_type".to_string(), string_value(source_name));
         self.set_observed_timestamp(now);
+    }
+
+    /// Set source metadata for Vector namespace: populates both OtelLog
+    /// fields and `%vector.*` metadata entries for backward compatibility.
+    pub fn set_source_metadata_vector_ns(
+        &mut self,
+        source_name: &str,
+        now: chrono::DateTime<chrono::Utc>,
+    ) {
+        self.set_source_metadata(source_name, now);
+        self.metadata
+            .value_mut()
+            .insert(lookup::path!("vector", "source_type"), source_name.to_owned());
+        self.metadata
+            .value_mut()
+            .insert(lookup::path!("vector", "ingest_timestamp"), Value::Timestamp(now));
     }
 
     pub fn add_finalizer(&mut self, finalizer: EventFinalizer) {
@@ -586,9 +634,7 @@ impl OtelLog {
     ) -> Option<Value> {
         let mut log = self.to_log_event();
         let old = log.insert(path, value);
-        let metadata = std::mem::take(&mut self.metadata);
         *self = Self::from_log_event(log);
-        self.metadata = metadata;
         old
     }
 
@@ -599,23 +645,33 @@ impl OtelLog {
     ) -> Option<Value> {
         let mut log = self.to_log_event();
         let old = log.remove(path);
-        let metadata = std::mem::take(&mut self.metadata);
         *self = Self::from_log_event(log);
-        self.metadata = metadata;
         old
     }
 
     /// Get the timestamp from the event (LogEvent-compatible bridge).
+    ///
+    /// In Vector namespace, delegates to the schema-meaning-aware
+    /// `LogEvent::get_timestamp` so that semantic meanings are respected.
+    /// String values are parsed as RFC 3339 timestamps (since OTLP
+    /// `AnyValue` has no native timestamp type).
+    /// In Legacy namespace, prefers `time_unix_nano` (event time), falls
+    /// back to `observed_time_unix_nano` (ingest time).
     pub fn get_timestamp(&self) -> Option<Value> {
-        if self.record.time_unix_nano != 0 {
-            let nanos = self.record.time_unix_nano;
-            let secs = (nanos / 1_000_000_000) as i64;
-            let nsecs = (nanos % 1_000_000_000) as u32;
-            chrono::DateTime::from_timestamp(secs, nsecs)
-                .map(Value::Timestamp)
-        } else {
-            self.to_log_event().get_timestamp().cloned()
+        if self.namespace() == crate::config::LogNamespace::Vector {
+            let log = self.to_log_event();
+            return log.get_timestamp().map(|v| coerce_to_timestamp(v.clone()));
         }
+        let nanos = if self.record.time_unix_nano != 0 {
+            self.record.time_unix_nano
+        } else if self.record.observed_time_unix_nano != 0 {
+            self.record.observed_time_unix_nano
+        } else {
+            return self.to_log_event().get_timestamp().cloned();
+        };
+        let secs = (nanos / 1_000_000_000) as i64;
+        let nsecs = (nanos % 1_000_000_000) as u32;
+        chrono::DateTime::from_timestamp(secs, nsecs).map(Value::Timestamp)
     }
 
     /// Remove the timestamp from the event (LogEvent-compatible bridge).
@@ -681,9 +737,7 @@ impl OtelLog {
     ) {
         let mut log = self.to_log_event();
         log.rename_key(from, to);
-        let metadata = std::mem::take(&mut self.metadata);
         *self = Self::from_log_event(log);
-        self.metadata = metadata;
     }
 
     /// Get the timestamp path (LogEvent-compatible bridge).
@@ -714,14 +768,21 @@ impl OtelLog {
     ) {
         let mut log = self.to_log_event();
         log.try_insert(path, value);
-        let metadata = std::mem::take(&mut self.metadata);
         *self = Self::from_log_event(log);
-        self.metadata = metadata;
     }
 
     /// Get the underlying value (LogEvent-compatible bridge).
+    ///
+    /// In Vector namespace, returns only the body (the actual event payload).
+    /// In Legacy namespace, returns the full reconstructed object with all fields.
     pub fn value(&self) -> Value {
-        self.to_log_event().value().clone()
+        if self.namespace() == crate::config::LogNamespace::Vector {
+            self.body()
+                .map(any_value_to_vrl)
+                .unwrap_or(Value::Null)
+        } else {
+            self.to_log_event().value().clone()
+        }
     }
 
     /// Get all keys (LogEvent-compatible bridge).
@@ -807,12 +868,18 @@ impl OtelLog {
                 Value::Integer(self.record.severity_number as i64),
             );
         }
-        if self.record.time_unix_nano != 0 {
-            let nanos = self.record.time_unix_nano;
-            let secs = (nanos / 1_000_000_000) as i64;
-            let nsecs = (nanos % 1_000_000_000) as u32;
-            if let Some(ts) = chrono::DateTime::from_timestamp(secs, nsecs) {
-                map.insert("timestamp".into(), Value::Timestamp(ts));
+        {
+            let nanos = if self.record.time_unix_nano != 0 {
+                self.record.time_unix_nano
+            } else {
+                self.record.observed_time_unix_nano
+            };
+            if nanos != 0 {
+                let secs = (nanos / 1_000_000_000) as i64;
+                let nsecs = (nanos % 1_000_000_000) as u32;
+                if let Some(ts) = chrono::DateTime::from_timestamp(secs, nsecs) {
+                    map.insert("timestamp".into(), Value::Timestamp(ts));
+                }
             }
         }
         if !self.record.trace_id.is_empty() {
@@ -1176,18 +1243,21 @@ impl OtelMetric {
                 tags.iter_sets()
                     .map(|(k, tag_set)| {
                         use opentelemetry_proto::tonic::common::v1::{ArrayValue, any_value};
-                        let vals: Vec<String> = tag_set
-                            .into_iter()
-                            .map(|v| v.unwrap_or("").to_string())
-                            .collect();
-                        let value = if vals.len() == 1 {
-                            Some(string_value(&vals[0]))
+                        let raw_vals: Vec<Option<&str>> = tag_set.into_iter().collect();
+                        let value = if raw_vals.len() == 1 {
+                            match raw_vals[0] {
+                                Some(v) => Some(string_value(v)),
+                                None => Some(AnyValue { value: None }),
+                            }
                         } else {
                             Some(AnyValue {
                                 value: Some(any_value::Value::ArrayValue(ArrayValue {
-                                    values: vals
+                                    values: raw_vals
                                         .iter()
-                                        .map(|v| string_value(v))
+                                        .map(|v| match v {
+                                            Some(s) => string_value(*s),
+                                            None => AnyValue { value: None },
+                                        })
                                         .collect(),
                                 })),
                             })
@@ -1304,18 +1374,32 @@ impl OtelMetric {
                     }],
                 })
             }
-            MetricValue::Distribution { samples, statistic: _ } => {
+            MetricValue::Distribution { samples, statistic } => {
                 let count = samples.iter().map(|s| s.rate).sum::<u32>() as u64;
                 let sum: f64 = samples.iter().map(|s| s.value * s.rate as f64).sum();
+                let mut dp_attrs = attributes.clone();
+                dp_attrs.push(KeyValue {
+                    key: "vector.metric_type".to_string(),
+                    value: Some(string_value("distribution")),
+                });
+                dp_attrs.push(KeyValue {
+                    key: "vector.statistic".to_string(),
+                    value: Some(string_value(match statistic {
+                        super::StatisticKind::Histogram => "histogram",
+                        super::StatisticKind::Summary => "summary",
+                    })),
+                });
+                let explicit_bounds: Vec<f64> = samples.iter().map(|s| s.value).collect();
+                let bucket_counts: Vec<u64> = samples.iter().map(|s| s.rate as u64).collect();
                 metric::Data::Histogram(otel_metrics::Histogram {
                     data_points: vec![otel_metrics::HistogramDataPoint {
-                        attributes: attributes.clone(),
+                        attributes: dp_attrs,
                         start_time_unix_nano: start_nanos,
                         time_unix_nano: time_nanos,
                         count,
                         sum: Some(sum),
-                        bucket_counts: vec![],
-                        explicit_bounds: vec![],
+                        bucket_counts,
+                        explicit_bounds,
                         exemplars: vec![],
                         flags: 0,
                         min: None,
@@ -1476,7 +1560,13 @@ impl OtelMetric {
 
     /// Get the metric namespace (Metric-compatible bridge).
     pub fn namespace(&self) -> Option<&str> {
-        None
+        self.resource
+            .as_ref()
+            .and_then(|r| attribute_value(&r.attributes, "metric.namespace"))
+            .and_then(|av| match &av.value {
+                Some(OtelValueKind::StringValue(s)) => Some(s.as_str()),
+                _ => None,
+            })
     }
 
     /// Get the metric value (Metric-compatible bridge).
@@ -1578,19 +1668,61 @@ impl OtelMetric {
                 } else {
                     MetricKind::Absolute
                 };
-                let (buckets, count, sum_val) = dp
+                let is_distribution = dp
                     .map(|p| {
-                        let buckets: Vec<Bucket> = p.bucket_counts.iter().enumerate()
-                            .map(|(i, &c)| Bucket {
-                                count: c,
-                                upper_limit: p.explicit_bounds.get(i).copied().unwrap_or(f64::INFINITY),
-                            })
-                            .collect();
-                        (buckets, p.count, p.sum.unwrap_or(0.0))
+                        p.attributes.iter().any(|a| {
+                            a.key == "vector.metric_type"
+                                && a.value.as_ref().and_then(|v| v.value.as_ref())
+                                    == Some(&OtelValueKind::StringValue("distribution".into()))
+                        })
                     })
-                    .unwrap_or_default();
+                    .unwrap_or(false);
                 let ts = dp.and_then(|p| nanos_to_ts(p.time_unix_nano));
-                (kind, MetricValue::AggregatedHistogram { buckets, count, sum: sum_val }, ts, dp.map(|p| p.attributes.clone()))
+                if is_distribution {
+                    let statistic = dp
+                        .and_then(|p| {
+                            attribute_value(&p.attributes, "vector.statistic")
+                                .and_then(|av| match av.value.as_ref() {
+                                    Some(OtelValueKind::StringValue(s)) if s == "summary" => {
+                                        Some(super::StatisticKind::Summary)
+                                    }
+                                    _ => Some(super::StatisticKind::Histogram),
+                                })
+                        })
+                        .unwrap_or(super::StatisticKind::Histogram);
+                    let samples = dp
+                        .map(|p| {
+                            p.explicit_bounds
+                                .iter()
+                                .zip(p.bucket_counts.iter())
+                                .map(|(&value, &rate)| super::metric::Sample {
+                                    value,
+                                    rate: rate as u32,
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    let mut dp_attrs = dp.map(|p| p.attributes.clone());
+                    if let Some(ref mut attrs) = dp_attrs {
+                        attrs.retain(|a| {
+                            a.key != "vector.metric_type" && a.key != "vector.statistic"
+                        });
+                    }
+                    (kind, MetricValue::Distribution { samples, statistic }, ts, dp_attrs)
+                } else {
+                    let (buckets, count, sum_val) = dp
+                        .map(|p| {
+                            let buckets: Vec<Bucket> = p.bucket_counts.iter().enumerate()
+                                .map(|(i, &c)| Bucket {
+                                    count: c,
+                                    upper_limit: p.explicit_bounds.get(i).copied().unwrap_or(f64::INFINITY),
+                                })
+                                .collect();
+                            (buckets, p.count, p.sum.unwrap_or(0.0))
+                        })
+                        .unwrap_or_default();
+                    (kind, MetricValue::AggregatedHistogram { buckets, count, sum: sum_val }, ts, dp.map(|p| p.attributes.clone()))
+                }
             }
             Some(metric::Data::Summary(summary)) => {
                 let dp = summary.data_points.first();
@@ -1644,9 +1776,9 @@ impl OtelMetric {
         if let Some(dp_attrs) = dp_tags {
             for attr in dp_attrs {
                 if let Some(ref val) = attr.value {
-                    if let Some(ref v) = val.value {
-                        insert_otel_attr_as_tag(&mut tags, &attr.key, v);
-                    }
+                    insert_otel_attr_as_tag_from_any_value(&mut tags, &attr.key, val);
+                } else {
+                    tags.replace(attr.key.clone(), super::metric::TagValue::Bare);
                 }
             }
         }

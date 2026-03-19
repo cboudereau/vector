@@ -209,6 +209,7 @@ impl ElasticsearchCommon {
                 transformer: config.encoding.clone(),
                 doc_type,
                 suppress_type_name,
+                use_at_timestamp: mode.as_data_stream_config().is_some(),
             },
         };
 

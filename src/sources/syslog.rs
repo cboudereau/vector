@@ -420,13 +420,26 @@ fn enrich_syslog_event(
         let now = Utc::now();
         otel_log.set_source_metadata(SyslogConfig::NAME, now);
         if let Some(ref host) = default_host {
-            otel_log.set_resource_attribute(
+            otel_log.set_attribute(
                 "source_ip".to_string(),
                 string_value(String::from_utf8_lossy(host).into_owned()),
             );
+        }
+        let parsed_hostname = otel_log
+            .attribute("hostname")
+            .and_then(|v| match &v.value {
+                Some(opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(s)) => {
+                    Some(s.clone())
+                }
+                _ => None,
+            });
+        let host_value = parsed_hostname.or_else(|| {
+            default_host.as_ref().map(|h| String::from_utf8_lossy(h).into_owned())
+        });
+        if let Some(host) = host_value {
             otel_log.set_resource_attribute(
                 "host.name".to_string(),
-                string_value(String::from_utf8_lossy(host).into_owned()),
+                string_value(host),
             );
         }
     }

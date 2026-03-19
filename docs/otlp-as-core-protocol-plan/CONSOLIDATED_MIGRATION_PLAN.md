@@ -386,7 +386,7 @@ Step 5f   Ship VRL migration tool                                              �
 Step 5g   Rename OtelXxxEvent → OtelXxx + type alias cleanup                   — COMPLETE
 Step 5h   OTLP HTTP JSON ingestion + dependency upgrades                       — COMPLETE
 Step 6    Full legacy removal: sources → sinks → core → native codecs          — IN PROGRESS (6a–6g COMPLETE)
-Step 6h   Fix remaining test failures (~135): source tests, metric round-trip, misc — NOT STARTED
+Step 6h   Fix remaining test failures: 54/103 fixed (49 remaining) — IN PROGRESS
 Step 7    Re-integration: Vector + DataDog sinks/sources as OTel adapters
 Step 4    Tail sampling + load-balancing sink + pipeline telemetry
 ```
@@ -1845,26 +1845,45 @@ instances.
 
 ---
 
-#### 6h — Fix remaining test failures (~135) — NOT STARTED
+#### 6h — Fix remaining test failures — IN PROGRESS (54/103 fixed, 49 remaining)
 
-With the core protocol migration and legacy removal complete, ~135 tests still fail
-at runtime due to semantic mismatches between the old `LogEvent`-based world and the
+With the core protocol migration and legacy removal complete, tests had ~103 runtime
+failures due to semantic mismatches between the old `LogEvent`-based world and the
 new `OtelLog`-native world. These are NOT compilation errors — every test compiles
 cleanly. They are assertion mismatches caused by structural differences in how fields
 are stored, accessed, and round-tripped.
 
-**Breakdown by category:**
+**Progress (103 → 49):**
 
-| Category | Count | Root cause | Fix strategy |
-|---|---|---|---|
-| Source tests (socket, file, syslog, http_server, fluent, k8s, etc.) | ~117 | `OtelLog::value()` returns full reconstructed Object instead of raw body; `source_type`/`host` stored in resource attributes instead of metadata; `get()` field paths differ | Update test assertions to use OTLP-native accessors (`get_source_type()`, `get_host()`, `body()`) or update `OtelLog::value()` to respect log namespace mode |
-| Metric round-trip (prometheus, statsd, humio, new_relic) | ~8 | `Metric → OtelMetric → legacy Metric` is lossy: Distribution→AggregatedHistogram, Set→Gauge(cardinality), gauge value accumulation | Either (a) make `to_legacy_metric()` lossless for supported types, or (b) update sinks to consume `OtelMetric` directly without legacy conversion |
-| VRL condition + template + loki | ~4 | `OtelLog::get_timestamp()` uses `time_unix_nano` instead of schema-defined timestamp meaning; VRL metric field access (`.name`, `.tags.host`) differs on `OtelMetric` | Implement schema-aware timestamp resolution; implement VRL Target for `OtelMetric` |
-| Secrets exec | ~3 | Pre-existing env issue (`/usr/bin/secret-backend` not found) — NOT a migration regression | No fix needed |
-| File source (flaky) | ~1 | Intermittent file-system timing in `file_start_position_server_restart_unfinalized` | No fix needed (pre-existing flake) |
+| Fix | Tests fixed | Details |
+|---|---|---|
+| `Serialize` delegation to `to_log_event()` | ~15 | Sinks get flat legacy JSON instead of raw OTLP proto |
+| Timestamp formatting (`Z` suffix) | ~3 | `to_rfc3339_opts(AutoSi, true)` for consistent output |
+| `source_type`/`host` hoisting in `to_log_event()` | ~5 | Backward-compat: resource attrs → top-level fields |
+| `EventDataEq` via `to_log_event()` | ~5 | Structural OTLP equality through LogEvent bridge |
+| File source: configured key names | ~7 | Use `file_key`/`offset_key` instead of OTLP-style dotted names |
+| HTTP server: header/query key naming | ~5 | Use plain names instead of `http.header.*`/`http.query.*` |
+| Template: metadata and strftime timestamp | ~3 | Respect schema meanings for Vector namespace; coerce strings |
+| Socket: port key + TLS metadata | ~3 | Use configured `port_key`; nested KvList for TLS |
+| Syslog: `source_ip` as attribute, `host.name` from parsed hostname | ~6 | Correct placement + precedence of hostname resolution |
+| Distribution round-trip preservation | ~7 | Marker attrs + samples encoded as bucket bounds/counts |
+| Bare metric tag round-trip (`TagValue::Bare`) | ~1 | Null AnyValue for bare tags instead of empty string |
+| `OtelMetric::namespace()` implementation | ~5 | Read `metric.namespace` from resource attributes |
+| Elasticsearch `@timestamp` renaming | ~3 | Datastream mode renames `timestamp` → `@timestamp` |
+| `OtelLog::insert/remove` metadata preservation | ~2 | Don't discard metadata changes during round-trip |
 
-**Approach:** Fix source tests first (biggest batch, most repetitive pattern), then
-metric sinks, then misc. Target: ≤ 5 residual failures (all pre-existing or flaky).
+**Remaining 49 failures:**
+
+| Category | Count | Status |
+|---|---|---|
+| Vector namespace (metadata vs attributes pattern) | ~15 | Sources use `set_attribute()` but tests expect `%vector.*` metadata |
+| Datadog agent source | ~4 | Timestamp handling, ddtags parsing, traces value types |
+| AWS Kinesis Firehose | ~5 | Event structure + timestamp mismatches |
+| Kubernetes parser (legacy + vector) | ~8 | Parser needs namespace-aware metadata vs attribute routing |
+| Statsd source (Set → Gauge lossy) | ~3 | `MetricValue::Set` not round-tripped |
+| Prometheus gauge merge / timestamps | ~2 | Gauge accumulation + MetricRef key mismatch |
+| Pre-existing / flaky | ~6 | VRL condition, secrets::exec, internal_logs, syslog UDP, file restart |
+| Misc (loki, config, new_relic, http_headers_wildcard) | ~6 | Various one-off issues |
 
 **Prerequisite:** Step 6g complete (native codecs removed).
 

@@ -59,7 +59,9 @@ impl FunctionTransform for Cri {
                     if parsed_log.multiline_tag[0] == b'P' {
                         otel_log.set_attribute(
                             event::PARTIAL.to_string(),
-                            crate::event::string_value("true"),
+                            opentelemetry_proto::tonic::common::v1::AnyValue {
+                                value: Some(opentelemetry_proto::tonic::common::v1::any_value::Value::BoolValue(true)),
+                            },
                         );
                     }
 

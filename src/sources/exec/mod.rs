@@ -25,6 +25,7 @@ use vector_lib::{
 };
 use vrl::{path::OwnedValuePath, value::Kind};
 
+use opentelemetry_proto::tonic::common::v1::AnyValue;
 use crate::{
     SourceSender,
     config::{SourceConfig, SourceContext, SourceOutput},
@@ -682,7 +683,14 @@ fn handle_event(
         if let Some(hostname) = hostname {
             otel_log.set_resource_attribute("host.name".to_string(), string_value(hostname.clone()));
         }
-        otel_log.set_attribute(COMMAND_KEY.to_string(), string_value(config.command_line()));
+        let cmd_value = AnyValue {
+            value: Some(opentelemetry_proto::tonic::common::v1::any_value::Value::ArrayValue(
+                opentelemetry_proto::tonic::common::v1::ArrayValue {
+                    values: config.command.iter().map(|s| string_value(s.clone())).collect(),
+                },
+            )),
+        };
+        otel_log.set_attribute(COMMAND_KEY.to_string(), cmd_value);
     }
 }
 

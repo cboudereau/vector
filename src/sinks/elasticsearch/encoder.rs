@@ -95,11 +95,25 @@ impl GetEventCountTags for ProcessedEvent {
     }
 }
 
-#[derive(PartialEq, Eq, Default, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub struct ElasticsearchEncoder {
     pub transformer: Transformer,
     pub doc_type: String,
     pub suppress_type_name: bool,
+    /// When true (datastream mode), rename "timestamp" to "@timestamp" in serialized output
+    /// to comply with Elastic Common Schema.
+    pub use_at_timestamp: bool,
+}
+
+impl Default for ElasticsearchEncoder {
+    fn default() -> Self {
+        Self {
+            transformer: Transformer::default(),
+            doc_type: "_doc".to_string(),
+            suppress_type_name: false,
+            use_at_timestamp: false,
+        }
+    }
 }
 
 impl Encoder<Vec<ProcessedEvent>> for ElasticsearchEncoder {
@@ -129,10 +143,15 @@ impl Encoder<Vec<ProcessedEvent>> for ElasticsearchEncoder {
             written_bytes +=
                 as_tracked_write::<_, _, io::Error>(writer, &log, |mut writer, log| {
                     writer.write_all(b"\n")?;
-                    // False positive clippy hit on the following line. Clippy wants us to skip the
-                    // borrow, but then the value is moved for the following line.
-                    #[allow(clippy::needless_borrows_for_generic_args)]
-                    serde_json::to_writer(&mut writer, log)?;
+                    let mut value = serde_json::to_value(log)?;
+                    if self.use_at_timestamp {
+                        if let Some(obj) = value.as_object_mut() {
+                            if let Some(v) = obj.remove("timestamp") {
+                                obj.insert("@timestamp".into(), v);
+                            }
+                        }
+                    }
+                    serde_json::to_writer(&mut writer, &value)?;
                     writer.write_all(b"\n")?;
                     Ok(())
                 })?;

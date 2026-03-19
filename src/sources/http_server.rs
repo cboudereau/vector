@@ -440,10 +440,12 @@ impl HttpSource for SimpleHttpSource {
             match event {
                 Event::Log(otel_log) => {
                     otel_log.set_source_metadata(SimpleHttpConfig::NAME, now);
-                    otel_log.set_attribute(
-                        "http.path".to_string(),
-                        string_value(request_path),
-                    );
+                    if let Some(path_key) = self.path_key.path.as_ref() {
+                        otel_log.set_attribute(
+                            path_key.to_string(),
+                            string_value(request_path),
+                        );
+                    }
                     if let Some(addr) = source_ip {
                         otel_log.set_resource_attribute(
                             "host.name".to_string(),

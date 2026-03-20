@@ -54,12 +54,16 @@ pub fn add_headers(
                         for event in events.iter_mut() {
                             if let Event::Log(otel_log) = event {
                                 if let Some(v) = value {
-                                    otel_log.set_attribute(
-                                        header_name.as_str().to_string(),
-                                        string_value(
-                                            String::from_utf8_lossy(v).into_owned(),
-                                        ),
-                                    );
+                                    let key = header_name.as_str().to_string();
+                                    // Don't overwrite body fields — body values take precedence over headers.
+                                    if !otel_log.has_field(&key) {
+                                        otel_log.set_attribute(
+                                            key,
+                                            string_value(
+                                                String::from_utf8_lossy(v).into_owned(),
+                                            ),
+                                        );
+                                    }
                                 }
                             }
                         }

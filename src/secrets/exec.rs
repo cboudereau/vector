@@ -235,7 +235,7 @@ mod tests {
         let command_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("tests/behavior/secrets/mock_secrets_exec.py");
         ExecBackend {
-            command: ["python", command_path.to_str().unwrap()]
+            command: ["python3", command_path.to_str().unwrap()]
                 .map(String::from)
                 .to_vec(),
             timeout: 5,

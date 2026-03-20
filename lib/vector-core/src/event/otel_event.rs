@@ -551,6 +551,21 @@ impl OtelLog {
         attribute_value(&self.record.attributes, key)
     }
 
+    /// Returns `true` if the body is a KvList that contains `key`, or if `key`
+    /// exists as a record attribute.  This is the appropriate check before
+    /// writing a header value so that body fields always take precedence.
+    pub fn has_field(&self, key: &str) -> bool {
+        if self.attribute(key).is_some() {
+            return true;
+        }
+        if let Some(body) = self.body() {
+            if let Some(OtelValueKind::KvlistValue(kvl)) = &body.value {
+                return kvl.values.iter().any(|kv| kv.key == key);
+            }
+        }
+        false
+    }
+
     pub fn set_attribute(&mut self, key: String, value: AnyValue) {
         set_attribute(&mut self.record.attributes, key, value);
     }
@@ -2034,17 +2049,76 @@ macro_rules! impl_otel_event_traits {
             }
         }
 
-        impl GetEventCountTags for $ty {
-            fn get_tags(&self) -> TaggedEventsSent {
-                TaggedEventsSent::new_unspecified()
-            }
-        }
     };
 }
 
 impl_otel_event_traits!(OtelLog, record);
 impl_otel_event_traits!(OtelSpan, span);
 impl_otel_event_traits!(OtelMetric, metric);
+
+impl GetEventCountTags for OtelSpan {
+    fn get_tags(&self) -> TaggedEventsSent {
+        TaggedEventsSent::new_unspecified()
+    }
+}
+
+// Override GetEventCountTags for OtelLog with proper source/service extraction.
+impl GetEventCountTags for OtelLog {
+    fn get_tags(&self) -> TaggedEventsSent {
+        use crate::config::telemetry;
+        use vector_common::internal_event::OptionalTag;
+
+        let source = if telemetry().tags().emit_source {
+            self.metadata().source_id().cloned().into()
+        } else {
+            OptionalTag::Ignored
+        };
+
+        let service = if telemetry().tags().emit_service {
+            self.attribute("service.name")
+                .and_then(|av| match &av.value {
+                    Some(opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(
+                        s,
+                    )) => Some(s.clone()),
+                    _ => None,
+                })
+                .into()
+        } else {
+            OptionalTag::Ignored
+        };
+
+        TaggedEventsSent { source, service }
+    }
+}
+
+// Override GetEventCountTags for OtelMetric with proper source/service extraction.
+impl GetEventCountTags for OtelMetric {
+    fn get_tags(&self) -> TaggedEventsSent {
+        use crate::config::telemetry;
+        use vector_common::internal_event::OptionalTag;
+
+        let source = if telemetry().tags().emit_source {
+            self.metadata().source_id().cloned().into()
+        } else {
+            OptionalTag::Ignored
+        };
+
+        let service = if telemetry().tags().emit_service {
+            self.resource_attribute("service.name")
+                .and_then(|av| match &av.value {
+                    Some(opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(
+                        s,
+                    )) => Some(s.clone()),
+                    _ => None,
+                })
+                .into()
+        } else {
+            OptionalTag::Ignored
+        };
+
+        TaggedEventsSent { source, service }
+    }
+}
 
 // Compare OtelLog via `to_log_event()` equivalence so that two events
 // carrying the same logical data but stored differently in proto

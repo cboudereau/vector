@@ -1191,7 +1191,9 @@ mod test {
     #[tokio::test]
     async fn test_udp_syslog() {
         assert_source_compliance(&SOCKET_PUSH_SOURCE_TAGS, async {
-            let num_messages: usize = 1000;
+            // Keep the count small to avoid UDP receive-buffer overflow that causes
+            // packet loss on slower / heavily-loaded CI machines.
+            let num_messages: usize = 100;
             let (_guard, in_addr) = next_addr();
 
             // Create and spawn the source.

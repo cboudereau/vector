@@ -354,7 +354,7 @@ mod tests {
 
         // Generate 20 identical log messages with the same component_id
         for _ in 0..20 {
-            info!(component_id = "test", "Repeated test message.");
+            error!(component_id = "test", "Repeated test message.");
         }
 
         sleep(Duration::from_millis(50)).await;

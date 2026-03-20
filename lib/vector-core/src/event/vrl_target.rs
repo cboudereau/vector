@@ -43,7 +43,7 @@ const MAX_METRIC_PATH_DEPTH: usize = 3;
 
 const VALID_OTEL_METRIC_PATHS_SET: &str = ".name, .description, .unit, .resource, .scope, .tags";
 const VALID_OTEL_METRIC_PATHS_GET: &str =
-    ".name, .description, .unit, .resource, .scope, .data, .tags";
+    ".name, .description, .unit, .resource, .scope, .data, .tags, .kind";
 const MAX_OTEL_METRIC_PATH_DEPTH: usize = 4;
 
 // ---------------------------------------------------------------------------
@@ -413,6 +413,10 @@ fn precompute_otel_metric_value(
                         .collect();
                     map.insert("tags".into(), Value::Object(tags_obj));
                 }
+            }
+            ["kind"] => {
+                let kind: Value = event.clone().to_legacy_metric().kind().into();
+                map.insert("kind".into(), kind);
             }
             _ => {}
         }
@@ -1123,7 +1127,7 @@ fn target_get_otel_metric<'a>(
 
     match paths.as_slice() {
         ["name"] | ["description"] | ["unit"] | ["resource"] | ["resource", ..]
-        | ["scope"] | ["scope", ..] | ["data"] | ["tags"] | ["tags", ..] => Ok(value),
+        | ["scope"] | ["scope", ..] | ["data"] | ["tags"] | ["tags", ..] | ["kind"] => Ok(value),
         _ => Err(MetricPathError::InvalidPath {
             path: &path.to_string(),
             expected: VALID_OTEL_METRIC_PATHS_GET,

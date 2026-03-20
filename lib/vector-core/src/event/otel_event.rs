@@ -85,9 +85,10 @@ fn hex_encode(bytes: &[u8]) -> Value {
 
 pub fn vrl_value_to_any_value(value: &Value) -> AnyValue {
     let kind = match value {
-        Value::Bytes(b) => Some(OtelValueKind::StringValue(
-            String::from_utf8_lossy(b).into_owned(),
-        )),
+        Value::Bytes(b) => match std::str::from_utf8(b) {
+            Ok(s) => Some(OtelValueKind::StringValue(s.to_owned())),
+            Err(_) => Some(OtelValueKind::BytesValue(b.to_vec())),
+        },
         Value::Integer(i) => Some(OtelValueKind::IntValue(*i)),
         Value::Float(f) => Some(OtelValueKind::DoubleValue(f.into_inner())),
         Value::Boolean(b) => Some(OtelValueKind::BoolValue(*b)),
@@ -410,11 +411,14 @@ impl OtelLog {
 
     /// Create an `OtelLog` from raw bytes, setting `record.body` to a string value.
     pub fn from_bytes(bytes: bytes::Bytes) -> Self {
-        let body_str = String::from_utf8_lossy(&bytes).into_owned();
+        let body_value = match std::str::from_utf8(&bytes) {
+            Ok(s) => OtelValueKind::StringValue(s.to_owned()),
+            Err(_) => OtelValueKind::BytesValue(bytes.to_vec()),
+        };
         Self {
             record: LogRecord {
                 body: Some(AnyValue {
-                    value: Some(OtelValueKind::StringValue(body_str)),
+                    value: Some(body_value),
                 }),
                 ..Default::default()
             },
@@ -690,16 +694,22 @@ impl OtelLog {
             let log = self.to_log_event();
             return log.get_timestamp().map(|v| coerce_to_timestamp(v.clone()));
         }
-        let nanos = if self.record.time_unix_nano != 0 {
-            self.record.time_unix_nano
+        if self.record.time_unix_nano != 0 {
+            let nanos = self.record.time_unix_nano;
+            let secs = (nanos / 1_000_000_000) as i64;
+            let nsecs = (nanos % 1_000_000_000) as u32;
+            chrono::DateTime::from_timestamp(secs, nsecs).map(Value::Timestamp)
+        } else if let Some(av) = self.attribute("timestamp") {
+            let v = any_value_to_vrl(av);
+            Some(coerce_to_timestamp(v))
         } else if self.record.observed_time_unix_nano != 0 {
-            self.record.observed_time_unix_nano
+            let nanos = self.record.observed_time_unix_nano;
+            let secs = (nanos / 1_000_000_000) as i64;
+            let nsecs = (nanos % 1_000_000_000) as u32;
+            chrono::DateTime::from_timestamp(secs, nsecs).map(Value::Timestamp)
         } else {
-            return self.to_log_event().get_timestamp().cloned();
-        };
-        let secs = (nanos / 1_000_000_000) as i64;
-        let nsecs = (nanos % 1_000_000_000) as u32;
-        chrono::DateTime::from_timestamp(secs, nsecs).map(Value::Timestamp)
+            self.to_log_event().get_timestamp().cloned()
+        }
     }
 
     /// Remove the timestamp from the event (LogEvent-compatible bridge).
@@ -876,11 +886,14 @@ impl OtelLog {
         }
 
         for kv in &self.record.attributes {
-            let v = kv
+            let mut v = kv
                 .value
                 .as_ref()
                 .map(any_value_to_vrl)
                 .unwrap_or(Value::Null);
+            if kv.key == "timestamp" {
+                v = coerce_to_timestamp(v);
+            }
             map.insert(kv.key.clone().into(), v);
         }
 
@@ -903,13 +916,19 @@ impl OtelLog {
                         map.insert("timestamp".into(), Value::Timestamp(dt.with_timezone(&chrono::Utc)));
                     }
                 }
-            } else {
-                let nanos = if self.record.time_unix_nano != 0 {
-                    self.record.time_unix_nano
+            } else if self.record.time_unix_nano != 0 {
+                let nanos = self.record.time_unix_nano;
+                let secs = (nanos / 1_000_000_000) as i64;
+                let nsecs = (nanos % 1_000_000_000) as u32;
+                if let Some(ts) = chrono::DateTime::from_timestamp(secs, nsecs) {
+                    map.insert("timestamp".into(), Value::Timestamp(ts));
+                }
+            } else if self.record.observed_time_unix_nano != 0 {
+                if map.contains_key("timestamp") {
+                    // A source explicitly provided a timestamp attribute (e.g. epoch);
+                    // don't overwrite it with observed_time.
                 } else {
-                    self.record.observed_time_unix_nano
-                };
-                if nanos != 0 {
+                    let nanos = self.record.observed_time_unix_nano;
                     let secs = (nanos / 1_000_000_000) as i64;
                     let nsecs = (nanos % 1_000_000_000) as u32;
                     if let Some(ts) = chrono::DateTime::from_timestamp(secs, nsecs) {
@@ -1586,6 +1605,30 @@ impl OtelMetric {
 
     pub fn unit(&self) -> &str {
         &self.metric.unit
+    }
+
+    pub fn set_data_point_attribute(&mut self, key: String, value: AnyValue) {
+        use opentelemetry_proto::tonic::metrics::v1::metric::Data as MetricData;
+        let attr = KeyValue { key, value: Some(value) };
+        if let Some(data) = self.metric.data.as_mut() {
+            match data {
+                MetricData::Sum(s) => {
+                    for dp in &mut s.data_points { dp.attributes.push(attr.clone()); }
+                }
+                MetricData::Gauge(g) => {
+                    for dp in &mut g.data_points { dp.attributes.push(attr.clone()); }
+                }
+                MetricData::Histogram(h) => {
+                    for dp in &mut h.data_points { dp.attributes.push(attr.clone()); }
+                }
+                MetricData::Summary(s) => {
+                    for dp in &mut s.data_points { dp.attributes.push(attr.clone()); }
+                }
+                MetricData::ExponentialHistogram(e) => {
+                    for dp in &mut e.data_points { dp.attributes.push(attr.clone()); }
+                }
+            }
+        }
     }
 
     pub fn resource_attribute(&self, key: &str) -> Option<&AnyValue> {

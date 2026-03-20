@@ -41,9 +41,9 @@ const VALID_METRIC_PATHS_GET: &str =
 /// fields such as `.tags.host.thing`.
 const MAX_METRIC_PATH_DEPTH: usize = 3;
 
-const VALID_OTEL_METRIC_PATHS_SET: &str = ".name, .description, .unit, .resource, .scope";
+const VALID_OTEL_METRIC_PATHS_SET: &str = ".name, .description, .unit, .resource, .scope, .tags";
 const VALID_OTEL_METRIC_PATHS_GET: &str =
-    ".name, .description, .unit, .resource, .scope, .data";
+    ".name, .description, .unit, .resource, .scope, .data, .tags";
 const MAX_OTEL_METRIC_PATH_DEPTH: usize = 4;
 
 // ---------------------------------------------------------------------------
@@ -396,6 +396,22 @@ fn precompute_otel_metric_value(
             ["scope"] | ["scope", ..] => {
                 if let Some(scope) = event.scope() {
                     map.insert("scope".into(), otel_scope_to_value(scope));
+                }
+            }
+            ["tags"] | ["tags", ..] => {
+                let legacy = event.clone().to_legacy_metric();
+                if let Some(tags) = legacy.tags() {
+                    let tags_obj: ObjectMap = tags
+                        .iter_all()
+                        .map(|(k, v)| {
+                            let val = match v {
+                                Some(s) => Value::Bytes(s.to_owned().into()),
+                                None => Value::Null,
+                            };
+                            (k.to_owned().into(), val)
+                        })
+                        .collect();
+                    map.insert("tags".into(), Value::Object(tags_obj));
                 }
             }
             _ => {}
@@ -760,6 +776,32 @@ impl Target for VrlTarget {
                             ["scope", ..] => {
                                 // Insert into existing scope value projection
                             }
+                            ["tags", tag_name] => {
+                                let tag_str = value
+                                    .clone()
+                                    .try_bytes()
+                                    .map(|b| String::from_utf8_lossy(&b).into_owned())
+                                    .unwrap_or_default();
+                                event.set_data_point_attribute(
+                                    tag_name.to_string(),
+                                    super::string_value(tag_str),
+                                );
+                            }
+                            ["tags"] => {
+                                if let Value::Object(tags_map) = &value {
+                                    for (k, v) in tags_map {
+                                        let tag_str = v
+                                            .clone()
+                                            .try_bytes()
+                                            .map(|b| String::from_utf8_lossy(&b).into_owned())
+                                            .unwrap_or_default();
+                                        event.set_data_point_attribute(
+                                            k.to_string(),
+                                            super::string_value(tag_str),
+                                        );
+                                    }
+                                }
+                            }
                             _ => {
                                 return Err(MetricPathError::InvalidPath {
                                     path: &path.to_string(),
@@ -1081,7 +1123,7 @@ fn target_get_otel_metric<'a>(
 
     match paths.as_slice() {
         ["name"] | ["description"] | ["unit"] | ["resource"] | ["resource", ..]
-        | ["scope"] | ["scope", ..] | ["data"] => Ok(value),
+        | ["scope"] | ["scope", ..] | ["data"] | ["tags"] | ["tags", ..] => Ok(value),
         _ => Err(MetricPathError::InvalidPath {
             path: &path.to_string(),
             expected: VALID_OTEL_METRIC_PATHS_GET,
@@ -1106,7 +1148,7 @@ fn target_get_mut_otel_metric<'a>(
 
     match paths.as_slice() {
         ["name"] | ["description"] | ["unit"] | ["resource"] | ["resource", ..]
-        | ["scope"] | ["scope", ..] => Ok(value),
+        | ["scope"] | ["scope", ..] | ["tags"] | ["tags", ..] => Ok(value),
         _ => Err(MetricPathError::InvalidPath {
             path: &path.to_string(),
             expected: VALID_OTEL_METRIC_PATHS_SET,

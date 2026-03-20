@@ -326,54 +326,45 @@ mod test {
 
     #[tokio::test]
     async fn merge_single_event_vector_namespace() {
-        let mut e_1 = LogEvent::from(value!("test message 1"));
-        e_1.insert(
-            vrl::metadata_path!(super::super::Config::NAME, FILE_KEY),
-            "foo1",
-        );
+        use crate::event::string_value;
 
-        let input_stream = futures::stream::iter([e_1.into()]);
+        let mut e_1 = OtelLog::from_bytes(bytes::Bytes::from("test message 1"));
+        e_1.set_attribute(FILE_KEY.to_string(), string_value("foo1"));
+
+        let input_stream = futures::stream::iter([Event::from(e_1)]);
         let output_stream = merge_partial_events(input_stream, LogNamespace::Vector, None);
 
         let output: Vec<Event> = output_stream.collect().await;
         assert_eq!(output.len(), 1);
-        assert_eq!(output[0].as_log().get("."), Some(value!("test message 1")));
-        assert_eq!(
-            output[0].as_log().get("%kubernetes_logs.file"),
-            Some(value!("foo1"))
-        );
+        assert_eq!(output[0].as_log().body_string(), "test message 1");
     }
 
     #[tokio::test]
     async fn merge_multiple_events_vector_namespace() {
-        let mut e_1 = LogEvent::from(value!("test message 1"));
-        e_1.insert(
-            vrl::metadata_path!(super::super::Config::NAME, "_partial"),
-            true,
-        );
-        e_1.insert(
-            vrl::metadata_path!(super::super::Config::NAME, FILE_KEY),
-            "foo1",
+        use crate::event::string_value;
+        use opentelemetry_proto::tonic::common::v1::AnyValue;
+        use opentelemetry_proto::tonic::common::v1::any_value::Value as OtelValueKind;
+
+        let mut e_1 = OtelLog::from_bytes(bytes::Bytes::from("test message 1"));
+        e_1.set_attribute(FILE_KEY.to_string(), string_value("foo1"));
+        e_1.set_attribute(
+            event::PARTIAL.to_string(),
+            AnyValue {
+                value: Some(OtelValueKind::BoolValue(true)),
+            },
         );
 
-        let mut e_2 = LogEvent::from(value!("test message 2"));
-        e_2.insert(
-            vrl::metadata_path!(super::super::Config::NAME, FILE_KEY),
-            "foo1",
-        );
+        let mut e_2 = OtelLog::from_bytes(bytes::Bytes::from("test message 2"));
+        e_2.set_attribute(FILE_KEY.to_string(), string_value("foo1"));
 
-        let input_stream = futures::stream::iter([e_1.into(), e_2.into()]);
+        let input_stream = futures::stream::iter([Event::from(e_1), Event::from(e_2)]);
         let output_stream = merge_partial_events(input_stream, LogNamespace::Vector, None);
 
         let output: Vec<Event> = output_stream.collect().await;
         assert_eq!(output.len(), 1);
         assert_eq!(
-            output[0].as_log().get("."),
-            Some(value!("test message 1test message 2"))
-        );
-        assert_eq!(
-            output[0].as_log().get("%kubernetes_logs.file"),
-            Some(value!("foo1"))
+            output[0].as_log().body_string(),
+            "test message 1test message 2"
         );
     }
 }

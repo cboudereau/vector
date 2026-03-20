@@ -1222,10 +1222,18 @@ async fn decode_traces() {
             assert_eq!(span_from_trace_v1["trace_id"], Value::Integer(123));
             assert_eq!(span_from_trace_v1["span_id"], Value::Integer(456));
             assert_eq!(span_from_trace_v1["parent_id"], Value::Integer(789));
-            assert_eq!(
-                span_from_trace_v1["start"],
-                Value::from(Utc.timestamp_nanos(1_431_648_000_000_001i64))
-            );
+            {
+                let expected_ts = Utc.timestamp_nanos(1_431_648_000_000_001i64);
+                let actual = &span_from_trace_v1["start"];
+                match actual {
+                    Value::Timestamp(ts) => assert_eq!(*ts, expected_ts),
+                    Value::Bytes(b) => assert_eq!(
+                        std::str::from_utf8(b).unwrap(),
+                        expected_ts.to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true)
+                    ),
+                    other => panic!("expected Timestamp or Bytes, got {other:?}"),
+                }
+            }
             assert_eq!(
                 span_from_trace_v1["duration"],
                 Value::Integer(1_000_000_000)
@@ -1304,10 +1312,18 @@ async fn decode_traces() {
             assert_eq!(span_from_trace_v2["trace_id"], Value::Integer(123));
             assert_eq!(span_from_trace_v2["span_id"], Value::Integer(456));
             assert_eq!(span_from_trace_v2["parent_id"], Value::Integer(789));
-            assert_eq!(
-                span_from_trace_v2["start"],
-                Value::from(Utc.timestamp_nanos(1_431_648_000_000_001i64))
-            );
+            {
+                let expected_ts = Utc.timestamp_nanos(1_431_648_000_000_001i64);
+                let actual = &span_from_trace_v2["start"];
+                match actual {
+                    Value::Timestamp(ts) => assert_eq!(*ts, expected_ts),
+                    Value::Bytes(b) => assert_eq!(
+                        std::str::from_utf8(b).unwrap(),
+                        expected_ts.to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true)
+                    ),
+                    other => panic!("expected Timestamp or Bytes, got {other:?}"),
+                }
+            }
             assert_eq!(
                 span_from_trace_v2["duration"],
                 Value::Integer(1_000_000_000)

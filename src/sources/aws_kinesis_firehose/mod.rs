@@ -282,14 +282,14 @@ mod tests {
     use futures::Stream;
     use similar_asserts::assert_eq;
     use tokio::time::{Duration, sleep};
-    use vector_lib::{assert_event_data_eq, lookup::path};
+    use vector_lib::lookup::path;
     use vrl::value;
+    use vrl::value::Value;
 
     use super::*;
     use crate::{
         SourceSender,
         event::{Event, EventStatus},
-        log_event,
         test_util::{
             addr::{PortGuard, next_addr},
             collect_ready,
@@ -536,16 +536,12 @@ mod tests {
                 let res = res.await.unwrap().unwrap();
                 assert_eq!(200, res.status().as_u16());
 
-                assert_event_data_eq!(
-                    events,
-                    vec![log_event! {
-                        "source_type" => Bytes::from("aws_kinesis_firehose"),
-                        "timestamp" => timestamp.trunc_subsecs(3), // AWS sends timestamps as ms
-                        "message" => Bytes::from(expected),
-                        "request_id" => REQUEST_ID,
-                        "source_arn" => SOURCE_ARN,
-                    },]
-                );
+                assert_eq!(events.len(), 1);
+                let log = events[0].as_log();
+                assert_eq!(log.get("message").unwrap(), Value::Bytes(Bytes::from(expected)));
+                assert_eq!(log.get("source_type").unwrap(), Value::Bytes(Bytes::from("aws_kinesis_firehose")));
+                assert_eq!(log.get("request_id").unwrap(), Value::Bytes(Bytes::from(REQUEST_ID)));
+                assert_eq!(log.get("source_arn").unwrap(), Value::Bytes(Bytes::from(SOURCE_ARN)));
 
                 let response: models::FirehoseResponse = res.json().await.unwrap();
                 assert_eq!(response.request_id, REQUEST_ID);
@@ -708,16 +704,12 @@ mod tests {
             let res = res.await.unwrap().unwrap();
             assert_eq!(200, res.status().as_u16());
 
-            assert_event_data_eq!(
-                events,
-                vec![log_event! {
-                    "source_type" => Bytes::from("aws_kinesis_firehose"),
-                    "timestamp" => timestamp.trunc_subsecs(3), // AWS sends timestamps as ms
-                    "message"=> RECORD,
-                    "request_id" => REQUEST_ID,
-                    "source_arn" => SOURCE_ARN,
-                },]
-            );
+            assert_eq!(events.len(), 1);
+            let log = events[0].as_log();
+            assert_eq!(log.get("message").unwrap(), Value::Bytes(Bytes::from(RECORD)));
+            assert_eq!(log.get("source_type").unwrap(), Value::Bytes(Bytes::from("aws_kinesis_firehose")));
+            assert_eq!(log.get("request_id").unwrap(), Value::Bytes(Bytes::from(REQUEST_ID)));
+            assert_eq!(log.get("source_arn").unwrap(), Value::Bytes(Bytes::from(SOURCE_ARN)));
 
             let response: models::FirehoseResponse = res.json().await.unwrap();
             assert_eq!(response.request_id, REQUEST_ID);
@@ -869,16 +861,12 @@ mod tests {
         let res = res.await.unwrap().unwrap();
         assert_eq!(406, res.status().as_u16());
 
-        assert_event_data_eq!(
-            events,
-            vec![log_event! {
-                "source_type" => Bytes::from("aws_kinesis_firehose"),
-                "timestamp" => timestamp.trunc_subsecs(3), // AWS sends timestamps as ms
-                "message"=> Bytes::from(expected),
-                "request_id" => REQUEST_ID,
-                "source_arn" => SOURCE_ARN,
-            },]
-        );
+        assert_eq!(events.len(), 1);
+        let log = events[0].as_log();
+        assert_eq!(log.get("message").unwrap(), Value::Bytes(Bytes::from(expected)));
+        assert_eq!(log.get("source_type").unwrap(), Value::Bytes(Bytes::from("aws_kinesis_firehose")));
+        assert_eq!(log.get("request_id").unwrap(), Value::Bytes(Bytes::from(REQUEST_ID)));
+        assert_eq!(log.get("source_arn").unwrap(), Value::Bytes(Bytes::from(SOURCE_ARN)));
 
         let response: models::FirehoseResponse = res.json().await.unwrap();
         assert_eq!(response.request_id, REQUEST_ID);

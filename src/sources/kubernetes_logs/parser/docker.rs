@@ -107,12 +107,14 @@ fn parse_json_otel(otel_log: &mut crate::event::OtelLog) -> Result<(), ParsingEr
 
     match serde_json::from_str::<JsonValue>(&body) {
         Ok(JsonValue::Object(object)) => {
+            let mut found_log = false;
             for (key, value) in object {
                 match key.as_str() {
                     MESSAGE_KEY => {
+                        found_log = true;
                         let s = match value {
                             JsonValue::String(s) => s,
-                            other => other.to_string(),
+                            _ => return Err(ParsingError::MessageFieldNotInBytes),
                         };
                         otel_log.set_body(crate::event::string_value(s));
                     }
@@ -130,8 +132,11 @@ fn parse_json_otel(otel_log: &mut crate::event::OtelLog) -> Result<(), ParsingEr
                         };
                         otel_log.set_attribute(TIMESTAMP_KEY.to_string(), crate::event::string_value(s));
                     }
-                    _ => unreachable!("all json-file keys should be matched"),
+                    _ => {}
                 };
+            }
+            if !found_log {
+                return Err(ParsingError::NoMessageField);
             }
             Ok(())
         }
@@ -148,18 +153,16 @@ fn parse_json_otel(otel_log: &mut crate::event::OtelLog) -> Result<(), ParsingEr
 const DOCKER_MESSAGE_SPLIT_THRESHOLD: usize = 16 * 1024; // 16 Kib
 
 fn normalize_event_otel(otel_log: &mut crate::event::OtelLog) -> Result<(), NormalizationError> {
-    if let Some(time_attr) = otel_log.remove_attribute(TIMESTAMP_KEY) {
-        if let Some(crate::event::OtelValueKind::StringValue(time_str)) = time_attr.value {
-            match DateTime::parse_from_rfc3339(&time_str) {
-                Ok(dt) => {
-                    let ts = dt.with_timezone(&Utc);
-                    otel_log.record_mut().time_unix_nano =
-                        ts.timestamp_nanos_opt().unwrap_or(0) as u64;
-                }
-                Err(_) => {}
-            }
-        }
-    }
+    let time_attr = otel_log
+        .remove_attribute(TIMESTAMP_KEY)
+        .ok_or(NormalizationError::TimeFieldMissing)?;
+    let time_str = match time_attr.value {
+        Some(crate::event::OtelValueKind::StringValue(s)) if !s.is_empty() => s,
+        _ => return Err(NormalizationError::TimeValueUnexpectedType),
+    };
+    let dt = DateTime::parse_from_rfc3339(&time_str)
+        .map_err(|source| NormalizationError::TimeParsing { source })?;
+    otel_log.record_mut().time_unix_nano = dt.with_timezone(&Utc).timestamp_nanos_opt().unwrap_or(0) as u64;
 
     let body = otel_log.body_string();
     if body.is_empty() {

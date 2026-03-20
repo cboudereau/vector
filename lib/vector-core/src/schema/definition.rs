@@ -549,9 +549,11 @@ mod test_utils {
         /// If the definition is not valid, debug info will be returned.
         pub fn is_valid_for_event(&self, event: &Event) -> Result<(), String> {
             if let Some(otel_log) = event.maybe_as_log() {
-                let log = otel_log.to_log_event();
-
-                let actual_kind = Kind::from(log.value());
+                let actual_kind = if otel_log.namespace() == crate::config::LogNamespace::Vector {
+                    Kind::from(otel_log.value())
+                } else {
+                    Kind::from(otel_log.to_log_event().value())
+                };
                 if let Err(path) = self.event_kind.is_superset(&actual_kind) {
                     return Result::Err(format!(
                         "Event value doesn't match at path: {}\n\nEvent type at path = {:?}\n\nDefinition at path = {:?}",
@@ -561,7 +563,7 @@ mod test_utils {
                     ));
                 }
 
-                let actual_metadata_kind = Kind::from(log.metadata().value());
+                let actual_metadata_kind = Kind::from(otel_log.metadata().value());
                 if let Err(path) = self.metadata_kind.is_superset(&actual_metadata_kind) {
                     return Result::Err(format!(
                         "Event METADATA value doesn't match at path: {}\n\nMetadata type at path = {:?}\n\nDefinition at path = {:?}",
@@ -570,10 +572,10 @@ mod test_utils {
                         self.metadata_kind.at_path(&path).debug_info()
                     ));
                 }
-                if !self.log_namespaces.contains(&log.namespace()) {
+                if !self.log_namespaces.contains(&otel_log.namespace()) {
                     return Result::Err(format!(
                         "Event uses the {:?} LogNamespace, but the definition only contains: {:?}",
-                        log.namespace(),
+                        otel_log.namespace(),
                         self.log_namespaces
                     ));
                 }

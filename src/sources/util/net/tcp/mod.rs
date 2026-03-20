@@ -367,9 +367,23 @@ async fn handle_stream<T>(
 
 
                         if let Some(certificate_metadata) = &certificate_metadata {
-                            if let Some(ref key) = tls_client_metadata_key {
-                                for event in &mut events {
-                                    if let Event::Log(otel_log) = event {
+                            for event in &mut events {
+                                if let Event::Log(otel_log) = event {
+                                    if _log_namespace == vector_lib::config::LogNamespace::Vector {
+                                        let mut tls_map = vrl::value::ObjectMap::new();
+                                        tls_map.insert(
+                                            "subject".into(),
+                                            vrl::value::Value::Bytes(
+                                                certificate_metadata.subject().into(),
+                                            ),
+                                        );
+                                        otel_log.metadata_mut().value_mut().insert(
+                                            vector_lib::lookup::path!(
+                                                _source_name, "tls_client_metadata"
+                                            ),
+                                            vrl::value::Value::Object(tls_map),
+                                        );
+                                    } else if let Some(ref key) = tls_client_metadata_key {
                                         let tls_obj = opentelemetry_proto::tonic::common::v1::AnyValue {
                                             value: Some(
                                                 opentelemetry_proto::tonic::common::v1::any_value::Value::KvlistValue(

@@ -16,7 +16,7 @@ use warp::{Filter, filters::BoxedFilter, path as warp_path, path::FullPath, repl
 use super::{ApiKeyQueryParams, DatadogAgentConfig, DatadogAgentSource, LogMsg, RequestHandler};
 use crate::{
     common::{datadog::DDTAGS, http::ErrorMessage},
-    event::{Event, string_value},
+    event::{Event, string_value, vrl_value_to_any_value},
     internal_events::DatadogAgentJsonParseError,
 };
 
@@ -105,13 +105,25 @@ pub(crate) fn decode_log_body(
                             otel_log.set_attribute("status".to_string(), string_value(String::from_utf8_lossy(&status)));
                             if let Some(nanos) = timestamp.timestamp_nanos_opt() {
                                 otel_log.record_mut().time_unix_nano = nanos as u64;
+                                if nanos == 0 {
+                                    otel_log.set_attribute(
+                                        "timestamp".to_string(),
+                                        vrl_value_to_any_value(&Value::Timestamp(timestamp)),
+                                    );
+                                }
                             }
                             otel_log.set_attribute("hostname".to_string(), string_value(String::from_utf8_lossy(&hostname)));
                             otel_log.set_attribute("service".to_string(), string_value(String::from_utf8_lossy(&service)));
                             otel_log.set_attribute("ddsource".to_string(), string_value(String::from_utf8_lossy(&ddsource)));
 
-                            let ddtags_str = String::from_utf8_lossy(&ddtags);
-                            otel_log.set_attribute(DDTAGS.to_string(), string_value(ddtags_str));
+                            if source.parse_ddtags {
+                                let parsed = parse_ddtags(&ddtags);
+                                let av = vrl_value_to_any_value(&parsed);
+                                otel_log.set_attribute(DDTAGS.to_string(), av);
+                            } else {
+                                let ddtags_str = String::from_utf8_lossy(&ddtags);
+                                otel_log.set_attribute(DDTAGS.to_string(), string_value(ddtags_str));
+                            }
 
                             event_bytes_received += otel_log.estimated_json_encoded_size_of();
 
@@ -156,7 +168,6 @@ pub(crate) fn decode_log_body(
 // tag-value pairs are separated by `:`.
 //
 // The output is an Array regardless of the input string.
-#[allow(dead_code)]
 fn parse_ddtags(ddtags_raw: &Bytes) -> Value {
     if ddtags_raw.is_empty() {
         return Vec::<Value>::new().into();

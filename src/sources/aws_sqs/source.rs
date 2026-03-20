@@ -266,8 +266,7 @@ mod tests {
             events[0]
                 .clone()
                 .as_log()
-                .get(".")
-                .unwrap()
+                .value()
                 .to_string_lossy(),
             message
         );

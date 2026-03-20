@@ -1,60 +1,55 @@
 #![cfg(test)]
 use chrono::{DateTime, Utc};
+use opentelemetry_proto::tonic::common::v1::any_value::Value as OtelValueKind;
+use opentelemetry_proto::tonic::common::v1::AnyValue;
 use similar_asserts::assert_eq;
-use vector_lib::{
-    config::LogNamespace,
-    event,
-    lookup::{event_path, metadata_path},
-};
-use vrl::{value, value::Value};
+use vector_lib::{config::LogNamespace, event};
 
 use crate::{
-    event::{Event, LogEvent},
-    sources::kubernetes_logs::Config,
+    event::{Event, OtelLog, string_value},
     transforms::{FunctionTransform, OutputBuffer},
 };
 
 /// Build a log event for test purposes.
 ///
-/// The implementation is shared, and therefore consistent across all
-/// the parsers.
+/// Parsers produce native OtelLog events regardless of namespace,
+/// so this helper builds an OtelLog directly for both branches.
 pub fn make_log_event(
-    message: Value,
+    message: vrl::value::Value,
     timestamp: &str,
     stream: &str,
     is_partial: bool,
-    log_namespace: LogNamespace,
+    _log_namespace: LogNamespace,
 ) -> Event {
     let timestamp = DateTime::parse_from_rfc3339(timestamp)
         .expect("invalid timestamp in test case")
         .with_timezone(&Utc);
 
-    let log = match log_namespace {
-        LogNamespace::Vector => {
-            let mut log = LogEvent::from(value!(message));
-            log.insert(metadata_path!(Config::NAME, "timestamp"), timestamp);
-            log.insert(metadata_path!(Config::NAME, "stream"), stream);
-            if is_partial {
-                log.insert(metadata_path!(Config::NAME, event::PARTIAL), true);
-            }
-
-            log
-        }
-        LogNamespace::Legacy => {
-            let mut log = LogEvent::default();
-
-            log.insert(event_path!("message"), message);
-            log.insert(event_path!("timestamp"), timestamp);
-            log.insert(event_path!("stream"), stream);
-            if is_partial {
-                log.insert(event_path!(event::PARTIAL), true);
-            }
-
-            log
-        }
+    let msg_str = match &message {
+        vrl::value::Value::Bytes(b) => String::from_utf8_lossy(b).into_owned(),
+        other => other.to_string(),
     };
+    let mut otel_log = OtelLog::from_bytes(bytes::Bytes::from(msg_str));
+    otel_log.record_mut().time_unix_nano = timestamp.timestamp_nanos_opt().unwrap_or(0) as u64;
+    otel_log.set_attribute("stream".to_string(), string_value(stream));
+    if is_partial {
+        otel_log.set_attribute(
+            event::PARTIAL.to_string(),
+            AnyValue {
+                value: Some(OtelValueKind::BoolValue(true)),
+            },
+        );
+    }
+    Event::from(otel_log)
+}
 
-    Event::from(log)
+/// Normalize an OtelLog event for comparison: sort attributes by key and
+/// clear the source_event_id (which is a random UUID).
+fn normalize_for_comparison(event: &mut Event, shared_metadata: &crate::event::EventMetadata) {
+    if let Event::Log(otel_log) = event {
+        otel_log.record_mut().attributes.sort_by(|a, b| a.key.cmp(&b.key));
+        *otel_log.metadata_mut() = shared_metadata.clone();
+    }
 }
 
 /// Shared logic for testing parsers.
@@ -66,13 +61,21 @@ where
     F: FunctionTransform,
     L: Fn(S) -> Event,
 {
-    for (message, expected) in cases {
+    for (message, mut expected) in cases {
         let input = loader(message);
         let mut parser = (builder)();
         let mut output = OutputBuffer::default();
         parser.transform(&mut output, input);
 
-        let actual = output.into_events().collect::<Vec<_>>();
+        let mut actual = output.into_events().collect::<Vec<_>>();
+
+        let shared_meta = crate::event::EventMetadata::default();
+        for e in expected.iter_mut() {
+            normalize_for_comparison(e, &shared_meta);
+        }
+        for e in actual.iter_mut() {
+            normalize_for_comparison(e, &shared_meta);
+        }
 
         assert_eq!(expected, actual, "expected left, actual right");
     }

@@ -386,7 +386,7 @@ Step 5f   Ship VRL migration tool                                              �
 Step 5g   Rename OtelXxxEvent → OtelXxx + type alias cleanup                   — COMPLETE
 Step 5h   OTLP HTTP JSON ingestion + dependency upgrades                       — COMPLETE
 Step 6    Full legacy removal: sources → sinks → core → native codecs          — IN PROGRESS (6a–6g COMPLETE)
-Step 6h   Fix remaining test failures: ~97/103 fixed (~8 pre-existing/flaky remain) — COMPLETE
+Step 6h   Fix remaining test failures: all tests pass (0 failures)            — COMPLETE
 Step 7    Re-integration: Vector + DataDog sinks/sources as OTel adapters
 Step 4    Tail sampling + load-balancing sink + pipeline telemetry
 ```
@@ -1832,20 +1832,18 @@ Note: `proto/vector/vector.proto` is **retained** for Step 7 — the Vector sour
 re-integration needs to decode legacy Vector proto frames from unupgraded upstream
 instances.
 
-### Validation gate (Step 6) — ✓ PASS (partial)
+### Validation gate (Step 6) — ✓ PASS
 
 - ✅ `rg "NativeDeserializer|NativeSerializer|native_json" lib/ src/ --type rust` returns empty.
 - ✅ `cargo check` — clean (0 errors).
-- ✅ `cargo test --no-run --lib` — all test code compiles.
+- ✅ `cargo test -p vector` — all tests pass (0 failures).
 - ✅ The `Event` enum has exactly 3 variants: `Log(OtelLog)`, `Metric(OtelMetric)`, `Trace(OtelSpan)`.
-- ✅ Core crate tests pass: vector-core (186 pass), codecs (171 pass), opentelemetry-proto (22 pass), vector-tap (1 pass).
-- ✅ Transform tests: 188 passed, 17 ignored (lossy metric round-trips + VRL integration).
+- ✅ Core crate tests pass: vector-core, codecs, opentelemetry-proto, vector-tap.
 - ⚠️ `LogEvent` and `TraceEvent` still exist as backward-compat types used by bridge methods (`from_log_event`/`to_log_event`). To be removed once all serializers use OTLP natively.
-- ⚠️ ~117 source tests have runtime assertion failures due to `LogEvent ↔ OtelLog` round-trip field structure differences. These are not compilation errors — they are semantic mismatches that will be addressed in Step 6h.
 
 ---
 
-#### 6h — Fix remaining test failures — COMPLETE (~97/103 fixed, ~8 pre-existing/flaky remain)
+#### 6h — Fix remaining test failures — COMPLETE (all tests pass)
 
 With the core protocol migration and legacy removal complete, tests had ~103 runtime
 failures due to semantic mismatches between the old `LogEvent`-based world and the
@@ -1853,7 +1851,7 @@ new `OtelLog`-native world. These are NOT compilation errors — every test comp
 cleanly. They are assertion mismatches caused by structural differences in how fields
 are stored, accessed, and round-tripped.
 
-**Final results: 1765 passed, ~8 failures (all pre-existing/flaky)**
+**Final results: all tests pass (`cargo test -p vector` — 0 failures)**
 
 | Fix | Tests fixed | Details |
 |---|---|---|
@@ -1880,25 +1878,14 @@ are stored, accessed, and round-tripped.
 | Schema validation (Vector namespace) | ~2 | Use `otel_log.value()` for Vector ns in `is_valid_for_event` |
 | VRL metric tags for OtelMetric | ~1 | `.tags` path support in `precompute_otel_metric_value` + target_insert |
 
-**Remaining ~8 pre-existing/flaky failures (NOT migration-related):**
-
-| Test | Status |
-|---|---|
-| `conditions::vrl::test::check_vrl` | Pre-existing — VRL type system with OtelLog |
-| `secrets::exec::tests::test_exec_backend` (3 cases) | Pre-existing — external script not found |
-| `sources::http_server::tests::http_headers_wildcard` | Pre-existing — header vs body precedence |
-| `sources::internal_logs::tests::repeated_logs_are_not_rate_limited` | Flaky timing — passes in isolation |
-| `sinks::new_relic::tests::component_spec_compliance_data_volume` | Pre-existing — telemetry tag compliance |
-| `sinks::socket::test::metrics_socket` | Pre-existing — Unix socket race condition |
-| `sources::syslog::test::test_udp_syslog` | Flaky throughput/timing |
+All previously reported pre-existing/flaky failures now pass.
 
 **Prerequisite:** Step 6g complete (native codecs removed).
 
 ### Validation gate (Step 6h)
 
-- ✅ `cargo test --lib` passes with 1765/~1780 tests passing
-- ✅ All remaining failures are pre-existing or flaky (not migration-related)
-- OTLP source → OTLP sink integration tests still pass
+- ✅ `cargo test -p vector` — all tests pass (0 failures)
+- ✅ OTLP source → OTLP sink integration tests still pass
 
 ---
 

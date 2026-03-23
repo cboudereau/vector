@@ -1,8 +1,15 @@
-use std::{num::NonZeroU32, sync::Arc};
+use std::sync::Arc;
 
 use bytes::Bytes;
-use chrono::{TimeZone, Utc};
 use http::StatusCode;
+use opentelemetry_proto::tonic::{
+    common::v1::{AnyValue, KeyValue, any_value},
+    metrics::v1::{
+        self as otel_metrics, metric, number_data_point::Value as NDPValue, AggregationTemporality,
+        Metric as OtelMetricProto,
+    },
+    resource::v1::Resource,
+};
 use prost::Message;
 use serde::{Deserialize, Serialize};
 use vector_lib::{
@@ -10,24 +17,18 @@ use vector_lib::{
     event::EventMetadata,
     internal_event::{CountByteSize, InternalEventHandle as _, Registered},
 };
-
-use super::ddsketch::AgentDDSketch;
 use warp::{Filter, filters::BoxedFilter, path, path::FullPath, reply::Response};
 
-use super::ddmetric_proto::{Metadata, MetricPayload, SketchPayload, metric_payload};
+use super::ddsketch::AgentDDSketch;
+use super::ddmetric_proto::{MetricPayload, SketchPayload, metric_payload};
 use super::{ApiKeyQueryParams, DatadogAgentSource, RequestHandler};
 use crate::{
     common::{
         datadog::{DatadogMetricType, DatadogSeriesMetric},
         http::ErrorMessage,
     },
-    config::log_schema,
-    event::{
-        Event, MetricKind, MetricTags,
-        metric::{Metric, MetricValue},
-    },
+    event::{Event, OtelMetric, otel_event::string_value},
     internal_events::EventsReceived,
-    schema,
     sources::util::extract_tag_key_and_value,
 };
 
@@ -115,9 +116,6 @@ fn series_v1_service(
                                 api_token,
                                 query_params.dd_api_key,
                             ),
-                            // Currently metrics do not have schemas defined, so for now we just pass a
-                            // default one.
-                            &Arc::new(schema::Definition::default_legacy_namespace()),
                             source.split_metric_namespace,
                             &source.events_received,
                         )
@@ -219,11 +217,64 @@ fn decode_datadog_series_v2(
     Ok(metrics)
 }
 
-/// Builds Vector's `EventMetadata` from the received metadata.
-/// Origin product/category/service are no longer stored in EventMetadata (DD sinks removed).
-/// They are preserved as attributes on the metric tags if needed by downstream sinks.
-fn get_event_metadata(_metadata: Option<&Metadata>) -> EventMetadata {
-    EventMetadata::default()
+/// Converts DD tags (key:value strings) into OTel KeyValue attributes.
+fn dd_tags_to_attributes(tags: Vec<String>) -> Vec<KeyValue> {
+    use vector_lib::event::metric::TagValue;
+    tags.iter()
+        .map(|tag| {
+            let (key, tag_value) = extract_tag_key_and_value(tag);
+            let value = match tag_value {
+                TagValue::Value(v) => Some(string_value(v)),
+                TagValue::Bare => None, // bare tags have no value in OTel
+            };
+            KeyValue { key, value }
+        })
+        .collect()
+}
+
+/// Builds resource attributes from DD metadata (host, namespace, origin).
+fn build_resource(host: Option<&str>, namespace: Option<&str>) -> Resource {
+    let mut attributes = Vec::new();
+    if let Some(h) = host {
+        attributes.push(KeyValue {
+            key: "host.name".to_string(),
+            value: Some(string_value(h)),
+        });
+    }
+    if let Some(ns) = namespace {
+        attributes.push(KeyValue {
+            key: "metric.namespace".to_string(),
+            value: Some(string_value(ns)),
+        });
+    }
+    attributes.push(KeyValue {
+        key: "source_type".to_string(),
+        value: Some(string_value("datadog_agent")),
+    });
+    Resource {
+        attributes,
+        dropped_attributes_count: 0,
+    }
+}
+
+/// Creates an OtelMetric event with resource and metadata.
+fn build_otel_metric_event(
+    metric: OtelMetricProto,
+    resource: Resource,
+    api_key: &Option<Arc<str>>,
+) -> Event {
+    let mut otel = OtelMetric::from_parts(metric, Some(resource), None, EventMetadata::default());
+    if let Some(k) = api_key {
+        otel.metadata_mut()
+            .secrets_mut()
+            .insert("datadog_api_key", Arc::clone(k));
+    }
+    Event::Metric(otel)
+}
+
+/// Converts a DD timestamp (seconds since epoch) to nanoseconds.
+fn dd_ts_to_nanos(ts: i64) -> u64 {
+    (ts as u64).saturating_mul(1_000_000_000)
 }
 
 pub(crate) fn decode_ddseries_v2(
@@ -241,95 +292,94 @@ pub(crate) fn decode_ddseries_v2(
             } else {
                 (None, serie.metric.as_str())
             };
-            let mut tags = into_metric_tags(serie.tags);
+            let mut attributes = dd_tags_to_attributes(serie.tags);
 
-            let event_metadata = get_event_metadata(serie.metadata.as_ref());
+            // Extract host from resources (the only resource type DD agents send)
+            let mut host: Option<String> = None;
+            for r in &serie.resources {
+                if r.r#type == "host" {
+                    host = Some(r.name.clone());
+                } else {
+                    attributes.push(KeyValue {
+                        key: format!("resource.{}", r.r#type),
+                        value: Some(string_value(&r.name)),
+                    });
+                }
+            }
+            if !serie.source_type_name.is_empty() {
+                attributes.push(KeyValue {
+                    key: "source_type_name".to_string(),
+                    value: Some(string_value(&serie.source_type_name)),
+                });
+            }
 
-            // It is possible to receive non-rate metrics from the Agent with an interval set.
-            // That interval can be applied with the `as_rate` function in the Datadog UI.
-            // The scenario this happens is when DogStatsD emits non-rate series metrics to the Agent,
-            // in which it sets an interval to 10. See
-            //    - https://github.com/DataDog/datadog-agent/blob/9f0a85c926596ec9aebe2d8e1f2a8b1af6e45635/pkg/aggregator/time_sampler.go#L49C1-L49C1
-            //    - https://github.com/DataDog/datadog-agent/blob/209b70529caff9ec1c30b6b2eed27bce725ed153/pkg/aggregator/aggregator.go#L39
-            //
-            // Note that DogStatsD is the only scenario this occurs; regular Agent checks/services do not set the
-            // interval for non-rate series metrics.
-            //
-            // Note that because Vector does not yet have a specific Metric type to handle Rate,
-            // we are distinguishing Rate from Count by setting an interval to Rate but not Count.
-            // Luckily, the only time a Count metric type is emitted by DogStatsD, is in the Sketch endpoint.
-            // (Regular Count metrics are emitted by DogStatsD as Rate metrics).
-            //
-            // In theory we should be safe to set this non-rate-interval to Count metrics below, but to be safe,
-            // we will only set it for Rate and Gauge. Since Rates already need an interval, the only "odd" case
-            // is Gauges.
-            //
-            // Ultimately if we had a unique internal representation of a Rate metric type, we wouldn't need to
-            // have special handling for the interval, we would just apply it to all metrics that it came in with.
-            let non_rate_interval = if serie.interval.is_positive() {
-                NonZeroU32::new(serie.interval as u32 * 1000) // incoming is seconds, convert to milliseconds
+            let resource = build_resource(host.as_deref(), namespace);
+
+            // Interval handling for rate/gauge metrics (see DD agent DogStatsD interval logic)
+            let interval_secs = if serie.interval > 0 {
+                Some(serie.interval)
             } else {
                 None
             };
 
-            serie.resources.into_iter().for_each(|r| {
-                // As per https://github.com/DataDog/datadog-agent/blob/a62ac9fb13e1e5060b89e731b8355b2b20a07c5b/pkg/serializer/internal/metrics/iterable_series.go#L180-L189
-                // the hostname can be found in MetricSeries::resources and that is the only value stored there.
-                if r.r#type.eq("host") {
-                    log_schema()
-                        .host_key()
-                        .and_then(|key| tags.replace(key.to_string(), r.name));
-                } else {
-                    // But to avoid losing information if this situation changes, any other resource type/name will be saved in the tags map
-                    tags.replace(format!("resource.{}", r.r#type), r.name);
-                }
-            });
-            (!serie.source_type_name.is_empty())
-                .then(|| tags.replace("source_type_name".into(), serie.source_type_name));
-            // As per https://github.com/DataDog/datadog-agent/blob/a62ac9fb13e1e5060b89e731b8355b2b20a07c5b/pkg/serializer/internal/metrics/iterable_series.go#L224
-            // serie.unit is omitted
             match metric_payload::MetricType::try_from(serie.r#type) {
                 Ok(metric_payload::MetricType::Count) => serie
                     .points
                     .iter()
                     .map(|dd_point| {
-                        Metric::new_with_metadata(
-                            name.to_string(),
-                            MetricKind::Incremental,
-                            MetricValue::Counter {
-                                value: dd_point.value,
-                            },
-                            event_metadata.clone(),
-                        )
-                        .with_timestamp(Some(
-                            Utc.timestamp_opt(dd_point.timestamp, 0)
-                                .single()
-                                .expect("invalid timestamp"),
-                        ))
-                        .with_tags(Some(tags.clone()))
-                        .with_namespace(namespace)
+                        let metric = OtelMetricProto {
+                            name: name.to_string(),
+                            description: String::new(),
+                            unit: String::new(),
+                            metadata: vec![],
+                            data: Some(metric::Data::Sum(otel_metrics::Sum {
+                                data_points: vec![otel_metrics::NumberDataPoint {
+                                    attributes: attributes.clone(),
+                                    start_time_unix_nano: 0,
+                                    time_unix_nano: dd_ts_to_nanos(dd_point.timestamp),
+                                    exemplars: vec![],
+                                    flags: 0,
+                                    value: Some(NDPValue::AsDouble(dd_point.value)),
+                                }],
+                                aggregation_temporality: AggregationTemporality::Delta as i32,
+                                is_monotonic: true,
+                            })),
+                        };
+                        build_otel_metric_event(metric, resource.clone(), api_key)
                     })
                     .collect::<Vec<_>>(),
                 Ok(metric_payload::MetricType::Gauge) => serie
                     .points
                     .iter()
                     .map(|dd_point| {
-                        Metric::new_with_metadata(
-                            name.to_string(),
-                            MetricKind::Absolute,
-                            MetricValue::Gauge {
-                                value: dd_point.value,
-                            },
-                            event_metadata.clone(),
-                        )
-                        .with_timestamp(Some(
-                            Utc.timestamp_opt(dd_point.timestamp, 0)
-                                .single()
-                                .expect("invalid timestamp"),
-                        ))
-                        .with_tags(Some(tags.clone()))
-                        .with_namespace(namespace)
-                        .with_interval_ms(non_rate_interval)
+                        let mut dp_attrs = attributes.clone();
+                        if let Some(interval) = interval_secs {
+                            dp_attrs.push(KeyValue {
+                                key: "interval_ms".to_string(),
+                                value: Some(AnyValue {
+                                    value: Some(any_value::Value::IntValue(
+                                        i64::from(interval) * 1000,
+                                    )),
+                                }),
+                            });
+                        }
+                        let metric = OtelMetricProto {
+                            name: name.to_string(),
+                            description: String::new(),
+                            unit: String::new(),
+                            metadata: vec![],
+                            data: Some(metric::Data::Gauge(otel_metrics::Gauge {
+                                data_points: vec![otel_metrics::NumberDataPoint {
+                                    attributes: dp_attrs,
+                                    start_time_unix_nano: 0,
+                                    time_unix_nano: dd_ts_to_nanos(dd_point.timestamp),
+                                    exemplars: vec![],
+                                    flags: 0,
+                                    value: Some(NDPValue::AsDouble(dd_point.value)),
+                                }],
+                            })),
+                        };
+                        build_otel_metric_event(metric, resource.clone(), api_key)
                     })
                     .collect::<Vec<_>>(),
                 Ok(metric_payload::MetricType::Rate) => serie
@@ -340,23 +390,34 @@ pub(crate) fn decode_ddseries_v2(
                             .filter(|v| *v != 0)
                             .map(|v| v as u32)
                             .unwrap_or(1);
-                        Metric::new_with_metadata(
-                            name.to_string(),
-                            MetricKind::Incremental,
-                            MetricValue::Counter {
-                                value: dd_point.value * (i as f64),
-                            },
-                            event_metadata.clone(),
-                        )
-                        .with_timestamp(Some(
-                            Utc.timestamp_opt(dd_point.timestamp, 0)
-                                .single()
-                                .expect("invalid timestamp"),
-                        ))
-                        // serie.interval is in seconds, convert to ms
-                        .with_interval_ms(NonZeroU32::new(i * 1000))
-                        .with_tags(Some(tags.clone()))
-                        .with_namespace(namespace)
+                        let mut dp_attrs = attributes.clone();
+                        dp_attrs.push(KeyValue {
+                            key: "interval_ms".to_string(),
+                            value: Some(AnyValue {
+                                value: Some(any_value::Value::IntValue(i64::from(i) * 1000)),
+                            }),
+                        });
+                        let metric = OtelMetricProto {
+                            name: name.to_string(),
+                            description: String::new(),
+                            unit: String::new(),
+                            metadata: vec![],
+                            data: Some(metric::Data::Sum(otel_metrics::Sum {
+                                data_points: vec![otel_metrics::NumberDataPoint {
+                                    attributes: dp_attrs,
+                                    start_time_unix_nano: 0,
+                                    time_unix_nano: dd_ts_to_nanos(dd_point.timestamp),
+                                    exemplars: vec![],
+                                    flags: 0,
+                                    value: Some(NDPValue::AsDouble(
+                                        dd_point.value * (i as f64),
+                                    )),
+                                }],
+                                aggregation_temporality: AggregationTemporality::Delta as i32,
+                                is_monotonic: true,
+                            })),
+                        };
+                        build_otel_metric_event(metric, resource.clone(), api_key)
                     })
                     .collect::<Vec<_>>(),
                 Ok(metric_payload::MetricType::Unspecified) | Err(_) => {
@@ -364,12 +425,6 @@ pub(crate) fn decode_ddseries_v2(
                     Vec::new()
                 }
             }
-        })
-        .map(|mut metric| {
-            if let Some(k) = &api_key {
-                metric.metadata_mut().secrets_mut().insert("datadog_api_key", Arc::clone(k));
-            }
-            metric.into()
         })
         .collect();
 
@@ -379,7 +434,6 @@ pub(crate) fn decode_ddseries_v2(
 fn decode_datadog_series_v1(
     body: Bytes,
     api_key: Option<Arc<str>>,
-    schema_definition: &Arc<schema::Definition>,
     split_metric_namespace: bool,
     events_received: &Registered<EventsReceived>,
 ) -> Result<Vec<Event>, ErrorMessage> {
@@ -400,10 +454,9 @@ fn decode_datadog_series_v1(
         .series
         .into_iter()
         .flat_map(|m| {
-            into_vector_metric(
+            into_otel_metric(
                 m,
                 api_key.clone(),
-                schema_definition,
                 split_metric_namespace,
             )
         })
@@ -417,30 +470,25 @@ fn decode_datadog_series_v1(
     Ok(decoded_metrics)
 }
 
-fn into_metric_tags(tags: Vec<String>) -> MetricTags {
-    tags.iter().map(extract_tag_key_and_value).collect()
-}
-
-fn into_vector_metric(
+fn into_otel_metric(
     dd_metric: DatadogSeriesMetric,
     api_key: Option<Arc<str>>,
-    schema_definition: &Arc<schema::Definition>,
     split_metric_namespace: bool,
 ) -> Vec<Event> {
-    let mut tags = into_metric_tags(dd_metric.tags.unwrap_or_default());
+    let mut attributes = dd_tags_to_attributes(dd_metric.tags.unwrap_or_default());
 
-    if let Some(key) = log_schema().host_key() {
-        dd_metric
-            .host
-            .and_then(|host| tags.replace(key.to_string(), host));
+    if let Some(source) = dd_metric.source_type_name {
+        attributes.push(KeyValue {
+            key: "source_type_name".to_string(),
+            value: Some(string_value(source)),
+        });
     }
-
-    dd_metric
-        .source_type_name
-        .and_then(|source| tags.replace("source_type_name".into(), source));
-    dd_metric
-        .device
-        .and_then(|dev| tags.replace("device".into(), dev));
+    if let Some(dev) = dd_metric.device {
+        attributes.push(KeyValue {
+            key: "device".to_string(),
+            value: Some(string_value(dev)),
+        });
+    }
 
     let (namespace, name) = if split_metric_namespace {
         namespace_name_from_dd_metric(&dd_metric.metric)
@@ -448,82 +496,93 @@ fn into_vector_metric(
         (None, dd_metric.metric.as_str())
     };
 
+    let resource = build_resource(dd_metric.host.as_deref(), namespace);
+
     match dd_metric.r#type {
         DatadogMetricType::Count => dd_metric
             .points
             .iter()
             .map(|dd_point| {
-                Metric::new(
-                    name.to_string(),
-                    MetricKind::Incremental,
-                    MetricValue::Counter { value: dd_point.1 },
-                )
-                .with_timestamp(Some(
-                    Utc.timestamp_opt(dd_point.0, 0)
-                        .single()
-                        .expect("invalid timestamp"),
-                ))
-                .with_tags(Some(tags.clone()))
-                .with_namespace(namespace)
+                let metric = OtelMetricProto {
+                    name: name.to_string(),
+                    description: String::new(),
+                    unit: String::new(),
+                    metadata: vec![],
+                    data: Some(metric::Data::Sum(otel_metrics::Sum {
+                        data_points: vec![otel_metrics::NumberDataPoint {
+                            attributes: attributes.clone(),
+                            start_time_unix_nano: 0,
+                            time_unix_nano: dd_ts_to_nanos(dd_point.0),
+                            exemplars: vec![],
+                            flags: 0,
+                            value: Some(NDPValue::AsDouble(dd_point.1)),
+                        }],
+                        aggregation_temporality: AggregationTemporality::Delta as i32,
+                        is_monotonic: true,
+                    })),
+                };
+                build_otel_metric_event(metric, resource.clone(), &api_key)
             })
             .collect::<Vec<_>>(),
         DatadogMetricType::Gauge => dd_metric
             .points
             .iter()
             .map(|dd_point| {
-                Metric::new(
-                    name.to_string(),
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: dd_point.1 },
-                )
-                .with_timestamp(Some(
-                    Utc.timestamp_opt(dd_point.0, 0)
-                        .single()
-                        .expect("invalid timestamp"),
-                ))
-                .with_tags(Some(tags.clone()))
-                .with_namespace(namespace)
+                let metric = OtelMetricProto {
+                    name: name.to_string(),
+                    description: String::new(),
+                    unit: String::new(),
+                    metadata: vec![],
+                    data: Some(metric::Data::Gauge(otel_metrics::Gauge {
+                        data_points: vec![otel_metrics::NumberDataPoint {
+                            attributes: attributes.clone(),
+                            start_time_unix_nano: 0,
+                            time_unix_nano: dd_ts_to_nanos(dd_point.0),
+                            exemplars: vec![],
+                            flags: 0,
+                            value: Some(NDPValue::AsDouble(dd_point.1)),
+                        }],
+                    })),
+                };
+                build_otel_metric_event(metric, resource.clone(), &api_key)
             })
             .collect::<Vec<_>>(),
-        // Agent sends rate only for dogstatsd counter https://github.com/DataDog/datadog-agent/blob/f4a13c6dca5e2da4bb722f861a8ac4c2f715531d/pkg/metrics/counter.go#L8-L10
-        // for consistency purpose (w.r.t. (dog)statsd source) they are turned back into counters
+        // Agent sends rate only for dogstatsd counter
+        // for consistency purpose they are turned back into counters with interval
         DatadogMetricType::Rate => dd_metric
             .points
             .iter()
             .map(|dd_point| {
                 let i = dd_metric.interval.filter(|v| *v != 0).unwrap_or(1);
-                Metric::new(
-                    name.to_string(),
-                    MetricKind::Incremental,
-                    MetricValue::Counter {
-                        value: dd_point.1 * (i as f64),
-                    },
-                )
-                .with_timestamp(Some(
-                    Utc.timestamp_opt(dd_point.0, 0)
-                        .single()
-                        .expect("invalid timestamp"),
-                ))
-                // dd_metric.interval is in seconds, convert to ms
-                .with_interval_ms(NonZeroU32::new(i * 1000))
-                .with_tags(Some(tags.clone()))
-                .with_namespace(namespace)
+                let mut dp_attrs = attributes.clone();
+                dp_attrs.push(KeyValue {
+                    key: "interval_ms".to_string(),
+                    value: Some(AnyValue {
+                        value: Some(any_value::Value::IntValue(i64::from(i) * 1000)),
+                    }),
+                });
+                let metric = OtelMetricProto {
+                    name: name.to_string(),
+                    description: String::new(),
+                    unit: String::new(),
+                    metadata: vec![],
+                    data: Some(metric::Data::Sum(otel_metrics::Sum {
+                        data_points: vec![otel_metrics::NumberDataPoint {
+                            attributes: dp_attrs,
+                            start_time_unix_nano: 0,
+                            time_unix_nano: dd_ts_to_nanos(dd_point.0),
+                            exemplars: vec![],
+                            flags: 0,
+                            value: Some(NDPValue::AsDouble(dd_point.1 * (i as f64))),
+                        }],
+                        aggregation_temporality: AggregationTemporality::Delta as i32,
+                        is_monotonic: true,
+                    })),
+                };
+                build_otel_metric_event(metric, resource.clone(), &api_key)
             })
             .collect::<Vec<_>>(),
     }
-    .into_iter()
-    .map(|mut metric| {
-        if let Some(k) = &api_key {
-            metric.metadata_mut().secrets_mut().insert("datadog_api_key", Arc::clone(k));
-        }
-
-        metric
-            .metadata_mut()
-            .set_schema_definition(schema_definition);
-
-        metric.into()
-    })
-    .collect()
 }
 
 /// Parses up to the first '.' of the input metric name into a namespace.
@@ -548,13 +607,22 @@ pub(crate) fn decode_ddsketch(
         .into_iter()
         .flat_map(|sketch_series| {
             // sketch_series.distributions is also always empty from payload coming from dd agents
-            let mut tags = into_metric_tags(sketch_series.tags);
-            log_schema()
-                .host_key()
-                .and_then(|key| tags.replace(key.to_string(), sketch_series.host.clone()));
+            let attributes = dd_tags_to_attributes(sketch_series.tags);
+            let host = if sketch_series.host.is_empty() {
+                None
+            } else {
+                Some(sketch_series.host.as_str())
+            };
 
-            let event_metadata = get_event_metadata(sketch_series.metadata.as_ref());
+            let (namespace, name) = if split_metric_namespace {
+                namespace_name_from_dd_metric(&sketch_series.metric)
+            } else {
+                (None, sketch_series.metric.as_str())
+            };
+            let resource = build_resource(host, namespace);
 
+            let name = name.to_string();
+            let resource = resource.clone();
             sketch_series.dogsketches.into_iter().map(move |sketch| {
                 let k: Vec<i16> = sketch.k.iter().map(|k| *k as i16).collect();
                 let n: Vec<u16> = sketch.n.iter().map(|n| *n as u16).collect();
@@ -568,30 +636,25 @@ pub(crate) fn decode_ddsketch(
                     &n,
                 )
                 .unwrap_or_else(AgentDDSketch::with_agent_defaults);
-                let val = ddsketch.to_aggregated_histogram(AgentDDSketch::DEFAULT_BOUNDS);
-                let (namespace, name) = if split_metric_namespace {
-                    namespace_name_from_dd_metric(&sketch_series.metric)
-                } else {
-                    (None, sketch_series.metric.as_str())
-                };
-                let mut metric = Metric::new_with_metadata(
-                    name.to_string(),
-                    MetricKind::Incremental,
-                    val,
-                    event_metadata.clone(),
-                )
-                .with_tags(Some(tags.clone()))
-                .with_timestamp(Some(
-                    Utc.timestamp_opt(sketch.ts, 0)
-                        .single()
-                        .expect("invalid timestamp"),
-                ))
-                .with_namespace(namespace);
-                if let Some(k) = &api_key {
-                    metric.metadata_mut().secrets_mut().insert("datadog_api_key", Arc::clone(k));
-                }
 
-                metric.into()
+                let exp_histo_dp = ddsketch.to_exponential_histogram_data_point(
+                    attributes.clone(),
+                    dd_ts_to_nanos(sketch.ts),
+                );
+
+                let metric = OtelMetricProto {
+                    name: name.clone(),
+                    description: String::new(),
+                    unit: String::new(),
+                    metadata: vec![],
+                    data: Some(metric::Data::ExponentialHistogram(
+                        otel_metrics::ExponentialHistogram {
+                            data_points: vec![exp_histo_dp],
+                            aggregation_temporality: AggregationTemporality::Delta as i32,
+                        },
+                    )),
+                };
+                build_otel_metric_event(metric, resource.clone(), api_key)
             })
         })
         .collect())

@@ -52,6 +52,30 @@ fn lower_bound(gamma_v: f64, bias: i32, k: i16) -> f64 {
     pow_gamma(gamma_v, f64::from(i32::from(k) - bias))
 }
 
+/// Converts a BTreeMap of OTel bucket indices → counts into contiguous OTel Buckets.
+fn map_to_buckets(
+    map: &std::collections::BTreeMap<i32, u64>,
+) -> opentelemetry_proto::tonic::metrics::v1::exponential_histogram_data_point::Buckets {
+    use opentelemetry_proto::tonic::metrics::v1::exponential_histogram_data_point::Buckets;
+    if map.is_empty() {
+        return Buckets {
+            offset: 0,
+            bucket_counts: vec![],
+        };
+    }
+    let min_idx = *map.keys().next().unwrap();
+    let max_idx = *map.keys().next_back().unwrap();
+    let len = (max_idx - min_idx + 1) as usize;
+    let mut counts = vec![0u64; len];
+    for (&idx, &count) in map {
+        counts[(idx - min_idx) as usize] = count;
+    }
+    Buckets {
+        offset: min_idx,
+        bucket_counts: counts,
+    }
+}
+
 #[derive(Debug, Snafu)]
 pub enum MergeError {
     #[snafu(display("cannot merge two sketches with mismatched configuration parameters"))]
@@ -815,6 +839,116 @@ impl AgentDDSketch {
             }
         }
         (lo + hi) / 2.0
+    }
+
+    /// Converts this DDSketch into an OTel `ExponentialHistogramDataPoint`.
+    ///
+    /// DDSketch bins use `gamma = 1 + 2*eps ≈ 1.0156` with bin boundaries at `gamma^(k - bias)`.
+    /// OTel ExponentialHistogram uses `base = 2^(2^(-scale))` with boundaries at `base^i`.
+    ///
+    /// We select OTel scale 6 (`base = 2^(1/64) ≈ 1.0109`), which gives relative error ±0.55% —
+    /// comparable to DDSketch's ±0.78% at default eps.
+    ///
+    /// ## Precision
+    ///
+    /// `count` and `sum` are exact. `min`/`max` are stored in the data point fields.
+    /// Bucket mapping involves re-indexing, bounded by the one-time conversion error.
+    pub fn to_exponential_histogram_data_point(
+        &self,
+        attributes: Vec<opentelemetry_proto::tonic::common::v1::KeyValue>,
+        time_unix_nano: u64,
+    ) -> opentelemetry_proto::tonic::metrics::v1::ExponentialHistogramDataPoint {
+        use opentelemetry_proto::tonic::metrics::v1::{
+            ExponentialHistogramDataPoint,
+            exponential_histogram_data_point::Buckets,
+        };
+
+        const OTEL_SCALE: i32 = 6;
+        let otel_base_ln = f64::ln(2.0) / 64.0; // ln(2^(2^(-6))) = ln(2)/64
+
+        if self.count == 0 {
+            return ExponentialHistogramDataPoint {
+                attributes,
+                start_time_unix_nano: 0,
+                time_unix_nano,
+                count: 0,
+                sum: Some(0.0),
+                scale: OTEL_SCALE,
+                zero_count: 0,
+                positive: Some(Buckets {
+                    offset: 0,
+                    bucket_counts: vec![],
+                }),
+                negative: Some(Buckets {
+                    offset: 0,
+                    bucket_counts: vec![],
+                }),
+                flags: 0,
+                exemplars: vec![],
+                min: Some(0.0),
+                max: Some(0.0),
+                zero_threshold: 0.0,
+            };
+        }
+
+        // Map DDSketch bins to OTel ExponentialHistogram buckets.
+        // DDSketch bin k represents values in [gamma^(k-bias), gamma^(k-bias+1)).
+        // OTel bucket i represents values in (base^i, base^(i+1)].
+        // We compute the OTel index for the geometric midpoint of each DDSketch bin.
+        let mut positive_map: std::collections::BTreeMap<i32, u64> = std::collections::BTreeMap::new();
+        let mut negative_map: std::collections::BTreeMap<i32, u64> = std::collections::BTreeMap::new();
+        let mut zero_count: u64 = 0;
+
+        for bin in &self.bins {
+            let count = u64::from(bin.n);
+            if count == 0 {
+                continue;
+            }
+
+            if bin.k == 0 {
+                // DDSketch k=0 represents values near zero
+                zero_count += count;
+                continue;
+            }
+
+            let is_negative = bin.k < 0;
+            let abs_k = if is_negative { -bin.k } else { bin.k };
+
+            // Compute the lower bound of this DDSketch bin
+            let lower = self.config.bin_lower_bound(abs_k);
+            // Geometric midpoint of bin: sqrt(lower * lower * gamma) = lower * sqrt(gamma)
+            let mid = lower * self.config.gamma_v.sqrt();
+
+            // Map to OTel index: i = floor(ln(mid) / otel_base_ln)
+            let otel_index = (mid.ln() / otel_base_ln).floor() as i32;
+
+            let target = if is_negative {
+                &mut negative_map
+            } else {
+                &mut positive_map
+            };
+            *target.entry(otel_index).or_insert(0) += count;
+        }
+
+        let positive = map_to_buckets(&positive_map);
+        let negative = map_to_buckets(&negative_map);
+
+        ExponentialHistogramDataPoint {
+            attributes,
+            start_time_unix_nano: 0,
+            time_unix_nano,
+            count: u64::from(self.count),
+            sum: Some(self.sum),
+            scale: OTEL_SCALE,
+            zero_count,
+            positive: Some(positive),
+            negative: Some(negative),
+            flags: 0,
+            exemplars: vec![],
+            min: Some(self.min),
+            max: Some(self.max),
+            zero_threshold: 0.0,
+        }
     }
 
     /// Merges another sketch into this sketch, without a loss of accuracy.

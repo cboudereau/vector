@@ -982,7 +982,8 @@ async fn decode_series_endpoint_v1() {
             assert_tags(
                 &metric.clone().to_legacy_metric(),
                 metric_tags!(
-                    "host" => "random_host",
+                    "resource.host.name" => "random_host",
+                    "resource.source_type" => "datadog_agent",
                     "foo" => "bar",
                 ),
             );
@@ -1008,7 +1009,8 @@ async fn decode_series_endpoint_v1() {
             assert_tags(
                 &metric.clone().to_legacy_metric(),
                 metric_tags!(
-                    "host" => "random_host",
+                    "resource.host.name" => "random_host",
+                    "resource.source_type" => "datadog_agent",
                     "foo" => "bar",
                 ),
             );
@@ -1039,8 +1041,10 @@ async fn decode_series_endpoint_v1() {
             assert_tags(
                 &metric.clone().to_legacy_metric(),
                 metric_tags!(
-                    "host" => "another_random_host",
+                    "resource.host.name" => "another_random_host",
+                    "resource.source_type" => "datadog_agent",
                     "foo" => "bar:baz",
+                    "interval_ms" => "10000",
                 ),
             );
 
@@ -1069,7 +1073,8 @@ async fn decode_series_endpoint_v1() {
             assert_tags(
                 &metric.clone().to_legacy_metric(),
                 metric_tags!(
-                    "host" => "a_host",
+                    "resource.host.name" => "a_host",
+                    "resource.source_type" => "datadog_agent",
                     "foobar" => TagValue::Bare,
                 ),
             );
@@ -1424,7 +1429,8 @@ async fn split_outputs() {
             assert_tags(
                 &metric.clone().to_legacy_metric(),
                 metric_tags!(
-                    "host" => "random_host",
+                    "resource.host.name" => "random_host",
+                    "resource.source_type" => "datadog_agent",
                     "foo" => "bar",
                 ),
             );
@@ -2099,20 +2105,15 @@ async fn decode_series_endpoint_v2() {
                 )
             );
             assert_eq!(metric.kind(), MetricKind::Absolute);
-            assert_eq!(
-                metric.clone().to_legacy_metric()
-                    .interval_ms()
-                    .expect("should have set interval")
-                    .get(),
-                10000
-            );
             assert_eq!(metric.value(), MetricValue::Gauge { value: 3.14 });
             assert_tags(
                 &metric.clone().to_legacy_metric(),
                 metric_tags!(
-                    "host" => "random_host",
+                    "resource.host.name" => "random_host",
+                    "resource.source_type" => "datadog_agent",
                     "foo" => "bar",
                     "source_type_name" => "a_random_source_type_name",
+                    "interval_ms" => "10000",
                 ),
             );
             assert_eq!(metric.namespace(), Some("namespace"));
@@ -2130,19 +2131,14 @@ async fn decode_series_endpoint_v2() {
             );
             assert_eq!(metric.kind(), MetricKind::Absolute);
             assert_eq!(metric.value(), MetricValue::Gauge { value: 3.1415 });
-            assert_eq!(
-                metric.clone().to_legacy_metric()
-                    .interval_ms()
-                    .expect("should have set interval")
-                    .get(),
-                10000
-            );
             assert_tags(
                 &metric.clone().to_legacy_metric(),
                 metric_tags!(
-                    "host" => "random_host",
+                    "resource.host.name" => "random_host",
+                    "resource.source_type" => "datadog_agent",
                     "foo" => "bar",
                     "source_type_name" => "a_random_source_type_name",
+                    "interval_ms" => "10000",
                 ),
             );
             assert_eq!(metric.namespace(), Some("namespace"));
@@ -2172,10 +2168,12 @@ async fn decode_series_endpoint_v2() {
             assert_tags(
                 &metric.clone().to_legacy_metric(),
                 metric_tags!(
-                    "host" => "another_random_host",
+                    "resource.host.name" => "another_random_host",
+                    "resource.source_type" => "datadog_agent",
                     "foo" => "bar:baz",
                     "foo" => "bizbaz",
                     "source_type_name" => "another_random_source_type_name",
+                    "interval_ms" => "10000",
                 ),
             );
             assert_eq!(metric.namespace(), Some("another_namespace"));
@@ -2205,7 +2203,8 @@ async fn decode_series_endpoint_v2() {
             assert_tags(
                 &metric.clone().to_legacy_metric(),
                 metric_tags!(
-                    "host" => "a_host",
+                    "resource.host.name" => "a_host",
+                    "resource.source_type" => "datadog_agent",
                     "foobar" => TagValue::Bare,
                     "source_type_name" => "a_very_random_source_type_name",
                 ),

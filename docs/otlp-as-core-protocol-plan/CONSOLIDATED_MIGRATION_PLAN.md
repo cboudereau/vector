@@ -20,6 +20,7 @@ Single source of truth for the migration. All other documents in this folder fee
 | `VRL_MIGRATION_TOOL.md` | VRL migration tool specification and rewrite rule catalogue |
 | `GAP_ANALYSIS.md` | Code-verified gaps between docs and codebase — read before coding |
 | `UPSTREAM_PROTO_MIGRATION.md` | Migrate to upstream `opentelemetry-proto` crate + OTLP HTTP JSON support |
+| `STEP7_PLAN.md` | Step 7 detailed plan — DD source cleanup (metrics + traces to OTel-native) |
 
 ---
 
@@ -1889,27 +1890,35 @@ All previously reported pre-existing/flaky failures now pass.
 
 ---
 
-## Step 7 — Re-Integration: Vector + DataDog Sinks/Sources as OTel Adapters
+## Step 7 — Re-Integration: DataDog Source as Clean OTel Adapter
 
-**Status: NOT STARTED — after Step 6.**
+**Status: IN PROGRESS.** Full spec: `STEP7_PLAN.md`.
 
-With the core protocol migration complete (Step 6), Vector and DataDog sinks/sources
-can be re-added as clean OTel-native adapters. No proprietary types leak into core.
+No DD sink is needed — DataDog accepts OTLP natively. Users point the existing OTel
+gRPC/HTTP sink at DD's OTLP endpoint.
 
-### Sub-components
+### Decisions
 
-| Component | What | Estimated effort |
-|-----------|------|-----------------|
-| **Vector sink** | `Event::Log`/`Metric`/`Span` → `ExportXxxServiceRequest` over gRPC to unupgraded downstream Vector instances. Backward-compat bridge only. | ~300 lines |
-| **DataDog sink** | OTel events → DataDog wire format for APIs without OTLP support (e.g. Events API). `AgentDDSketch` re-introduced only within this adapter if needed. | ~2,000 lines |
-| **DataDog source** | Already migrated in Step 3. Verify clean against final OTel types. | ~100 lines |
-| **Vector source** | Already receives OTLP natively. Legacy proto decoding retained from `proto/vector/vector.proto` for backward compat with unupgraded upstream instances. | ~100 lines |
+| Decision | Resolution |
+|----------|-----------|
+| DD sink | Not needed — DD accepts OTLP natively. Users use the OTel sink with DD endpoint. |
+| DD source | Clean up metrics + traces to emit OtelMetric/OtelSpan directly. DD-specific data stored in OTLP resource/record attributes. |
+| Vector sink | Keep as-is — backward compat with forks and older Vector versions speaking native proto. |
+| Vector source | No changes needed — already receives legacy proto and converts to OTel events. |
+
+### Phases
+
+| Phase | What | Status |
+|-------|------|--------|
+| **7.1** | DD source metrics — emit OtelMetric directly (remove legacy Metric intermediate) | NOT STARTED |
+| **7.2** | DD source traces — emit OtelSpan directly (remove TraceEvent intermediate) | NOT STARTED |
+| **7.3** | Round-trip integration tests + documentation update | NOT STARTED |
 
 ### Validation gate (Step 7)
 
 - `cargo build -p vector-core` still clean — no proprietary types in core.
 - Round-trip test for all three signal types including span scope assertion.
-- DataDog sink integration test against DD OTLP endpoint.
+- `cargo test -p vector --lib` — all tests pass.
 
 ---
 

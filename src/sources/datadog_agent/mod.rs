@@ -45,7 +45,6 @@ use vector_lib::{
     tls::MaybeTlsIncomingStream,
 };
 use vrl::{
-    path::OwnedTargetPath,
     value::{Kind, kind::Collection},
 };
 use warp::{Filter, Reply, filters::BoxedFilter, reject::Rejection, reply::Response};
@@ -56,7 +55,7 @@ use crate::{
     common::http::ErrorMessage,
     config::{
         DataType, GenerateConfig, Resource, SourceAcknowledgementsConfig, SourceConfig,
-        SourceContext, SourceOutput, log_schema,
+        SourceContext, SourceOutput,
     },
     event::Event,
     http::{KeepaliveConfig, MaxConnectionAgeLayer, build_http_trace_layer},
@@ -372,8 +371,6 @@ pub struct ApiKeyQueryParams {
 #[derive(Clone)]
 pub(crate) struct DatadogAgentSource {
     pub(crate) api_key_extractor: ApiKeyExtractor,
-    pub(crate) log_schema_host_key: OwnedTargetPath,
-    pub(crate) log_schema_source_type_key: OwnedTargetPath,
     #[allow(dead_code)]
     pub(crate) log_namespace: LogNamespace,
     pub(crate) decoder: Decoder,
@@ -428,14 +425,6 @@ impl DatadogAgentSource {
                 matcher: Regex::new(r"^/v1/input/(?P<api_key>[[:alnum:]]{32})/??")
                     .expect("static regex always compiles"),
             },
-            log_schema_host_key: log_schema()
-                .host_key_target_path()
-                .expect("global log_schema.host_key to be valid path")
-                .clone(),
-            log_schema_source_type_key: log_schema()
-                .source_type_key_target_path()
-                .expect("global log_schema.source_type_key to be valid path")
-                .clone(),
             decoder,
             protocol,
             logs_schema_definition: logs_schema_definition.map(Arc::new),

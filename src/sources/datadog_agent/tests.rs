@@ -11,7 +11,6 @@ use chrono::{TimeZone, Utc};
 use futures::{Stream, StreamExt};
 use http::HeaderMap;
 use indoc::indoc;
-use ordered_float::NotNan;
 use prost::Message;
 use quickcheck::{Arbitrary, Gen, QuickCheck, TestResult};
 use similar_asserts::assert_eq;
@@ -32,7 +31,7 @@ use vector_lib::{
 use vrl::{
     compiler::value::Collection,
     value,
-    value::{Kind, ObjectMap},
+    value::Kind,
 };
 
 use crate::{
@@ -41,7 +40,7 @@ use crate::{
     components::validation::prelude::*,
     config::{SourceConfig, SourceContext},
     event::{
-        Event, EventStatus, Metric, Value, into_event_stream,
+        Event, EventStatus, Metric, OtelSpan, Value, into_event_stream,
         metric::{MetricKind, MetricValue},
     },
     schema,
@@ -1210,140 +1209,137 @@ async fn decode_traces() {
         )
         .await;
 
-        {
-            let trace_v1 = events[0].as_trace();
-            let map_v1 = trace_v1.as_map().unwrap();
-            assert_eq!(map_v1["host"], "a_hostname".into());
-            assert_eq!(map_v1["env"], "an_environment".into());
-            assert_eq!(map_v1["language_name"], "ada".into());
-            assert!(trace_v1.contains("spans"));
-            assert_eq!(map_v1["spans"].as_array().unwrap().len(), 1);
-            let span_from_trace_v1 = map_v1["spans"].as_array().unwrap()[0]
-                .as_object()
-                .unwrap();
-            assert_eq!(span_from_trace_v1["service"], "a_service".into());
-            assert_eq!(span_from_trace_v1["name"], "a_name".into());
-            assert_eq!(span_from_trace_v1["resource"], "a_resource".into());
-            assert_eq!(span_from_trace_v1["trace_id"], Value::Integer(123));
-            assert_eq!(span_from_trace_v1["span_id"], Value::Integer(456));
-            assert_eq!(span_from_trace_v1["parent_id"], Value::Integer(789));
-            {
-                let expected_ts = Utc.timestamp_nanos(1_431_648_000_000_001i64);
-                let actual = &span_from_trace_v1["start"];
-                match actual {
-                    Value::Timestamp(ts) => assert_eq!(*ts, expected_ts),
-                    Value::Bytes(b) => assert_eq!(
-                        std::str::from_utf8(b).unwrap(),
-                        expected_ts.to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true)
-                    ),
-                    other => panic!("expected Timestamp or Bytes, got {other:?}"),
-                }
+        // Helper to find an attribute value by key
+        fn find_attr<'a>(attrs: &'a [opentelemetry_proto::tonic::common::v1::KeyValue], key: &str) -> Option<&'a opentelemetry_proto::tonic::common::v1::AnyValue> {
+            attrs.iter().find(|kv| kv.key == key).and_then(|kv| kv.value.as_ref())
+        }
+        fn attr_str(attrs: &[opentelemetry_proto::tonic::common::v1::KeyValue], key: &str) -> String {
+            match find_attr(attrs, key).and_then(|v| v.value.as_ref()) {
+                Some(opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(s)) => s.clone(),
+                other => panic!("expected string attribute for '{key}', got {other:?}"),
             }
+        }
+        fn attr_double(attrs: &[opentelemetry_proto::tonic::common::v1::KeyValue], key: &str) -> f64 {
+            match find_attr(attrs, key).and_then(|v| v.value.as_ref()) {
+                Some(opentelemetry_proto::tonic::common::v1::any_value::Value::DoubleValue(d)) => *d,
+                other => panic!("expected double attribute for '{key}', got {other:?}"),
+            }
+        }
+        fn attr_int(attrs: &[opentelemetry_proto::tonic::common::v1::KeyValue], key: &str) -> i64 {
+            match find_attr(attrs, key).and_then(|v| v.value.as_ref()) {
+                Some(opentelemetry_proto::tonic::common::v1::any_value::Value::IntValue(i)) => *i,
+                other => panic!("expected int attribute for '{key}', got {other:?}"),
+            }
+        }
+        fn resource_attr_str(span: &OtelSpan, key: &str) -> String {
+            let resource = span.resource().expect("resource should be set");
+            attr_str(&resource.attributes, key)
+        }
+
+        {
+            // --- v0 trace span ---
+            let span_v1 = events[0].as_trace();
+            let otel_span = span_v1.span();
+
+            // Resource attributes
+            assert_eq!(resource_attr_str(span_v1, "host.name"), "a_hostname");
+            assert_eq!(resource_attr_str(span_v1, "deployment.environment"), "an_environment");
+
+            // Scope (language from X-Datadog-Reported-Languages header)
+            let scope = span_v1.scope().expect("scope should be set");
+            assert_eq!(scope.name, "datadog.tracer.ada");
+
+            // Span fields
+            assert_eq!(otel_span.name, "a_name");
+            assert_eq!(otel_span.trace_id, {
+                let mut bytes = vec![0u8; 16];
+                bytes[8..16].copy_from_slice(&123u64.to_be_bytes());
+                bytes
+            });
+            assert_eq!(otel_span.span_id, 456u64.to_be_bytes().to_vec());
+            assert_eq!(otel_span.parent_span_id, 789u64.to_be_bytes().to_vec());
+            assert_eq!(otel_span.start_time_unix_nano, 1_431_648_000_000_001u64);
             assert_eq!(
-                span_from_trace_v1["duration"],
-                Value::Integer(1_000_000_000)
+                otel_span.end_time_unix_nano,
+                1_431_648_000_000_001u64 + 1_000_000_000u64
             );
-            assert_eq!(span_from_trace_v1["error"], Value::Integer(404));
-            assert_eq!(span_from_trace_v1["meta"].as_object().unwrap().len(), 1);
-            assert_eq!(
-                span_from_trace_v1["meta"].as_object().unwrap()["foo"],
-                "bar".into()
-            );
-            assert_eq!(span_from_trace_v1["metrics"].as_object().unwrap().len(), 1);
-            assert_eq!(
-                span_from_trace_v1["metrics"].as_object().unwrap()["a_metrics"],
-                0.577.into()
-            );
+
+            // Status (error=404 → Error)
+            let status = otel_span.status.as_ref().unwrap();
+            assert_eq!(status.code, opentelemetry_proto::tonic::trace::v1::status::StatusCode::Error as i32);
+
+            // Span attributes (from DD meta + metrics)
+            assert_eq!(attr_str(&otel_span.attributes, "foo"), "bar");
+            assert_eq!(attr_double(&otel_span.attributes, "a_metrics"), 0.577);
+            assert_eq!(attr_str(&otel_span.attributes, "dd.resource"), "a_resource");
+
             assert_eq!(
                 &events[0].metadata().secrets().get("datadog_api_key").unwrap()[..],
                 DD_API_KEY
             );
 
-            let apm_event = events[1].as_trace();
-            assert!(apm_event.contains("spans"));
-            let map_apm = apm_event.as_map().unwrap();
-            assert_eq!(map_apm["host"], "a_hostname".into());
-            assert_eq!(map_apm["env"], "an_environment".into());
-            assert_eq!(map_apm["language_name"], "ada".into());
-            let span_from_apm_event = map_apm["spans"].as_array().unwrap()[0]
-                .as_object()
-                .unwrap();
-
-            assert_eq!(span_from_apm_event["service"], "a_service".into());
-            assert_eq!(span_from_apm_event["name"], "a_name".into());
-            assert_eq!(span_from_apm_event["resource"], "a_resource".into());
+            // --- v0 APM transaction span ---
+            let apm_span = events[1].as_trace();
+            let apm_otel = apm_span.span();
+            assert_eq!(resource_attr_str(apm_span, "host.name"), "a_hostname");
+            assert_eq!(resource_attr_str(apm_span, "deployment.environment"), "an_environment");
+            assert_eq!(apm_otel.name, "a_name");
+            assert_eq!(attr_str(&apm_otel.attributes, "dd.resource"), "a_resource");
 
             assert_eq!(
                 &events[1].metadata().secrets().get("datadog_api_key").unwrap()[..],
                 DD_API_KEY
             );
 
-            let trace_v2 = events[2].as_trace();
-            let map_v2 = trace_v2.as_map().unwrap();
-            assert_eq!(map_v2["host"], "a_hostname".into());
-            assert_eq!(map_v2["env"], "env".into());
+            // --- v1 trace chunk span ---
+            let span_v2 = events[2].as_trace();
+            let v2_otel = span_v2.span();
+            assert_eq!(resource_attr_str(span_v2, "host.name"), "a_hostname");
+            assert_eq!(resource_attr_str(span_v2, "deployment.environment"), "env");
 
+            // Chunk-level tags as span attributes
+            assert_eq!(attr_str(&v2_otel.attributes, "a"), "tag");
+            assert_eq!(attr_str(&v2_otel.attributes, "another"), "tag");
+
+            // Scope from tracer payload
+            let scope_v2 = span_v2.scope().expect("scope should be set");
+            assert_eq!(scope_v2.name, "datadog.tracer.plop");
+            assert_eq!(scope_v2.version, "v577");
+
+            // Tracer-level attributes
+            assert_eq!(attr_str(&v2_otel.attributes, "dd.language_version"), "v33");
+            assert_eq!(attr_str(&v2_otel.attributes, "dd.container_id"), "an_id");
+            assert_eq!(attr_str(&v2_otel.attributes, "dd.origin"), "an_origin");
+            assert_eq!(attr_str(&v2_otel.attributes, "dd.runtime_id"), "123abc");
+            assert_eq!(attr_str(&v2_otel.attributes, "dd.app_version"), "v314");
+            assert_eq!(attr_int(&v2_otel.attributes, "dd.priority"), 42);
+            assert_eq!(attr_double(&v2_otel.attributes, "dd.target_tps"), 10.0);
+            assert_eq!(attr_double(&v2_otel.attributes, "dd.error_tps"), 10.0);
+
+            // v2 span fields
+            assert_eq!(v2_otel.name, "a_name");
+            assert_eq!(attr_str(&v2_otel.attributes, "dd.resource"), "a_resource");
+            assert_eq!(v2_otel.trace_id, {
+                let mut bytes = vec![0u8; 16];
+                bytes[8..16].copy_from_slice(&123u64.to_be_bytes());
+                bytes
+            });
+            assert_eq!(v2_otel.span_id, 456u64.to_be_bytes().to_vec());
+            assert_eq!(v2_otel.parent_span_id, 789u64.to_be_bytes().to_vec());
+            assert_eq!(v2_otel.start_time_unix_nano, 1_431_648_000_000_001u64);
             assert_eq!(
-                map_v2["tags"],
-                Value::Object(ObjectMap::from_iter(
-                    [("a".into(), "tag".into()), ("another".into(), "tag".into())].into_iter()
-                ))
+                v2_otel.end_time_unix_nano,
+                1_431_648_000_000_001u64 + 1_000_000_000u64
             );
 
-            assert_eq!(map_v2["language_name"], "plop".into());
-            assert_eq!(map_v2["language_version"], "v33".into());
-            assert_eq!(map_v2["container_id"], "an_id".into());
-            assert_eq!(map_v2["origin"], "an_origin".into());
-            assert_eq!(map_v2["tracer_version"], "v577".into());
-            assert_eq!(map_v2["runtime_id"], "123abc".into());
-            assert_eq!(map_v2["app_version"], "v314".into());
-            assert_eq!(map_v2["priority"], Value::Integer(42));
-            assert_eq!(
-                map_v2["target_tps"],
-                Value::Float(NotNan::new(10.0f64).unwrap())
-            );
-            assert_eq!(
-                map_v2["error_tps"],
-                Value::Float(NotNan::new(10.0f64).unwrap())
-            );
-            assert!(trace_v2.contains("spans"));
-            assert_eq!(map_v2["spans"].as_array().unwrap().len(), 1);
-            let span_from_trace_v2 = map_v2["spans"].as_array().unwrap()[0]
-                .as_object()
-                .unwrap();
-            assert_eq!(span_from_trace_v2["service"], "a_service".into());
-            assert_eq!(span_from_trace_v2["name"], "a_name".into());
-            assert_eq!(span_from_trace_v2["resource"], "a_resource".into());
-            assert_eq!(span_from_trace_v2["trace_id"], Value::Integer(123));
-            assert_eq!(span_from_trace_v2["span_id"], Value::Integer(456));
-            assert_eq!(span_from_trace_v2["parent_id"], Value::Integer(789));
-            {
-                let expected_ts = Utc.timestamp_nanos(1_431_648_000_000_001i64);
-                let actual = &span_from_trace_v2["start"];
-                match actual {
-                    Value::Timestamp(ts) => assert_eq!(*ts, expected_ts),
-                    Value::Bytes(b) => assert_eq!(
-                        std::str::from_utf8(b).unwrap(),
-                        expected_ts.to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true)
-                    ),
-                    other => panic!("expected Timestamp or Bytes, got {other:?}"),
-                }
-            }
-            assert_eq!(
-                span_from_trace_v2["duration"],
-                Value::Integer(1_000_000_000)
-            );
-            assert_eq!(span_from_trace_v2["error"], Value::Integer(404));
-            assert_eq!(span_from_trace_v2["meta"].as_object().unwrap().len(), 1);
-            assert_eq!(
-                span_from_trace_v2["meta"].as_object().unwrap()["foo"],
-                "bar".into()
-            );
-            assert_eq!(span_from_trace_v2["metrics"].as_object().unwrap().len(), 1);
-            assert_eq!(
-                span_from_trace_v2["metrics"].as_object().unwrap()["a_metrics"],
-                0.577.into()
-            );
+            // Status (error=404 → Error)
+            let v2_status = v2_otel.status.as_ref().unwrap();
+            assert_eq!(v2_status.code, opentelemetry_proto::tonic::trace::v1::status::StatusCode::Error as i32);
+
+            // Meta + metrics as span attributes
+            assert_eq!(attr_str(&v2_otel.attributes, "foo"), "bar");
+            assert_eq!(attr_double(&v2_otel.attributes, "a_metrics"), 0.577);
+
             assert_eq!(
                 &events[2].metadata().secrets().get("datadog_api_key").unwrap()[..],
                 DD_API_KEY

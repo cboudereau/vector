@@ -1,22 +1,24 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use bytes::Bytes;
-use chrono::{TimeZone, Utc};
 use futures::future;
 use http::StatusCode;
-use ordered_float::NotNan;
+use opentelemetry_proto::tonic::{
+    common::v1::{InstrumentationScope, KeyValue},
+    resource::v1::Resource,
+    trace::v1::{Span, Status, status::StatusCode as OtelStatusCode},
+};
 use prost::Message;
 use vector_lib::{
     EstimatedJsonEncodedSizeOf,
     internal_event::{CountByteSize, InternalEventHandle as _},
 };
-use vrl::event_path;
 use warp::{Filter, Rejection, Reply, filters::BoxedFilter, path, path::FullPath, reply::Response};
 
 use super::{ApiKeyQueryParams, DatadogAgentSource, RequestHandler, ddtrace_proto};
 use crate::{
     common::http::ErrorMessage,
-    event::{Event, ObjectMap, OtelSpan, TraceEvent, Value},
+    event::{Event, OtelSpan, otel_event::string_value},
 };
 
 pub(super) fn build_warp_filter(
@@ -104,7 +106,151 @@ fn handle_dd_trace_payload(
     }
 }
 
-/// Decode Datadog newer protobuf schema
+/// Convert a DD u64 trace_id to OTel 16-byte trace_id (zero-extended).
+fn dd_trace_id_to_otel(id: u64) -> Vec<u8> {
+    let mut bytes = vec![0u8; 16];
+    bytes[8..16].copy_from_slice(&id.to_be_bytes());
+    bytes
+}
+
+/// Convert a DD u64 span_id to OTel 8-byte span_id.
+fn dd_span_id_to_otel(id: u64) -> Vec<u8> {
+    id.to_be_bytes().to_vec()
+}
+
+/// Build an OTel Status from DD error code.
+fn dd_error_to_otel_status(error: i32) -> Option<Status> {
+    if error != 0 {
+        Some(Status {
+            message: format!("dd.error={error}"),
+            code: OtelStatusCode::Error as i32,
+        })
+    } else {
+        Some(Status {
+            message: String::new(),
+            code: OtelStatusCode::Ok as i32,
+        })
+    }
+}
+
+/// Convert DD span meta (string→string tags) to OTel KeyValue attributes.
+fn dd_meta_to_attributes(meta: BTreeMap<String, String>) -> Vec<KeyValue> {
+    meta.into_iter()
+        .map(|(k, v)| KeyValue {
+            key: k,
+            value: Some(string_value(v)),
+        })
+        .collect()
+}
+
+/// Convert DD span metrics (string→f64 tags) to OTel KeyValue attributes.
+fn dd_metrics_to_attributes(metrics: BTreeMap<String, f64>) -> Vec<KeyValue> {
+    use opentelemetry_proto::tonic::common::v1::{AnyValue, any_value};
+    metrics
+        .into_iter()
+        .map(|(k, v)| KeyValue {
+            key: k,
+            value: Some(AnyValue {
+                value: Some(any_value::Value::DoubleValue(v)),
+            }),
+        })
+        .collect()
+}
+
+/// Convert a single DD Span proto to an OtelSpan event.
+fn dd_span_to_otel(
+    dd_span: ddtrace_proto::Span,
+    resource: &Resource,
+    scope: &Option<InstrumentationScope>,
+    api_key: &Option<Arc<str>>,
+    extra_attributes: &[KeyValue],
+) -> Event {
+    let mut attributes = dd_meta_to_attributes(dd_span.meta);
+    attributes.extend(dd_metrics_to_attributes(dd_span.metrics));
+
+    // DD-specific fields as attributes
+    attributes.push(KeyValue {
+        key: "dd.resource".to_string(),
+        value: Some(string_value(&dd_span.resource)),
+    });
+    if !dd_span.r#type.is_empty() {
+        attributes.push(KeyValue {
+            key: "dd.span_type".to_string(),
+            value: Some(string_value(&dd_span.r#type)),
+        });
+    }
+    // Include extra trace-level attributes
+    attributes.extend_from_slice(extra_attributes);
+
+    let span = Span {
+        trace_id: dd_trace_id_to_otel(dd_span.trace_id),
+        span_id: dd_span_id_to_otel(dd_span.span_id),
+        parent_span_id: dd_span_id_to_otel(dd_span.parent_id),
+        name: dd_span.name,
+        kind: 0, // SPAN_KIND_UNSPECIFIED — DD doesn't distinguish client/server/etc.
+        start_time_unix_nano: dd_span.start as u64,
+        end_time_unix_nano: (dd_span.start + dd_span.duration) as u64,
+        attributes,
+        status: dd_error_to_otel_status(dd_span.error),
+        trace_state: String::new(),
+        dropped_attributes_count: 0,
+        events: vec![],
+        dropped_events_count: 0,
+        links: vec![],
+        dropped_links_count: 0,
+        flags: 0,
+    };
+
+    let mut otel_span =
+        OtelSpan::from_parts(span, Some(resource.clone()), scope.clone(), Default::default());
+    if let Some(k) = api_key {
+        otel_span
+            .metadata_mut()
+            .secrets_mut()
+            .insert("datadog_api_key", Arc::clone(k));
+    }
+    Event::Trace(otel_span)
+}
+
+/// Build a Resource from trace-level DD metadata.
+fn build_trace_resource(hostname: &str, env: &str, service: Option<&str>) -> Resource {
+    let mut attrs = vec![
+        KeyValue {
+            key: "host.name".to_string(),
+            value: Some(string_value(hostname)),
+        },
+        KeyValue {
+            key: "deployment.environment".to_string(),
+            value: Some(string_value(env)),
+        },
+        KeyValue {
+            key: "source_type".to_string(),
+            value: Some(string_value("datadog_agent")),
+        },
+    ];
+    if let Some(svc) = service {
+        attrs.push(KeyValue {
+            key: "service.name".to_string(),
+            value: Some(string_value(svc)),
+        });
+    }
+    Resource {
+        attributes: attrs,
+        dropped_attributes_count: 0,
+    }
+}
+
+/// Convert DD tags (BTreeMap) to OTel KeyValue attributes.
+fn dd_tags_to_attributes(tags: BTreeMap<String, String>) -> Vec<KeyValue> {
+    tags.into_iter()
+        .map(|(k, v)| KeyValue {
+            key: k,
+            value: Some(string_value(v)),
+        })
+        .collect()
+}
+
+/// Decode Datadog newer protobuf schema (v1 — with tracer_payloads)
 fn handle_dd_trace_payload_v1(
     decoded_payload: ddtrace_proto::TracePayload,
     api_key: Option<Arc<str>>,
@@ -115,95 +261,134 @@ fn handle_dd_trace_payload_v1(
     let agent_version = decoded_payload.agent_version;
     let target_tps = decoded_payload.target_tps;
     let error_tps = decoded_payload.error_tps;
-    let tags = convert_tags(decoded_payload.tags);
+    let payload_tags = dd_tags_to_attributes(decoded_payload.tags);
 
-    let trace_events: Vec<TraceEvent> = decoded_payload
+    let events: Vec<Event> = decoded_payload
         .tracer_payloads
         .into_iter()
-        .flat_map(convert_dd_tracer_payload)
+        .flat_map(|tracer| {
+            let scope = Some(InstrumentationScope {
+                name: format!("datadog.tracer.{}", tracer.language_name),
+                version: tracer.tracer_version.clone(),
+                attributes: vec![],
+                dropped_attributes_count: 0,
+            });
+
+            let resource = build_trace_resource(&hostname, &env, None);
+
+            // Tracer-level extra attributes
+            let mut tracer_attrs = dd_tags_to_attributes(tracer.tags);
+            tracer_attrs.extend(payload_tags.clone());
+            tracer_attrs.push(KeyValue {
+                key: "dd.payload_version".to_string(),
+                value: Some(string_value("v2")),
+            });
+            if !tracer.container_id.is_empty() {
+                tracer_attrs.push(KeyValue {
+                    key: "dd.container_id".to_string(),
+                    value: Some(string_value(&tracer.container_id)),
+                });
+            }
+            if !tracer.runtime_id.is_empty() {
+                tracer_attrs.push(KeyValue {
+                    key: "dd.runtime_id".to_string(),
+                    value: Some(string_value(&tracer.runtime_id)),
+                });
+            }
+            if !tracer.app_version.is_empty() {
+                tracer_attrs.push(KeyValue {
+                    key: "dd.app_version".to_string(),
+                    value: Some(string_value(&tracer.app_version)),
+                });
+            }
+            if !tracer.language_version.is_empty() {
+                tracer_attrs.push(KeyValue {
+                    key: "dd.language_version".to_string(),
+                    value: Some(string_value(&tracer.language_version)),
+                });
+            }
+            if !agent_version.is_empty() {
+                tracer_attrs.push(KeyValue {
+                    key: "dd.agent_version".to_string(),
+                    value: Some(string_value(&agent_version)),
+                });
+            }
+            {
+                use opentelemetry_proto::tonic::common::v1::{AnyValue, any_value};
+                tracer_attrs.push(KeyValue {
+                    key: "dd.target_tps".to_string(),
+                    value: Some(AnyValue {
+                        value: Some(any_value::Value::DoubleValue(target_tps)),
+                    }),
+                });
+                tracer_attrs.push(KeyValue {
+                    key: "dd.error_tps".to_string(),
+                    value: Some(AnyValue {
+                        value: Some(any_value::Value::DoubleValue(error_tps)),
+                    }),
+                });
+            }
+
+            tracer
+                .chunks
+                .into_iter()
+                .flat_map(|chunk| {
+                    let mut chunk_attrs = tracer_attrs.clone();
+                    if !chunk.origin.is_empty() {
+                        chunk_attrs.push(KeyValue {
+                            key: "dd.origin".to_string(),
+                            value: Some(string_value(&chunk.origin)),
+                        });
+                    }
+                    {
+                        use opentelemetry_proto::tonic::common::v1::{AnyValue, any_value};
+                        chunk_attrs.push(KeyValue {
+                            key: "dd.priority".to_string(),
+                            value: Some(AnyValue {
+                                value: Some(any_value::Value::IntValue(
+                                    i64::from(chunk.priority),
+                                )),
+                            }),
+                        });
+                    }
+                    if chunk.dropped_trace {
+                        use opentelemetry_proto::tonic::common::v1::{AnyValue, any_value};
+                        chunk_attrs.push(KeyValue {
+                            key: "dd.dropped".to_string(),
+                            value: Some(AnyValue {
+                                value: Some(any_value::Value::BoolValue(true)),
+                            }),
+                        });
+                    }
+                    chunk_attrs.extend(dd_tags_to_attributes(chunk.tags));
+
+                    chunk
+                        .spans
+                        .into_iter()
+                        .map(|span| {
+                            dd_span_to_otel(
+                                span,
+                                &resource,
+                                &scope,
+                                &api_key,
+                                &chunk_attrs,
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>()
+        })
         .collect();
 
     source.events_received.emit(CountByteSize(
-        trace_events.len(),
-        trace_events.estimated_json_encoded_size_of(),
+        events.len(),
+        events.estimated_json_encoded_size_of(),
     ));
 
-    let enriched_events = trace_events
-        .into_iter()
-        .map(|mut trace_event| {
-            if let Some(k) = &api_key {
-                trace_event
-                    .metadata_mut()
-                    .secrets_mut().insert("datadog_api_key", Arc::clone(k));
-            }
-            trace_event.insert(
-                &source.log_schema_source_type_key,
-                Bytes::from("datadog_agent"),
-            );
-            trace_event.insert(event_path!("payload_version"), "v2".to_string());
-            trace_event.insert(&source.log_schema_host_key, hostname.clone());
-            trace_event.insert(event_path!("env"), env.clone());
-            trace_event.insert(event_path!("agent_version"), agent_version.clone());
-            trace_event.insert(
-                event_path!("target_tps"),
-                Value::Float(NotNan::new(target_tps).expect("target_tps cannot be Nan")),
-            );
-            trace_event.insert(
-                event_path!("error_tps"),
-                Value::Float(NotNan::new(error_tps).expect("error_tps cannot be Nan")),
-            );
-            if let Some(Value::Object(span_tags)) = trace_event.get_mut(event_path!("tags")) {
-                span_tags.extend(tags.clone());
-            } else {
-                trace_event.insert(event_path!("tags"), Value::from(tags.clone()));
-            }
-            Event::Trace(OtelSpan::from_trace_event(trace_event))
-        })
-        .collect();
-    Ok(enriched_events)
+    Ok(events)
 }
 
-fn convert_dd_tracer_payload(payload: ddtrace_proto::TracerPayload) -> Vec<TraceEvent> {
-    let tags = convert_tags(payload.tags);
-    payload
-        .chunks
-        .into_iter()
-        .map(|trace| {
-            let mut trace_event = TraceEvent::default();
-            trace_event.insert(event_path!("priority"), trace.priority as i64);
-            trace_event.insert(event_path!("origin"), trace.origin);
-            trace_event.insert(event_path!("dropped"), trace.dropped_trace);
-            let mut trace_tags = convert_tags(trace.tags);
-            trace_tags.extend(tags.clone());
-            trace_event.insert(event_path!("tags"), Value::from(trace_tags));
-
-            trace_event.insert(
-                event_path!("spans"),
-                trace
-                    .spans
-                    .into_iter()
-                    .map(|s| Value::from(convert_span(s)))
-                    .collect::<Vec<Value>>(),
-            );
-
-            trace_event.insert(event_path!("container_id"), payload.container_id.clone());
-            trace_event.insert(event_path!("language_name"), payload.language_name.clone());
-            trace_event.insert(
-                event_path!("language_version"),
-                payload.language_version.clone(),
-            );
-            trace_event.insert(
-                event_path!("tracer_version"),
-                payload.tracer_version.clone(),
-            );
-            trace_event.insert(event_path!("runtime_id"), payload.runtime_id.clone());
-            trace_event.insert(event_path!("app_version"), payload.app_version.clone());
-            trace_event
-        })
-        .collect()
-}
-
-// Decode Datadog older protobuf schema
+/// Decode Datadog older protobuf schema (v0 — with traces/transactions)
 fn handle_dd_trace_payload_v0(
     decoded_payload: ddtrace_proto::TracePayload,
     api_key: Option<Arc<str>>,
@@ -213,121 +398,56 @@ fn handle_dd_trace_payload_v0(
     let env = decoded_payload.env;
     let hostname = decoded_payload.host_name;
 
-    let trace_events: Vec<TraceEvent> =
-    // Each traces is mapped to one event...
-    decoded_payload
+    let scope = lang.map(|l| InstrumentationScope {
+        name: format!("datadog.tracer.{l}"),
+        version: String::new(),
+        attributes: vec![],
+        dropped_attributes_count: 0,
+    });
+
+    let resource = build_trace_resource(&hostname, &env, None);
+
+    let payload_version_attr = KeyValue {
+        key: "dd.payload_version".to_string(),
+        value: Some(string_value("v1")),
+    };
+
+    let events: Vec<Event> = decoded_payload
         .traces
         .into_iter()
-        .map(|dd_trace| {
-            let mut trace_event = TraceEvent::default();
-
-            // TODO trace_id is being forced into an i64 but
-            // the incoming payload is u64. This is a bug and needs to be fixed per:
-            // https://github.com/vectordotdev/vector/issues/14687
-            trace_event.insert(event_path!("trace_id"), dd_trace.trace_id as i64);
-            trace_event.insert(event_path!("start_time"), Utc.timestamp_nanos(dd_trace.start_time));
-            trace_event.insert(event_path!("end_time"), Utc.timestamp_nanos(dd_trace.end_time));
-            trace_event.insert(
-                event_path!("spans"),
-                dd_trace
-                    .spans
-                    .into_iter()
-                    .map(|s| Value::from(convert_span(s)))
-                    .collect::<Vec<Value>>(),
-            );
-            trace_event
-        })
-        //... and each APM event is also mapped into its own event
-        .chain(decoded_payload.transactions.into_iter().map(|s| {
-            let mut trace_event = TraceEvent::default();
-            trace_event.insert(event_path!("spans"), vec![Value::from(convert_span(s))]);
-            trace_event.insert(event_path!("dropped"), true);
-            trace_event
-        })).collect();
-
-    source.events_received.emit(CountByteSize(
-        trace_events.len(),
-        trace_events.estimated_json_encoded_size_of(),
-    ));
-
-    let enriched_events = trace_events
-        .into_iter()
-        .map(|mut trace_event| {
-            if let Some(k) = &api_key {
-                trace_event
-                    .metadata_mut()
-                    .secrets_mut().insert("datadog_api_key", Arc::clone(k));
-            }
-            if let Some(lang) = lang {
-                trace_event.insert(event_path!("language_name"), lang.clone());
-            }
-            trace_event.insert(
-                &source.log_schema_source_type_key,
-                Bytes::from("datadog_agent"),
-            );
-            trace_event.insert(event_path!("payload_version"), "v1".to_string());
-            trace_event.insert(&source.log_schema_host_key, hostname.clone());
-            trace_event.insert(event_path!("env"), env.clone());
-            Event::Trace(OtelSpan::from_trace_event(trace_event))
-        })
-        .collect();
-
-    Ok(enriched_events)
-}
-
-fn convert_span(dd_span: ddtrace_proto::Span) -> ObjectMap {
-    let mut span = ObjectMap::new();
-    span.insert("service".into(), Value::from(dd_span.service));
-    span.insert("name".into(), Value::from(dd_span.name));
-
-    span.insert("resource".into(), Value::from(dd_span.resource));
-
-    // TODO trace_id, span_id and parent_id are being forced into an i64 but
-    // the incoming payload is u64. This is a bug and needs to be fixed per:
-    // https://github.com/vectordotdev/vector/issues/14687
-    span.insert("trace_id".into(), Value::from(dd_span.trace_id as i64));
-    span.insert("span_id".into(), Value::from(dd_span.span_id as i64));
-    span.insert("parent_id".into(), Value::from(dd_span.parent_id as i64));
-    span.insert(
-        "start".into(),
-        Value::from(Utc.timestamp_nanos(dd_span.start)),
-    );
-    span.insert("duration".into(), Value::from(dd_span.duration));
-    span.insert("error".into(), Value::from(dd_span.error as i64));
-    span.insert("meta".into(), Value::from(convert_tags(dd_span.meta)));
-    span.insert(
-        "metrics".into(),
-        Value::from(
-            dd_span
-                .metrics
+        .flat_map(|dd_trace| {
+            dd_trace
+                .spans
                 .into_iter()
-                .map(|(k, v)| {
-                    (
-                        k.into(),
-                        NotNan::new(v).map(Value::Float).unwrap_or(Value::Null),
+                .map(|span| {
+                    dd_span_to_otel(
+                        span,
+                        &resource,
+                        &scope,
+                        &api_key,
+                        &[payload_version_attr.clone()],
                     )
                 })
-                .collect::<ObjectMap>(),
-        ),
-    );
-    span.insert("type".into(), Value::from(dd_span.r#type));
-    span.insert(
-        "meta_struct".into(),
-        Value::from(
-            dd_span
-                .meta_struct
-                .into_iter()
-                .map(|(k, v)| (k.into(), Value::from(bytes::Bytes::from(v))))
-                .collect::<ObjectMap>(),
-        ),
-    );
+                .collect::<Vec<_>>()
+        })
+        // Each APM transaction span is also mapped into its own event
+        .chain(decoded_payload.transactions.into_iter().map(|span| {
+            let mut extra = vec![payload_version_attr.clone()];
+            use opentelemetry_proto::tonic::common::v1::{AnyValue, any_value};
+            extra.push(KeyValue {
+                key: "dd.dropped".to_string(),
+                value: Some(AnyValue {
+                    value: Some(any_value::Value::BoolValue(true)),
+                }),
+            });
+            dd_span_to_otel(span, &resource, &scope, &api_key, &extra)
+        }))
+        .collect();
 
-    span
-}
+    source.events_received.emit(CountByteSize(
+        events.len(),
+        events.estimated_json_encoded_size_of(),
+    ));
 
-fn convert_tags(original_map: BTreeMap<String, String>) -> ObjectMap {
-    original_map
-        .into_iter()
-        .map(|(k, v)| (k.into(), Value::from(v)))
-        .collect::<ObjectMap>()
+    Ok(events)
 }

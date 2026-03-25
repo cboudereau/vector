@@ -1,11 +1,11 @@
-# Step 7 — Re-Integration: DataDog Source as Clean OTel Adapter
+# Step 7 — Re-Integration: DataDog Source as Clean OTel Adapter — COMPLETE
 
 ## Context
 
 Steps 0–6 of the OTLP migration are complete. The `Event` enum has 3 OTel-native variants:
 `Log(OtelLog)`, `Metric(OtelMetric)`, `Trace(OtelSpan)`. All tests pass.
 
-Step 7 cleans up the DataDog source to emit OtelMetric/OtelSpan directly (no legacy
+Step 7 cleaned up the DataDog source to emit OtelMetric/OtelSpan directly (no legacy
 intermediates). DD-specific metadata is stored in OTLP resource/record attributes.
 
 No DD sink is needed — DataDog accepts OTLP natively. Users point the existing OTel

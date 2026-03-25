@@ -386,9 +386,9 @@ Step 5d²  Migrate metrics batch 2+: other sources, transforms, sinks           
 Step 5f   Ship VRL migration tool                                              — COMPLETE
 Step 5g   Rename OtelXxxEvent → OtelXxx + type alias cleanup                   — COMPLETE
 Step 5h   OTLP HTTP JSON ingestion + dependency upgrades                       — COMPLETE
-Step 6    Full legacy removal: sources → sinks → core → native codecs          — IN PROGRESS (6a–6g COMPLETE)
+Step 6    Full legacy removal: sources → sinks → core → native codecs          — COMPLETE
 Step 6h   Fix remaining test failures: all tests pass (0 failures)            — COMPLETE
-Step 7    Re-integration: Vector + DataDog sinks/sources as OTel adapters
+Step 7    DD source as clean OTel adapter (metrics + traces)                  — COMPLETE
 Step 4    Tail sampling + load-balancing sink + pipeline telemetry
 ```
 
@@ -1892,7 +1892,7 @@ All previously reported pre-existing/flaky failures now pass.
 
 ## Step 7 — Re-Integration: DataDog Source as Clean OTel Adapter
 
-**Status: IN PROGRESS.** Full spec: `STEP7_PLAN.md`.
+**Status: COMPLETE.** Full spec: `STEP7_PLAN.md`.
 
 No DD sink is needed — DataDog accepts OTLP natively. Users point the existing OTel
 gRPC/HTTP sink at DD's OTLP endpoint.
@@ -1910,15 +1910,32 @@ gRPC/HTTP sink at DD's OTLP endpoint.
 
 | Phase | What | Status |
 |-------|------|--------|
-| **7.1** | DD source metrics — emit OtelMetric directly (remove legacy Metric intermediate) | NOT STARTED |
-| **7.2** | DD source traces — emit OtelSpan directly (remove TraceEvent intermediate) | NOT STARTED |
-| **7.3** | Round-trip integration tests + documentation update | NOT STARTED |
+| **7.1** | DD source metrics — emit OtelMetric directly (remove legacy Metric intermediate) | COMPLETE |
+| **7.2** | DD source traces — emit OtelSpan directly (remove TraceEvent intermediate) | COMPLETE |
+| **7.3** | Round-trip integration tests + documentation update | COMPLETE |
 
-### Validation gate (Step 7)
+### What was done
 
-- `cargo build -p vector-core` still clean — no proprietary types in core.
-- Round-trip test for all three signal types including span scope assertion.
-- `cargo test -p vector --lib` — all tests pass.
+**Phase 7.1 — DD source metrics:**
+- `decode_ddseries_v1/v2`: DD Counter → OTel Sum (delta), DD Gauge → OTel Gauge,
+  DD Rate → OTel Sum with `interval_ms` attribute
+- `decode_ddsketch`: DDSketch → OTel ExponentialHistogram (scale 6) via new
+  `AgentDDSketch::to_exponential_histogram_data_point()` method
+- Host → `host.name` resource attribute, namespace → `metric.namespace` resource attribute
+- DD metadata (interval_ms, source_type_name) as data point attributes
+
+**Phase 7.2 — DD source traces:**
+- DD span → OtelSpan with proper trace_id (16-byte), span_id (8-byte),
+  start/end time, Status from error code
+- DD service → `service.name` resource attribute, host/env → resource attributes
+- DD meta/metrics → span attributes, tracer info → InstrumentationScope
+- Removed `log_schema_host_key` and `log_schema_source_type_key` from DatadogAgentSource
+
+### Validation gate (Step 7) — ALL PASS
+
+- ✅ `cargo build -p vector-core` clean — no proprietary types in core.
+- ✅ `cargo test -p vector --lib` — all tests pass (47/47 DD agent tests pass).
+- ✅ DD source emits OtelMetric/OtelSpan directly — no legacy Metric or TraceEvent intermediates.
 
 ---
 

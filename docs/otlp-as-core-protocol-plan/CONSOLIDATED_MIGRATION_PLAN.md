@@ -21,6 +21,7 @@ Single source of truth for the migration. All other documents in this folder fee
 | `GAP_ANALYSIS.md` | Code-verified gaps between docs and codebase — read before coding |
 | `UPSTREAM_PROTO_MIGRATION.md` | Migrate to upstream `opentelemetry-proto` crate + OTLP HTTP JSON support |
 | `STEP7_PLAN.md` | Step 7 detailed plan — DD source cleanup (metrics + traces to OTel-native) |
+| `STEP4A_LOAD_BALANCING_PLAN.md` | Step 4a detailed plan — consistent-hash load-balancing sink |
 
 ---
 

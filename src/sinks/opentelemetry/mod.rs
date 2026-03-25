@@ -1,4 +1,5 @@
 mod grpc;
+pub mod load_balancing;
 
 use indoc::indoc;
 use vector_config::component::GenerateConfig;

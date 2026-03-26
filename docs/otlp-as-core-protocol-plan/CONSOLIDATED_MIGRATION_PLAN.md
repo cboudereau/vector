@@ -23,6 +23,7 @@ Single source of truth for the migration. All other documents in this folder fee
 | `STEP7_PLAN.md` | Step 7 detailed plan — DD source cleanup (metrics + traces to OTel-native) |
 | `STEP4A_LOAD_BALANCING_PLAN.md` | Step 4a detailed plan — consistent-hash load-balancing sink |
 | `STEP4B_TAIL_SAMPLING_PLAN.md` | Step 4b detailed plan — tail sampling transform |
+| `STEP4C_PIPELINE_TELEMETRY_PLAN.md` | Step 4c detailed plan — span_metrics transform |
 
 ---
 
@@ -393,7 +394,7 @@ Step 6h   Fix remaining test failures: all tests pass (0 failures)            �
 Step 7    DD source as clean OTel adapter (metrics + traces)                  — COMPLETE
 Step 4a   Load-balancing sink (consistent hash, static/DNS/K8s resolvers)    — COMPLETE
 Step 4b   Tail sampling transform (8 policy types, decision cache)          — COMPLETE
-Step 4c   Pipeline telemetry                                                — NOT STARTED
+Step 4c   Pipeline telemetry (span_metrics transform)                      — COMPLETE
 ```
 
 **Why Step 6 before Step 4 and Step 7:** Completing the core protocol migration before
@@ -1967,9 +1968,16 @@ Buffers OTel spans by trace_id, evaluates policies after decision_wait, emits or
 span_count, string_attribute, numeric_attribute. Decision cache for late-arriving spans.
 10 unit tests.
 
-### Step 4c — Pipeline Telemetry — NOT STARTED
+### Step 4c — Pipeline Telemetry (span_metrics) — COMPLETE
 
-Full spec: `APM_STATS_OTLP_BACKPORT.md`.
+Full spec: `STEP4C_PIPELINE_TELEMETRY_PLAN.md` and `APM_STATS_OTLP_BACKPORT.md`.
+
+`span_metrics` transform computes RED metrics from OTel spans:
+- `{namespace}.calls` — Sum counter per unique dimension set
+- `{namespace}.duration` — Histogram per unique dimension set
+- Default dimensions: service.name, span.name, span.kind, status.code
+- Configurable extra dimensions, histogram buckets, temporality, namespace
+- 6 unit tests.
 
 ---
 

@@ -22,6 +22,7 @@ Single source of truth for the migration. All other documents in this folder fee
 | `UPSTREAM_PROTO_MIGRATION.md` | Migrate to upstream `opentelemetry-proto` crate + OTLP HTTP JSON support |
 | `STEP7_PLAN.md` | Step 7 detailed plan — DD source cleanup (metrics + traces to OTel-native) |
 | `STEP4A_LOAD_BALANCING_PLAN.md` | Step 4a detailed plan — consistent-hash load-balancing sink |
+| `STEP4B_TAIL_SAMPLING_PLAN.md` | Step 4b detailed plan — tail sampling transform |
 
 ---
 
@@ -391,7 +392,7 @@ Step 6    Full legacy removal: sources → sinks → core → native codecs     
 Step 6h   Fix remaining test failures: all tests pass (0 failures)            — COMPLETE
 Step 7    DD source as clean OTel adapter (metrics + traces)                  — COMPLETE
 Step 4a   Load-balancing sink (consistent hash, static/DNS/K8s resolvers)    — COMPLETE
-Step 4b   Tail sampling transform                                           — NOT STARTED
+Step 4b   Tail sampling transform (8 policy types, decision cache)          — COMPLETE
 Step 4c   Pipeline telemetry                                                — NOT STARTED
 ```
 
@@ -1957,9 +1958,14 @@ Collector Contrib `loadbalancingexporter` pattern:
 - Per-backend `OtlpGrpcService` with independent Channel
 - Metrics: `vector_lb_num_backends`, `vector_lb_num_resolutions`, `vector_lb_backend_outcome`
 
-### Step 4b — Tail Sampling Transform — NOT STARTED
+### Step 4b — Tail Sampling Transform — COMPLETE
 
-Full spec: `TAIL_SAMPLING_BACKPORT.md` §4.
+Full spec: `STEP4B_TAIL_SAMPLING_PLAN.md` and `TAIL_SAMPLING_BACKPORT.md` §4.
+
+Buffers OTel spans by trace_id, evaluates policies after decision_wait, emits or drops.
+8 policies: always_sample, status_code, latency, probabilistic, rate_limiting,
+span_count, string_attribute, numeric_attribute. Decision cache for late-arriving spans.
+10 unit tests.
 
 ### Step 4c — Pipeline Telemetry — NOT STARTED
 

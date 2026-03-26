@@ -85,6 +85,153 @@ fn default_k8s_ports() -> Vec<u16> {
 }
 
 // ---------------------------------------------------------------------------
+// Resolver trait + implementations
+// (mirrors otel-col-contrib resolver_static.go / resolver_dns.go / resolver_k8s.go)
+// ---------------------------------------------------------------------------
+
+use std::collections::BTreeSet;
+use std::time::Duration;
+use tokio::sync::watch;
+
+/// A resolver discovers backend endpoints.
+#[async_trait::async_trait]
+pub trait Resolver: Send + 'static {
+    async fn resolve(&mut self) -> crate::Result<Vec<String>>;
+}
+
+/// Start a resolver background task. Returns a watch channel that updates on
+/// backend changes, plus the task handle.
+pub fn start_resolver(
+    config: ResolverConfig,
+) -> (watch::Receiver<Vec<String>>, tokio::task::JoinHandle<()>) {
+    let (tx, rx) = watch::channel(Vec::new());
+
+    let handle = tokio::spawn(async move {
+        let (mut resolver, interval): (Box<dyn Resolver>, Duration) = match config {
+            ResolverConfig::Static(cfg) => (
+                Box::new(StaticResolver(cfg.hostnames)),
+                Duration::from_secs(u64::MAX), // resolve once
+            ),
+            ResolverConfig::Dns(cfg) => {
+                let interval = parse_duration(&cfg.interval).unwrap_or(Duration::from_secs(5));
+                (Box::new(DnsResolver { hostname: cfg.hostname, port: cfg.port }), interval)
+            }
+            #[cfg(feature = "kubernetes")]
+            ResolverConfig::K8s(cfg) => {
+                let (service, namespace) = match cfg.service.split_once('.') {
+                    Some((name, ns)) => (name.to_string(), Some(ns.to_string())),
+                    None => (cfg.service, None),
+                };
+                let port = cfg.ports.first().copied().unwrap_or(4317);
+                (Box::new(K8sResolver { service, namespace, port }), Duration::from_secs(5))
+            }
+        };
+
+        let mut last: BTreeSet<String> = BTreeSet::new();
+        loop {
+            match resolver.resolve().await {
+                Ok(mut endpoints) => {
+                    endpoints.sort();
+                    let current: BTreeSet<String> = endpoints.iter().cloned().collect();
+                    if current != last {
+                        debug!(message = "Load balancer backends updated.", count = endpoints.len());
+                        last = current;
+                        let _ = tx.send(endpoints);
+                    }
+                }
+                Err(error) => {
+                    warn!(message = "Load balancer resolver failed.", %error);
+                }
+            }
+            tokio::time::sleep(interval).await;
+        }
+    });
+
+    (rx, handle)
+}
+
+fn parse_duration(s: &str) -> Option<Duration> {
+    let s = s.trim();
+    if let Some(secs) = s.strip_suffix('s') {
+        secs.parse::<u64>().ok().map(Duration::from_secs)
+    } else if let Some(mins) = s.strip_suffix('m') {
+        mins.parse::<u64>().ok().map(|m| Duration::from_secs(m * 60))
+    } else {
+        s.parse::<u64>().ok().map(Duration::from_secs)
+    }
+}
+
+/// Static resolver — fixed list, resolves once (mirrors resolver_static.go).
+struct StaticResolver(Vec<String>);
+
+#[async_trait::async_trait]
+impl Resolver for StaticResolver {
+    async fn resolve(&mut self) -> crate::Result<Vec<String>> {
+        Ok(self.0.clone())
+    }
+}
+
+/// DNS resolver — periodic A/AAAA lookup (mirrors resolver_dns.go).
+struct DnsResolver {
+    hostname: String,
+    port: u16,
+}
+
+#[async_trait::async_trait]
+impl Resolver for DnsResolver {
+    async fn resolve(&mut self) -> crate::Result<Vec<String>> {
+        let lookup = format!("{}:{}", self.hostname, self.port);
+        let addrs = tokio::net::lookup_host(&lookup).await?;
+        let endpoints: Vec<String> = addrs.map(|a| a.to_string()).collect();
+        if endpoints.is_empty() {
+            warn!(message = "DNS resolution returned no results.", hostname = %self.hostname);
+        }
+        Ok(endpoints)
+    }
+}
+
+/// K8s EndpointSlice resolver (mirrors resolver_k8s.go).
+#[cfg(feature = "kubernetes")]
+struct K8sResolver {
+    service: String,
+    namespace: Option<String>,
+    port: u16,
+}
+
+#[cfg(feature = "kubernetes")]
+#[async_trait::async_trait]
+impl Resolver for K8sResolver {
+    async fn resolve(&mut self) -> crate::Result<Vec<String>> {
+        use k8s_openapi::api::discovery::v1::EndpointSlice;
+        use kube::{Api, Client, api::ListParams};
+
+        let client = Client::try_default().await?;
+        let api: Api<EndpointSlice> = match &self.namespace {
+            Some(ns) => Api::namespaced(client, ns),
+            None => Api::default_namespaced(client),
+        };
+
+        let label = format!("kubernetes.io/service-name={}", self.service);
+        let slices = api.list(&ListParams::default().labels(&label)).await?;
+
+        let mut endpoints = Vec::new();
+        for slice in slices.items {
+            for ep in slice.endpoints {
+                for addr in ep.addresses {
+                    let host = if addr.contains(':') {
+                        format!("[{addr}]")
+                    } else {
+                        addr
+                    };
+                    endpoints.push(format!("{host}:{}", self.port));
+                }
+            }
+        }
+        Ok(endpoints)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Consistent Hash Ring
 // ---------------------------------------------------------------------------
 
@@ -336,5 +483,51 @@ mod tests {
         // Verify our CRC32 implementation produces correct IEEE values.
         assert_eq!(crc32_hash(b""), 0);
         assert_eq!(crc32_hash(b"123456789"), 0xCBF4_3926);
+    }
+
+    #[tokio::test]
+    async fn static_resolver_returns_hostnames() {
+        let mut resolver = StaticResolver(vec![
+            "backend-0:4317".into(),
+            "backend-1:4317".into(),
+        ]);
+        let result = resolver.resolve().await.unwrap();
+        assert_eq!(result, vec!["backend-0:4317", "backend-1:4317"]);
+    }
+
+    #[tokio::test]
+    async fn dns_resolver_resolves_localhost() {
+        // localhost should always resolve
+        let mut resolver = DnsResolver {
+            hostname: "localhost".into(),
+            port: 4317,
+        };
+        let result = resolver.resolve().await.unwrap();
+        assert!(!result.is_empty(), "localhost should resolve to at least one address");
+        for addr in &result {
+            assert!(addr.contains("4317"), "resolved address should contain port: {addr}");
+        }
+    }
+
+    #[test]
+    fn parse_duration_variants() {
+        assert_eq!(parse_duration("5s"), Some(Duration::from_secs(5)));
+        assert_eq!(parse_duration("30s"), Some(Duration::from_secs(30)));
+        assert_eq!(parse_duration("1m"), Some(Duration::from_secs(60)));
+        assert_eq!(parse_duration("10"), Some(Duration::from_secs(10)));
+        assert_eq!(parse_duration("abc"), None);
+    }
+
+    #[tokio::test]
+    async fn start_resolver_static_delivers_endpoints() {
+        let config = ResolverConfig::Static(StaticResolverConfig {
+            hostnames: vec!["a:4317".into(), "b:4317".into()],
+        });
+        let (mut rx, handle) = start_resolver(config);
+        // Wait for first update
+        rx.changed().await.unwrap();
+        let endpoints = rx.borrow().clone();
+        assert_eq!(endpoints, vec!["a:4317", "b:4317"]);
+        handle.abort();
     }
 }

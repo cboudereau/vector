@@ -390,7 +390,9 @@ Step 5h   OTLP HTTP JSON ingestion + dependency upgrades                       �
 Step 6    Full legacy removal: sources → sinks → core → native codecs          — COMPLETE
 Step 6h   Fix remaining test failures: all tests pass (0 failures)            — COMPLETE
 Step 7    DD source as clean OTel adapter (metrics + traces)                  — COMPLETE
-Step 4    Tail sampling + load-balancing sink + pipeline telemetry
+Step 4a   Load-balancing sink (consistent hash, static/DNS/K8s resolvers)    — COMPLETE
+Step 4b   Tail sampling transform                                           — NOT STARTED
+Step 4c   Pipeline telemetry                                                — NOT STARTED
 ```
 
 **Why Step 6 before Step 4 and Step 7:** Completing the core protocol migration before
@@ -1942,9 +1944,26 @@ gRPC/HTTP sink at DD's OTLP endpoint.
 
 ## Step 4 — Tail Sampling, Load-Balancing Sink, and Pipeline Telemetry
 
-**Status: NOT STARTED — after Step 7.**
+### Step 4a — Load-Balancing Sink — COMPLETE
 
-Built entirely on OTel-native types. No legacy compatibility concerns.
+Full spec: `STEP4A_LOAD_BALANCING_PLAN.md`.
+
+Adds consistent-hash load balancing to the OTel gRPC sink, following the OTel
+Collector Contrib `loadbalancingexporter` pattern:
+
+- CRC32 IEEE consistent hash ring (36000-point, 100 virtual nodes per endpoint)
+- Routing by `traceID` (default) or `service` name
+- Three resolvers: static hostnames, DNS periodic lookup, K8s EndpointSlice
+- Per-backend `OtlpGrpcService` with independent Channel
+- Metrics: `vector_lb_num_backends`, `vector_lb_num_resolutions`, `vector_lb_backend_outcome`
+
+### Step 4b — Tail Sampling Transform — NOT STARTED
+
+Full spec: `TAIL_SAMPLING_BACKPORT.md` §4.
+
+### Step 4c — Pipeline Telemetry — NOT STARTED
+
+Full spec: `APM_STATS_OTLP_BACKPORT.md`.
 
 ---
 

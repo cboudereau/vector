@@ -402,6 +402,7 @@ where
 // ---------------------------------------------------------------------------
 
 use std::collections::HashMap;
+use metrics::{counter, gauge};
 use super::load_balancing::{ConsistentHashRing, RoutingKey, extract_routing_key};
 
 /// A sink that routes events to multiple backends via consistent hashing.
@@ -437,6 +438,7 @@ impl StreamSink<Event> for LoadBalancedOtlpGrpcSink {
             .connect_lazy();
             services.insert(ep.clone(), OtlpGrpcService::new(channel, ep.clone(), self.compression));
         }
+        gauge!("vector_lb_num_backends").set(ring.len() as f64);
 
         // Collect events, route by key, batch per backend, send.
         let routing_key = self.routing_key.clone();
@@ -447,6 +449,8 @@ impl StreamSink<Event> for LoadBalancedOtlpGrpcSink {
             if self.backends_rx.has_changed().unwrap_or(false) {
                 let new_endpoints = self.backends_rx.borrow_and_update().clone();
                 ring = ConsistentHashRing::new(&new_endpoints);
+                gauge!("vector_lb_num_backends").set(ring.len() as f64);
+                counter!("vector_lb_num_resolutions", "outcome" => "success").increment(1);
                 // Add new backends, remove old ones.
                 let new_set: std::collections::HashSet<&String> = new_endpoints.iter().collect();
                 let old_keys: Vec<String> = services.keys().cloned().collect();
@@ -533,12 +537,18 @@ impl StreamSink<Event> for LoadBalancedOtlpGrpcSink {
                 }
                 if let Some(svc) = services.get_mut(&endpoint) {
                     let req = collection_into_request(col);
-                    if let Err(e) = svc.call(req).await {
-                        warn!(
-                            message = "Load-balanced gRPC send failed.",
-                            endpoint = %endpoint,
-                            error = ?e,
-                        );
+                    match svc.call(req).await {
+                        Ok(_) => {
+                            counter!("vector_lb_backend_outcome", "endpoint" => endpoint.clone(), "outcome" => "success").increment(1);
+                        }
+                        Err(e) => {
+                            counter!("vector_lb_backend_outcome", "endpoint" => endpoint.clone(), "outcome" => "error").increment(1);
+                            warn!(
+                                message = "Load-balanced gRPC send failed.",
+                                endpoint = %endpoint,
+                                error = ?e,
+                            );
+                        }
                     }
                 }
             }

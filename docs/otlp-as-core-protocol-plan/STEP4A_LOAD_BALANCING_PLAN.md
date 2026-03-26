@@ -1,4 +1,4 @@
-# Step 4a — Load-Balancing Sink for OTel gRPC
+# Step 4a — Load-Balancing Sink for OTel gRPC — COMPLETE
 
 ## Context
 
@@ -90,7 +90,7 @@ refreshes and the backend list changes:
 
 ## Phased Implementation
 
-### Phase 1: Hash ring + config types (~150 lines)
+### Phase 1: Hash ring + config types (~150 lines) — COMPLETE
 
 **Files to create:**
 - `src/sinks/opentelemetry/load_balancing.rs` — `LoadBalancingConfig`, `RoutingKey` enum,
@@ -103,7 +103,7 @@ refreshes and the backend list changes:
 
 **Tests:** ring distribution, determinism, endpoint add/remove stability
 
-### Phase 2: Resolver implementations (~200 lines)
+### Phase 2: Resolver implementations (~200 lines) — COMPLETE
 
 **Add to `load_balancing.rs`:**
 - `StaticResolver` — trivial, returns config hostnames
@@ -114,7 +114,7 @@ refreshes and the backend list changes:
 
 **Tests:** static resolution, DNS mock, K8s mock (using `kube::Client::try_default()` test pattern)
 
-### Phase 3: Load-balanced sink (~300 lines)
+### Phase 3: Load-balanced sink (~300 lines) — COMPLETE
 
 **Files to modify:**
 - `src/sinks/opentelemetry/grpc.rs` — add `load_balancing` field to `GrpcConfig`
@@ -138,7 +138,7 @@ refreshes and the backend list changes:
 - Backend add/remove → minimal reshuffling
 - Config serialization/deserialization
 
-### Phase 4: Metrics + docs (~50 lines)
+### Phase 4: Metrics + docs (~50 lines) — COMPLETE
 
 - `vector_lb_num_backends` gauge
 - `vector_lb_num_resolutions` counter (success/fail)

@@ -773,6 +773,7 @@ transforms-sample = ["transforms-impl-sample"]
 transforms-tag_cardinality_limit = ["dep:bloomy", "dep:hashbrown"]
 transforms-throttle = ["dep:governor"]
 transforms-trace_to_log = []
+transforms-tail_sample = []
 
 # Implementations of transforms
 transforms-impl-sample = []

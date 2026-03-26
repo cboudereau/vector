@@ -324,7 +324,7 @@ impl ConsistentHashRing {
 }
 
 /// CRC32 IEEE hash.
-fn crc32_hash(data: &[u8]) -> u32 {
+pub fn crc32_hash(data: &[u8]) -> u32 {
     // Use a simple CRC32 implementation. The `crc32fast` crate is in the dep tree
     // but we use a manual IEEE table to avoid adding a direct dependency.
     let mut crc: u32 = 0xFFFF_FFFF;

@@ -1,0 +1,399 @@
+use vector_lib::configurable::configurable_component;
+
+use super::transform::BufferedTrace;
+
+/// Sampling decision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Decision {
+    /// Keep the trace.
+    Sample,
+    /// Drop the trace.
+    Drop,
+    /// No decision yet (policy doesn't apply).
+    Pending,
+}
+
+/// A sampling policy that evaluates a buffered trace.
+pub trait SamplingPolicy: Send + Sync {
+    fn evaluate(&self, trace: &BufferedTrace) -> Decision;
+    fn name(&self) -> &str;
+}
+
+/// Policy configuration — deserialized from TOML.
+#[configurable_component]
+#[derive(Clone, Debug)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum PolicyConfig {
+    /// Sample all traces unconditionally.
+    AlwaysSample(AlwaysSampleConfig),
+    /// Sample traces containing spans with matching status codes.
+    StatusCode(StatusCodeConfig),
+    /// Sample traces whose duration exceeds a threshold.
+    Latency(LatencyConfig),
+    /// Hash-based probabilistic sampling.
+    Probabilistic(ProbabilisticConfig),
+    /// Token-bucket rate limiting.
+    RateLimiting(RateLimitingConfig),
+    /// Sample by span count in trace.
+    SpanCount(SpanCountConfig),
+    /// Sample by string attribute match.
+    StringAttribute(StringAttributeConfig),
+    /// Sample by numeric attribute range.
+    NumericAttribute(NumericAttributeConfig),
+}
+
+impl PolicyConfig {
+    /// Build a boxed `SamplingPolicy` from this config.
+    pub fn build(&self) -> Box<dyn SamplingPolicy> {
+        match self {
+            PolicyConfig::AlwaysSample(c) => Box::new(AlwaysSample(c.name.clone())),
+            PolicyConfig::StatusCode(c) => Box::new(StatusCode {
+                name: c.name.clone(),
+                status_codes: c.status_codes.clone(),
+            }),
+            PolicyConfig::Latency(c) => Box::new(Latency {
+                name: c.name.clone(),
+                threshold_ms: c.threshold_ms,
+                upper_threshold_ms: c.upper_threshold_ms,
+            }),
+            PolicyConfig::Probabilistic(c) => Box::new(Probabilistic {
+                name: c.name.clone(),
+                sampling_percentage: c.sampling_percentage,
+            }),
+            PolicyConfig::RateLimiting(c) => Box::new(RateLimiting {
+                name: c.name.clone(),
+                spans_per_second: c.spans_per_second,
+                state: std::sync::Mutex::new(RateLimitState {
+                    tokens: c.spans_per_second,
+                    last_refill: std::time::Instant::now(),
+                }),
+            }),
+            PolicyConfig::SpanCount(c) => Box::new(SpanCount {
+                name: c.name.clone(),
+                min_spans: c.min_spans,
+                max_spans: c.max_spans,
+            }),
+            PolicyConfig::StringAttribute(c) => Box::new(StringAttribute {
+                name: c.name.clone(),
+                key: c.key.clone(),
+                values: c.values.clone(),
+            }),
+            PolicyConfig::NumericAttribute(c) => Box::new(NumericAttribute {
+                name: c.name.clone(),
+                key: c.key.clone(),
+                min_value: c.min_value,
+                max_value: c.max_value,
+            }),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Config structs (serde)
+// ---------------------------------------------------------------------------
+
+/// Always sample config.
+#[configurable_component]
+#[derive(Clone, Debug)]
+pub struct AlwaysSampleConfig {
+    /// Policy name for metrics.
+    pub name: String,
+}
+
+/// Status code policy config.
+#[configurable_component]
+#[derive(Clone, Debug)]
+pub struct StatusCodeConfig {
+    /// Policy name for metrics.
+    pub name: String,
+    /// Status codes to match (e.g. "ERROR", "OK", "UNSET").
+    pub status_codes: Vec<String>,
+}
+
+/// Latency policy config.
+#[configurable_component]
+#[derive(Clone, Debug)]
+pub struct LatencyConfig {
+    /// Policy name for metrics.
+    pub name: String,
+    /// Minimum trace duration in ms to trigger sampling.
+    pub threshold_ms: u64,
+    /// Optional upper bound — only sample traces shorter than this.
+    #[serde(default)]
+    pub upper_threshold_ms: Option<u64>,
+}
+
+/// Probabilistic policy config.
+#[configurable_component]
+#[derive(Clone, Debug)]
+pub struct ProbabilisticConfig {
+    /// Policy name for metrics.
+    pub name: String,
+    /// Percentage of traces to sample (0.0 – 100.0).
+    pub sampling_percentage: f64,
+}
+
+/// Rate limiting policy config.
+#[configurable_component]
+#[derive(Clone, Debug)]
+pub struct RateLimitingConfig {
+    /// Policy name for metrics.
+    pub name: String,
+    /// Maximum spans per second.
+    pub spans_per_second: f64,
+}
+
+/// Span count policy config.
+#[configurable_component]
+#[derive(Clone, Debug)]
+pub struct SpanCountConfig {
+    /// Policy name for metrics.
+    pub name: String,
+    /// Minimum span count.
+    #[serde(default)]
+    pub min_spans: Option<usize>,
+    /// Maximum span count.
+    #[serde(default)]
+    pub max_spans: Option<usize>,
+}
+
+/// String attribute policy config.
+#[configurable_component]
+#[derive(Clone, Debug)]
+pub struct StringAttributeConfig {
+    /// Policy name for metrics.
+    pub name: String,
+    /// Attribute key to match.
+    pub key: String,
+    /// Values to match against.
+    pub values: Vec<String>,
+}
+
+/// Numeric attribute policy config.
+#[configurable_component]
+#[derive(Clone, Debug)]
+pub struct NumericAttributeConfig {
+    /// Policy name for metrics.
+    pub name: String,
+    /// Attribute key to match.
+    pub key: String,
+    /// Minimum value (inclusive).
+    pub min_value: f64,
+    /// Maximum value (inclusive).
+    pub max_value: f64,
+}
+
+// ---------------------------------------------------------------------------
+// Policy implementations
+// ---------------------------------------------------------------------------
+
+use opentelemetry_proto::tonic::trace::v1::status::StatusCode as OtelStatusCode;
+
+/// Always sample.
+struct AlwaysSample(String);
+
+impl SamplingPolicy for AlwaysSample {
+    fn evaluate(&self, _trace: &BufferedTrace) -> Decision {
+        Decision::Sample
+    }
+    fn name(&self) -> &str { &self.0 }
+}
+
+/// Match span status codes.
+struct StatusCode {
+    name: String,
+    status_codes: Vec<String>,
+}
+
+impl SamplingPolicy for StatusCode {
+    fn evaluate(&self, trace: &BufferedTrace) -> Decision {
+        for span_event in &trace.spans {
+            if let crate::event::Event::Trace(otel_span) = span_event {
+                if let Some(status) = otel_span.span().status.as_ref() {
+                    let code_str = match status.code {
+                        c if c == OtelStatusCode::Ok as i32 => "OK",
+                        c if c == OtelStatusCode::Error as i32 => "ERROR",
+                        _ => "UNSET",
+                    };
+                    if self.status_codes.iter().any(|s| s == code_str) {
+                        return Decision::Sample;
+                    }
+                }
+            }
+        }
+        Decision::Pending
+    }
+    fn name(&self) -> &str { &self.name }
+}
+
+/// Trace duration exceeds threshold.
+struct Latency {
+    name: String,
+    threshold_ms: u64,
+    upper_threshold_ms: Option<u64>,
+}
+
+impl SamplingPolicy for Latency {
+    fn evaluate(&self, trace: &BufferedTrace) -> Decision {
+        let (mut min_start, mut max_end) = (u64::MAX, 0u64);
+        for span_event in &trace.spans {
+            if let crate::event::Event::Trace(otel_span) = span_event {
+                let span = otel_span.span();
+                min_start = min_start.min(span.start_time_unix_nano);
+                max_end = max_end.max(span.end_time_unix_nano);
+            }
+        }
+        if min_start == u64::MAX {
+            return Decision::Pending;
+        }
+        let duration_ms = (max_end.saturating_sub(min_start)) / 1_000_000;
+        if duration_ms >= self.threshold_ms {
+            if let Some(upper) = self.upper_threshold_ms {
+                if duration_ms >= upper {
+                    return Decision::Pending;
+                }
+            }
+            Decision::Sample
+        } else {
+            Decision::Pending
+        }
+    }
+    fn name(&self) -> &str { &self.name }
+}
+
+/// Hash-based probabilistic sampling.
+struct Probabilistic {
+    name: String,
+    sampling_percentage: f64,
+}
+
+impl SamplingPolicy for Probabilistic {
+    fn evaluate(&self, trace: &BufferedTrace) -> Decision {
+        // Hash trace_id to get deterministic sampling.
+        use super::super::super::sinks::opentelemetry::load_balancing::crc32_hash;
+        let hash = crc32_hash(&trace.trace_id);
+        let threshold = (self.sampling_percentage / 100.0 * u32::MAX as f64) as u32;
+        if hash <= threshold {
+            Decision::Sample
+        } else {
+            Decision::Pending
+        }
+    }
+    fn name(&self) -> &str { &self.name }
+}
+
+/// Token-bucket rate limiting.
+struct RateLimiting {
+    name: String,
+    spans_per_second: f64,
+    state: std::sync::Mutex<RateLimitState>,
+}
+
+struct RateLimitState {
+    tokens: f64,
+    last_refill: std::time::Instant,
+}
+
+impl SamplingPolicy for RateLimiting {
+    fn evaluate(&self, trace: &BufferedTrace) -> Decision {
+        let now = std::time::Instant::now();
+        let mut state = self.state.lock().unwrap();
+        let elapsed = now.duration_since(state.last_refill).as_secs_f64();
+        state.tokens = (state.tokens + elapsed * self.spans_per_second).min(self.spans_per_second);
+        state.last_refill = now;
+
+        let span_count = trace.spans.len() as f64;
+        if state.tokens >= span_count {
+            state.tokens -= span_count;
+            Decision::Sample
+        } else {
+            Decision::Pending
+        }
+    }
+    fn name(&self) -> &str { &self.name }
+}
+
+/// Sample by span count.
+struct SpanCount {
+    name: String,
+    min_spans: Option<usize>,
+    max_spans: Option<usize>,
+}
+
+impl SamplingPolicy for SpanCount {
+    fn evaluate(&self, trace: &BufferedTrace) -> Decision {
+        let count = trace.spans.len();
+        let above_min = self.min_spans.map_or(true, |min| count >= min);
+        let below_max = self.max_spans.map_or(true, |max| count <= max);
+        if above_min && below_max {
+            Decision::Sample
+        } else {
+            Decision::Pending
+        }
+    }
+    fn name(&self) -> &str { &self.name }
+}
+
+/// Match string attribute value on any span.
+struct StringAttribute {
+    name: String,
+    key: String,
+    values: Vec<String>,
+}
+
+impl SamplingPolicy for StringAttribute {
+    fn evaluate(&self, trace: &BufferedTrace) -> Decision {
+        for span_event in &trace.spans {
+            if let crate::event::Event::Trace(otel_span) = span_event {
+                for attr in &otel_span.span().attributes {
+                    if attr.key == self.key {
+                        if let Some(v) = &attr.value {
+                            if let Some(opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(s)) = &v.value {
+                                if self.values.iter().any(|val| val == s) {
+                                    return Decision::Sample;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Decision::Pending
+    }
+    fn name(&self) -> &str { &self.name }
+}
+
+/// Match numeric attribute in range on any span.
+struct NumericAttribute {
+    name: String,
+    key: String,
+    min_value: f64,
+    max_value: f64,
+}
+
+impl SamplingPolicy for NumericAttribute {
+    fn evaluate(&self, trace: &BufferedTrace) -> Decision {
+        for span_event in &trace.spans {
+            if let crate::event::Event::Trace(otel_span) = span_event {
+                for attr in &otel_span.span().attributes {
+                    if attr.key == self.key {
+                        if let Some(v) = &attr.value {
+                            let num = match &v.value {
+                                Some(opentelemetry_proto::tonic::common::v1::any_value::Value::DoubleValue(d)) => Some(*d),
+                                Some(opentelemetry_proto::tonic::common::v1::any_value::Value::IntValue(i)) => Some(*i as f64),
+                                _ => None,
+                            };
+                            if let Some(n) = num {
+                                if n >= self.min_value && n <= self.max_value {
+                                    return Decision::Sample;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Decision::Pending
+    }
+    fn name(&self) -> &str { &self.name }
+}

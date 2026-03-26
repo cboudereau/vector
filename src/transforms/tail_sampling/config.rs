@@ -12,13 +12,13 @@ use crate::{
 use super::policies::PolicyConfig;
 use super::transform::TailSampling;
 
-/// Configuration for the `tail_sample` transform.
+/// Configuration for the `tail_sampling` transform.
 ///
 /// Buffers OTel spans by trace_id and evaluates sampling policies after a
 /// configurable decision wait period. Mirrors the OTel Collector Contrib
 /// `tailsamplingprocessor`.
 #[configurable_component(transform(
-    "tail_sample",
+    "tail_sampling",
     "Sample complete traces based on tail-sampling policies (errors, latency, probabilistic, etc.).",
 ))]
 #[derive(Clone, Debug)]
@@ -91,7 +91,7 @@ impl GenerateConfig for TailSamplingConfig {
 }
 
 #[async_trait::async_trait]
-#[typetag::serde(name = "tail_sample")]
+#[typetag::serde(name = "tail_sampling")]
 impl TransformConfig for TailSamplingConfig {
     async fn build(&self, _context: &TransformContext) -> crate::Result<Transform> {
         let transform = TailSampling::new(self.clone())?;

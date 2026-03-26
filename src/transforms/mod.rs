@@ -33,8 +33,8 @@ pub mod tag_cardinality_limit;
 pub mod throttle;
 #[cfg(feature = "transforms-span_metrics")]
 pub mod span_metrics;
-#[cfg(feature = "transforms-tail_sample")]
-pub mod tail_sample;
+#[cfg(feature = "transforms-tail_sampling")]
+pub mod tail_sampling;
 #[cfg(feature = "transforms-trace_to_log")]
 pub mod trace_to_log;
 #[cfg(feature = "transforms-window")]

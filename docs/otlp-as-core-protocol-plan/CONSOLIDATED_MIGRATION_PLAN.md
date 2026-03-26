@@ -15,7 +15,7 @@ Single source of truth for the migration. All other documents in this folder fee
 | `PERFORMANCE_AND_TRADEOFFS.md` | Performance analysis and otel-collector-contrib comparison |
 | `DISK_BUFFER_MIGRATION.md` | Zero-downtime buffer format toggle specification (Step 0a) |
 | `APM_STATS_OTLP_BACKPORT.md` | `apm_stats` transform — canonical spec (Step 4) |
-| `TAIL_SAMPLING_BACKPORT.md` | `tail_sample` transform specification (Step 4) |
+| `TAIL_SAMPLING_BACKPORT.md` | `tail_sampling` transform specification (Step 4) |
 | `SINK_REMOVAL_STRATEGY.md` | Remove-first strategy rationale and re-integration scope |
 | `VRL_MIGRATION_TOOL.md` | VRL migration tool specification and rewrite rule catalogue |
 | `GAP_ANALYSIS.md` | Code-verified gaps between docs and codebase — read before coding |
@@ -724,7 +724,7 @@ They are never part of the core data model.
 **Status: NOT STARTED — delivered after Step 7, built entirely on OTel-native types.**
 
 Full specifications:
-- `TAIL_SAMPLING_BACKPORT.md` — `tail_sample` transform + load-balancing sink + 3-tier
+- `TAIL_SAMPLING_BACKPORT.md` — `tail_sampling` transform + load-balancing sink + 3-tier
   deployment architecture (canonical, aligned with OTel Collector deployment patterns)
 - `APM_STATS_OTLP_BACKPORT.md` — pipeline telemetry: all-signal RED metrics, role-aware,
   OTel-native (replaces the cancelled DD-specific `apm_stats` concept)
@@ -734,15 +734,15 @@ Full specifications:
 | Component | What | Estimated effort |
 |-----------|------|-----------------|
 | **Load-balancing sink** | Consistent-hash routing on OTel gRPC sink (`traceID` / `service`) | ~600 lines |
-| **Tail sampling transform** | `tail_sample` with 12+ built-in policy types + VRL | ~1,200 lines |
+| **Tail sampling transform** | `tail_sampling` with 12+ built-in policy types + VRL | ~1,200 lines |
 | **Pipeline telemetry** | All-signal RED metrics, role-aware, `spanmetricsconnector`-equivalent | ~1,000 lines |
 
 ### Why delivered together after Step 5
 
 1. **The three components form one feature.** The load-balancing sink exists solely to
-   route traces to sampler instances. Shipping it without `tail_sample` has no value.
+   route traces to sampler instances. Shipping it without `tail_sampling` has no value.
    Pipeline telemetry (`spanmetricsconnector`-equivalent) is most useful at the Sampling
-   Collector tier alongside `tail_sample`. All three are part of the same 3-tier
+   Collector tier alongside `tail_sampling`. All three are part of the same 3-tier
    deployment story.
 2. **Step 5 changes the core event model.** All three components deeply couple to event
    field paths and types. Building on `TraceEvent(LogEvent)` / `Metric` / `LogEvent`

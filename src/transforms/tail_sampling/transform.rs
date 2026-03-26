@@ -74,7 +74,7 @@ impl TailSampling {
             config.policies.iter().map(|p| p.build()).collect();
 
         if policies.is_empty() {
-            return Err("tail_sample requires at least one policy".into());
+            return Err("tail_sampling requires at least one policy".into());
         }
 
         Ok(Self {

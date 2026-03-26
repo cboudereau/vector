@@ -2,12 +2,12 @@
 
 ## Context
 
-Step 4a (load-balancing sink) is complete. The tail_sample transform buffers OTel spans
+Step 4a (load-balancing sink) is complete. The tail_sampling transform buffers OTel spans
 by trace_id, evaluates sampling policies after a decision wait period, and emits or drops
 complete traces. It mirrors the OTel Collector Contrib `tailsamplingprocessor`.
 
 Together with the load-balancing sink, this enables the 3-tier deployment:
-Agent → Gateway (LB by traceID) → Sampling Collector (tail_sample).
+Agent → Gateway (LB by traceID) → Sampling Collector (tail_sampling).
 
 ## Design (following OTel Collector Contrib tailsamplingprocessor)
 
@@ -15,7 +15,7 @@ Agent → Gateway (LB by traceID) → Sampling Collector (tail_sample).
 
 ```toml
 [transforms.sample_traces]
-type = "tail_sample"
+type = "tail_sampling"
 inputs = ["otel_source"]
 decision_wait_secs = 30
 num_traces = 50000
@@ -67,9 +67,9 @@ sampling_percentage = 10.0
 
 ### Phase 1: Core types + config + empty transform shell (~200 lines)
 
-- `src/transforms/tail_sample/mod.rs`
-- `src/transforms/tail_sample/config.rs`
-- `src/transforms/tail_sample/transform.rs`
+- `src/transforms/tail_sampling/mod.rs`
+- `src/transforms/tail_sampling/config.rs`
+- `src/transforms/tail_sampling/transform.rs`
 - Register in `src/transforms/mod.rs` + `Cargo.toml`
 
 ### Phase 2: Buffer + decision loop (~300 lines)
@@ -81,7 +81,7 @@ sampling_percentage = 10.0
 
 ### Phase 3: Policy implementations (~500 lines)
 
-- `src/transforms/tail_sample/policies.rs`
+- `src/transforms/tail_sampling/policies.rs`
 - always_sample, status_code, latency, probabilistic, rate_limiting,
   span_count, string_attribute, numeric_attribute, and/not/drop, composite
 

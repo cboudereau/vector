@@ -47,6 +47,8 @@ use vector_lib::opentelemetry::proto::collector::{
 // Configuration
 // ---------------------------------------------------------------------------
 
+use super::load_balancing::LoadBalancingConfig;
+
 /// Configuration for the `opentelemetry` sink's gRPC transport.
 #[configurable_component]
 #[derive(Clone, Debug)]
@@ -54,8 +56,17 @@ pub struct GrpcConfig {
     /// The OTLP gRPC endpoint.
     ///
     /// Must include scheme and port, e.g. `http://localhost:4317`.
+    /// Ignored when `load_balancing` is set (resolver provides backends).
     #[configurable(metadata(docs::examples = "http://localhost:4317"))]
+    #[serde(default = "default_endpoint")]
     pub endpoint: String,
+
+    /// Load-balancing configuration. When set, events are routed to multiple
+    /// backends via consistent hashing. The `endpoint` field is ignored —
+    /// backends are discovered via the resolver.
+    #[configurable(derived)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub load_balancing: Option<LoadBalancingConfig>,
 
     /// Compress outgoing gRPC payloads with gzip.
     #[serde(default)]
@@ -82,6 +93,10 @@ pub struct GrpcConfig {
     pub acknowledgements: AcknowledgementsConfig,
 }
 
+fn default_endpoint() -> String {
+    "http://localhost:4317".to_string()
+}
+
 impl GenerateConfig for GrpcConfig {
     fn generate_config() -> toml::Value {
         toml::from_str(r#"endpoint = "http://localhost:4317""#).unwrap()
@@ -93,6 +108,13 @@ impl GrpcConfig {
         &self,
         _cx: SinkContext,
     ) -> crate::Result<(VectorSink, Healthcheck)> {
+        if let Some(lb_config) = &self.load_balancing {
+            return self.build_load_balanced(lb_config.clone()).await;
+        }
+        self.build_single_endpoint().await
+    }
+
+    async fn build_single_endpoint(&self) -> crate::Result<(VectorSink, Healthcheck)> {
         let endpoint: Uri = self
             .endpoint
             .parse()
@@ -112,6 +134,30 @@ impl GrpcConfig {
         let sink = OtlpGrpcSink {
             batch_settings: batch,
             service: tower_svc,
+        };
+        let healthcheck: Healthcheck = Box::pin(async { Ok(()) });
+        Ok((VectorSink::from_event_streamsink(sink), healthcheck))
+    }
+
+    async fn build_load_balanced(
+        &self,
+        lb_config: LoadBalancingConfig,
+    ) -> crate::Result<(VectorSink, Healthcheck)> {
+        use super::load_balancing::start_resolver;
+
+        let compression = self.compression;
+        let batch = self
+            .batch
+            .into_batcher_settings()
+            .map_err(|e| format!("invalid batch settings: {e}"))?;
+
+        let (rx, _resolver_handle) = start_resolver(lb_config.resolver);
+
+        let sink = LoadBalancedOtlpGrpcSink {
+            routing_key: lb_config.routing_key,
+            backends_rx: rx,
+            compression,
+            batch_settings: batch,
         };
         let healthcheck: Healthcheck = Box::pin(async { Ok(()) });
         Ok((VectorSink::from_event_streamsink(sink), healthcheck))
@@ -348,6 +394,155 @@ where
 {
     async fn run(self: Box<Self>, input: BoxStream<'_, Event>) -> Result<(), ()> {
         self.run_inner(input).await
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Load-balanced sink
+// ---------------------------------------------------------------------------
+
+use std::collections::HashMap;
+use super::load_balancing::{ConsistentHashRing, RoutingKey, extract_routing_key};
+
+/// A sink that routes events to multiple backends via consistent hashing.
+///
+/// Mirrors the OTel Collector Contrib `loadbalancingexporter` pattern:
+/// one sub-service per backend, consistent hash ring for routing, resolver
+/// for dynamic backend discovery.
+struct LoadBalancedOtlpGrpcSink {
+    routing_key: RoutingKey,
+    backends_rx: tokio::sync::watch::Receiver<Vec<String>>,
+    compression: bool,
+    batch_settings: BatcherSettings,
+}
+
+#[async_trait]
+impl StreamSink<Event> for LoadBalancedOtlpGrpcSink {
+    async fn run(mut self: Box<Self>, input: BoxStream<'_, Event>) -> Result<(), ()> {
+        use futures::stream::StreamExt;
+
+        // Wait for the first set of backends from the resolver.
+        if self.backends_rx.changed().await.is_err() {
+            error!(message = "Resolver channel closed before providing backends.");
+            return Err(());
+        }
+
+        let mut ring = ConsistentHashRing::new(&self.backends_rx.borrow());
+        let mut services: HashMap<String, OtlpGrpcService> = HashMap::new();
+        for ep in ring.endpoints() {
+            let channel = Channel::builder(
+                ep.parse::<Uri>()
+                    .unwrap_or_else(|_| format!("http://{ep}").parse().expect("valid URI")),
+            )
+            .connect_lazy();
+            services.insert(ep.clone(), OtlpGrpcService::new(channel, ep.clone(), self.compression));
+        }
+
+        // Collect events, route by key, batch per backend, send.
+        let routing_key = self.routing_key.clone();
+        let mut input = input.fuse();
+
+        loop {
+            // Check for resolver updates (non-blocking).
+            if self.backends_rx.has_changed().unwrap_or(false) {
+                let new_endpoints = self.backends_rx.borrow_and_update().clone();
+                ring = ConsistentHashRing::new(&new_endpoints);
+                // Add new backends, remove old ones.
+                let new_set: std::collections::HashSet<&String> = new_endpoints.iter().collect();
+                let old_keys: Vec<String> = services.keys().cloned().collect();
+                for key in &old_keys {
+                    if !new_set.contains(key) {
+                        services.remove(key);
+                    }
+                }
+                for ep in &new_endpoints {
+                    if !services.contains_key(ep) {
+                        let channel = Channel::builder(
+                            ep.parse::<Uri>().unwrap_or_else(|_| {
+                                format!("http://{ep}").parse().expect("valid URI")
+                            }),
+                        )
+                        .connect_lazy();
+                        services.insert(
+                            ep.clone(),
+                            OtlpGrpcService::new(channel, ep.clone(), self.compression),
+                        );
+                    }
+                }
+            }
+
+            // Collect a batch of events.
+            let mut per_backend: HashMap<String, EventCollection> = HashMap::new();
+            let mut got_events = false;
+
+            // Drain available events up to batch limits.
+            let batch_timeout = tokio::time::sleep(std::time::Duration::from_millis(
+                self.batch_settings.timeout.as_millis() as u64,
+            ));
+            tokio::pin!(batch_timeout);
+
+            loop {
+                tokio::select! {
+                    maybe_event = input.next() => {
+                        match maybe_event {
+                            Some(mut event) => {
+                                got_events = true;
+                                let key = extract_routing_key(&event, &routing_key);
+                                let endpoint = ring
+                                    .get(&key)
+                                    .unwrap_or_else(|| ring.endpoints().first().map(|s| s.as_str()).unwrap_or(""))
+                                    .to_string();
+
+                                let byte_size = event.size_of();
+                                let mut json_byte_size = telemetry().create_request_count_byte_size();
+                                json_byte_size.add_event(&event, event.estimated_json_encoded_size_of());
+                                let finalizers = event.take_finalizers();
+
+                                let col = per_backend.entry(endpoint).or_insert_with(EventCollection::default);
+                                col.finalizers.merge(finalizers);
+                                col.events.push(event);
+                                col.byte_size += byte_size;
+                                col.json_byte_size += json_byte_size;
+                            }
+                            None => {
+                                // Input stream ended — flush remaining and exit.
+                                for (endpoint, col) in per_backend {
+                                    if let Some(svc) = services.get_mut(&endpoint) {
+                                        let req = collection_into_request(col);
+                                        let _ = svc.call(req).await;
+                                    }
+                                }
+                                return Ok(());
+                            }
+                        }
+                    }
+                    _ = &mut batch_timeout => {
+                        break;
+                    }
+                }
+            }
+
+            if !got_events {
+                continue;
+            }
+
+            // Send batched requests to each backend.
+            for (endpoint, col) in per_backend {
+                if col.events.is_empty() {
+                    continue;
+                }
+                if let Some(svc) = services.get_mut(&endpoint) {
+                    let req = collection_into_request(col);
+                    if let Err(e) = svc.call(req).await {
+                        warn!(
+                            message = "Load-balanced gRPC send failed.",
+                            endpoint = %endpoint,
+                            error = ?e,
+                        );
+                    }
+                }
+            }
+        }
     }
 }
 

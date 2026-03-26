@@ -3,14 +3,15 @@
 //! Routes events to multiple backends via consistent hashing on traceID or service name,
 //! following the OTel Collector Contrib `loadbalancingexporter` pattern.
 
-use serde::{Deserialize, Serialize};
+use vector_lib::configurable::configurable_component;
 
 // ---------------------------------------------------------------------------
 // Configuration types
 // ---------------------------------------------------------------------------
 
 /// Load-balancing configuration for the OTel gRPC sink.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[configurable_component]
+#[derive(Clone, Debug)]
 pub struct LoadBalancingConfig {
     /// Key used to route events to backends.
     #[serde(default)]
@@ -21,7 +22,8 @@ pub struct LoadBalancingConfig {
 }
 
 /// Routing key strategy for load balancing.
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[configurable_component]
+#[derive(Clone, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum RoutingKey {
     /// Hash on span trace_id — all spans from the same trace go to the same backend.
@@ -32,7 +34,8 @@ pub enum RoutingKey {
 }
 
 /// Resolver configuration — determines how backends are discovered.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[configurable_component]
+#[derive(Clone, Debug)]
 #[serde(rename_all = "snake_case", tag = "type")]
 pub enum ResolverConfig {
     /// Fixed list of backend hostnames.
@@ -45,17 +48,23 @@ pub enum ResolverConfig {
 }
 
 /// Static resolver: fixed list of hostnames.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[configurable_component]
+#[derive(Clone, Debug)]
 pub struct StaticResolverConfig {
+    /// List of backend host:port addresses.
     pub hostnames: Vec<String>,
 }
 
 /// DNS resolver: periodic A/AAAA lookup.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[configurable_component]
+#[derive(Clone, Debug)]
 pub struct DnsResolverConfig {
+    /// Hostname to resolve (e.g. headless Service DNS name).
     pub hostname: String,
+    /// Port to append to resolved addresses.
     #[serde(default = "default_dns_port")]
     pub port: u16,
+    /// Resolution interval (e.g. "5s", "30s", "1m").
     #[serde(default = "default_dns_interval")]
     pub interval: String,
 }
@@ -70,7 +79,8 @@ fn default_dns_interval() -> String {
 
 /// Kubernetes EndpointSlice resolver.
 #[cfg(feature = "kubernetes")]
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[configurable_component]
+#[derive(Clone, Debug)]
 pub struct K8sResolverConfig {
     /// Service name in format "name" or "name.namespace".
     pub service: String,

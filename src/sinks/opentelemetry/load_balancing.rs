@@ -133,7 +133,7 @@ pub fn start_resolver(
                     None => (cfg.service, None),
                 };
                 let port = cfg.ports.first().copied().unwrap_or(4317);
-                (Box::new(K8sResolver { service, namespace, port }), Duration::from_secs(5))
+                (Box::new(K8sResolver { service, namespace, port, client: None }), Duration::from_secs(5))
             }
         };
 
@@ -202,11 +202,13 @@ impl Resolver for DnsResolver {
 }
 
 /// K8s EndpointSlice resolver (mirrors resolver_k8s.go).
+/// Client is created once on first resolve and reused.
 #[cfg(feature = "kubernetes")]
 struct K8sResolver {
     service: String,
     namespace: Option<String>,
     port: u16,
+    client: Option<kube::Client>,
 }
 
 #[cfg(feature = "kubernetes")]
@@ -216,7 +218,14 @@ impl Resolver for K8sResolver {
         use k8s_openapi::api::discovery::v1::EndpointSlice;
         use kube::{Api, Client, api::ListParams};
 
-        let client = Client::try_default().await?;
+        let client = match &self.client {
+            Some(c) => c.clone(),
+            None => {
+                let c = Client::try_default().await?;
+                self.client = Some(c.clone());
+                c
+            }
+        };
         let api: Api<EndpointSlice> = match &self.namespace {
             Some(ns) => Api::namespaced(client, ns),
             None => Api::default_namespaced(client),

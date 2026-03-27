@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::pin::Pin;
 use std::time::{Duration, Instant};
 
@@ -62,7 +62,10 @@ pub struct TailSampling {
     num_traces: usize,
     max_trace_size_bytes: usize,
     traces: HashMap<TraceId, BufferedTrace>,
+    /// Traces ordered by insertion time for LRU eviction (oldest first).
     insertion_order: VecDeque<TraceId>,
+    /// Traces grouped by decision deadline for O(log n) expiry.
+    deadlines: BTreeMap<Instant, Vec<TraceId>>,
     sampled_cache: DecisionCache,
     dropped_cache: DecisionCache,
     policies: Vec<Box<dyn SamplingPolicy>>,
@@ -83,6 +86,7 @@ impl TailSampling {
             max_trace_size_bytes: config.max_trace_size_bytes,
             traces: HashMap::new(),
             insertion_order: VecDeque::new(),
+            deadlines: BTreeMap::new(),
             sampled_cache: DecisionCache::new(config.decision_cache.sampled_cache_size),
             dropped_cache: DecisionCache::new(config.decision_cache.non_sampled_cache_size),
             policies,
@@ -118,12 +122,15 @@ impl TailSampling {
         let byte_size = event.size_of();
 
         // Insert into buffer.
+        let now = Instant::now();
         let trace = self.traces.entry(trace_id).or_insert_with(|| {
+            let deadline = now + self.decision_wait;
             self.insertion_order.push_back(trace_id);
+            self.deadlines.entry(deadline).or_default().push(trace_id);
             BufferedTrace {
                 trace_id,
                 spans: Vec::new(),
-                first_seen: Instant::now(),
+                first_seen: now,
                 total_bytes: 0,
             }
         });
@@ -133,7 +140,8 @@ impl TailSampling {
         // Check per-trace size limit.
         if trace.total_bytes > self.max_trace_size_bytes {
             self.traces.remove(&trace_id);
-            self.insertion_order.retain(|id| *id != trace_id);
+            // No need to clean insertion_order/deadlines — they're cleaned lazily
+            // when the trace_id is not found in self.traces during eviction/tick.
             self.dropped_cache.insert(trace_id);
             counter!("vector_tail_sampling_trace_dropped_too_early").increment(1);
             return vec![];
@@ -142,28 +150,40 @@ impl TailSampling {
         // Evict oldest if over capacity.
         while self.traces.len() > self.num_traces {
             if let Some(oldest_id) = self.insertion_order.pop_front() {
-                self.traces.remove(&oldest_id);
-                self.dropped_cache.insert(oldest_id);
-                counter!("vector_tail_sampling_trace_dropped_too_early").increment(1);
+                if self.traces.remove(&oldest_id).is_some() {
+                    self.dropped_cache.insert(oldest_id);
+                    counter!("vector_tail_sampling_trace_dropped_too_early").increment(1);
+                }
+                // else: already removed (e.g. by size limit) — skip
+            } else {
+                break;
             }
         }
 
         vec![]
     }
 
-    /// Tick: evaluate traces that have waited long enough.
+    /// Tick: evaluate traces whose deadline has passed. O(k log n) where k = expired traces.
     fn on_tick(&mut self) -> Vec<Event> {
         let now = Instant::now();
         let mut to_emit = Vec::new();
-        let mut to_remove = Vec::new();
 
-        for (&trace_id, trace) in &self.traces {
-            if now.duration_since(trace.first_seen) >= self.decision_wait {
+        // Split off all deadlines <= now.
+        let remaining = self.deadlines.split_off(&(now + Duration::from_nanos(1)));
+        let expired = std::mem::replace(&mut self.deadlines, remaining);
+
+        for (_deadline, trace_ids) in expired {
+            for trace_id in trace_ids {
+                // Trace may already be removed (size limit, eviction).
+                let Some(trace) = self.traces.remove(&trace_id) else {
+                    continue;
+                };
+
                 // Evaluate policies — first match wins.
                 let mut decision = Decision::Pending;
                 let mut matched_policy = "";
                 for policy in &self.policies {
-                    let d = policy.evaluate(trace);
+                    let d = policy.evaluate(&trace);
                     if d != Decision::Pending {
                         decision = d;
                         matched_policy = policy.name();
@@ -179,7 +199,8 @@ impl TailSampling {
                             "sampled" => "true",
                         )
                         .increment(1);
-                        to_emit.extend(trace.spans.iter().cloned());
+                        // Drain spans instead of cloning (fix #6).
+                        to_emit.extend(trace.spans);
                         self.sampled_cache.insert(trace_id);
                     }
                     Decision::Drop | Decision::Pending => {
@@ -201,13 +222,7 @@ impl TailSampling {
                         self.dropped_cache.insert(trace_id);
                     }
                 }
-                to_remove.push(trace_id);
             }
-        }
-
-        for id in to_remove {
-            self.traces.remove(&id);
-            self.insertion_order.retain(|i| *i != id);
         }
 
         to_emit

@@ -273,7 +273,11 @@ fn build_otel_metric_event(
 }
 
 /// Converts a DD timestamp (seconds since epoch) to nanoseconds.
+/// Negative (pre-epoch) timestamps are clamped to 0.
 fn dd_ts_to_nanos(ts: i64) -> u64 {
+    if ts <= 0 {
+        return 0;
+    }
     (ts as u64).saturating_mul(1_000_000_000)
 }
 

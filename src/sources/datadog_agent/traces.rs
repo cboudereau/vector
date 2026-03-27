@@ -165,6 +165,20 @@ fn dd_span_to_otel(
     api_key: &Option<Arc<str>>,
     extra_attributes: &[KeyValue],
 ) -> Event {
+    // Set service.name on the resource from the DD span's service field.
+    let mut span_resource = resource.clone();
+    if !dd_span.service.is_empty() {
+        // Replace or add service.name on the resource.
+        if let Some(attr) = span_resource.attributes.iter_mut().find(|a| a.key == "service.name") {
+            attr.value = Some(string_value(&dd_span.service));
+        } else {
+            span_resource.attributes.push(KeyValue {
+                key: "service.name".to_string(),
+                value: Some(string_value(&dd_span.service)),
+            });
+        }
+    }
+
     let mut attributes = dd_meta_to_attributes(dd_span.meta);
     attributes.extend(dd_metrics_to_attributes(dd_span.metrics));
 
@@ -202,7 +216,7 @@ fn dd_span_to_otel(
     };
 
     let mut otel_span =
-        OtelSpan::from_parts(span, Some(resource.clone()), scope.clone(), Default::default());
+        OtelSpan::from_parts(span, Some(span_resource), scope.clone(), Default::default());
     if let Some(k) = api_key {
         otel_span
             .metadata_mut()

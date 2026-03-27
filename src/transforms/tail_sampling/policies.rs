@@ -282,6 +282,8 @@ impl SamplingPolicy for Probabilistic {
 }
 
 /// Token-bucket rate limiting.
+/// Uses Mutex for interior mutability because SamplingPolicy requires &self.
+/// The transform is single-threaded so the lock is always uncontended (~20ns).
 struct RateLimiting {
     name: String,
     spans_per_second: f64,

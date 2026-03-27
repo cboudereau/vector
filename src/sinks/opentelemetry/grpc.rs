@@ -151,11 +151,12 @@ impl GrpcConfig {
             .into_batcher_settings()
             .map_err(|e| format!("invalid batch settings: {e}"))?;
 
-        let (rx, _resolver_handle) = start_resolver(lb_config.resolver);
+        let (rx, resolver_handle) = start_resolver(lb_config.resolver);
 
         let sink = LoadBalancedOtlpGrpcSink {
             routing_key: lb_config.routing_key,
             backends_rx: rx,
+            resolver_handle,
             compression,
             batch_settings: batch,
         };
@@ -420,8 +421,15 @@ fn parse_endpoint_uri(ep: &str) -> Option<Uri> {
 struct LoadBalancedOtlpGrpcSink {
     routing_key: RoutingKey,
     backends_rx: tokio::sync::watch::Receiver<Vec<String>>,
+    resolver_handle: tokio::task::JoinHandle<()>,
     compression: bool,
     batch_settings: BatcherSettings,
+}
+
+impl Drop for LoadBalancedOtlpGrpcSink {
+    fn drop(&mut self) {
+        self.resolver_handle.abort();
+    }
 }
 
 #[async_trait]
@@ -483,7 +491,8 @@ impl StreamSink<Event> for LoadBalancedOtlpGrpcSink {
 
             // Collect a batch of events.
             let mut per_backend: HashMap<String, EventCollection> = HashMap::new();
-            let mut got_events = false;
+            let mut total_events = 0usize;
+            let max_events = self.batch_settings.item_limit;
 
             // Drain available events up to batch limits.
             let batch_timeout = tokio::time::sleep(std::time::Duration::from_millis(
@@ -496,7 +505,6 @@ impl StreamSink<Event> for LoadBalancedOtlpGrpcSink {
                     maybe_event = input.next() => {
                         match maybe_event {
                             Some(mut event) => {
-                                got_events = true;
                                 let key = extract_routing_key(&event, &routing_key);
                                 let endpoint = ring
                                     .get(&key)
@@ -513,6 +521,11 @@ impl StreamSink<Event> for LoadBalancedOtlpGrpcSink {
                                 col.events.push(event);
                                 col.byte_size += byte_size;
                                 col.json_byte_size += json_byte_size;
+
+                                total_events += 1;
+                                if total_events >= max_events {
+                                    break; // batch full
+                                }
                             }
                             None => {
                                 // Input stream ended — flush remaining and exit.
@@ -532,7 +545,7 @@ impl StreamSink<Event> for LoadBalancedOtlpGrpcSink {
                 }
             }
 
-            if !got_events {
+            if total_events == 0 {
                 continue;
             }
 

@@ -323,39 +323,10 @@ impl ConsistentHashRing {
     }
 }
 
-/// CRC32 IEEE hash.
+/// CRC32 IEEE hash using hardware-accelerated `crc32fast` crate.
 pub fn crc32_hash(data: &[u8]) -> u32 {
-    // Use a simple CRC32 implementation. The `crc32fast` crate is in the dep tree
-    // but we use a manual IEEE table to avoid adding a direct dependency.
-    let mut crc: u32 = 0xFFFF_FFFF;
-    for &byte in data {
-        let idx = ((crc ^ u32::from(byte)) & 0xFF) as usize;
-        crc = CRC32_TABLE[idx] ^ (crc >> 8);
-    }
-    crc ^ 0xFFFF_FFFF
+    crc32fast::hash(data)
 }
-
-/// CRC32 IEEE lookup table.
-#[rustfmt::skip]
-const CRC32_TABLE: [u32; 256] = {
-    let mut table = [0u32; 256];
-    let mut i = 0u32;
-    while i < 256 {
-        let mut crc = i;
-        let mut j = 0;
-        while j < 8 {
-            if crc & 1 != 0 {
-                crc = 0xEDB8_8320 ^ (crc >> 1);
-            } else {
-                crc >>= 1;
-            }
-            j += 1;
-        }
-        table[i as usize] = crc;
-        i += 1;
-    }
-    table
-};
 
 // ---------------------------------------------------------------------------
 // Routing key extraction

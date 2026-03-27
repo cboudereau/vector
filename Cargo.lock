@@ -12569,6 +12569,7 @@ dependencies = [
  "clap_complete",
  "colored",
  "console-subscriber",
+ "crc32fast",
  "criterion",
  "csv",
  "databend-client",

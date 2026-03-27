@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use futures::{Stream, StreamExt};
 use metrics::counter;
-use vector_lib::transform::TaskTransform;
+use vector_lib::{ByteSizeOf, transform::TaskTransform};
 
 use crate::event::Event;
 
@@ -115,7 +115,7 @@ impl TailSampling {
             return vec![]; // drop
         }
 
-        let byte_size = std::mem::size_of_val(&event);
+        let byte_size = event.size_of();
 
         // Insert into buffer.
         let trace = self.traces.entry(trace_id).or_insert_with(|| {

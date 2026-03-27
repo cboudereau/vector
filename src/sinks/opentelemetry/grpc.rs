@@ -405,6 +405,13 @@ use std::collections::HashMap;
 use metrics::{counter, gauge};
 use super::load_balancing::{ConsistentHashRing, RoutingKey, extract_routing_key};
 
+/// Parse an endpoint string into a URI, prepending `http://` if no scheme is present.
+fn parse_endpoint_uri(ep: &str) -> Option<Uri> {
+    ep.parse::<Uri>().ok().or_else(|| {
+        format!("http://{ep}").parse::<Uri>().ok()
+    })
+}
+
 /// A sink that routes events to multiple backends via consistent hashing.
 ///
 /// Mirrors the OTel Collector Contrib `loadbalancingexporter` pattern:
@@ -431,11 +438,11 @@ impl StreamSink<Event> for LoadBalancedOtlpGrpcSink {
         let mut ring = ConsistentHashRing::new(&self.backends_rx.borrow());
         let mut services: HashMap<String, OtlpGrpcService> = HashMap::new();
         for ep in ring.endpoints() {
-            let channel = Channel::builder(
-                ep.parse::<Uri>()
-                    .unwrap_or_else(|_| format!("http://{ep}").parse().expect("valid URI")),
-            )
-            .connect_lazy();
+            let Some(uri) = parse_endpoint_uri(ep) else {
+                warn!(message = "Skipping backend with invalid URI.", endpoint = %ep);
+                continue;
+            };
+            let channel = Channel::builder(uri).connect_lazy();
             services.insert(ep.clone(), OtlpGrpcService::new(channel, ep.clone(), self.compression));
         }
         gauge!("vector_lb_num_backends").set(ring.len() as f64);
@@ -461,16 +468,15 @@ impl StreamSink<Event> for LoadBalancedOtlpGrpcSink {
                 }
                 for ep in &new_endpoints {
                     if !services.contains_key(ep) {
-                        let channel = Channel::builder(
-                            ep.parse::<Uri>().unwrap_or_else(|_| {
-                                format!("http://{ep}").parse().expect("valid URI")
-                            }),
-                        )
-                        .connect_lazy();
-                        services.insert(
-                            ep.clone(),
-                            OtlpGrpcService::new(channel, ep.clone(), self.compression),
-                        );
+                        if let Some(uri) = parse_endpoint_uri(ep) {
+                            let channel = Channel::builder(uri).connect_lazy();
+                            services.insert(
+                                ep.clone(),
+                                OtlpGrpcService::new(channel, ep.clone(), self.compression),
+                            );
+                        } else {
+                            warn!(message = "Skipping backend with invalid URI.", endpoint = %ep);
+                        }
                     }
                 }
             }

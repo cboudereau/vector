@@ -270,8 +270,7 @@ struct Probabilistic {
 impl SamplingPolicy for Probabilistic {
     fn evaluate(&self, trace: &BufferedTrace) -> Decision {
         // Hash trace_id to get deterministic sampling.
-        use super::super::super::sinks::opentelemetry::load_balancing::crc32_hash;
-        let hash = crc32_hash(&trace.trace_id);
+        let hash = crc32fast::hash(&trace.trace_id);
         let threshold = (self.sampling_percentage / 100.0 * u32::MAX as f64) as u32;
         if hash <= threshold {
             Decision::Sample

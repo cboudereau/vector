@@ -35,7 +35,7 @@ fn assert_has_review(input: &str, rule: RuleId) {
 fn log01_message_standalone() {
     assert_migrates(
         ".foo = .message",
-        "# MIGRATED: .message → . [LOG-01]\n.foo = .",
+        "# MIGRATED: .message → .body [LOG-01]\n.foo = .body",
     );
 }
 
@@ -43,7 +43,7 @@ fn log01_message_standalone() {
 fn log01_message_in_function() {
     assert_migrates(
         "to_string(.message)",
-        "# MIGRATED: .message → . [LOG-01]\nto_string(.)",
+        "# MIGRATED: .message → .body [LOG-01]\nto_string(.body)",
     );
 }
 
@@ -147,36 +147,39 @@ fn meta02_source_id() {
 fn sem02_exists_message() {
     assert_migrates(
         "if exists(.message) {",
-        "# MIGRATED: .message → . [LOG-01]\n# MIGRATED: exists(.) → true (root always exists) [SEM-02]\nif true {",
+        "# MIGRATED: .message → .body [LOG-01]\nif exists(.body) {",
     );
 }
 
 #[test]
 fn sem03_del_message() {
     let output = migrate("del(.message)");
-    assert!(output.text.contains("MIGRATED: .message → . [LOG-01]"));
-    assert!(output.text.contains("REVIEW: del(.) would delete the entire event"));
+    assert!(output.text.contains("MIGRATED: .message → .body [LOG-01]"));
+    // del(.body) is a valid operation — no longer triggers "delete entire event" review
 }
 
 #[test]
 fn sem05_parse_json_message() {
     let output = migrate("parsed = parse_json(.message)");
-    assert!(output.text.contains("parse_json(string!(.))"),
-        "Expected parse_json(string!(.)) in:\n{}", output.text);
+    // .message → .body, parse_json(.body) is valid as-is
+    assert!(output.text.contains("parse_json(.body)"),
+        "Expected parse_json(.body) in:\n{}", output.text);
 }
 
 #[test]
 fn sem06_is_string_message() {
     let output = migrate("if is_string(.message) {");
-    assert!(output.text.contains("is_string(.)"),
-        "Expected is_string(.) in:\n{}", output.text);
+    // .message → .body, is_string(.body) is valid as-is
+    assert!(output.text.contains("is_string(.body)"),
+        "Expected is_string(.body) in:\n{}", output.text);
 }
 
 #[test]
 fn sem07_assert_eq_message() {
     let output = migrate(r#"assert_eq!(.message, "hello")"#);
-    assert!(output.text.contains("assert_eq!(string!(.),"),
-        "Expected assert_eq!(string!(.), ...) in:\n{}", output.text);
+    // .message → .body, assert_eq!(.body, "hello") is valid as-is
+    assert!(output.text.contains(r#"assert_eq!(.body,"#),
+        "Expected assert_eq!(.body, ...) in:\n{}", output.text);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -200,7 +203,7 @@ fn met05_kind_review() {
 fn met06_counter_value() {
     assert_migrates(
         "v = .value.counter.value",
-        "# MIGRATED: .value.counter.value → .data_points[0].as_double [MET-06]\nv = .data_points[0].as_double",
+        "# MIGRATED: .value.counter.value → .data.sum.data_points[0].value [MET-06]\nv = .data.sum.data_points[0].value",
     );
 }
 
@@ -208,7 +211,7 @@ fn met06_counter_value() {
 fn met07_gauge_value() {
     assert_migrates(
         "v = .value.gauge.value",
-        "# MIGRATED: .value.gauge.value → .data_points[0].as_double [MET-07]\nv = .data_points[0].as_double",
+        "# MIGRATED: .value.gauge.value → .data.gauge.data_points[0].value [MET-07]\nv = .data.gauge.data_points[0].value",
     );
 }
 
@@ -224,7 +227,7 @@ fn multi_line_program() {
 .tags.env = "prod""#;
 
     let output = migrate(input);
-    assert!(output.text.contains("parse_json(string!(.))"));
+    assert!(output.text.contains("parse_json(.body)"), "Expected parse_json(.body) in:\n{}", output.text);
     assert!(output.text.contains(".severity_text"));
     assert!(output.text.contains(r#".resource.attributes."host.name""#));
     assert!(output.text.contains(r#".attributes."env""#));
@@ -249,7 +252,7 @@ fn diff_shows_changes() {
     let input = ".foo = .message";
     let d = diff(input, None);
     assert!(d.contains("-.foo = .message"));
-    assert!(d.contains("+.foo = ."));
+    assert!(d.contains("+.foo = .body"));
 }
 
 #[test]

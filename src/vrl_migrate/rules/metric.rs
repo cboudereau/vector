@@ -85,31 +85,31 @@ fn apply_met05(line: &str) -> RewriteResult {
     RewriteResult::NoMatch
 }
 
-// MET-06: .value.counter.value → .data_points[0].as_double
+// MET-06: .value.counter.value → .data.sum.data_points[0].value
 static RE_COUNTER_VALUE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\.value\.counter\.value\b").unwrap()
 });
 
 fn apply_met06(line: &str) -> RewriteResult {
-    match super::replace_outside_strings(line, &RE_COUNTER_VALUE, ".data_points[0].as_double") {
+    match super::replace_outside_strings(line, &RE_COUNTER_VALUE, ".data.sum.data_points[0].value") {
         Some(new) => RewriteResult::Rewritten(
             new,
-            ".value.counter.value → .data_points[0].as_double [MET-06]".into(),
+            ".value.counter.value → .data.sum.data_points[0].value [MET-06]".into(),
         ),
         None => RewriteResult::NoMatch,
     }
 }
 
-// MET-07: .value.gauge.value → .data_points[0].as_double
+// MET-07: .value.gauge.value → .data.gauge.data_points[0].value
 static RE_GAUGE_VALUE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\.value\.gauge\.value\b").unwrap()
 });
 
 fn apply_met07(line: &str) -> RewriteResult {
-    match super::replace_outside_strings(line, &RE_GAUGE_VALUE, ".data_points[0].as_double") {
+    match super::replace_outside_strings(line, &RE_GAUGE_VALUE, ".data.gauge.data_points[0].value") {
         Some(new) => RewriteResult::Rewritten(
             new,
-            ".value.gauge.value → .data_points[0].as_double [MET-07]".into(),
+            ".value.gauge.value → .data.gauge.data_points[0].value [MET-07]".into(),
         ),
         None => RewriteResult::NoMatch,
     }

@@ -71,14 +71,14 @@ fn replace_field(line: &str, re: &Regex, replacement: &str) -> Option<String> {
     }
 }
 
-// LOG-01: .message → .
+// LOG-01: .message → .body
 static RE_MESSAGE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\.message\b").unwrap()
 });
 
 fn apply_log01(line: &str) -> RewriteResult {
-    match replace_field(line, &RE_MESSAGE, ".") {
-        Some(new) => RewriteResult::Rewritten(new, ".message → . [LOG-01]".into()),
+    match replace_field(line, &RE_MESSAGE, ".body") {
+        Some(new) => RewriteResult::Rewritten(new, ".message → .body [LOG-01]".into()),
         None => RewriteResult::NoMatch,
     }
 }

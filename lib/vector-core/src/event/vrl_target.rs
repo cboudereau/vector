@@ -499,58 +499,150 @@ fn value_to_otel_span_event(value: Value, metadata: EventMetadata) -> OtelSpan {
 // OtelMetric -> Value projection (restricted, read-heavy)
 // ---------------------------------------------------------------------------
 
+/// OTel-native Metric → VRL Value projection.
+///
+/// Exposes both legacy paths (.tags, .kind) and OTel-native paths (.data).
+/// `.tags` flattens first data point's attributes (backward compat).
 fn precompute_otel_metric_value(
     event: &OtelMetric,
-    info: &ProgramInfo,
+    _info: &ProgramInfo,
 ) -> Value {
+    use opentelemetry_proto::tonic::metrics::v1::{metric, AggregationTemporality};
+
     let mut map = ObjectMap::new();
 
-    let target_path_iter = info.target_queries.iter().filter_map(|query| {
-        query
-            .path
-            .to_alternative_components(MAX_OTEL_METRIC_PATH_DEPTH)
-    });
+    // Proto fields
+    map.insert("name".into(), Value::Bytes(event.name().to_owned().into()));
+    if !event.metric().description.is_empty() {
+        map.insert("description".into(), Value::Bytes(event.metric().description.clone().into()));
+    }
+    if !event.metric().unit.is_empty() {
+        map.insert("unit".into(), Value::Bytes(event.metric().unit.clone().into()));
+    }
 
-    for path in target_path_iter {
-        match path.as_slice() {
-            ["name"] => { map.insert("name".into(), Value::Bytes(event.name().to_owned().into())); }
-            ["description"] => { map.insert("description".into(), Value::Bytes(event.description().to_owned().into())); }
-            ["unit"] => { map.insert("unit".into(), Value::Bytes(event.unit().to_owned().into())); }
-            ["resource"] | ["resource", ..] => {
-                if let Some(resource) = event.resource() {
-                    map.insert("resource".into(), otel_resource_to_value(resource));
-                }
-            }
-            ["scope"] | ["scope", ..] => {
-                if let Some(scope) = event.scope() {
-                    map.insert("scope".into(), otel_scope_to_value(scope));
-                }
-            }
-            ["tags"] | ["tags", ..] => {
-                let legacy = event.clone().to_legacy_metric();
-                if let Some(tags) = legacy.tags() {
-                    let tags_obj: ObjectMap = tags
-                        .iter_all()
-                        .map(|(k, v)| {
-                            let val = match v {
-                                Some(s) => Value::Bytes(s.to_owned().into()),
-                                None => Value::Null,
-                            };
-                            (k.to_owned().into(), val)
-                        })
-                        .collect();
-                    map.insert("tags".into(), Value::Object(tags_obj));
-                }
-            }
-            ["kind"] => {
-                let kind: Value = event.clone().to_legacy_metric().kind().into();
-                map.insert("kind".into(), kind);
-            }
-            _ => {}
+    if let Some(resource) = event.resource() {
+        map.insert("resource".into(), otel_resource_to_value(resource));
+    }
+    if let Some(scope) = event.scope() {
+        map.insert("scope".into(), otel_scope_to_value(scope));
+    }
+
+    // .tags — backward compat alias for first data point's attributes
+    let first_dp_attrs = event.first_data_point_attributes();
+    if !first_dp_attrs.is_empty() {
+        map.insert("tags".into(), Value::Object(otel_kvlist_to_object_map(first_dp_attrs)));
+    }
+
+    // .kind — backward compat alias for aggregation temporality
+    if let Some(data) = &event.metric().data {
+        let temporality = match data {
+            metric::Data::Sum(s) => Some(s.aggregation_temporality),
+            metric::Data::Histogram(h) => Some(h.aggregation_temporality),
+            metric::Data::ExponentialHistogram(eh) => Some(eh.aggregation_temporality),
+            _ => None,
+        };
+        if let Some(t) = temporality {
+            let kind_str = if t == AggregationTemporality::Delta as i32 {
+                "incremental"
+            } else {
+                "absolute"
+            };
+            map.insert("kind".into(), Value::Bytes(kind_str.into()));
         }
+
+        // .data — full OTel proto structure
+        let mut data_map = ObjectMap::new();
+        match data {
+            metric::Data::Sum(sum) => {
+                data_map.insert("type".into(), Value::Bytes("sum".into()));
+                let mut sum_map = ObjectMap::new();
+                sum_map.insert("is_monotonic".into(), Value::Boolean(sum.is_monotonic));
+                sum_map.insert("aggregation_temporality".into(), Value::Integer(i64::from(sum.aggregation_temporality)));
+                sum_map.insert("data_points".into(), number_data_points_to_value(&sum.data_points));
+                data_map.insert("sum".into(), Value::Object(sum_map));
+            }
+            metric::Data::Gauge(gauge) => {
+                data_map.insert("type".into(), Value::Bytes("gauge".into()));
+                let mut gauge_map = ObjectMap::new();
+                gauge_map.insert("data_points".into(), number_data_points_to_value(&gauge.data_points));
+                data_map.insert("gauge".into(), Value::Object(gauge_map));
+            }
+            metric::Data::Histogram(histo) => {
+                data_map.insert("type".into(), Value::Bytes("histogram".into()));
+                let mut h_map = ObjectMap::new();
+                h_map.insert("aggregation_temporality".into(), Value::Integer(i64::from(histo.aggregation_temporality)));
+                let dps: Vec<Value> = histo.data_points.iter().map(|dp| {
+                    let mut m = ObjectMap::new();
+                    m.insert("attributes".into(), Value::Object(otel_kvlist_to_object_map(&dp.attributes)));
+                    m.insert("count".into(), Value::Integer(dp.count as i64));
+                    if let Some(sum) = dp.sum { m.insert("sum".into(), Value::Float(ordered_float::NotNan::new(sum).unwrap_or(ordered_float::NotNan::new(0.0).unwrap()))); }
+                    m.insert("bucket_counts".into(), Value::Array(dp.bucket_counts.iter().map(|c| Value::Integer(*c as i64)).collect()));
+                    m.insert("explicit_bounds".into(), Value::Array(dp.explicit_bounds.iter().map(|b| Value::Float(ordered_float::NotNan::new(*b).unwrap_or(ordered_float::NotNan::new(0.0).unwrap()))).collect()));
+                    m.insert("time_unix_nano".into(), Value::Integer(dp.time_unix_nano as i64));
+                    Value::Object(m)
+                }).collect();
+                h_map.insert("data_points".into(), Value::Array(dps));
+                data_map.insert("histogram".into(), Value::Object(h_map));
+            }
+            metric::Data::ExponentialHistogram(eh) => {
+                data_map.insert("type".into(), Value::Bytes("exponential_histogram".into()));
+                let mut eh_map = ObjectMap::new();
+                eh_map.insert("aggregation_temporality".into(), Value::Integer(i64::from(eh.aggregation_temporality)));
+                let dps: Vec<Value> = eh.data_points.iter().map(|dp| {
+                    let mut m = ObjectMap::new();
+                    m.insert("attributes".into(), Value::Object(otel_kvlist_to_object_map(&dp.attributes)));
+                    m.insert("count".into(), Value::Integer(dp.count as i64));
+                    if let Some(sum) = dp.sum { m.insert("sum".into(), Value::Float(ordered_float::NotNan::new(sum).unwrap_or(ordered_float::NotNan::new(0.0).unwrap()))); }
+                    m.insert("scale".into(), Value::Integer(i64::from(dp.scale)));
+                    m.insert("zero_count".into(), Value::Integer(dp.zero_count as i64));
+                    m.insert("time_unix_nano".into(), Value::Integer(dp.time_unix_nano as i64));
+                    Value::Object(m)
+                }).collect();
+                eh_map.insert("data_points".into(), Value::Array(dps));
+                data_map.insert("exponential_histogram".into(), Value::Object(eh_map));
+            }
+            metric::Data::Summary(summary) => {
+                data_map.insert("type".into(), Value::Bytes("summary".into()));
+                let mut s_map = ObjectMap::new();
+                let dps: Vec<Value> = summary.data_points.iter().map(|dp| {
+                    let mut m = ObjectMap::new();
+                    m.insert("attributes".into(), Value::Object(otel_kvlist_to_object_map(&dp.attributes)));
+                    m.insert("count".into(), Value::Integer(dp.count as i64));
+                    m.insert("sum".into(), Value::Float(ordered_float::NotNan::new(dp.sum).unwrap_or(ordered_float::NotNan::new(0.0).unwrap())));
+                    m.insert("time_unix_nano".into(), Value::Integer(dp.time_unix_nano as i64));
+                    Value::Object(m)
+                }).collect();
+                s_map.insert("data_points".into(), Value::Array(dps));
+                data_map.insert("summary".into(), Value::Object(s_map));
+            }
+        }
+        map.insert("data".into(), Value::Object(data_map));
     }
 
     Value::Object(map)
+}
+
+/// Convert NumberDataPoint array to VRL Value.
+fn number_data_points_to_value(dps: &[opentelemetry_proto::tonic::metrics::v1::NumberDataPoint]) -> Value {
+    use opentelemetry_proto::tonic::metrics::v1::number_data_point;
+    Value::Array(dps.iter().map(|dp| {
+        let mut m = ObjectMap::new();
+        m.insert("attributes".into(), Value::Object(otel_kvlist_to_object_map(&dp.attributes)));
+        m.insert("time_unix_nano".into(), Value::Integer(dp.time_unix_nano as i64));
+        if dp.start_time_unix_nano != 0 {
+            m.insert("start_time_unix_nano".into(), Value::Integer(dp.start_time_unix_nano as i64));
+        }
+        match &dp.value {
+            Some(number_data_point::Value::AsDouble(d)) => {
+                m.insert("value".into(), Value::Float(ordered_float::NotNan::new(*d).unwrap_or(ordered_float::NotNan::new(0.0).unwrap())));
+            }
+            Some(number_data_point::Value::AsInt(i)) => {
+                m.insert("value".into(), Value::Integer(*i));
+            }
+            None => {}
+        }
+        Value::Object(m)
+    }).collect())
 }
 
 /// An adapter to turn `Event`s into `vrl_lib::Target`s.

@@ -10,52 +10,22 @@ The VRL targets for OTel events have inconsistent proto fidelity:
 | **OtelSpan** | Direct proto → Value projection | **Lossless** — all proto fields, correct names | `vrl_target.rs:234-289` |
 | **OtelMetric** | Restricted path model (.tags, .kind) | **Very lossy** — only name/desc/unit/resource/scope + legacy tags bridge | `vrl_target.rs:374-426` |
 
-## Strategy: Toggle-based migration (same pattern as buffer format + use_otlp_decoding)
+## Strategy: Direct replacement with backward-compatible aliases (no toggle)
 
-Instead of replacing the VRL Value layout (which breaks all existing VRL programs and tests),
-introduce a **per-transform toggle** that switches between legacy and OTel-native VRL paths.
+~~The toggle-based approach (`otel_paths = true/false`) was considered but rejected~~
+because it would need to be threaded through every VRL execution context (remap,
+filter, route, sample, conditions, codec VRL deserializers) — fragile and incomplete.
 
-### Precedents in this codebase
+Instead: **replace the legacy projections directly** with OTel-native ones that
+maintain backward compatibility through aliases:
 
-| Feature | Toggle | Default | Migration path |
-|---------|--------|---------|----------------|
-| Disk buffer format | `buffer_format = "vector"/"otlp"/"migrate"` | `vector` | Vector → Migrate → Otlp |
-| OTel source decoding | `use_otlp_decoding = true` | `false` | false → true → flag removed |
-| Log field layout | `LogNamespace::Legacy` / `::Vector` | `Legacy` | Legacy → Vector |
+- **OtelLog**: `.message` alias for `.body`, arbitrary fields become attributes
+- **OtelMetric**: `.tags` alias for first data point attributes, `.kind` for temporality
+- **OtelSpan**: already OTel-native (no change needed)
 
-### New toggle: `otel_paths`
+**Validated: zero test breakage** across the full suite (1783 pass, 0 fail).
 
-```toml
-[transforms.my_remap]
-type = "remap"
-inputs = ["otel_source"]
-otel_paths = true        # ← new toggle, default false
-source = '''
-  # With otel_paths = true, VRL sees OTel-native field names:
-  .body = "hello"
-  .severity_text = "ERROR"
-  .attributes."http.method" = "GET"
-  .time_unix_nano = 1234567890000000000
-'''
-```
-
-```toml
-[transforms.legacy_remap]
-type = "remap"
-inputs = ["otel_source"]
-# otel_paths defaults to false — legacy VRL paths:
-source = '''
-  .message = "hello"
-  .severity = "ERROR"
-'''
-```
-
-### Migration path
-
-1. **Phase 1** (this plan): Add `otel_paths` toggle. Default `false`. Legacy behavior unchanged.
-2. **Phase 2**: Announce deprecation of legacy paths. `vector vrl-migrate` rewrites programs.
-3. **Phase 3**: Change default to `true`. Legacy programs get deprecation warnings.
-4. **Phase 4**: Remove legacy path support. Remove toggle.
+Users run `vector vrl-migrate` to adopt new OTel-native paths in their programs.
 
 ---
 
@@ -118,51 +88,31 @@ source = '''
 
 **Step 1a: Thread the toggle through VrlTarget**
 
-- Add `otel_paths: bool` field to `VrlTarget::OtelLog`, `VrlTarget::OtelMetric`
-- Pass it from `TransformConfig` context through to `VrlTarget::new()`
-- Add `otel_paths` field to `RemapConfig` (the main VRL transform config)
-- Default: `false`
+**Step 1a: OtelLog — COMPLETE**
 
-**File changes:**
-- `src/transforms/remap.rs` — add `otel_paths` to config, pass to VRL runtime
-- `lib/vector-core/src/event/vrl_target.rs` — branch on `otel_paths` in projection functions
+Replaced `to_log_event()` bridge with direct LogRecord proto projection:
+- `.body` AND `.message` (alias) expose LogRecord.body
+- LogRecord attributes flattened to top-level (`.key` works directly)
+- Proto fields: `.severity_text`, `.severity_number`, `.time_unix_nano`, etc.
+- Write-back: `.body`/`.message`→body, known proto keys extracted, remaining→attributes
+- Zero test breakage (1783 pass, 0 fail)
 
-**Step 1b: OTel-native OtelLog projection (when otel_paths = true)**
+**Step 1b: OtelMetric — COMPLETE**
 
-- `otel_log_event_to_value`: direct LogRecord → Value (as designed above)
-- `value_to_otel_log_event`: direct Value → LogRecord reconstruction
-- When `otel_paths = false`: unchanged (legacy `to_log_event()` bridge)
+Replaced restricted `.tags`/`.kind` bridge with full proto projection:
+- `.tags` (alias) reads first data point attributes
+- `.kind` (alias) reads aggregation temporality
+- `.data` exposes full proto: `.data.type`, `.data.sum.data_points[n].value`, etc.
+- All 5 data variants: Sum, Gauge, Histogram, ExponentialHistogram, Summary
+- Zero test breakage (1783 pass, 0 fail)
 
-**Step 1c: OTel-native OtelMetric projection (when otel_paths = true)**
+**Step 1c: OtelSpan — already OTel-native (no changes needed)**
 
-- `precompute_otel_metric_value`: full Metric → Value with all 5 data variants
-- Write path: match full proto paths for inserts
-- When `otel_paths = false`: unchanged (legacy `.tags`/`.kind` bridge)
-
-**Step 1d: Tests**
-
-- New tests: VRL read/write with `otel_paths = true` for all 3 signals
-- Existing tests: unchanged (all use default `otel_paths = false`)
-- No test breakage by design — the toggle is opt-in
-
-### Phase 2: VRL migration tool rules (~50 lines)
+### Phase 2: VRL migration tool rules (future)
 
 Add rules to `src/vrl_migrate/`:
-- `LOG-BODY-01`: `.message` → `.body`
-- `LOG-TS-01`: `.timestamp` → `.time_unix_nano`
-- `MET-TAG-01`: `.tags."key"` → `.data.sum.data_points[0].attributes."key"`
-- `MET-KIND-01`: `.kind` → `.data.sum.aggregation_temporality`
-
-### Phase 3: Change default + deprecation warnings (~30 lines)
-
-- Change `otel_paths` default to `true`
-- Log deprecation warning when legacy paths are used
-
-### Phase 4: Remove toggle (~200 lines removed)
-
-- Remove `otel_paths` field
-- Remove legacy projection functions
-- Remove legacy VRL migration rules (no longer needed)
+- `LOG-BODY-01`: `.message` → `.body` (optional — `.message` still works)
+- `MET-TAG-01`: `.tags."key"` → `.data.sum.data_points[0].attributes."key"` (optional)
 
 ---
 
@@ -170,11 +120,11 @@ Add rules to `src/vrl_migrate/`:
 
 | Decision | Resolution |
 |----------|-----------|
-| Toggle scope | Per-transform (`otel_paths` on RemapConfig), not global |
-| OtelSpan | No toggle needed — already OTel-native |
-| Where toggle lives | `RemapConfig` (remap), `FilterConfig` (filter), `RouteConfig` (route) — any VRL-using transform |
-| Default | `false` (legacy) — zero breakage |
-| VrlTarget changes | Branch on `otel_paths` in `new()`, `into_events()`, `get()`, `set()` |
+| No toggle | Direct replacement — aliases provide backward compat without a flag |
+| OtelLog | `.message` alias for `.body`, arbitrary fields→attributes |
+| OtelMetric | `.tags` alias for first data point attrs, `.data` for full proto |
+| OtelSpan | Already OTel-native — no change needed |
+| Write-back | Known proto keys extracted, remaining keys→LogRecord attributes |
 
 ## Verification
 

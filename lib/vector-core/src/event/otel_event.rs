@@ -1622,6 +1622,19 @@ impl OtelMetric {
         &self.metric.unit
     }
 
+    /// Get the attributes of the first data point (for VRL `.tags` backward compat).
+    pub fn first_data_point_attributes(&self) -> &[KeyValue] {
+        use opentelemetry_proto::tonic::metrics::v1::metric::Data as MetricData;
+        match self.metric.data.as_ref() {
+            Some(MetricData::Sum(s)) => s.data_points.first().map(|dp| dp.attributes.as_slice()).unwrap_or(&[]),
+            Some(MetricData::Gauge(g)) => g.data_points.first().map(|dp| dp.attributes.as_slice()).unwrap_or(&[]),
+            Some(MetricData::Histogram(h)) => h.data_points.first().map(|dp| dp.attributes.as_slice()).unwrap_or(&[]),
+            Some(MetricData::Summary(s)) => s.data_points.first().map(|dp| dp.attributes.as_slice()).unwrap_or(&[]),
+            Some(MetricData::ExponentialHistogram(e)) => e.data_points.first().map(|dp| dp.attributes.as_slice()).unwrap_or(&[]),
+            None => &[],
+        }
+    }
+
     pub fn set_data_point_attribute(&mut self, key: String, value: AnyValue) {
         use opentelemetry_proto::tonic::metrics::v1::metric::Data as MetricData;
         let attr = KeyValue { key, value: Some(value) };

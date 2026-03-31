@@ -217,14 +217,142 @@ fn hex_decode_value(val: &Value) -> Vec<u8> {
 // OtelLog -> Value projection
 // ---------------------------------------------------------------------------
 
+/// OTel-native LogRecord → VRL Value projection.
+///
+/// Proto fields become top-level keys. LogRecord attributes are **flattened**
+/// into the top-level map so that VRL programs can use `.key` directly
+/// (matching the OTel Collector's `transform` processor behavior where
+/// `attributes["key"]` is the standard access pattern, but Vector's VRL
+/// convention is flat top-level access).
+///
+/// The `.body` key holds the log body. `.message` is an alias for `.body`.
+/// `.resource` and `.scope` are nested objects.
 fn otel_log_event_to_value(event: &OtelLog) -> Value {
-    let log_event = event.to_log_event();
-    log_event.into_parts().0
+    let record = &event.record;
+    let mut map = ObjectMap::new();
+
+    // Body → .body AND .message (backward compat alias)
+    if let Some(body) = &record.body {
+        let v = otel_any_value_to_vrl(body);
+        map.insert("message".into(), v.clone());
+        map.insert("body".into(), v);
+    }
+
+    // OTel proto fields
+    if record.severity_number != 0 {
+        map.insert("severity_number".into(), Value::Integer(i64::from(record.severity_number)));
+    }
+    if !record.severity_text.is_empty() {
+        map.insert("severity_text".into(), Value::Bytes(record.severity_text.clone().into()));
+    }
+    if record.time_unix_nano != 0 {
+        map.insert("time_unix_nano".into(), Value::Integer(record.time_unix_nano as i64));
+    }
+    if record.observed_time_unix_nano != 0 {
+        map.insert("observed_time_unix_nano".into(), Value::Integer(record.observed_time_unix_nano as i64));
+    }
+    if !record.trace_id.is_empty() {
+        map.insert("trace_id".into(), hex_encode_bytes(&record.trace_id));
+    }
+    if !record.span_id.is_empty() {
+        map.insert("span_id".into(), hex_encode_bytes(&record.span_id));
+    }
+    if record.flags != 0 {
+        map.insert("flags".into(), Value::Integer(i64::from(record.flags)));
+    }
+
+    // Flatten LogRecord attributes into top-level (VRL convention).
+    // This means .attributes."key" AND ."key" both work.
+    for kv in &record.attributes {
+        if let Some(val) = &kv.value {
+            map.insert(kv.key.clone().into(), otel_any_value_to_vrl(val));
+        }
+    }
+    // Also keep .attributes as nested object for explicit access
+    if !record.attributes.is_empty() {
+        map.insert(
+            "attributes".into(),
+            Value::Object(otel_kvlist_to_object_map(&record.attributes)),
+        );
+    }
+
+    if let Some(resource) = event.resource() {
+        map.insert("resource".into(), otel_resource_to_value(resource));
+    }
+    if let Some(scope) = event.scope() {
+        map.insert("scope".into(), otel_scope_to_value(scope));
+    }
+
+    Value::Object(map)
 }
 
+/// VRL Value → OtelLog reconstruction.
+///
+/// Known OTel fields (.body, .severity_text, etc.) are extracted into proto
+/// fields. All other top-level keys become LogRecord attributes.
 fn value_to_otel_log_event(value: Value, metadata: EventMetadata) -> OtelLog {
-    let log_event = LogEvent::from_parts(value, metadata);
-    OtelLog::from_log_event(log_event)
+    use opentelemetry_proto::tonic::logs::v1::LogRecord;
+
+    let mut map = match value {
+        Value::Object(m) => m,
+        _ => ObjectMap::new(),
+    };
+
+    // Body: prefer .body, fall back to .message
+    let body = map.remove("body")
+        .or_else(|| map.remove("message"))
+        .map(|v| vrl_value_to_otel_any_value(&v));
+
+    let severity_number = map.remove("severity_number")
+        .and_then(|v| v.as_integer()).unwrap_or(0) as i32;
+    let severity_text = map.remove("severity_text")
+        .and_then(|v| v.as_bytes().map(|b| String::from_utf8_lossy(&b).into_owned()))
+        .unwrap_or_default();
+    let time_unix_nano = map.remove("time_unix_nano")
+        .and_then(|v| v.as_integer()).unwrap_or(0) as u64;
+    let observed_time_unix_nano = map.remove("observed_time_unix_nano")
+        .and_then(|v| v.as_integer()).unwrap_or(0) as u64;
+    let trace_id_val = map.remove("trace_id");
+    let trace_id = trace_id_val.as_ref().map(hex_decode_value).unwrap_or_default();
+    let span_id_val = map.remove("span_id");
+    let span_id = span_id_val.as_ref().map(hex_decode_value).unwrap_or_default();
+    let flags = map.remove("flags")
+        .and_then(|v| v.as_integer()).unwrap_or(0) as u32;
+    let dropped_attributes_count = map.remove("dropped_attributes_count")
+        .and_then(|v| v.as_integer()).unwrap_or(0) as u32;
+
+    // Remove .message duplicate (already consumed as body above)
+    map.remove("message");
+    // Remove nested .attributes (we rebuild from remaining top-level keys)
+    map.remove("attributes");
+
+    let resource_val = map.remove("resource");
+    let resource = resource_val.as_ref().and_then(|v| value_to_otel_resource(v));
+    let scope_val = map.remove("scope");
+    let scope = scope_val.as_ref().and_then(|v| value_to_otel_scope(v));
+
+    // Everything remaining in map becomes LogRecord attributes.
+    let attributes: Vec<OtelKeyValue> = map.into_iter()
+        .map(|(k, v)| OtelKeyValue {
+            key: k.to_string(),
+            value: Some(vrl_value_to_otel_any_value(&v)),
+        })
+        .collect();
+
+    let record = LogRecord {
+        body,
+        severity_number,
+        severity_text,
+        time_unix_nano,
+        observed_time_unix_nano,
+        trace_id,
+        span_id,
+        flags,
+        dropped_attributes_count,
+        attributes,
+    };
+
+    OtelLog::from_parts(record, resource, scope, metadata)
 }
 
 // ---------------------------------------------------------------------------

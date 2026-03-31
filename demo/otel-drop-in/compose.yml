@@ -20,7 +20,7 @@ services:
   vector:
     build:
       context: ../..
-      dockerfile: demo/otel-drop-in/Dockerfile.vector
+      dockerfile: demo/Dockerfile.vector
     command: ["--config", "/etc/vector/vector.yaml"]
     volumes:
       - ./vector/:/etc/vector/:ro

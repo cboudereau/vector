@@ -1,6 +1,6 @@
 ARG RUST_VERSION=1.88
 ARG DEBIAN_RELEASE=trixie
-ARG FEATURES=api,sources-opentelemetry,sinks-console,sinks-opentelemetry
+ARG FEATURES=api,sources-opentelemetry,sinks-console,sinks-opentelemetry,transforms-remap
 
 FROM docker.io/rust:${RUST_VERSION}-${DEBIAN_RELEASE} AS builder
 RUN apt-get update && apt-get -y --no-install-recommends install \

@@ -1,0 +1,46 @@
+sources:
+  otlp:
+    type: opentelemetry
+    grpc:
+      address: "0.0.0.0:4317"
+    http:
+      address: "0.0.0.0:4318"
+
+transforms:
+  # Promote resource attributes to metric data point attributes.
+  # Equivalent to otelcontribcol transform/metrics/dotnet processor.
+  promote_resource_attrs:
+    type: remap
+    inputs: ["otlp.metrics"]
+    source: |
+      .tags."service.name" = .resource.attributes."service.name"
+      .tags."service.namespace" = .resource.attributes."service.namespace"
+      .tags."service.version" = .resource.attributes."service.version"
+      .tags."deployment.environment" = .resource.attributes."deployment.environment"
+      .tags."host.name" = .resource.attributes."host.name"
+
+sinks:
+  otlp_traces:
+    type: opentelemetry
+    inputs: ["otlp.traces"]
+    protocol:
+      type: grpc
+      endpoint: "http://otelcontribcol-traces-loadbalancer:4317"
+
+  otlp_logs:
+    type: opentelemetry
+    inputs: ["otlp.logs"]
+    protocol:
+      type: http
+      uri: "http://loki:3100/otlp/v1/logs"
+      encoding:
+        codec: otlp
+
+  otlp_metrics:
+    type: opentelemetry
+    inputs: ["promote_resource_attrs"]
+    protocol:
+      type: http
+      uri: "http://mimir:9009/otlp/v1/metrics"
+      encoding:
+        codec: otlp

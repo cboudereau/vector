@@ -16,15 +16,12 @@ On metric events, `.attributes."key"` means "all data points' attributes":
 
 This requires NO VRL language changes. It works today.
 
-### Phase B (future): `[]` broadcast operator in VRL paths
+### Study: `[]` broadcast operator (not planned)
 
-When VRL path parser supports `[]`, add explicit broadcast syntax:
-```vrl
-.data.sum.data_points[].attributes."service.name" = .resource.attributes."service.name"
-```
-
-This requires modifying the VRL crate's path parser (external dependency).
-Deferred until the shorthand proves insufficient.
+We investigated adding `[]` to VRL paths for explicit broadcast. Conclusion:
+`.attributes` already broadcasts writes to all data points, which is sufficient.
+The `[]` syntax would require modifying the VRL crate's path parser (external
+dependency) and is not justified by current needs.
 
 ### Write (broadcast)
 

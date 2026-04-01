@@ -1,155 +1,170 @@
-# Plan: VRL Datapoint Context for Metrics
+# Plan: OTTL-compatible Contexts for VRL Transforms
 
 ## Problem
 
-The OTel Collector Contrib's `transform` processor has a **per-data-point iteration** model:
+The OTel Collector Contrib's `transform` processor uses **contexts** to control
+what each statement iterates over and what paths are available. Vector's VRL has
+no equivalent — it runs once per event with a flat path model.
+
+## OTel Collector Context Model (complete reference)
+
+### Hierarchy
+
+```
+Traces:    resource → scope → span → spanevent
+Logs:      resource → scope → log
+Metrics:   resource → scope → metric → datapoint
+```
+
+Each context iterates over its level AND has read access to all parent levels.
+
+### Statement types and their contexts
+
+| Statement type | Available contexts |
+|---------------|-------------------|
+| `trace_statements` | resource, scope, span, spanevent |
+| `metric_statements` | resource, scope, metric, datapoint |
+| `log_statements` | resource, scope, log |
+
+### Context details
+
+| Context | Iterates over | Own paths | Parent paths (read) |
+|---------|--------------|-----------|-------------------|
+| **resource** | Each resource | `resource.attributes`, `.cache`, `.dropped_attributes_count` | — |
+| **scope** | Each scope | `instrumentation_scope.name`, `.version`, `.attributes`, `.cache` | `resource.*` |
+| **span** | Each span | `span.name`, `.kind`, `.trace_id`, `.span_id`, `.parent_span_id`, `.status`, `.attributes`, `.events`, `.links`, `.start_time_unix_nano`, `.end_time_unix_nano`, `.flags`, `.cache` | `resource.*`, `instrumentation_scope.*` |
+| **spanevent** | Each span event | `spanevent.name`, `.attributes`, `.time_unix_nano`, `.dropped_attributes_count`, `.event_index`, `.cache` | `resource.*`, `instrumentation_scope.*`, `span.*` |
+| **log** | Each log record | `log.body`, `.severity_number`, `.severity_text`, `.attributes`, `.time_unix_nano`, `.observed_time_unix_nano`, `.trace_id`, `.span_id`, `.flags`, `.cache` | `resource.*`, `instrumentation_scope.*` |
+| **metric** | Each metric | `metric.name`, `.description`, `.unit`, `.type`, `.is_monotonic`, `.aggregation_temporality`, `.data_points`, `.cache` | `resource.*`, `instrumentation_scope.*` |
+| **datapoint** | Each data point | `datapoint.attributes`, `.value_double`, `.value_int`, `.count`, `.sum`, `.bucket_counts`, `.explicit_bounds`, `.scale`, `.zero_count`, `.positive.*`, `.negative.*`, `.flags`, `.time_unix_nano`, `.start_time_unix_nano`, `.exemplars`, `.quantile_values`, `.cache` | `resource.*`, `instrumentation_scope.*`, `metric.*` |
+
+### Demo use case
 
 ```yaml
+# OTel Collector Contrib
 metric_statements:
   - context: datapoint
     statements:
       - set(attributes["service.name"], resource.attributes["service.name"])
 ```
 
-This means: **for each data point** in the metric, execute the statement. Each data point
-gets its own `attributes` scope. The processor iterates automatically.
-
-Vector's VRL runs **once per event** (one event = one OtelMetric). An OtelMetric can contain
-multiple data points. There is no iteration over data points — VRL sees the whole metric.
-
-### Current behavior
-
-| Operation | Vector VRL | OTel Collector (`context: datapoint`) |
-|-----------|-----------|--------------------------------------|
-| **Read** `.attributes."key"` | First data point only | Current data point (iterating) |
-| **Write** `.attributes."key"` | ALL data points (`set_data_point_attribute`) | Current data point |
-| **Read** `.resource.attributes."key"` | Metric's resource | Same (shared) |
-| **Iteration** | None — one pass per metric | Automatic per data point |
-
-### Consequences
-
-1. **Write is correct** for the common case (promote resource attrs to all data points)
-2. **Read returns first only** — wrong if data points have different attributes
-3. **No per-data-point logic** — can't do "if this data point has attribute X, set Y"
-4. VRL programs using `.attributes` look correct but have different semantics than OTel Collector
-
-## OTel Collector Contexts (reference)
-
-From the OTel Collector Contrib `transform` processor, metrics have 4 contexts:
-
-| Context | Scope | Paths available |
-|---------|-------|----------------|
-| `resource` | Once per resource | `resource.attributes`, `resource.dropped_attributes_count` |
-| `scope` | Once per scope | `instrumentation_scope.name`, `.version`, `.attributes` |
-| `metric` | Once per metric | `metric.name`, `.description`, `.unit`, `.type`, `.is_monotonic`, `.aggregation_temporality`, `.data_points` |
-| `datapoint` | **Once per data point** | `attributes`, `value_double`, `value_int`, `count`, `sum`, `bucket_counts`, `explicit_bounds`, `start_time_unix_nano`, `time_unix_nano`, `flags`, `exemplars`, `quantile_values` + all parent paths |
-
-Key: in `context: datapoint`, `attributes` refers to the **current** data point's attributes.
-The processor loops over all data points automatically.
-
-## Design
-
-### Option A: Add `context` field to remap transform (Recommended)
-
-Add a `context` field to RemapConfig that controls iteration:
-
+Equivalent Vector VRL (target):
 ```toml
 [transforms.promote_attrs]
 type = "remap"
 inputs = ["otlp.metrics"]
-context = "datapoint"    # NEW: iterates per data point
+context = "datapoint"
 source = '''
   .attributes."service.name" = .resource.attributes."service.name"
 '''
 ```
 
-When `context = "datapoint"`:
-1. For each data point in the metric, execute the VRL program
-2. `.attributes` refers to the current data point's attributes (read AND write)
-3. `.resource`, `.scope`, `.metric` refer to parent objects (read-only)
-4. After all iterations, reassemble the metric with modified data points
+## Current Vector State
 
-When `context` is absent (default): current behavior (one pass per metric).
+Vector VRL runs **once per event**:
+- Logs: one event = one OtelLog → `context: log` is the implicit default
+- Traces: one event = one OtelSpan → `context: span` is the implicit default
+- Metrics: one event = one OtelMetric → `context: metric` is the implicit default
 
-**Paths in datapoint context:**
+**Missing**: `context: datapoint` (iterate over data points), `context: spanevent`
+(iterate over span events), `context: resource`, `context: scope`.
 
-```
-.attributes."key"                → current data point attributes (read/write)
-.value                           → NumberDataPoint value (read/write)
-.count                           → count field (Histogram/Summary)
-.sum                             → sum field
-.time_unix_nano                  → data point timestamp
-.start_time_unix_nano            → start timestamp
-.bucket_counts                   → Histogram bucket counts
-.explicit_bounds                 → Histogram bounds
-.flags                           → data point flags
-.resource.attributes."key"       → metric resource (read-only)
-.scope.name                      → scope name (read-only)
-.metric.name                     → metric name (read-only)
-.metric.description              → metric description (read-only)
-.metric.unit                     → metric unit (read-only)
+## Design
+
+### Config
+
+```toml
+[transforms.my_transform]
+type = "remap"
+inputs = ["source"]
+context = "datapoint"    # optional, defaults to signal-appropriate context
+source = '''
+  # VRL program — paths scoped to the chosen context
+'''
 ```
 
-### Option B: Implicit iteration (like OTel Collector's context inference)
+### Context values
 
-When VRL accesses `.attributes` on a metric event, automatically iterate over all
-data points. No config change needed. More magical but matches OTel Collector behavior.
+| Value | Signal | Iterates over | Default for |
+|-------|--------|--------------|-------------|
+| `log` | Logs | Each log record | Log events (current behavior) |
+| `span` | Traces | Each span | Trace events (current behavior) |
+| `spanevent` | Traces | Each span event in each span | — |
+| `metric` | Metrics | Each metric | Metric events (current behavior) |
+| `datapoint` | Metrics | Each data point in each metric | — |
+| `resource` | All | Each resource | — |
+| `scope` | All | Each scope | — |
 
-**Rejected** because: VRL's type system expects deterministic paths. Implicit iteration
-would change the return type of `.attributes` depending on context (single map vs iteration).
+### Priority for implementation
 
-## Implementation
+1. **`datapoint`** — needed for the demo (promote resource attrs to data points)
+2. **`log`** — already the implicit default, just formalize
+3. **`span`** — already the implicit default, just formalize
+4. **`metric`** — already the implicit default, just formalize
+5. **`spanevent`** — future (iterate over span events)
+6. **`resource`** / **`scope`** — future (rarely needed)
 
-### Phase 1: DatapointContext VRL projection (~200 lines)
+### Implementation for `context: datapoint`
 
-When `context = "datapoint"`, create a different VRL projection:
+When `context = "datapoint"` is set on a remap transform receiving metric events:
 
-```rust
-fn otel_datapoint_to_value(
-    data_point: &NumberDataPoint,  // or HistogramDataPoint, etc.
-    resource: &Resource,
-    scope: &InstrumentationScope,
-    metric: &OtelMetricProto,
-) -> Value
-```
-
-This produces a flat Value with:
-- `.attributes` from the current data point
-- `.value` / `.count` / `.sum` from the current data point
-- `.resource.attributes` from the metric's resource
-- `.metric.name` from the metric proto
-
-### Phase 2: DatapointContext iteration in remap transform (~150 lines)
-
-In the remap transform, when `context = "datapoint"`:
-1. Extract all data points from the metric
-2. For each data point, create a VRL Value, run the program, collect result
+1. Extract data points from the metric (variant-dependent: Sum, Gauge, Histogram, etc.)
+2. For each data point:
+   a. Build a VRL Value with `datapoint.*` paths (attributes, value, timestamps, etc.)
+   b. Include parent paths: `.resource.*`, `.scope.*`, `.metric.*` (read-only)
+   c. Execute the VRL program
+   d. Write back modified `datapoint.*` fields to the proto data point
 3. Reassemble the metric with modified data points
 4. Emit the modified metric event
 
-### Phase 3: Write-back from datapoint Value to proto (~150 lines)
+Non-metric events passing through a `context = "datapoint"` transform are passed
+through unchanged (with a warning).
 
-After VRL runs on a data point Value, write modifications back:
-- `.attributes` changes → update data point attributes
-- `.value` changes → update data point value
-- Other data point fields → update accordingly
-- `.resource` / `.metric` changes → ignored (read-only in datapoint context)
+## Phased Implementation
 
-### Phase 4: Tests + docs (~100 lines)
+### Phase 1: `context: datapoint` for metrics (~300 lines)
 
-- Test: promote resource attrs to data points (matches OTel Collector behavior)
-- Test: per-data-point filtering (set attribute only if value > threshold)
-- Test: multi-data-point metric (verify each data point processed independently)
-- Update VRL docs with `context` field documentation
+**Files:**
+- `src/transforms/remap.rs` — add `context` field to `RemapConfig`
+- `lib/vector-core/src/event/vrl_target.rs` — add `DatapointVrlTarget`
+- `lib/vector-core/src/event/otel_event.rs` — data point extraction/reassembly
 
-## Files to modify
+**DatapointVrlTarget projection:**
+```rust
+fn datapoint_to_value(dp, resource, scope, metric) -> Value {
+    // .attributes = dp.attributes
+    // .value = dp.value (or .count, .sum for histograms)
+    // .time_unix_nano = dp.time_unix_nano
+    // .resource.attributes = resource.attributes (read)
+    // .metric.name = metric.name (read)
+}
+```
 
-- `src/transforms/remap.rs` — add `context` field to `RemapConfig`, branch on it
-- `lib/vector-core/src/event/vrl_target.rs` — add `DatapointVrlTarget` variant
-- `lib/vector-core/src/event/otel_event.rs` — data point extraction/reassembly helpers
+**Data point reassembly:**
+```rust
+fn value_to_datapoint(value, original_dp) -> DataPoint {
+    // Write back .attributes, .value, timestamps
+    // Ignore .resource/.metric changes (read-only)
+}
+```
+
+### Phase 2: Formalize default contexts (~50 lines)
+
+- `context = "log"` — explicit default for log events (no behavior change)
+- `context = "span"` — explicit default for trace events (no behavior change)
+- `context = "metric"` — explicit default for metric events (no behavior change)
+
+### Phase 3: `context: spanevent` for traces (~200 lines)
+
+Same pattern as datapoint: iterate over span events within a span.
+
+### Phase 4: `context: resource` and `context: scope` (~150 lines)
+
+Iterate over resource/scope levels. Less common but completes the model.
 
 ## Verification
 
-- `cargo test -p vector --lib` — all tests pass
-- Demo: `promote_resource_attrs` produces same output as OTel Collector
+- Demo: `promote_resource_attrs` with `context = "datapoint"` matches OTel Collector output
 - Multi-data-point test: each data point processed independently
+- Default context: existing VRL programs work without specifying `context`
+- `cargo test -p vector --lib` — all tests pass

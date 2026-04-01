@@ -822,10 +822,6 @@ impl OtelLog {
                 }
             }
         }
-        if self.namespace() == crate::config::LogNamespace::Vector {
-            let log = self.to_log_event();
-            return log.get_timestamp().map(|v| coerce_to_timestamp(v.clone()));
-        }
         if self.record.time_unix_nano != 0 {
             let nanos = self.record.time_unix_nano;
             let secs = (nanos / 1_000_000_000) as i64;
@@ -839,12 +835,16 @@ impl OtelLog {
             let secs = (nanos / 1_000_000_000) as i64;
             let nsecs = (nanos % 1_000_000_000) as u32;
             chrono::DateTime::from_timestamp(secs, nsecs).map(Value::Timestamp)
-        } else {
+        } else if self.namespace() == crate::config::LogNamespace::Vector {
+            // In Vector namespace, timestamp may be stored via schema meaning in metadata.
+            // Fall back to to_log_event bridge to resolve it.
             self.to_log_event().get_timestamp().cloned()
+        } else {
+            None
         }
     }
 
-    /// Remove the timestamp from the event (LogEvent-compatible bridge).
+    /// Remove the timestamp from the event.
     pub fn remove_timestamp(&mut self) -> Option<Value> {
         let ts = self.get_timestamp();
         self.record.time_unix_nano = 0;
@@ -861,63 +861,65 @@ impl OtelLog {
         self.body().map(any_value_to_vrl)
     }
 
-    /// Get the "source_type" from resource attributes or legacy log event bridge.
+    /// Get the "source_type" from resource attributes.
     pub fn get_source_type(&self) -> Option<Value> {
         self.resource_attribute("source_type")
             .map(|av| any_value_to_vrl(&av))
-            .or_else(|| self.to_log_event().get_source_type().cloned())
     }
 
-    /// Get the host value from the event (LogEvent-compatible bridge).
+    /// Get the host value from resource attributes.
     pub fn get_host(&self) -> Option<Value> {
         self.resource_attribute("host.name")
             .map(any_value_to_vrl)
-            .or_else(|| self.to_log_event().get_host().cloned())
     }
 
-    /// Parse a path and get a value (LogEvent-compatible bridge).
+    /// Parse a path and get a value.
     pub fn parse_path_and_get_value(
         &self,
         path: &str,
     ) -> Result<Option<Value>, vrl::path::PathParseError> {
-        let log = self.to_log_event();
-        log.parse_path_and_get_value(path)
-            .map(|opt| opt.cloned())
+        let target_path = vrl::path::parse_target_path(path)?;
+        Ok(self.get(&target_path))
     }
 
-    /// Get the LogNamespace (LogEvent-compatible bridge).
+    /// Get the LogNamespace from metadata.
     pub fn namespace(&self) -> crate::config::LogNamespace {
+        // LogNamespace is stored in metadata schema definition, not in proto.
+        // Delegate to to_log_event for now — this is the last bridge dependency.
         self.to_log_event().namespace()
     }
 
-    /// Convert to fields (LogEvent-compatible bridge).
-    /// Returns owned values since the underlying LogEvent is ephemeral.
+    /// Convert to fields — all top-level keys from the legacy layout.
     pub fn convert_to_fields(&self) -> Vec<(vrl::value::KeyString, Value)> {
-        let log = self.to_log_event();
-        log.convert_to_fields()
-            .map(|(k, v)| (k, v.clone()))
-            .collect()
+        match self.to_value_legacy_layout() {
+            Value::Object(map) => map.into_iter().collect(),
+            _ => vec![],
+        }
     }
 
-    /// Rename a key (LogEvent-compatible bridge).
+    /// Rename a key.
     pub fn rename_key<'a>(
         &mut self,
         from: impl lookup::lookup_v2::TargetPath<'a>,
         to: impl lookup::lookup_v2::TargetPath<'a>,
     ) {
-        let mut log = self.to_log_event();
-        log.rename_key(from, to);
-        *self = Self::from_log_event(log);
+        if let Some(val) = self.remove(from) {
+            self.insert(to, val);
+        }
     }
 
-    /// Get the timestamp path (LogEvent-compatible bridge).
+    /// Get the timestamp path.
     pub fn timestamp_path(&self) -> Option<vrl::path::OwnedTargetPath> {
-        self.to_log_event().timestamp_path().cloned()
+        use vrl::path::OwnedTargetPath;
+        use lookup::owned_value_path;
+        Some(OwnedTargetPath::event(owned_value_path!("timestamp")))
     }
 
-    /// Get the host path (LogEvent-compatible bridge).
+    /// Get the host path.
     pub fn host_path(&self) -> Option<vrl::path::OwnedTargetPath> {
-        self.to_log_event().host_path().cloned()
+        use vrl::path::OwnedTargetPath;
+        use lookup::owned_value_path;
+        Some(OwnedTargetPath::event(owned_value_path!("host")))
     }
 
     /// Get the body path.
@@ -932,67 +934,66 @@ impl OtelLog {
         self.body_path()
     }
 
-    /// Get the source type path (LogEvent-compatible bridge).
+    /// Get the source type path.
     pub fn source_type_path(&self) -> Option<vrl::path::OwnedTargetPath> {
-        self.to_log_event().source_type_path().cloned()
+        use vrl::path::OwnedTargetPath;
+        use lookup::owned_value_path;
+        Some(OwnedTargetPath::event(owned_value_path!("source_type")))
     }
 
-    /// Try insert - only inserts if the path doesn't exist (LogEvent-compatible bridge).
+    /// Try insert - only inserts if the path doesn't exist.
     pub fn try_insert<'a>(
         &mut self,
         path: impl lookup::lookup_v2::TargetPath<'a>,
         value: impl Into<Value>,
     ) {
-        let mut log = self.to_log_event();
-        log.try_insert(path, value);
-        *self = Self::from_log_event(log);
+        // Check existence via to_value_legacy_layout
+        let val = self.to_value_legacy_layout();
+        if val.get(path.value_path()).is_none() {
+            self.insert(path, value);
+        }
     }
 
-    /// Get the underlying value (LogEvent-compatible bridge).
-    ///
-    /// In Vector namespace, returns only the body (the actual event payload).
-    /// In Legacy namespace, returns the full reconstructed object with all fields.
+    /// Get the underlying value.
+    /// In Vector namespace: returns body only.
+    /// In Legacy namespace: returns full event with all fields.
     pub fn value(&self) -> Value {
         if self.namespace() == crate::config::LogNamespace::Vector {
             self.body()
                 .map(any_value_to_vrl)
                 .unwrap_or(Value::Null)
         } else {
-            self.to_log_event().value().clone()
+            self.to_value_legacy_layout()
         }
     }
 
-    /// Get all keys (LogEvent-compatible bridge).
+    /// Get all keys from the legacy layout.
     pub fn keys(&self) -> Option<std::vec::IntoIter<vrl::value::KeyString>> {
-        let log = self.to_log_event();
-        log.keys().map(|iter| iter.collect::<Vec<_>>().into_iter())
+        match self.to_value_legacy_layout() {
+            Value::Object(map) => Some(map.into_keys().collect::<Vec<_>>().into_iter()),
+            _ => None,
+        }
     }
 
-    /// Check if the log is an empty object (LogEvent-compatible bridge).
+    /// Check if the log has no body and no attributes.
     pub fn is_empty_object(&self) -> bool {
-        self.to_log_event().is_empty_object()
+        self.record.body.is_none() && self.record.attributes.is_empty()
     }
 
-    /// Convert to fields unquoted (LogEvent-compatible bridge).
+    /// Convert to fields unquoted (same as convert_to_fields).
     pub fn convert_to_fields_unquoted(&self) -> Vec<(vrl::value::KeyString, Value)> {
-        let log = self.to_log_event();
-        log.convert_to_fields_unquoted()
-            .map(|(k, v)| (k, v.clone()))
-            .collect()
+        self.convert_to_fields()
     }
 
-    /// Get a mutable reference to the underlying value.
-    /// Since OtelLog doesn't have a single VRL Value, this creates a LogEvent,
-    /// returns a clone of its value, and any mutations won't persist.
-    /// For mutations, use insert/remove instead.
+    /// Get a snapshot of the value (mutations won't persist — use insert/remove).
     pub fn value_mut(&mut self) -> Value {
-        self.to_log_event().value().clone()
+        self.to_value_legacy_layout()
     }
 
-    /// Get as an object map (LogEvent-compatible bridge).
+    /// Get as an object map.
     pub fn as_map(&self) -> Option<ObjectMap> {
-        match self.to_log_event().value() {
-            Value::Object(map) => Some(map.clone()),
+        match self.to_value_legacy_layout() {
+            Value::Object(map) => Some(map),
             _ => None,
         }
     }

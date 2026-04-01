@@ -522,7 +522,7 @@ async fn insert_events_arrow_format() {
     // Verify fields exist and are correctly typed
     for row in output.data.iter() {
         assert!(row.get("host").and_then(|v| v.as_str()).is_some());
-        assert!(row.get("message").and_then(|v| v.as_str()).is_some());
+        assert!(row.get("body").and_then(|v| v.as_str()).is_some());
         assert!(
             row.get("count")
                 .and_then(|v| v.as_str())
@@ -591,7 +591,7 @@ async fn insert_events_arrow_with_schema_fetching() {
     for row in output.data.iter() {
         // Check standard Vector fields exist
         assert!(row.get("host").and_then(|v| v.as_str()).is_some());
-        assert!(row.get("message").and_then(|v| v.as_str()).is_some());
+        assert!(row.get("body").and_then(|v| v.as_str()).is_some());
         assert!(row.get("timestamp").is_some());
 
         // Check custom fields have correct types

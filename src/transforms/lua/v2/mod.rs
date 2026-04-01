@@ -552,11 +552,11 @@ mod tests {
                     .unwrap();
                 drop(tx);
                 assert_eq!(
-                    next_event(&out, "transform").await.as_log().get("message").unwrap(),
+                    next_event(&out, "transform").await.as_log().get("body").unwrap(),
                     Value::from(line1)
                 );
                 assert_eq!(
-                    next_event(&out, "in").await.as_log().get("message").unwrap(),
+                    next_event(&out, "in").await.as_log().get("body").unwrap(),
                     Value::from(line2),
                 );
             },
@@ -594,7 +594,7 @@ mod tests {
             r#"
             version = "2"
             hooks.process = """function (event, emit)
-                _, _, name = string.find(event.log.message, "Hello, my name is (%a+).")
+                _, _, name = string.find(event.log.body, "Hello, my name is (%a+).")
                 event.log.name = name
                 emit(event)
             end

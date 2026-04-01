@@ -96,8 +96,33 @@ impl ConditionalConfig for DatadogSearchConfig {
 #[derive(Default, Clone)]
 struct EventFilter;
 
-/// Uses the default `Resolver`, to build a `Vec<Field>`.
-impl Resolver for EventFilter {}
+/// Custom `Resolver` that maps default fields to "body" instead of "message".
+impl Resolver for EventFilter {
+    fn build_fields(&self, attr: &str) -> Vec<Field> {
+        if attr == "_default_" {
+            // Map default search to "body" (OTel log body field) instead of "message"
+            vec![
+                Field::Default("body".to_owned()),
+                Field::Default("custom.error.message".to_owned()),
+                Field::Default("custom.error.stack".to_owned()),
+                Field::Default("custom.title".to_owned()),
+            ]
+        } else if attr == "message" {
+            // Remap "message" field references to "body"
+            vec![Field::Default("body".to_owned())]
+        } else {
+            // For all other fields, use the same logic as the default Resolver
+            // but inline it since normalize_fields is private
+            let field = match attr.replace('@', ".") {
+                v if attr.starts_with('@') => Field::Attribute(v),
+                v if ["body", "custom.error.message", "custom.error.stack", "custom.title"].contains(&v.as_ref()) => Field::Default(v),
+                v if ["host", "source", "status", "service", "trace_id", "tags"].contains(&v.as_ref()) => Field::Reserved(v),
+                v => Field::Tag(v),
+            };
+            vec![field]
+        }
+    }
+}
 
 impl Filter<LogEvent> for EventFilter {
     fn exists(&self, field: Field) -> Result<Box<dyn Matcher<LogEvent>>, PathParseError> {
@@ -572,84 +597,84 @@ mod test {
                 log_event!["a" => "foo"],
             ),
             // Keyword.
-            ("bla", log_event!["message" => "bla"], log_event![]),
+            ("bla", log_event!["body" => "bla"], log_event![]),
             (
                 "foo",
-                log_event!["message" => r#"{"key": "foo"}"#],
+                log_event!["body" => r#"{"key": "foo"}"#],
                 log_event![],
             ),
             (
                 "bar",
-                log_event!["message" => r#"{"nested": {"value": ["foo", "bar"]}}"#],
+                log_event!["body" => r#"{"nested": {"value": ["foo", "bar"]}}"#],
                 log_event![],
             ),
             // Keyword (negate).
             (
                 "NOT bla",
-                log_event!["message" => "nothing"],
-                log_event!["message" => "bla"],
+                log_event!["body" => "nothing"],
+                log_event!["body" => "bla"],
             ),
             (
                 "NOT foo",
                 log_event![],
-                log_event!["message" => r#"{"key": "foo"}"#],
+                log_event!["body" => r#"{"key": "foo"}"#],
             ),
             (
                 "NOT bar",
                 log_event![],
-                log_event!["message" => r#"{"nested": {"value": ["foo", "bar"]}}"#],
+                log_event!["body" => r#"{"nested": {"value": ["foo", "bar"]}}"#],
             ),
             // Keyword (negate w/-).
             (
                 "-bla",
-                log_event!["message" => "nothing"],
-                log_event!["message" => "bla"],
+                log_event!["body" => "nothing"],
+                log_event!["body" => "bla"],
             ),
             (
                 "-foo",
                 log_event![],
-                log_event!["message" => r#"{"key": "foo"}"#],
+                log_event!["body" => r#"{"key": "foo"}"#],
             ),
             (
                 "-bar",
                 log_event![],
-                log_event!["message" => r#"{"nested": {"value": ["foo", "bar"]}}"#],
+                log_event!["body" => r#"{"nested": {"value": ["foo", "bar"]}}"#],
             ),
             // Quoted keyword.
-            (r#""bla""#, log_event!["message" => "bla"], log_event![]),
+            (r#""bla""#, log_event!["body" => "bla"], log_event![]),
             (
                 r#""foo""#,
-                log_event!["message" => r#"{"key": "foo"}"#],
+                log_event!["body" => r#"{"key": "foo"}"#],
                 log_event![],
             ),
             (
                 r#""bar""#,
-                log_event!["message" => r#"{"nested": {"value": ["foo", "bar"]}}"#],
+                log_event!["body" => r#"{"nested": {"value": ["foo", "bar"]}}"#],
                 log_event![],
             ),
             // Quoted keyword (negate).
-            (r#"NOT "bla""#, log_event![], log_event!["message" => "bla"]),
+            (r#"NOT "bla""#, log_event![], log_event!["body" => "bla"]),
             (
                 r#"NOT "foo""#,
                 log_event![],
-                log_event!["message" => r#"{"key": "foo"}"#],
+                log_event!["body" => r#"{"key": "foo"}"#],
             ),
             (
                 r#"NOT "bar""#,
                 log_event![],
-                log_event!["message" => r#"{"nested": {"value": ["foo", "bar"]}}"#],
+                log_event!["body" => r#"{"nested": {"value": ["foo", "bar"]}}"#],
             ),
             // Quoted keyword (negate w/-).
-            (r#"-"bla""#, log_event![], log_event!["message" => "bla"]),
+            (r#"-"bla""#, log_event![], log_event!["body" => "bla"]),
             (
                 r#"NOT "foo""#,
                 log_event![],
-                log_event!["message" => r#"{"key": "foo"}"#],
+                log_event!["body" => r#"{"key": "foo"}"#],
             ),
             (
                 r#"NOT "bar""#,
                 log_event![],
-                log_event!["message" => r#"{"nested": {"value": ["foo", "bar"]}}"#],
+                log_event!["body" => r#"{"nested": {"value": ["foo", "bar"]}}"#],
             ),
             // Tag match.
             (
@@ -848,49 +873,49 @@ mod test {
             // Wildcard prefix.
             (
                 "*bla",
-                log_event!["message" => "foobla"],
-                log_event!["message" => "blafoo"],
+                log_event!["body" => "foobla"],
+                log_event!["body" => "blafoo"],
             ),
             // Wildcard prefix (negate).
             (
                 "NOT *bla",
-                log_event!["message" => "blafoo"],
-                log_event!["message" => "foobla"],
+                log_event!["body" => "blafoo"],
+                log_event!["body" => "foobla"],
             ),
             // Wildcard prefix (negate w/-).
             (
                 "-*bla",
-                log_event!["message" => "blafoo"],
-                log_event!["message" => "foobla"],
+                log_event!["body" => "blafoo"],
+                log_event!["body" => "foobla"],
             ),
             // Wildcard suffix.
             (
                 "bla*",
-                log_event!["message" => "blafoo"],
-                log_event!["message" => "foobla"],
+                log_event!["body" => "blafoo"],
+                log_event!["body" => "foobla"],
             ),
             // Wildcard suffix (negate).
             (
                 "NOT bla*",
-                log_event!["message" => "foobla"],
-                log_event!["message" => "blafoo"],
+                log_event!["body" => "foobla"],
+                log_event!["body" => "blafoo"],
             ),
             // Wildcard suffix (negate w/-).
             (
                 "-bla*",
-                log_event!["message" => "foobla"],
-                log_event!["message" => "blafoo"],
+                log_event!["body" => "foobla"],
+                log_event!["body" => "blafoo"],
             ),
             // Multiple wildcards.
-            ("*b*la*", log_event!["message" => "foobla"], log_event![]),
+            ("*b*la*", log_event!["body" => "foobla"], log_event![]),
             // Multiple wildcards (negate).
             (
                 "NOT *b*la*",
                 log_event![],
-                log_event!["message" => "foobla"],
+                log_event!["body" => "foobla"],
             ),
             // Multiple wildcards (negate w/-).
-            ("-*b*la*", log_event![], log_event!["message" => "foobla"]),
+            ("-*b*la*", log_event![], log_event!["body" => "foobla"]),
             // Wildcard prefix - tag.
             (
                 "a:*bla",
@@ -1020,63 +1045,63 @@ mod test {
             // Range - numeric, inclusive.
             (
                 "[1 TO 10]",
-                log_event!["message" => "1"],
-                log_event!["message" => "2"],
+                log_event!["body" => "1"],
+                log_event!["body" => "2"],
             ),
             // Range - numeric, inclusive (negate).
             (
                 "NOT [1 TO 10]",
-                log_event!["message" => "2"],
-                log_event!["message" => "1"],
+                log_event!["body" => "2"],
+                log_event!["body" => "1"],
             ),
             // Range - numeric, inclusive (negate w/-).
             (
                 "-[1 TO 10]",
-                log_event!["message" => "2"],
-                log_event!["message" => "1"],
+                log_event!["body" => "2"],
+                log_event!["body" => "1"],
             ),
             // Range - numeric, inclusive, unbounded (upper).
             (
                 "[50 TO *]",
-                log_event!["message" => "6"],
-                log_event!["message" => "40"],
+                log_event!["body" => "6"],
+                log_event!["body" => "40"],
             ),
             // Range - numeric, inclusive, unbounded (upper) (negate).
             (
                 "NOT [50 TO *]",
-                log_event!["message" => "40"],
-                log_event!["message" => "6"],
+                log_event!["body" => "40"],
+                log_event!["body" => "6"],
             ),
             // Range - numeric, inclusive, unbounded (upper) (negate w/-).
             (
                 "-[50 TO *]",
-                log_event!["message" => "40"],
-                log_event!["message" => "6"],
+                log_event!["body" => "40"],
+                log_event!["body" => "6"],
             ),
             // Range - numeric, inclusive, unbounded (lower).
             (
                 "[* TO 50]",
-                log_event!["message" => "3"],
-                log_event!["message" => "6"],
+                log_event!["body" => "3"],
+                log_event!["body" => "6"],
             ),
             // Range - numeric, inclusive, unbounded (lower) (negate).
             (
                 "NOT [* TO 50]",
-                log_event!["message" => "6"],
-                log_event!["message" => "3"],
+                log_event!["body" => "6"],
+                log_event!["body" => "3"],
             ),
             // Range - numeric, inclusive, unbounded (lower) (negate w/-).
             (
                 "-[* TO 50]",
-                log_event!["message" => "6"],
-                log_event!["message" => "3"],
+                log_event!["body" => "6"],
+                log_event!["body" => "3"],
             ),
             // Range - numeric, inclusive, unbounded (both).
-            ("[* TO *]", log_event!["message" => "foo"], log_event![]),
+            ("[* TO *]", log_event!["body" => "foo"], log_event![]),
             // Range - numeric, inclusive, unbounded (both) (negate).
-            ("NOT [* TO *]", log_event![], log_event!["message" => "foo"]),
+            ("NOT [* TO *]", log_event![], log_event!["body" => "foo"]),
             // Range - numeric, inclusive, unbounded (both) (negate w/-i).
-            ("-[* TO *]", log_event![], log_event!["message" => "foo"]),
+            ("-[* TO *]", log_event![], log_event!["body" => "foo"]),
             // Range - numeric, inclusive, tag.
             (
                 "a:[1 TO 10]",

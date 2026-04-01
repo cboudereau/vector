@@ -118,7 +118,7 @@ fn test_decode_log_body() {
         assert_eq!(events.len(), msgs.len());
         for (msg, event) in msgs.into_iter().zip(events.into_iter()) {
             let log = event.as_log();
-            assert_eq!(log.get("message").unwrap(), Value::from(msg.message));
+            assert_eq!(log.get("body").unwrap(), Value::from(msg.message));
             assert_eq!(log.get("status").unwrap(), Value::from(msg.status));
             assert_eq!(log.get("timestamp").unwrap(), Value::from(msg.timestamp));
             assert_eq!(log.get("hostname").unwrap(), Value::from(msg.hostname));
@@ -178,7 +178,7 @@ fn test_decode_log_body_parse_ddtags() {
     let log = event.as_log();
     let log_msg = log_msgs[0].clone();
 
-    assert_eq!(log.get("message").unwrap(), Value::from(log_msg.message));
+    assert_eq!(log.get("body").unwrap(), Value::from(log_msg.message));
     assert_eq!(log.get("status").unwrap(), Value::from(log_msg.status));
     assert_eq!(log.get("timestamp").unwrap(), Value::from(log_msg.timestamp));
     assert_eq!(log.get("hostname").unwrap(), Value::from(log_msg.hostname));
@@ -392,7 +392,7 @@ async fn full_payload_v1() {
         {
             let event = events.remove(0);
             let log = event.as_log();
-            assert_eq!(log.get("message").unwrap(), "foo".into());
+            assert_eq!(log.get("body").unwrap(), "foo".into());
             assert_eq!(
                 log.get("timestamp").unwrap(),
                 Utc.timestamp_opt(123, 0)
@@ -447,7 +447,7 @@ async fn full_payload_v2() {
         {
             let event = events.remove(0);
             let log = event.as_log();
-            assert_eq!(log.get("message").unwrap(), "foo".into());
+            assert_eq!(log.get("body").unwrap(), "foo".into());
             assert_eq!(
                 log.get("timestamp").unwrap(),
                 Utc.timestamp_opt(123, 0)
@@ -502,7 +502,7 @@ async fn no_api_key() {
         {
             let event = events.remove(0);
             let log = event.as_log();
-            assert_eq!(log.get("message").unwrap(), "foo".into());
+            assert_eq!(log.get("body").unwrap(), "foo".into());
             assert_eq!(
                 log.get("timestamp").unwrap(),
                 Utc.timestamp_opt(123, 0)
@@ -557,7 +557,7 @@ async fn api_key_in_url() {
         {
             let event = events.remove(0);
             let log = event.as_log();
-            assert_eq!(log.get("message").unwrap(), "bar".into());
+            assert_eq!(log.get("body").unwrap(), "bar".into());
             assert_eq!(
                 log.get("timestamp").unwrap(),
                 Utc.timestamp_opt(456, 0)
@@ -615,7 +615,7 @@ async fn api_key_in_query_params() {
         {
             let event = events.remove(0);
             let log = event.as_log();
-            assert_eq!(log.get("message").unwrap(), "bar".into());
+            assert_eq!(log.get("body").unwrap(), "bar".into());
             assert_eq!(
                 log.get("timestamp").unwrap(),
                 Utc.timestamp_opt(456, 0)
@@ -673,7 +673,7 @@ async fn api_key_in_header() {
         {
             let event = events.remove(0);
             let log = event.as_log();
-            assert_eq!(log.get("message").unwrap(), "baz".into());
+            assert_eq!(log.get("body").unwrap(), "baz".into());
             assert_eq!(
                 log.get("timestamp").unwrap(),
                 Utc.timestamp_opt(789, 0)
@@ -862,7 +862,7 @@ async fn ignores_api_key() {
         {
             let event = events.remove(0);
             let log = event.as_log();
-            assert_eq!(log.get("message").unwrap(), "baz".into());
+            assert_eq!(log.get("body").unwrap(), "baz".into());
             assert_eq!(
                 log.get("timestamp").unwrap(),
                 Utc.timestamp_opt(789, 0)
@@ -1439,7 +1439,7 @@ async fn split_outputs() {
         {
             let event = log_event.remove(0);
             let log = event.as_log();
-            assert_eq!(log.get("message").unwrap(), "baz".into());
+            assert_eq!(log.get("body").unwrap(), "baz".into());
             assert_eq!(
                 log.get("timestamp").unwrap(),
                 Utc.timestamp_opt(789, 0)
@@ -1585,7 +1585,7 @@ fn test_config_outputs() {
                     Some(
                         schema::Definition::empty_legacy_namespace()
                             .with_event_field(
-                                &owned_value_path!("message"),
+                                &owned_value_path!("body"),
                                 Kind::bytes(),
                                 Some("message"),
                             )
@@ -1638,7 +1638,7 @@ fn test_config_outputs() {
                     Some(
                         schema::Definition::empty_legacy_namespace()
                             .with_event_field(
-                                &owned_value_path!("message"),
+                                &owned_value_path!("body"),
                                 Kind::bytes(),
                                 Some("message"),
                             )
@@ -1692,7 +1692,7 @@ fn test_config_outputs() {
                         Some(
                             schema::Definition::empty_legacy_namespace()
                                 .with_event_field(
-                                    &owned_value_path!("message"),
+                                    &owned_value_path!("body"),
                                     Kind::bytes(),
                                     Some("message"),
                                 )
@@ -1815,7 +1815,7 @@ fn test_config_outputs() {
                     Some(
                         schema::Definition::empty_legacy_namespace()
                             .with_event_field(
-                                &owned_value_path!("message"),
+                                &owned_value_path!("body"),
                                 Kind::bytes(),
                                 Some("message"),
                             )
@@ -1891,7 +1891,7 @@ fn test_config_outputs() {
                         Some(
                             schema::Definition::empty_legacy_namespace()
                                 .with_event_field(
-                                    &owned_value_path!("message"),
+                                    &owned_value_path!("body"),
                                     Kind::bytes(),
                                     Some("message"),
                                 )
@@ -2391,7 +2391,7 @@ fn test_output_schema_definition_bytes_legacy_namespace() {
             .with_event_field(&owned_value_path!("ddtags"), Kind::bytes(), Some("tags"))
             .with_event_field(&owned_value_path!("hostname"), Kind::bytes(), Some("host"))
             .with_event_field(
-                &owned_value_path!("message"),
+                &owned_value_path!("body"),
                 Kind::bytes(),
                 Some("message")
             )

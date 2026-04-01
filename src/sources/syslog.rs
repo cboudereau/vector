@@ -602,7 +602,7 @@ mod test {
             [LogNamespace::Legacy],
         )
         .with_event_field(
-            &owned_value_path!("message"),
+            &owned_value_path!("body"),
             Kind::bytes(),
             Some("message"),
         )
@@ -1508,7 +1508,7 @@ mod test {
                     .map(value_to_string)
                     .map(|s: String| usize::from_str(s.as_str()).unwrap())
                     .unwrap(),
-                message: fields.remove("message").map(value_to_string).unwrap(),
+                message: fields.remove("body").map(value_to_string).unwrap(),
                 structured_data: structured_data_from_fields(fields),
             }
         }

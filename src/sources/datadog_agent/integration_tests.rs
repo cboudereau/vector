@@ -100,10 +100,10 @@ async fn wait_for_message() {
     .await;
     assert_eq!(events.len(), 2);
     let event = events.first().unwrap().as_log();
-    let msg = event.get("message").unwrap().coerce_to_bytes();
+    let msg = event.get("body").unwrap().coerce_to_bytes();
     assert_eq!(msg, "hello world");
     let event = events.get(1).unwrap().as_log();
-    let msg = event.get("message").unwrap().coerce_to_bytes();
+    let msg = event.get("body").unwrap().coerce_to_bytes();
     assert_eq!(msg, "it's vector speaking");
 }
 

@@ -117,7 +117,7 @@ impl SyslogDeserializerConfig {
                     [log_namespace],
                 )
                 .with_event_field(
-                    &owned_value_path!("message"),
+                    &owned_value_path!("body"),
                     Kind::bytes(),
                     Some("message"),
                 )
@@ -428,7 +428,7 @@ fn insert_fields_from_syslog(
             log.maybe_insert(log_schema().message_key_target_path(), parsed.msg);
         }
         LogNamespace::Vector => {
-            log.insert(event_path!("message"), parsed.msg);
+            log.insert(event_path!("body"), parsed.msg);
         }
     }
 

@@ -231,11 +231,9 @@ fn otel_log_event_to_value(event: &OtelLog) -> Value {
     let record = &event.record;
     let mut map = ObjectMap::new();
 
-    // Body → .body AND .message (backward compat alias)
+    // Body → .body only (no .message alias)
     if let Some(body) = &record.body {
-        let v = otel_any_value_to_vrl(body);
-        map.insert("message".into(), v.clone());
-        map.insert("body".into(), v);
+        map.insert("body".into(), otel_any_value_to_vrl(body));
     }
 
     // OTel proto fields
@@ -298,9 +296,8 @@ fn value_to_otel_log_event(value: Value, metadata: EventMetadata) -> OtelLog {
         _ => ObjectMap::new(),
     };
 
-    // Body: prefer .body, fall back to .message
+    // Body: .body only
     let body = map.remove("body")
-        .or_else(|| map.remove("message"))
         .map(|v| vrl_value_to_otel_any_value(&v));
 
     let severity_number = map.remove("severity_number")
@@ -507,7 +504,7 @@ fn precompute_otel_metric_value(
     event: &OtelMetric,
     _info: &ProgramInfo,
 ) -> Value {
-    use opentelemetry_proto::tonic::metrics::v1::{metric, AggregationTemporality};
+    use opentelemetry_proto::tonic::metrics::v1::metric;
 
     let mut map = ObjectMap::new();
 
@@ -527,30 +524,8 @@ fn precompute_otel_metric_value(
         map.insert("scope".into(), otel_scope_to_value(scope));
     }
 
-    // .tags — backward compat alias for first data point's attributes
-    let first_dp_attrs = event.first_data_point_attributes();
-    if !first_dp_attrs.is_empty() {
-        map.insert("tags".into(), Value::Object(otel_kvlist_to_object_map(first_dp_attrs)));
-    }
-
-    // .kind — backward compat alias for aggregation temporality
+    // .data — full OTel proto structure (no .tags or .kind aliases)
     if let Some(data) = &event.metric().data {
-        let temporality = match data {
-            metric::Data::Sum(s) => Some(s.aggregation_temporality),
-            metric::Data::Histogram(h) => Some(h.aggregation_temporality),
-            metric::Data::ExponentialHistogram(eh) => Some(eh.aggregation_temporality),
-            _ => None,
-        };
-        if let Some(t) = temporality {
-            let kind_str = if t == AggregationTemporality::Delta as i32 {
-                "incremental"
-            } else {
-                "absolute"
-            };
-            map.insert("kind".into(), Value::Bytes(kind_str.into()));
-        }
-
-        // .data — full OTel proto structure
         let mut data_map = ObjectMap::new();
         match data {
             metric::Data::Sum(sum) => {

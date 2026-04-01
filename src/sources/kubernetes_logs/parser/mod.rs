@@ -31,7 +31,7 @@ fn transform_otel_event(parser: &mut ParserState, output: &mut OutputBuffer, mut
             if let Event::Log(ref parsed_otel) = parsed {
                 if let Event::Log(ref mut otel_log) = event {
                     let parsed_log = parsed_otel.to_log_event();
-                    if let Some(msg) = parsed_log.get(".message") {
+                    if let Some(msg) = parsed_log.get(".body") {
                         otel_log.set_body(crate::event::string_value(
                             msg.as_str().unwrap_or_default(),
                         ));
@@ -200,7 +200,7 @@ mod tests {
             (
                 {
                     let mut input = LogEvent::default();
-                    input.insert(event_path!("message"), 123);
+                    input.insert(event_path!("body"), 123);
                     input
                 },
                 LogNamespace::Legacy,

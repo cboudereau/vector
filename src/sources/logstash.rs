@@ -745,7 +745,7 @@ mod test {
         assert_eq!(events.len(), 1);
         let log = events[0].as_log();
         assert_eq!(
-            log.get("message").unwrap().to_string_lossy(),
+            log.get("body").unwrap().to_string_lossy(),
             "Hello, world!".to_string()
         );
         assert_eq!(
@@ -859,7 +859,7 @@ mod test {
             [LogNamespace::Legacy],
         )
         .with_event_field(
-            &owned_value_path!("message"),
+            &owned_value_path!("body"),
             Kind::bytes(),
             Some("message"),
         )

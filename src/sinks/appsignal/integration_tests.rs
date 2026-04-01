@@ -203,7 +203,7 @@ async fn logs_shape() {
                     .unwrap()
                     .as_object()
                     .unwrap()
-                    .get("message")
+                    .get("body")
                     .unwrap()
                     .as_str()
                     .unwrap()

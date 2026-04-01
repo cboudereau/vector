@@ -176,7 +176,7 @@ impl TryFrom<Vec<Event>> for EventsApiModel {
                     event_model.insert(k, v.clone());
                 }
 
-                if let Some(message) = log.get(event_path!("message")) {
+                if let Some(message) = log.get(event_path!("body")) {
                     let message = message.to_string_lossy().replace("\\\"", "\"");
                     // If message contains a JSON string, parse it and insert all fields into self
                     if let serde_json::Result::Ok(json_map) =
@@ -208,7 +208,7 @@ impl TryFrom<Vec<Event>> for EventsApiModel {
                                 }
                             }
                         }
-                        event_model.remove("message");
+                        event_model.remove("body");
                     }
                 }
 

@@ -6,7 +6,7 @@ use vector_config::configurable_component;
 static LOG_SCHEMA: OnceLock<LogSchema> = OnceLock::new();
 static LOG_SCHEMA_DEFAULT: LazyLock<LogSchema> = LazyLock::new(LogSchema::default);
 
-const MESSAGE: &str = "message";
+const MESSAGE: &str = "body";
 const TIMESTAMP: &str = "timestamp";
 const HOST: &str = "host";
 const SOURCE_TYPE: &str = "source_type";

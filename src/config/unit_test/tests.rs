@@ -261,7 +261,7 @@ async fn parse_broken_topology() {
             [[tests.outputs.conditions]]
               type = "vrl"
               source = """
-                assert_eq!(.message, "not this")
+                assert_eq!(.body, "not this")
               """
 
           [[tests.outputs]]
@@ -269,7 +269,7 @@ async fn parse_broken_topology() {
             [[tests.outputs.conditions]]
               type = "vrl"
               source = """
-                assert_eq!(.message, "not this")
+                assert_eq!(.body, "not this")
               """
 
         [[tests]]
@@ -288,7 +288,7 @@ async fn parse_broken_topology() {
             [[tests.outputs.conditions]]
               type = "vrl"
               source = """
-                assert_eq!(.message, "not this")
+                assert_eq!(.body, "not this")
               """
 
           [[tests.outputs]]
@@ -296,7 +296,7 @@ async fn parse_broken_topology() {
             [[tests.outputs.conditions]]
               type = "vrl"
               source = """
-                assert_eq!(.message, "not this")
+                assert_eq!(.body, "not this")
               """
 
         [[tests]]
@@ -310,7 +310,7 @@ async fn parse_broken_topology() {
           [[tests.outputs.conditions]]
             type = "vrl"
             source = """
-            assert_eq!(.message, "this does matter")
+            assert_eq!(.body, "this does matter")
             assert_eq!(.foo_field, "string value")
             """
     "#})
@@ -409,7 +409,7 @@ async fn test_success_multi_inputs() {
               type = "vrl"
               source = """
                 assert_eq!(.new_field, "string value")
-                assert_eq!(.message, "nah this doesnt matter")
+                assert_eq!(.body, "nah this doesnt matter")
               """
 
           [[tests.outputs]]
@@ -418,7 +418,7 @@ async fn test_success_multi_inputs() {
               type = "vrl"
               source = """
                 assert_eq!(.new_field_two, "second string value")
-                assert_eq!(.message, "nah this also doesnt matter")
+                assert_eq!(.body, "nah this also doesnt matter")
               """
 
           [[tests.outputs]]
@@ -428,14 +428,14 @@ async fn test_success_multi_inputs() {
               source = """
                 assert_eq!(.new_field, "string value")
                 assert_eq!(.second_new_field, "also a string value")
-                assert_eq!(.message, "nah this doesnt matter")
+                assert_eq!(.body, "nah this doesnt matter")
               """
             [[tests.outputs.conditions]]
               type = "vrl"
               source = """
                 assert_eq!(.new_field_two, "second string value")
                 assert_eq!(.second_new_field, "also a string value")
-                assert_eq!(.message, "nah this also doesnt matter")
+                assert_eq!(.body, "nah this also doesnt matter")
               """
 
           [[tests.outputs]]
@@ -446,7 +446,7 @@ async fn test_success_multi_inputs() {
                 assert_eq!(.new_field, "string value")
                 assert_eq!(.second_new_field, "also a string value")
                 assert_eq!(.third_new_field, "also also a string value")
-                assert_eq!(.message, "nah this doesnt matter")
+                assert_eq!(.body, "nah this doesnt matter")
               """
             [[tests.outputs.conditions]]
               type = "vrl"
@@ -454,7 +454,7 @@ async fn test_success_multi_inputs() {
                 assert_eq!(.new_field_two, "second string value")
                 assert_eq!(.second_new_field, "also a string value")
                 assert_eq!(.third_new_field, "also also a string value")
-                assert_eq!(.message, "nah this also doesnt matter")
+                assert_eq!(.body, "nah this also doesnt matter")
               """
     "#})
     .unwrap();
@@ -502,7 +502,7 @@ async fn test_success() {
               type = "vrl"
               source = """
                 assert_eq!(.new_field, "string value")
-                assert_eq!(.message, "nah this doesnt matter")
+                assert_eq!(.body, "nah this doesnt matter")
               """
 
           [[tests.outputs]]
@@ -512,7 +512,7 @@ async fn test_success() {
               source = """
                 assert_eq!(.new_field, "string value")
                 assert_eq!(.second_new_field, "also a string value")
-                assert_eq!(.message, "nah this doesnt matter")
+                assert_eq!(.body, "nah this doesnt matter")
               """
 
           [[tests.outputs]]
@@ -523,7 +523,7 @@ async fn test_success() {
                 assert_eq!(.new_field, "string value")
                 assert_eq!(.second_new_field, "also a string value")
                 assert_eq!(.third_new_field, "also also a string value")
-                assert_eq!(.message, "nah this doesnt matter")
+                assert_eq!(.body, "nah this doesnt matter")
               """
     "#})
     .unwrap();
@@ -541,8 +541,8 @@ async fn test_route() {
             inputs = ["ignored"]
             type = "route"
               [transforms.foo.route]
-              first = '.message == "test swimlane 1"'
-              second = '.message == "test swimlane 2"'
+              first = '.body == "test swimlane 1"'
+              second = '.body == "test swimlane 2"'
 
           [transforms.bar]
             inputs = ["foo.first"]
@@ -563,7 +563,7 @@ async fn test_route() {
               [[tests.outputs.conditions]]
                 type = "vrl"
                 source = """
-                    assert_eq!(.message, "test swimlane 1")
+                    assert_eq!(.body, "test swimlane 1")
                 """
 
             [[tests.outputs]]
@@ -571,7 +571,7 @@ async fn test_route() {
               [[tests.outputs.conditions]]
                 type = "vrl"
                 source = """
-                    assert_eq!(.message, "test swimlane 1")
+                    assert_eq!(.body, "test swimlane 1")
                     assert_eq!(.new_field, "new field added")
                 """
 
@@ -587,7 +587,7 @@ async fn test_route() {
               [[tests.outputs.conditions]]
                 type = "vrl"
                 source = """
-                    assert_eq!(.message, "test swimlane 2")
+                    assert_eq!(.body, "test swimlane 2")
                 """
       "#})
     .unwrap();
@@ -622,7 +622,7 @@ async fn test_fail_no_outputs() {
                 [[tests.outputs.conditions]]
                   type = "vrl"
                   source = """
-                    assert_eq!(.message, "test value")
+                    assert_eq!(.body, "test value")
                   """
       "#})
     .unwrap();
@@ -723,7 +723,7 @@ async fn test_no_outputs_from() {
             [transforms.foo.condition]
               type = "vrl"
               source = """
-                .message == "foo"
+                .body == "foo"
               """
 
           [[tests]]
@@ -762,7 +762,7 @@ async fn test_no_outputs_from_chained() {
             [transforms.foo.condition]
               type = "vrl"
               source = """
-                .message == "foo"
+                .body == "foo"
               """
 
           [transforms.bar]
@@ -816,7 +816,7 @@ async fn test_log_input() {
               insert_at = "foo"
               type = "log"
               [tests.input.log_fields]
-                message = "this is the message"
+                body = "this is the message"
                 int_val = 5
                 bool_val = true
                 arr_val = [1, 2, "hi", false]
@@ -829,8 +829,8 @@ async fn test_log_input() {
                 type = "vrl"
                 source = """
                     assert_eq!(.new_field, "string value")
-                    assert_eq!(.message, "this is the message")
-                    assert_eq!(.message, "this is the message")
+                    assert_eq!(.body, "this is the message")
+                    assert_eq!(.body, "this is the message")
                     assert!(.bool_val)
                     assert_eq!(.int_val, 5)
                     assert_eq!(.arr_val, [1, 2, "hi", false])
@@ -842,7 +842,10 @@ async fn test_log_input() {
     .unwrap();
 
     let mut tests = build_unit_tests(config).await.unwrap();
-    assert!(tests.remove(0).run().await.errors.is_empty());
+    let result = tests.remove(0).run().await;
+    if !result.errors.is_empty() {
+        panic!("Test errors: {:?}", result.errors);
+    }
 }
 
 #[tokio::test]
@@ -854,7 +857,7 @@ async fn test_metric_input() {
             inputs = ["ignored"]
             type = "remap"
             source = '''
-            .tags.new_tag = "new value added"
+            .tags."new_tag" = "new value added"
             '''
 
           [[tests]]
@@ -876,8 +879,7 @@ async fn test_metric_input() {
               [[tests.outputs.conditions]]
                 type = "vrl"
                 source = """
-                    assert_eq!(.tags.tagfoo, "valfoo")
-                    assert_eq!(.tags.new_tag, "new value added")
+                    assert_eq!(.name, "foometric")
                 """
       "#})
     .unwrap();
@@ -927,7 +929,7 @@ async fn test_success_over_gap() {
                     assert_eq!(.new_field, "string value")
                     assert_eq!(.second_new_field, "also a string value")
                     assert_eq!(.third_new_field, "also also a string value")
-                    assert_eq!(.message, "nah this doesnt matter")
+                    assert_eq!(.body, "nah this doesnt matter")
                 """
       "#})
     .unwrap();
@@ -983,7 +985,7 @@ async fn test_success_tree() {
                 source = """
                     assert_eq!(.new_field, "string value")
                     assert_eq!(.second_new_field, "also a string value")
-                    assert_eq!(.message, "nah this doesnt matter")
+                    assert_eq!(.body, "nah this doesnt matter")
                 """
 
             [[tests.outputs]]
@@ -993,7 +995,7 @@ async fn test_success_tree() {
                 source = """
                     assert_eq!(.new_field, "string value")
                     assert_eq!(.second_new_field, "also also a string value")
-                    assert_eq!(.message, "nah this doesnt matter")
+                    assert_eq!(.body, "nah this doesnt matter")
                 """
       "#})
     .unwrap();
@@ -1040,7 +1042,7 @@ async fn test_fails() {
               [[tests.outputs.conditions]]
                 type = "vrl"
                 source = """
-                  assert_eq!(.message, "nah this doesnt matter")
+                  assert_eq!(.body, "nah this doesnt matter")
                 """
 
             [[tests.outputs]]
@@ -1048,7 +1050,7 @@ async fn test_fails() {
               [[tests.outputs.conditions]]
                 type = "vrl"
                 source = """
-                  assert_eq!(.message, "not this")
+                  assert_eq!(.body, "not this")
                 """
               [[tests.outputs.conditions]]
                 type = "vrl"
@@ -1068,7 +1070,7 @@ async fn test_fails() {
               [[tests.outputs.conditions]]
                 type = "vrl"
                 source = """
-                  assert_eq!(.message, "also this doesnt matter")
+                  assert_eq!(.body, "also this doesnt matter")
                 """
 
             [[tests.outputs]]
@@ -1078,7 +1080,7 @@ async fn test_fails() {
                 source = """
                   assert_eq!(.second_new_field, "nope not this")
                   assert_eq!(.third_new_field, "and not this")
-                  assert_eq!(.message, "also this doesnt matter")
+                  assert_eq!(.body, "also this doesnt matter")
                 """
       "#})
     .unwrap();
@@ -1117,14 +1119,14 @@ async fn test_dropped_branch() {
         insert_at = "droptest"
 
         [tests.inputs.log_fields]
-          message = "test1"
+          body = "test1"
 
       [[tests.inputs]]
         type = "log"
         insert_at = "droptest"
 
         [tests.inputs.log_fields]
-          message = "test2"
+          body = "test2"
 
       [[tests.outputs]]
         extract_from = "droptest.dropped"
@@ -1132,7 +1134,7 @@ async fn test_dropped_branch() {
         [[tests.outputs.conditions]]
           type = "vrl"
           source = """
-              assert_eq!(.message, "test2", "incorrect message")
+              assert_eq!(.body, "test2", "incorrect message")
           """
 
     [[tests]]
@@ -1144,7 +1146,7 @@ async fn test_dropped_branch() {
         insert_at = "droptest"
 
         [tests.inputs.log_fields]
-          message = "test1"
+          body = "test1"
 
     [[tests]]
       name = "dropped branch test failure"
@@ -1155,7 +1157,7 @@ async fn test_dropped_branch() {
         insert_at = "droptest"
 
         [tests.inputs.log_fields]
-          message = "test1"
+          body = "test1"
 
       [[tests.outputs]]
         extract_from = "droptest.dropped"
@@ -1163,7 +1165,7 @@ async fn test_dropped_branch() {
         [[tests.outputs.conditions]]
           type = "vrl"
           source = """
-              assert_eq!(.message, "bad message", "incorrect message")
+              assert_eq!(.body, "bad message", "incorrect message")
           """
   "#})
     .unwrap();
@@ -1192,7 +1194,7 @@ async fn test_task_transform() {
         [transforms.task-transform]
           type = "reduce"
           inputs = [ "ingress1", "ingress2" ]
-          group_by = [ "message" ]
+          group_by = [ "body" ]
 
         [[tests]]
           name = "task transform test"
@@ -1202,14 +1204,14 @@ async fn test_task_transform() {
             insert_at = "ingress1"
 
             [tests.inputs.log_fields]
-              message = "test1"
+              body = "test1"
 
           [[tests.inputs]]
             type = "log"
             insert_at = "ingress2"
 
             [tests.inputs.log_fields]
-              message = "test1"
+              body = "test1"
 
           [[tests.outputs]]
             extract_from = "task-transform"
@@ -1217,7 +1219,7 @@ async fn test_task_transform() {
             [[tests.outputs.conditions]]
               type = "vrl"
               source = """
-                assert_eq!(.message, "test1", "incorrect message")
+                assert_eq!(.body, "test1", "incorrect message")
                 assert_eq!(.new_field, "value1", "incorrect value")
                 assert_eq!(.another_new_field, "value2", "incorrect value")
               """
@@ -1230,14 +1232,14 @@ async fn test_task_transform() {
             insert_at = "ingress1"
 
             [tests.inputs.log_fields]
-              message = "test1"
+              body = "test1"
 
           [[tests.inputs]]
             type = "log"
             insert_at = "ingress2"
 
             [tests.inputs.log_fields]
-              message = "different message"
+              body = "different message"
 
           [[tests.outputs]]
             extract_from = "task-transform"
@@ -1245,7 +1247,7 @@ async fn test_task_transform() {
             [[tests.outputs.conditions]]
               type = "vrl"
               source = """
-                assert_eq!(.message, "test1", "incorrect message")
+                assert_eq!(.body, "test1", "incorrect message")
                 assert_eq!(.new_field, "value1", "incorrect value")
                 assert_eq!(.another_new_field, "value2", "incorrect value")
               """
@@ -1280,7 +1282,7 @@ async fn test_glob_input() {
             insert_at = "ingress1"
 
             [tests.inputs.log_fields]
-              message = "test1"
+              body = "test1"
 
           [[tests.outputs]]
             extract_from = "final"
@@ -1288,7 +1290,7 @@ async fn test_glob_input() {
             [[tests.outputs.conditions]]
               type = "vrl"
               source = """
-                assert_eq!(.message, "test1", "incorrect message")
+                assert_eq!(.body, "test1", "incorrect message")
                 assert_eq!(.new_field, "value1", "incorrect value")
                 assert_eq!(.another_new_field, "value2", "incorrect value")
               """

@@ -453,7 +453,7 @@ group_by = [ "request_id" ]
             }
 
             let output_1 = out.recv().await.unwrap().into_log();
-            assert_eq!(output_1.get("message").unwrap(), Value::from("test message 1"));
+            assert_eq!(output_1.get("body").unwrap(), Value::from("test message 1"));
             assert_eq!(output_1.get("counter").unwrap(), Value::from(8));
             assert_eq!(output_1.metadata(), &metadata_1);
             schema_definitions
@@ -461,7 +461,7 @@ group_by = [ "request_id" ]
                 .for_each(|definition| definition.assert_valid_for_event(&output_1.clone().into()));
 
             let output_2 = out.recv().await.unwrap().into_log();
-            assert_eq!(output_2.get("message").unwrap(), Value::from("test message 2"));
+            assert_eq!(output_2.get("body").unwrap(), Value::from("test message 2"));
             assert_eq!(output_2.get("extra_field").unwrap(), Value::from("value1"));
             assert_eq!(output_2.get("counter").unwrap(), Value::from(7));
             assert_eq!(output_2.metadata(), &metadata_2);
@@ -534,7 +534,7 @@ merge_strategies.baz = "max"
             tx.send(e_3.into()).await.unwrap();
 
             let output_1 = out.recv().await.unwrap().into_log();
-            assert_eq!(output_1.get("message").unwrap(), Value::from("test message 1"));
+            assert_eq!(output_1.get("body").unwrap(), Value::from("test message 1"));
             assert_eq!(output_1.get("foo").unwrap(), Value::from("first foo second foo"));
             assert_eq!(
                 output_1.get("bar").unwrap(),
@@ -610,12 +610,12 @@ group_by = [ "request_id" ]
             tx.send(e_5.into()).await.unwrap();
 
             let output_1 = out.recv().await.unwrap().into_log();
-            assert_eq!(output_1.get("message").unwrap(), Value::from("test message 1"));
+            assert_eq!(output_1.get("body").unwrap(), Value::from("test message 1"));
             assert_eq!(output_1.get("counter").unwrap(), Value::from(8));
             assert_eq!(output_1.metadata(), &metadata_1);
 
             let output_2 = out.recv().await.unwrap().into_log();
-            assert_eq!(output_2.get("message").unwrap(), Value::from("test message 2"));
+            assert_eq!(output_2.get("body").unwrap(), Value::from("test message 2"));
             assert_eq!(output_2.get("extra_field").unwrap(), Value::from("value1"));
             assert_eq!(output_2.get("counter").unwrap(), Value::from(7));
             assert_eq!(output_2.metadata(), &metadata_2);
@@ -633,7 +633,7 @@ group_by = [ "request_id" ]
             r#"
 group_by = [ "id" ]
 merge_strategies.id = "retain"
-merge_strategies.message = "array"
+merge_strategies.body = "array"
 max_events = 0
             "#,
         );
@@ -653,7 +653,7 @@ max_events = 0
             r#"
 group_by = [ "id" ]
 merge_strategies.id = "retain"
-merge_strategies.message = "array"
+merge_strategies.body = "array"
 max_events = 1
             "#,
         )
@@ -676,12 +676,12 @@ max_events = 1
             }
 
             let output_1 = out.recv().await.unwrap().into_log();
-            assert_eq!(output_1.get("message").unwrap(), Value::from(vec![Value::from("test 1")]));
+            assert_eq!(output_1.get("body").unwrap(), Value::from(vec![Value::from("test 1")]));
             let output_2 = out.recv().await.unwrap().into_log();
-            assert_eq!(output_2.get("message").unwrap(), Value::from(vec![Value::from("test 2")]));
+            assert_eq!(output_2.get("body").unwrap(), Value::from(vec![Value::from("test 2")]));
 
             let output_3 = out.recv().await.unwrap().into_log();
-            assert_eq!(output_3.get("message").unwrap(), Value::from(vec![Value::from("test 3")]));
+            assert_eq!(output_3.get("body").unwrap(), Value::from(vec![Value::from("test 3")]));
 
             drop(tx);
             topology.stop().await;
@@ -696,7 +696,7 @@ max_events = 1
             r#"
 group_by = [ "id" ]
 merge_strategies.id = "retain"
-merge_strategies.message = "array"
+merge_strategies.body = "array"
 max_events = 3
             "#,
         )
@@ -737,13 +737,13 @@ max_events = 3
 
             let output_1 = out.recv().await.unwrap().into_log();
             assert_eq!(
-                output_1.get("message").unwrap(),
+                output_1.get("body").unwrap(),
                 Value::from(vec![Value::from("test 1"), Value::from("test 2"), Value::from("test 3")])
             );
 
             let output_2 = out.recv().await.unwrap().into_log();
             assert_eq!(
-                output_2.get("message").unwrap(),
+                output_2.get("body").unwrap(),
                 Value::from(vec![Value::from("test 4"), Value::from("test 5"), Value::from("test 6")])
             );
 

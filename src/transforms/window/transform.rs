@@ -370,7 +370,7 @@ mod test {
 
     fn get_condition(message: &str) -> AnyCondition {
         AnyCondition::from(ConditionConfig::Vrl(VrlConfig {
-            source: format!(r#".message == "{message}""#),
+            source: format!(r#".body == "{message}""#),
             runtime: Default::default(),
         }))
     }
@@ -395,7 +395,7 @@ mod test {
     async fn assert_event(message: &str, event: Option<Event>) {
         assert_eq!(
             Value::from(message),
-            event.unwrap().as_log().get("message").unwrap()
+            event.unwrap().as_log().get("body").unwrap()
         );
     }
 

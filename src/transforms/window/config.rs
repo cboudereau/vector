@@ -43,7 +43,7 @@ pub struct WindowConfig {
 
 impl GenerateConfig for WindowConfig {
     fn generate_config() -> toml::Value {
-        toml::from_str(r#"flush_when = ".message == \"value\"""#).unwrap()
+        toml::from_str(r#"flush_when = ".body == \"value\"""#).unwrap()
     }
 }
 

@@ -199,14 +199,14 @@ mod test {
         let config = toml::from_str::<RouteConfig>(
             r#"
             route.first.type = "vrl"
-            route.first.source = '.message == "hello world"'
+            route.first.source = '.body == "hello world"'
         "#,
         )
         .unwrap();
 
         assert_eq!(
             serde_json::to_string(&config).unwrap(),
-            r#"{"reroute_unmatched":true,"route":{"first":{"type":"vrl","source":".message == \"hello world\""}}}"#
+            r#"{"reroute_unmatched":true,"route":{"first":{"type":"vrl","source":".body == \"hello world\""}}}"#
         );
     }
 
@@ -221,7 +221,7 @@ mod test {
         let config = toml::from_str::<RouteConfig>(
             r#"
             route.first.type = "vrl"
-            route.first.source = '.message == "hello world"'
+            route.first.source = '.body == "hello world"'
 
             route.second.type = "vrl"
             route.second.source = '.second == "second"'
@@ -267,7 +267,7 @@ mod test {
         let config = toml::from_str::<RouteConfig>(
             r#"
             route.first.type = "vrl"
-            route.first.source = '.message == "hello world"'
+            route.first.source = '.body == "hello world"'
 
             route.second.type = "vrl"
             route.second.source = '.second == "second"'
@@ -310,7 +310,7 @@ mod test {
         let config = toml::from_str::<RouteConfig>(
             r#"
             route.first.type = "vrl"
-            route.first.source = '.message == "hello world"'
+            route.first.source = '.body == "hello world"'
 
             route.second.type = "vrl"
             route.second.source = '.second == "second"'
@@ -355,7 +355,7 @@ mod test {
             reroute_unmatched = false
 
             route.first.type = "vrl"
-            route.first.source = '.message == "hello world"'
+            route.first.source = '.body == "hello world"'
 
             route.second.type = "vrl"
             route.second.source = '.second == "second"'

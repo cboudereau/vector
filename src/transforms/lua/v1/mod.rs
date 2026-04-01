@@ -345,7 +345,7 @@ mod tests {
     fn lua_read_field() {
         let event = transform_one(
             r#"
-              _, _, name = string.find(event["message"], "Hello, my name is (%a+).")
+              _, _, name = string.find(event["body"], "Hello, my name is (%a+).")
               event["name"] = name
             "#,
             LogEvent::from("Hello, my name is Bob."),

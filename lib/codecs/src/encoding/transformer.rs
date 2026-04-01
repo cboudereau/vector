@@ -455,7 +455,7 @@ mod tests {
         let transformer: Transformer = toml::from_str(r#"only_fields = ["message"]"#).unwrap();
         let mut log = LogEvent::default();
         {
-            log.insert("message", 1);
+            log.insert("body", 1);
             log.insert("thing.service", "carrot");
         }
 
@@ -496,7 +496,7 @@ mod tests {
             toml::from_str(r#"except_fields = ["thing.service"]"#).unwrap();
         let mut log = LogEvent::default();
         {
-            log.insert("message", 1);
+            log.insert("body", 1);
             log.insert("thing.service", "carrot");
         }
 

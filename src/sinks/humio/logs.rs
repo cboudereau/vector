@@ -280,7 +280,7 @@ mod integration_tests {
             message,
             entry
                 .fields
-                .get("message")
+                .get("body")
                 .expect("no message key")
                 .as_str()
                 .unwrap()

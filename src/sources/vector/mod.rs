@@ -265,7 +265,7 @@ mod test {
             Kind::object(Collection::empty()),
             [LogNamespace::Legacy],
         )
-        .with_event_field(&owned_value_path!("message"), Kind::bytes(), Some("message"))
+        .with_event_field(&owned_value_path!("body"), Kind::bytes(), Some("message"))
         .with_event_field(&owned_value_path!("source_type"), Kind::bytes(), None)
         .with_event_field(&owned_value_path!("timestamp"), Kind::timestamp(), None);
 

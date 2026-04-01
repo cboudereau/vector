@@ -307,7 +307,7 @@ mod test {
         let data = serde_json::from_str::<Value>(&packet).expect("Invalid JSON received");
         let data = data.as_object().expect("Not a JSON object");
         assert!(data.get("timestamp").is_some());
-        let message = data.get("message").expect("No message in JSON");
+        let message = data.get("body").expect("No message in JSON");
         assert_eq!(message, &Value::String("raw log line".into()));
     }
 
@@ -371,7 +371,7 @@ mod test {
         assert_eq!(lines.len(), output.len());
         for (source, received) in lines.iter().zip(output) {
             let json = serde_json::from_str::<Value>(&received).expect("Invalid JSON");
-            let received = json.get("message").unwrap().as_str().unwrap();
+            let received = json.get("body").unwrap().as_str().unwrap();
             assert_eq!(source, received);
         }
     }

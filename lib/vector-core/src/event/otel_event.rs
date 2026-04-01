@@ -341,7 +341,9 @@ impl OtelLog {
         let (value, metadata) = log.into_parts();
         match value {
             Value::Object(mut map) => {
-                let body = map.remove("message").map(|v| vrl_value_to_any_value(&v));
+                let body = map.remove("body")
+                    .or_else(|| map.remove("message"))  // legacy fallback during transition
+                    .map(|v| vrl_value_to_any_value(&v));
                 let ts_extract = extract_timestamp_nanos(&mut map);
                 let time_unix_nano = ts_extract.nanos;
 
@@ -895,7 +897,7 @@ impl OtelLog {
                     }
                 }
                 _ => {
-                    map.insert("message".into(), any_value_to_vrl(body));
+                    map.insert("body".into(), any_value_to_vrl(body));
                 }
             }
         }
@@ -2395,7 +2397,7 @@ mod tests {
 
         let log = event.to_log_event();
         assert_eq!(
-            log.get("message").unwrap().as_str().unwrap(),
+            log.get("body").unwrap().as_str().unwrap(),
             "hello world"
         );
         assert_eq!(

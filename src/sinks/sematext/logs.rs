@@ -222,7 +222,7 @@ mod tests {
 
                 assert_eq!(token, "mylogtoken");
             } else {
-                let message = val.get("message").unwrap().as_str().unwrap();
+                let message = val.get("body").unwrap().as_str().unwrap();
                 assert_eq!(message, &expected[expected_message_idx]);
                 expected_message_idx += 1;
             }

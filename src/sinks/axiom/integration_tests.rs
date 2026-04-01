@@ -109,11 +109,11 @@ async fn axiom_logs_put_data() {
         _ => panic!("Unexpected value, expected object"),
     };
     // Note that we order descending, so message_2 comes first
-    assert_eq!("message_2", fst.get("message").unwrap().as_str().unwrap());
+    assert_eq!("message_2", fst.get("body").unwrap().as_str().unwrap());
 
     let snd = match query_res.matches[1].data {
         serde_json::Value::Object(ref obj) => obj,
         _ => panic!("Unexpected value, expected object"),
     };
-    assert_eq!("message_1", snd.get("message").unwrap().as_str().unwrap());
+    assert_eq!("message_1", snd.get("body").unwrap().as_str().unwrap());
 }

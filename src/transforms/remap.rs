@@ -61,7 +61,7 @@ pub struct RemapConfig {
     ///
     /// [vrl]: https://vector.dev/docs/reference/vrl
     #[configurable(metadata(
-        docs::examples = ". = parse_json!(.message)\n.new_field = \"new value\"\n.status = to_int!(.status)\n.duration = parse_duration!(.duration, \"s\")\n.new_name = del(.old_name)",
+        docs::examples = ". = parse_json!(.body)\n.new_field = \"new value\"\n.status = to_int!(.status)\n.duration = parse_duration!(.duration, \"s\")\n.new_name = del(.old_name)",
         docs::syntax_override = "remap_program"
     ))]
     pub source: Option<String>,
@@ -355,7 +355,7 @@ impl TransformConfig for RemapConfig {
                 input_definition
                     .clone()
                     .with_metadata_field(&owned_value_path!("reason"), Kind::bytes(), None)
-                    .with_metadata_field(&owned_value_path!("message"), Kind::bytes(), None)
+                    .with_metadata_field(&owned_value_path!("body"), Kind::bytes(), None)
                     .with_metadata_field(&owned_value_path!("component_id"), Kind::bytes(), None)
                     .with_metadata_field(&owned_value_path!("component_type"), Kind::bytes(), None)
                     .with_metadata_field(&owned_value_path!("component_kind"), Kind::bytes(), None),
@@ -765,7 +765,7 @@ mod tests {
             Event::from(event1)
         };
         let result1 = transform_one(&mut tform, event1).unwrap();
-        assert_eq!(get_field_string(&result1, "message"), "event1");
+        assert_eq!(get_field_string(&result1, "body"), "event1");
         assert_eq!(get_field_string(&result1, "foo"), "bar");
         assert!(tform.runner().runtime.is_empty());
 
@@ -774,7 +774,7 @@ mod tests {
             Event::from(event2)
         };
         let result2 = transform_one(&mut tform, event2).unwrap();
-        assert_eq!(get_field_string(&result2, "message"), "event2");
+        assert_eq!(get_field_string(&result2, "body"), "event2");
         assert_eq!(result2.as_log().get("foo"), Some(Value::Null));
         assert!(tform.runner().runtime.is_empty());
     }
@@ -845,7 +845,7 @@ mod tests {
         };
         let mut tform = remap(conf).unwrap();
         let result = transform_one(&mut tform, event).unwrap();
-        assert_eq!(get_field_string(&result, "message"), "augment me");
+        assert_eq!(get_field_string(&result, "body"), "augment me");
         assert_eq!(get_field_string(&result, "copy_from"), "buz");
         assert_eq!(get_field_string(&result, "foo"), "bar");
         assert_eq!(get_field_string(&result, "bar"), "baz");
@@ -858,7 +858,7 @@ mod tests {
             let mut event = LogEvent::from("augment me");
             event.insert(
                 "events",
-                vec![btreemap!("message" => "foo"), btreemap!("message" => "bar")],
+                vec![btreemap!("body" => "foo"), btreemap!("body" => "bar")],
             );
             Event::from(event)
         };
@@ -882,9 +882,9 @@ mod tests {
         let mut result = out.primary.into_events();
 
         let r = result.next().unwrap();
-        assert_eq!(get_field_string(&r, "message"), "foo");
+        assert_eq!(get_field_string(&r, "body"), "foo");
         let r = result.next().unwrap();
-        assert_eq!(get_field_string(&r, "message"), "bar");
+        assert_eq!(get_field_string(&r, "body"), "bar");
     }
 
     #[test]
@@ -1865,7 +1865,7 @@ mod tests {
             Kind::object(Collection::from_unknown(Kind::undefined())),
             [LogNamespace::Legacy],
         )
-        .with_event_field(&owned_value_path!("message"), Kind::bytes(), None);
+        .with_event_field(&owned_value_path!("body"), Kind::bytes(), None);
 
         assert_eq!(
             HashMap::from([(OutputId::from("in"), wanted)]),
@@ -1905,7 +1905,7 @@ mod tests {
             Kind::any_object(),
             [LogNamespace::Legacy],
         )
-        .with_event_field(&owned_value_path!("message"), Kind::any(), None)
+        .with_event_field(&owned_value_path!("body"), Kind::any(), None)
         .with_event_field(
             &owned_value_path!("thing"),
             Kind::object(Collection::from(BTreeMap::from([(
@@ -2005,6 +2005,6 @@ mod tests {
 
     #[test]
     fn do_not_emit_metrics_when_errored() {
-        assert_no_metrics("parse_key_value!(.message)".to_string());
+        assert_no_metrics("parse_key_value!(.body)".to_string());
     }
 }

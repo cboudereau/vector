@@ -172,10 +172,10 @@ async fn correct_request() {
         )
         .unwrap();
 
-    let mut log1 = [("message", "hello")].iter().copied().collect::<LogEvent>();
+    let mut log1 = [("body", "hello")].iter().copied().collect::<LogEvent>();
     let (timestamp_key1, timestamp_value1) = insert_timestamp_kv(&mut log1);
 
-    let mut log2 = [("message", "world")].iter().copied().collect::<LogEvent>();
+    let mut log2 = [("body", "world")].iter().copied().collect::<LogEvent>();
     let (timestamp_key2, timestamp_value2) = insert_timestamp_kv(&mut log2);
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(1);
@@ -209,11 +209,11 @@ async fn correct_request() {
     let expected_json = serde_json::json!([
         {
             timestamp_key1: timestamp_value1,
-            "message": "hello"
+            "body": "hello"
         },
         {
             timestamp_key2: timestamp_value2,
-            "message": "world"
+            "body": "world"
         }
     ]);
     assert_eq!(json, expected_json);
@@ -256,7 +256,7 @@ async fn correct_request() {
 
 #[test]
 fn encode_valid() {
-    let mut log = [("message", "hello world")]
+    let mut log = [("body", "hello world")]
         .iter()
         .copied()
         .collect::<LogEvent>();
@@ -268,7 +268,7 @@ fn encode_valid() {
     encoder.encode_input(vec![event], &mut encoded).unwrap();
     let expected_json = serde_json::json!([{
         timestamp_key: timestamp_value,
-        "message": "hello world"
+        "body": "hello world"
     }]);
     let json: serde_json::Value = serde_json::from_slice(&encoded).unwrap();
     assert_eq!(json, expected_json);

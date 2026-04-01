@@ -144,7 +144,7 @@ where
     .map(Result::unwrap)
     .map(|line| {
         let val: serde_json::Value = serde_json::from_str(&line).unwrap();
-        val.get("message").unwrap().as_str().unwrap().to_owned()
+        val.get("body").unwrap().as_str().unwrap().to_owned()
     })
     .collect::<Vec<_>>()
     .await

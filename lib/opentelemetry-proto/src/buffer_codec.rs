@@ -600,7 +600,7 @@ fn value_to_span_status(v: &Value) -> Option<SpanStatus> {
     let obj = v.as_object()?;
     Some(SpanStatus {
         message: obj
-            .get("message")
+            .get("body")
             .and_then(|v| v.as_str().map(|s| s.to_string()))
             .unwrap_or_default(),
         code: obj

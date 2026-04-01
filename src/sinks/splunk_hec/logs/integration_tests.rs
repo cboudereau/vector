@@ -165,7 +165,7 @@ async fn splunk_insert_message() {
     let entry = find_entry(message.as_str()).await;
 
     assert_eq!(message, entry["_raw"].as_str().unwrap());
-    assert!(entry.get("message").is_none());
+    assert!(entry.get("body").is_none());
 }
 
 #[tokio::test]
@@ -192,7 +192,7 @@ async fn splunk_insert_message_data_volume() {
     let entry = find_entry(message.as_str()).await;
 
     assert_eq!(message, entry["_raw"].as_str().unwrap());
-    assert!(entry.get("message").is_none());
+    assert!(entry.get("body").is_none());
 }
 
 #[tokio::test]
@@ -217,7 +217,7 @@ async fn splunk_insert_raw_message() {
 
     assert_eq!(message, entry["_raw"].as_str().unwrap());
     assert_eq!("zork", entry[SOURCE_FIELD].as_str().unwrap());
-    assert!(entry.get("message").is_none());
+    assert!(entry.get("body").is_none());
 }
 
 #[tokio::test]
@@ -249,7 +249,7 @@ async fn splunk_insert_raw_message_data_volume() {
 
     assert_eq!(message, entry["_raw"].as_str().unwrap());
     assert_eq!("zork", entry[SOURCE_FIELD].as_str().unwrap());
-    assert!(entry.get("message").is_none());
+    assert!(entry.get("body").is_none());
 }
 
 #[tokio::test]

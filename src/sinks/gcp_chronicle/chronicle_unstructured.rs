@@ -737,7 +737,7 @@ mod integration_tests {
         assert_eq!(input.len(), messages.len());
         for i in 0..input.len() {
             let data = serde_json::to_value(&messages[i]).unwrap();
-            let expected = serde_json::to_value(input[i].as_log().get("message").unwrap()).unwrap();
+            let expected = serde_json::to_value(input[i].as_log().get("body").unwrap()).unwrap();
             assert_eq!(data, expected);
         }
     }

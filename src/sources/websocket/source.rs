@@ -481,7 +481,7 @@ mod tests {
             let (stream, _) = listener.accept().await.unwrap();
             let mut websocket = accept_async(stream).await.expect("Failed to accept");
 
-            let binary_payload = br#"{"message": "binary data"}"#.to_vec();
+            let binary_payload = br#"{"body": "binary data"}"#.to_vec();
             websocket
                 .send(Message::Binary(binary_payload))
                 .await
@@ -582,10 +582,10 @@ mod tests {
         );
 
         let event = events[0].as_log();
-        assert_eq!(event.get("message").unwrap(), "first message".into());
+        assert_eq!(event.get("body").unwrap(), "first message".into());
 
         let event = events[1].as_log();
-        assert_eq!(event.get("message").unwrap(), "second message".into());
+        assert_eq!(event.get("body").unwrap(), "second message".into());
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -600,7 +600,7 @@ mod tests {
 
         assert!(!events.is_empty(), "No events received from source");
         let event = events[0].as_log();
-        assert_eq!(event.get("message").unwrap(), "binary data".into());
+        assert_eq!(event.get("body").unwrap(), "binary data".into());
         assert_eq!(event.get_source_type().unwrap(), "websocket".into());
     }
 
@@ -616,7 +616,7 @@ mod tests {
         // Now assert that the event was received and is correct.
         assert!(!events.is_empty(), "No events received from source");
         let event = events[0].as_log();
-        assert_eq!(event.get("message").unwrap(), "message from server".into());
+        assert_eq!(event.get("body").unwrap(), "message from server".into());
         assert_eq!(event.get_source_type().unwrap(), "websocket".into());
     }
 
@@ -634,7 +634,7 @@ mod tests {
 
         assert!(!events.is_empty(), "No events received from source");
         let event = events[0].as_log();
-        assert_eq!(event.get("message").unwrap(), response_msg.into());
+        assert_eq!(event.get("body").unwrap(), response_msg.into());
         assert_eq!(event.get_source_type().unwrap(), "websocket".into());
     }
 

@@ -30,7 +30,7 @@ impl SinkEncoder<Vec<Event>> for KeepEncoder {
             byte_size.add_event(&event, event.estimated_json_encoded_size_of());
 
             let mut data = json!(event.as_log());
-            if let Some(message) = data.get("message")
+            if let Some(message) = data.get("body")
                 && let Some(message_str) = message.as_str()
             {
                 // Parse the JSON string in `message`

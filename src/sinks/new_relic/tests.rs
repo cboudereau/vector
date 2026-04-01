@@ -98,7 +98,7 @@ fn generates_event_api_model_with_message_field() {
         "eventType": "TestEvent",
         "user": "Joe",
         "user_id": 123456,
-        "message": "This is a message",
+        "body": "This is a message",
     })));
     let model =
         EventsApiModel::try_from(vec![event]).expect("Failed mapping events into API model");
@@ -109,7 +109,7 @@ fn generates_event_api_model_with_message_field() {
             "eventType": "TestEvent",
             "user": "Joe",
             "user_id": 123456,
-            "message": "This is a message",
+            "body": "This is a message",
         }])
     );
 }
@@ -120,7 +120,7 @@ fn generates_event_api_model_with_json_inside_message_field() {
         "eventType": "TestEvent",
         "user": "Joe",
         "user_id": 123456,
-        "message": "{\"my_key\" : \"my_value\"}",
+        "body": "{\"my_key\" : \"my_value\"}",
     })));
     let model =
         EventsApiModel::try_from(vec![event]).expect("Failed mapping events into API model");
@@ -177,7 +177,7 @@ fn generates_log_api_model_without_message_field() {
 fn generates_log_api_model_with_message_field() {
     let event = Event::from(LogEvent::from(value!({
         "tag_key": "tag_value",
-        "message": "This is a message",
+        "body": "This is a message",
     })));
     let model = LogsApiModel::try_from(vec![event]).expect("Failed mapping logs into API model");
 
@@ -221,7 +221,7 @@ fn generates_log_api_model_with_timestamp() {
     let event = Event::from(LogEvent::from(value!({
         "timestamp": stamp,
         "tag_key": "tag_value",
-        "message": "This is a message",
+        "body": "This is a message",
     })));
     let model = LogsApiModel::try_from(vec![event]).expect("Failed mapping logs into API model");
 

@@ -185,13 +185,13 @@ mod tests {
                     - name: a
                       condition:
                         type = "vrl"
-                        source = '.message == "hello world"'
+                        source = '.body == "hello world"'
             "#})
         .unwrap();
 
         assert_eq!(
             serde_json::to_string(&config).unwrap(),
-            r#"{"routes":[{"name":"a","condition":"type = \"vrl\" source = '.message == \"hello world\"'"}]}"#
+            r#"{"routes":[{"name":"a","condition":"type = \"vrl\" source = '.body == \"hello world\"'"}]}"#
         );
     }
 }

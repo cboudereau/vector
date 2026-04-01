@@ -111,13 +111,13 @@ fn http_encode_event_ndjson() {
     #[serde(deny_unknown_fields)]
     #[allow(dead_code)] // deserialize all fields
     struct ExpectedEvent {
-        message: String,
+        body: String,
         timestamp: chrono::DateTime<chrono::Utc>,
     }
 
     let output = serde_json::from_slice::<ExpectedEvent>(&encoded[..]).unwrap();
 
-    assert_eq!(output.message, "hello world".to_string());
+    assert_eq!(output.body, "hello world".to_string());
 }
 
 #[test]
@@ -280,13 +280,13 @@ async fn http_passes_template_headers() {
         Static-Header = "static-value"
         Accept = "application/vnd.api+json"
         X-Event-Level = "{{level}}"
-        X-Event-Message = "{{message}}"
+        X-Event-Message = "{{body}}"
         X-Static-Template = "constant-value"
     "#,
         || {
             let mut event = Event::from(LogEvent::from("test message"));
             event.as_mut_log().insert("level", "info");
-            event.as_mut_log().insert("message", "templated message");
+            event.as_mut_log().insert("body", "templated message");
             event
         },
         10,
@@ -552,7 +552,7 @@ async fn json_compression(compression: &str) {
                 let lines: Vec<serde_json::Value> = parse_compressed_json(compression, body);
                 stream::iter(lines)
             })
-            .map(|line| line.get("message").unwrap().as_str().unwrap().to_owned())
+            .map(|line| line.get("body").unwrap().as_str().unwrap().to_owned())
             .collect::<Vec<_>>()
             .await;
 
@@ -616,7 +616,7 @@ async fn json_compression_with_payload_wrapper(compression: &str) {
                 let lines: Vec<serde_json::Value> = message["data"].as_array().unwrap().to_vec();
                 stream::iter(lines)
             })
-            .map(|line| line.get("message").unwrap().as_str().unwrap().to_owned())
+            .map(|line| line.get("body").unwrap().as_str().unwrap().to_owned())
             .collect::<Vec<_>>()
             .await;
 

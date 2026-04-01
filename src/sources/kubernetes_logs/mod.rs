@@ -1475,7 +1475,7 @@ mod tests {
                 )
                 .with_event_field(&owned_value_path!("file"), Kind::bytes(), None)
                 .with_event_field(
-                    &owned_value_path!("message"),
+                    &owned_value_path!("body"),
                     Kind::bytes(),
                     Some("message")
                 )

@@ -198,7 +198,7 @@ mod test {
         let output: Vec<Event> = output_stream.collect().await;
         assert_eq!(output.len(), 1);
         assert_eq!(
-            output[0].as_log().get(".message"),
+            output[0].as_log().get(".body"),
             Some(value!("test message 1"))
         );
     }
@@ -230,7 +230,7 @@ mod test {
         let output: Vec<Event> = output_stream.collect().await;
         assert_eq!(output.len(), 1);
         assert_eq!(
-            output[0].as_log().get(".message"),
+            output[0].as_log().get(".body"),
             Some(value!("test message 1test message 2"))
         );
     }
@@ -268,7 +268,7 @@ mod test {
         let output: Vec<Event> = output_stream.collect().await;
         assert_eq!(output.len(), 1);
         assert_eq!(
-            output[0].as_log().get(".message"),
+            output[0].as_log().get(".body"),
             Some(value!("test message 1test message 2"))
         );
     }
@@ -315,11 +315,11 @@ mod test {
         let output: Vec<Event> = output_stream.take(2).collect().await;
         assert_eq!(output.len(), 2);
         assert_eq!(
-            output[0].as_log().get(".message"),
+            output[0].as_log().get(".body"),
             Some(value!("test message"))
         );
         assert_eq!(
-            output[1].as_log().get(".message"),
+            output[1].as_log().get(".body"),
             Some(value!("test message"))
         );
     }

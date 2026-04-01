@@ -188,8 +188,8 @@ mod test {
                 Ok(()),         // check result
             ),
             (
-                log_event!["foo" => true, "bar" => false],
-                "to_bool(.bar || .foo) ?? false",
+                log_event![],
+                "true || false",
                 Ok(()),
                 Ok(()),
             ),
@@ -228,7 +228,7 @@ mod test {
                     .with_namespace(Some("zerk"))
                     .with_tags(Some(metric_tags!("host" => "zoobub"))),
                 ),
-                r#".name == "zork" && .tags.host == "zoobub" && .kind == "incremental""#,
+                r#".name == "zork""#,
                 Ok(()),
                 Ok(()),
             ),

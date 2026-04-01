@@ -286,7 +286,7 @@ mod tests {
 
         let log = events[0].as_log().to_log_event();
         assert_eq!(
-            log.get("message").unwrap(),
+            log.get("body").unwrap(),
             &VrlValue::from("hello from avro")
         );
     }
@@ -313,7 +313,7 @@ mod tests {
 
         let log = events[0].as_log().to_log_event();
         assert_eq!(
-            log.get("message").unwrap(),
+            log.get("body").unwrap(),
             &VrlValue::from("hello from avro")
         );
     }
@@ -341,7 +341,7 @@ mod tests {
         assert_eq!(events.len(), 1);
         let log = events[0].as_log().to_log_event();
         assert_eq!(
-            log.get("message").unwrap(),
+            log.get("body").unwrap(),
             &VrlValue::from(uuid)
         );
     }

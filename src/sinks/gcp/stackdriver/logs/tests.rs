@@ -104,7 +104,7 @@ fn encode_valid() {
     );
 
     let mut log = [
-        ("message", "hello world"),
+        ("body", "hello world"),
         ("anumber", "100"),
         ("node_id", "10.10.10.1"),
         ("log_id", "testlogs"),
@@ -122,7 +122,7 @@ fn encode_valid() {
         json,
         serde_json::json!({
             "logName":"projects/project/logs/testlogs",
-            "jsonPayload":{"message":"hello world"},
+            "jsonPayload":{"body":"hello world"},
             "severity":100,
             "labels":{
                 "config_user_label_1":"config_user_value_1",
@@ -162,7 +162,7 @@ fn encode_inserts_timestamp() {
     );
 
     let mut log = LogEvent::default();
-    log.insert("message", Value::Bytes("hello world".into()));
+    log.insert("body", Value::Bytes("hello world".into()));
     log.insert("anumber", Value::Bytes("100".into()));
     log.insert(
         "timestamp",
@@ -178,7 +178,7 @@ fn encode_inserts_timestamp() {
         json,
         serde_json::json!({
             "logName":"projects/project/logs/testlogs",
-            "jsonPayload":{"message":"hello world","timestamp":"2020-01-01T12:30:00Z"},
+            "jsonPayload":{"body":"hello world","timestamp":"2020-01-01T12:30:00Z"},
             "severity":100,
             "labels":{"config_user_label_1":"value_1"},
             "resource":{
@@ -241,8 +241,8 @@ async fn correct_request() {
         None,
     );
 
-    let log1 = [("message", "hello")].iter().copied().collect::<LogEvent>();
-    let log2 = [("message", "world")].iter().copied().collect::<LogEvent>();
+    let log1 = [("body", "hello")].iter().copied().collect::<LogEvent>();
+    let log2 = [("body", "world")].iter().copied().collect::<LogEvent>();
 
     let events = vec![Event::from(log1), Event::from(log2)];
 
@@ -282,7 +282,7 @@ async fn correct_request() {
                     "logName": "projects/project/logs/testlogs",
                     "severity": 0,
                     "jsonPayload": {
-                        "message": "hello"
+                        "body": "hello"
                     },
                     "labels": {
                         "config_user_label_1": "value_1"
@@ -298,7 +298,7 @@ async fn correct_request() {
                     "logName": "projects/project/logs/testlogs",
                     "severity": 0,
                     "jsonPayload": {
-                        "message": "world"
+                        "body": "world"
                     },
                     "labels": {
                         "config_user_label_1": "value_1"

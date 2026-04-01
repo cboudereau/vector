@@ -1449,7 +1449,7 @@ mod test {
                 Definition::new_with_default_metadata(Kind::json(), [LogNamespace::Legacy])
                     .unknown_fields(Kind::undefined())
                     .with_event_field(
-                        &owned_value_path!("message"),
+                        &owned_value_path!("body"),
                         Kind::bytes(),
                         Some("message")
                     )

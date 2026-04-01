@@ -2699,7 +2699,7 @@ mod tests {
         )
         .with_event_field(&owned_value_path!("host"), Kind::bytes(), Some("host"))
         .with_event_field(
-            &owned_value_path!("message"),
+            &owned_value_path!("body"),
             Kind::bytes().or_undefined(),
             Some("message"),
         )

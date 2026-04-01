@@ -902,7 +902,7 @@ mod tests {
             config.global.log_schema.host_key().unwrap().to_string()
         );
         assert_eq!(
-            "message",
+            "body",
             config.global.log_schema.message_key().unwrap().to_string()
         );
         assert_eq!(

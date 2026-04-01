@@ -809,7 +809,7 @@ mod tests {
             [LogNamespace::Legacy],
         )
         .with_event_field(
-            &owned_value_path!("message"),
+            &owned_value_path!("body"),
             Kind::bytes(),
             Some("message"),
         )
@@ -1168,7 +1168,7 @@ mod integration_tests {
         assert_eq!(events.len(), lines.len());
         for (message, event) in lines.into_iter().zip(events) {
             let log = event.into_log();
-            assert_eq!(log.get("message"), Some(&message.into()));
+            assert_eq!(log.get("body"), Some(&message.into()));
             assert_eq!(log.get("source_type"), Some(&"gcp_pubsub".into()));
             assert!(log.get("timestamp").unwrap().as_timestamp().unwrap() >= &start);
             assert!(log.get("timestamp").unwrap().as_timestamp().unwrap() <= &end);

@@ -640,7 +640,7 @@ mod tests {
 
         let mut log = create_simple_log();
         log.insert(
-            event_path!("message"),
+            event_path!("body"),
             "A\nB\tC, Привіт D, E\u{0007}F", //newline, tab, unicode
         );
 
@@ -764,7 +764,7 @@ mod tests {
         .unwrap();
 
         let mut log = create_simple_log();
-        log.insert(event_path!("message"), "");
+        log.insert(event_path!("body"), "");
         log.insert(event_path!("structured_data"), value!({}));
 
         let output = run_encode(config, Event::from(log));

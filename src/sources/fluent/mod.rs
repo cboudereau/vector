@@ -1233,7 +1233,7 @@ mod tests {
             [LogNamespace::Legacy],
         )
         .with_event_field(
-            &owned_value_path!("message"),
+            &owned_value_path!("body"),
             Kind::bytes(),
             Some("message"),
         )

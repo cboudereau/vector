@@ -286,18 +286,18 @@ mod tests {
         assert_eq!(events.len(), 4);
 
         assert_eq!(
-            events[0].as_log().get("message").unwrap(),
+            events[0].as_log().get("body").unwrap(),
             "Before source started without span.".into()
         );
         assert_eq!(
-            events[1].as_log().get("message").unwrap(),
+            events[1].as_log().get("body").unwrap(),
             "Before source started.".into()
         );
         assert_eq!(
-            events[2].as_log().get("message").unwrap(),
+            events[2].as_log().get("body").unwrap(),
             "After source started.".into()
         );
-        assert_eq!(events[3].as_log().get("message").unwrap(), "In a nested span.".into());
+        assert_eq!(events[3].as_log().get("body").unwrap(), "In a nested span.".into());
 
         for (i, event) in events.iter().enumerate() {
             let log = event.as_log();
@@ -365,7 +365,7 @@ mod tests {
             .iter()
             .filter(|e| {
                 e.as_log()
-                    .get("message")
+                    .get("body")
                     .map(|m| m.to_string_lossy() == "Repeated test message.")
                     .unwrap_or(false)
             })
@@ -433,7 +433,7 @@ mod tests {
             [LogNamespace::Legacy],
         )
         .with_event_field(
-            &owned_value_path!("message"),
+            &owned_value_path!("body"),
             Kind::bytes(),
             Some("message"),
         )

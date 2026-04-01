@@ -342,39 +342,39 @@ mod tests {
 
         {
             let mut event = event_stream_1.clone();
-            event.insert("message", "a");
+            event.insert("body", "a");
             assert_eq!(process_event(event), 0);
         }
 
         {
             let mut event = event_stream_1.clone();
-            event.insert("message", "b");
+            event.insert("body", "b");
             event.insert("irrelevant", "c");
             assert_eq!(process_event(event), 1);
         }
 
         {
             let mut event = event_stream_2.clone();
-            event.insert("message", "d");
+            event.insert("body", "d");
             assert_eq!(process_event(event), 0);
         }
 
         {
             let mut event = event_stream_2.clone();
-            event.insert("message", "e");
+            event.insert("body", "e");
             event.insert("irrelevant", "d");
             assert_eq!(process_event(event), 1);
         }
 
         {
             let mut event = event_stream_3.clone();
-            event.insert("message", "f");
+            event.insert("body", "f");
             assert_eq!(process_event(event), 0);
         }
 
         {
             let mut event = event_stream_3.clone();
-            event.insert("message", "g");
+            event.insert("body", "g");
             event.insert("irrelevant", "d");
             assert_eq!(process_event(event), 1);
         }

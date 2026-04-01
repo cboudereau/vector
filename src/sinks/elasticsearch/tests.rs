@@ -63,7 +63,7 @@ async fn sets_create_action_when_configured() {
         .unwrap();
 
     let expected = r#"{"create":{"_index":"vector","_type":"_doc"}}
-{"action":"crea","message":"hello there","timestamp":"2020-12-01T01:02:03Z"}
+{"action":"crea","body":"hello there","timestamp":"2020-12-01T01:02:03Z"}
 "#;
     assert_expected_is_encoded(expected, &encoded);
     assert_eq!(encoded.len(), encoded_size);
@@ -132,7 +132,7 @@ async fn encoding_with_external_versioning_with_version_set_includes_version() {
         .unwrap();
 
     let expected = r#"{"create":{"_id":"42","_index":"vector","_type":"_doc","version":1337,"version_type":"external"}}
-{"message":"hello there","my_field":"1337","timestamp":"2020-12-01T01:02:03Z"}
+{"body":"hello there","my_field":"1337","timestamp":"2020-12-01T01:02:03Z"}
 "#;
     assert_expected_is_encoded(expected, &encoded);
     assert_eq!(encoded.len(), encoded_size);
@@ -182,7 +182,7 @@ async fn encoding_with_external_gte_versioning_with_version_set_includes_version
         .unwrap();
 
     let expected = r#"{"create":{"_id":"42","_index":"vector","_type":"_doc","version":1337,"version_type":"external_gte"}}
-{"message":"hello there","my_field":"1337","timestamp":"2020-12-01T01:02:03Z"}
+{"body":"hello there","my_field":"1337","timestamp":"2020-12-01T01:02:03Z"}
 "#;
     assert_expected_is_encoded(expected, &encoded);
     assert_eq!(encoded.len(), encoded_size);
@@ -270,7 +270,7 @@ async fn encode_datastream_mode() {
         .unwrap();
 
     let expected = r#"{"create":{"_index":"synthetics-testing-default","_type":"_doc"}}
-{"@timestamp":"2020-12-01T01:02:03Z","data_stream":{"dataset":"testing","namespace":"default","type":"synthetics"},"message":"hello there"}
+{"@timestamp":"2020-12-01T01:02:03Z","data_stream":{"dataset":"testing","namespace":"default","type":"synthetics"},"body":"hello there"}
 "#;
     assert_expected_is_encoded(expected, &encoded);
     assert_eq!(encoded.len(), encoded_size);
@@ -325,7 +325,7 @@ async fn encode_datastream_mode_no_routing() {
         .unwrap();
 
     let expected = r#"{"create":{"_index":"logs-generic-something","_type":"_doc"}}
-{"@timestamp":"2020-12-01T01:02:03Z","data_stream":{"dataset":"testing","namespace":"something","type":"synthetics"},"message":"hello there"}
+{"@timestamp":"2020-12-01T01:02:03Z","data_stream":{"dataset":"testing","namespace":"something","type":"synthetics"},"body":"hello there"}
 "#;
     assert_expected_is_encoded(expected, &encoded);
     assert_eq!(encoded.len(), encoded_size);
@@ -479,7 +479,7 @@ async fn encode_datastream_mode_no_sync() {
         .unwrap();
 
     let expected = r#"{"create":{"_index":"synthetics-testing-something","_type":"_doc"}}
-{"@timestamp":"2020-12-01T01:02:03Z","data_stream":{"dataset":"testing","type":"synthetics"},"message":"hello there"}
+{"@timestamp":"2020-12-01T01:02:03Z","data_stream":{"dataset":"testing","type":"synthetics"},"body":"hello there"}
 "#;
     assert_expected_is_encoded(expected, &encoded);
     assert_eq!(encoded.len(), encoded_size);
@@ -515,7 +515,7 @@ async fn allows_using_except_fields() {
         .unwrap();
 
     let expected = r#"{"index":{"_index":"purple","_type":"_doc"}}
-{"foo":"bar","message":"hello there"}
+{"foo":"bar","body":"hello there"}
 "#;
     assert_expected_is_encoded(expected, &encoded);
     assert_eq!(encoded.len(), encoded_size);

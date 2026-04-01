@@ -228,7 +228,7 @@ impl SinkConfig for InfluxDbLogsConfig {
 
     fn input(&self) -> Input {
         let requirements = schema::Requirement::empty()
-            .optional_meaning("message", Kind::bytes())
+            .optional_meaning("body", Kind::bytes())
             .optional_meaning("host", Kind::bytes())
             .optional_meaning("timestamp", Kind::timestamp());
 
@@ -255,7 +255,7 @@ impl HttpEventEncoder<BytesMut> for InfluxDbLogsEncoder {
         let mut log = event.into_log_coerce();
         // If the event isn't an object (`. = "foo"`), inserting or renaming will result in losing
         // the original value that was assigned to the root. To avoid this we intentionally rename
-        // the path that points to "message" such that it has a dedicated key.
+        // the path that points to "body" such that it has a dedicated key.
         // TODO: add a `TargetPath::is_event_root()` to conditionally rename?
         if let Some(message_path) = log.message_path().as_ref() {
             log.rename_key(message_path, (PathPrefix::Event, &self.message_key));
@@ -468,7 +468,7 @@ mod tests {
         let line_protocol = split_line_protocol(string);
         assert_eq!("vector", line_protocol.0);
         assert_eq!("metric_type=logs", line_protocol.1);
-        assert_fields(line_protocol.2.to_string(), ["message=\"hello\""].to_vec());
+        assert_fields(line_protocol.2.to_string(), ["body=\"hello\""].to_vec());
         assert_eq!("1542182950000000011\n", line_protocol.3);
 
         sink.transformer
@@ -482,7 +482,7 @@ mod tests {
             "host=aws.cloud.eur", line_protocol.1,
             "metric_type tag should be excluded"
         );
-        assert_fields(line_protocol.2, ["message=\"hello\""].to_vec());
+        assert_fields(line_protocol.2, ["body=\"hello\""].to_vec());
     }
 
     #[test]
@@ -522,7 +522,7 @@ mod tests {
                 "float=5.5",
                 "bool=true",
                 "string=\"thisisastring\"",
-                "message=\"hello\"",
+                "body=\"hello\"",
             ]
             .to_vec(),
         );
@@ -567,7 +567,7 @@ mod tests {
                 "float=5.5",
                 "bool=true",
                 "string=\"thisisastring\"",
-                "message=\"hello\"",
+                "body=\"hello\"",
             ]
             .to_vec(),
         );
@@ -607,7 +607,7 @@ mod tests {
         assert_eq!("", line_protocol.1, "tags should be empty");
         assert_fields(
             line_protocol.2,
-            ["value=100i", "message=\"hello\""].to_vec(),
+            ["value=100i", "body=\"hello\""].to_vec(),
         );
 
         assert_eq!("1542182950000000011\n", line_protocol.3);
@@ -680,7 +680,7 @@ mod tests {
             "as_a_tag=10,metric_type=logs,source_type=file",
             line_protocol.1
         );
-        assert_fields(line_protocol.2.to_string(), ["message=\"hello\""].to_vec());
+        assert_fields(line_protocol.2.to_string(), ["body=\"hello\""].to_vec());
 
         assert_eq!("1542182950000000011\n", line_protocol.3);
     }
@@ -830,7 +830,7 @@ mod tests {
             line_protocol.2.to_string(),
             [
                 &*format!("key{i}=\"value{i}\""),
-                "message=\"message_value\"",
+                "body=\"message_value\"",
             ]
             .to_vec(),
         );
@@ -857,7 +857,7 @@ mod tests {
             tags,
             transformer: Default::default(),
             host_key: owned_value_path!("host"),
-            message_key: owned_value_path!("message"),
+            message_key: owned_value_path!("body"),
             source_type_key: owned_value_path!("source_type"),
         }
     }
@@ -1088,15 +1088,15 @@ mod integration_tests {
         // field
         assert_eq!(
             record1[header.iter().position(|&r| r.trim() == "_field").unwrap()].trim(),
-            "message"
+            "body"
         );
         assert_eq!(
             record2[header.iter().position(|&r| r.trim() == "_field").unwrap()].trim(),
-            "message"
+            "body"
         );
         assert_eq!(
             record_ns[header.iter().position(|&r| r.trim() == "_field").unwrap()].trim(),
-            "message"
+            "body"
         );
         assert_eq!(
             record1[header.iter().position(|&r| r.trim() == "_value").unwrap()].trim(),

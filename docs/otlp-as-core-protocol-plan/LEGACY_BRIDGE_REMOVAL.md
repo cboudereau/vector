@@ -30,6 +30,53 @@ fields by string name. But they could use proto accessors directly:
 | `log.insert("key", val)` | `log.set_attribute("key", vrl_value_to_any_value(&val))` |
 | `log.remove("key")` | `log.remove_attribute("key")` |
 
+## log_schema() is not OTel-compliant
+
+The `log_schema()` config defines Vector's legacy field naming:
+
+| log_schema key | TargetPath string | OTel proto field | Match? |
+|----------------|-------------------|------------------|--------|
+| `message_key` | `"body"` (was `"message"`) | `LogRecord.body` | ✅ (after rename) |
+| `timestamp_key` | `"timestamp"` | `LogRecord.time_unix_nano` | ❌ |
+| `host_key` | `"host"` | `Resource.attributes["host.name"]` | ❌ |
+| `source_type_key` | `"source_type"` | `Resource.attributes["source_type"]` | ❌ |
+
+These names were designed for Vector's flat `LogEvent` model. In the OTel model:
+- Timestamps are `time_unix_nano` (nanoseconds, not a formatted string)
+- Host is a resource attribute `host.name`, not a top-level field
+- Source type is a resource attribute, not a top-level field
+
+**`log_schema()` should be deprecated.** Callers should use proto field names directly.
+The VRL migration tool must be updated to handle these remaining mismatches.
+
+### VRL migration tool gaps
+
+The VRL migration tool currently handles:
+- ✅ `.message` → `.body`
+- ✅ `.host` → `.resource.attributes."host.name"`
+- ✅ `.source_type` → `.attributes."pipeline.source_type"`
+- ✅ `.timestamp` → `.time_unix_nano`
+
+But production code still uses `log_schema()` to get field names:
+```rust
+// Current (legacy)
+log.get(log_schema().timestamp_key().unwrap())  // gets "timestamp"
+
+// Should be (OTel-native)
+log.time_unix_nano()  // gets u64 nanoseconds directly
+```
+
+The `log_schema()` indirection must be removed from production code alongside
+the bridges. The VRL migration tool handles user VRL programs; the production
+code migration is manual (replace `log_schema()` calls with proto accessors).
+
+### log_schema() removal plan
+
+1. **Audit all `log_schema()` callers** — ~50 call sites across sources, sinks, codecs
+2. **Replace with proto accessors** — `timestamp_key()` → `time_unix_nano()`, etc.
+3. **Deprecate `log_schema()` config** — keep for one release with warning
+4. **Remove `log_schema()`** — field names are the proto field names, no mapping
+
 ## Two separate path systems
 
 After cleanup, there will be two distinct path systems:

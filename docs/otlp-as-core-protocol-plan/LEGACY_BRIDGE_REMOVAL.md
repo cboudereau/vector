@@ -137,3 +137,20 @@ No `TargetPath`, no `Value` conversion, no bridge.
 6. **Remove legacy types** — delete LogEvent, Metric, TraceEvent
 
 Each step compiles and tests pass independently.
+
+## Attempted approach: replace get()/insert() with proto-native Value
+
+Tried replacing `to_log_event()` inside `get()` with a direct `to_value()` that
+builds the Value from proto fields. Result: **109 failures** because the Value
+layout differs from what `to_log_event()` produces:
+
+- `to_log_event()` expands KvList body → top-level fields
+- `to_log_event()` formats timestamps as `DateTime<Utc>`
+- `to_log_event()` hoists `host.name` and `source_type` from resource to top-level
+
+The 465 callers depend on this exact layout. A proto-native `to_value()` produces
+a different shape (raw proto field names, nanos as integers, no hoisting).
+
+**Conclusion:** Can't replace `get()` implementation until all 465 callers are
+migrated to use proto accessors directly. This is a large effort (multiple sessions)
+that should be done caller-by-caller, not by changing the `get()` implementation.

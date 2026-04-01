@@ -41,9 +41,9 @@ const VALID_METRIC_PATHS_GET: &str =
 /// fields such as `.tags.host.thing`.
 const MAX_METRIC_PATH_DEPTH: usize = 3;
 
-const VALID_OTEL_METRIC_PATHS_SET: &str = ".name, .description, .unit, .resource, .scope, .tags";
+const VALID_OTEL_METRIC_PATHS_SET: &str = ".name, .description, .unit, .resource, .scope, .attributes, .data.*.data_points[*].attributes";
 const VALID_OTEL_METRIC_PATHS_GET: &str =
-    ".name, .description, .unit, .resource, .scope, .data, .tags, .kind";
+    ".name, .description, .unit, .resource, .scope, .data, .attributes";
 const MAX_OTEL_METRIC_PATH_DEPTH: usize = 4;
 
 // ---------------------------------------------------------------------------
@@ -524,7 +524,13 @@ fn precompute_otel_metric_value(
         map.insert("scope".into(), otel_scope_to_value(scope));
     }
 
-    // .data — full OTel proto structure (no .tags or .kind aliases)
+    // .attributes — shorthand for first data point's attributes
+    let first_dp_attrs = event.first_data_point_attributes();
+    if !first_dp_attrs.is_empty() {
+        map.insert("attributes".into(), Value::Object(otel_kvlist_to_object_map(first_dp_attrs)));
+    }
+
+    // .data — full OTel proto structure
     if let Some(data) = &event.metric().data {
         let mut data_map = ObjectMap::new();
         match data {
@@ -975,31 +981,19 @@ impl Target for VrlTarget {
                             ["scope", ..] => {
                                 // Insert into existing scope value projection
                             }
-                            ["tags", tag_name] => {
-                                let tag_str = value
-                                    .clone()
-                                    .try_bytes()
-                                    .map(|b| String::from_utf8_lossy(&b).into_owned())
-                                    .unwrap_or_default();
+                            // OTel-native: .data.*.data_points[*].attributes."key"
+                            // Shorthand: .attributes."key" (sets on all data points)
+                            ["attributes", attr_key] => {
                                 event.set_data_point_attribute(
-                                    tag_name.to_string(),
-                                    super::string_value(tag_str),
+                                    attr_key.to_string(),
+                                    super::vrl_value_to_any_value(&value),
                                 );
                             }
-                            ["tags"] => {
-                                if let Value::Object(tags_map) = &value {
-                                    for (k, v) in tags_map {
-                                        let tag_str = v
-                                            .clone()
-                                            .try_bytes()
-                                            .map(|b| String::from_utf8_lossy(&b).into_owned())
-                                            .unwrap_or_default();
-                                        event.set_data_point_attribute(
-                                            k.to_string(),
-                                            super::string_value(tag_str),
-                                        );
-                                    }
-                                }
+                            ["data", _, "data_points", _, "attributes", attr_key] => {
+                                event.set_data_point_attribute(
+                                    attr_key.to_string(),
+                                    super::vrl_value_to_any_value(&value),
+                                );
                             }
                             _ => {
                                 return Err(MetricPathError::InvalidPath {

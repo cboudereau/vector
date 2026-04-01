@@ -335,8 +335,9 @@ impl OtelLog {
     /// Convert a legacy `LogEvent` into an `OtelLog`.
     ///
     /// The `LogEvent`'s value tree is stored as a kvlist body.
-    /// Known fields (`message`, `timestamp`, `severity_text`, etc.) are
-    /// extracted into their corresponding `LogRecord` fields.
+    /// The `body` field (or `message` as legacy fallback) becomes LogRecord.body.
+    /// Known fields (`timestamp`, `severity_text`, etc.) are extracted into
+    /// their corresponding `LogRecord` fields.
     pub fn from_log_event(log: LogEvent) -> Self {
         let (value, metadata) = log.into_parts();
         match value {
@@ -741,8 +742,8 @@ impl OtelLog {
         self.get(path).is_some()
     }
 
-    /// Get the "message" field value (LogEvent-compatible bridge).
-    pub fn get_message(&self) -> Option<Value> {
+    /// Get the log body value.
+    pub fn get_body(&self) -> Option<Value> {
         self.body().map(any_value_to_vrl)
     }
 
@@ -805,9 +806,16 @@ impl OtelLog {
         self.to_log_event().host_path().cloned()
     }
 
-    /// Get the message path (LogEvent-compatible bridge).
+    /// Get the body path.
+    pub fn body_path(&self) -> Option<vrl::path::OwnedTargetPath> {
+        use vrl::path::OwnedTargetPath;
+        use lookup::owned_value_path;
+        Some(OwnedTargetPath::event(owned_value_path!("body")))
+    }
+
+    /// Deprecated alias for body_path.
     pub fn message_path(&self) -> Option<vrl::path::OwnedTargetPath> {
-        self.to_log_event().message_path().cloned()
+        self.body_path()
     }
 
     /// Get the source type path (LogEvent-compatible bridge).
@@ -1193,7 +1201,7 @@ impl OtelSpan {
 
     /// Lossy projection of this OTel span event into a legacy `LogEvent`.
     ///
-    /// Span name becomes `message`, attributes become top-level fields, and
+    /// Span name becomes `name`, attributes become top-level fields, and
     /// trace_id/span_id/timestamps/status are included.  Useful for
     /// `trace_to_log` and text-oriented serializers.
     pub fn to_log_event(&self) -> LogEvent {

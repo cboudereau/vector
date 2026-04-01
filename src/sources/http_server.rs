@@ -723,7 +723,7 @@ mod tests {
         {
             let event = events.remove(0);
             let log = event.as_log();
-            assert_eq!(log.get_message().unwrap(), "test body".into());
+            assert_eq!(log.get_body().unwrap(), "test body".into());
             assert!(log.get_timestamp().is_some());
             assert_eq!(
                 log.get_source_type().unwrap(),
@@ -735,7 +735,7 @@ mod tests {
         {
             let event = events.remove(0);
             let log = event.as_log();
-            assert_eq!(log.get_message().unwrap(), "test body 2".into());
+            assert_eq!(log.get_body().unwrap(), "test body 2".into());
             assert_event_metadata(log).await;
         }
     }
@@ -770,13 +770,13 @@ mod tests {
         {
             let event = events.remove(0);
             let log = event.as_log();
-            assert_eq!(log.get_message().unwrap(), "test body".into());
+            assert_eq!(log.get_body().unwrap(), "test body".into());
             assert_event_metadata(log).await;
         }
         {
             let event = events.remove(0);
             let log = event.as_log();
-            assert_eq!(log.get_message().unwrap(), "test body 2".into());
+            assert_eq!(log.get_body().unwrap(), "test body 2".into());
             assert_event_metadata(log).await;
         }
     }
@@ -812,7 +812,7 @@ mod tests {
         {
             let event = events.remove(0);
             let log = event.as_log();
-            assert_eq!(log.get_message().unwrap(), "foo\nbar".into());
+            assert_eq!(log.get_body().unwrap(), "foo\nbar".into());
             assert_event_metadata(log).await;
         }
     }
@@ -1253,7 +1253,7 @@ mod tests {
         {
             let event = events.remove(0);
             let log = event.as_log();
-            assert_eq!(log.get_message().unwrap(), "test body".into());
+            assert_eq!(log.get_body().unwrap(), "test body".into());
             assert_event_metadata(log).await;
         }
     }

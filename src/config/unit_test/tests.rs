@@ -857,7 +857,7 @@ async fn test_metric_input() {
             inputs = ["ignored"]
             type = "remap"
             source = '''
-            .tags."new_tag" = "new value added"
+            .attributes."new_tag" = "new value added"
             '''
 
           [[tests]]

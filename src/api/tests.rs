@@ -368,7 +368,7 @@ async fn integration_test_transform_input() {
 
     assert_eq!(
         assert_log(tap_events[3][0].clone())
-            .get_message()
+            .get_body()
             .unwrap_or_default(),
         "test"
     );
@@ -426,7 +426,7 @@ async fn integration_test_sink() {
     );
     assert_eq!(
         assert_log(tap_events[1][0].clone())
-            .get_message()
+            .get_body()
             .unwrap_or_default(),
         "new message"
     );
@@ -489,7 +489,7 @@ async fn integration_test_tap_non_default_output() {
     );
     assert_eq!(
         assert_log(transform_tap_events[1][0].clone())
-            .get_message()
+            .get_body()
             .unwrap_or_default(),
         "test2"
     );
@@ -572,13 +572,13 @@ async fn integration_test_tap_multiple_outputs() {
                     default_output_found = tap_events
                         .iter()
                         .map(|payload| assert_log(payload.clone()))
-                        .any(|log| log.get_message().unwrap_or_default() == "test1");
+                        .any(|log| log.get_body().unwrap_or_default() == "test1");
                 }
                 if !dropped_output_found {
                     dropped_output_found = tap_events
                         .iter()
                         .map(|payload| assert_log(payload.clone()))
-                        .any(|log| log.get_message().unwrap_or_default() == "test2");
+                        .any(|log| log.get_body().unwrap_or_default() == "test2");
                 }
             }
             None => break,

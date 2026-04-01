@@ -18,8 +18,8 @@ impl Log {
         Self { output, event }
     }
 
-    pub fn get_message(&self) -> Option<Cow<'_, str>> {
-        Some(self.event.get(event_path!("message"))?.to_string_lossy())
+    pub fn get_body(&self) -> Option<Cow<'_, str>> {
+        Some(self.event.get(event_path!("body"))?.to_string_lossy())
     }
 
     pub fn get_timestamp(&self) -> Option<&DateTime<Utc>> {
@@ -47,7 +47,7 @@ impl Log {
 
     /// Log message
     async fn message(&self) -> Option<String> {
-        self.get_message().map(Into::into)
+        self.get_body().map(Into::into)
     }
 
     /// Log timestamp

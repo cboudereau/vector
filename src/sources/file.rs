@@ -2441,7 +2441,7 @@ mod tests {
         received
             .into_iter()
             .map(Event::into_log)
-            .map(|log| log.get_message().unwrap().to_string_lossy().into_owned())
+            .map(|log| log.get_body().unwrap().to_string_lossy().into_owned())
             .collect()
     }
 
@@ -2449,7 +2449,7 @@ mod tests {
         received
             .into_iter()
             .map(Event::into_log)
-            .map(|log| log.get_message().unwrap())
+            .map(|log| log.get_body().unwrap())
             .collect()
     }
 }

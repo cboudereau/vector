@@ -530,7 +530,7 @@ mod tests {
             let log = event.as_log();
 
             assert_eq!(
-                log.get_message().unwrap(),
+                log.get_body().unwrap(),
                 r#"at=info method=GET path="/cart_link" host=lumberjack-store.timber.io request_id=05726858-c44e-4f94-9a20-37df73be9006 fwd="73.75.38.87" dyno=web.1 connect=1ms service=22ms status=304 bytes=656 protocol=http"#.into()
             );
             assert_eq!(
@@ -576,7 +576,7 @@ mod tests {
             let log = event.as_log();
 
             assert_eq!(
-                log.get_message().unwrap(),
+                log.get_body().unwrap(),
                 r#"at=info method=GET path="/cart_link" host=lumberjack-store.timber.io request_id=05726858-c44e-4f94-9a20-37df73be9006 fwd="73.75.38.87" dyno=web.1 connect=1ms service=22ms status=304 bytes=656 protocol=http"#.into()
             );
             assert_eq!(
@@ -663,7 +663,7 @@ mod tests {
         let events = super::line_to_events(Default::default(), log_namespace, body.into());
         let log = events[0].as_log();
 
-        assert_eq!(log.get_message().unwrap(), "foo bar baz".into());
+        assert_eq!(log.get_body().unwrap(), "foo bar baz".into());
         assert_eq!(
             log.get(log_schema().timestamp_key().unwrap().to_string().as_str()).unwrap(),
             "2020-01-08T22:33:57.353034+00:00"
@@ -682,7 +682,7 @@ mod tests {
         let events = super::line_to_events(Default::default(), log_namespace, body.into());
         let log = events[0].as_log();
 
-        assert_eq!(log.get_message().unwrap(), "what am i doing here".into());
+        assert_eq!(log.get_body().unwrap(), "what am i doing here".into());
         assert!(log.get_timestamp().is_some());
         assert_eq!(log.get_source_type().unwrap(), "heroku_logs".into());
     }
@@ -694,7 +694,7 @@ mod tests {
         let events = super::line_to_events(Default::default(), log_namespace, body.into());
         let log = events[0].as_log();
 
-        assert_eq!(log.get_message().unwrap(), "i'm not that long".into());
+        assert_eq!(log.get_body().unwrap(), "i'm not that long".into());
         assert_eq!(
             log.get(log_schema().timestamp_key().unwrap().to_string().as_str()).unwrap(),
             "2020-01-08T22:33:57.353034+00:00"

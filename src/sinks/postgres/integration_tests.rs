@@ -417,7 +417,7 @@ async fn extra_fields_are_ignored() {
     let (input_event, mut receiver) = create_event_with_notifier(0);
     let input_log_event = input_event.clone().into_log();
     let expected_value = input_log_event
-        .get_message()
+        .get_body()
         .unwrap()
         .as_str()
         .unwrap()

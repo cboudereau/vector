@@ -225,7 +225,7 @@ fn hex_decode_value(val: &Value) -> Vec<u8> {
 /// `attributes["key"]` is the standard access pattern, but Vector's VRL
 /// convention is flat top-level access).
 ///
-/// The `.body` key holds the log body. `.message` is an alias for `.body`.
+/// The `.body` key holds the log body (no `.message` alias).
 /// `.resource` and `.scope` are nested objects.
 fn otel_log_event_to_value(event: &OtelLog) -> Value {
     let record = &event.record;
@@ -318,8 +318,6 @@ fn value_to_otel_log_event(value: Value, metadata: EventMetadata) -> OtelLog {
     let dropped_attributes_count = map.remove("dropped_attributes_count")
         .and_then(|v| v.as_integer()).unwrap_or(0) as u32;
 
-    // Remove .message duplicate (already consumed as body above)
-    map.remove("message");
     // Remove nested .attributes (we rebuild from remaining top-level keys)
     map.remove("attributes");
 

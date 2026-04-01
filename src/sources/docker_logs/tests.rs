@@ -449,7 +449,7 @@ mod integration_tests {
                 .unwrap()
                 .assert_valid_for_event(&events[0]);
             let log = events[0].as_log();
-            assert_eq!(*log.get_message().unwrap(), message.into());
+            assert_eq!(*log.get_body().unwrap(), message.into());
             assert_eq!(log[CONTAINER], id.into());
             assert!(log.get(CREATED_AT).is_some());
             assert_eq!(log[IMAGE], "busybox".into());
@@ -646,7 +646,7 @@ mod integration_tests {
                 .unwrap()
                 .assert_valid_for_event(&events[0]);
             let log = events[0].as_log();
-            assert_eq!(*log.get_message().unwrap(), message.into());
+            assert_eq!(*log.get_body().unwrap(), message.into());
             assert_eq!(log[CONTAINER], id.into());
             assert!(log.get(CREATED_AT).is_some());
             assert_eq!(log[IMAGE], "busybox".into());
@@ -781,7 +781,7 @@ mod integration_tests {
                 .unwrap()
                 .assert_valid_for_event(&events[0]);
             let log = events[0].as_log();
-            assert_eq!(*log.get_message().unwrap(), message.into());
+            assert_eq!(*log.get_body().unwrap(), message.into());
             assert_eq!(log[CONTAINER], id.into());
             assert!(log.get(CREATED_AT).is_some());
             assert_eq!(log[IMAGE], "busybox".into());
@@ -831,7 +831,7 @@ mod integration_tests {
                 .unwrap()
                 .assert_valid_for_event(&events[0]);
             let log = events[0].as_log();
-            assert_eq!(*log.get_message().unwrap(), message.into());
+            assert_eq!(*log.get_body().unwrap(), message.into());
         })
         .await;
     }

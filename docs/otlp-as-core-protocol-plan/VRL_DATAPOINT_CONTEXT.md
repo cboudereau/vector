@@ -1,4 +1,4 @@
-# Plan: VRL Broadcast Operator `[]` for Array Paths
+# Plan: VRL Broadcast for Metric Data Points
 
 ## Problem
 
@@ -6,11 +6,25 @@ The OTel Collector's `transform` processor uses `context: datapoint` to iterate
 over data points. Vector needs an equivalent way to operate on all data points
 in a metric without adding a context model.
 
-## Solution: `[]` broadcast operator in VRL paths
+## Solution: Two-phase approach
 
-Instead of an OTel Collector-style `context` field, use a **broadcast operator**
-`[]` in VRL paths. When `[]` appears in a path, the operation applies to ALL
-elements at that level.
+### Phase A (now): `.attributes` shorthand convention
+
+On metric events, `.attributes."key"` means "all data points' attributes":
+- **Write** `.attributes."key" = value` → broadcasts to ALL data points (already works)
+- **Read** `.attributes."key"` → returns first data point's value (approximation, sufficient for demo)
+
+This requires NO VRL language changes. It works today.
+
+### Phase B (future): `[]` broadcast operator in VRL paths
+
+When VRL path parser supports `[]`, add explicit broadcast syntax:
+```vrl
+.data.sum.data_points[].attributes."service.name" = .resource.attributes."service.name"
+```
+
+This requires modifying the VRL crate's path parser (external dependency).
+Deferred until the shorthand proves insufficient.
 
 ### Write (broadcast)
 

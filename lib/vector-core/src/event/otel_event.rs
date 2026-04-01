@@ -822,6 +822,13 @@ impl OtelLog {
                 }
             }
         }
+        // In Vector namespace, timestamp may be stored via schema meaning (e.g. @timestamp).
+        // Check this FIRST before falling back to time_unix_nano (which may be ingest time).
+        if self.namespace() == crate::config::LogNamespace::Vector {
+            if let Some(ts) = self.to_log_event().get_timestamp().cloned() {
+                return Some(ts);
+            }
+        }
         if self.record.time_unix_nano != 0 {
             let nanos = self.record.time_unix_nano;
             let secs = (nanos / 1_000_000_000) as i64;
@@ -835,10 +842,6 @@ impl OtelLog {
             let secs = (nanos / 1_000_000_000) as i64;
             let nsecs = (nanos % 1_000_000_000) as u32;
             chrono::DateTime::from_timestamp(secs, nsecs).map(Value::Timestamp)
-        } else if self.namespace() == crate::config::LogNamespace::Vector {
-            // In Vector namespace, timestamp may be stored via schema meaning in metadata.
-            // Fall back to to_log_event bridge to resolve it.
-            self.to_log_event().get_timestamp().cloned()
         } else {
             None
         }

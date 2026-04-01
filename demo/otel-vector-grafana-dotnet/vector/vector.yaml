@@ -13,11 +13,11 @@ transforms:
     type: remap
     inputs: ["otlp.metrics"]
     source: |
-      .tags."service.name" = .resource.attributes."service.name"
-      .tags."service.namespace" = .resource.attributes."service.namespace"
-      .tags."service.version" = .resource.attributes."service.version"
-      .tags."deployment.environment" = .resource.attributes."deployment.environment"
-      .tags."host.name" = .resource.attributes."host.name"
+      .attributes."service.name" = .resource.attributes."service.name"
+      .attributes."service.namespace" = .resource.attributes."service.namespace"
+      .attributes."service.version" = .resource.attributes."service.version"
+      .attributes."deployment.environment" = .resource.attributes."deployment.environment"
+      .attributes."host.name" = .resource.attributes."host.name"
 
 sinks:
   otlp_traces:

@@ -1,67 +1,72 @@
 # Bridge Removal Session Task
 
-## Goal
+## Progress from previous session
 
-Remove the legacy bridge functions from OtelLog, OtelSpan, and OtelMetric.
-Replace all 465 callers of `get()`/`insert()`/`remove()` with direct proto accessors.
+Most OtelLog methods no longer call `to_log_event()`. They use
+`to_value_legacy_layout()` instead — builds the same Value tree directly
+from proto fields without constructing a LogEvent.
 
-## Context
+### Done (OtelLog methods no longer using to_log_event)
 
-Read these docs first:
+- `get()`, `insert()`, `remove()` — use `to_value_legacy_layout()`
+- `get_source_type()`, `get_host()` — direct resource attribute lookup
+- `get_timestamp()` — direct proto + Vector namespace meaning fallback
+- `parse_path_and_get_value()`, `convert_to_fields()`, `rename_key()`
+- `try_insert()`, `value()`, `keys()`, `is_empty_object()`
+- `as_map()`, `value_mut()`, `convert_to_fields_unquoted()`
+- `timestamp_path()`, `host_path()`, `source_type_path()`, `body_path()`
+
+### Still using to_log_event() — FIX THESE
+
+In `lib/vector-core/src/event/otel_event.rs`:
+- `namespace()` (line ~885) — reads LogNamespace from schema definition
+- `get_timestamp()` Vector namespace fallback (line ~832) — resolves meaning
+- `Serialize` impl (line ~2275) — serializes via to_log_event()
+- `EventDataEq` impl (line ~2255) — compares via to_log_event()
+
+In OtelSpan:
+- `get()` (line ~1266) — delegates to to_log_event()
+- `insert()` (line ~1275) — round-trips through to_log_event()
+- `as_map()` (line ~1290) — delegates to to_log_event()
+- All other bridge methods
+
+In OtelMetric:
+- `to_legacy_metric()` (line ~1727) — 263 lines, used by metric sinks/transforms
+- `from_legacy_metric()` (line ~1295) — 253 lines, used by Event::from(Metric)
+
+### 3 pre-existing test failures (NOT caused by bridge removal)
+
+- `template::tests::render_log_timestamp_strftime_style_namespace`
+- `sinks::influxdb::logs::tests::test_encode_nested_fields`
+- `sinks::new_relic::tests::generates_event_api_model_with_dotted_fields`
+
+These existed before bridge removal. Root cause: Phase B+C `.message` → `.body`
+migration changed how `from_str_legacy` sets fields, affecting timestamp
+resolution and nested/dotted field encoding.
+
+## Goal for this session
+
+1. Fix the 3 pre-existing test failures
+2. Remove remaining `to_log_event()` calls from OtelLog (namespace, Serialize, EventDataEq)
+3. Remove `to_log_event()` from OtelSpan
+4. Remove `to_legacy_metric()` / `from_legacy_metric()` from OtelMetric
+5. Remove `to_log_event()` / `from_log_event()` function bodies entirely
+6. Remove `LogEvent`, `Metric`, `TraceEvent` types if no consumers remain
+
+## Context docs
+
 - `docs/otlp-as-core-protocol-plan/LEGACY_BRIDGE_REMOVAL.md` — design discovery
 - `docs/otlp-as-core-protocol-plan/VRL_OTEL_NATIVE_TARGETS.md` — VRL path model
 
-## What to remove
+## Key insight
 
-Bridge functions in `lib/vector-core/src/event/otel_event.rs`:
-- `OtelLog::to_log_event()` (~85 lines)
-- `OtelLog::from_log_event()` (~71 lines)
-- `OtelSpan::to_log_event()` (~63 lines)
-- `OtelMetric::to_legacy_metric()` (~263 lines)
-- `OtelMetric::from_legacy_metric()` (~253 lines)
+`TargetPath` (VRL's abstract path type) is only needed inside VRL transforms.
+Outside VRL, callers should use proto accessors directly. The `get()`/`insert()`
+methods now build a Value tree inline via `to_value_legacy_layout()` — same
+layout as `to_log_event()` but without constructing a LogEvent.
 
-## How to replace callers
-
-For each call site, replace with direct proto accessor:
-
-```rust
-// BEFORE (bridge)
-log.get("body")                    → log.body().map(any_value_to_vrl)
-log.get("timestamp")               → log.get_timestamp()
-log.get("source_type")             → log.get_source_type()
-log.get("some_attr")               → log.attribute("some_attr").map(any_value_to_vrl)
-log.insert("key", value)           → log.set_attribute("key", vrl_value_to_any_value(&value))
-log.insert("body", value)          → log.set_body(vrl_value_to_any_value(&value))
-
-metric.to_legacy_metric().name()   → metric.name()
-metric.to_legacy_metric().tags()   → metric.first_data_point_attributes()
-metric.to_legacy_metric().value()  → metric.metric().data (match on variant)
-```
-
-## Approach
-
-Work file-by-file. After each file, run `cargo check -p vector --lib`.
-After each group of ~5 files, run `cargo test -p vector --lib -- --skip throttle`.
-Monitor for hangs (tests running > 60s).
-
-## Order
-
-1. Start with `lib/vector-core/src/event/otel_event.rs` — remove bridge method
-   bodies but keep the method signatures (make them call the proto accessors)
-2. Fix `lib/codecs/` callers (~45)
-3. Fix `src/sinks/` callers (~30)
-4. Fix `src/transforms/` callers (~20)
-5. Fix `src/sources/` callers (~40)
-6. Fix remaining callers (API, test_util, etc.)
-7. Remove the `LogEvent`, `Metric`, `TraceEvent` types if no consumers remain
-
-## Key constraint
-
-Do NOT change `get()`'s TargetPath signature. Instead, have `get()` build a
-Value internally (same layout as `to_log_event()`) and traverse it. The
-difference from the previous attempt: keep the SAME Value layout as
-`to_log_event()` to avoid breaking callers. Then migrate callers one by one
-to not use `get()` at all.
+Next step: replace `to_value_legacy_layout()` callers with direct proto accessors
+(caller by caller, ~40 files). Then remove `to_value_legacy_layout()` itself.
 
 ## Verification
 

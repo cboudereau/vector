@@ -9,7 +9,7 @@ use tokio_util::codec::Encoder;
 use vector_config::configurable_component;
 use vector_core::{
     config::DataType,
-    event::{Event, LogEvent, Value},
+    event::{Event, OtelLog, Value},
     schema,
 };
 use vrl::value::ObjectMap;
@@ -81,11 +81,11 @@ impl Encoder<Event> for SyslogSerializer {
     type Error = vector_common::Error;
 
     fn encode(&mut self, event: Event, buffer: &mut BytesMut) -> Result<(), Self::Error> {
-        let log_event = match event {
-            Event::Log(otel) => otel.to_log_event(),
+        let otel_log = match event {
+            Event::Log(otel) => otel,
             _ => return Ok(()),
         };
-        let syslog_message = ConfigDecanter::new(&log_event).decant_config(&self.config.syslog);
+        let syslog_message = ConfigDecanter::new(&otel_log).decant_config(&self.config.syslog);
         let vec = syslog_message
             .encode(&self.config.syslog.rfc)
             .as_bytes()
@@ -97,11 +97,11 @@ impl Encoder<Event> for SyslogSerializer {
 }
 
 struct ConfigDecanter<'a> {
-    log: &'a LogEvent,
+    log: &'a OtelLog,
 }
 
 impl<'a> ConfigDecanter<'a> {
-    fn new(log: &'a LogEvent) -> Self {
+    fn new(log: &'a OtelLog) -> Self {
         Self { log }
     }
 
@@ -153,27 +153,29 @@ impl<'a> ConfigDecanter<'a> {
 
     fn get_value(&self, path: &Option<ConfigTargetPath>) -> Option<String> {
         path.as_ref()
-            .and_then(|p| self.log.get(p).cloned())
+            .and_then(|p| self.log.get(p))
             .map(|v| v.to_string_lossy().to_string())
     }
 
     fn get_structured_data(&self) -> Option<StructuredData> {
         self.log
-            .get("structured_data")
-            .and_then(|v| v.clone().into_object())
+            .parse_path_and_get_value("structured_data")
+            .ok()
+            .flatten()
+            .and_then(|v| v.into_object())
             .map(StructuredData::from)
     }
 
     fn get_timestamp(&self) -> DateTime<Utc> {
         if let Some(Value::Timestamp(timestamp)) = self.log.get_timestamp() {
-            return *timestamp;
+            return timestamp;
         }
         Utc::now()
     }
 
     fn get_payload(&self) -> String {
         self.log
-            .get_message()
+            .get_body()
             .map(|v| v.to_string_lossy().to_string())
             .unwrap_or_default()
     }
@@ -202,7 +204,7 @@ impl<'a> ConfigDecanter<'a> {
     where
         T: Copy + FromStr,
     {
-        if let Some(value) = self.log.get(path).cloned() {
+        if let Some(value) = self.log.get(path) {
             let s = value.to_string_lossy();
             if let Ok(val_from_name) = s.to_ascii_lowercase().parse::<T>() {
                 return val_from_name;

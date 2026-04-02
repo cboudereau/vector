@@ -584,14 +584,10 @@ fn parse_template(src: &str) -> Result<Vec<Part>, TemplateParseError> {
 }
 
 fn render_metric_field(key: &str, metric: &OtelMetric) -> Option<String> {
-    let legacy = metric.clone().to_legacy_metric();
     match key {
-        "name" => Some(legacy.name().to_owned()),
-        "namespace" => legacy.namespace().map(|s| s.to_owned()),
-        _ if key.starts_with("tags.") => legacy
-            .tags()
-            .and_then(|tags| tags.get(&key[5..]))
-            .map(|s| s.to_owned()),
+        "name" => Some(metric.name().to_owned()),
+        "namespace" => metric.namespace().map(|s| s.to_owned()),
+        _ if key.starts_with("tags.") => metric.tag_value(&key[5..]),
         _ => None,
     }
 }

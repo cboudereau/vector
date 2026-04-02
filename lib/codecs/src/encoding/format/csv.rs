@@ -220,7 +220,7 @@ impl Encoder<Event> for CsvSerializer {
     type Error = vector_common::Error;
 
     fn encode(&mut self, event: Event, buffer: &mut BytesMut) -> Result<(), Self::Error> {
-        let log = event.into_log_coerce().to_log_event();
+        let log = event.into_log_coerce();
 
         let mut used_buffer_bytes = 0;
         for (fields_written, field) in self.fields.iter().enumerate() {
@@ -247,7 +247,7 @@ impl Encoder<Event> for CsvSerializer {
 
             // get string value of current field
             let field_value = match field_value {
-                Some(Value::Bytes(bytes)) => String::from_utf8_lossy(bytes).into_owned(),
+                Some(Value::Bytes(bytes)) => String::from_utf8_lossy(&bytes).into_owned(),
                 Some(Value::Integer(int)) => int.to_string(),
                 Some(Value::Float(float)) => float.to_string(),
                 Some(Value::Boolean(bool)) => bool.to_string(),

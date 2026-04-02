@@ -76,9 +76,10 @@ impl JsonSerializer {
     /// Encode event and represent it as JSON value.
     pub fn to_json_value(&self, event: Event) -> Result<serde_json::Value, vector_common::Error> {
         match event {
-            Event::Log(log) => serde_json::to_value(log.to_log_event()),
-            Event::Metric(metric) => serde_json::to_value(metric.to_legacy_metric()),
-            Event::Trace(trace) => serde_json::to_value(trace.to_log_event()),
+            Event::Log(log) => serde_json::to_value(&log),
+            // TEMPORARY BRIDGE — OtelMetric Serialize still uses to_legacy_metric()
+            Event::Metric(metric) => serde_json::to_value(&metric),
+            Event::Trace(trace) => serde_json::to_value(&trace),
         }
         .map_err(|e| e.to_string().into())
     }
@@ -91,7 +92,8 @@ impl Encoder<Event> for JsonSerializer {
         let writer = buffer.writer();
         if self.options.pretty {
             match event {
-                Event::Log(log) => serde_json::to_writer_pretty(writer, &log.to_log_event()),
+                Event::Log(log) => serde_json::to_writer_pretty(writer, &log),
+                // TEMPORARY BRIDGE — OtelMetric needs reduce_tags_to_single via legacy Metric
                 Event::Metric(metric) => {
                     let mut legacy = metric.to_legacy_metric();
                     if self.metric_tag_values == MetricTagValues::Single {
@@ -99,13 +101,12 @@ impl Encoder<Event> for JsonSerializer {
                     }
                     serde_json::to_writer_pretty(writer, &legacy)
                 }
-                Event::Trace(trace) => {
-                    serde_json::to_writer_pretty(writer, &trace.to_log_event())
-                }
+                Event::Trace(trace) => serde_json::to_writer_pretty(writer, &trace),
             }
         } else {
             match event {
-                Event::Log(log) => serde_json::to_writer(writer, &log.to_log_event()),
+                Event::Log(log) => serde_json::to_writer(writer, &log),
+                // TEMPORARY BRIDGE — OtelMetric needs reduce_tags_to_single via legacy Metric
                 Event::Metric(metric) => {
                     let mut legacy = metric.to_legacy_metric();
                     if self.metric_tag_values == MetricTagValues::Single {
@@ -113,7 +114,7 @@ impl Encoder<Event> for JsonSerializer {
                     }
                     serde_json::to_writer(writer, &legacy)
                 }
-                Event::Trace(trace) => serde_json::to_writer(writer, &trace.to_log_event()),
+                Event::Trace(trace) => serde_json::to_writer(writer, &trace),
             }
         }
         .map_err(Into::into)

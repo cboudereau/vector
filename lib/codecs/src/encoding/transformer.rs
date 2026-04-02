@@ -452,7 +452,7 @@ mod tests {
 
     #[test]
     fn only_fields_with_service() {
-        let transformer: Transformer = toml::from_str(r#"only_fields = ["message"]"#).unwrap();
+        let transformer: Transformer = toml::from_str(r#"only_fields = ["body"]"#).unwrap();
         let mut log = LogEvent::default();
         {
             log.insert("body", 1);
@@ -478,7 +478,7 @@ mod tests {
 
         transformer.transform(&mut event);
         let log = event.as_log().to_log_event();
-        assert!(log.contains("message"));
+        assert!(log.contains("body"));
 
         // Event no longer contains the service field.
         assert!(!log.contains("thing.service"));
@@ -519,7 +519,7 @@ mod tests {
 
         transformer.transform(&mut event);
         let log = event.as_log().to_log_event();
-        assert!(log.contains("message"));
+        assert!(log.contains("body"));
 
         // Event no longer contains the service field.
         assert!(!log.contains("thing.service"));

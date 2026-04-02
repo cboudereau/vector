@@ -46,7 +46,7 @@ mod test {
 
     #[test]
     fn log_event_merge_state_example() {
-        let fields = vec!["message".to_string()];
+        let fields = vec!["body".to_string()];
 
         let mut state = LogEventMergeState::new(log_event_with_message("hel"));
         state.merge_in_next_event(log_event_with_message("lo "), &fields);

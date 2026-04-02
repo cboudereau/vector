@@ -68,7 +68,7 @@ fn serialization() {
     event.insert("bar", "baz");
 
     let expected_all = serde_json::json!({
-        "message": "raw log line",
+        "body": "raw log line",
         "foo": "bar",
         "bar": "baz",
         "timestamp": event.get(log_schema().timestamp_key().unwrap().to_string().as_str()),

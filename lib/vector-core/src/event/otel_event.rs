@@ -663,6 +663,14 @@ impl OtelLog {
     // backward-compatible access for code that was written against LogEvent.
     // -----------------------------------------------------------------------
 
+    /// Get a field value by its semantic meaning (looks up schema definition).
+    pub fn get_by_meaning(&self, meaning: impl AsRef<str>) -> Option<Value> {
+        self.metadata
+            .schema_definition()
+            .meaning_path(meaning.as_ref())
+            .and_then(|path| self.get(path))
+    }
+
     /// Get a field value by path.
     /// Builds a Value tree matching to_log_event() layout, without constructing LogEvent.
     pub fn get<'a>(&self, path: impl lookup::lookup_v2::TargetPath<'a>) -> Option<Value> {
@@ -825,8 +833,8 @@ impl OtelLog {
         // In Vector namespace, timestamp may be stored via schema meaning (e.g. @timestamp).
         // Check this FIRST before falling back to time_unix_nano (which may be ingest time).
         if self.namespace() == crate::config::LogNamespace::Vector {
-            if let Some(ts) = self.to_log_event().get_timestamp().cloned() {
-                return Some(ts);
+            if let Some(ts) = self.get_by_meaning("timestamp") {
+                return Some(coerce_to_timestamp(ts));
             }
         }
         if self.record.time_unix_nano != 0 {
@@ -887,15 +895,19 @@ impl OtelLog {
 
     /// Get the LogNamespace from metadata.
     pub fn namespace(&self) -> crate::config::LogNamespace {
-        // LogNamespace is stored in metadata schema definition, not in proto.
-        // Delegate to to_log_event for now — this is the last bridge dependency.
-        self.to_log_event().namespace()
+        if self.metadata.value().get(lookup::path!("vector")).is_some() {
+            crate::config::LogNamespace::Vector
+        } else {
+            crate::config::LogNamespace::Legacy
+        }
     }
 
-    /// Convert to fields — all top-level keys from the legacy layout.
+    /// Convert to fields — recursively flatten nested objects with dotted keys.
     pub fn convert_to_fields(&self) -> Vec<(vrl::value::KeyString, Value)> {
         match self.to_value_legacy_layout() {
-            Value::Object(map) => map.into_iter().collect(),
+            Value::Object(map) => super::util::log::all_fields(&map)
+                .map(|(k, v)| (k, v.clone()))
+                .collect(),
             _ => vec![],
         }
     }
@@ -947,12 +959,10 @@ impl OtelLog {
     /// Try insert - only inserts if the path doesn't exist.
     pub fn try_insert<'a>(
         &mut self,
-        path: impl lookup::lookup_v2::TargetPath<'a>,
+        path: impl lookup::lookup_v2::TargetPath<'a> + Clone,
         value: impl Into<Value>,
     ) {
-        // Check existence via to_value_legacy_layout
-        let val = self.to_value_legacy_layout();
-        if val.get(path.value_path()).is_none() {
+        if self.get(path.clone()).is_none() {
             self.insert(path, value);
         }
     }
@@ -970,12 +980,71 @@ impl OtelLog {
         }
     }
 
-    /// Get all keys from the legacy layout.
+    /// Get all top-level keys from the event.
     pub fn keys(&self) -> Option<std::vec::IntoIter<vrl::value::KeyString>> {
-        match self.to_value_legacy_layout() {
-            Value::Object(map) => Some(map.into_keys().collect::<Vec<_>>().into_iter()),
-            _ => None,
+        let mut keys = Vec::<vrl::value::KeyString>::new();
+
+        // Body: KvList → expand keys; other → "body"
+        if let Some(body) = self.body() {
+            match &body.value {
+                Some(OtelValueKind::KvlistValue(kvl)) => {
+                    for kv in &kvl.values {
+                        keys.push(kv.key.clone().into());
+                    }
+                }
+                Some(_) => keys.push("body".into()),
+                None => {}
+            }
         }
+
+        // Attributes
+        for kv in &self.record.attributes {
+            keys.push(kv.key.clone().into());
+        }
+
+        // Severity
+        if !self.record.severity_text.is_empty() {
+            keys.push("severity_text".into());
+        }
+        if self.record.severity_number != 0 {
+            keys.push("severity_number".into());
+        }
+
+        // Timestamp
+        if self.record.time_unix_nano != 0 || self.record.observed_time_unix_nano != 0
+            || attribute_value(&self.record.attributes, "vector.timestamp_overflow").is_some()
+            || attribute_value(&self.record.attributes, "timestamp").is_some()
+        {
+            keys.push("timestamp".into());
+        }
+
+        // Trace/span IDs
+        if !self.record.trace_id.is_empty() {
+            keys.push("trace_id".into());
+        }
+        if !self.record.span_id.is_empty() {
+            keys.push("span_id".into());
+        }
+
+        // Resource/scope
+        if let Some(ref res) = self.resource {
+            if res.attributes.iter().any(|a| a.key == "source_type") {
+                keys.push("source_type".into());
+            }
+            if res.attributes.iter().any(|a| a.key == "host.name") {
+                keys.push("host".into());
+            }
+            let has_other = res.attributes.iter().any(|a| a.key != "source_type" && a.key != "host.name")
+                || res.dropped_attributes_count != 0;
+            if has_other {
+                keys.push("resource".into());
+            }
+        }
+        if self.scope.is_some() {
+            keys.push("scope".into());
+        }
+
+        Some(keys.into_iter())
     }
 
     /// Check if the log has no body and no attributes.
@@ -983,9 +1052,14 @@ impl OtelLog {
         self.record.body.is_none() && self.record.attributes.is_empty()
     }
 
-    /// Convert to fields unquoted (same as convert_to_fields).
+    /// Convert to fields unquoted — recursively flatten nested objects with unquoted dotted keys.
     pub fn convert_to_fields_unquoted(&self) -> Vec<(vrl::value::KeyString, Value)> {
-        self.convert_to_fields()
+        match self.to_value_legacy_layout() {
+            Value::Object(map) => super::util::log::all_fields_unquoted(&map)
+                .map(|(k, v)| (k, v.clone()))
+                .collect(),
+            _ => vec![],
+        }
     }
 
     /// Get a snapshot of the value (mutations won't persist — use insert/remove).
@@ -1272,57 +1346,12 @@ impl OtelSpan {
     }
 
     // -----------------------------------------------------------------------
-    // LogEvent/TraceEvent-compatible bridge methods
+    // TraceEvent-compatible bridge methods
     // -----------------------------------------------------------------------
 
-    /// Get a field value by path (TraceEvent-compatible bridge).
-    pub fn get<'a>(&self, path: impl lookup::lookup_v2::TargetPath<'a>) -> Option<Value> {
-        self.to_log_event().get(path).cloned()
-    }
-
-    /// Insert a field value by path (TraceEvent-compatible bridge).
-    pub fn insert<'a>(
-        &mut self,
-        path: impl lookup::lookup_v2::TargetPath<'a>,
-        value: impl Into<Value>,
-    ) -> Option<Value> {
-        let mut log = self.to_log_event();
-        let old = log.insert(path, value);
-        let metadata = std::mem::take(&mut self.metadata);
-        *self = Self::from_trace_event(super::TraceEvent::from(log));
-        self.metadata = metadata;
-        old
-    }
-
-    /// Check if a field exists (TraceEvent-compatible bridge).
-    pub fn contains<'a>(&self, path: impl lookup::lookup_v2::TargetPath<'a>) -> bool {
-        self.get(path).is_some()
-    }
-
-    /// Get as an object map (TraceEvent-compatible bridge).
-    pub fn as_map(&self) -> Option<ObjectMap> {
-        match self.to_log_event().value() {
-            Value::Object(map) => Some(map.clone()),
-            _ => None,
-        }
-    }
-
-    /// Parse a path and get a value (TraceEvent-compatible bridge).
-    pub fn parse_path_and_get_value(
-        &self,
-        path: &str,
-    ) -> Result<Option<Value>, vrl::path::PathParseError> {
-        let log = self.to_log_event();
-        log.parse_path_and_get_value(path)
-            .map(|opt| opt.cloned())
-    }
-
-    /// Lossy projection of this OTel span event into a legacy `LogEvent`.
-    ///
-    /// Span name becomes `name`, attributes become top-level fields, and
-    /// trace_id/span_id/timestamps/status are included.  Useful for
-    /// `trace_to_log` and text-oriented serializers.
-    pub fn to_log_event(&self) -> LogEvent {
+    /// Build a Value tree with the same layout as the old to_log_event() —
+    /// no LogEvent constructed.
+    fn to_value_legacy_layout(&self) -> Value {
         let mut map = ObjectMap::new();
 
         if !self.span.name.is_empty() {
@@ -1383,6 +1412,85 @@ impl OtelSpan {
         hoist_resource_fields(&self.resource, &mut map);
         hoist_scope_fields(&self.scope, &mut map);
 
+        Value::Object(map)
+    }
+
+    /// Write back a Value tree (legacy layout) to proto fields.
+    fn apply_value_legacy_layout(&mut self, value: Value) {
+        let map = match value {
+            Value::Object(m) => m,
+            _ => ObjectMap::new(),
+        };
+        let trace = super::TraceEvent::from(LogEvent::from_map(map, self.metadata.clone()));
+        let metadata = std::mem::take(&mut self.metadata);
+        *self = Self::from_trace_event(trace);
+        self.metadata = metadata;
+    }
+
+    /// Get a field value by path.
+    pub fn get<'a>(&self, path: impl lookup::lookup_v2::TargetPath<'a>) -> Option<Value> {
+        match path.prefix() {
+            lookup::PathPrefix::Event => {
+                let value = self.to_value_legacy_layout();
+                value.get(path.value_path()).cloned()
+            }
+            lookup::PathPrefix::Metadata => {
+                self.metadata.value().get(path.value_path()).cloned()
+            }
+        }
+    }
+
+    /// Insert a field value by path.
+    pub fn insert<'a>(
+        &mut self,
+        path: impl lookup::lookup_v2::TargetPath<'a>,
+        value: impl Into<Value>,
+    ) -> Option<Value> {
+        match path.prefix() {
+            lookup::PathPrefix::Event => {
+                let mut val = self.to_value_legacy_layout();
+                let old = val.insert(path.value_path(), value);
+                self.apply_value_legacy_layout(val);
+                old
+            }
+            lookup::PathPrefix::Metadata => {
+                self.metadata.value_mut().insert(path.value_path(), value)
+            }
+        }
+    }
+
+    /// Check if a field exists.
+    pub fn contains<'a>(&self, path: impl lookup::lookup_v2::TargetPath<'a>) -> bool {
+        self.get(path).is_some()
+    }
+
+    /// Get as an object map.
+    pub fn as_map(&self) -> Option<ObjectMap> {
+        match self.to_value_legacy_layout() {
+            Value::Object(map) => Some(map),
+            _ => None,
+        }
+    }
+
+    /// Parse a path and get a value.
+    pub fn parse_path_and_get_value(
+        &self,
+        path: &str,
+    ) -> Result<Option<Value>, vrl::path::PathParseError> {
+        let target_path = vrl::path::parse_target_path(path)?;
+        Ok(self.get(&target_path))
+    }
+
+    /// Lossy projection of this OTel span event into a legacy `LogEvent`.
+    ///
+    /// Span name becomes `name`, attributes become top-level fields, and
+    /// trace_id/span_id/timestamps/status are included.  Useful for
+    /// `trace_to_log` and text-oriented serializers.
+    pub fn to_log_event(&self) -> LogEvent {
+        let map = match self.to_value_legacy_layout() {
+            Value::Object(m) => m,
+            _ => ObjectMap::new(),
+        };
         LogEvent::from_map(map, self.metadata.clone())
     }
 
@@ -1834,70 +1942,70 @@ impl OtelMetric {
             })
     }
 
-    /// Get the metric value (Metric-compatible bridge).
+    /// Get the metric value directly from proto.
     pub fn value(&self) -> super::MetricValue {
-        self.clone().to_legacy_metric().value().clone()
+        self.extract_metric_data().1
     }
 
-    /// Get the metric kind (Metric-compatible bridge).
+    /// Get the metric kind directly from proto.
     pub fn kind(&self) -> super::MetricKind {
-        self.clone().to_legacy_metric().kind()
+        self.extract_metric_data().0
     }
 
-    /// Get a tag value (Metric-compatible bridge).
+    /// Get a tag value by searching resource, scope, and data point attributes.
     pub fn tag_value(&self, key: &str) -> Option<String> {
-        self.clone().to_legacy_metric().tag_value(key)
-    }
-
-    /// Convert this `OtelMetric` back to a legacy `Metric`.
-    ///
-    /// Temporary bridge for sinks/transforms that still expect `Event::Metric`.
-    pub fn to_legacy_metric(self) -> super::Metric {
-        use chrono::{DateTime, TimeZone, Utc};
-        use opentelemetry_proto::tonic::metrics::v1::{
-            metric, number_data_point::Value as NDPValue, AggregationTemporality,
-        };
-        use super::{MetricKind, MetricValue, MetricTags};
-        use super::metric::{Bucket, Quantile};
-
-        let nanos_to_ts = |nanos: u64| -> Option<DateTime<Utc>> {
-            if nanos == 0 { None } else { Some(Utc.timestamp_nanos(nanos as i64)) }
-        };
-
-        let metric_name = self.metric.name.clone();
-        let mut namespace: Option<String> = None;
-
-        let mut tags = MetricTags::default();
-        if let Some(ref res) = self.resource {
-            if let Some(ns_val) = attribute_value(&res.attributes, "metric.namespace") {
-                if let Some(OtelValueKind::StringValue(ns)) = ns_val.value.as_ref() {
-                    namespace = Some(ns.clone());
-                }
+        // Check data point attributes first
+        let dp_attrs = self.first_data_point_attributes();
+        if let Some(av) = attribute_value(dp_attrs, key) {
+            if let Some(ref v) = av.value {
+                return Some(otel_value_to_tag_string(v));
             }
-            for attr in &res.attributes {
-                if attr.key == "metric.namespace" {
-                    continue;
-                }
-                if let Some(ref val) = attr.value {
-                    if let Some(ref v) = val.value {
-                        tags.insert(
-                            format!("resource.{}", attr.key),
-                            otel_value_to_tag_string(v),
-                        );
+        }
+        // Check resource attributes (prefixed with "resource." in legacy)
+        if let Some(stripped) = key.strip_prefix("resource.") {
+            if let Some(ref res) = self.resource {
+                if let Some(av) = attribute_value(&res.attributes, stripped) {
+                    if let Some(ref v) = av.value {
+                        return Some(otel_value_to_tag_string(v));
                     }
                 }
             }
         }
+        // Check scope attributes
         if let Some(ref scope) = self.scope {
-            if !scope.name.is_empty() {
-                tags.insert("scope.name".to_string(), scope.name.clone());
-            }
-            if !scope.version.is_empty() {
-                tags.insert("scope.version".to_string(), scope.version.clone());
+            match key {
+                "scope.name" if !scope.name.is_empty() => return Some(scope.name.clone()),
+                "scope.version" if !scope.version.is_empty() => return Some(scope.version.clone()),
+                _ => {}
             }
         }
+        None
+    }
 
-        let (kind, value, timestamp, dp_tags) = match self.metric.data.as_ref() {
+    /// Extract (MetricKind, MetricValue, timestamp, data-point attributes) from proto.
+    ///
+    /// Single source of truth for metric data interpretation — used by `value()`,
+    /// `kind()`, and `to_legacy_metric()`.
+    fn extract_metric_data(
+        &self,
+    ) -> (
+        super::MetricKind,
+        super::MetricValue,
+        Option<chrono::DateTime<chrono::Utc>>,
+        Option<Vec<KeyValue>>,
+    ) {
+        use chrono::{TimeZone, Utc};
+        use opentelemetry_proto::tonic::metrics::v1::{
+            metric, number_data_point::Value as NDPValue, AggregationTemporality,
+        };
+        use super::{MetricKind, MetricValue};
+        use super::metric::{Bucket, Quantile};
+
+        let nanos_to_ts = |nanos: u64| -> Option<chrono::DateTime<Utc>> {
+            if nanos == 0 { None } else { Some(Utc.timestamp_nanos(nanos as i64)) }
+        };
+
+        match self.metric.data.as_ref() {
             Some(metric::Data::Sum(sum)) => {
                 let dp = sum.data_points.first();
                 let val = dp.and_then(|p| p.value.as_ref()).map(|v| match v {
@@ -1958,9 +2066,7 @@ impl OtelMetric {
                         .unwrap_or(MetricKind::Absolute);
                     let mut dp_attrs = dp.map(|p| p.attributes.clone());
                     if let Some(ref mut attrs) = dp_attrs {
-                        attrs.retain(|a| {
-                            !a.key.starts_with("vector.")
-                        });
+                        attrs.retain(|a| !a.key.starts_with("vector."));
                     }
                     (kind, MetricValue::Set { values }, ts, dp_attrs)
                 } else {
@@ -2027,9 +2133,7 @@ impl OtelMetric {
                         .unwrap_or_default();
                     let mut dp_attrs = dp.map(|p| p.attributes.clone());
                     if let Some(ref mut attrs) = dp_attrs {
-                        attrs.retain(|a| {
-                            a.key != "vector.metric_type" && a.key != "vector.statistic"
-                        });
+                        attrs.retain(|a| a.key != "vector.metric_type" && a.key != "vector.statistic");
                     }
                     (kind, MetricValue::Distribution { samples, statistic }, ts, dp_attrs)
                 } else {
@@ -2094,7 +2198,49 @@ impl OtelMetric {
                 (kind, MetricValue::AggregatedHistogram { buckets, count, sum: sum_val }, ts, dp.map(|p| p.attributes.clone()))
             }
             None => (MetricKind::Absolute, MetricValue::Gauge { value: 0.0 }, None, None),
-        };
+        }
+    }
+
+    /// Convert this `OtelMetric` back to a legacy `Metric`.
+    ///
+    /// Temporary bridge for sinks/transforms that still expect `Event::Metric`.
+    pub fn to_legacy_metric(self) -> super::Metric {
+        use super::MetricTags;
+
+        let metric_name = self.metric.name.clone();
+        let mut namespace: Option<String> = None;
+
+        let mut tags = MetricTags::default();
+        if let Some(ref res) = self.resource {
+            if let Some(ns_val) = attribute_value(&res.attributes, "metric.namespace") {
+                if let Some(OtelValueKind::StringValue(ns)) = ns_val.value.as_ref() {
+                    namespace = Some(ns.clone());
+                }
+            }
+            for attr in &res.attributes {
+                if attr.key == "metric.namespace" {
+                    continue;
+                }
+                if let Some(ref val) = attr.value {
+                    if let Some(ref v) = val.value {
+                        tags.insert(
+                            format!("resource.{}", attr.key),
+                            otel_value_to_tag_string(v),
+                        );
+                    }
+                }
+            }
+        }
+        if let Some(ref scope) = self.scope {
+            if !scope.name.is_empty() {
+                tags.insert("scope.name".to_string(), scope.name.clone());
+            }
+            if !scope.version.is_empty() {
+                tags.insert("scope.version".to_string(), scope.version.clone());
+            }
+        }
+
+        let (kind, value, timestamp, dp_tags) = self.extract_metric_data();
 
         if let Some(dp_attrs) = dp_tags {
             for attr in dp_attrs {
@@ -2261,18 +2407,18 @@ impl GetEventCountTags for OtelMetric {
     }
 }
 
-// Compare OtelLog via `to_log_event()` equivalence so that two events
+// Compare OtelLog via legacy layout equivalence so that two events
 // carrying the same logical data but stored differently in proto
 // (e.g., source_type in resource vs record.attributes) compare equal.
 impl EventDataEq for OtelLog {
     fn event_data_eq(&self, other: &Self) -> bool {
-        self.to_log_event().event_data_eq(&other.to_log_event())
+        self.to_value_legacy_layout() == other.to_value_legacy_layout()
     }
 }
 
 impl EventDataEq for OtelSpan {
     fn event_data_eq(&self, other: &Self) -> bool {
-        self.to_log_event().event_data_eq(&other.to_log_event())
+        self.to_value_legacy_layout() == other.to_value_legacy_layout()
     }
 }
 
@@ -2286,13 +2432,13 @@ impl EventDataEq for OtelMetric {
 
 impl Serialize for OtelLog {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        self.to_log_event().serialize(serializer)
+        self.to_value_legacy_layout().serialize(serializer)
     }
 }
 
 impl Serialize for OtelSpan {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        self.to_log_event().serialize(serializer)
+        self.to_value_legacy_layout().serialize(serializer)
     }
 }
 
@@ -2590,9 +2736,10 @@ mod tests {
         let json = serde_json::to_string(&event).expect("serialize");
 
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
-        assert!(v.get("record").is_some(), "expected 'record' key, got: {json}");
-        assert_eq!(v["record"]["severityText"], "INFO");
-        assert!(v["resource"].is_object(), "expected 'resource' object");
+        // Serialize produces the legacy layout (flattened fields, resource as sub-object)
+        assert_eq!(v["body"], "hello");
+        assert_eq!(v["severity_text"], "INFO");
+        assert_eq!(v["resource"]["service.name"], "test-svc");
     }
 
     #[test]
@@ -2674,5 +2821,94 @@ mod tests {
 
         let metric = event.try_into_metric().expect("should convert back");
         assert_eq!(metric.name(), "test");
+    }
+
+    #[test]
+    fn get_by_meaning_resolves_schema_meaning() {
+        use std::sync::Arc;
+        use crate::config::LogNamespace;
+
+        // Create an OtelLog and insert a field at a custom path
+        let mut event = OtelLog::from_log_event(LogEvent::from("test body"));
+        event.insert(
+            &vrl::path::parse_target_path("@timestamp").unwrap(),
+            Value::Bytes("2001-02-03T04:05:06Z".into()),
+        );
+
+        // Set Vector namespace metadata
+        event.metadata_mut().value_mut().insert(
+            lookup::path!("vector", "ns"),
+            Value::Bytes("true".into()),
+        );
+        assert_eq!(event.namespace(), LogNamespace::Vector);
+
+        // Set schema meaning: "timestamp" → "@timestamp"
+        let schema = event
+            .metadata()
+            .schema_definition()
+            .as_ref()
+            .clone()
+            .with_meaning(
+                vrl::path::parse_target_path("@timestamp").unwrap(),
+                "timestamp",
+            );
+        event
+            .metadata_mut()
+            .set_schema_definition(&Arc::new(schema));
+
+        // get_by_meaning should resolve the schema path
+        let val = event.get_by_meaning("timestamp");
+        assert!(val.is_some(), "expected Some, got None");
+        assert_eq!(val.unwrap(), Value::Bytes("2001-02-03T04:05:06Z".into()));
+
+        // Non-existent meaning returns None
+        assert!(event.get_by_meaning("nonexistent").is_none());
+    }
+
+    #[test]
+    fn tag_value_searches_data_point_resource_and_scope() {
+        use crate::event::{Metric, MetricKind, MetricValue};
+
+        let m = Metric::new(
+            "test_metric",
+            MetricKind::Incremental,
+            MetricValue::Counter { value: 1.0 },
+        )
+        .with_namespace(Some("ns"))
+        .with_tags(Some(
+            vec![("env".to_string(), "prod".to_string())]
+                .into_iter()
+                .collect(),
+        ));
+
+        let otel = OtelMetric::from_legacy_metric(m);
+
+        // Data point attribute lookup
+        assert_eq!(otel.tag_value("env"), Some("prod".to_string()));
+
+        // Resource attribute lookup (prefixed with "resource.")
+        // from_legacy_metric stores namespace in resource as "metric.namespace"
+        // but other resource attrs are prefixed with "resource." in tags
+        assert!(otel.tag_value("nonexistent").is_none());
+
+        // Scope lookup
+        let otel_with_scope = OtelMetric::from_parts(
+            otel.metric.clone(),
+            otel.resource.clone(),
+            Some(InstrumentationScope {
+                name: "my-scope".into(),
+                version: "1.0".into(),
+                ..Default::default()
+            }),
+            EventMetadata::default(),
+        );
+        assert_eq!(
+            otel_with_scope.tag_value("scope.name"),
+            Some("my-scope".to_string())
+        );
+        assert_eq!(
+            otel_with_scope.tag_value("scope.version"),
+            Some("1.0".to_string())
+        );
     }
 }

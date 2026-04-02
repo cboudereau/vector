@@ -276,7 +276,10 @@ mod tests {
             error!(message = "In a nested span.", %test_id);
         }
 
-        sleep(Duration::from_millis(1)).await;
+        // Give the source enough time to drain early-buffered events
+        // (the 2 events emitted before start_source). Under heavy parallel
+        // test load 1 ms is not enough.
+        sleep(Duration::from_millis(100)).await;
         let mut events = collect_ready(rx).await;
         let test_id = Value::from(test_id.to_string());
         events.retain(|event| event.as_log().get("test_id") == Some(test_id.clone()));

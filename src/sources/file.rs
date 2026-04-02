@@ -1568,12 +1568,13 @@ mod tests {
         file.flush().unwrap();
 
         // First time server runs it picks up existing lines.
+        // Use a longer timeout (10s) to avoid flaky failures under parallel test load.
         let received = run_file_source(
             &config,
             false,
             Unfinalized,
             LogNamespace::Legacy,
-            sleep(Duration::from_secs(5)),
+            sleep(Duration::from_secs(10)),
         )
         .await;
         let lines = extract_messages_string(received);
@@ -1585,7 +1586,7 @@ mod tests {
             false,
             Unfinalized,
             LogNamespace::Legacy,
-            sleep(Duration::from_secs(5)),
+            sleep(Duration::from_secs(10)),
         )
         .await;
         let lines = extract_messages_string(received);

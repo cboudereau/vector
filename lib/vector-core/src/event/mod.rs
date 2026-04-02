@@ -260,6 +260,7 @@ impl Event {
 
     /// Convert to a legacy-compatible JSON value for backward-compatible serialization.
     /// Wraps the event in `{"log": ...}`, `{"metric": ...}`, or `{"trace": ...}`.
+    /// TEMPORARY BRIDGE — serialize OTel types directly (Phase 4).
     pub fn to_legacy_json_value(self) -> serde_json::Value {
         match self {
             Event::Log(log) => {

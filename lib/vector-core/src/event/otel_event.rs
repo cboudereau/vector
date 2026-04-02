@@ -657,10 +657,11 @@ impl OtelLog {
     }
 
     // -----------------------------------------------------------------------
-    // LogEvent-compatible bridge methods
+    // Field access methods
     //
-    // These delegate to `to_log_event()` / `from_log_event()` to provide
-    // backward-compatible access for code that was written against LogEvent.
+    // These use `to_value_legacy_layout()` to build a flat Value tree from
+    // proto fields. Target state: replace with direct proto accessors once
+    // all external callers (codecs, sinks, transforms) are migrated.
     // -----------------------------------------------------------------------
 
     /// Get a field value by its semantic meaning (looks up schema definition).
@@ -802,8 +803,9 @@ impl OtelLog {
 
     /// Write back a Value tree (legacy layout) to proto fields.
     fn apply_value_legacy_layout(&mut self, value: Value) {
-        // Round-trip through from_log_event for now — same behavior as before
-        // but without constructing the intermediate LogEvent for get().
+        // TODO(bridge-removal): Replace with direct proto field mutation.
+        // Currently round-trips through from_log_event to parse the flat map
+        // back into proto fields (body, timestamp, resource attrs, etc.).
         let log = LogEvent::from_map(
             match value {
                 Value::Object(m) => m,
@@ -1289,7 +1291,7 @@ impl OtelSpan {
     }
 
     // -----------------------------------------------------------------------
-    // TraceEvent-compatible bridge methods
+    // Field access methods (same pattern as OtelLog — see comment above)
     // -----------------------------------------------------------------------
 
     /// Build a Value tree with the same layout as the old to_log_event() —
@@ -1845,10 +1847,14 @@ impl OtelMetric {
     }
 
     // -----------------------------------------------------------------------
-    // Metric-compatible bridge methods
+    // Metric accessors
+    //
+    // `value()`, `kind()`, `tag_value()` read proto directly via
+    // `extract_metric_data()`. `timestamp()` and `namespace()` also read
+    // proto directly. `tags()` is a broken stub — see its doc comment.
     // -----------------------------------------------------------------------
 
-    /// Get the metric timestamp (Metric-compatible bridge).
+    /// Get the metric timestamp from the first data point.
     pub fn timestamp(&self) -> Option<chrono::DateTime<chrono::Utc>> {
         self.to_legacy_metric_ref_timestamp()
     }
@@ -1869,12 +1875,17 @@ impl OtelMetric {
         chrono::DateTime::from_timestamp(secs, nsecs)
     }
 
-    /// Get the metric tags (Metric-compatible bridge).
+    /// Get the metric tags.
+    ///
+    /// BUG: Always returns `None`. OtelMetric stores tags as proto data point
+    /// attributes, not as `MetricTags`. Fixing requires changing the return type
+    /// or caching a `MetricTags` projection. Callers that need tags should use
+    /// `tag_value(key)` or `first_data_point_attributes()` instead.
     pub fn tags(&self) -> Option<&super::metric::MetricTags> {
         None
     }
 
-    /// Get the metric namespace (Metric-compatible bridge).
+    /// Get the metric namespace from the `metric.namespace` resource attribute.
     pub fn namespace(&self) -> Option<&str> {
         self.resource
             .as_ref()

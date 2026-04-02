@@ -24,6 +24,7 @@ impl event_array::Events {
     fn from_logs(logs: array::LogArray) -> Self {
         let logs = logs
             .into_iter()
+            // TEMPORARY BRIDGE — serialize OtelLog proto directly (Phase 4)
             .map(|otel| Log::from(otel.to_log_event()))
             .collect();
         Self::Logs(LogArray { logs })
@@ -32,6 +33,7 @@ impl event_array::Events {
     fn from_metrics(metrics: array::MetricArray) -> Self {
         let metrics = metrics
             .into_iter()
+            // TEMPORARY BRIDGE — serialize OtelMetric proto directly (Phase 4)
             .map(|otel| Metric::from(otel.to_legacy_metric()))
             .collect();
         Self::Metrics(MetricArray { metrics })
@@ -41,6 +43,7 @@ impl event_array::Events {
         let traces = traces
             .into_iter()
             .map(|otel| {
+                // TEMPORARY BRIDGE — serialize OtelSpan proto directly (Phase 4)
                 let te: super::TraceEvent = super::TraceEvent::from(otel.to_log_event());
                 Trace::from(te)
             })
@@ -511,6 +514,7 @@ impl From<super::Event> for Event {
 impl From<super::Event> for WithMetadata<Event> {
     fn from(event: super::Event) -> Self {
         match event {
+            // TEMPORARY BRIDGE — serialize OTel types to proto directly (Phase 4)
             super::Event::Log(otel_log) => {
                 WithMetadata::<Log>::from(otel_log.to_log_event()).into()
             }

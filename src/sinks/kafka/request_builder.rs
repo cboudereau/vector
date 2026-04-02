@@ -68,9 +68,8 @@ fn get_key(event: &Event, key_field: Option<&OwnedTargetPath>) -> Option<Bytes> 
     key_field.and_then(|key_field| match event {
         Event::Log(log) => log.get(key_field).map(|value| value.coerce_to_bytes()),
         Event::Metric(metric) => metric
-            .tags()
-            .and_then(|tags| tags.get(key_field.to_string().as_str()))
-            .map(|value| value.to_owned().into()),
+            .tag_value(key_field.to_string().as_str())
+            .map(|value| value.into()),
         _ => None,
     })
 }

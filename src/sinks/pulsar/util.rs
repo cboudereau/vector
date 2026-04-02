@@ -42,8 +42,8 @@ fn get_key(event: &Event, partition_key_field: &Option<OptionalTargetPath>) -> O
             Event::Metric(metric) => partition_key_field
                 .path
                 .as_ref()
-                .and_then(|path| metric.tags().and_then(|tags| tags.get(&path.to_string())))
-                .map(|value| value.to_owned().into()),
+                .and_then(|path| metric.tag_value(&path.to_string()))
+                .map(|value| value.into()),
             _ => None,
         })
 }

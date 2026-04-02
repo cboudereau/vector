@@ -1875,14 +1875,54 @@ impl OtelMetric {
         chrono::DateTime::from_timestamp(secs, nsecs)
     }
 
-    /// Get the metric tags.
+    /// Build MetricTags from proto data point, resource, and scope attributes.
     ///
-    /// BUG: Always returns `None`. OtelMetric stores tags as proto data point
-    /// attributes, not as `MetricTags`. Fixing requires changing the return type
-    /// or caching a `MetricTags` projection. Callers that need tags should use
-    /// `tag_value(key)` or `first_data_point_attributes()` instead.
-    pub fn tags(&self) -> Option<&super::metric::MetricTags> {
-        None
+    /// Returns an owned `MetricTags` (not a reference) because the tags are
+    /// assembled from multiple proto fields. Returns `None` if there are no
+    /// tags at all.
+    pub fn tags(&self) -> Option<super::metric::MetricTags> {
+        let mut tags = super::MetricTags::default();
+
+        // Resource attributes (prefixed with "resource.")
+        if let Some(ref res) = self.resource {
+            for attr in &res.attributes {
+                if attr.key == "metric.namespace" {
+                    continue;
+                }
+                if let Some(ref val) = attr.value {
+                    if let Some(ref v) = val.value {
+                        tags.insert(
+                            format!("resource.{}", attr.key),
+                            otel_value_to_tag_string(v),
+                        );
+                    }
+                }
+            }
+        }
+
+        // Scope attributes
+        if let Some(ref scope) = self.scope {
+            if !scope.name.is_empty() {
+                tags.insert("scope.name".to_string(), scope.name.clone());
+            }
+            if !scope.version.is_empty() {
+                tags.insert("scope.version".to_string(), scope.version.clone());
+            }
+        }
+
+        // Data point attributes
+        for attr in self.first_data_point_attributes() {
+            if attr.key.starts_with("vector.") {
+                continue;
+            }
+            if let Some(ref val) = attr.value {
+                insert_otel_attr_as_tag_from_any_value(&mut tags, &attr.key, val);
+            } else {
+                tags.replace(attr.key.clone(), super::metric::TagValue::Bare);
+            }
+        }
+
+        if tags.is_empty() { None } else { Some(tags) }
     }
 
     /// Get the metric namespace from the `metric.namespace` resource attribute.
@@ -2864,5 +2904,37 @@ mod tests {
             otel_with_scope.tag_value("scope.version"),
             Some("1.0".to_string())
         );
+    }
+
+    #[test]
+    fn tags_builds_metric_tags_from_proto() {
+        use crate::event::{Metric, MetricKind, MetricValue};
+
+        let m = Metric::new(
+            "test_metric",
+            MetricKind::Incremental,
+            MetricValue::Counter { value: 1.0 },
+        )
+        .with_tags(Some(
+            vec![
+                ("env".to_string(), "prod".to_string()),
+                ("region".to_string(), "us-east".to_string()),
+            ]
+            .into_iter()
+            .collect(),
+        ));
+
+        let otel = OtelMetric::from_legacy_metric(m);
+        let tags = otel.tags().expect("should have tags");
+        assert_eq!(tags.get("env"), Some("prod"));
+        assert_eq!(tags.get("region"), Some("us-east"));
+
+        // Empty metric has no tags
+        let empty = OtelMetric::from_legacy_metric(Metric::new(
+            "empty",
+            MetricKind::Absolute,
+            MetricValue::Gauge { value: 0.0 },
+        ));
+        assert!(empty.tags().is_none());
     }
 }

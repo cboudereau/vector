@@ -69,8 +69,8 @@ impl Encoder<Event> for AvroSerializer {
     type Error = vector_common::Error;
 
     fn encode(&mut self, event: Event, buffer: &mut BytesMut) -> Result<(), Self::Error> {
-        let log = event.into_log_coerce().to_log_event();
-        let value = apache_avro::to_value(log)?;
+        let log = event.into_log_coerce();
+        let value = apache_avro::to_value(&log)?;
         let value = value.resolve(&self.schema)?;
         let bytes = apache_avro::to_avro_datum(&self.schema, value)?;
         buffer.put_slice(&bytes);

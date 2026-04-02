@@ -7,7 +7,7 @@ use tokio_util::codec::Encoder;
 use vector_config_macros::configurable_component;
 use vector_core::{
     config::DataType,
-    event::Event,
+    event::{Event, Value},
     schema,
 };
 use vrl::protobuf::{
@@ -118,17 +118,13 @@ impl Encoder<Event> for ProtobufSerializer {
     fn encode(&mut self, event: Event, buffer: &mut BytesMut) -> Result<(), Self::Error> {
         let message = match event {
             Event::Log(otel_log) => {
-                let log = otel_log.to_log_event();
-                encode_message(&self.message_descriptor, log.into_parts().0, &self.options)
+                let val = otel_log.value();
+                encode_message(&self.message_descriptor, val, &self.options)
             }
             Event::Metric(_) => unimplemented!(),
             Event::Trace(otel_span) => {
-                let log = otel_span.to_log_event();
-                encode_message(
-                    &self.message_descriptor,
-                    log.into_parts().0,
-                    &self.options,
-                )
+                let val = Value::Object(otel_span.as_map().unwrap_or_default());
+                encode_message(&self.message_descriptor, val, &self.options)
             }
         }?;
         message.encode(buffer).map_err(Into::into)

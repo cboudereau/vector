@@ -8,7 +8,7 @@ use tokio_util::codec::Encoder;
 use vector_config_macros::configurable_component;
 use vector_core::{
     config::DataType,
-    event::{Event, LogEvent, Value},
+    event::{Event, OtelLog, Value},
     schema,
 };
 
@@ -290,7 +290,7 @@ impl Encoder<Event> for CefSerializer {
     type Error = vector_common::Error;
 
     fn encode(&mut self, event: Event, buffer: &mut BytesMut) -> Result<(), Self::Error> {
-        let log = event.into_log_coerce().to_log_event();
+        let log = event.into_log_coerce();
 
         let severity: u8 = match get_log_event_value(&log, &self.severity).parse() {
             Err(err) => {
@@ -345,15 +345,14 @@ impl Encoder<Event> for CefSerializer {
     }
 }
 
-fn get_log_event_value(log: &LogEvent, field: &ConfigTargetPath) -> String {
+fn get_log_event_value(log: &OtelLog, field: &ConfigTargetPath) -> String {
     match log.get(field) {
-        Some(Value::Bytes(bytes)) => String::from_utf8_lossy(bytes).to_string(),
+        Some(Value::Bytes(bytes)) => String::from_utf8_lossy(&bytes).to_string(),
         Some(Value::Integer(int)) => int.to_string(),
         Some(Value::Float(float)) => float.to_string(),
         Some(Value::Boolean(bool)) => bool.to_string(),
         Some(Value::Timestamp(timestamp)) => timestamp.to_rfc3339_opts(SecondsFormat::AutoSi, true),
         Some(Value::Null) => String::from(""),
-        // Other value types: Array, Regex, Object are not supported by the CEF format.
         Some(_) => String::from(""),
         None => String::from(""),
     }

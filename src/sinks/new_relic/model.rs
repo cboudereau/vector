@@ -285,17 +285,15 @@ impl TryFrom<Vec<Event>> for LogsApiModel {
         let logs_array: Vec<LogMessage> = buf_events
             .into_iter()
             .filter_map(|event| {
-                let Some(otel_log) = event.try_into_log_coerce() else {
+                let Some(mut otel_log) = event.try_into_log_coerce() else {
                     num_non_log_events += 1;
                     return None;
                 };
-                let mut log = otel_log.to_log_event();
 
-                let message = get_message_string(log.remove(message_key));
-                let timestamp = log.remove(timestamp_key).and_then(map_timestamp_value);
+                let message = get_message_string(otel_log.remove(message_key));
+                let timestamp = otel_log.remove(timestamp_key).and_then(map_timestamp_value);
 
-                let (value, _metadata) = log.into_parts();
-                let Some(mut attributes) = value.into_object() else {
+                let Some(mut attributes) = otel_log.as_map() else {
                     num_non_object_events += 1;
                     return None;
                 };

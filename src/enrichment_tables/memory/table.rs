@@ -417,9 +417,9 @@ impl StreamSink<Event> for Memory {
 
                     let finalizers = event.take_finalizers();
 
-                    let log = event.into_log_coerce().to_log_event();
+                    let log = event.into_log_coerce();
 
-                    if let (Value::Object(map), _) = log.into_parts() {
+                    if let Some(map) = log.as_map() {
                         self.handle_value(map)
                     };
 

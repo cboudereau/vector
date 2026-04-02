@@ -558,7 +558,7 @@ where
 
         let log_namespace = event
             .maybe_as_log()
-            .map(|log| log.to_log_event().namespace())
+            .map(|log| log.namespace())
             .unwrap_or(LogNamespace::Legacy);
 
         let mut target = VrlTarget::new(

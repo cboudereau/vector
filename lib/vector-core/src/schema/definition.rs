@@ -549,11 +549,7 @@ mod test_utils {
         /// If the definition is not valid, debug info will be returned.
         pub fn is_valid_for_event(&self, event: &Event) -> Result<(), String> {
             if let Some(otel_log) = event.maybe_as_log() {
-                let actual_kind = if otel_log.namespace() == crate::config::LogNamespace::Vector {
-                    Kind::from(otel_log.value())
-                } else {
-                    Kind::from(otel_log.to_log_event().value())
-                };
+                let actual_kind = Kind::from(otel_log.value());
                 if let Err(path) = self.event_kind.is_superset(&actual_kind) {
                     return Result::Err(format!(
                         "Event value doesn't match at path: {}\n\nEvent type at path = {:?}\n\nDefinition at path = {:?}",

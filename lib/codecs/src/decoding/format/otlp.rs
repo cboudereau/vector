@@ -163,7 +163,7 @@ impl Deserializer for OtlpDeserializer {
                 OtlpSignalType::Logs => {
                     if let Ok(events) = self.logs_deserializer.parse(bytes.clone(), log_namespace)
                         && let Some(event) = events.first()
-                        && event.as_log().to_log_event().get(RESOURCE_LOGS_JSON_FIELD).is_some()
+                        && event.as_log().parse_path_and_get_value(RESOURCE_LOGS_JSON_FIELD).ok().flatten().is_some()
                     {
                         return Ok(events);
                     }
@@ -173,7 +173,7 @@ impl Deserializer for OtlpDeserializer {
                         .metrics_deserializer
                         .parse(bytes.clone(), log_namespace)
                         && let Some(event) = events.first()
-                        && event.as_log().to_log_event().get(RESOURCE_METRICS_JSON_FIELD).is_some()
+                        && event.as_log().parse_path_and_get_value(RESOURCE_METRICS_JSON_FIELD).ok().flatten().is_some()
                     {
                         return Ok(events);
                     }
@@ -182,7 +182,7 @@ impl Deserializer for OtlpDeserializer {
                     if let Ok(mut events) =
                         self.traces_deserializer.parse(bytes.clone(), log_namespace)
                         && let Some(event) = events.first()
-                        && event.as_log().to_log_event().get(RESOURCE_SPANS_JSON_FIELD).is_some()
+                        && event.as_log().parse_path_and_get_value(RESOURCE_SPANS_JSON_FIELD).ok().flatten().is_some()
                     {
                         if let Some(Event::Log(otel_log)) = events.pop() {
                             let trace_event = Event::Trace(OtelSpan::from_trace_event(otel_log.to_log_event().into()));

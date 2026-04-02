@@ -159,18 +159,14 @@ impl FunctionTransform for Sample {
 
         let value = self.key_field.as_ref().and_then(|key_field| match &event {
             Event::Log(otel_log) => {
-                let log = otel_log.to_log_event();
-                log.parse_path_and_get_value(key_field.as_str())
+                otel_log.parse_path_and_get_value(key_field.as_str())
                     .ok()
                     .flatten()
-                    .cloned()
             }
             Event::Trace(otel_span) => {
-                let log = otel_span.to_log_event();
-                log.parse_path_and_get_value(key_field.as_str())
+                otel_span.parse_path_and_get_value(key_field.as_str())
                     .ok()
                     .flatten()
-                    .cloned()
             }
             Event::Metric(_) => {
                 panic!("component can never receive metric events")

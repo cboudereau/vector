@@ -981,70 +981,13 @@ impl OtelLog {
     }
 
     /// Get all top-level keys from the event.
+    /// Uses to_value_legacy_layout() to guarantee the same deduplication
+    /// semantics as other accessors (e.g. attribute key colliding with body key).
     pub fn keys(&self) -> Option<std::vec::IntoIter<vrl::value::KeyString>> {
-        let mut keys = Vec::<vrl::value::KeyString>::new();
-
-        // Body: KvList → expand keys; other → "body"
-        if let Some(body) = self.body() {
-            match &body.value {
-                Some(OtelValueKind::KvlistValue(kvl)) => {
-                    for kv in &kvl.values {
-                        keys.push(kv.key.clone().into());
-                    }
-                }
-                Some(_) => keys.push("body".into()),
-                None => {}
-            }
+        match self.to_value_legacy_layout() {
+            Value::Object(map) => Some(map.into_keys().collect::<Vec<_>>().into_iter()),
+            _ => None,
         }
-
-        // Attributes
-        for kv in &self.record.attributes {
-            keys.push(kv.key.clone().into());
-        }
-
-        // Severity
-        if !self.record.severity_text.is_empty() {
-            keys.push("severity_text".into());
-        }
-        if self.record.severity_number != 0 {
-            keys.push("severity_number".into());
-        }
-
-        // Timestamp
-        if self.record.time_unix_nano != 0 || self.record.observed_time_unix_nano != 0
-            || attribute_value(&self.record.attributes, "vector.timestamp_overflow").is_some()
-            || attribute_value(&self.record.attributes, "timestamp").is_some()
-        {
-            keys.push("timestamp".into());
-        }
-
-        // Trace/span IDs
-        if !self.record.trace_id.is_empty() {
-            keys.push("trace_id".into());
-        }
-        if !self.record.span_id.is_empty() {
-            keys.push("span_id".into());
-        }
-
-        // Resource/scope
-        if let Some(ref res) = self.resource {
-            if res.attributes.iter().any(|a| a.key == "source_type") {
-                keys.push("source_type".into());
-            }
-            if res.attributes.iter().any(|a| a.key == "host.name") {
-                keys.push("host".into());
-            }
-            let has_other = res.attributes.iter().any(|a| a.key != "source_type" && a.key != "host.name")
-                || res.dropped_attributes_count != 0;
-            if has_other {
-                keys.push("resource".into());
-            }
-        }
-        if self.scope.is_some() {
-            keys.push("scope".into());
-        }
-
-        Some(keys.into_iter())
     }
 
     /// Check if the log has no body and no attributes.

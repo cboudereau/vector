@@ -278,7 +278,8 @@ mod tests {
 
         // Give the source enough time to drain early-buffered events
         // (the 2 events emitted before start_source). Under heavy parallel
-        // test load 1 ms is not enough.
+        // test load 1 ms is not enough — observed failures at 1 ms where
+        // only 2 of 4 events were ready. 100 ms provides sufficient margin.
         sleep(Duration::from_millis(100)).await;
         let mut events = collect_ready(rx).await;
         let test_id = Value::from(test_id.to_string());

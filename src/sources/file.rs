@@ -1568,7 +1568,9 @@ mod tests {
         file.flush().unwrap();
 
         // First time server runs it picks up existing lines.
-        // Use a longer timeout (10s) to avoid flaky failures under parallel test load.
+        // 10s (up from 5s) — the file source needs time to discover the file
+        // and emit compliance events; under parallel test load 5s was not
+        // always sufficient, causing missing BytesReceived/EventsReceived.
         let received = run_file_source(
             &config,
             false,

@@ -107,7 +107,7 @@ where
             finalizers: processed_event.event.take_finalizers(),
             partition_key: processed_event.metadata.partition_key,
         };
-        let event = Event::from(processed_event.event);
+        let event = Event::Log(processed_event.event);
         let builder = RequestMetadataBuilder::from_event(&event);
 
         (kinesis_metadata, builder, event)

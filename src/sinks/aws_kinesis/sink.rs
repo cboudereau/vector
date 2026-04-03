@@ -2,6 +2,7 @@ use std::{borrow::Cow, fmt::Debug, marker::PhantomData};
 
 use rand::random;
 use vector_lib::lookup::lookup_v2::ConfigValuePath;
+use vector_lib::event::OtelLog;
 use vrl::path::PathPrefix;
 
 use super::{
@@ -16,7 +17,7 @@ use crate::{
     },
 };
 
-pub type KinesisProcessedEvent = ProcessedEvent<LogEvent, KinesisKey>;
+pub type KinesisProcessedEvent = ProcessedEvent<OtelLog, KinesisKey>;
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct KinesisKey {
@@ -45,7 +46,7 @@ where
 
         input
             .filter_map(|event| {
-                let log = event.into_log_coerce().to_log_event();
+                let log = event.into_log_coerce();
                 let processed = process_log(log, self.partition_key_field.as_ref());
 
                 future::ready(processed)
@@ -97,12 +98,12 @@ where
 /// If the provided partition_key_field was not found in the log, `Error` `EventsDropped` internal
 /// events are emitted and None is returned.
 pub(crate) fn process_log(
-    log: LogEvent,
+    log: OtelLog,
     partition_key_field: Option<&ConfigValuePath>,
 ) -> Option<KinesisProcessedEvent> {
     let partition_key = if let Some(partition_key_field) = partition_key_field {
         if let Some(v) = log.get((PathPrefix::Event, partition_key_field)) {
-            v.to_string_lossy()
+            v.to_string_lossy().into_owned().into()
         } else {
             emit!(AwsKinesisStreamNoPartitionKeyError {
                 partition_key_field: partition_key_field.0.to_string().as_str()

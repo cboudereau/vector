@@ -17,7 +17,7 @@ use chrono::{DateTime, Utc};
 use snafu::Snafu;
 use std::sync::Arc;
 use vector_config::configurable_component;
-use vector_core::event::{Event, LogEvent, Value};
+use vector_core::event::{Event, OtelLog, Value};
 
 /// Provides Arrow schema for encoding.
 ///
@@ -299,17 +299,17 @@ fn build_record_batch(
     schema: SchemaRef,
     events: &[Event],
 ) -> Result<RecordBatch, ArrowEncodingError> {
-    let projected: Vec<LogEvent> = events
+    let mut projected: Vec<OtelLog> = events
         .iter()
         .filter_map(|e| match e {
-            Event::Log(otel_log) => Some(otel_log.to_log_event()),
+            Event::Log(otel_log) => Some(otel_log.clone()),
             _ => None,
         })
         .collect();
-    let log_events: Vec<LogEvent> = projected
-        .iter()
-        .map(|log| convert_timestamps(log, &schema))
-        .collect::<Result<Vec<_>, _>>()?;
+    for log in &mut projected {
+        convert_timestamps_otel(log, &schema)?;
+    }
+    let log_events = &projected;
 
     let batch = serde_arrow::to_record_batch(schema.fields(), &log_events).map_err(|source| {
         // serde_arrow doesn't expose structured error variants (see
@@ -346,13 +346,13 @@ fn build_record_batch(
 }
 
 /// Find which non-nullable field has a missing value (called only on error).
-fn find_null_field(events: &[LogEvent], schema: &SchemaRef) -> Option<String> {
+fn find_null_field(events: &[OtelLog], schema: &SchemaRef) -> Option<String> {
     for field in schema.fields() {
         if !field.is_nullable() {
             let name = field.name();
             if events
                 .iter()
-                .any(|e| e.get(lookup::event_path!(name)).is_none())
+                .any(|e| e.parse_path_and_get_value(name).ok().flatten().is_none())
             {
                 return Some(name.to_string());
             }
@@ -361,35 +361,38 @@ fn find_null_field(events: &[LogEvent], schema: &SchemaRef) -> Option<String> {
     None
 }
 
-/// Convert Value::Timestamp to Value::Integer for timestamp columns.
-///
-/// This is necessary because serde_arrow's string parsing expects specific formats
-/// based on the timezone setting, but Vector's timestamps always serialize as RFC 3339
-/// with 'Z' suffix. Converting to i64 directly avoids this format mismatch.
-fn convert_timestamps(
-    event: &LogEvent,
+/// Convert timestamps in an OtelLog for Arrow timestamp columns.
+fn convert_timestamps_otel(
+    log: &mut OtelLog,
     schema: &SchemaRef,
-) -> Result<LogEvent, ArrowEncodingError> {
-    let mut result = event.clone();
-
+) -> Result<(), ArrowEncodingError> {
+    let fields = log.convert_to_fields();
+    let mut replacements = Vec::new();
     for field in schema.fields() {
         if let DataType::Timestamp(unit, _) = field.data_type() {
             let field_name = field.name().as_str();
-
-            if let Some(Value::Timestamp(ts)) = event.get(lookup::event_path!(field_name)) {
-                let val = timestamp_to_unit(ts, unit).ok_or_else(|| {
-                    ArrowEncodingError::TimestampOverflow {
-                        field_name: field_name.to_string(),
-                        timestamp: ts.to_rfc3339(),
-                    }
-                })?;
-                result.insert(field_name, Value::Integer(val));
+            // Find matching field in the flattened fields
+            if let Some((_, value)) = fields.iter().find(|(k, _)| k.as_ref() == field_name) {
+                if let Value::Timestamp(ts) = value {
+                    let val = timestamp_to_unit(ts, unit).ok_or_else(|| {
+                        ArrowEncodingError::TimestampOverflow {
+                            field_name: field_name.to_string(),
+                            timestamp: ts.to_rfc3339(),
+                        }
+                    })?;
+                    replacements.push((field_name.to_string(), Value::Integer(val)));
+                }
             }
         }
     }
-
-    Ok(result)
+    for (name, val) in replacements {
+        if let Ok(path) = vrl::path::parse_target_path(&name) {
+            log.insert(&path, val);
+        }
+    }
+    Ok(())
 }
+
 
 /// Convert a DateTime<Utc> to i64 in the specified Arrow TimeUnit.
 /// Returns None if the value would overflow (only possible for nanoseconds).

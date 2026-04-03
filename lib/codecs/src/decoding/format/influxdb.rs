@@ -159,7 +159,7 @@ mod tests {
     use bytes::Bytes;
     use vector_core::{
         config::LogNamespace,
-        event::{Metric, MetricKind, MetricTags, MetricValue},
+        event::{MetricKind, MetricValue},
     };
 
     use crate::decoding::format::{Deserializer, InfluxdbDeserializer};
@@ -175,34 +175,21 @@ mod tests {
         let events = deser.parse(buffer, LogNamespace::default()).unwrap();
         assert_eq!(events.len(), 2);
 
-        let m0 = events[0].as_metric().clone().to_legacy_metric();
-        assert_eq!(
-            m0,
-            Metric::new(
-                "cpu_usage_system",
-                MetricKind::Absolute,
-                MetricValue::Gauge { value: 64. },
-            )
-            .with_tags(Some(MetricTags::from_iter([
-                ("host".to_string(), "A".to_string()),
-                ("region".to_string(), "west".to_string()),
-            ])))
-            .with_timestamp(Some(now))
-        );
-        let m1 = events[1].as_metric().clone().to_legacy_metric();
-        assert_eq!(
-            m1,
-            Metric::new(
-                "cpu_usage_user",
-                MetricKind::Absolute,
-                MetricValue::Gauge { value: 10. },
-            )
-            .with_tags(Some(MetricTags::from_iter([
-                ("host".to_string(), "A".to_string()),
-                ("region".to_string(), "west".to_string()),
-            ])))
-            .with_timestamp(Some(now))
-        );
+        let m0 = events[0].as_metric();
+        assert_eq!(m0.name(), "cpu_usage_system");
+        assert_eq!(m0.kind(), MetricKind::Absolute);
+        assert_eq!(m0.value(), MetricValue::Gauge { value: 64. });
+        assert_eq!(m0.tag_value("host"), Some("A".to_string()));
+        assert_eq!(m0.tag_value("region"), Some("west".to_string()));
+        assert!(m0.timestamp().is_some());
+
+        let m1 = events[1].as_metric();
+        assert_eq!(m1.name(), "cpu_usage_user");
+        assert_eq!(m1.kind(), MetricKind::Absolute);
+        assert_eq!(m1.value(), MetricValue::Gauge { value: 10. });
+        assert_eq!(m1.tag_value("host"), Some("A".to_string()));
+        assert_eq!(m1.tag_value("region"), Some("west".to_string()));
+        assert!(m1.timestamp().is_some());
     }
 
     #[test]

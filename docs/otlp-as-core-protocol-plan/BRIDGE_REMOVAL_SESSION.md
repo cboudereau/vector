@@ -42,12 +42,12 @@ Four conversion functions that translate between OTel proto structs and legacy V
 
 | Function | Before session | After session | Removed |
 |----------|---------------|---------------|---------|
-| `to_log_event()` | 75 | 20 | **55 (73%)** |
+| `to_log_event()` | 75 | 19 | **56 (75%)** |
 | `to_legacy_metric()` | 40 | 20 | **20 (50%)** |
-| **Total** | **115** | **40** | **75 (65%)** |
+| **Total** | **115** | **39** | **76 (66%)** |
 
-38 commits, 1789 tests passing. All 9 codec encoders fully migrated (0 bridge calls).
-GELF and Arrow — previously "deferred as too complex" — now rewritten.
+40 commits, 1789 tests passing. All codec encoders migrated. Kinesis sink migrated.
+GELF, Arrow, transformer — previously "deferred as too complex" — now rewritten.
 
 ### What was done
 
@@ -137,7 +137,7 @@ GELF and Arrow — previously "deferred as too complex" — now rewritten.
   convert_to_fields() + insert(), find_null_field uses parse_path_and_get_value,
   serde_arrow serializes OtelLog directly
 
-### Remaining 40 bridge calls (by category)
+### Remaining 39 bridge calls (by category)
 
 **Core infrastructure — 12 calls:**
 - `proto.rs` (4+2): OTel → protobuf via legacy types
@@ -145,9 +145,8 @@ GELF and Arrow — previously "deferred as too complex" — now rewritten.
 - `mod.rs` (3): `to_metric()`, `into_metric()`, `try_into_metric()`
 - `ref.rs` (2): `EventRef::into_metric()`, `EventMutRef::into_metric()`
 
-**Sinks needing LogEvent pipeline — 4 calls:**
+**Sinks needing LogEvent pipeline — 3 calls:**
 - `sinks/elasticsearch` (2): pipeline around LogEvent
-- `sinks/kinesis` (1): process_log takes LogEvent
 - `sinks/splunk_hec` (1): render_template_string_from_log
 
 **Transforms needing Metric mutation — 5 calls:**

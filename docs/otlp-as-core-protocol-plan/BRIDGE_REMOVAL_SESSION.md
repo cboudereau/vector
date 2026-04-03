@@ -46,10 +46,8 @@ Four conversion functions that translate between OTel proto structs and legacy V
 | `to_legacy_metric()` | 40 | 20 | **20 (50%)** |
 | **Total** | **115** | **45** | **70 (61%)** |
 
-Notes:
-- `to_log_event` count excludes 7 test-only assertion calls in transformer.rs
-- dedupe MatchFields path is bridge-free; IgnoreFields still bridges
-- transformer production code fully rewritten to OtelLog-native (was 8 calls → 0)
+32 commits, 1773 tests passing. Transformer fully rewritten (was 8+7 calls → 0).
+Also fixed OtelLog::get_by_meaning to check dropped_fields first.
 
 ### What was done
 
@@ -128,7 +126,8 @@ Notes:
 - dedupe MatchFields: uses OtelLog::get() directly (IgnoreFields still bridges)
 - encoding transformer: fully rewritten to OtelLog-native — deleted 80 lines of
   LogEvent methods, replaced with OtelLog::remove/insert/convert_to_fields/value.
-  Largest single bridge consumer eliminated (8 production calls → 0).
+  Largest single bridge consumer eliminated (8 production + 7 test calls → 0).
+  Also fixed OtelLog::get_by_meaning to check dropped_fields first.
 - prometheus scrape: uses OtelMetric::tag_value() + replace_tag() directly
 
 ### Remaining 45 bridge calls (by category)
@@ -163,8 +162,7 @@ Notes:
 - `api/schema/events/output` (2): GraphQL API wraps legacy types
 - `conditions/datadog_search` (2): DD matcher takes &LogEvent
 
-**Test / transitional — 13 calls:**
-- `encoding/transformer.rs` (7): test assertions use to_log_event for field checks
+**Test / transitional — 6 calls:**
 - `encoding/format/json` (2): reduce_tags_to_single in Single mode
 - `decoding/format/influxdb` (2): test assertions compare full Metric
 - `decoding/format/otlp` (1): trace conversion via LogEvent

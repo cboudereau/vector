@@ -1141,6 +1141,27 @@ impl OtelSpan {
     /// Convert a legacy `TraceEvent` into an `OtelSpan`.
     ///
     /// The `TraceEvent`'s fields are stored as span attributes.
+    /// Create an OtelSpan from an OtelLog (for trace signal detection in OTLP decoder).
+    pub fn from_otel_log(log: OtelLog) -> Self {
+        let map = log.as_map().unwrap_or_default();
+        let attributes: Vec<KeyValue> = map
+            .into_iter()
+            .map(|(k, v)| KeyValue {
+                key: k.to_string(),
+                value: Some(vrl_value_to_any_value(&v)),
+            })
+            .collect();
+        Self {
+            span: Span {
+                attributes,
+                ..Default::default()
+            },
+            resource: log.resource.clone(),
+            scope: log.scope.clone(),
+            metadata: log.metadata,
+        }
+    }
+
     pub fn from_trace_event(trace: super::TraceEvent) -> Self {
         let (map, metadata) = trace.into_parts();
         let attributes: Vec<KeyValue> = map

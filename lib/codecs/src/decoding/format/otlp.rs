@@ -185,7 +185,7 @@ impl Deserializer for OtlpDeserializer {
                         && event.as_log().parse_path_and_get_value(RESOURCE_SPANS_JSON_FIELD).ok().flatten().is_some()
                     {
                         if let Some(Event::Log(otel_log)) = events.pop() {
-                            let trace_event = Event::Trace(OtelSpan::from_trace_event(otel_log.to_log_event().into()));
+                            let trace_event = Event::Trace(OtelSpan::from_otel_log(otel_log));
                             return Ok(smallvec![trace_event]);
                         }
                     }

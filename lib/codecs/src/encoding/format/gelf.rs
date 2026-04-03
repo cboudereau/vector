@@ -7,7 +7,7 @@ use tokio_util::codec::Encoder;
 use vector_config_macros::configurable_component;
 use vector_core::{
     config::{DataType, log_schema},
-    event::{Event, KeyString, LogEvent, Value},
+    event::{Event, KeyString, OtelLog, Value},
     schema,
 };
 
@@ -115,7 +115,8 @@ impl GelfSerializer {
 
     /// Encode event and represent it as JSON value.
     pub fn to_json_value(&self, event: Event) -> Result<serde_json::Value, vector_common::Error> {
-        let log = to_gelf_event(event.into_log_coerce().to_log_event())?;
+        let mut log = event.into_log_coerce();
+        to_gelf_event(&mut log)?;
         serde_json::to_value(&log).map_err(|e| e.to_string().into())
     }
 
@@ -131,7 +132,8 @@ impl Encoder<Event> for GelfSerializer {
     type Error = vector_common::Error;
 
     fn encode(&mut self, event: Event, buffer: &mut BytesMut) -> Result<(), Self::Error> {
-        let log = to_gelf_event(event.into_log_coerce().to_log_event())?;
+        let mut log = event.into_log_coerce();
+        to_gelf_event(&mut log)?;
         let writer = buffer.writer();
         serde_json::to_writer(writer, &log)?;
         Ok(())
@@ -153,132 +155,108 @@ fn err_invalid_type(
     .map_err(|e| e.to_string().into())
 }
 
-/// Validates that the GELF required fields exist in the event, coercing in some cases.
-fn coerce_required_fields(mut log: LogEvent) -> vector_common::Result<LogEvent> {
-    // returns Error for missing field
+/// Validate and coerce an OtelLog into valid GELF format.
+fn to_gelf_event(log: &mut OtelLog) -> vector_common::Result<()> {
     fn err_missing_field(field: &str) -> vector_common::Result<()> {
         MissingFieldSnafu { field }
             .fail()
             .map_err(|e| e.to_string().into())
     }
 
-    // add the VERSION if it does not exist
-    if !log.contains(&GELF_TARGET_PATHS.version) {
+    // Required fields
+    if log.get(&GELF_TARGET_PATHS.version).is_none() {
         log.insert(&GELF_TARGET_PATHS.version, GELF_VERSION);
     }
-
-    if !log.contains(&GELF_TARGET_PATHS.host) {
+    if log.get(&GELF_TARGET_PATHS.host).is_none() {
         err_missing_field(HOST)?;
     }
-
-    if !log.contains(&GELF_TARGET_PATHS.short_message)
-        && let Some(message_key) = log_schema().message_key_target_path()
-    {
-        if log.contains(message_key) {
-            log.rename_key(message_key, &GELF_TARGET_PATHS.short_message);
-        } else {
-            err_missing_field(SHORT_MESSAGE)?;
+    if log.get(&GELF_TARGET_PATHS.short_message).is_none() {
+        if let Some(message_key) = log_schema().message_key_target_path() {
+            if log.get(message_key).is_some() {
+                log.rename_key(message_key, &GELF_TARGET_PATHS.short_message);
+            } else {
+                err_missing_field(SHORT_MESSAGE)?;
+            }
         }
     }
-    Ok(log)
-}
 
-/// Validates rules for field names and value types, coercing in some cases.
-fn coerce_field_names_and_values(
-    mut log: LogEvent,
-) -> vector_common::Result<(LogEvent, Vec<String>)> {
-    let mut missing_prefix = vec![];
-    if let Some(event_data) = log.as_map_mut() {
-        for (field, value) in event_data.iter_mut() {
-            match field.as_str() {
-                VERSION | HOST | SHORT_MESSAGE | FULL_MESSAGE | FACILITY | FILE => {
-                    if !value.is_bytes() {
-                        err_invalid_type(field, "UTF-8 string", value.kind_str())?;
-                    }
-                }
-                TIMESTAMP => {
-                    if !(value.is_timestamp() || value.is_integer()) {
-                        err_invalid_type(field, "timestamp or integer", value.kind_str())?;
-                    }
+    // Validate field types and collect mutations
+    let fields = log.convert_to_fields();
+    let mut timestamp_replacement = None;
+    let mut missing_prefix = Vec::new();
 
-                    // convert a `Value::Timestamp` to a GELF specified timestamp where milliseconds are represented by the fractional part of a float.
-                    if let Value::Timestamp(ts) = value {
-                        let ts_millis = ts.timestamp_millis();
-                        if ts_millis % 1000 != 0 {
-                            // i64 to f64 / 1000.0 will never be NaN
-                            *value = Value::Float(
-                                NotNan::new(ts_millis as f64 / 1000.0)
-                                    .expect("i64 -> f64 produced NaN"),
-                            );
-                        } else {
-                            // keep full range of representable time if no milliseconds are set
-                            // but still convert to numeric according to GELF protocol
-                            *value = Value::Integer(ts.timestamp())
-                        }
-                    }
+    for (field, value) in &fields {
+        match field.as_ref() {
+            VERSION | HOST | SHORT_MESSAGE | FULL_MESSAGE | FACILITY | FILE => {
+                if !value.is_bytes() {
+                    err_invalid_type(field, "UTF-8 string", value.kind_str())?;
                 }
-                LEVEL => {
-                    if !value.is_integer() {
-                        err_invalid_type(field, "integer", value.kind_str())?;
-                    }
+            }
+            TIMESTAMP => {
+                if !(value.is_timestamp() || value.is_integer()) {
+                    err_invalid_type(field, "timestamp or integer", value.kind_str())?;
                 }
-                LINE => {
-                    if !(value.is_float() || value.is_integer()) {
-                        err_invalid_type(field, "number", value.kind_str())?;
-                    }
+                if let Value::Timestamp(ts) = value {
+                    let ts_millis = ts.timestamp_millis();
+                    timestamp_replacement = Some(if ts_millis % 1000 != 0 {
+                        Value::Float(
+                            NotNan::new(ts_millis as f64 / 1000.0)
+                                .expect("i64 -> f64 produced NaN"),
+                        )
+                    } else {
+                        Value::Integer(ts.timestamp())
+                    });
                 }
-                _ => {
-                    // additional fields must be only word chars, dashes and periods.
-                    if !VALID_FIELD_REGEX.is_match(field) {
-                        return InvalidFieldSnafu {
-                            field: field.clone(),
-                            pattern: VALID_FIELD_REGEX.to_string(),
-                        }
-                        .fail()
-                        .map_err(|e| e.to_string().into());
+            }
+            LEVEL => {
+                if !value.is_integer() {
+                    err_invalid_type(field, "integer", value.kind_str())?;
+                }
+            }
+            LINE => {
+                if !(value.is_float() || value.is_integer()) {
+                    err_invalid_type(field, "number", value.kind_str())?;
+                }
+            }
+            _ => {
+                if !VALID_FIELD_REGEX.is_match(field) {
+                    return InvalidFieldSnafu {
+                        field: field.clone(),
+                        pattern: VALID_FIELD_REGEX.to_string(),
                     }
-
-                    // additional field values must be only strings or numbers
-                    if !(value.is_integer() || value.is_float() || value.is_bytes()) {
-                        err_invalid_type(field, "string or number", value.kind_str())?;
-                    }
-
-                    // Additional fields must be prefixed with underscores.
-                    // Prepending the underscore since vector adds fields such as 'source_type'
-                    // which would otherwise throw errors.
-                    if !field.is_empty() && !field.starts_with('_') {
-                        // flag the field as missing prefix to be modified later
-                        missing_prefix.push(field.to_string());
-                    }
+                    .fail()
+                    .map_err(|e| e.to_string().into());
+                }
+                if !(value.is_integer() || value.is_float() || value.is_bytes()) {
+                    err_invalid_type(field, "string or number", value.kind_str())?;
+                }
+                if !field.is_empty() && !field.starts_with('_') {
+                    missing_prefix.push(field.to_string());
                 }
             }
         }
     }
-    Ok((log, missing_prefix))
-}
 
-/// Validate if the input log event is valid GELF, potentially coercing the event into valid GELF.
-fn to_gelf_event(log: LogEvent) -> vector_common::Result<LogEvent> {
-    let log = coerce_required_fields(log).and_then(|log| {
-        coerce_field_names_and_values(log).map(|(mut log, missing_prefix)| {
-            // rename additional fields that were flagged as missing the underscore prefix
-            for field in missing_prefix {
-                log.rename_key(
-                    event_path!(field.as_str()),
-                    event_path!(format!("_{}", &field).as_str()),
-                );
-            }
-            log
-        })
-    })?;
+    // Apply mutations
+    if let Some(ts_val) = timestamp_replacement {
+        if let Ok(path) = vrl::path::parse_target_path(TIMESTAMP) {
+            log.insert(&path, ts_val);
+        }
+    }
+    for field in missing_prefix {
+        log.rename_key(
+            event_path!(field.as_str()),
+            event_path!(format!("_{}", &field).as_str()),
+        );
+    }
 
-    Ok(log)
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use chrono::NaiveDateTime;
-    use vector_core::event::{Event, EventMetadata};
+    use vector_core::event::{Event, EventMetadata, LogEvent};
     use vrl::{
         btreemap,
         value::{ObjectMap, Value},

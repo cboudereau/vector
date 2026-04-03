@@ -74,11 +74,9 @@ impl FunctionTransform for BasicTransform {
         match &mut event {
             Event::Log(otel_log) => {
                 if let Some(message_key) = crate::config::log_schema().message_key_target_path() {
-                    let mut log = otel_log.to_log_event();
-                    let mut v = log.get(message_key).unwrap().to_string_lossy().into_owned();
+                    let mut v = otel_log.get(message_key).unwrap().to_string_lossy().into_owned();
                     v.push_str(&self.suffix);
-                    log.insert(message_key, Value::from(v));
-                    *otel_log = vector_lib::event::OtelLog::from_log_event(log);
+                    otel_log.insert(message_key, Value::from(v));
                 }
             }
             Event::Metric(otel_metric) => {
@@ -118,17 +116,13 @@ impl FunctionTransform for BasicTransform {
             }
             Event::Trace(otel_span) => {
                 if let Some(message_key) = crate::config::log_schema().message_key_target_path() {
-                    let mut log = otel_span.to_log_event();
-                    let mut v = log
+                    let mut v = otel_span
                         .get(message_key)
                         .unwrap()
                         .to_string_lossy()
                         .into_owned();
                     v.push_str(&self.suffix);
-                    log.insert(message_key, Value::from(v));
-                    *otel_span = vector_lib::event::OtelSpan::from_trace_event(
-                        vector_lib::event::TraceEvent::from(log),
-                    );
+                    otel_span.insert(message_key, Value::from(v));
                 }
             }
         };

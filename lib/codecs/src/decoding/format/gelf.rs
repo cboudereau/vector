@@ -299,52 +299,52 @@ mod tests {
         let events = deserialize_gelf_input(&input, GelfDeserializerOptions::default()).unwrap();
         assert_eq!(events.len(), 1);
 
-        let log = events[0].as_log().to_log_event();
+        let log = events[0].as_log();
 
         assert_eq!(
-            log.get(VERSION),
-            Some(&Value::Bytes(Bytes::from_static(b"1.1")))
+            log.parse_path_and_get_value(VERSION).ok().flatten(),
+            Some(Value::Bytes(Bytes::from_static(b"1.1")))
         );
         assert_eq!(
-            log.get(HOST),
-            Some(&Value::Bytes(Bytes::from_static(b"example.org")))
+            log.parse_path_and_get_value(HOST).ok().flatten(),
+            Some(Value::Bytes(Bytes::from_static(b"example.org")))
         );
         assert_eq!(
             log.get(log_schema().message_key_target_path().unwrap()),
-            Some(&Value::Bytes(Bytes::from_static(
+            Some(Value::Bytes(Bytes::from_static(
                 b"A short message that helps you identify what is going on"
             )))
         );
         assert_eq!(
-            log.get(FULL_MESSAGE),
-            Some(&Value::Bytes(Bytes::from_static(
+            log.parse_path_and_get_value(FULL_MESSAGE).ok().flatten(),
+            Some(Value::Bytes(Bytes::from_static(
                 b"Backtrace here\n\nmore stuff"
             )))
         );
         let dt = DateTime::from_timestamp(1385053862, 307_200_000).expect("invalid timestamp");
-        assert_eq!(log.get(TIMESTAMP), Some(&Value::Timestamp(dt)));
-        assert_eq!(log.get(LEVEL), Some(&Value::Integer(1)));
+        assert_eq!(log.parse_path_and_get_value(TIMESTAMP).ok().flatten(), Some(Value::Timestamp(dt)));
+        assert_eq!(log.parse_path_and_get_value(LEVEL).ok().flatten(), Some(Value::Integer(1)));
         assert_eq!(
-            log.get(FACILITY),
-            Some(&Value::Bytes(Bytes::from_static(b"foo")))
+            log.parse_path_and_get_value(FACILITY).ok().flatten(),
+            Some(Value::Bytes(Bytes::from_static(b"foo")))
         );
         assert_eq!(
-            log.get(LINE),
-            Some(&Value::Float(ordered_float::NotNan::new(42.0).unwrap()))
+            log.parse_path_and_get_value(LINE).ok().flatten(),
+            Some(Value::Float(ordered_float::NotNan::new(42.0).unwrap()))
         );
         assert_eq!(
-            log.get(FILE),
-            Some(&Value::Bytes(Bytes::from_static(b"/tmp/bar")))
+            log.parse_path_and_get_value(FILE).ok().flatten(),
+            Some(Value::Bytes(Bytes::from_static(b"/tmp/bar")))
         );
         assert_eq!(
             log.get(event_path!(add_on_int_in)),
-            Some(&Value::Float(
+            Some(Value::Float(
                 ordered_float::NotNan::new(2001.1002).unwrap()
             ))
         );
         assert_eq!(
             log.get(event_path!(add_on_str_in)),
-            Some(&Value::Bytes(Bytes::from_static(b"A Space Odyssey")))
+            Some(Value::Bytes(Bytes::from_static(b"A Space Odyssey")))
         );
     }
 
@@ -361,7 +361,7 @@ mod tests {
             let events =
                 deserialize_gelf_input(&input, GelfDeserializerOptions::default()).unwrap();
             assert_eq!(events.len(), 1);
-            let log = events[0].as_log().to_log_event();
+            let log = events[0].as_log();
             assert!(log.contains(log_schema().message_key_target_path().unwrap()));
         }
 
@@ -376,8 +376,8 @@ mod tests {
             let events =
                 deserialize_gelf_input(&input, GelfDeserializerOptions::default()).unwrap();
             assert_eq!(events.len(), 1);
-            let log = events[0].as_log().to_log_event();
-            assert!(!log.contains(event_path!("_id")));
+            let log = events[0].as_log();
+            assert!(log.get(event_path!("_id")).is_none());
         }
     }
 
@@ -469,16 +469,16 @@ mod tests {
         .unwrap();
         assert_eq!(events.len(), 1);
 
-        let log = events[0].as_log().to_log_event();
+        let log = events[0].as_log();
 
         assert_eq!(
-            log.get(VERSION),
-            Some(&Value::Bytes(Bytes::from_static(b"1.0")))
+            log.parse_path_and_get_value(VERSION).ok().flatten(),
+            Some(Value::Bytes(Bytes::from_static(b"1.0")))
         );
 
         assert_eq!(
             log.get(event_path!(incorrect_extra_field)),
-            Some(&Value::Null)
+            Some(Value::Null)
         );
     }
 }

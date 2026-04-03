@@ -180,7 +180,7 @@ mod tests {
 
     use std::{env, fs, path::PathBuf};
 
-    use vector_core::config::log_schema;
+    use vector_core::{config::log_schema, event::OtelLog};
 
     use super::*;
 
@@ -192,7 +192,7 @@ mod tests {
         protobuf_bin_message: String,
         protobuf_desc_path: PathBuf,
         message_type: &str,
-        validate_log: fn(&LogEvent),
+        validate_log: fn(&OtelLog),
     ) {
         let input = Bytes::from(protobuf_bin_message);
         let message_descriptor = get_message_descriptor(&protobuf_desc_path, message_type).unwrap();
@@ -204,8 +204,8 @@ mod tests {
 
             {
                 let event = events.next().unwrap();
-                let log = event.as_log().to_log_event();
-                validate_log(&log);
+                let log = event.as_log();
+                validate_log(log);
                 assert_eq!(
                     log.get(log_schema().timestamp_key_target_path().unwrap())
                         .is_some(),
@@ -222,10 +222,14 @@ mod tests {
         let protobuf_bin_message_path = test_data_dir().join("pbs/person_someone.pb");
         let protobuf_desc_path = test_data_dir().join("protos/test_protobuf.desc");
         let message_type = "test_protobuf.Person";
-        let validate_log = |log: &LogEvent| {
-            assert_eq!(log["name"], "someone".into());
+        let validate_log = |log: &OtelLog| {
             assert_eq!(
-                log["phones"].as_array().unwrap()[0].as_object().unwrap()["number"]
+                log.parse_path_and_get_value("name").ok().flatten().unwrap(),
+                Value::from("someone")
+            );
+            let phones = log.parse_path_and_get_value("phones").ok().flatten().unwrap();
+            assert_eq!(
+                phones.as_array().unwrap()[0].as_object().unwrap()["number"]
                     .as_str()
                     .unwrap(),
                 "123456"
@@ -245,16 +249,21 @@ mod tests {
         let protobuf_bin_message_path = test_data_dir().join("pbs/person_someone3.pb");
         let protobuf_desc_path = test_data_dir().join("protos/test_protobuf3.desc");
         let message_type = "test_protobuf3.Person";
-        let validate_log = |log: &LogEvent| {
-            assert_eq!(log["name"], "someone".into());
+        let validate_log = |log: &OtelLog| {
             assert_eq!(
-                log["phones"].as_array().unwrap()[0].as_object().unwrap()["number"]
+                log.parse_path_and_get_value("name").ok().flatten().unwrap(),
+                Value::from("someone")
+            );
+            let phones = log.parse_path_and_get_value("phones").ok().flatten().unwrap();
+            assert_eq!(
+                phones.as_array().unwrap()[0].as_object().unwrap()["number"]
                     .as_str()
                     .unwrap(),
                 "1234"
             );
+            let data = log.parse_path_and_get_value("data").ok().flatten().unwrap();
             assert_eq!(
-                log["data"].as_object().unwrap()["data_phone"],
+                data.as_object().unwrap()["data_phone"],
                 "HOME".into()
             );
         };
@@ -272,12 +281,12 @@ mod tests {
         let protobuf_bin_message = "".to_string();
         let protobuf_desc_path = test_data_dir().join("protos/test_protobuf.desc");
         let message_type = "test_protobuf.Person";
-        let validate_log = |log: &LogEvent| {
+        let validate_log = |log: &OtelLog| {
             // No field will be set.
-            assert!(!log.contains("name"));
-            assert!(!log.contains("id"));
-            assert!(!log.contains("email"));
-            assert!(!log.contains("phones"));
+            assert!(log.parse_path_and_get_value("name").ok().flatten().is_none());
+            assert!(log.parse_path_and_get_value("id").ok().flatten().is_none());
+            assert!(log.parse_path_and_get_value("email").ok().flatten().is_none());
+            assert!(log.parse_path_and_get_value("phones").ok().flatten().is_none());
         };
 
         parse_and_validate(

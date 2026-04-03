@@ -182,13 +182,13 @@ mod tests {
         let result = decoder.parse(log_bytes, LogNamespace::Vector).unwrap();
         assert_eq!(result.len(), 1);
         let event = result.first().unwrap();
-        let log = event.as_log().to_log_event();
+        let log = event.as_log();
         assert_eq!(
-            *log.get(&OwnedTargetPath::event_root()).unwrap(),
+            log.get(&OwnedTargetPath::event_root()).unwrap(),
             btreemap! { "message" => "Hello VRL" }.into()
         );
         assert_eq!(
-            *log.get(&OwnedTargetPath::metadata_root()).unwrap(),
+            log.get(&OwnedTargetPath::metadata_root()).unwrap(),
             btreemap! { "m1" => "metadata" }.into()
         );
     }
@@ -209,9 +209,9 @@ mod tests {
         let result = decoder.parse(log_bytes, LogNamespace::Vector).unwrap();
         assert_eq!(result.len(), 1);
         let event = result.first().unwrap();
-        let log = event.as_log().to_log_event();
+        let log = event.as_log();
         assert_eq!(
-            *log.get(&OwnedTargetPath::event_root()).unwrap(),
+            log.get(&OwnedTargetPath::event_root()).unwrap(),
             btreemap! { "a" => 1 }.into()
         );
     }
@@ -225,9 +225,9 @@ mod tests {
         let result = decoder.parse(log_bytes, LogNamespace::Vector).unwrap();
         assert_eq!(result.len(), 3);
         for (i, event) in result.iter().enumerate() {
-            let log = event.as_log().to_log_event();
+            let log = event.as_log();
             assert_eq!(
-                *log.get(&OwnedTargetPath::event_root()).unwrap(),
+                log.get(&OwnedTargetPath::event_root()).unwrap(),
                 i.into()
             );
         }
@@ -254,9 +254,9 @@ mod tests {
         let result = decoder.parse(syslog_bytes, LogNamespace::Vector).unwrap();
         assert_eq!(result.len(), 1);
         let syslog_event = result.first().unwrap();
-        let syslog_log = syslog_event.as_log().to_log_event();
+        let syslog_log = syslog_event.as_log();
         assert_eq!(
-            *syslog_log.get(&OwnedTargetPath::event_root()).unwrap(),
+            syslog_log.get(&OwnedTargetPath::event_root()).unwrap(),
             btreemap! {
                 "appname" => "su",
                 "facility" => "auth",
@@ -277,9 +277,9 @@ mod tests {
         let result = decoder.parse(cef_bytes, LogNamespace::Vector).unwrap();
         assert_eq!(result.len(), 1);
         let cef_event = result.first().unwrap();
-        let cef_log = cef_event.as_log().to_log_event();
+        let cef_log = cef_event.as_log();
         assert_eq!(
-            *cef_log.get(&OwnedTargetPath::event_root()).unwrap(),
+            cef_log.get(&OwnedTargetPath::event_root()).unwrap(),
             btreemap! {
                 "cefVersion" =>"0",
                 "deviceEventClassId" =>"100",
@@ -298,9 +298,9 @@ mod tests {
         let result = decoder.parse(random_bytes, LogNamespace::Vector).unwrap();
         let random_event = result.first().unwrap();
         assert_eq!(result.len(), 1);
-        let random_log = random_event.as_log().to_log_event();
+        let random_log = random_event.as_log();
         assert_eq!(
-            *random_log.get(&OwnedTargetPath::event_root()).unwrap(),
+            random_log.get(&OwnedTargetPath::event_root()).unwrap(),
             Value::Null
         );
     }

@@ -284,10 +284,10 @@ mod tests {
             .unwrap();
         assert_eq!(events.len(), 1);
 
-        let log = events[0].as_log().to_log_event();
+        let log = events[0].as_log();
         assert_eq!(
-            log.get("body").unwrap(),
-            &VrlValue::from("hello from avro")
+            log.parse_path_and_get_value("body").ok().flatten().unwrap(),
+            VrlValue::from("hello from avro")
         );
     }
 
@@ -311,10 +311,10 @@ mod tests {
             .unwrap();
         assert_eq!(events.len(), 1);
 
-        let log = events[0].as_log().to_log_event();
+        let log = events[0].as_log();
         assert_eq!(
-            log.get("body").unwrap(),
-            &VrlValue::from("hello from avro")
+            log.parse_path_and_get_value("body").ok().flatten().unwrap(),
+            VrlValue::from("hello from avro")
         );
     }
 
@@ -339,10 +339,10 @@ mod tests {
             .parse(bytes.freeze(), LogNamespace::Vector)
             .unwrap();
         assert_eq!(events.len(), 1);
-        let log = events[0].as_log().to_log_event();
+        let log = events[0].as_log();
         assert_eq!(
-            log.get("body").unwrap(),
-            &VrlValue::from(uuid)
+            log.parse_path_and_get_value("body").ok().flatten().unwrap(),
+            VrlValue::from(uuid)
         );
     }
 }

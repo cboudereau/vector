@@ -27,151 +27,171 @@ Four conversion functions that translate between OTel proto structs and legacy V
 - `log_schema()` config — field name mapping that doesn't match OTel proto names
 
 **KEEP (permanent):**
-- `from_log_event()` / `from_legacy_metric()` constructors — needed at I/O boundary until all sources produce OTel natively; even then, useful for `Event::from(LogEvent)` convenience in tests
+- `from_log_event()` / `from_legacy_metric()` constructors — I/O boundary, test convenience
 - `OtelLog`/`OtelSpan`/`OtelMetric` proto accessors — the target API
 - `VrlTarget` projections — VRL needs Value trees, built directly from proto
 - Backward-compat VRL aliases (`.message` → `.body`) — kept for one release
 
 **TRANSITIONAL (keep for now, remove later):**
-- `to_log_event()` on OtelSpan — used by `trace_to_log` transform and text serializers
-- `to_legacy_metric()` body — used by 24 external files (sinks, transforms)
-- `Serialize` for OtelMetric via `to_legacy_metric()` — wire format risk if changed now
+- `to_log_event()` on OtelSpan — used by `trace_to_log` transform
+- `to_legacy_metric()` body — used by transforms that need full Metric mutation
 
-## Current state (after this session)
+## Progress (updated 2026-04-03)
 
-### OtelLog — no internal bridge delegation
+### Bridge call counts
 
-All methods use `to_value_legacy_layout()` or direct proto. No method calls `to_log_event()`.
-`to_value_legacy_layout()` is the next layer to eliminate.
+| Function | Before session | After session | Removed |
+|----------|---------------|---------------|---------|
+| `to_log_event()` | 75 | 33 | **42 (56%)** |
+| `to_legacy_metric()` | 40 | 21 | **19 (48%)** |
+| **Total** | **115** | **54** | **61 (53%)** |
 
-### OtelSpan — no internal bridge delegation
+### What was done
 
-Mirrors OtelLog: `to_value_legacy_layout()` + `apply_value_legacy_layout()`.
-`to_log_event()` kept only for external callers.
+**OtelLog — all internal bridge delegation removed (earlier sessions):**
+- `get()`, `insert()`, `remove()`, `namespace()`, `get_timestamp()`, etc.
+- `Serialize`, `EventDataEq` — use `to_value_legacy_layout()` directly
+- `get_by_meaning()` — direct schema definition lookup
+- `convert_to_fields()` / `convert_to_fields_unquoted()` — proper nested flattening
 
-### OtelMetric — value/kind/tag_value direct from proto
+**OtelSpan — all internal bridge delegation removed (earlier sessions):**
+- Mirrors OtelLog pattern: `to_value_legacy_layout()` + `apply_value_legacy_layout()`
 
-`extract_metric_data()` is single source of truth for kind/value/timestamp/dp_tags.
-`to_legacy_metric()` calls it. `Serialize` still uses `to_legacy_metric()`.
+**OtelMetric — fully debridged (this session):**
+- `value()`, `kind()` — `extract_metric_data()` from proto
+- `tag_value()` — searches data point, resource, scope attributes directly
+- `tags()` — **fixed bug**: was returning None, now builds MetricTags from proto
+- `timestamp()`, `namespace()` — direct proto access
+- `Display` — implemented from proto (Prometheus-like text format)
+- `Serialize` — implemented from proto (no more `clone().to_legacy_metric()`)
 
-### Dead code to clean up
+**Phase 0 — cleanup:**
+- Fixed stale section comments, added `TODO(bridge-removal)` markers
+- Added `// TEMPORARY BRIDGE` markers to proto.rs, mod.rs bridge call sites
+- Documented `tags()` bug (now fixed)
 
-| Item | Location | Action |
-|------|----------|--------|
-| `OtelMetric::timestamp()` | ~line 1851 | Delete — never called |
-| `OtelMetric::tags()` | ~line 1872 | Delete — stub returning None |
-| `OtelMetric::namespace()` (the one on OtelMetric, not OtelLog) | ~line 1877 | Delete — never called on OtelMetric |
-| Section comment "delegate to to_log_event()" | line 660 | Update — no longer true |
-| `apply_value_legacy_layout` "for now" comment | line 804 | Add TODO with target state |
+**Phase 1 — codec encoder migrations (7 of 9 codecs migrated):**
+- JSON: serializes OtelLog/OtelSpan directly; metric uses bridge only for Single tag mode
+- logfmt: uses `OtelLog::value()` directly
+- CSV: uses `OtelLog::get(field)` directly
+- CEF: uses `OtelLog::get(field)` via helper
+- Avro: serializes OtelLog directly (Serialize trait)
+- Protobuf: uses `OtelLog::value()` / `OtelSpan::as_map()`
+- syslog: refactored ConfigDecanter to accept `&OtelLog`
+- text: uses `OtelMetric::to_string()` directly (new Display impl)
+- GELF: **deferred** — heavily mutates LogEvent (as_map_mut, rename_key)
+- Arrow: **deferred** — convert_timestamps deeply coupled to LogEvent
 
-### External bridge callers (not yet migrated)
+**Phase 1 — transform/sink/source migrations:**
+- remap: `OtelLog::namespace()` directly
+- sample: `parse_path_and_get_value()` directly on OtelLog/OtelSpan
+- log_to_metric: `to_metric_with_config()` uses OtelLog directly; transform skips round-trip
+- trace_to_log test: returns OtelLog, uses `as_map()`
+- new_relic LogsApiModel: uses `OtelLog::remove()` and `as_map()`
+- schema/definition: uses `OtelLog::value()` for both namespaces
+- enrichment_tables/memory: uses `OtelLog::as_map()`
+- template: uses `OtelMetric::name()`, `namespace()`, `tag_value()` directly
+- component_spec: uses `OtelMetric` directly (name, tag_value, value, kind)
+- OTLP decoder: uses `parse_path_and_get_value()` for field existence
+- k8s_logs parser: uses `get_body()`, `parse_path_and_get_value()` directly
+- Event::to_legacy_json_value: serializes OTel types directly
 
-**`to_log_event()` — 53 serialization + 9 transform + 15 test callers:**
-- Codecs: json, csv, gelf, cef, avro, protobuf, logfmt, syslog, arrow, text
-- Transforms: dedupe, sample, remap, log_to_metric, trace_to_log, reduce
-- Sinks: elasticsearch, kinesis, splunk_hec, new_relic, amqp
-- Other: enrichment_tables, template, schema definition, proto.rs
+**Phase 1 — test migrations:**
+- Decoder tests (vrl, avro, protobuf, gelf, decoder): 16 calls migrated
+- datadog_agent tests: 9 `to_legacy_metric` calls removed (assert_tags uses OtelMetric)
+- exec tests: uses `convert_to_fields().len()` instead of bridge
 
-**`to_legacy_metric()` — 20 serialization + 15 test + 4 internal callers:**
-- Sinks: prometheus, influxdb, statsd, greptimedb, gcp_stackdriver, appsignal
-- Transforms: aggregate, tag_cardinality_limit, incremental_to_absolute, metric_to_log
-- Core: Event::into_metric(), EventRef, proto.rs
+**Bug fixes along the way:**
+- OtelMetric::tags() was silently returning None for all metrics — fixed
+- 9 pre-existing test failures from message→body migration — fixed
+- 2 flaky tests (receives_logs, file_start_position) — fixed with longer timeouts
+- kafka/pulsar sinks: migrated to `tag_value()` to avoid borrowing owned temporaries
 
-**`from_log_event()` — 8 serialization + 3 transform + 22 test + 1 internal:**
-- Codecs: protobuf, avro, vrl, gelf decoders; logstash source
-- Core: `From<LogEvent> for Event`, apply_value_legacy_layout, discriminant
-- Tests: heavy usage in test setup
+### Remaining 54 bridge calls (by category)
 
-**`from_legacy_metric()` — 6 serialization + 2 transform + 25 test + 1 internal:**
-- Codecs: influxdb decoder; prometheus scrape; otlp/json/text encoders
-- Core: `From<Metric> for Event`
-- Tests: round-trip tests
+**Core infrastructure (Phase 4) — 11 calls:**
+- `proto.rs` (4): serialize OTel → protobuf via legacy types
+- `lua/event.rs` (2): Lua API exposes LogEvent
+- `mod.rs` (3): `to_metric()`, `into_metric()`, `try_into_metric()`
+- `ref.rs` (2): `EventRef::into_metric()`, `EventMutRef::into_metric()`
 
-## Phased plan — bridge removal to final architecture
+**Deeply coupled to LogEvent mutation (Phase 5) — 18 calls:**
+- `encoding/transformer.rs` (8): value_mut, all_event_fields, parse_path_and_insert
+- `encoding/format/gelf.rs` (2): as_map_mut, rename_key, insert, contains
+- `encoding/format/arrow.rs` (1): convert_timestamps needs LogEvent
+- `sinks/elasticsearch` (2): full pipeline built around LogEvent
+- `sinks/kinesis` (1): process_log takes LogEvent
+- `sinks/splunk_hec` (1): render_template_string_from_log
+- `sources/docker_logs` (1): partial event merging
+- `transforms/dedupe` (1): all_event_fields, all_metadata_fields
+- `transforms/reduce` (1): Discriminant::from_log_event
 
-### Phase 0 — Cleanup (no behavioral change)
+**Deeply coupled to Metric mutation (Phase 5) — 7 calls:**
+- `transforms/aggregate` (1): metric.into_parts()
+- `transforms/tag_cardinality_limit` (1): tag mutation
+- `transforms/incremental_to_absolute` (1): make_absolute
+- `transforms/metric_to_log` (1): transform_one takes Metric
+- `sinks/appsignal` (1): normalizer.normalize(Metric)
+- `sinks/elasticsearch` (1): metric_to_log.transform_one(Metric)
+- `sources/prometheus/scrape` (1): tag mutation
 
-Delete dead code, fix stale comments, add `// TEMPORARY BRIDGE` markers.
+**Intentional bridge usage — 7 calls:**
+- `transforms/trace_to_log` (1): transform's purpose IS to convert span→log
+- `api/schema/events/output` (2): GraphQL API wraps legacy types
+- `conditions/datadog_search` (1+1): DD search matcher takes &LogEvent
+- `test_util/mock/transforms` (2): test infrastructure
 
-- [ ] Delete dead `OtelMetric` methods: `timestamp()`, `tags()`, `namespace()`
-- [ ] Update section comment at line 660 (no longer delegates to `to_log_event`)
-- [ ] Add TODO to `apply_value_legacy_layout` explaining target state
-- [ ] Add `// TEMPORARY BRIDGE — migrate to direct proto access` to all bridge
-      call sites in proto.rs, mod.rs, ref.rs
+**Test helpers using LogEvent-only APIs — 6 calls:**
+- `transforms/log_to_metric` (1): to_metrics() calls many &LogEvent helpers
+- `transforms/metric_to_log` (1): test do_transform returns LogEvent
+- `encoding/format/json` (2): reduce_tags_to_single in Single mode
+- `decoding/format/otlp` (1): trace conversion via LogEvent
+- `transforms/trace_to_log` (1): test helper
 
-### Phase 1 — Codecs migrate off `to_log_event()` (~15 files)
+**Blockers for further progress:**
+- OtelLog needs `all_event_fields()` equivalent for dedupe/transformer
+- OtelLog needs `as_map_mut()` equivalent for GELF
+- OtelMetric needs tag mutation methods (replace_tag, remove_tag) for scrape/tag_cardinality
+- OtelMetric needs `into_parts()` equivalent for aggregate
+- OtelMetric needs `make_absolute()` equivalent for incremental_to_absolute
 
-Each codec serializer that does `otel_log.to_log_event().serialize(...)` should
-instead serialize the OtelLog proto structure directly. This is the biggest batch.
+## Phased plan — remaining work
 
-**Order by complexity:**
-1. **Text encoder** — just needs `.body()` as string
-2. **LogFmt encoder** — iterate attributes as key=value
-3. **CSV encoder** — iterate fields from proto
-4. **JSON encoder** — serialize `to_value_legacy_layout()` (already done for Serialize impl)
-5. **CEF/GELF/Syslog encoders** — map OTel fields to format-specific fields
-6. **Avro/Protobuf encoders** — schema-driven, need OTel schema mappings
-7. **Arrow encoder** — columnar, needs OTel column definitions
+### Phase 2 — Transforms migrate off bridges (~5 files)
 
-**Gate:** `cargo test -p codecs --lib` passes after each encoder.
+Requires adding OtelMetric mutation methods:
+- `set_tag(key, value)`, `remove_tag(key)` — for tag_cardinality_limit, prometheus scrape
+- `merge(other)` / `make_absolute(prev)` — for aggregate, incremental_to_absolute
 
-### Phase 2 — Transforms migrate off bridges (~9 files)
+### Phase 3 — Sinks migrate off bridges (~3 files)
 
-Transforms that use `to_log_event()` or `to_legacy_metric()`:
-
-- **dedupe** — needs field fingerprinting from OtelLog directly
-- **sample** — needs field access for rate conditions
-- **log_to_metric** — reads OtelLog fields, produces OtelMetric directly
-- **metric_to_log** — reads OtelMetric proto, produces OtelLog directly
-- **trace_to_log** — reads OtelSpan proto, produces OtelLog directly
-- **aggregate/tag_cardinality/incremental_to_absolute** — need OtelMetric proto access
-
-**Gate:** `cargo test -p vector --lib -- transforms::` passes after each.
-
-### Phase 3 — Sinks migrate off `to_legacy_metric()` (~10 files)
-
-Sinks that consume metrics via `to_legacy_metric()`:
-
-- prometheus exporter/collector, influxdb, statsd, greptimedb,
-  gcp_stackdriver, appsignal, splunk_hec, aws_cloudwatch
-
-Each sink should read `OtelMetric` proto directly (name, data points, attributes).
+Requires transforms completing first (elasticsearch uses metric_to_log).
 
 ### Phase 4 — Core infrastructure (~6 files)
 
-- `proto.rs` — serialize OtelLog/OtelSpan/OtelMetric to protobuf directly (not via legacy types)
-- `mod.rs` — `into_metric()`, `to_legacy_json_value()` bypass bridge
-- `ref.rs` — `EventRef::into_metric()` bypass bridge
-- `lua/event.rs` — Lua API exposes OTel fields (or keeps bridge as Lua adapter)
-- `schema/definition.rs` — introspect OtelLog proto directly
+- `proto.rs` — serialize OTel types to protobuf directly
+- `lua/event.rs` — Lua API exposes OTel fields
+- `mod.rs` / `ref.rs` — remove `to_metric()` / `into_metric()` (callers use OtelMetric)
 
 ### Phase 5 — Remove `to_value_legacy_layout()` from OtelLog/OtelSpan
 
-After all external callers are migrated, the internal methods (`get`, `insert`,
-`remove`, `convert_to_fields`, `as_map`, etc.) can access proto fields directly
-instead of building a Value tree.
-
-- Replace `get(path)` with direct proto field lookup
-- Replace `insert(path)` with direct proto field mutation
-- Remove `to_value_legacy_layout()` and `apply_value_legacy_layout()`
+Replace `get(path)`, `insert(path)`, `remove(path)` with direct proto field access.
+Remove `to_value_legacy_layout()` and `apply_value_legacy_layout()`.
 
 ### Phase 6 — Remove bridge function bodies
 
-- Delete `to_log_event()` from OtelLog and OtelSpan
-- Delete `to_legacy_metric()` from OtelMetric
-- Keep `from_log_event()` / `from_legacy_metric()` as I/O boundary constructors
+Delete `to_log_event()`, `to_legacy_metric()`. Keep `from_*` constructors.
 
 ### Phase 7 — Remove legacy types
 
-- Delete `LogEvent`, `Metric`, `TraceEvent` type definitions
-- Delete `log_schema()` config and all call sites
-- Delete `MetricValue`, `MetricKind`, `MetricTags` (replaced by proto)
+Delete `LogEvent`, `Metric`, `TraceEvent`, `log_schema()`.
 
 ## Verification
 
-- `cargo test -p vector --lib -- --skip throttle` — all tests pass
+- `cargo test -p vector --lib -- --skip throttle` — 1773 passed, 0 failed
+- `cargo test -p codecs --lib` — 171 passed, 0 failed
 - `cargo test -p vector-core --lib` — all event tests pass
-- `cargo check -p vector-core` — compiles clean
+- `cargo check -p vector` — compiles clean
 
 ## Context docs
 

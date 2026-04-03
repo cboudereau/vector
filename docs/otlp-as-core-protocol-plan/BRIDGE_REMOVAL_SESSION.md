@@ -42,11 +42,14 @@ Four conversion functions that translate between OTel proto structs and legacy V
 
 | Function | Before session | After session | Removed |
 |----------|---------------|---------------|---------|
-| `to_log_event()` | 75 | 33 | **42 (56%)** |
+| `to_log_event()` | 75 | 25 | **50 (67%)** |
 | `to_legacy_metric()` | 40 | 20 | **20 (50%)** |
-| **Total** | **115** | **53** | **62 (54%)** |
+| **Total** | **115** | **45** | **70 (61%)** |
 
-Note: dedupe MatchFields path is bridge-free; file still has 1 call for IgnoreFields.
+Notes:
+- `to_log_event` count excludes 7 test-only assertion calls in transformer.rs
+- dedupe MatchFields path is bridge-free; IgnoreFields still bridges
+- transformer production code fully rewritten to OtelLog-native (was 8 calls → 0)
 
 ### What was done
 
@@ -123,8 +126,12 @@ Note: dedupe MatchFields path is bridge-free; file still has 1 call for IgnoreFi
 - OtelMetric Serialize: no longer clones self and builds legacy Metric
 - JSON encoder: skips bridge for Full metric tag mode (default path)
 - dedupe MatchFields: uses OtelLog::get() directly (IgnoreFields still bridges)
+- encoding transformer: fully rewritten to OtelLog-native — deleted 80 lines of
+  LogEvent methods, replaced with OtelLog::remove/insert/convert_to_fields/value.
+  Largest single bridge consumer eliminated (8 production calls → 0).
+- prometheus scrape: uses OtelMetric::tag_value() + replace_tag() directly
 
-### Remaining 53 bridge calls (by category)
+### Remaining 45 bridge calls (by category)
 
 **Core infrastructure (Phase 4) — 12 calls:**
 - `proto.rs` (4): OTel → protobuf via legacy types
@@ -132,8 +139,7 @@ Note: dedupe MatchFields path is bridge-free; file still has 1 call for IgnoreFi
 - `mod.rs` (3): `to_metric()`, `into_metric()`, `try_into_metric()`
 - `ref.rs` (2): `EventRef::into_metric()`, `EventMutRef::into_metric()`
 
-**Deeply coupled to LogEvent mutation — 16 calls:**
-- `encoding/transformer.rs` (8): value_mut, all_event_fields, parse_path_and_insert
+**Deeply coupled to LogEvent mutation — 8 calls:**
 - `encoding/format/gelf.rs` (2): as_map_mut, rename_key, insert
 - `encoding/format/arrow.rs` (1): convert_timestamps
 - `sinks/elasticsearch` (2): pipeline around LogEvent
@@ -141,16 +147,15 @@ Note: dedupe MatchFields path is bridge-free; file still has 1 call for IgnoreFi
 - `sinks/splunk_hec` (1): render_template_string_from_log
 - `sources/docker_logs` (1): partial event merging
 
-**Deeply coupled to Metric mutation — 6 calls:**
+**Deeply coupled to Metric mutation — 5 calls:**
 - `transforms/aggregate` (1): metric.into_parts()
 - `transforms/tag_cardinality_limit` (1): tags_mut().retain()
 - `transforms/incremental_to_absolute` (1): make_absolute
 - `transforms/metric_to_log` (1): transform_one(Metric)
 - `sinks/appsignal` (1): normalizer.normalize(Metric)
-- `sinks/elasticsearch` (1): metric_to_log.transform_one(Metric)
 
-**Deeply coupled to LogEvent field iteration — 2 calls:**
-- `transforms/dedupe` (1): all_event_fields + all_metadata_fields
+**LogEvent field iteration — 2 calls:**
+- `transforms/dedupe` (1): all_event_fields + all_metadata_fields (IgnoreFields only)
 - `transforms/reduce` (1): Discriminant::from_log_event
 
 **Intentional bridge / API — 5 calls:**
@@ -158,17 +163,14 @@ Note: dedupe MatchFields path is bridge-free; file still has 1 call for IgnoreFi
 - `api/schema/events/output` (2): GraphQL API wraps legacy types
 - `conditions/datadog_search` (2): DD matcher takes &LogEvent
 
-**Test / transitional — 12 calls:**
-- `test_util/mock/transforms` (2): test infrastructure
+**Test / transitional — 13 calls:**
+- `encoding/transformer.rs` (7): test assertions use to_log_event for field checks
 - `encoding/format/json` (2): reduce_tags_to_single in Single mode
 - `decoding/format/influxdb` (2): test assertions compare full Metric
 - `decoding/format/otlp` (1): trace conversion via LogEvent
 - `transforms/log_to_metric` (1): to_metrics() test helper
-- `transforms/metric_to_log` (1): test do_transform
-- `transforms/trace_to_log` (1): test helper (was already migrated, just the production call at line 69 remains — intentional)
 
-**Blockers for further progress:**
-- OtelLog needs `all_event_fields()` / `all_metadata_fields()` for dedupe, transformer
+**Blockers for remaining production calls:**
 - OtelLog needs `as_map_mut()` for GELF
 - OtelMetric needs `tags_mut()` with `retain()` for tag_cardinality_limit
 - OtelMetric needs `into_parts()` for aggregate
@@ -176,12 +178,7 @@ Note: dedupe MatchFields path is bridge-free; file still has 1 call for IgnoreFi
 
 ## Phased plan — remaining work
 
-### Phase 2 — Add OtelLog field iteration APIs
-
-Add `all_event_fields()` and `all_metadata_fields()` equivalents to OtelLog.
-Unblocks: dedupe (1), transformer (7 test + 1 production), reduce (1).
-
-### Phase 3 — Add OtelMetric aggregate/absolute APIs
+### Phase 2 — Add OtelMetric aggregate/absolute APIs
 
 Add `into_parts()` equivalent and `make_absolute()` to OtelMetric.
 Unblocks: aggregate (1), incremental_to_absolute (1).

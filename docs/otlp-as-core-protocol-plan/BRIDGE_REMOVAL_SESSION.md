@@ -42,12 +42,11 @@ Four conversion functions that translate between OTel proto structs and legacy V
 
 | Function | Before session | After session | Removed |
 |----------|---------------|---------------|---------|
-| `to_log_event()` | 75 | 25 | **50 (67%)** |
+| `to_log_event()` | 75 | 23 | **52 (69%)** |
 | `to_legacy_metric()` | 40 | 20 | **20 (50%)** |
-| **Total** | **115** | **45** | **70 (61%)** |
+| **Total** | **115** | **43** | **72 (63%)** |
 
-32 commits, 1773 tests passing. Transformer fully rewritten (was 8+7 calls → 0).
-Also fixed OtelLog::get_by_meaning to check dropped_fields first.
+34 commits, 1773 tests passing. All easy/medium wins exhausted.
 
 ### What was done
 
@@ -129,6 +128,8 @@ Also fixed OtelLog::get_by_meaning to check dropped_fields first.
   Largest single bridge consumer eliminated (8 production + 7 test calls → 0).
   Also fixed OtelLog::get_by_meaning to check dropped_fields first.
 - prometheus scrape: uses OtelMetric::tag_value() + replace_tag() directly
+- mock/transforms Log+Trace: use OtelLog/OtelSpan::get()+insert() directly
+- dedupe MatchFields: uses OtelLog::get() directly
 
 ### Remaining 45 bridge calls (by category)
 
@@ -162,11 +163,15 @@ Also fixed OtelLog::get_by_meaning to check dropped_fields first.
 - `api/schema/events/output` (2): GraphQL API wraps legacy types
 - `conditions/datadog_search` (2): DD matcher takes &LogEvent
 
-**Test / transitional — 6 calls:**
+**Test / transitional — 5 calls:**
 - `encoding/format/json` (2): reduce_tags_to_single in Single mode
 - `decoding/format/influxdb` (2): test assertions compare full Metric
 - `decoding/format/otlp` (1): trace conversion via LogEvent
-- `transforms/log_to_metric` (1): to_metrics() test helper
+
+**Test helpers needing LogEvent-only APIs — 3 calls:**
+- `transforms/log_to_metric` (1): to_metrics() uses many &LogEvent helpers
+- `transforms/metric_to_log` (1): do_transform() uses all_event_fields()
+- `test_util/mock/transforms` (1): metric branch uses metric.add()
 
 **Blockers for remaining production calls:**
 - OtelLog needs `as_map_mut()` for GELF

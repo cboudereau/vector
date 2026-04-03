@@ -1,14 +1,12 @@
 #![deny(missing_docs)]
 
-use std::collections::BTreeMap;
-
 use chrono::{DateTime, Utc};
-use lookup::{PathPrefix, event_path, lookup_v2::ConfigValuePath};
+use lookup::{PathPrefix, lookup_v2::ConfigValuePath};
 use ordered_float::NotNan;
 use serde::{Deserialize, Deserializer};
 use vector_config::configurable_component;
 use vector_core::{
-    event::{Event, LogEvent},
+    event::{Event, OtelLog},
     schema::meaning,
     serde::is_default,
 };
@@ -119,44 +117,18 @@ impl Transformer {
             || self.except_fields.is_some()
             || self.timestamp_format.is_some();
 
-        if has_rules && matches!(event, Event::Log(_)) {
-            let owned = std::mem::replace(event, Event::from(LogEvent::default()));
-            let mut log_event = owned.into_log_coerce().to_log_event();
-            self.apply_except_fields(&mut log_event);
-            self.apply_only_fields(&mut log_event);
-            self.apply_timestamp_format(&mut log_event);
-            *event = Event::from(log_event);
-        }
-    }
-
-    fn apply_only_fields(&self, log: &mut LogEvent) {
-        if let Some(only_fields) = self.only_fields.as_ref() {
-            let mut old_value = std::mem::replace(log.value_mut(), Value::Object(BTreeMap::new()));
-
-            for field in only_fields {
-                if let Some(value) = old_value.remove(field, true) {
-                    log.insert((PathPrefix::Event, field), value);
-                }
-            }
-
-            // We may need the service field to apply tags to emitted metrics after the log message has been pruned. If there
-            // is a service meaning, we move this value to `dropped_fields` in the metadata.
-            // If the field is still in the new log message after pruning it will have been removed from `old_value` above.
-            let service_path = log
-                .metadata()
-                .schema_definition()
-                .meaning_path(meaning::SERVICE);
-            if let Some(service_path) = service_path {
-                let mut new_log = LogEvent::from(old_value);
-                if let Some(service) = new_log.remove(service_path) {
-                    log.metadata_mut()
-                        .add_dropped_field(meaning::SERVICE.into(), service);
-                }
+        if has_rules {
+            if let Event::Log(otel_log) = event {
+                self.apply_except_fields_otel(otel_log);
+                self.apply_only_fields_otel(otel_log);
+                self.apply_timestamp_format_otel(otel_log);
             }
         }
     }
 
-    fn apply_except_fields(&self, log: &mut LogEvent) {
+    // OtelLog-native field transformation methods.
+
+    fn apply_except_fields_otel(&self, log: &mut OtelLog) {
         if let Some(except_fields) = self.except_fields.as_ref() {
             for field in except_fields {
                 let value_path = &field.0;
@@ -166,8 +138,6 @@ impl Transformer {
                     .metadata()
                     .schema_definition()
                     .meaning_path(meaning::SERVICE);
-                // If we are removing the service field we need to store this in a `dropped_fields` list as we may need to
-                // refer to this later when emitting metrics.
                 if let (Some(v), Some(service_path)) = (value, service_path)
                     && service_path.path == *value_path
                 {
@@ -178,50 +148,79 @@ impl Transformer {
         }
     }
 
-    fn format_timestamps<F, T>(&self, log: &mut LogEvent, extract: F)
-    where
-        F: Fn(&DateTime<Utc>) -> T,
-        T: Into<Value>,
-    {
-        if log.value().is_object() {
-            let mut unix_timestamps = Vec::new();
-            for (k, v) in log.all_event_fields().expect("must be an object") {
-                if let Value::Timestamp(ts) = v {
-                    unix_timestamps.push((k.clone(), extract(ts).into()));
+    fn apply_only_fields_otel(&self, log: &mut OtelLog) {
+        if let Some(only_fields) = self.only_fields.as_ref() {
+            // Collect current value, extract only_fields, rebuild
+            let mut old_value = log.value();
+            let mut kept = Vec::new();
+
+            for field in only_fields {
+                if let Some(value) = old_value.remove(field, true) {
+                    kept.push((field.clone(), value));
                 }
             }
-            for (k, v) in unix_timestamps {
-                log.parse_path_and_insert(k, v)
-                    .expect("timestamp fields must allow insertion");
+
+            // Preserve service meaning in dropped_fields
+            let service_path = log
+                .metadata()
+                .schema_definition()
+                .meaning_path(meaning::SERVICE)
+                .cloned();
+            if let Some(service_path) = service_path {
+                if let Some(service) = old_value.remove(&service_path.path, true) {
+                    log.metadata_mut()
+                        .add_dropped_field(meaning::SERVICE.into(), service);
+                }
             }
-        } else {
-            // root is not an object
-            let timestamp = if let Value::Timestamp(ts) = log.value() {
-                Some(extract(ts))
-            } else {
-                None
-            };
-            if let Some(ts) = timestamp {
-                log.insert(event_path!(), ts.into());
+
+            // Clear all fields and re-insert only the kept ones
+            // Use the existing remove/insert pattern via keys
+            if let Some(keys) = log.keys() {
+                let keys_to_remove: Vec<String> = keys.map(|k| k.to_string()).collect();
+                for key in keys_to_remove {
+                    if let Ok(path) = vrl::path::parse_target_path(&key) {
+                        log.remove(&path);
+                    }
+                }
+            }
+            for (field, value) in kept {
+                log.insert((PathPrefix::Event, &field), value);
             }
         }
     }
 
-    fn apply_timestamp_format(&self, log: &mut LogEvent) {
+    fn apply_timestamp_format_otel(&self, log: &mut OtelLog) {
         if let Some(timestamp_format) = self.timestamp_format.as_ref() {
             match timestamp_format {
-                TimestampFormat::Unix => self.format_timestamps(log, |ts| ts.timestamp()),
-                TimestampFormat::UnixMs => self.format_timestamps(log, |ts| ts.timestamp_millis()),
-                TimestampFormat::UnixUs => self.format_timestamps(log, |ts| ts.timestamp_micros()),
-                TimestampFormat::UnixNs => self.format_timestamps(log, |ts| {
+                TimestampFormat::Unix => self.format_timestamps_otel(log, |ts| ts.timestamp()),
+                TimestampFormat::UnixMs => self.format_timestamps_otel(log, |ts| ts.timestamp_millis()),
+                TimestampFormat::UnixUs => self.format_timestamps_otel(log, |ts| ts.timestamp_micros()),
+                TimestampFormat::UnixNs => self.format_timestamps_otel(log, |ts| {
                     ts.timestamp_nanos_opt().expect("Timestamp out of range")
                 }),
-                TimestampFormat::UnixFloat => self.format_timestamps(log, |ts| {
+                TimestampFormat::UnixFloat => self.format_timestamps_otel(log, |ts| {
                     NotNan::new(ts.timestamp_micros() as f64 / 1e6)
                         .expect("this division will never produce a NaN")
                 }),
-                // RFC3339 is the default serialization of a timestamp.
                 TimestampFormat::Rfc3339 => (),
+            }
+        }
+    }
+
+    fn format_timestamps_otel<F, T>(&self, log: &mut OtelLog, extract: F)
+    where
+        F: Fn(&DateTime<Utc>) -> T,
+        T: Into<Value>,
+    {
+        let mut replacements = Vec::new();
+        for (k, v) in log.convert_to_fields() {
+            if let Value::Timestamp(ts) = v {
+                replacements.push((k, extract(&ts).into()));
+            }
+        }
+        for (k, v) in replacements {
+            if let Ok(path) = vrl::path::parse_target_path(&k) {
+                log.insert(&path, v);
             }
         }
     }

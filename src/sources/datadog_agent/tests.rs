@@ -40,7 +40,7 @@ use crate::{
     components::validation::prelude::*,
     config::{SourceConfig, SourceContext},
     event::{
-        Event, EventStatus, Metric, OtelSpan, Value, into_event_stream,
+        Event, EventStatus, OtelMetric, OtelSpan, Value, into_event_stream,
         metric::{MetricKind, MetricValue},
     },
     schema,
@@ -979,7 +979,7 @@ async fn decode_series_endpoint_v1() {
             assert_eq!(metric.kind(), MetricKind::Absolute);
             assert_eq!(metric.value(), MetricValue::Gauge { value: 3.14 });
             assert_tags(
-                &metric.clone().to_legacy_metric(),
+                &metric,
                 metric_tags!(
                     "resource.host.name" => "random_host",
                     "resource.source_type" => "datadog_agent",
@@ -1006,7 +1006,7 @@ async fn decode_series_endpoint_v1() {
             assert_eq!(metric.kind(), MetricKind::Absolute);
             assert_eq!(metric.value(), MetricValue::Gauge { value: 3.1415 });
             assert_tags(
-                &metric.clone().to_legacy_metric(),
+                &metric,
                 metric_tags!(
                     "resource.host.name" => "random_host",
                     "resource.source_type" => "datadog_agent",
@@ -1038,7 +1038,7 @@ async fn decode_series_endpoint_v1() {
                 }
             );
             assert_tags(
-                &metric.clone().to_legacy_metric(),
+                &metric,
                 metric_tags!(
                     "resource.host.name" => "another_random_host",
                     "resource.source_type" => "datadog_agent",
@@ -1070,7 +1070,7 @@ async fn decode_series_endpoint_v1() {
                 }
             );
             assert_tags(
-                &metric.clone().to_legacy_metric(),
+                &metric,
                 metric_tags!(
                     "resource.host.name" => "a_host",
                     "resource.source_type" => "datadog_agent",
@@ -1423,7 +1423,7 @@ async fn split_outputs() {
             assert_eq!(metric.kind(), MetricKind::Absolute);
             assert_eq!(metric.value(), MetricValue::Gauge { value: 3.14 });
             assert_tags(
-                &metric.clone().to_legacy_metric(),
+                &metric,
                 metric_tags!(
                     "resource.host.name" => "random_host",
                     "resource.source_type" => "datadog_agent",
@@ -2103,7 +2103,7 @@ async fn decode_series_endpoint_v2() {
             assert_eq!(metric.kind(), MetricKind::Absolute);
             assert_eq!(metric.value(), MetricValue::Gauge { value: 3.14 });
             assert_tags(
-                &metric.clone().to_legacy_metric(),
+                &metric,
                 metric_tags!(
                     "resource.host.name" => "random_host",
                     "resource.source_type" => "datadog_agent",
@@ -2128,7 +2128,7 @@ async fn decode_series_endpoint_v2() {
             assert_eq!(metric.kind(), MetricKind::Absolute);
             assert_eq!(metric.value(), MetricValue::Gauge { value: 3.1415 });
             assert_tags(
-                &metric.clone().to_legacy_metric(),
+                &metric,
                 metric_tags!(
                     "resource.host.name" => "random_host",
                     "resource.source_type" => "datadog_agent",
@@ -2162,7 +2162,7 @@ async fn decode_series_endpoint_v2() {
                 }
             );
             assert_tags(
-                &metric.clone().to_legacy_metric(),
+                &metric,
                 metric_tags!(
                     "resource.host.name" => "another_random_host",
                     "resource.source_type" => "datadog_agent",
@@ -2197,7 +2197,7 @@ async fn decode_series_endpoint_v2() {
                 }
             );
             assert_tags(
-                &metric.clone().to_legacy_metric(),
+                &metric,
                 metric_tags!(
                     "resource.host.name" => "a_host",
                     "resource.source_type" => "datadog_agent",
@@ -2415,8 +2415,8 @@ fn test_output_schema_definition_bytes_legacy_namespace() {
     )
 }
 
-fn assert_tags(metric: &Metric, tags: MetricTags) {
-    assert_eq!(metric.tags().expect("Missing tags"), &tags);
+fn assert_tags(metric: &OtelMetric, tags: MetricTags) {
+    assert_eq!(metric.tags().expect("Missing tags"), tags);
 }
 
 async fn test_series_v1_split_metric_namespace_impl(

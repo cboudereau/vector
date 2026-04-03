@@ -377,7 +377,7 @@ async fn test_run_command_linux() {
         assert!(log.get(PID_KEY).is_some());
         assert!(log.get_timestamp().is_some());
 
-        assert_eq!(8, log.to_log_event().all_event_fields().unwrap().count());
+        assert_eq!(8, log.convert_to_fields().len());
     } else {
         panic!("Expected to receive a linux event");
     }

@@ -667,9 +667,14 @@ impl OtelLog {
     /// Get a field value by its semantic meaning (looks up schema definition).
     pub fn get_by_meaning(&self, meaning: impl AsRef<str>) -> Option<Value> {
         self.metadata
-            .schema_definition()
-            .meaning_path(meaning.as_ref())
-            .and_then(|path| self.get(path))
+            .dropped_field(&meaning)
+            .cloned()
+            .or_else(|| {
+                self.metadata
+                    .schema_definition()
+                    .meaning_path(meaning.as_ref())
+                    .and_then(|path| self.get(path))
+            })
     }
 
     /// Get a field value by path.

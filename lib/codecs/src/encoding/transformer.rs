@@ -272,6 +272,7 @@ mod tests {
     use lookup::path::parse_target_path;
     use vector_core::{
         config::{LogNamespace, log_schema},
+        event::LogEvent,
         schema,
     };
     use vrl::{btreemap, value::Kind};
@@ -321,16 +322,16 @@ mod tests {
         }
         let mut event = Event::from(log);
         transformer.transform(&mut event);
-        let log = event.as_log().to_log_event();
-        assert!(!log.contains("a.b.c"));
-        assert!(!log.contains("b"));
-        assert!(!log.contains("b[1].x"));
-        assert!(!log.contains("c[0].y"));
-        assert!(!log.contains("d.z"));
-        assert!(!log.contains("e.a"));
+        let log = event.as_log();
+        assert!(!log.parse_path_and_get_value("a.b.c").ok().flatten().is_some());
+        assert!(!log.parse_path_and_get_value("b").ok().flatten().is_some());
+        assert!(!log.parse_path_and_get_value("b[1].x").ok().flatten().is_some());
+        assert!(!log.parse_path_and_get_value("c[0].y").ok().flatten().is_some());
+        assert!(!log.parse_path_and_get_value("d.z").ok().flatten().is_some());
+        assert!(!log.parse_path_and_get_value("e.a").ok().flatten().is_some());
 
-        assert!(log.contains("a.b.d"));
-        assert!(log.contains("c[0].x"));
+        assert!(log.parse_path_and_get_value("a.b.d").ok().flatten().is_some());
+        assert!(log.parse_path_and_get_value("c[0].x").ok().flatten().is_some());
     }
 
     #[test]
@@ -358,20 +359,20 @@ mod tests {
         }
         let mut event = Event::from(log);
         transformer.transform(&mut event);
-        let log = event.as_log().to_log_event();
-        assert!(log.contains("a.b.c"));
-        assert!(log.contains("b"));
-        assert!(log.contains("b[1].x"));
-        assert!(log.contains("c[0].y"));
-        assert!(log.contains("\"g.z\""));
+        let log = event.as_log();
+        assert!(log.parse_path_and_get_value("a.b.c").ok().flatten().is_some());
+        assert!(log.parse_path_and_get_value("b").ok().flatten().is_some());
+        assert!(log.parse_path_and_get_value("b[1].x").ok().flatten().is_some());
+        assert!(log.parse_path_and_get_value("c[0].y").ok().flatten().is_some());
+        assert!(log.parse_path_and_get_value("\"g.z\"").ok().flatten().is_some());
 
-        assert!(!log.contains("a.b.d"));
-        assert!(!log.contains("c[0].x"));
-        assert!(!log.contains("d"));
-        assert!(!log.contains("e"));
-        assert!(!log.contains("f"));
-        assert!(!log.contains("h"));
-        assert!(!log.contains("i"));
+        assert!(!log.parse_path_and_get_value("a.b.d").ok().flatten().is_some());
+        assert!(!log.parse_path_and_get_value("c[0].x").ok().flatten().is_some());
+        assert!(!log.parse_path_and_get_value("d").ok().flatten().is_some());
+        assert!(!log.parse_path_and_get_value("e").ok().flatten().is_some());
+        assert!(!log.parse_path_and_get_value("f").ok().flatten().is_some());
+        assert!(!log.parse_path_and_get_value("h").ok().flatten().is_some());
+        assert!(!log.parse_path_and_get_value("i").ok().flatten().is_some());
     }
 
     #[test]
@@ -379,21 +380,19 @@ mod tests {
     fn deserialize_and_transform_timestamp() {
         let mut base = Event::from(LogEvent::from("Demo"));
         {
-            let base_log = base.as_log().to_log_event();
+            let base_log = base.as_log();
             let timestamp = base_log
                 .get((PathPrefix::Event, log_schema().timestamp_key().unwrap()))
-                .unwrap()
-                .clone();
+                .unwrap();
             let timestamp = timestamp.as_timestamp().unwrap();
             base.as_mut_log()
                 .insert("another", Value::Timestamp(*timestamp));
         }
 
-        let base_log = base.as_log().to_log_event();
+        let base_log = base.as_log();
         let timestamp = base_log
             .get((PathPrefix::Event, log_schema().timestamp_key().unwrap()))
-            .unwrap()
-            .clone();
+            .unwrap();
         let timestamp = timestamp.as_timestamp().unwrap();
 
         let cases = [
@@ -414,13 +413,12 @@ mod tests {
             let transformer: Transformer = toml::from_str(&config).unwrap();
             let mut event = base.clone();
             transformer.transform(&mut event);
-            let log = event.as_log().to_log_event();
+            let log = event.as_log();
 
             for actual in [
                 log.get((PathPrefix::Event, log_schema().timestamp_key().unwrap()))
-                    .unwrap()
-                    .clone(),
-                log.get("another").unwrap().clone(),
+                    .unwrap(),
+                log.parse_path_and_get_value("another").ok().flatten().unwrap(),
             ] {
                 assert_eq!(expected.kind_str(), actual.kind_str());
                 assert_eq!(expected, actual);
@@ -476,16 +474,16 @@ mod tests {
             .set_schema_definition(&Arc::new(schema));
 
         transformer.transform(&mut event);
-        let log = event.as_log().to_log_event();
-        assert!(log.contains("body"));
+        let log = event.as_log();
+        assert!(log.parse_path_and_get_value("body").ok().flatten().is_some());
 
         // Event no longer contains the service field.
-        assert!(!log.contains("thing.service"));
+        assert!(!log.parse_path_and_get_value("thing.service").ok().flatten().is_some());
 
         // But we can still get the service by meaning.
         assert_eq!(
             Value::from("carrot"),
-            log.get_by_meaning("service").unwrap().clone()
+            log.get_by_meaning("service").unwrap()
         );
     }
 
@@ -517,16 +515,16 @@ mod tests {
             .set_schema_definition(&Arc::new(schema));
 
         transformer.transform(&mut event);
-        let log = event.as_log().to_log_event();
-        assert!(log.contains("body"));
+        let log = event.as_log();
+        assert!(log.parse_path_and_get_value("body").ok().flatten().is_some());
 
         // Event no longer contains the service field.
-        assert!(!log.contains("thing.service"));
+        assert!(!log.parse_path_and_get_value("thing.service").ok().flatten().is_some());
 
         // But we can still get the service by meaning.
         assert_eq!(
             Value::from("carrot"),
-            log.get_by_meaning("service").unwrap().clone()
+            log.get_by_meaning("service").unwrap()
         );
     }
 }

@@ -46,6 +46,8 @@ Four conversion functions that translate between OTel proto structs and legacy V
 | `to_legacy_metric()` | 40 | 20 | **20 (50%)** |
 | **Total** | **115** | **53** | **62 (54%)** |
 
+Note: dedupe MatchFields path is bridge-free; file still has 1 call for IgnoreFields.
+
 ### What was done
 
 **OtelLog — all internal bridge delegation removed (earlier sessions):**
@@ -120,6 +122,7 @@ Four conversion functions that translate between OTel proto structs and legacy V
 - exec tests: uses convert_to_fields().len() instead of all_event_fields
 - OtelMetric Serialize: no longer clones self and builds legacy Metric
 - JSON encoder: skips bridge for Full metric tag mode (default path)
+- dedupe MatchFields: uses OtelLog::get() directly (IgnoreFields still bridges)
 
 ### Remaining 53 bridge calls (by category)
 

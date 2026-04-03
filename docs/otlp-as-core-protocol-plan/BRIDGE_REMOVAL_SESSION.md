@@ -46,8 +46,9 @@ Four conversion functions that translate between OTel proto structs and legacy V
 | `to_legacy_metric()` | 40 | 20 | **20 (50%)** |
 | **Total** | **115** | **39** | **76 (66%)** |
 
-40 commits, 1789 tests passing. All codec encoders migrated. Kinesis sink migrated.
+42 commits, 1789 tests passing. All codec encoders + Kinesis sink migrated.
 GELF, Arrow, transformer — previously "deferred as too complex" — now rewritten.
+Remaining 39 calls are at the hard floor — all need new APIs or architecture changes.
 
 ### What was done
 

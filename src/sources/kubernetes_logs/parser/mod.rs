@@ -30,19 +30,18 @@ fn transform_otel_event(parser: &mut ParserState, output: &mut OutputBuffer, mut
         for parsed in tmp_output.into_events() {
             if let Event::Log(ref parsed_otel) = parsed {
                 if let Event::Log(ref mut otel_log) = event {
-                    let parsed_log = parsed_otel.to_log_event();
-                    if let Some(msg) = parsed_log.get(".body") {
+                    if let Some(msg) = parsed_otel.get_body() {
                         otel_log.set_body(crate::event::string_value(
                             msg.as_str().unwrap_or_default(),
                         ));
                     }
-                    if let Some(stream) = parsed_log.get(".stream") {
+                    if let Some(stream) = parsed_otel.parse_path_and_get_value(".stream").ok().flatten() {
                         otel_log.set_attribute(
                             "stream".to_string(),
                             crate::event::string_value(stream.as_str().unwrap_or_default()),
                         );
                     }
-                    if let Some(Value::Boolean(true)) = parsed_log.get("._partial") {
+                    if let Some(Value::Boolean(true)) = parsed_otel.parse_path_and_get_value("._partial").ok().flatten() {
                         otel_log.set_attribute(
                             "_partial".to_string(),
                             opentelemetry_proto::tonic::common::v1::AnyValue {
@@ -50,7 +49,7 @@ fn transform_otel_event(parser: &mut ParserState, output: &mut OutputBuffer, mut
                             },
                         );
                     }
-                    if let Some(Value::Timestamp(ts)) = parsed_log.get(".timestamp") {
+                    if let Some(Value::Timestamp(ts)) = parsed_otel.parse_path_and_get_value(".timestamp").ok().flatten() {
                         otel_log.record_mut().time_unix_nano =
                             ts.timestamp_nanos_opt().unwrap_or(0) as u64;
                     }

@@ -79,14 +79,14 @@ mod tests {
     use crate::transforms::test::create_topology;
     use tokio::sync::mpsc;
     use tokio_stream::wrappers::ReceiverStream;
-    use vector_lib::event::{LogEvent, TraceEvent};
+    use vector_lib::event::{OtelLog, TraceEvent};
 
     #[test]
     fn generate_config() {
         crate::test_util::test_generate_config::<TraceToLogConfig>();
     }
 
-    async fn do_transform(trace: TraceEvent) -> Option<LogEvent> {
+    async fn do_transform(trace: TraceEvent) -> Option<OtelLog> {
         assert_transform_compliance(async move {
             let config = TraceToLogConfig {
                 log_namespace: Some(false),
@@ -105,7 +105,7 @@ mod tests {
             result
         })
         .await
-        .map(|e| e.into_log().to_log_event())
+        .map(|e| e.into_log())
     }
 
     #[tokio::test]
@@ -121,10 +121,9 @@ mod tests {
 
         let (expected_map, _) = trace.clone().into_parts();
 
-        let log: LogEvent = do_transform(trace).await.unwrap();
-        let (actual_value, _) = log.into_parts();
-        let actual_map = actual_value
-            .into_object()
+        let log = do_transform(trace).await.unwrap();
+        let actual_map = log
+            .as_map()
             .expect("log value should be an object");
 
         assert_eq!(

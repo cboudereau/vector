@@ -46,13 +46,15 @@ impl TextSerializerConfig {
 /// compatibility, until it is phased out completely.
 #[derive(Debug, Clone)]
 pub struct TextSerializer {
-    metric_tag_values: MetricTagValues,
+    // Kept for API compat; OtelMetric::Display uses iter_single() which
+    // already filters to single values.
+    _metric_tag_values: MetricTagValues,
 }
 
 impl TextSerializer {
     /// Creates a new `TextSerializer`.
     pub const fn new(metric_tag_values: MetricTagValues) -> Self {
-        Self { metric_tag_values }
+        Self { _metric_tag_values: metric_tag_values }
     }
 }
 
@@ -68,11 +70,7 @@ impl Encoder<Event> for TextSerializer {
                 }
             }
             Event::Metric(metric) => {
-                let mut legacy = metric.to_legacy_metric();
-                if self.metric_tag_values == MetricTagValues::Single {
-                    legacy.reduce_tags_to_single();
-                }
-                let bytes = legacy.to_string();
+                let bytes = metric.to_string();
                 buffer.put(bytes.as_ref());
             }
             Event::Trace(_) => {}

@@ -2442,6 +2442,38 @@ impl Serialize for OtelMetric {
     }
 }
 
+impl std::fmt::Display for OtelMetric {
+    /// Display in Prometheus-like text format:
+    /// `TIMESTAMP NAMESPACE_NAME{TAGS} KIND VALUE`
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let (kind, value, timestamp, _) = self.extract_metric_data();
+        if let Some(ts) = timestamp {
+            write!(fmt, "{ts:?} ")?;
+        }
+        if let Some(ns) = self.namespace() {
+            write!(fmt, "{ns}_")?;
+        }
+        write!(fmt, "{}", self.name())?;
+        write!(fmt, "{{")?;
+        if let Some(tags) = self.tags() {
+            let mut first = true;
+            for (tag, value) in tags.iter_single() {
+                if !first {
+                    write!(fmt, ",")?;
+                }
+                first = false;
+                write!(fmt, "{tag}={value:?}")?;
+            }
+        }
+        write!(fmt, "}}")?;
+        let kind_char = match kind {
+            super::MetricKind::Absolute => '=',
+            super::MetricKind::Incremental => '+',
+        };
+        write!(fmt, " {kind_char} {value}")
+    }
+}
+
 impl<'de> Deserialize<'de> for OtelLog {
     fn deserialize<D: serde::Deserializer<'de>>(_deserializer: D) -> Result<Self, D::Error> {
         // Full deserialization deferred to Step 5b+; placeholder for Derive on Event

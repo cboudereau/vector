@@ -1138,10 +1138,9 @@ impl OtelSpan {
         }
     }
 
-    /// Convert a legacy `TraceEvent` into an `OtelSpan`.
-    ///
-    /// The `TraceEvent`'s fields are stored as span attributes.
     /// Create an OtelSpan from an OtelLog (for trace signal detection in OTLP decoder).
+    ///
+    /// The OtelLog's fields become span attributes. Resource and scope are preserved.
     pub fn from_otel_log(log: OtelLog) -> Self {
         let map = log.as_map().unwrap_or_default();
         let attributes: Vec<KeyValue> = map
@@ -1156,11 +1155,15 @@ impl OtelSpan {
                 attributes,
                 ..Default::default()
             },
-            resource: log.resource.clone(),
-            scope: log.scope.clone(),
+            resource: log.resource,
+            scope: log.scope,
             metadata: log.metadata,
         }
     }
+
+    /// Convert a legacy `TraceEvent` into an `OtelSpan`.
+    ///
+    /// The `TraceEvent`'s fields are stored as span attributes.
 
     pub fn from_trace_event(trace: super::TraceEvent) -> Self {
         let (map, metadata) = trace.into_parts();
@@ -2553,29 +2556,49 @@ impl Serialize for OtelMetric {
         // {"counter": {"value": 42.0}} when serialized as an enum.
         // For flattened output matching legacy Metric format, we need the
         // variant key at the map level with just the inner struct value.
+        // Serialize the inner struct of each MetricValue variant directly,
+        // avoiding double-nesting from serde's externally tagged enum format.
         match &value {
             super::MetricValue::Counter { value: v } => {
                 #[derive(serde::Serialize)]
-                struct Inner { value: f64 }
-                map.serialize_entry("counter", &Inner { value: *v })?;
+                struct V { value: f64 }
+                map.serialize_entry("counter", &V { value: *v })?;
             }
             super::MetricValue::Gauge { value: v } => {
                 #[derive(serde::Serialize)]
-                struct Inner { value: f64 }
-                map.serialize_entry("gauge", &Inner { value: *v })?;
+                struct V { value: f64 }
+                map.serialize_entry("gauge", &V { value: *v })?;
             }
-            _ => {
-                // For complex types (Set, Distribution, Histogram, Summary),
-                // use the MetricValue's own serialization which includes the
-                // variant name — accept the double-nesting for now.
-                let value_key = match &value {
-                    super::MetricValue::Set { .. } => "set",
-                    super::MetricValue::Distribution { .. } => "distribution",
-                    super::MetricValue::AggregatedHistogram { .. } => "aggregated_histogram",
-                    super::MetricValue::AggregatedSummary { .. } => "aggregated_summary",
-                    _ => unreachable!(),
-                };
-                map.serialize_entry(value_key, &value)?;
+            super::MetricValue::Set { values } => {
+                #[derive(serde::Serialize)]
+                struct V<'a> { values: &'a std::collections::BTreeSet<String> }
+                map.serialize_entry("set", &V { values })?;
+            }
+            super::MetricValue::Distribution { samples, statistic } => {
+                #[derive(serde::Serialize)]
+                struct V<'a> {
+                    samples: &'a Vec<super::metric::Sample>,
+                    statistic: &'a super::StatisticKind,
+                }
+                map.serialize_entry("distribution", &V { samples, statistic })?;
+            }
+            super::MetricValue::AggregatedHistogram { buckets, count, sum } => {
+                #[derive(serde::Serialize)]
+                struct V<'a> {
+                    buckets: &'a Vec<super::metric::Bucket>,
+                    count: u64,
+                    sum: f64,
+                }
+                map.serialize_entry("aggregated_histogram", &V { buckets, count: *count, sum: *sum })?;
+            }
+            super::MetricValue::AggregatedSummary { quantiles, count, sum } => {
+                #[derive(serde::Serialize)]
+                struct V<'a> {
+                    quantiles: &'a Vec<super::metric::Quantile>,
+                    count: u64,
+                    sum: f64,
+                }
+                map.serialize_entry("aggregated_summary", &V { quantiles, count: *count, sum: *sum })?;
             }
         }
         map.end()

@@ -1478,9 +1478,7 @@ mod test {
 
     impl From<Event> for SyslogMessageRfc5424 {
         fn from(e: Event) -> Self {
-            let log_event = e.into_log().to_log_event();
-            let (value, _) = log_event.into_parts();
-            let mut fields = value.into_object().unwrap();
+            let mut fields = e.into_log().as_map().unwrap();
 
             Self {
                 msgid: fields.remove("msgid").map(value_to_string).unwrap(),

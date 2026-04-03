@@ -1,4 +1,4 @@
-use vector_lib::event::{Event, Metric, MetricKind};
+use vector_lib::event::{Event, MetricKind};
 
 use super::{ComponentMetricType, Validator};
 use crate::components::validation::{
@@ -197,32 +197,29 @@ fn validate_metric(
     )
 }
 
-fn filter_events_by_metric_and_component(
-    telemetry_events: &[Event],
+fn filter_events_by_metric_and_component<'a>(
+    telemetry_events: &'a [Event],
     metric: &ComponentMetricType,
     component_id: &str,
-) -> Vec<Metric> {
+) -> Vec<&'a vector_lib::event::OtelMetric> {
     info!(
         "Filter looking for metric {} {}",
         metric.to_string(),
         component_id
     );
 
-    let metrics: Vec<Metric> = telemetry_events
+    let metrics: Vec<&vector_lib::event::OtelMetric> = telemetry_events
         .iter()
-        .flat_map(|e| {
+        .filter_map(|e| {
             if let vector_lib::event::Event::Metric(m) = e {
-                Some(m.clone().to_legacy_metric())
+                Some(m)
             } else {
                 None
             }
         })
         .filter(|m| {
             if m.name() == metric.to_string() {
-                debug!("{}", m);
-                if let Some(tags) = m.tags()
-                    && tags.get("component_id").unwrap_or("") == component_id
-                {
+                if m.tag_value("component_id").as_deref() == Some(component_id) {
                     return true;
                 }
             }
@@ -238,7 +235,7 @@ fn filter_events_by_metric_and_component(
 
 fn sum_counters(
     metric_name: &ComponentMetricType,
-    metrics: &[Metric],
+    metrics: &[&vector_lib::event::OtelMetric],
 ) -> Result<u64, Vec<String>> {
     let mut sum: f64 = 0.0;
     let mut errs = Vec::new();
@@ -246,10 +243,10 @@ fn sum_counters(
     for m in metrics {
         match m.value() {
             vector_lib::event::MetricValue::Counter { value } => {
-                if let MetricKind::Absolute = m.data().kind {
-                    sum = *value;
+                if let MetricKind::Absolute = m.kind() {
+                    sum = value;
                 } else {
-                    sum += *value;
+                    sum += value;
                 }
             }
             _ => errs.push(format!("{metric_name}: metric value is not a counter",)),

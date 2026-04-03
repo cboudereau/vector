@@ -258,24 +258,20 @@ impl Event {
         }
     }
 
-    /// Convert to a legacy-compatible JSON value for backward-compatible serialization.
+    /// Convert to a JSON value for serialization.
     /// Wraps the event in `{"log": ...}`, `{"metric": ...}`, or `{"trace": ...}`.
-    /// TEMPORARY BRIDGE — serialize OTel types directly (Phase 4).
     pub fn to_legacy_json_value(self) -> serde_json::Value {
         match self {
             Event::Log(log) => {
-                let legacy = log.to_log_event();
-                let v = serde_json::to_value(legacy).unwrap_or(serde_json::Value::Null);
+                let v = serde_json::to_value(&log).unwrap_or(serde_json::Value::Null);
                 serde_json::json!({"log": v})
             }
             Event::Metric(metric) => {
-                let legacy = metric.to_legacy_metric();
-                let v = serde_json::to_value(legacy).unwrap_or(serde_json::Value::Null);
+                let v = serde_json::to_value(&metric).unwrap_or(serde_json::Value::Null);
                 serde_json::json!({"metric": v})
             }
             Event::Trace(trace) => {
-                let legacy = trace.to_log_event();
-                let v = serde_json::to_value(legacy).unwrap_or(serde_json::Value::Null);
+                let v = serde_json::to_value(&trace).unwrap_or(serde_json::Value::Null);
                 serde_json::json!({"trace": v})
             }
         }

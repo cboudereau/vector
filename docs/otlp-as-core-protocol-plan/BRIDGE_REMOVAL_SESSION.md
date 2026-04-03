@@ -43,12 +43,12 @@ Four conversion functions that translate between OTel proto structs and legacy V
 | Function | Before session | After session | Removed |
 |----------|---------------|---------------|---------|
 | `to_log_event()` | 75 | 19 | **56 (75%)** |
-| `to_legacy_metric()` | 40 | 20 | **20 (50%)** |
-| **Total** | **115** | **39** | **76 (66%)** |
+| `to_legacy_metric()` | 40 | 18 | **22 (55%)** |
+| **Total** | **115** | **37** | **78 (68%)** |
 
-42 commits, 1789 tests passing. All codec encoders + Kinesis sink migrated.
-GELF, Arrow, transformer — previously "deferred as too complex" — now rewritten.
-Remaining 39 calls are at the hard floor — all need new APIs or architecture changes.
+45 commits, 1789 tests passing.
+All codec encoders/decoders migrated. Kinesis sink migrated.
+Discriminant::from_otel_log added. influxdb decoder tests migrated.
 
 ### What was done
 
@@ -138,23 +138,22 @@ Remaining 39 calls are at the hard floor — all need new APIs or architecture c
   convert_to_fields() + insert(), find_null_field uses parse_path_and_get_value,
   serde_arrow serializes OtelLog directly
 
-### Remaining 39 bridge calls (by category)
+### Remaining 37 bridge calls (by category)
 
 **Core infrastructure — 12 calls:**
-- `proto.rs` (4+2): OTel → protobuf via legacy types
+- `proto.rs` (6): OTel → protobuf via legacy types
 - `lua/event.rs` (3): Lua API exposes LogEvent/Metric
 - `mod.rs` (3): `to_metric()`, `into_metric()`, `try_into_metric()`
 - `ref.rs` (2): `EventRef::into_metric()`, `EventMutRef::into_metric()`
 
 **Sinks needing LogEvent pipeline — 3 calls:**
-- `sinks/elasticsearch` (2): pipeline around LogEvent
+- `sinks/elasticsearch` (2+1): pipeline around LogEvent + metric_to_log bridge
 - `sinks/splunk_hec` (1): render_template_string_from_log
 
-**Transforms needing Metric mutation — 5 calls:**
+**Transforms needing Metric mutation — 4 calls:**
 - `transforms/aggregate` (1): metric.into_parts()
 - `transforms/tag_cardinality_limit` (1): tags_mut().retain()
 - `transforms/incremental_to_absolute` (1): make_absolute
-- `transforms/metric_to_log` (1): transform_one(Metric)
 - `sinks/appsignal` (1): normalizer.normalize(Metric)
 
 **Transforms needing LogEvent iteration/mutation — 3 calls:**
@@ -167,18 +166,14 @@ Remaining 39 calls are at the hard floor — all need new APIs or architecture c
 - `api/schema/events/output` (2): GraphQL API wraps legacy types
 - `conditions/datadog_search` (2): DD matcher takes &LogEvent
 
-**Test / transitional — 8 calls:**
+**Test / transitional — 6 calls:**
 - `encoding/format/json` (2): reduce_tags_to_single in Single mode
-- `decoding/format/influxdb` (2): test assertions compare full Metric
 - `decoding/format/otlp` (1): trace conversion via LogEvent
 - `transforms/log_to_metric` (1): to_metrics() test helper
-- `transforms/metric_to_log` (1): do_transform() test helper
+- `transforms/metric_to_log` (2): production transform_one + test helper
 - `test_util/mock/transforms` (1): metric branch uses metric.add()
 
-**Codec encoders — 0 calls (fully migrated):**
-All 9 encoders (JSON, logfmt, CSV, CEF, Avro, Protobuf, syslog, text, GELF, Arrow)
-now use OtelLog/OtelSpan/OtelMetric directly. Only JSON metric in Single tag mode
-still bridges for reduce_tags_to_single.
+**Codec encoders/decoders — 0 bridge calls (fully migrated).**
 
 **Blockers for remaining production calls:**
 - OtelLog needs `as_map_mut()` for GELF

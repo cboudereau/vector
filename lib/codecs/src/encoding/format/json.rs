@@ -93,30 +93,22 @@ impl Encoder<Event> for JsonSerializer {
         if self.options.pretty {
             match event {
                 Event::Log(log) => serde_json::to_writer_pretty(writer, &log),
-                Event::Metric(metric) => {
+                Event::Metric(mut metric) => {
                     if self.metric_tag_values == MetricTagValues::Single {
-                        // TEMPORARY BRIDGE — reduce_tags_to_single needs legacy Metric mutation
-                        let mut legacy = metric.to_legacy_metric();
-                        legacy.reduce_tags_to_single();
-                        serde_json::to_writer_pretty(writer, &legacy)
-                    } else {
-                        serde_json::to_writer_pretty(writer, &metric)
+                        metric.reduce_tags_to_single();
                     }
+                    serde_json::to_writer_pretty(writer, &metric)
                 }
                 Event::Trace(trace) => serde_json::to_writer_pretty(writer, &trace),
             }
         } else {
             match event {
                 Event::Log(log) => serde_json::to_writer(writer, &log),
-                Event::Metric(metric) => {
+                Event::Metric(mut metric) => {
                     if self.metric_tag_values == MetricTagValues::Single {
-                        // TEMPORARY BRIDGE — reduce_tags_to_single needs legacy Metric mutation
-                        let mut legacy = metric.to_legacy_metric();
-                        legacy.reduce_tags_to_single();
-                        serde_json::to_writer(writer, &legacy)
-                    } else {
-                        serde_json::to_writer(writer, &metric)
+                        metric.reduce_tags_to_single();
                     }
+                    serde_json::to_writer(writer, &metric)
                 }
                 Event::Trace(trace) => serde_json::to_writer(writer, &trace),
             }

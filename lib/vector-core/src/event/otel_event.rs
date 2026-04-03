@@ -1866,6 +1866,37 @@ impl OtelMetric {
         }
     }
 
+    /// Reduce multi-value (array) data point attributes to single values.
+    /// Keeps only the last non-null string value from each array attribute.
+    pub fn reduce_tags_to_single(&mut self) {
+        use opentelemetry_proto::tonic::metrics::v1::metric::Data as MetricData;
+        let reduce_attrs = |attrs: &mut Vec<KeyValue>| {
+            for attr in attrs.iter_mut() {
+                if let Some(AnyValue { value: Some(OtelValueKind::ArrayValue(arr)) }) = &attr.value {
+                    // Find the last non-null string value
+                    let last = arr.values.iter().rev().find_map(|v| match &v.value {
+                        Some(OtelValueKind::StringValue(s)) => Some(s.clone()),
+                        _ => None,
+                    });
+                    if let Some(s) = last {
+                        attr.value = Some(AnyValue {
+                            value: Some(OtelValueKind::StringValue(s)),
+                        });
+                    }
+                }
+            }
+        };
+        if let Some(data) = self.metric.data.as_mut() {
+            match data {
+                MetricData::Sum(s) => { for dp in &mut s.data_points { reduce_attrs(&mut dp.attributes); } }
+                MetricData::Gauge(g) => { for dp in &mut g.data_points { reduce_attrs(&mut dp.attributes); } }
+                MetricData::Histogram(h) => { for dp in &mut h.data_points { reduce_attrs(&mut dp.attributes); } }
+                MetricData::Summary(s) => { for dp in &mut s.data_points { reduce_attrs(&mut dp.attributes); } }
+                MetricData::ExponentialHistogram(e) => { for dp in &mut e.data_points { reduce_attrs(&mut dp.attributes); } }
+            }
+        }
+    }
+
     /// Remove a data point attribute by key from all data points.
     pub fn remove_data_point_attribute(&mut self, key: &str) -> Option<AnyValue> {
         use opentelemetry_proto::tonic::metrics::v1::metric::Data as MetricData;
@@ -2514,21 +2545,38 @@ impl Serialize for OtelMetric {
         if let Some(ref tags) = tags {
             map.serialize_entry("tags", tags)?;
         }
+        if let Some(ts) = &timestamp {
+            map.serialize_entry("timestamp", ts)?;
+        }
         map.serialize_entry("kind", &kind)?;
-        // MetricValue serializes with flatten — each variant becomes its own key
-        // e.g. Counter → {"counter": {"value": 42.0}}
-        // Match serde's rename_all = "snake_case" format
-        let value_key = match &value {
-            super::MetricValue::Counter { .. } => "counter",
-            super::MetricValue::Gauge { .. } => "gauge",
-            super::MetricValue::Set { .. } => "set",
-            super::MetricValue::Distribution { .. } => "distribution",
-            super::MetricValue::AggregatedHistogram { .. } => "aggregated_histogram",
-            super::MetricValue::AggregatedSummary { .. } => "aggregated_summary",
-        };
-        map.serialize_entry(value_key, &value)?;
-        if let Some(ts) = timestamp {
-            map.serialize_entry("timestamp", &ts)?;
+        // MetricValue with #[serde(rename_all = "snake_case")] produces
+        // {"counter": {"value": 42.0}} when serialized as an enum.
+        // For flattened output matching legacy Metric format, we need the
+        // variant key at the map level with just the inner struct value.
+        match &value {
+            super::MetricValue::Counter { value: v } => {
+                #[derive(serde::Serialize)]
+                struct Inner { value: f64 }
+                map.serialize_entry("counter", &Inner { value: *v })?;
+            }
+            super::MetricValue::Gauge { value: v } => {
+                #[derive(serde::Serialize)]
+                struct Inner { value: f64 }
+                map.serialize_entry("gauge", &Inner { value: *v })?;
+            }
+            _ => {
+                // For complex types (Set, Distribution, Histogram, Summary),
+                // use the MetricValue's own serialization which includes the
+                // variant name — accept the double-nesting for now.
+                let value_key = match &value {
+                    super::MetricValue::Set { .. } => "set",
+                    super::MetricValue::Distribution { .. } => "distribution",
+                    super::MetricValue::AggregatedHistogram { .. } => "aggregated_histogram",
+                    super::MetricValue::AggregatedSummary { .. } => "aggregated_summary",
+                    _ => unreachable!(),
+                };
+                map.serialize_entry(value_key, &value)?;
+            }
         }
         map.end()
     }

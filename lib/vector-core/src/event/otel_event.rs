@@ -2438,7 +2438,41 @@ impl Serialize for OtelSpan {
 
 impl Serialize for OtelMetric {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        self.clone().to_legacy_metric().serialize(serializer)
+        use serde::ser::SerializeMap;
+        let (kind, value, timestamp, _) = self.extract_metric_data();
+
+        // Count fields: name + kind + value (1 field) + optional namespace/tags/timestamp
+        let mut len = 3; // name, kind, value variant
+        if self.namespace().is_some() { len += 1; }
+        let tags = self.tags();
+        if tags.is_some() { len += 1; }
+        if timestamp.is_some() { len += 1; }
+
+        let mut map = serializer.serialize_map(Some(len))?;
+        map.serialize_entry("name", self.name())?;
+        if let Some(ns) = self.namespace() {
+            map.serialize_entry("namespace", ns)?;
+        }
+        if let Some(ref tags) = tags {
+            map.serialize_entry("tags", tags)?;
+        }
+        map.serialize_entry("kind", &kind)?;
+        // MetricValue serializes with flatten — each variant becomes its own key
+        // e.g. Counter → {"counter": {"value": 42.0}}
+        // Match serde's rename_all = "snake_case" format
+        let value_key = match &value {
+            super::MetricValue::Counter { .. } => "counter",
+            super::MetricValue::Gauge { .. } => "gauge",
+            super::MetricValue::Set { .. } => "set",
+            super::MetricValue::Distribution { .. } => "distribution",
+            super::MetricValue::AggregatedHistogram { .. } => "aggregated_histogram",
+            super::MetricValue::AggregatedSummary { .. } => "aggregated_summary",
+        };
+        map.serialize_entry(value_key, &value)?;
+        if let Some(ts) = timestamp {
+            map.serialize_entry("timestamp", &ts)?;
+        }
+        map.end()
     }
 }
 

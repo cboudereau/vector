@@ -1840,6 +1840,38 @@ impl OtelMetric {
         }
     }
 
+    /// Remove a data point attribute by key from all data points.
+    pub fn remove_data_point_attribute(&mut self, key: &str) -> Option<AnyValue> {
+        use opentelemetry_proto::tonic::metrics::v1::metric::Data as MetricData;
+        let mut removed = None;
+        let remove_from = |attrs: &mut Vec<KeyValue>| -> Option<AnyValue> {
+            if let Some(pos) = attrs.iter().position(|a| a.key == key) {
+                attrs.remove(pos).value
+            } else {
+                None
+            }
+        };
+        if let Some(data) = self.metric.data.as_mut() {
+            match data {
+                MetricData::Sum(s) => { for dp in &mut s.data_points { removed = removed.or(remove_from(&mut dp.attributes)); } }
+                MetricData::Gauge(g) => { for dp in &mut g.data_points { removed = removed.or(remove_from(&mut dp.attributes)); } }
+                MetricData::Histogram(h) => { for dp in &mut h.data_points { removed = removed.or(remove_from(&mut dp.attributes)); } }
+                MetricData::Summary(s) => { for dp in &mut s.data_points { removed = removed.or(remove_from(&mut dp.attributes)); } }
+                MetricData::ExponentialHistogram(e) => { for dp in &mut e.data_points { removed = removed.or(remove_from(&mut dp.attributes)); } }
+            }
+        }
+        removed
+    }
+
+    /// Replace a tag: remove existing attribute then set new value.
+    pub fn replace_tag(&mut self, key: impl Into<String>, value: impl Into<String>) {
+        let key = key.into();
+        self.remove_data_point_attribute(&key);
+        self.set_data_point_attribute(key, AnyValue {
+            value: Some(OtelValueKind::StringValue(value.into())),
+        });
+    }
+
     pub fn resource_attribute(&self, key: &str) -> Option<&AnyValue> {
         self.resource
             .as_ref()

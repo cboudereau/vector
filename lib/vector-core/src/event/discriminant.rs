@@ -37,6 +37,19 @@ impl Discriminant {
             .collect();
         Self { values }
     }
+
+    pub fn from_otel_log(event: &super::OtelLog, discriminant_fields: &[impl AsRef<str>]) -> Self {
+        let values: Vec<Option<Value>> = discriminant_fields
+            .iter()
+            .map(|discriminant_field| {
+                event
+                    .parse_path_and_get_value(discriminant_field.as_ref())
+                    .ok()
+                    .flatten()
+            })
+            .collect();
+        Self { values }
+    }
 }
 
 impl PartialEq for Discriminant {

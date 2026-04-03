@@ -370,12 +370,11 @@ fn render_tag_into(
 }
 
 fn to_metric_with_config(config: &MetricConfig, event: &Event) -> Result<Metric, TransformError> {
-    let log = event.as_log().to_log_event();
+    let log = event.as_log();
 
     let timestamp = log
         .get_timestamp()
-        .and_then(Value::as_timestamp)
-        .cloned()
+        .and_then(|v| v.as_timestamp().copied())
         .or_else(|| Some(Utc::now()));
 
     let metadata = event
@@ -852,11 +851,9 @@ fn to_metrics(event: &Event) -> Result<Metric, TransformError> {
 
 impl FunctionTransform for LogToMetric {
     fn transform(&mut self, output: &mut OutputBuffer, event: Event) {
-        let log_event = match event {
-            Event::Log(otel) => otel.to_log_event(),
-            _ => return,
-        };
-        let event = Event::from(log_event);
+        if !matches!(event, Event::Log(_)) {
+            return;
+        }
         // Metrics are "all or none" for a specific log. If a single fails, none are produced.
         let mut buffer = Vec::with_capacity(self.metrics.len());
         if self.all_metrics {

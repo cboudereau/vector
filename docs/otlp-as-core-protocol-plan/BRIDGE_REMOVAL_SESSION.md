@@ -43,8 +43,8 @@ Four conversion functions that translate between OTel proto structs and legacy V
 | Function | Before session | After session | Removed |
 |----------|---------------|---------------|---------|
 | `to_log_event()` | 75 | 33 | **42 (56%)** |
-| `to_legacy_metric()` | 40 | 21 | **19 (48%)** |
-| **Total** | **115** | **54** | **61 (53%)** |
+| `to_legacy_metric()` | 40 | 20 | **20 (50%)** |
+| **Total** | **115** | **53** | **62 (54%)** |
 
 ### What was done
 
@@ -107,76 +107,91 @@ Four conversion functions that translate between OTel proto structs and legacy V
 - 2 flaky tests (receives_logs, file_start_position) — fixed with longer timeouts
 - kafka/pulsar sinks: migrated to `tag_value()` to avoid borrowing owned temporaries
 
-### Remaining 54 bridge calls (by category)
+**OtelMetric new APIs added:**
+- `remove_data_point_attribute(key)` — remove attribute from all data points
+- `replace_tag(key, value)` — remove + set attribute (used by prometheus scrape)
+- `Display` impl — Prometheus-like text format from proto
+- `Serialize` impl — direct from proto (no more clone + to_legacy_metric)
+- `tags()` — builds MetricTags from proto (was broken, always returned None)
 
-**Core infrastructure (Phase 4) — 11 calls:**
-- `proto.rs` (4): serialize OTel → protobuf via legacy types
-- `lua/event.rs` (2): Lua API exposes LogEvent
+**Additional migrations (latest):**
+- prometheus/scrape: uses OtelMetric::tag_value() + replace_tag() directly
+- datadog_agent tests: assert_tags accepts &OtelMetric, uses tags() directly (9 calls)
+- exec tests: uses convert_to_fields().len() instead of all_event_fields
+- OtelMetric Serialize: no longer clones self and builds legacy Metric
+- JSON encoder: skips bridge for Full metric tag mode (default path)
+
+### Remaining 53 bridge calls (by category)
+
+**Core infrastructure (Phase 4) — 12 calls:**
+- `proto.rs` (4): OTel → protobuf via legacy types
+- `lua/event.rs` (3): Lua API exposes LogEvent/Metric
 - `mod.rs` (3): `to_metric()`, `into_metric()`, `try_into_metric()`
 - `ref.rs` (2): `EventRef::into_metric()`, `EventMutRef::into_metric()`
 
-**Deeply coupled to LogEvent mutation (Phase 5) — 18 calls:**
+**Deeply coupled to LogEvent mutation — 16 calls:**
 - `encoding/transformer.rs` (8): value_mut, all_event_fields, parse_path_and_insert
-- `encoding/format/gelf.rs` (2): as_map_mut, rename_key, insert, contains
-- `encoding/format/arrow.rs` (1): convert_timestamps needs LogEvent
-- `sinks/elasticsearch` (2): full pipeline built around LogEvent
+- `encoding/format/gelf.rs` (2): as_map_mut, rename_key, insert
+- `encoding/format/arrow.rs` (1): convert_timestamps
+- `sinks/elasticsearch` (2): pipeline around LogEvent
 - `sinks/kinesis` (1): process_log takes LogEvent
 - `sinks/splunk_hec` (1): render_template_string_from_log
 - `sources/docker_logs` (1): partial event merging
-- `transforms/dedupe` (1): all_event_fields, all_metadata_fields
-- `transforms/reduce` (1): Discriminant::from_log_event
 
-**Deeply coupled to Metric mutation (Phase 5) — 7 calls:**
+**Deeply coupled to Metric mutation — 6 calls:**
 - `transforms/aggregate` (1): metric.into_parts()
-- `transforms/tag_cardinality_limit` (1): tag mutation
+- `transforms/tag_cardinality_limit` (1): tags_mut().retain()
 - `transforms/incremental_to_absolute` (1): make_absolute
-- `transforms/metric_to_log` (1): transform_one takes Metric
+- `transforms/metric_to_log` (1): transform_one(Metric)
 - `sinks/appsignal` (1): normalizer.normalize(Metric)
 - `sinks/elasticsearch` (1): metric_to_log.transform_one(Metric)
-- `sources/prometheus/scrape` (1): tag mutation
 
-**Intentional bridge usage — 7 calls:**
-- `transforms/trace_to_log` (1): transform's purpose IS to convert span→log
+**Deeply coupled to LogEvent field iteration — 2 calls:**
+- `transforms/dedupe` (1): all_event_fields + all_metadata_fields
+- `transforms/reduce` (1): Discriminant::from_log_event
+
+**Intentional bridge / API — 5 calls:**
+- `transforms/trace_to_log` (1): transform purpose IS span→log
 - `api/schema/events/output` (2): GraphQL API wraps legacy types
-- `conditions/datadog_search` (1+1): DD search matcher takes &LogEvent
-- `test_util/mock/transforms` (2): test infrastructure
+- `conditions/datadog_search` (2): DD matcher takes &LogEvent
 
-**Test helpers using LogEvent-only APIs — 6 calls:**
-- `transforms/log_to_metric` (1): to_metrics() calls many &LogEvent helpers
-- `transforms/metric_to_log` (1): test do_transform returns LogEvent
+**Test / transitional — 12 calls:**
+- `test_util/mock/transforms` (2): test infrastructure
 - `encoding/format/json` (2): reduce_tags_to_single in Single mode
+- `decoding/format/influxdb` (2): test assertions compare full Metric
 - `decoding/format/otlp` (1): trace conversion via LogEvent
-- `transforms/trace_to_log` (1): test helper
+- `transforms/log_to_metric` (1): to_metrics() test helper
+- `transforms/metric_to_log` (1): test do_transform
+- `transforms/trace_to_log` (1): test helper (was already migrated, just the production call at line 69 remains — intentional)
 
 **Blockers for further progress:**
-- OtelLog needs `all_event_fields()` equivalent for dedupe/transformer
-- OtelLog needs `as_map_mut()` equivalent for GELF
-- OtelMetric needs tag mutation methods (replace_tag, remove_tag) for scrape/tag_cardinality
-- OtelMetric needs `into_parts()` equivalent for aggregate
-- OtelMetric needs `make_absolute()` equivalent for incremental_to_absolute
+- OtelLog needs `all_event_fields()` / `all_metadata_fields()` for dedupe, transformer
+- OtelLog needs `as_map_mut()` for GELF
+- OtelMetric needs `tags_mut()` with `retain()` for tag_cardinality_limit
+- OtelMetric needs `into_parts()` for aggregate
+- OtelMetric needs `make_absolute()` for incremental_to_absolute
 
 ## Phased plan — remaining work
 
-### Phase 2 — Transforms migrate off bridges (~5 files)
+### Phase 2 — Add OtelLog field iteration APIs
 
-Requires adding OtelMetric mutation methods:
-- `set_tag(key, value)`, `remove_tag(key)` — for tag_cardinality_limit, prometheus scrape
-- `merge(other)` / `make_absolute(prev)` — for aggregate, incremental_to_absolute
+Add `all_event_fields()` and `all_metadata_fields()` equivalents to OtelLog.
+Unblocks: dedupe (1), transformer (7 test + 1 production), reduce (1).
 
-### Phase 3 — Sinks migrate off bridges (~3 files)
+### Phase 3 — Add OtelMetric aggregate/absolute APIs
 
-Requires transforms completing first (elasticsearch uses metric_to_log).
+Add `into_parts()` equivalent and `make_absolute()` to OtelMetric.
+Unblocks: aggregate (1), incremental_to_absolute (1).
 
 ### Phase 4 — Core infrastructure (~6 files)
 
 - `proto.rs` — serialize OTel types to protobuf directly
 - `lua/event.rs` — Lua API exposes OTel fields
-- `mod.rs` / `ref.rs` — remove `to_metric()` / `into_metric()` (callers use OtelMetric)
+- `mod.rs` / `ref.rs` — remove `to_metric()` / `into_metric()`
 
 ### Phase 5 — Remove `to_value_legacy_layout()` from OtelLog/OtelSpan
 
 Replace `get(path)`, `insert(path)`, `remove(path)` with direct proto field access.
-Remove `to_value_legacy_layout()` and `apply_value_legacy_layout()`.
 
 ### Phase 6 — Remove bridge function bodies
 

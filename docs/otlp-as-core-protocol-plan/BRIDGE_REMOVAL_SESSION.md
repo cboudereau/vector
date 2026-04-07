@@ -210,6 +210,18 @@ proto schema (`data.sum.dataPoints[0].value`).
 will produce OTLP-structured metric JSON instead of Vector-legacy. Users may
 need to update downstream parsers. Document in release notes.
 
+**Status: DONE** — `Serialize for OtelMetric` now produces OTLP JSON.
+Vector-legacy format adapter for source/sink is TODO.
+
+**Migration tool:** `vector vrl-migrate` (spec in VRL_MIGRATION_TOOL.md)
+should add rules for metric JSON field path changes:
+- `.kind` → removed (use `.sum.aggregationTemporality` or `.gauge`)
+- `.tags."key"` → `.sum.dataPoints[0].attributes` (OTLP attributes format)
+- `.counter.value` → `.sum.dataPoints[0].asDouble`
+- `.gauge.value` → `.gauge.dataPoints[0].asDouble`
+- `.namespace` → `.resource.attributes` (`metric.namespace` key)
+- `.timestamp` → `.sum.dataPoints[0].timeUnixNano`
+
 ### Phase 3 — Add OtelMetric aggregate/absolute APIs
 
 Add `into_parts()` equivalent and `make_absolute()` to OtelMetric.

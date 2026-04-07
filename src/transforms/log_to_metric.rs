@@ -5,7 +5,7 @@ use indexmap::IndexMap;
 use vector_lib::{
     configurable::configurable_component,
     event::{
-        LogEvent,
+        OtelLog,
         metric::{Bucket, Quantile, Sample},
     },
 };
@@ -487,7 +487,7 @@ fn bytes_to_str(value: &Value) -> Option<String> {
     }
 }
 
-fn try_get_string_from_log(log: &LogEvent, path: &str) -> Result<Option<String>, TransformError> {
+fn try_get_string_from_log(log: &OtelLog, path: &str) -> Result<Option<String>, TransformError> {
     // TODO: update returned errors after `TransformError` is refactored.
     let maybe_value = log.parse_path_and_get_value(path).map_err(|e| match e {
         PathParseError::InvalidPathSyntax { path } => PathNotFound {
@@ -498,16 +498,17 @@ fn try_get_string_from_log(log: &LogEvent, path: &str) -> Result<Option<String>,
         None => Err(PathNotFound {
             path: path.to_string(),
         }),
-        Some(v) => Ok(bytes_to_str(v)),
+        Some(v) => Ok(bytes_to_str(&v)),
     }
 }
 
-fn get_counter_value(log: &LogEvent) -> Result<MetricValue, TransformError> {
-    let counter_value = log
+fn get_counter_value(log: &OtelLog) -> Result<MetricValue, TransformError> {
+    let counter_val = log
         .get(event_path!("counter", "value"))
         .ok_or_else(|| TransformError::PathNotFound {
             path: "counter.value".to_string(),
-        })?
+        })?;
+    let counter_value = counter_val
         .as_float()
         .ok_or_else(|| TransformError::ParseError {
             path: "counter.value".to_string(),
@@ -519,12 +520,13 @@ fn get_counter_value(log: &LogEvent) -> Result<MetricValue, TransformError> {
     })
 }
 
-fn get_gauge_value(log: &LogEvent) -> Result<MetricValue, TransformError> {
-    let gauge_value = log
+fn get_gauge_value(log: &OtelLog) -> Result<MetricValue, TransformError> {
+    let gauge_val = log
         .get(event_path!("gauge", "value"))
         .ok_or_else(|| TransformError::PathNotFound {
             path: "gauge.value".to_string(),
-        })?
+        })?;
+    let gauge_value = gauge_val
         .as_float()
         .ok_or_else(|| TransformError::ParseError {
             path: "gauge.value".to_string(),
@@ -535,12 +537,13 @@ fn get_gauge_value(log: &LogEvent) -> Result<MetricValue, TransformError> {
     })
 }
 
-fn get_set_value(log: &LogEvent) -> Result<MetricValue, TransformError> {
-    let set_values = log
+fn get_set_value(log: &OtelLog) -> Result<MetricValue, TransformError> {
+    let set_val = log
         .get(event_path!("set", "values"))
         .ok_or_else(|| TransformError::PathNotFound {
             path: "set.values".to_string(),
-        })?
+        })?;
+    let set_values = set_val
         .as_array()
         .ok_or_else(|| TransformError::ParseError {
             path: "set.values".to_string(),
@@ -563,12 +566,13 @@ fn get_set_value(log: &LogEvent) -> Result<MetricValue, TransformError> {
     })
 }
 
-fn get_distribution_value(log: &LogEvent) -> Result<MetricValue, TransformError> {
-    let event_samples = log
+fn get_distribution_value(log: &OtelLog) -> Result<MetricValue, TransformError> {
+    let samples_val = log
         .get(event_path!("distribution", "samples"))
         .ok_or_else(|| TransformError::PathNotFound {
             path: "distribution.samples".to_string(),
-        })?
+        })?;
+    let event_samples = samples_val
         .as_array()
         .ok_or_else(|| TransformError::ParseError {
             path: "distribution.samples".to_string(),
@@ -628,12 +632,13 @@ fn get_distribution_value(log: &LogEvent) -> Result<MetricValue, TransformError>
     })
 }
 
-fn get_histogram_value(log: &LogEvent) -> Result<MetricValue, TransformError> {
-    let event_buckets = log
+fn get_histogram_value(log: &OtelLog) -> Result<MetricValue, TransformError> {
+    let buckets_val = log
         .get(event_path!("aggregated_histogram", "buckets"))
         .ok_or_else(|| TransformError::PathNotFound {
             path: "aggregated_histogram.buckets".to_string(),
-        })?
+        })?;
+    let event_buckets = buckets_val
         .as_array()
         .ok_or_else(|| TransformError::ParseError {
             path: "aggregated_histogram.buckets".to_string(),
@@ -670,22 +675,24 @@ fn get_histogram_value(log: &LogEvent) -> Result<MetricValue, TransformError> {
         });
     }
 
-    let count = log
+    let count_val = log
         .get(event_path!("aggregated_histogram", "count"))
         .ok_or_else(|| TransformError::PathNotFound {
             path: "aggregated_histogram.count".to_string(),
-        })?
+        })?;
+    let count = count_val
         .as_integer()
         .ok_or_else(|| TransformError::ParseError {
             path: "aggregated_histogram.count".to_string(),
             kind: TransformParseErrorKind::IntError,
         })?;
 
-    let sum = log
+    let sum_val = log
         .get(event_path!("aggregated_histogram", "sum"))
         .ok_or_else(|| TransformError::PathNotFound {
             path: "aggregated_histogram.sum".to_string(),
-        })?
+        })?;
+    let sum = sum_val
         .as_float()
         .ok_or_else(|| TransformError::ParseError {
             path: "aggregated_histogram.sum".to_string(),
@@ -699,12 +706,13 @@ fn get_histogram_value(log: &LogEvent) -> Result<MetricValue, TransformError> {
     })
 }
 
-fn get_summary_value(log: &LogEvent) -> Result<MetricValue, TransformError> {
-    let event_quantiles = log
+fn get_summary_value(log: &OtelLog) -> Result<MetricValue, TransformError> {
+    let quantiles_val = log
         .get(event_path!("aggregated_summary", "quantiles"))
         .ok_or_else(|| TransformError::PathNotFound {
             path: "aggregated_summary.quantiles".to_string(),
-        })?
+        })?;
+    let event_quantiles = quantiles_val
         .as_array()
         .ok_or_else(|| TransformError::ParseError {
             path: "aggregated_summary.quantiles".to_string(),
@@ -741,22 +749,24 @@ fn get_summary_value(log: &LogEvent) -> Result<MetricValue, TransformError> {
         })
     }
 
-    let count = log
+    let count_val = log
         .get(event_path!("aggregated_summary", "count"))
         .ok_or_else(|| TransformError::PathNotFound {
             path: "aggregated_summary.count".to_string(),
-        })?
+        })?;
+    let count = count_val
         .as_integer()
         .ok_or_else(|| TransformError::ParseError {
             path: "aggregated_summary.count".to_string(),
             kind: TransformParseErrorKind::IntError,
         })?;
 
-    let sum = log
+    let sum_val = log
         .get(event_path!("aggregated_summary", "sum"))
         .ok_or_else(|| TransformError::PathNotFound {
             path: "aggregated_summary.sum".to_string(),
-        })?
+        })?;
+    let sum = sum_val
         .as_float()
         .ok_or_else(|| TransformError::ParseError {
             path: "aggregated_summary.sum".to_string(),
@@ -771,12 +781,10 @@ fn get_summary_value(log: &LogEvent) -> Result<MetricValue, TransformError> {
 }
 
 fn to_metrics(event: &Event) -> Result<Metric, TransformError> {
-    let log = event.as_log().to_log_event();
-    let log = &log;
+    let log = event.as_log();
     let timestamp = log
         .get_timestamp()
-        .and_then(Value::as_timestamp)
-        .cloned()
+        .and_then(|v| v.as_timestamp().cloned())
         .or_else(|| Some(Utc::now()));
 
     let name = match try_get_string_from_log(log, "name")? {

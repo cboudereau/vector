@@ -210,8 +210,13 @@ proto schema (`data.sum.dataPoints[0].value`).
 will produce OTLP-structured metric JSON instead of Vector-legacy. Users may
 need to update downstream parsers. Document in release notes.
 
-**Status: DONE** — `Serialize for OtelMetric` now produces OTLP JSON.
-Vector-legacy format adapter for source/sink is TODO.
+**Status:**
+- OtelMetric Serialize → OTLP JSON: **DONE** (only 1 test needed update)
+- OtelLog/OtelSpan Serialize → OTLP JSON: **REVERTED** — 68 sink tests
+  depend on the flat format. Needs per-sink migration with test updates.
+  The `otel_json` module with OTLP JSON helpers is ready in
+  `lib/vector-core/src/event/otel_json.rs`.
+- Vector-legacy format adapter for source/sink: TODO
 
 **Migration tool:** `vector vrl-migrate` (spec in VRL_MIGRATION_TOOL.md)
 should add rules for metric JSON field path changes:

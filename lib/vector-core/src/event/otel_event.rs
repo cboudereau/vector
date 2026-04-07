@@ -2518,12 +2518,17 @@ impl EventDataEq for OtelMetric {
 
 impl Serialize for OtelLog {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        // Use legacy flat layout for now — too many downstream consumers
+        // (68+ sink tests, HTTP/ES/GCP/Splunk sinks) expect this format.
+        // TODO(otlp-json): migrate to OTLP JSON once sinks are adapted.
         self.to_value_legacy_layout().serialize(serializer)
     }
 }
 
 impl Serialize for OtelSpan {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        // Same as OtelLog — legacy flat layout for backward compat.
+        // TODO(otlp-json): migrate to OTLP JSON once sinks are adapted.
         self.to_value_legacy_layout().serialize(serializer)
     }
 }
@@ -2905,7 +2910,7 @@ mod tests {
         let json = serde_json::to_string(&event).expect("serialize");
 
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
-        // Serialize produces the legacy layout (flattened fields, resource as sub-object)
+        // Serialize produces legacy flat layout (resource as sub-object)
         assert_eq!(v["body"], "hello");
         assert_eq!(v["severity_text"], "INFO");
         assert_eq!(v["resource"]["service.name"], "test-svc");

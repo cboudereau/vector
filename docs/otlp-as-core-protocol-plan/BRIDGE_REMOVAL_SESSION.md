@@ -183,7 +183,34 @@ Discriminant::from_otel_log added. influxdb decoder tests migrated.
 
 ## Phased plan — remaining work
 
-### Phase 2 — Add OtelMetric aggregate/absolute APIs
+### Phase 2 — OtelMetric Serialize → OTLP-native JSON
+
+**Problem:** `Serialize for OtelMetric` currently produces Vector-legacy JSON
+format (`name`, `tags`, `kind`, `counter`/`gauge`). This is **not OTel** — OTel
+has `attributes` on data points (no `tags`), and the structure follows the OTLP
+proto schema (`data.sum.dataPoints[0].value`).
+
+**Current state:**
+- `OtlpSerializer` already produces correct OTLP protobuf — no bridge
+- `JsonSerializer` produces Vector-legacy JSON via `Serialize for OtelMetric`
+- `Serialize for OtelMetric` replicates the legacy `Metric` serde format
+
+**Plan:**
+1. Change `Serialize for OtelMetric` to produce OTLP-native JSON (matching
+   the OTLP proto JSON mapping: `name`, `data.sum.dataPoints`, etc.)
+2. Move Vector-legacy JSON metric format to the Vector source/sink adapters
+   as a backward-compat serialization for inter-Vector communication with
+   older instances
+3. Update `JsonSerializer` metric path — it should serialize OtelMetric
+   directly (OTLP JSON) since that's the core format now
+4. Any sink that needs Vector-legacy format (e.g. for backward compat with
+   existing pipelines) uses the adapter, not the core Serialize impl
+
+**Impact:** This is a wire format change. Sinks using `encoding.codec = "json"`
+will produce OTLP-structured metric JSON instead of Vector-legacy. Users may
+need to update downstream parsers. Document in release notes.
+
+### Phase 3 — Add OtelMetric aggregate/absolute APIs
 
 Add `into_parts()` equivalent and `make_absolute()` to OtelMetric.
 Unblocks: aggregate (1), incremental_to_absolute (1).

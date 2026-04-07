@@ -100,8 +100,9 @@ fn redis_metric_encode_event() {
     let json: serde_json::Value = serde_json::from_slice(&result).unwrap();
 
     assert_eq!(json["name"], "test_counter");
-    assert_eq!(json["kind"], "absolute");
-    assert_eq!(json["counter"]["value"], 42.0);
+    // OTLP-native JSON format: counter is Sum with isMonotonic=true
+    assert!(json["sum"].is_object(), "expected sum field in OTLP format");
+    assert_eq!(json["sum"]["dataPoints"][0]["asDouble"], 42.0);
 }
 
 #[test]

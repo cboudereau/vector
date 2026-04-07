@@ -167,7 +167,7 @@ mod tests {
 
         assert_eq!(
             bytes,
-            r#"{"name":"foos","namespace":"vector","tags":{"Key3":"Value3","key1":"value1","key2":"value2"},"timestamp":"2018-11-14T08:09:10.000000011Z","kind":"incremental","counter":{"value":100.0}}"#
+            r#"{"name":"foos","sum":{"dataPoints":[{"asDouble":100.0,"attributes":[{"key":"Key3","value":{"stringValue":"Value3"}},{"key":"key1","value":{"stringValue":"value1"}},{"key":"key2","value":{"stringValue":"value2"}}],"timeUnixNano":"1542182950000000011"}],"aggregationTemporality":1,"isMonotonic":true},"resource":{"attributes":[{"key":"metric.namespace","value":{"stringValue":"vector"}}]}}"#
         );
     }
 
@@ -254,7 +254,7 @@ mod tests {
 
         assert_eq!(
             bytes,
-            r#"{"name":"counter","tags":{"a":"second"},"kind":"incremental","counter":{"value":1.0}}"#
+            r#"{"name":"counter","sum":{"dataPoints":[{"asDouble":1.0,"attributes":[{"key":"a","value":{"stringValue":"second"}}]}],"aggregationTemporality":1,"isMonotonic":true}}"#
         );
     }
 
@@ -336,16 +336,45 @@ mod tests {
                 bytes,
                 r#"{
   "name": "foos",
-  "namespace": "vector",
-  "tags": {
-    "Key3": "Value3",
-    "key1": "value1",
-    "key2": "value2"
+  "sum": {
+    "dataPoints": [
+      {
+        "asDouble": 100.0,
+        "attributes": [
+          {
+            "key": "Key3",
+            "value": {
+              "stringValue": "Value3"
+            }
+          },
+          {
+            "key": "key1",
+            "value": {
+              "stringValue": "value1"
+            }
+          },
+          {
+            "key": "key2",
+            "value": {
+              "stringValue": "value2"
+            }
+          }
+        ],
+        "timeUnixNano": "1542182950000000011"
+      }
+    ],
+    "aggregationTemporality": 1,
+    "isMonotonic": true
   },
-  "timestamp": "2018-11-14T08:09:10.000000011Z",
-  "kind": "incremental",
-  "counter": {
-    "value": 100.0
+  "resource": {
+    "attributes": [
+      {
+        "key": "metric.namespace",
+        "value": {
+          "stringValue": "vector"
+        }
+      }
+    ]
   }
 }"#
             );
@@ -454,12 +483,22 @@ mod tests {
                 bytes,
                 r#"{
   "name": "counter",
-  "tags": {
-    "a": "second"
-  },
-  "kind": "incremental",
-  "counter": {
-    "value": 1.0
+  "sum": {
+    "dataPoints": [
+      {
+        "asDouble": 1.0,
+        "attributes": [
+          {
+            "key": "a",
+            "value": {
+              "stringValue": "second"
+            }
+          }
+        ]
+      }
+    ],
+    "aggregationTemporality": 1,
+    "isMonotonic": true
   }
 }"#
             );

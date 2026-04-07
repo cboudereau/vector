@@ -39,6 +39,7 @@ pub mod proto;
 mod r#ref;
 mod ser;
 pub mod otel_event;
+pub(crate) mod otel_json;
 pub mod otlp;
 pub use otel_event::{OtelLog, OtelMetric, OtelSpan, json_to_any_value, string_value, int_value, vrl_value_to_any_value};
 pub use opentelemetry_proto::tonic::common::v1::any_value::Value as OtelValueKind;

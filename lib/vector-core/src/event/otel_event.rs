@@ -2529,77 +2529,57 @@ impl Serialize for OtelSpan {
 }
 
 impl Serialize for OtelMetric {
+    /// Serialize in OTLP-native JSON format.
+    ///
+    /// Produces the proto3 JSON mapping of the OTel Metric proto with
+    /// resource and scope at the top level. Field names use camelCase
+    /// per the proto3 JSON spec.
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeMap;
-        let (kind, value, timestamp, _) = self.extract_metric_data();
+        use opentelemetry_proto::tonic::metrics::v1::metric;
+        use super::otel_json::*;
 
-        // Count fields: name + kind + value (1 field) + optional namespace/tags/timestamp
-        let mut len = 3; // name, kind, value variant
-        if self.namespace().is_some() { len += 1; }
-        let tags = self.tags();
-        if tags.is_some() { len += 1; }
-        if timestamp.is_some() { len += 1; }
+        let mut len = 1; // name always present
+        if !self.metric.description.is_empty() { len += 1; }
+        if !self.metric.unit.is_empty() { len += 1; }
+        if self.metric.data.is_some() { len += 1; }
+        if self.resource.is_some() { len += 1; }
+        if self.scope.is_some() { len += 1; }
 
         let mut map = serializer.serialize_map(Some(len))?;
-        map.serialize_entry("name", self.name())?;
-        if let Some(ns) = self.namespace() {
-            map.serialize_entry("namespace", ns)?;
+        map.serialize_entry("name", &self.metric.name)?;
+        if !self.metric.description.is_empty() {
+            map.serialize_entry("description", &self.metric.description)?;
         }
-        if let Some(ref tags) = tags {
-            map.serialize_entry("tags", tags)?;
+        if !self.metric.unit.is_empty() {
+            map.serialize_entry("unit", &self.metric.unit)?;
         }
-        if let Some(ts) = &timestamp {
-            map.serialize_entry("timestamp", ts)?;
+
+        if let Some(ref data) = self.metric.data {
+            match data {
+                metric::Data::Sum(sum) => {
+                    map.serialize_entry("sum", &SerializableSum(sum))?;
+                }
+                metric::Data::Gauge(gauge) => {
+                    map.serialize_entry("gauge", &SerializableGauge(gauge))?;
+                }
+                metric::Data::Histogram(hist) => {
+                    map.serialize_entry("histogram", &SerializableHistogram(hist))?;
+                }
+                metric::Data::Summary(summary) => {
+                    map.serialize_entry("summary", &SerializableSummary(summary))?;
+                }
+                metric::Data::ExponentialHistogram(exp) => {
+                    map.serialize_entry("exponentialHistogram", &SerializableExpHistogram(exp))?;
+                }
+            }
         }
-        map.serialize_entry("kind", &kind)?;
-        // MetricValue with #[serde(rename_all = "snake_case")] produces
-        // {"counter": {"value": 42.0}} when serialized as an enum.
-        // For flattened output matching legacy Metric format, we need the
-        // variant key at the map level with just the inner struct value.
-        // Serialize the inner struct of each MetricValue variant directly,
-        // avoiding double-nesting from serde's externally tagged enum format.
-        match &value {
-            super::MetricValue::Counter { value: v } => {
-                #[derive(serde::Serialize)]
-                struct V { value: f64 }
-                map.serialize_entry("counter", &V { value: *v })?;
-            }
-            super::MetricValue::Gauge { value: v } => {
-                #[derive(serde::Serialize)]
-                struct V { value: f64 }
-                map.serialize_entry("gauge", &V { value: *v })?;
-            }
-            super::MetricValue::Set { values } => {
-                #[derive(serde::Serialize)]
-                struct V<'a> { values: &'a std::collections::BTreeSet<String> }
-                map.serialize_entry("set", &V { values })?;
-            }
-            super::MetricValue::Distribution { samples, statistic } => {
-                #[derive(serde::Serialize)]
-                struct V<'a> {
-                    samples: &'a Vec<super::metric::Sample>,
-                    statistic: &'a super::StatisticKind,
-                }
-                map.serialize_entry("distribution", &V { samples, statistic })?;
-            }
-            super::MetricValue::AggregatedHistogram { buckets, count, sum } => {
-                #[derive(serde::Serialize)]
-                struct V<'a> {
-                    buckets: &'a Vec<super::metric::Bucket>,
-                    count: u64,
-                    sum: f64,
-                }
-                map.serialize_entry("aggregated_histogram", &V { buckets, count: *count, sum: *sum })?;
-            }
-            super::MetricValue::AggregatedSummary { quantiles, count, sum } => {
-                #[derive(serde::Serialize)]
-                struct V<'a> {
-                    quantiles: &'a Vec<super::metric::Quantile>,
-                    count: u64,
-                    sum: f64,
-                }
-                map.serialize_entry("aggregated_summary", &V { quantiles, count: *count, sum: *sum })?;
-            }
+
+        if let Some(ref res) = self.resource {
+            map.serialize_entry("resource", &SerializableResource(res))?;
+        }
+        if let Some(ref scope) = self.scope {
+            map.serialize_entry("scope", &SerializableScope(scope))?;
         }
         map.end()
     }

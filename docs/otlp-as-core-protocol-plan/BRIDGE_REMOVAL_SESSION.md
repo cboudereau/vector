@@ -46,10 +46,10 @@ Four conversion functions that translate between OTel proto structs and legacy V
 | `to_legacy_metric()` | 40 | 16 | **24 (60%)** |
 | **Total** | **115** | **34** | **81 (70%)** |
 
-56 commits, 1773 tests passing.
-OtelMetric Serialize → OTLP JSON. otel_json module ready for per-sink migration.
-OtelLog/OtelSpan Serialize reverted to legacy (68 sink tests depend on flat format).
-All remaining 34 calls are at the hard floor — deeply coupled or intentional.
+60 commits, 1773 tests passing.
+OtelMetric Serialize → OTLP JSON. OtlpJsonLog/OtlpJsonSpan wrappers ready.
+OtelLog/OtelSpan Serialize stays legacy (68 sink tests depend on flat format).
+All remaining 34 calls at hard floor — need per-sink migration or arch changes.
 
 ### What was done
 

@@ -133,6 +133,8 @@ All remaining 34 calls are at the hard floor — deeply coupled or intentional.
 - prometheus scrape: uses OtelMetric::tag_value() + replace_tag() directly
 - mock/transforms Log+Trace: use OtelLog/OtelSpan::get()+insert() directly
 - dedupe MatchFields: uses OtelLog::get() directly
+- OtlpJsonLog/OtlpJsonSpan wrappers: opt-in OTLP JSON for per-sink migration
+- OtelSpan::from_otel_log(): direct conversion without LogEvent intermediate
 - GELF encoder: fully rewritten — to_gelf_event() accepts &mut OtelLog,
   uses get/insert/rename_key/convert_to_fields for validation+mutation
 - Arrow encoder: fully rewritten — convert_timestamps_otel() uses
@@ -227,6 +229,26 @@ should add rules for metric JSON field path changes:
 - `.gauge.value` → `.gauge.dataPoints[0].asDouble`
 - `.namespace` → `.resource.attributes` (`metric.namespace` key)
 - `.timestamp` → `.sum.dataPoints[0].timeUnixNano`
+
+### Phase 2b — Per-sink OtelLog/OtelSpan → OTLP JSON migration
+
+**Tooling ready:** `OtlpJsonLog` and `OtlpJsonSpan` wrappers in
+`lib/vector-core/src/event/otel_json.rs`. Sinks opt in by changing:
+```rust
+serde_json::to_writer(writer, &log)           // legacy flat
+serde_json::to_writer(writer, &OtlpJsonLog(&log))  // OTLP JSON
+```
+
+**Strategy:** Migrate one sink at a time, update its tests. Once all sinks
+are migrated, change `Serialize for OtelLog/OtelSpan` to OTLP JSON and
+remove the legacy flat layout.
+
+**Sinks to migrate (by complexity):**
+1. HTTP sink (simple — 1 JSON format test)
+2. GCP Stackdriver logs (3 tests)
+3. Azure Monitor logs (2 tests)
+4. Elasticsearch (complex — 10+ tests, pipeline around LogEvent)
+5. Splunk HEC (complex — render_template_string_from_log)
 
 ### Phase 3 — Add OtelMetric aggregate/absolute APIs
 

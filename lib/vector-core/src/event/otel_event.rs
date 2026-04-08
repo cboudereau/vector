@@ -917,6 +917,19 @@ impl OtelLog {
         if fields.is_empty() { None } else { Some(fields) }
     }
 
+    /// Like `all_event_fields` but skips individual array elements.
+    pub fn all_event_fields_skip_array_elements(&self) -> Option<Vec<(vrl::value::KeyString, Value)>> {
+        match self.to_value_legacy_layout() {
+            Value::Object(map) => {
+                let fields: Vec<_> = super::util::log::all_fields_skip_array_elements(&map)
+                    .map(|(k, v)| (k, v.clone()))
+                    .collect();
+                if fields.is_empty() { None } else { Some(fields) }
+            }
+            _ => None,
+        }
+    }
+
     /// Iterate all metadata fields (flattened, with `%` prefix). Owned values.
     pub fn all_metadata_fields(&self) -> Option<Vec<(vrl::value::KeyString, Value)>> {
         match self.metadata.value() {

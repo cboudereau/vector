@@ -15,7 +15,7 @@ use vrl::{
 
 use crate::{
     conditions::Condition,
-    event::{Event, EventMetadata, LogEvent, discriminant::Discriminant},
+    event::{Event, EventMetadata, LogEvent, OtelLog, discriminant::Discriminant},
     internal_events::{ReduceAddEventError, ReduceStaleEventFlushed},
     transforms::{
         TaskTransform,
@@ -60,13 +60,13 @@ impl ReduceState {
         }
     }
 
-    fn add_event(&mut self, e: LogEvent, strategies: &IndexMap<OwnedTargetPath, MergeStrategy>) {
+    fn add_event(&mut self, e: &OtelLog, strategies: &IndexMap<OwnedTargetPath, MergeStrategy>) {
         self.metadata.merge(e.metadata().clone());
 
         for (path, strategy) in strategies {
             if let Some(value) = e.get(path) {
                 match self.fields.entry(path.clone()) {
-                    Entry::Vacant(entry) => match get_value_merger(value.clone(), strategy) {
+                    Entry::Vacant(entry) => match get_value_merger(value, strategy) {
                         Ok(m) => {
                             entry.insert(m);
                         }
@@ -75,7 +75,7 @@ impl ReduceState {
                         }
                     },
                     Entry::Occupied(mut entry) => {
-                        if let Err(error) = entry.get_mut().add(value.clone()) {
+                        if let Err(error) = entry.get_mut().add(value) {
                             warn!(message = "Failed to merge value.", %error);
                         }
                     }
@@ -83,9 +83,8 @@ impl ReduceState {
             }
         }
 
-        if let Some(fields_iter) = e.all_event_fields_skip_array_elements() {
-            for (path, value) in fields_iter {
-                // This should not return an error, unless there is a bug in the event fields iterator.
+        if let Some(fields) = e.all_event_fields_skip_array_elements() {
+            for (path, value) in fields {
                 let parsed_path = match parse_target_path(&path) {
                     Ok(path) => path,
                     Err(error) => {
@@ -101,7 +100,7 @@ impl ReduceState {
                 match self.fields.entry(parsed_path) {
                     Entry::Vacant(entry) => {
                         if let Some(strategy) = maybe_strategy {
-                            match get_value_merger(value.clone(), strategy) {
+                            match get_value_merger(value, strategy) {
                                 Ok(m) => {
                                     entry.insert(m);
                                 }
@@ -110,18 +109,17 @@ impl ReduceState {
                                 }
                             }
                         } else {
-                            entry.insert(value.clone().into());
+                            entry.insert(value.into());
                         }
                     }
                     Entry::Occupied(mut entry) => {
-                        if let Err(error) = entry.get_mut().add(value.clone()) {
+                        if let Err(error) = entry.get_mut().add(value) {
                             warn!(message = "Failed to merge value.", %error);
                         }
                     }
                 }
             }
         }
-        // else the event root is not an object (see https://github.com/vectordotdev/vector/issues/18219)
 
         self.events += 1;
         self.stale_since = Instant::now();
@@ -250,7 +248,7 @@ impl Reduce {
             .for_each(|(_, s)| emitter.emit(Event::from(s.flush())));
     }
 
-    fn push_or_new_reduce_state(&mut self, event: LogEvent, discriminant: Discriminant) {
+    fn push_or_new_reduce_state(&mut self, event: &OtelLog, discriminant: Discriminant) {
         match self.reduce_merge_states.entry(discriminant) {
             Entry::Vacant(entry) => {
                 let mut state = ReduceState::new();
@@ -274,14 +272,13 @@ impl Reduce {
             None => (false, event),
         };
 
-        let event = event.into_log_coerce().to_log_event();
-        let discriminant = Discriminant::from_log_event(&event, &self.group_by);
+        let otel_log = event.into_log_coerce();
+        let discriminant = Discriminant::from_otel_log(&otel_log, &self.group_by);
 
         if let Some(max_events) = self.max_events {
             if max_events == 1 {
                 ends_here = true;
             } else if let Some(entry) = self.reduce_merge_states.get(&discriminant) {
-                // The current event will finish this set
                 if entry.events + 1 == max_events {
                     ends_here = true;
                 }
@@ -293,21 +290,21 @@ impl Reduce {
                 emitter.emit(state.flush().into());
             }
 
-            self.push_or_new_reduce_state(event, discriminant)
+            self.push_or_new_reduce_state(&otel_log, discriminant)
         } else if ends_here {
             emitter.emit(match self.reduce_merge_states.remove(&discriminant) {
                 Some(mut state) => {
-                    state.add_event(event, &self.merge_strategies);
+                    state.add_event(&otel_log, &self.merge_strategies);
                     state.flush().into()
                 }
                 None => {
                     let mut state = ReduceState::new();
-                    state.add_event(event, &self.merge_strategies);
+                    state.add_event(&otel_log, &self.merge_strategies);
                     state.flush().into()
                 }
             });
         } else {
-            self.push_or_new_reduce_state(event, discriminant)
+            self.push_or_new_reduce_state(&otel_log, discriminant)
         }
     }
 }

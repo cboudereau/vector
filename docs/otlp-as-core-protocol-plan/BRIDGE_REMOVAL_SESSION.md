@@ -42,15 +42,14 @@ Four conversion functions that translate between OTel proto structs and legacy V
 
 | Function | Before session | After session | Removed |
 |----------|---------------|---------------|---------|
-| `to_log_event()` | 75 | 13 | **62 (83%)** |
-| `to_legacy_metric()` | 40 | 14 | **26 (65%)** |
-| **Total** | **115** | **27** | **88 (77%)** |
+| `to_log_event()` | 75 | 10 | **65 (87%)** |
+| `to_legacy_metric()` | 40 | 13 | **27 (68%)** |
+| **Total** | **115** | **23** | **92 (80%)** |
 
-73 commits, 1789 tests passing.
-OtelLog: all_event_fields/all_metadata_fields added.
-Dedupe + metric_to_log test fully debridged.
-OtelMetric Serialize → OTLP JSON. OtlpJsonLog/OtlpJsonSpan wrappers ready.
-OtelLog Serialize stays legacy — sinks use field paths in serialized JSON at runtime.
+85 commits, 1773 tests passing.
+This session: ReduceState, tag_cardinality_limit, mock transforms, GraphQL API,
+Lua IntoLua all migrated. OtelLog: all_event_fields/all_metadata_fields/
+all_event_fields_skip_array_elements/merge_body added.
 
 ### What was done
 

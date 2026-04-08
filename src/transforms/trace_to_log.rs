@@ -66,7 +66,15 @@ pub struct TraceToLog;
 impl FunctionTransform for TraceToLog {
     fn transform(&mut self, output: &mut OutputBuffer, event: Event) {
         match event {
-            Event::Trace(span) => output.push(Event::from(span.to_log_event())),
+            Event::Trace(span) => {
+                // Convert span to log: span fields become log attributes,
+                // resource and scope are preserved.
+                let map = span.as_map().unwrap_or_default();
+                let log = vector_lib::event::OtelLog::from_log_event(
+                    vector_lib::event::LogEvent::from_map(map, span.metadata().clone()),
+                );
+                output.push(Event::Log(log));
+            }
             _ => {}
         }
     }

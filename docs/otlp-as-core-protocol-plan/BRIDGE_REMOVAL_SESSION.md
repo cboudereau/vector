@@ -214,10 +214,13 @@ need to update downstream parsers. Document in release notes.
 
 **Status:**
 - OtelMetric Serialize → OTLP JSON: **DONE** (only 1 test needed update)
-- OtelLog/OtelSpan Serialize → OTLP JSON: **REVERTED** — 68 sink tests
-  depend on the flat format. Needs per-sink migration with test updates.
-  The `otel_json` module with OTLP JSON helpers is ready in
-  `lib/vector-core/src/event/otel_json.rs`.
+- OtelLog/OtelSpan Serialize → OTLP JSON: **CANNOT CHANGE DEFAULT** —
+  sinks use field paths in serialized JSON at runtime (websocket ack
+  message_id, Elasticsearch _id, Splunk HEC timestamp). Changing to
+  OTLP JSON (nested attributes) breaks field lookup → hangs/crashes.
+  Must stay as legacy flat format until sinks use proto accessors
+  instead of field paths in serialized JSON.
+  `OtlpJsonLog`/`OtlpJsonSpan` wrappers in `otel_json.rs` for opt-in.
 - Vector-legacy format adapter for source/sink: TODO
 
 **Migration tool:** `vector vrl-migrate` (spec in VRL_MIGRATION_TOOL.md)
@@ -229,25 +232,25 @@ should add rules for metric JSON field path changes:
 - `.namespace` → `.resource.attributes` (`metric.namespace` key)
 - `.timestamp` → `.sum.dataPoints[0].timeUnixNano`
 
-### Phase 2b — Per-sink OtelLog/OtelSpan → OTLP JSON migration
+### Phase 2b — Decouple sinks from serialized JSON field paths
 
-**Tooling ready:** `OtlpJsonLog` and `OtlpJsonSpan` wrappers in
-`lib/vector-core/src/event/otel_json.rs`. Sinks opt in by changing:
-```rust
-serde_json::to_writer(writer, &log)           // legacy flat
-serde_json::to_writer(writer, &OtlpJsonLog(&log))  // OTLP JSON
-```
+**Critical insight:** OtelLog Serialize CANNOT change to OTLP JSON yet.
+Sinks use field paths in the *serialized* JSON at runtime:
+- websocket_server: `message_id_path` extracts field from serialized JSON ack
+- Elasticsearch: `_id` field from serialized JSON body
+- Splunk HEC: timestamp extraction from serialized JSON fields
 
-**Strategy:** Migrate one sink at a time, update its tests. Once all sinks
-are migrated, change `Serialize for OtelLog/OtelSpan` to OTLP JSON and
-remove the legacy flat layout.
+**Prerequisite:** Before changing OtelLog Serialize, sinks must be migrated
+to extract fields via OtelLog proto accessors BEFORE serialization, not
+from the serialized JSON output. This is a per-sink refactor:
+1. Extract needed fields (message_id, timestamp, _id) from OtelLog proto
+2. Serialize the event
+3. Use pre-extracted field values for routing/acking
 
-**Sinks to migrate (by complexity):**
-1. HTTP sink (simple — 1 JSON format test)
-2. GCP Stackdriver logs (3 tests)
-3. Azure Monitor logs (2 tests)
-4. Elasticsearch (complex — 10+ tests, pipeline around LogEvent)
-5. Splunk HEC (complex — render_template_string_from_log)
+**Only after all sinks decouple from serialized JSON paths** can OtelLog
+Serialize change to OTLP JSON.
+
+**Tooling ready:** `OtlpJsonLog`/`OtlpJsonSpan` wrappers in `otel_json.rs`.
 
 ### Phase 3 — Add OtelMetric aggregate/absolute APIs
 

@@ -257,12 +257,18 @@ calls `template.render_string_from_log(&log)` — takes `&LogEvent`.
 
 **File:** `src/sources/docker_logs/mod.rs`
 **Current:** `otel_log.to_log_event()` → `LogEventMergeState` for partial line merging
-**Problem:** `LogEventMergeState` operates on `LogEvent` internal `Value` tree.
-**Plan:**
-1. Rewrite partial merge to work on OtelLog — merge body strings directly
-   via `otel_log.body()` concatenation
-2. Preserve attributes/metadata from first event
-**Estimate:** ~40 lines. Medium complexity.
+**Problem:** The entire event pipeline is typed on `LogEvent`:
+`new_event() → Stream<Item=LogEvent> → line_agg_adapter → add_hostname → send_event_stream`.
+Changing just the merge state isn't enough — `add_hostname`, `line_agg_adapter`,
+and `log_namespace.insert_source_metadata` all take `&mut LogEvent`.
+**API ready:** `OtelLog::merge_body()` added (concatenates string bodies + metadata).
+**Actual plan:**
+1. Change `new_event()` return type from `Option<LogEvent>` to `Option<OtelLog>`
+2. Change `add_hostname` to accept `OtelLog` — use `otel_log.set_resource_attribute`
+3. Change `line_agg_adapter` to work with `OtelLog` stream
+4. Change `partial_event_merge_state` from `Option<LogEventMergeState>` to `Option<OtelLog>`
+5. Update stream type from `Stream<Item=LogEvent>` to `Stream<Item=OtelLog>`
+**Estimate:** ~100 lines. High complexity — full pipeline type change.
 
 ---
 

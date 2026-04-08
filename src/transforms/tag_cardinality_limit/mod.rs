@@ -128,13 +128,12 @@ impl TagCardinalityLimit {
     }
 
     fn transform_one(&mut self, event: Event) -> Option<Event> {
-        let otel_metric = match event {
+        let mut otel_metric = match event {
             Event::Metric(otel) => otel,
             _ => return Some(event),
         };
-        let mut legacy_metric = otel_metric.to_legacy_metric();
-        let metric_name = legacy_metric.name().to_string();
-        let metric_namespace = legacy_metric.namespace().map(|n| n.to_string());
+        let metric_name = otel_metric.name().to_string();
+        let metric_namespace = otel_metric.namespace().map(|n| n.to_string());
         let has_per_metric_config = self.config.per_metric_limits.iter().any(|(name, config)| {
             *name == metric_name
                 && (config.namespace.is_none() || config.namespace == metric_namespace)
@@ -144,7 +143,7 @@ impl TagCardinalityLimit {
         } else {
             None
         };
-        if let Some(tags_map) = legacy_metric.tags_mut() {
+        if let Some(tags_map) = otel_metric.tags() {
             match self
                 .get_config_for_metric(metric_key.as_ref())
                 .limit_exceeded_action
@@ -165,22 +164,30 @@ impl TagCardinalityLimit {
                     }
                 }
                 LimitExceededAction::DropTag => {
-                    tags_map.retain(|key, value| {
-                        if self.try_accept_tag(metric_key.as_ref(), key, value) {
-                            true
-                        } else {
-                            emit!(TagCardinalityLimitRejectingTag {
-                                metric_name: &metric_name,
-                                tag_key: key,
-                                tag_value: &value.to_string(),
-                            });
-                            false
-                        }
-                    });
+                    // Collect keys to remove, then remove them from proto attributes
+                    let keys_to_remove: Vec<String> = tags_map
+                        .iter_sets()
+                        .filter(|(key, value)| {
+                            if self.try_accept_tag(metric_key.as_ref(), key, value) {
+                                false // keep
+                            } else {
+                                emit!(TagCardinalityLimitRejectingTag {
+                                    metric_name: &metric_name,
+                                    tag_key: key,
+                                    tag_value: &value.to_string(),
+                                });
+                                true // remove
+                            }
+                        })
+                        .map(|(key, _)| key.to_string())
+                        .collect();
+                    for key in keys_to_remove {
+                        otel_metric.remove_data_point_attribute(&key);
+                    }
                 }
             }
         }
-        Some(Event::from(legacy_metric))
+        Some(Event::Metric(otel_metric))
     }
 }
 

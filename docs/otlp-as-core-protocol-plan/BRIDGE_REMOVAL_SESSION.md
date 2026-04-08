@@ -42,9 +42,9 @@ Four conversion functions that translate between OTel proto structs and legacy V
 
 | Function | Before session | After session | Removed |
 |----------|---------------|---------------|---------|
-| `to_log_event()` | 75 | 14 | **61 (81%)** |
+| `to_log_event()` | 75 | 13 | **62 (83%)** |
 | `to_legacy_metric()` | 40 | 16 | **24 (60%)** |
-| **Total** | **115** | **30** | **85 (74%)** |
+| **Total** | **115** | **29** | **86 (75%)** |
 
 73 commits, 1789 tests passing.
 OtelLog: all_event_fields/all_metadata_fields added.
@@ -191,17 +191,11 @@ Ordered by impact (most calls removed first) and dependency.
 
 ---
 
-### Task A — Rewrite ReduceState to accept OtelLog (1 `to_log_event`)
+### Task A — Rewrite ReduceState to accept OtelLog ✅ DONE
 
-**File:** `src/transforms/reduce/transform.rs`
-**Current:** `event.into_log_coerce().to_log_event()` → `ReduceState::add_event(LogEvent)`
-**Problem:** ReduceState stores `HashMap<OwnedTargetPath, Box<dyn ReduceValueMerger>>`,
-`add_event` calls `LogEvent::get(path)`, `flush()` returns LogEvent.
-**Plan:**
-1. Change `add_event` to accept `&OtelLog` — use `OtelLog::get(path)` (returns owned Value)
-2. Change `flush()` to return `OtelLog` — build OtelLog from merged fields via `from_log_event(LogEvent::from_map(...))`
-3. Change discriminant to use `Discriminant::from_otel_log` (already exists)
-**Estimate:** ~50 lines changed. Medium complexity.
+**Status:** `add_event(&OtelLog)`, `push_or_new_reduce_state(&OtelLog)`,
+`Discriminant::from_otel_log`. `flush()` still returns LogEvent (OK).
+Added `all_event_fields_skip_array_elements()` to OtelLog.
 
 ---
 

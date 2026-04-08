@@ -184,101 +184,161 @@ OtelLog Serialize stays legacy — sinks use field paths in serialized JSON at r
 - ReduceState internals use LogEvent
 - Lua bridge exposes LogEvent API to user scripts
 
-## Phased plan — remaining work
+## Next session — architectural rewrites for remaining 30 calls
 
-### Phase 2 — OtelMetric Serialize → OTLP-native JSON
+Each task below is a self-contained unit of work that removes bridge calls.
+Ordered by impact (most calls removed first) and dependency.
 
-**Problem:** `Serialize for OtelMetric` currently produces Vector-legacy JSON
-format (`name`, `tags`, `kind`, `counter`/`gauge`). This is **not OTel** — OTel
-has `attributes` on data points (no `tags`), and the structure follows the OTLP
-proto schema (`data.sum.dataPoints[0].value`).
+---
 
-**Current state:**
-- `OtlpSerializer` already produces correct OTLP protobuf — no bridge
-- `JsonSerializer` produces Vector-legacy JSON via `Serialize for OtelMetric`
-- `Serialize for OtelMetric` replicates the legacy `Metric` serde format
+### Task A — Rewrite ReduceState to accept OtelLog (1 `to_log_event`)
 
+**File:** `src/transforms/reduce/transform.rs`
+**Current:** `event.into_log_coerce().to_log_event()` → `ReduceState::add_event(LogEvent)`
+**Problem:** ReduceState stores `HashMap<OwnedTargetPath, Box<dyn ReduceValueMerger>>`,
+`add_event` calls `LogEvent::get(path)`, `flush()` returns LogEvent.
 **Plan:**
-1. Change `Serialize for OtelMetric` to produce OTLP-native JSON (matching
-   the OTLP proto JSON mapping: `name`, `data.sum.dataPoints`, etc.)
-2. Move Vector-legacy JSON metric format to the Vector source/sink adapters
-   as a backward-compat serialization for inter-Vector communication with
-   older instances
-3. Update `JsonSerializer` metric path — it should serialize OtelMetric
-   directly (OTLP JSON) since that's the core format now
-4. Any sink that needs Vector-legacy format (e.g. for backward compat with
-   existing pipelines) uses the adapter, not the core Serialize impl
+1. Change `add_event` to accept `&OtelLog` — use `OtelLog::get(path)` (returns owned Value)
+2. Change `flush()` to return `OtelLog` — build OtelLog from merged fields via `from_log_event(LogEvent::from_map(...))`
+3. Change discriminant to use `Discriminant::from_otel_log` (already exists)
+**Estimate:** ~50 lines changed. Medium complexity.
 
-**Impact:** This is a wire format change. Sinks using `encoding.codec = "json"`
-will produce OTLP-structured metric JSON instead of Vector-legacy. Users may
-need to update downstream parsers. Document in release notes.
+---
 
-**Status:**
-- OtelMetric Serialize → OTLP JSON: **DONE** (only 1 test needed update)
-- OtelLog/OtelSpan Serialize → OTLP JSON: **CANNOT CHANGE DEFAULT** —
-  sinks use field paths in serialized JSON at runtime (websocket ack
-  message_id, Elasticsearch _id, Splunk HEC timestamp). Changing to
-  OTLP JSON (nested attributes) breaks field lookup → hangs/crashes.
-  Must stay as legacy flat format until sinks use proto accessors
-  instead of field paths in serialized JSON.
-  `OtlpJsonLog`/`OtlpJsonSpan` wrappers in `otel_json.rs` for opt-in.
-- Vector-legacy format adapter for source/sink: TODO
+### Task B — Rewrite Elasticsearch sink pipeline (3 `to_log_event` + 1 `to_legacy_metric`)
 
-**Migration tool:** `vector vrl-migrate` (spec in VRL_MIGRATION_TOOL.md)
-should add rules for metric JSON field path changes:
-- `.kind` → removed (use `.sum.aggregationTemporality` or `.gauge`)
-- `.tags."key"` → `.sum.dataPoints[0].attributes` (OTLP attributes format)
-- `.counter.value` → `.sum.dataPoints[0].asDouble`
-- `.gauge.value` → `.gauge.dataPoints[0].asDouble`
-- `.namespace` → `.resource.attributes` (`metric.namespace` key)
-- `.timestamp` → `.sum.dataPoints[0].timeUnixNano`
+**Files:** `src/sinks/elasticsearch/sink.rs`, `src/sinks/elasticsearch/encoder.rs`
+**Current:** OtelLog → LogEvent → `process_log(LogEvent)` → `ProcessedEvent{log: LogEvent}`
+→ encoder serializes LogEvent.
+**Problem:** `process_log` uses `mode.index(&log)`, `mode.bulk_action(&log)`,
+`cfg.sync_fields(&mut log)`, `log.remove(key)` for `_id` extraction. Encoder
+renames `timestamp` → `@timestamp` in serialized JSON.
+**Plan:**
+1. Change `ProcessedEvent.log` from `LogEvent` to `OtelLog` (like Kinesis migration)
+2. Rewrite `process_log` to accept `OtelLog` — use `OtelLog::get/remove/insert`
+3. Encoder: extract timestamp from OtelLog proto before serialization, inject
+   `@timestamp` into output (don't rely on field name in serialized JSON)
+4. Update `mode.index()`, `mode.bulk_action()` to accept `&OtelLog`
+5. Metric path: keep `metric_to_log.transform_one(metric.to_legacy_metric())`
+   for now — that's a separate transform rewrite
+**Estimate:** ~150 lines changed. High complexity — many call sites in mode/config.
 
-### Phase 2b — Decouple sinks from serialized JSON field paths
+---
 
-**Critical insight:** OtelLog Serialize CANNOT change to OTLP JSON yet.
-Sinks use field paths in the *serialized* JSON at runtime:
-- websocket_server: `message_id_path` extracts field from serialized JSON ack
-- Elasticsearch: `_id` field from serialized JSON body
-- Splunk HEC: timestamp extraction from serialized JSON fields
+### Task C — Rewrite Splunk HEC logs sink (1 `to_log_event`)
 
-**Prerequisite:** Before changing OtelLog Serialize, sinks must be migrated
-to extract fields via OtelLog proto accessors BEFORE serialization, not
-from the serialized JSON output. This is a per-sink refactor:
-1. Extract needed fields (message_id, timestamp, _id) from OtelLog proto
-2. Serialize the event
-3. Use pre-extracted field values for routing/acking
+**File:** `src/sinks/splunk_hec/logs/sink.rs`
+**Current:** `event.into_log_coerce().to_log_event()` → `process_log(LogEvent)`
+**Problem:** Uses `render_template_string_from_log(template, &log, field)` which
+calls `template.render_string_from_log(&log)` — takes `&LogEvent`.
+**Plan:**
+1. Add `Template::render_string_from_otel_log(&OtelLog)` (or make Template generic)
+2. Rewrite `process_log` to accept `OtelLog`
+3. Extract timestamp, host, sourcetype from OtelLog proto before serialization
+**Estimate:** ~80 lines changed. Medium complexity — Template API change.
 
-**Only after all sinks decouple from serialized JSON paths** can OtelLog
-Serialize change to OTLP JSON.
+---
 
-**Tooling ready:** `OtlpJsonLog`/`OtlpJsonSpan` wrappers in `otel_json.rs`.
+### Task D — Rewrite metric transforms (4 `to_legacy_metric`)
 
-### Phase 3 — Add OtelMetric aggregate/absolute APIs
+**Files:** `src/transforms/aggregate.rs`, `src/transforms/tag_cardinality_limit/mod.rs`,
+`src/transforms/incremental_to_absolute.rs`, `src/sinks/appsignal/sink.rs`
+**Current:** All convert `OtelMetric → Metric` for mutation/decomposition.
+**Problem:**
+- aggregate: `metric.into_parts()` → merge `MetricData.value.add()` → reconstruct
+- tag_cardinality: `tags_mut().retain()` — mutable tag iteration with filter
+- incremental_to_absolute: `MetricSet.make_absolute(Metric)` — cache + merge
+- appsignal: `normalizer.normalize(Metric)` — MetricSet normalization
+**Plan:**
+1. Add `OtelMetric::merge_value(&mut self, other: &OtelMetric)` for aggregate
+2. Add `OtelMetric::retain_tags(f: impl FnMut(&str, &str) -> bool)` for tag_cardinality
+3. For incremental_to_absolute: implement `MetricSet` equivalent on OtelMetric proto
+   (cache by metric name+attributes hash, accumulate values)
+4. For appsignal: same as incremental_to_absolute (uses `MetricSet::normalize`)
+**Estimate:** ~300 lines. High complexity — core metric merging logic.
 
-Add `into_parts()` equivalent and `make_absolute()` to OtelMetric.
-Unblocks: aggregate (1), incremental_to_absolute (1).
+---
 
-### Phase 4 — Core infrastructure (~6 files)
+### Task E — Rewrite Docker logs partial merge (1 `to_log_event`)
 
-- `proto.rs` — serialize OTel types to protobuf directly
-- `lua/event.rs` — Lua API exposes OTel fields
-- `mod.rs` / `ref.rs` — remove `to_metric()` / `into_metric()`
+**File:** `src/sources/docker_logs/mod.rs`
+**Current:** `otel_log.to_log_event()` → `LogEventMergeState` for partial line merging
+**Problem:** `LogEventMergeState` operates on `LogEvent` internal `Value` tree.
+**Plan:**
+1. Rewrite partial merge to work on OtelLog — merge body strings directly
+   via `otel_log.body()` concatenation
+2. Preserve attributes/metadata from first event
+**Estimate:** ~40 lines. Medium complexity.
 
-### Phase 5 — Remove `to_value_legacy_layout()` from OtelLog/OtelSpan
+---
 
-Replace `get(path)`, `insert(path)`, `remove(path)` with direct proto field access.
+### Task F — Core infrastructure (11 calls)
 
-### Phase 6 — Remove bridge function bodies
+#### F1 — proto.rs buffer serialization (6 calls)
+**File:** `lib/vector-core/src/event/proto.rs`
+**Current:** OTel types → legacy types → Vector protobuf for disk buffers
+**Plan:** Serialize OTel types directly to OTLP protobuf for disk buffers.
+Requires new proto message types or encoding OTel proto bytes directly.
+**Estimate:** ~200 lines. High complexity — buffer format change.
 
-Delete `to_log_event()`, `to_legacy_metric()`. Keep `from_*` constructors.
+#### F2 — Lua bridge (2 calls)
+**File:** `lib/vector-core/src/event/lua/event.rs`
+**Current:** OtelLog → LogEvent for Lua field access
+**Plan:** Expose OtelLog fields to Lua directly via `get/insert` accessors.
+**Estimate:** ~60 lines. Medium complexity.
 
-### Phase 7 — Remove legacy types
+#### F3 — Event::to_metric/into_metric/try_into_metric (3 calls)
+**File:** `lib/vector-core/src/event/mod.rs`
+**Plan:** These are public API that returns legacy `Metric`. Either:
+- Change return type to `OtelMetric` and update all callers (~20 files)
+- Or deprecate and add `as_otel_metric()` / `into_otel_metric()`
+**Estimate:** ~20 lines in mod.rs, but ~100 lines across callers.
 
-Delete `LogEvent`, `Metric`, `TraceEvent`, `log_schema()`.
+#### F4 — EventRef/EventMutRef::into_metric (2 calls)
+**File:** `lib/vector-core/src/event/ref.rs`
+**Plan:** Same as F3 — change return type or add new methods.
+
+---
+
+### Task G — Intentional bridge / adapter calls (4 calls)
+
+These are intentional and may stay permanently:
+- `api/schema/events/output.rs` (2): GraphQL API wraps legacy types → migrate
+  when GraphQL schema changes to OTel-native
+- `conditions/datadog_search.rs` (1 production + 1 test): DD search `Filter<LogEvent>`
+  → rewrite DD search matcher for `OtelLog` (DD adapter responsibility)
+
+---
+
+### Task H — OtelLog Serialize → OTLP JSON (prerequisite: Tasks B, C, E)
+
+**After sinks decouple from serialized JSON field paths:**
+1. Change `Serialize for OtelLog` to use `OtlpJsonLog` (already implemented)
+2. Change `Serialize for OtelSpan` to use `OtlpJsonSpan` (already implemented)
+3. Update ~68 sink tests to expect OTLP JSON format
+4. Delete `to_value_legacy_layout()` from OtelLog/OtelSpan
+
+**Critical insight discovered this session:** Sinks use field paths in
+*serialized* JSON at runtime (websocket ack, ES _id, Splunk HEC timestamp).
+Changing Serialize breaks runtime behavior, not just tests. Sinks must extract
+fields from OtelLog proto BEFORE serialization.
+
+---
+
+### Suggested session order
+
+1. **Task A** (reduce) — quick win, 1 call
+2. **Task E** (docker partial merge) — quick win, 1 call  
+3. **Task D** (metric transforms) — 4 calls, biggest batch
+4. **Task B** (elasticsearch) — 4 calls, complex but high impact
+5. **Task C** (splunk hec) — 1 call
+6. **Task F** (core infra) — 11 calls, deep changes
+7. **Task G** (DD search) — adapter work, can defer
+8. **Task H** (OtelLog OTLP JSON) — final step, depends on B+C+E
 
 ## Verification
 
-- `cargo test -p vector --lib -- --skip throttle` — 1773 passed, 0 failed
+- `cargo test -p vector --lib` — 1789 passed, 0 failed
 - `cargo test -p codecs --lib` — 171 passed, 0 failed
 - `cargo test -p vector-core --lib` — all event tests pass
 - `cargo check -p vector` — compiles clean

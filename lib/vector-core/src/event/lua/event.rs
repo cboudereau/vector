@@ -16,8 +16,9 @@ impl IntoLua for LuaEvent {
         let table = lua.create_table()?;
         match self.event {
             Event::Log(otel_log) => {
-                let log_event = otel_log.to_log_event();
-                table.raw_set("log", log_event.into_lua(lua)?)?
+                // Flatten OtelLog to a Value for Lua field compatibility
+                let value = otel_log.value();
+                table.raw_set("log", value.into_lua(lua)?)?
             }
             Event::Metric(otel_metric) => {
                 let metric = otel_metric.to_legacy_metric();
@@ -149,9 +150,9 @@ mod test {
         }"#;
 
         let event = Lua::new().load(lua_event).eval::<Event>().unwrap();
-        let log = event.as_log().to_log_event();
-        assert_eq!(log["field"], Value::Bytes("example".into()));
-        assert_eq!(log["nested.field"], Value::Bytes("another example".into()));
+        let log = event.as_log();
+        assert_eq!(log.parse_path_and_get_value("field").ok().flatten().unwrap(), Value::Bytes("example".into()));
+        assert_eq!(log.parse_path_and_get_value("nested.field").ok().flatten().unwrap(), Value::Bytes("another example".into()));
     }
 
     #[test]

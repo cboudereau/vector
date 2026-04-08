@@ -105,16 +105,20 @@ pub(crate) fn build_cache_entry(event: &Event, fields: &FieldMatchConfig) -> Cac
             CacheEntry::Match(entry)
         }
         FieldMatchConfig::IgnoreFields(fields) => {
-            // IgnoreFields needs all_event_fields + all_metadata_fields iteration
-            // which OtelLog doesn't have yet — bridge through LogEvent
-            let log = otel.to_log_event();
             let mut entry = Vec::new();
 
-            if let Some(event_fields) = log.all_event_fields()
-                && let Some(metadata_fields) = log.all_metadata_fields()
-            {
-                for (field_name, value) in event_fields.chain(metadata_fields) {
-                    if let Ok(path) = ConfigTargetPath::try_from(field_name)
+            if let Some(event_fields) = otel.all_event_fields() {
+                for (field_name, value) in &event_fields {
+                    if let Ok(path) = ConfigTargetPath::try_from(field_name.clone())
+                        && !fields.contains(&path)
+                    {
+                        entry.push((path.0, type_id_for_value(value), value.coerce_to_bytes()));
+                    }
+                }
+            }
+            if let Some(metadata_fields) = otel.all_metadata_fields() {
+                for (field_name, value) in &metadata_fields {
+                    if let Ok(path) = ConfigTargetPath::try_from(field_name.clone())
                         && !fields.contains(&path)
                     {
                         entry.push((path.0, type_id_for_value(value), value.coerce_to_bytes()));

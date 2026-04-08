@@ -909,6 +909,27 @@ impl OtelLog {
         }
     }
 
+    /// Iterate all event fields (flattened, dotted keys). Owned values.
+    /// Equivalent of `LogEvent::all_event_fields()` but returns owned values
+    /// since OtelLog builds the field tree dynamically from proto.
+    pub fn all_event_fields(&self) -> Option<Vec<(vrl::value::KeyString, Value)>> {
+        let fields = self.convert_to_fields();
+        if fields.is_empty() { None } else { Some(fields) }
+    }
+
+    /// Iterate all metadata fields (flattened, with `%` prefix). Owned values.
+    pub fn all_metadata_fields(&self) -> Option<Vec<(vrl::value::KeyString, Value)>> {
+        match self.metadata.value() {
+            Value::Object(metadata_map) => {
+                let fields: Vec<_> = super::util::log::all_metadata_fields(metadata_map)
+                    .map(|(k, v)| (k, v.clone()))
+                    .collect();
+                if fields.is_empty() { None } else { Some(fields) }
+            }
+            _ => None,
+        }
+    }
+
     /// Convert to fields — recursively flatten nested objects with dotted keys.
     pub fn convert_to_fields(&self) -> Vec<(vrl::value::KeyString, Value)> {
         match self.to_value_legacy_layout() {

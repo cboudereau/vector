@@ -2518,17 +2518,16 @@ impl EventDataEq for OtelMetric {
 
 impl Serialize for OtelLog {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        // Use legacy flat layout for now — too many downstream consumers
-        // (68+ sink tests, HTTP/ES/GCP/Splunk sinks) expect this format.
-        // TODO(otlp-json): migrate to OTLP JSON once sinks are adapted.
+        // Legacy flat layout — many sinks use field paths in the serialized JSON
+        // at runtime (websocket ack message_id, Elasticsearch _id, Splunk HEC
+        // timestamp extraction). Changing to OTLP JSON breaks runtime behavior,
+        // not just tests. Use OtlpJsonLog wrapper for explicit opt-in.
         self.to_value_legacy_layout().serialize(serializer)
     }
 }
 
 impl Serialize for OtelSpan {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        // Same as OtelLog — legacy flat layout for backward compat.
-        // TODO(otlp-json): migrate to OTLP JSON once sinks are adapted.
         self.to_value_legacy_layout().serialize(serializer)
     }
 }

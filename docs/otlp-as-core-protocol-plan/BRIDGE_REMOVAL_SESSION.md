@@ -183,157 +183,113 @@ all_event_fields_skip_array_elements/merge_body added.
 - ReduceState internals use LogEvent
 - Lua bridge exposes LogEvent API to user scripts
 
-## Next session — architectural rewrites for remaining 30 calls
+## Next session — architectural rewrites for remaining 23 calls
 
-Each task below is a self-contained unit of work that removes bridge calls.
-Ordered by impact (most calls removed first) and dependency.
+### Completed tasks
 
----
+- **Task A** ✅ — ReduceState accepts `&OtelLog`, Discriminant::from_otel_log
+- **Task D partial** ✅ — tag_cardinality_limit uses OtelMetric directly
+- **Task G partial** ✅ — GraphQL API wraps OtelLog/OtelMetric directly
+- **Task F2 partial** ✅ — Lua IntoLua uses OtelLog::value(), test migrated
+- **Mock transforms** ✅ — metric branch modifies proto data points directly
 
-### Task A — Rewrite ReduceState to accept OtelLog ✅ DONE
-
-**Status:** `add_event(&OtelLog)`, `push_or_new_reduce_state(&OtelLog)`,
-`Discriminant::from_otel_log`. `flush()` still returns LogEvent (OK).
-Added `all_event_fields_skip_array_elements()` to OtelLog.
-
----
-
-### Task B — Rewrite Elasticsearch sink pipeline (3 `to_log_event` + 1 `to_legacy_metric`)
-
-**Files:** `src/sinks/elasticsearch/sink.rs`, `src/sinks/elasticsearch/encoder.rs`
-**Current:** OtelLog → LogEvent → `process_log(LogEvent)` → `ProcessedEvent{log: LogEvent}`
-→ encoder serializes LogEvent.
-**Problem:** `process_log` uses `mode.index(&log)`, `mode.bulk_action(&log)`,
-`cfg.sync_fields(&mut log)`, `log.remove(key)` for `_id` extraction. Encoder
-renames `timestamp` → `@timestamp` in serialized JSON.
-**Plan:**
-1. Change `ProcessedEvent.log` from `LogEvent` to `OtelLog` (like Kinesis migration)
-2. Rewrite `process_log` to accept `OtelLog` — use `OtelLog::get/remove/insert`
-3. Encoder: extract timestamp from OtelLog proto before serialization, inject
-   `@timestamp` into output (don't rely on field name in serialized JSON)
-4. Update `mode.index()`, `mode.bulk_action()` to accept `&OtelLog`
-5. Metric path: keep `metric_to_log.transform_one(metric.to_legacy_metric())`
-   for now — that's a separate transform rewrite
-**Estimate:** ~150 lines changed. High complexity — many call sites in mode/config.
+### Remaining 23 calls by rewrite task
 
 ---
 
-### Task C — Rewrite Splunk HEC logs sink (1 `to_log_event`)
+#### Rewrite 1 — MetricSet for OtelMetric (3 calls, HIGH priority)
 
-**File:** `src/sinks/splunk_hec/logs/sink.rs`
-**Current:** `event.into_log_coerce().to_log_event()` → `process_log(LogEvent)`
-**Problem:** Uses `render_template_string_from_log(template, &log, field)` which
-calls `template.render_string_from_log(&log)` — takes `&LogEvent`.
-**Plan:**
-1. Add `Template::render_string_from_otel_log(&OtelLog)` (or make Template generic)
-2. Rewrite `process_log` to accept `OtelLog`
-3. Extract timestamp, host, sourcetype from OtelLog proto before serialization
-**Estimate:** ~80 lines changed. Medium complexity — Template API change.
-
----
-
-### Task D — Rewrite metric transforms (3 remaining of 4 `to_legacy_metric`)
-
-**Files:** `src/transforms/aggregate.rs`, `src/transforms/tag_cardinality_limit/mod.rs`,
+**Files:** `src/sinks/util/buffer/metrics/normalize.rs`, `src/transforms/aggregate.rs`,
 `src/transforms/incremental_to_absolute.rs`, `src/sinks/appsignal/sink.rs`
-**Current:** All convert `OtelMetric → Metric` for mutation/decomposition.
-**Problem:**
-- aggregate: `metric.into_parts()` → merge `MetricData.value.add()` → reconstruct
-- tag_cardinality: `tags_mut().retain()` — mutable tag iteration with filter
-- incremental_to_absolute: `MetricSet.make_absolute(Metric)` — cache + merge
-- appsignal: `normalizer.normalize(Metric)` — MetricSet normalization
+**Calls:** aggregate (1), incremental_to_absolute (1), appsignal (1)
+**Blocker:** `MetricSet` (~600 lines) operates on legacy `Metric` with
+`into_parts()`, `value().add()`, `make_absolute()`, `normalize()`.
+**Plan:** Either rewrite MetricSet to accept OtelMetric (large), or add
+`OtelMetric::add_value()` and a lightweight `OtelMetricSet` cache that
+uses metric name + attributes hash as cache key, accumulates data point values.
+**Estimate:** ~200 lines. High complexity.
+
+---
+
+#### Rewrite 2 — Elasticsearch pipeline (3 calls, HIGH priority)
+
+**Files:** `src/sinks/elasticsearch/sink.rs`, `src/sinks/elasticsearch/encoder.rs`,
+plus `src/sinks/elasticsearch/common.rs` for mode helpers
+**Calls:** sink.rs (2 to_log_event), sink.rs (1 to_legacy_metric via metric_to_log)
+**Blocker:** `process_log(LogEvent)` uses `mode.index(&log)`, `cfg.sync_fields(&mut log)`,
+`log.remove(key)` for `_id`. Encoder renames `timestamp` → `@timestamp` in serialized JSON.
 **Plan:**
-1. Add `OtelMetric::merge_value(&mut self, other: &OtelMetric)` for aggregate
-2. ~~Add `OtelMetric::retain_tags(...)` for tag_cardinality~~ ✅ DONE — uses tags() + remove_data_point_attribute()
-3. For incremental_to_absolute: implement `MetricSet` equivalent on OtelMetric proto
-   (cache by metric name+attributes hash, accumulate values)
-4. For appsignal: same as incremental_to_absolute (uses `MetricSet::normalize`)
-**Estimate:** ~300 lines. High complexity — core metric merging logic.
+1. Change `ProcessedEvent.log` to `OtelLog`
+2. Rewrite `process_log` → `process_otel_log(&mut OtelLog)` using OtelLog accessors
+3. Encoder: extract timestamp from OtelLog proto before serialization
+4. Metric path stays on bridge (depends on metric_to_log transform)
+**Estimate:** ~150 lines. High complexity.
 
 ---
 
-### Task E — Rewrite Docker logs partial merge (1 `to_log_event`)
+#### Rewrite 3 — proto.rs buffer serialization (6 calls, MEDIUM priority)
 
-**File:** `src/sources/docker_logs/mod.rs`
-**Current:** `otel_log.to_log_event()` → `LogEventMergeState` for partial line merging
-**Problem:** The entire event pipeline is typed on `LogEvent`:
-`new_event() → Stream<Item=LogEvent> → line_agg_adapter → add_hostname → send_event_stream`.
-Changing just the merge state isn't enough — `add_hostname`, `line_agg_adapter`,
-and `log_namespace.insert_source_metadata` all take `&mut LogEvent`.
-**API ready:** `OtelLog::merge_body()` added (concatenates string bodies + metadata).
-**Actual plan:**
-1. Change `new_event()` return type from `Option<LogEvent>` to `Option<OtelLog>`
-2. Change `add_hostname` to accept `OtelLog` — use `otel_log.set_resource_attribute`
-3. Change `line_agg_adapter` to work with `OtelLog` stream
-4. Change `partial_event_merge_state` from `Option<LogEventMergeState>` to `Option<OtelLog>`
-5. Update stream type from `Stream<Item=LogEvent>` to `Stream<Item=OtelLog>`
-**Estimate:** ~100 lines. High complexity — full pipeline type change.
-
----
-
-### Task F — Core infrastructure (11 calls)
-
-#### F1 — proto.rs buffer serialization (6 calls)
 **File:** `lib/vector-core/src/event/proto.rs`
-**Current:** OTel types → legacy types → Vector protobuf for disk buffers
-**Plan:** Serialize OTel types directly to OTLP protobuf for disk buffers.
-Requires new proto message types or encoding OTel proto bytes directly.
-**Estimate:** ~200 lines. High complexity — buffer format change.
-
-#### F2 — Lua bridge (2 calls)
-**File:** `lib/vector-core/src/event/lua/event.rs`
-**Current:** OtelLog → LogEvent for Lua field access
-**Plan:** Expose OtelLog fields to Lua directly via `get/insert` accessors.
-**Estimate:** ~60 lines. Medium complexity.
-
-#### F3 — Event::to_metric/into_metric/try_into_metric (3 calls)
-**File:** `lib/vector-core/src/event/mod.rs`
-**Plan:** These are public API that returns legacy `Metric`. Either:
-- Change return type to `OtelMetric` and update all callers (~20 files)
-- Or deprecate and add `as_otel_metric()` / `into_otel_metric()`
-**Estimate:** ~20 lines in mod.rs, but ~100 lines across callers.
-
-#### F4 — EventRef/EventMutRef::into_metric (2 calls)
-**File:** `lib/vector-core/src/event/ref.rs`
-**Plan:** Same as F3 — change return type or add new methods.
+**Calls:** from_logs (1), from_metrics (1), from_traces (1), WithMetadata (3)
+**Blocker:** Converts OTel types → legacy types → Vector protobuf for disk buffers.
+**Plan:** Encode OTel proto bytes directly into buffer, or add OTLP proto
+message types to the Vector proto schema.
+**Estimate:** ~200 lines. High complexity — buffer format change with
+backward compat implications.
 
 ---
 
-### Task G — Intentional bridge / adapter calls (4 calls)
+#### Rewrite 4 — Event public metric API (5 calls, MEDIUM priority)
 
-These are intentional and may stay permanently:
-- `api/schema/events/output.rs` (2): GraphQL API wraps legacy types → migrate
-  when GraphQL schema changes to OTel-native
-- `conditions/datadog_search.rs` (1 production + 1 test): DD search `Filter<LogEvent>`
-  → rewrite DD search matcher for `OtelLog` (DD adapter responsibility)
+**Files:** `lib/vector-core/src/event/mod.rs` (3), `lib/vector-core/src/event/ref.rs` (2)
+**Calls:** `to_metric()`, `into_metric()`, `try_into_metric()`,
+`EventRef::into_metric()`, `EventMutRef::into_metric()`
+**Blocker:** Public API returning legacy `Metric`, called from ~20 files.
+**Plan:** Add parallel methods returning `OtelMetric` (`as_otel_metric()`,
+`into_otel_metric()`), migrate callers one-by-one, then deprecate legacy methods.
+**Estimate:** ~20 lines in core, ~100 lines across callers.
 
 ---
 
-### Task H — OtelLog Serialize → OTLP JSON (prerequisite: Tasks B, C, E)
+#### Rewrite 5 — Sink pipeline type changes (2 calls, MEDIUM priority)
 
-**After sinks decouple from serialized JSON field paths:**
-1. Change `Serialize for OtelLog` to use `OtlpJsonLog` (already implemented)
-2. Change `Serialize for OtelSpan` to use `OtlpJsonSpan` (already implemented)
-3. Update ~68 sink tests to expect OTLP JSON format
-4. Delete `to_value_legacy_layout()` from OtelLog/OtelSpan
+**Splunk HEC** (1 call): `render_template_string_from_log` takes `&LogEvent`.
+Need `Template::render_string` to work with `&OtelLog` or be generic.
+~80 lines, medium complexity.
 
-**Critical insight discovered this session:** Sinks use field paths in
-*serialized* JSON at runtime (websocket ack, ES _id, Splunk HEC timestamp).
-Changing Serialize breaks runtime behavior, not just tests. Sinks must extract
-fields from OtelLog proto BEFORE serialization.
+**Docker logs** (1 call): Full pipeline `Stream<Item=LogEvent>` → need
+`Stream<Item=OtelLog>` including `add_hostname`, `line_agg_adapter`.
+`OtelLog::merge_body()` API ready. ~100 lines, high complexity.
+
+---
+
+#### Rewrite 6 — Remaining adapters (3 calls, LOW priority — can defer)
+
+**DD search** (2 calls): `Filter<LogEvent>` matcher — DD adapter responsibility.
+Rewrite requires changing the DD search filter infrastructure to work with OtelLog.
+
+**Lua metric** (1 call): `LuaMetric` wraps legacy `Metric`. Need either
+`LuaOtelMetric` or make LuaMetric generic over OtelMetric.
+
+---
+
+#### Rewrite 7 — metric_to_log transform (1 call, LOW priority)
+
+`transform_one(Metric)` serializes legacy Metric to JSON then inserts fields
+into LogEvent. With OtelMetric OTLP JSON, the field structure differs.
+Needs a full transform rewrite to work with OtelMetric proto directly.
 
 ---
 
 ### Suggested session order
 
-1. **Task A** (reduce) — quick win, 1 call
-2. **Task E** (docker partial merge) — quick win, 1 call  
-3. **Task D** (metric transforms) — 4 calls, biggest batch
-4. **Task B** (elasticsearch) — 4 calls, complex but high impact
-5. **Task C** (splunk hec) — 1 call
-6. **Task F** (core infra) — 11 calls, deep changes
-7. **Task G** (DD search) — adapter work, can defer
-8. **Task H** (OtelLog OTLP JSON) — final step, depends on B+C+E
+1. **Rewrite 4** (public metric API) — mechanical, unblocks future work
+2. **Rewrite 1** (MetricSet) — 3 calls, biggest remaining batch
+3. **Rewrite 2** (Elasticsearch) — 3 calls, complex but high impact
+4. **Rewrite 3** (proto.rs) — 6 calls, deep infrastructure
+5. **Rewrite 5** (Splunk HEC + Docker) — 2 calls, pipeline changes
+6. **Rewrite 6** (DD search + Lua metric) — 3 calls, adapter work
+7. **Rewrite 7** (metric_to_log) — 1 call, full transform rewrite
 
 ## Verification
 

@@ -36,20 +36,19 @@ Four conversion functions that translate between OTel proto structs and legacy V
 - `to_log_event()` on OtelSpan — used by `trace_to_log` transform
 - `to_legacy_metric()` body — used by transforms that need full Metric mutation
 
-## Progress (updated 2026-04-07)
+## Progress (updated 2026-04-08)
 
 ### Bridge call counts
 
 | Function | Before session | After session | Removed |
 |----------|---------------|---------------|---------|
-| `to_log_event()` | 75 | 18 | **57 (76%)** |
+| `to_log_event()` | 75 | 17 | **58 (77%)** |
 | `to_legacy_metric()` | 40 | 16 | **24 (60%)** |
-| **Total** | **115** | **34** | **81 (70%)** |
+| **Total** | **115** | **33** | **82 (71%)** |
 
-60 commits, 1773 tests passing.
+62 commits, 1773 tests passing.
 OtelMetric Serialize → OTLP JSON. OtlpJsonLog/OtlpJsonSpan wrappers ready.
-OtelLog/OtelSpan Serialize stays legacy (68 sink tests depend on flat format).
-All remaining 34 calls at hard floor — need per-sink migration or arch changes.
+log_to_metric helpers rewritten from &LogEvent to &OtelLog.
 
 ### What was done
 
@@ -141,7 +140,7 @@ All remaining 34 calls at hard floor — need per-sink migration or arch changes
   convert_to_fields() + insert(), find_null_field uses parse_path_and_get_value,
   serde_arrow serializes OtelLog directly
 
-### Remaining 34 bridge calls (all at hard floor)
+### Remaining 33 bridge calls (all at hard floor)
 
 **Core infrastructure — 11 calls:**
 - `proto.rs` (6): OTel → protobuf via legacy types
@@ -164,15 +163,15 @@ All remaining 34 calls at hard floor — need per-sink migration or arch changes
 - `transforms/reduce` (1): Discriminant::from_log_event (ReduceState uses LogEvent)
 - `sources/docker_logs` (1): partial event merging
 
-**Intentional bridge / API — 5 calls:**
+**Intentional bridge / API — 4 calls:**
 - `transforms/trace_to_log` (1): transform purpose IS span→log
 - `api/schema/events/output` (2): GraphQL API wraps legacy types
-- `conditions/datadog_search` (2): DD matcher takes &LogEvent
+- `conditions/datadog_search` (1): DD matcher takes &LogEvent
 
-**Test / transitional — 5 calls:**
-- `transforms/log_to_metric` (1): to_metrics() test helper
+**Test / transitional — 4 calls:**
 - `transforms/metric_to_log` (2): production transform_one + test helper
 - `test_util/mock/transforms` (1): metric branch uses metric.add()
+- `conditions/datadog_search` (1): test helper
 
 **Codec encoders/decoders — 0 bridge calls (fully migrated).**
 

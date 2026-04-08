@@ -1,13 +1,8 @@
-use std::collections::BTreeSet;
-
 use async_trait::async_trait;
 use vector_lib::{
     config::{DataType, Input, TransformOutput},
     configurable::configurable_component,
-    event::{
-        Event, MetricValue,
-        metric::{MetricData, Sample},
-    },
+    event::Event,
     schema,
     transform::{FunctionTransform, OutputBuffer, Transform},
 };
@@ -80,39 +75,27 @@ impl FunctionTransform for BasicTransform {
                 }
             }
             Event::Metric(otel_metric) => {
-                let mut metric = otel_metric.clone().to_legacy_metric();
-                let increment = match metric.value() {
-                    MetricValue::Counter { .. } => Some(MetricValue::Counter {
-                        value: self.increase,
-                    }),
-                    MetricValue::Gauge { .. } => Some(MetricValue::Gauge {
-                        value: self.increase,
-                    }),
-                    MetricValue::Distribution { statistic, .. } => {
-                        Some(MetricValue::Distribution {
-                            samples: vec![Sample {
-                                value: self.increase,
-                                rate: 1,
-                            }],
-                            statistic: *statistic,
-                        })
+                use opentelemetry_proto::tonic::metrics::v1::{metric, number_data_point::Value as NDPValue};
+                // Modify the first data point value directly on the proto
+                if let Some(data) = otel_metric.metric_mut().data.as_mut() {
+                    match data {
+                        metric::Data::Sum(sum) => {
+                            if let Some(dp) = sum.data_points.first_mut() {
+                                match &mut dp.value {
+                                    Some(NDPValue::AsDouble(v)) => *v += self.increase,
+                                    Some(NDPValue::AsInt(v)) => *v += self.increase as i64,
+                                    None => dp.value = Some(NDPValue::AsDouble(self.increase)),
+                                }
+                            }
+                        }
+                        metric::Data::Gauge(gauge) => {
+                            if let Some(dp) = gauge.data_points.first_mut() {
+                                dp.value = Some(NDPValue::AsDouble(self.increase));
+                            }
+                        }
+                        _ => {} // Histogram/Summary/Set — no increment in tests
                     }
-                    MetricValue::AggregatedHistogram { .. } => None,
-                    MetricValue::AggregatedSummary { .. } => None,
-                    MetricValue::Set { .. } => {
-                        let mut values = BTreeSet::new();
-                        values.insert(self.suffix.clone());
-                        Some(MetricValue::Set { values })
-                    }
-                };
-                if let Some(increment) = increment {
-                    assert!(metric.add(&MetricData {
-                        kind: metric.kind(),
-                        time: metric.time(),
-                        value: increment,
-                    }));
                 }
-                *otel_metric = vector_lib::event::OtelMetric::from_legacy_metric(metric);
             }
             Event::Trace(otel_span) => {
                 if let Some(message_key) = crate::config::log_schema().message_key_target_path() {

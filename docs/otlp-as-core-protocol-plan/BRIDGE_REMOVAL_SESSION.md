@@ -42,13 +42,14 @@ Four conversion functions that translate between OTel proto structs and legacy V
 
 | Function | Before session | After session | Removed |
 |----------|---------------|---------------|---------|
-| `to_log_event()` | 75 | 15 | **60 (80%)** |
+| `to_log_event()` | 75 | 14 | **61 (81%)** |
 | `to_legacy_metric()` | 40 | 16 | **24 (60%)** |
-| **Total** | **115** | **31** | **84 (73%)** |
+| **Total** | **115** | **30** | **85 (74%)** |
 
-70 commits, 1789 tests passing.
+73 commits, 1789 tests passing.
+OtelLog: all_event_fields/all_metadata_fields added.
+Dedupe + metric_to_log test fully debridged.
 OtelMetric Serialize → OTLP JSON. OtlpJsonLog/OtlpJsonSpan wrappers ready.
-OtelLog: all_event_fields/all_metadata_fields added. Dedupe fully debridged.
 OtelLog Serialize stays legacy — sinks use field paths in serialized JSON at runtime.
 
 ### What was done
@@ -141,7 +142,7 @@ OtelLog Serialize stays legacy — sinks use field paths in serialized JSON at r
   convert_to_fields() + insert(), find_null_field uses parse_path_and_get_value,
   serde_arrow serializes OtelLog directly
 
-### Remaining 31 bridge calls
+### Remaining 30 bridge calls
 
 **Core infrastructure — 11 calls:**
 - `proto.rs` (6): OTel → protobuf via legacy types
@@ -168,8 +169,8 @@ OtelLog Serialize stays legacy — sinks use field paths in serialized JSON at r
 - `api/schema/events/output` (2): GraphQL API wraps legacy types
 - `conditions/datadog_search` (1): DD matcher takes &LogEvent
 
-**Test / transitional — 4 calls:**
-- `transforms/metric_to_log` (2): production transform_one + test helper
+**Test / transitional — 3 calls:**
+- `transforms/metric_to_log` (1): production transform_one(Metric)
 - `test_util/mock/transforms` (1): metric branch uses metric.add()
 - `conditions/datadog_search` (1): test helper
 

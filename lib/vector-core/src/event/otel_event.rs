@@ -550,6 +550,27 @@ impl OtelLog {
         &self.record.span_id
     }
 
+    /// Merge another OtelLog's body into this one (concatenate string bodies).
+    /// Used for partial line merging (e.g. Docker logs).
+    /// Also merges metadata.
+    pub fn merge_body(&mut self, incoming: &OtelLog) {
+        if let (Some(self_body), Some(inc_body)) = (self.body(), incoming.body()) {
+            if let (Some(OtelValueKind::StringValue(self_s)), Some(OtelValueKind::StringValue(inc_s)))
+                = (&self_body.value, &inc_body.value)
+            {
+                let merged = format!("{}{}", self_s, inc_s);
+                self.set_body(AnyValue {
+                    value: Some(OtelValueKind::StringValue(merged)),
+                });
+            }
+        } else if self.body().is_none() {
+            if let Some(inc_body) = incoming.body() {
+                self.set_body(inc_body.clone());
+            }
+        }
+        self.metadata.merge(incoming.metadata.clone());
+    }
+
     pub fn attribute(&self, key: &str) -> Option<&AnyValue> {
         attribute_value(&self.record.attributes, key)
     }

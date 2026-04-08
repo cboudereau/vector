@@ -42,14 +42,14 @@ Four conversion functions that translate between OTel proto structs and legacy V
 
 | Function | Before session | After session | Removed |
 |----------|---------------|---------------|---------|
-| `to_log_event()` | 75 | 16 | **59 (79%)** |
+| `to_log_event()` | 75 | 15 | **60 (80%)** |
 | `to_legacy_metric()` | 40 | 16 | **24 (60%)** |
-| **Total** | **115** | **32** | **83 (72%)** |
+| **Total** | **115** | **31** | **84 (73%)** |
 
-66 commits, 1773 tests passing.
+70 commits, 1789 tests passing.
 OtelMetric Serialize → OTLP JSON. OtlpJsonLog/OtlpJsonSpan wrappers ready.
+OtelLog: all_event_fields/all_metadata_fields added. Dedupe fully debridged.
 OtelLog Serialize stays legacy — sinks use field paths in serialized JSON at runtime.
-Critical insight: sinks must decouple from serialized JSON before format can change.
 
 ### What was done
 
@@ -141,7 +141,7 @@ Critical insight: sinks must decouple from serialized JSON before format can cha
   convert_to_fields() + insert(), find_null_field uses parse_path_and_get_value,
   serde_arrow serializes OtelLog directly
 
-### Remaining 32 bridge calls (all at hard floor)
+### Remaining 31 bridge calls
 
 **Core infrastructure — 11 calls:**
 - `proto.rs` (6): OTel → protobuf via legacy types
@@ -159,8 +159,7 @@ Critical insight: sinks must decouple from serialized JSON before format can cha
 - `transforms/incremental_to_absolute` (1): make_absolute
 - `sinks/appsignal` (1): normalizer.normalize(Metric)
 
-**Transforms needing LogEvent iteration/mutation — 3 calls:**
-- `transforms/dedupe` (1): all_event_fields + all_metadata_fields (IgnoreFields)
+**Transforms needing LogEvent iteration/mutation — 2 calls:**
 - `transforms/reduce` (1): Discriminant::from_log_event (ReduceState uses LogEvent)
 - `sources/docker_logs` (1): partial event merging
 

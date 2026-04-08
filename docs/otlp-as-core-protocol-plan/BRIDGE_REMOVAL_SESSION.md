@@ -43,8 +43,8 @@ Four conversion functions that translate between OTel proto structs and legacy V
 | Function | Before session | After session | Removed |
 |----------|---------------|---------------|---------|
 | `to_log_event()` | 75 | 13 | **62 (83%)** |
-| `to_legacy_metric()` | 40 | 15 | **25 (63%)** |
-| **Total** | **115** | **28** | **87 (76%)** |
+| `to_legacy_metric()` | 40 | 14 | **26 (65%)** |
+| **Total** | **115** | **27** | **88 (77%)** |
 
 73 commits, 1789 tests passing.
 OtelLog: all_event_fields/all_metadata_fields added.

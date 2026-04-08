@@ -43,8 +43,8 @@ Four conversion functions that translate between OTel proto structs and legacy V
 | Function | Before session | After session | Removed |
 |----------|---------------|---------------|---------|
 | `to_log_event()` | 75 | 13 | **62 (83%)** |
-| `to_legacy_metric()` | 40 | 16 | **24 (60%)** |
-| **Total** | **115** | **29** | **86 (75%)** |
+| `to_legacy_metric()` | 40 | 15 | **25 (63%)** |
+| **Total** | **115** | **28** | **87 (76%)** |
 
 73 commits, 1789 tests passing.
 OtelLog: all_event_fields/all_metadata_fields added.
@@ -233,7 +233,7 @@ calls `template.render_string_from_log(&log)` — takes `&LogEvent`.
 
 ---
 
-### Task D — Rewrite metric transforms (4 `to_legacy_metric`)
+### Task D — Rewrite metric transforms (3 remaining of 4 `to_legacy_metric`)
 
 **Files:** `src/transforms/aggregate.rs`, `src/transforms/tag_cardinality_limit/mod.rs`,
 `src/transforms/incremental_to_absolute.rs`, `src/sinks/appsignal/sink.rs`
@@ -245,7 +245,7 @@ calls `template.render_string_from_log(&log)` — takes `&LogEvent`.
 - appsignal: `normalizer.normalize(Metric)` — MetricSet normalization
 **Plan:**
 1. Add `OtelMetric::merge_value(&mut self, other: &OtelMetric)` for aggregate
-2. Add `OtelMetric::retain_tags(f: impl FnMut(&str, &str) -> bool)` for tag_cardinality
+2. ~~Add `OtelMetric::retain_tags(...)` for tag_cardinality~~ ✅ DONE — uses tags() + remove_data_point_attribute()
 3. For incremental_to_absolute: implement `MetricSet` equivalent on OtelMetric proto
    (cache by metric name+attributes hash, accumulate values)
 4. For appsignal: same as incremental_to_absolute (uses `MetricSet::normalize`)

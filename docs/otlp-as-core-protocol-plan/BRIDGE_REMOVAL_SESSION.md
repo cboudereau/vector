@@ -46,9 +46,10 @@ Four conversion functions that translate between OTel proto structs and legacy V
 | `to_legacy_metric()` | 40 | 16 | **24 (60%)** |
 | **Total** | **115** | **33** | **82 (71%)** |
 
-62 commits, 1773 tests passing.
+66 commits, 1773 tests passing.
 OtelMetric Serialize → OTLP JSON. OtlpJsonLog/OtlpJsonSpan wrappers ready.
-log_to_metric helpers rewritten from &LogEvent to &OtelLog.
+OtelLog Serialize stays legacy — sinks use field paths in serialized JSON at runtime.
+Critical insight: sinks must decouple from serialized JSON before format can change.
 
 ### What was done
 

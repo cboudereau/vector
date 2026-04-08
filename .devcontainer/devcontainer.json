@@ -23,12 +23,13 @@
       }
     }
   },
-  "postCreateCommand": "rustup show",
+  "postCreateCommand": ".devcontainer/setup-ssh.sh && rustup show",
   "remoteUser": "vscode",
   "mounts": [
     "source=vector-cargo-registry,target=/usr/local/cargo/registry,type=volume",
     "source=vector-cargo-git,target=/usr/local/cargo/git,type=volume",
     "source=vector-target,target=${containerWorkspaceFolder}/target,type=volume",
-    "source=vector-claude-data,target=/home/vscode/.claude,type=volume"
+    "source=vector-claude-data,target=/home/vscode/.claude,type=volume",
+    "source=vector-ssh,target=/home/vscode/.ssh,type=volume"
   ]
 }

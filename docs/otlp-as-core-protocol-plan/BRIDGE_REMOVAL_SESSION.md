@@ -42,9 +42,9 @@ Four conversion functions that translate between OTel proto structs and legacy V
 
 | Function | Before session | After session | Removed |
 |----------|---------------|---------------|---------|
-| `to_log_event()` | 75 | 17 | **58 (77%)** |
+| `to_log_event()` | 75 | 16 | **59 (79%)** |
 | `to_legacy_metric()` | 40 | 16 | **24 (60%)** |
-| **Total** | **115** | **33** | **82 (71%)** |
+| **Total** | **115** | **32** | **83 (72%)** |
 
 66 commits, 1773 tests passing.
 OtelMetric Serialize → OTLP JSON. OtlpJsonLog/OtlpJsonSpan wrappers ready.
@@ -141,7 +141,7 @@ Critical insight: sinks must decouple from serialized JSON before format can cha
   convert_to_fields() + insert(), find_null_field uses parse_path_and_get_value,
   serde_arrow serializes OtelLog directly
 
-### Remaining 33 bridge calls (all at hard floor)
+### Remaining 32 bridge calls (all at hard floor)
 
 **Core infrastructure — 11 calls:**
 - `proto.rs` (6): OTel → protobuf via legacy types

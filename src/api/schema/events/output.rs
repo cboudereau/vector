@@ -51,12 +51,12 @@ pub(crate) fn from_tap_payload_to_output_events(t: TapPayload) -> Vec<OutputEven
     match t {
         TapPayload::Log(output, log_array) => log_array
             .into_iter()
-            .map(|log| OutputEventsPayload::Log(Log::new(output.clone(), log.to_log_event())))
+            .map(|log| OutputEventsPayload::Log(Log::new(output.clone(), log)))
             .collect(),
         TapPayload::Metric(output, metric_array) => metric_array
             .into_iter()
             .map(|metric| {
-                OutputEventsPayload::Metric(Metric::new(output.clone(), metric.to_legacy_metric()))
+                OutputEventsPayload::Metric(Metric::new(output.clone(), metric))
             })
             .collect(),
         TapPayload::Notification(notification) => {

@@ -8,11 +8,11 @@ use super::EventEncodingType;
 #[derive(Debug, Clone)]
 pub struct Metric {
     output: TapOutput,
-    event: event::Metric,
+    event: event::OtelMetric,
 }
 
 impl Metric {
-    pub const fn new(output: TapOutput, event: event::Metric) -> Self {
+    pub fn new(output: TapOutput, event: event::OtelMetric) -> Self {
         Self { output, event }
     }
 }
@@ -71,8 +71,8 @@ impl Metric {
     }
 
     /// Metric timestamp
-    async fn timestamp(&self) -> Option<&DateTime<Utc>> {
-        self.event.data().timestamp()
+    async fn timestamp(&self) -> Option<DateTime<Utc>> {
+        self.event.timestamp()
     }
 
     /// Metric name

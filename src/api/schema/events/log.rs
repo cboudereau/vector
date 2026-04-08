@@ -1,29 +1,26 @@
-use std::borrow::Cow;
-
 use async_graphql::Object;
 use chrono::{DateTime, Utc};
 use vector_lib::{encode_logfmt, event, tap::topology::TapOutput};
-use vrl::event_path;
 
 use super::EventEncodingType;
 
 #[derive(Debug, Clone)]
 pub struct Log {
     output: TapOutput,
-    event: event::LogEvent,
+    event: event::OtelLog,
 }
 
 impl Log {
-    pub const fn new(output: TapOutput, event: event::LogEvent) -> Self {
+    pub const fn new(output: TapOutput, event: event::OtelLog) -> Self {
         Self { output, event }
     }
 
-    pub fn get_body(&self) -> Option<Cow<'_, str>> {
-        Some(self.event.get(event_path!("body"))?.to_string_lossy())
+    pub fn get_body(&self) -> Option<String> {
+        Some(self.event.get_body()?.to_string_lossy().into_owned())
     }
 
-    pub fn get_timestamp(&self) -> Option<&DateTime<Utc>> {
-        self.event.get(event_path!("timestamp"))?.as_timestamp()
+    pub fn get_timestamp(&self) -> Option<DateTime<Utc>> {
+        self.event.get_timestamp()?.as_timestamp().copied()
     }
 }
 
@@ -51,7 +48,7 @@ impl Log {
     }
 
     /// Log timestamp
-    async fn timestamp(&self) -> Option<&DateTime<Utc>> {
+    async fn timestamp(&self) -> Option<DateTime<Utc>> {
         self.get_timestamp()
     }
 
@@ -62,15 +59,15 @@ impl Log {
                 .expect("JSON serialization of log event failed. Please report."),
             EventEncodingType::Yaml => serde_yaml::to_string(&self.event)
                 .expect("YAML serialization of log event failed. Please report."),
-            EventEncodingType::Logfmt => encode_logfmt::encode_value(self.event.value())
+            EventEncodingType::Logfmt => encode_logfmt::encode_value(&self.event.value())
                 .expect("logfmt serialization of log event failed. Please report."),
         }
     }
 
     /// Get JSON field data on the log event, by field name
     async fn json(&self, field: String) -> Option<String> {
-        self.event.get(event_path!(field.as_str())).map(|field| {
-            serde_json::to_string(field)
+        self.event.parse_path_and_get_value(&field).ok().flatten().map(|field| {
+            serde_json::to_string(&field)
                 .expect("JSON serialization of trace event field failed. Please report.")
         })
     }

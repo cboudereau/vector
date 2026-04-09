@@ -14,7 +14,7 @@ use vector_lib::{
 
 use crate::{
     codecs::Transformer,
-    event::{EventFinalizers, Finalizable, LogEvent},
+    event::{EventFinalizers, Finalizable, OtelLog},
     sinks::{
         elasticsearch::{BulkAction, VersionType},
         util::encoding::{Encoder, as_tracked_write},
@@ -53,7 +53,7 @@ pub enum DocumentMetadata {
 pub struct ProcessedEvent {
     pub index: String,
     pub bulk_action: BulkAction,
-    pub log: LogEvent,
+    pub log: OtelLog,
     pub document_metadata: DocumentMetadata,
 }
 
@@ -126,7 +126,7 @@ impl Encoder<Vec<ProcessedEvent>> for ElasticsearchEncoder {
         let mut byte_size = telemetry().create_request_count_byte_size();
         for event in input {
             let log = {
-                let mut event = Event::from(event.log);
+                let mut event = Event::Log(event.log);
                 self.transformer.transform(&mut event);
                 byte_size.add_event(&event, event.estimated_json_encoded_size_of());
 

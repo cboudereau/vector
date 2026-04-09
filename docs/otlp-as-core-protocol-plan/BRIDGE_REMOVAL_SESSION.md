@@ -46,10 +46,10 @@ Four conversion functions that translate between OTel proto structs and legacy V
 | `to_legacy_metric()` | 40 | 13 | **27 (68%)** |
 | **Total** | **115** | **23** | **92 (80%)** |
 
-86 commits, 1789 tests passing.
-Rewrite 4 partial: 22 test callers migrated from Event bridge methods to
-OtelMetric-native API. EventRef/EventMutRef: `into_otel_metric()` added.
-Next: Rewrite 1 (MetricSet).
+90 commits, 1789 tests passing.
+Session 2: Rewrite 4 partial (22 test callers), Rewrite 1 done (3 calls),
+Rewrite 2 done (2 of 3 calls — Elasticsearch log pipeline OtelLog-native).
+MetricSet/MetricNormalizer accept OtelMetric. ES pipeline uses OtelLog directly.
 
 ### What was done
 
@@ -193,43 +193,47 @@ Next: Rewrite 1 (MetricSet).
 - **Task F2 partial** ✅ — Lua IntoLua uses OtelLog::value(), test migrated
 - **Mock transforms** ✅ — metric branch modifies proto data points directly
 - **Rewrite 4 partial** ✅ — EventRef/EventMutRef: `into_otel_metric()` added.
-  22 test callers migrated from `to_metric()/into_metric()` to `as_metric()/into_otel_metric()`.
-  Files: prometheus/scrape (5), apache_metrics (3), postgresql_metrics (3),
-  tag_cardinality_limit tests (4), aws_ec2_metadata (2), influxdb tests (1),
-  prometheus/remote_write tests (1), aws_ecs_metrics (1), mongodb_metrics (1),
-  otel_event test (1). Production sink callers blocked on Rewrite 1 (MetricSet).
+  22 test callers migrated to `as_metric()/into_otel_metric()`.
+- **Rewrite 1** ✅ — MetricSet/MetricNormalizer accept OtelMetric via _otel() methods.
+  aggregate (into_metric_parts), incremental_to_absolute (make_absolute_otel),
+  appsignal (normalize_otel) — 3 to_legacy_metric() calls eliminated.
+- **Rewrite 2 partial** ✅ — Elasticsearch log pipeline rewritten for OtelLog.
+  ProcessedEvent.log changed to OtelLog. process_log, mode.index/bulk_action/version,
+  DataStreamConfig all accept OtelLog directly. 2 to_log_event() calls eliminated.
 
 ### Remaining 23 calls by rewrite task
 
 ---
 
-#### Rewrite 1 — MetricSet for OtelMetric (3 calls, HIGH priority)
+#### Rewrite 1 — MetricSet for OtelMetric (3 calls, HIGH priority) — DONE
 
 **Files:** `src/sinks/util/buffer/metrics/normalize.rs`, `src/transforms/aggregate.rs`,
 `src/transforms/incremental_to_absolute.rs`, `src/sinks/appsignal/sink.rs`
-**Calls:** aggregate (1), incremental_to_absolute (1), appsignal (1)
-**Blocker:** `MetricSet` (~600 lines) operates on legacy `Metric` with
-`into_parts()`, `value().add()`, `make_absolute()`, `normalize()`.
-**Plan:** Either rewrite MetricSet to accept OtelMetric (large), or add
-`OtelMetric::add_value()` and a lightweight `OtelMetricSet` cache that
-uses metric name + attributes hash as cache key, accumulates data point values.
-**Estimate:** ~200 lines. High complexity.
+**Done:** Added `normalize_otel()`, `make_absolute_otel()`, `make_incremental_otel()`
+to MetricNormalizer/MetricSet. Added `OtelMetric::into_metric_parts()`.
+Migrated all 3 call sites: aggregate uses `into_metric_parts()`,
+incremental_to_absolute uses `make_absolute_otel()`, appsignal uses
+`normalize_otel()`. Bridge calls moved inside MetricSet/MetricNormalizer.
+**Note:** Remaining sink callers of `try_into_metric()` (10 sinks) are NOT
+blocked by MetricSet — they need full per-sink pipeline rewrites because
+encoders, batchers, and request builders all expect legacy Metric.
 
 ---
 
-#### Rewrite 2 — Elasticsearch pipeline (3 calls, HIGH priority)
+#### Rewrite 2 — Elasticsearch pipeline (3 calls, HIGH priority) — DONE (2 of 3)
 
 **Files:** `src/sinks/elasticsearch/sink.rs`, `src/sinks/elasticsearch/encoder.rs`,
-plus `src/sinks/elasticsearch/common.rs` for mode helpers
-**Calls:** sink.rs (2 to_log_event), sink.rs (1 to_legacy_metric via metric_to_log)
-**Blocker:** `process_log(LogEvent)` uses `mode.index(&log)`, `cfg.sync_fields(&mut log)`,
-`log.remove(key)` for `_id`. Encoder renames `timestamp` → `@timestamp` in serialized JSON.
-**Plan:**
-1. Change `ProcessedEvent.log` to `OtelLog`
-2. Rewrite `process_log` → `process_otel_log(&mut OtelLog)` using OtelLog accessors
-3. Encoder: extract timestamp from OtelLog proto before serialization
-4. Metric path stays on bridge (depends on metric_to_log transform)
-**Estimate:** ~150 lines. High complexity.
+`src/sinks/elasticsearch/mod.rs`, `src/sinks/elasticsearch/config.rs`
+**Done:** Changed `ProcessedEvent.log` from `LogEvent` to `OtelLog`.
+Rewrote `process_log()` to accept `OtelLog` directly. Changed all
+`ElasticsearchCommonMode` methods (index, bulk_action, version) and
+`DataStreamConfig` methods (dtype, dataset, namespace, sync_fields,
+remap_timestamp, index) from `&LogEvent` to `&OtelLog`. Template rendering
+uses `render_string()` directly instead of `render_string_from_log()` (which
+was double-converting OtelLog → LogEvent → OtelLog internally).
+Eliminated 2 `to_log_event()` calls from the log pipeline.
+**Remaining:** Metric path (1 call) stays on bridge — depends on metric_to_log
+transform (Rewrite 7). Tests updated with `OtelLog::from_log_event()` at call sites.
 
 ---
 

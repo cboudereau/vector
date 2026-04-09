@@ -8,6 +8,7 @@ use super::{
     encoder::{DocumentMetadata, DocumentVersion, DocumentVersionType},
 };
 use crate::{
+    event::OtelLog,
     sinks::{
         elasticsearch::{
             BulkAction, ElasticsearchCommonMode, encoder::ProcessedEvent,
@@ -69,10 +70,10 @@ where
         input
             .scan(self.metric_to_log, |metric_to_log, event| {
                 future::ready(Some(match event {
-                    Event::Metric(metric) => {
-                        metric_to_log.transform_one(metric.to_legacy_metric())
-                    }
-                    Event::Log(log) => Some(log.to_log_event()),
+                    Event::Metric(metric) => metric_to_log
+                        .transform_one(metric.to_legacy_metric())
+                        .map(OtelLog::from_log_event),
+                    Event::Log(log) => Some(log),
                     Event::Trace(_) => None,
                 }))
             })
@@ -103,7 +104,7 @@ where
 /// Any `None` values returned from this function will already result in a `TemplateRenderingError`
 /// being emitted, so no further `EventsDropped` event needs emitting.
 pub(super) fn process_log(
-    mut log: LogEvent,
+    mut log: OtelLog,
     mode: &ElasticsearchCommonMode,
     id_key_field: Option<&ConfigValuePath>,
     transformer: &Transformer,
@@ -143,9 +144,9 @@ pub(super) fn process_log(
         },
     };
     let log = {
-        let mut event = Event::from(log);
+        let mut event = Event::Log(log);
         transformer.transform(&mut event);
-        event.into_log().to_log_event()
+        event.into_log()
     };
     Some(ProcessedEvent {
         index,

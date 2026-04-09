@@ -27,7 +27,7 @@ use vector_lib::{
 };
 
 use crate::{
-    event::LogEvent,
+    event::OtelLog,
     internal_events::TemplateRenderingError,
     template::{Template, TemplateParseError},
 };
@@ -196,14 +196,14 @@ impl fmt::Display for VersionValueParseError<'_> {
 }
 
 impl ElasticsearchCommonMode {
-    fn index(&self, log: &LogEvent) -> Option<String> {
+    fn index(&self, log: &OtelLog) -> Option<String> {
         match self {
             Self::Bulk {
                 index,
                 template_fallback_index,
                 ..
             } => index
-                .render_string_from_log(log)
+                .render_string(log)
                 .or_else(|error| {
                     if let Some(fallback) = template_fallback_index {
                         emit!(TemplateRenderingError {
@@ -226,13 +226,13 @@ impl ElasticsearchCommonMode {
         }
     }
 
-    fn bulk_action(&self, log: &LogEvent) -> Option<BulkAction> {
+    fn bulk_action(&self, log: &OtelLog) -> Option<BulkAction> {
         match self {
             ElasticsearchCommonMode::Bulk {
                 action: bulk_action_template,
                 ..
             } => bulk_action_template
-                .render_string_from_log(log)
+                .render_string(log)
                 .map_err(|error| {
                     emit!(TemplateRenderingError {
                         error,
@@ -246,13 +246,13 @@ impl ElasticsearchCommonMode {
         }
     }
 
-    fn version(&self, log: &LogEvent) -> Option<u64> {
+    fn version(&self, log: &OtelLog) -> Option<u64> {
         match self {
             ElasticsearchCommonMode::Bulk {
                 version: Some(version),
                 ..
             } => version
-                .render_string_from_log(log)
+                .render_string(log)
                 .map_err(|error| {
                     emit!(TemplateRenderingError {
                         error,

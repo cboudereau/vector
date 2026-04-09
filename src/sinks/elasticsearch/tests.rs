@@ -6,7 +6,7 @@ use vector_lib::lookup::PathPrefix;
 use crate::{
     codecs::Transformer,
     config::ProxyConfig,
-    event::{LogEvent, Metric, MetricKind, MetricValue, ObjectMap, Value},
+    event::{LogEvent, Metric, MetricKind, MetricValue, ObjectMap, OtelLog, Value},
     sinks::{
         elasticsearch::{
             BulkAction, BulkConfig, DataStreamConfig, ElasticsearchApiVersion,
@@ -57,7 +57,7 @@ async fn sets_create_action_when_configured() {
         .request_builder
         .encoder
         .encode_input(
-            vec![process_log(log, &es.mode, None, &config.encoding).unwrap()],
+            vec![process_log(OtelLog::from_log_event(log), &es.mode, None, &config.encoding).unwrap()],
             &mut encoded,
         )
         .unwrap();
@@ -126,7 +126,7 @@ async fn encoding_with_external_versioning_with_version_set_includes_version() {
         .request_builder
         .encoder
         .encode_input(
-            vec![process_log(log, &es.mode, config.id_key.as_ref(), &config.encoding).unwrap()],
+            vec![process_log(OtelLog::from_log_event(log), &es.mode, config.id_key.as_ref(), &config.encoding).unwrap()],
             &mut encoded,
         )
         .unwrap();
@@ -176,7 +176,7 @@ async fn encoding_with_external_gte_versioning_with_version_set_includes_version
         .request_builder
         .encoder
         .encode_input(
-            vec![process_log(log, &es.mode, config.id_key.as_ref(), &config.encoding).unwrap()],
+            vec![process_log(OtelLog::from_log_event(log), &es.mode, config.id_key.as_ref(), &config.encoding).unwrap()],
             &mut encoded,
         )
         .unwrap();
@@ -264,7 +264,7 @@ async fn encode_datastream_mode() {
         .request_builder
         .encoder
         .encode_input(
-            vec![process_log(log, &es.mode, None, &config.encoding).unwrap()],
+            vec![process_log(OtelLog::from_log_event(log), &es.mode, None, &config.encoding).unwrap()],
             &mut encoded,
         )
         .unwrap();
@@ -319,7 +319,7 @@ async fn encode_datastream_mode_no_routing() {
         .request_builder
         .encoder
         .encode_input(
-            vec![process_log(log, &es.mode, None, &config.encoding).unwrap()],
+            vec![process_log(OtelLog::from_log_event(log), &es.mode, None, &config.encoding).unwrap()],
             &mut encoded,
         )
         .unwrap();
@@ -356,7 +356,7 @@ async fn handle_metrics() {
     es.request_builder
         .encoder
         .encode_input(
-            vec![process_log(log, &es.mode, None, &config.encoding).unwrap()],
+            vec![process_log(OtelLog::from_log_event(log), &es.mode, None, &config.encoding).unwrap()],
             &mut encoded,
         )
         .unwrap();
@@ -393,7 +393,7 @@ async fn decode_bulk_action_error() {
     let mut log = LogEvent::from("hello world");
     log.insert("foo", "bar");
     log.insert("idx", "purple");
-    let action = es.mode.bulk_action(&log);
+    let action = es.mode.bulk_action(&OtelLog::from_log_event(log));
     assert!(action.is_none());
 }
 
@@ -424,7 +424,7 @@ async fn decode_bulk_action() {
     let es = ElasticsearchCommon::parse_single(&config).await.unwrap();
 
     let log = LogEvent::from("hello there");
-    let action = es.mode.bulk_action(&log).unwrap();
+    let action = es.mode.bulk_action(&OtelLog::from_log_event(log)).unwrap();
     assert!(matches!(action, BulkAction::Create));
 }
 
@@ -473,7 +473,7 @@ async fn encode_datastream_mode_no_sync() {
         .request_builder
         .encoder
         .encode_input(
-            vec![process_log(log, &es.mode, None, &config.encoding).unwrap()],
+            vec![process_log(OtelLog::from_log_event(log), &es.mode, None, &config.encoding).unwrap()],
             &mut encoded,
         )
         .unwrap();
@@ -509,7 +509,7 @@ async fn allows_using_except_fields() {
         .request_builder
         .encoder
         .encode_input(
-            vec![process_log(log, &es.mode, None, &config.encoding).unwrap()],
+            vec![process_log(OtelLog::from_log_event(log), &es.mode, None, &config.encoding).unwrap()],
             &mut encoded,
         )
         .unwrap();
@@ -544,7 +544,7 @@ async fn allows_using_only_fields() {
         .request_builder
         .encoder
         .encode_input(
-            vec![process_log(log, &es.mode, None, &config.encoding).unwrap()],
+            vec![process_log(OtelLog::from_log_event(log), &es.mode, None, &config.encoding).unwrap()],
             &mut encoded,
         )
         .unwrap();
@@ -670,7 +670,7 @@ async fn datastream_index_name() {
             ),
         );
 
-        let processed_event = process_log(log, &es.mode, None, &config.encoding).unwrap();
+        let processed_event = process_log(OtelLog::from_log_event(log), &es.mode, None, &config.encoding).unwrap();
         assert_eq!(processed_event.index, test_case.want, "{test_case:?}");
     }
 }

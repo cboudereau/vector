@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::HashMap,
     convert::TryFrom,
 };
 
@@ -14,7 +14,7 @@ use vrl::value::Kind;
 use crate::{
     codecs::Transformer,
     config::{AcknowledgementsConfig, DataType, Input, SinkConfig, SinkContext},
-    event::{LogEvent, Value},
+    event::{OtelLog, Value},
     http::{HttpClient, QueryParameters},
     internal_events::TemplateRenderingError,
     sinks::{
@@ -420,8 +420,8 @@ impl DataStreamConfig {
     }
 
     /// If there is a `timestamp` field, rename it to the expected `@timestamp` for Elastic Common Schema.
-    pub fn remap_timestamp(&self, log: &mut LogEvent) {
-        if let Some(timestamp_key) = log.timestamp_path().cloned() {
+    pub fn remap_timestamp(&self, log: &mut OtelLog) {
+        if let Some(timestamp_key) = log.timestamp_path() {
             if timestamp_key.to_string() == DATA_STREAM_TIMESTAMP_KEY {
                 return;
             }
@@ -430,9 +430,9 @@ impl DataStreamConfig {
         }
     }
 
-    pub fn dtype(&self, log: &LogEvent) -> Option<String> {
+    pub fn dtype(&self, log: &OtelLog) -> Option<String> {
         self.dtype
-            .render_string_from_log(log)
+            .render_string(log)
             .map_err(|error| {
                 emit!(TemplateRenderingError {
                     error,
@@ -443,9 +443,9 @@ impl DataStreamConfig {
             .ok()
     }
 
-    pub fn dataset(&self, log: &LogEvent) -> Option<String> {
+    pub fn dataset(&self, log: &OtelLog) -> Option<String> {
         self.dataset
-            .render_string_from_log(log)
+            .render_string(log)
             .map_err(|error| {
                 emit!(TemplateRenderingError {
                     error,
@@ -456,9 +456,9 @@ impl DataStreamConfig {
             .ok()
     }
 
-    pub fn namespace(&self, log: &LogEvent) -> Option<String> {
+    pub fn namespace(&self, log: &OtelLog) -> Option<String> {
         self.namespace
-            .render_string_from_log(log)
+            .render_string(log)
             .map_err(|error| {
                 emit!(TemplateRenderingError {
                     error,
@@ -469,7 +469,7 @@ impl DataStreamConfig {
             .ok()
     }
 
-    pub fn sync_fields(&self, log: &mut LogEvent) {
+    pub fn sync_fields(&self, log: &mut OtelLog) {
         if !self.sync_fields {
             return;
         }
@@ -478,51 +478,36 @@ impl DataStreamConfig {
         let dataset = self.dataset(&*log);
         let namespace = self.namespace(&*log);
 
-        if log.as_map().is_none() {
-            *log.value_mut() = Value::Object(BTreeMap::new());
-        }
-        let existing = log
-            .as_map_mut()
-            .expect("must be a map")
-            .entry("data_stream".into())
-            .or_insert_with(|| Value::Object(BTreeMap::new()))
-            .as_object_mut_unwrap();
-
+        // Only insert if not already present (matches original or_insert_with semantics)
         if let Some(dtype) = dtype {
-            existing
-                .entry("type".into())
-                .or_insert_with(|| dtype.into());
+            if log.get(event_path!("data_stream", "type")).is_none() {
+                log.insert(event_path!("data_stream", "type"), Value::from(dtype));
+            }
         }
         if let Some(dataset) = dataset {
-            existing
-                .entry("dataset".into())
-                .or_insert_with(|| dataset.into());
+            if log.get(event_path!("data_stream", "dataset")).is_none() {
+                log.insert(event_path!("data_stream", "dataset"), Value::from(dataset));
+            }
         }
         if let Some(namespace) = namespace {
-            existing
-                .entry("namespace".into())
-                .or_insert_with(|| namespace.into());
+            if log.get(event_path!("data_stream", "namespace")).is_none() {
+                log.insert(event_path!("data_stream", "namespace"), Value::from(namespace));
+            }
         }
     }
 
-    pub fn index(&self, log: &LogEvent) -> Option<String> {
+    pub fn index(&self, log: &OtelLog) -> Option<String> {
         let (dtype, dataset, namespace) = if !self.auto_routing {
             (self.dtype(log)?, self.dataset(log)?, self.namespace(log)?)
         } else {
-            let data_stream = log
-                .get(event_path!("data_stream"))
-                .and_then(|ds| ds.as_object());
-            let dtype = data_stream
-                .and_then(|ds| ds.get("type"))
-                .map(|value| value.to_string_lossy().into_owned())
+            let dtype = log.get(event_path!("data_stream", "type"))
+                .map(|v| v.to_string_lossy().into_owned())
                 .or_else(|| self.dtype(log))?;
-            let dataset = data_stream
-                .and_then(|ds| ds.get("dataset"))
-                .map(|value| value.to_string_lossy().into_owned())
+            let dataset = log.get(event_path!("data_stream", "dataset"))
+                .map(|v| v.to_string_lossy().into_owned())
                 .or_else(|| self.dataset(log))?;
-            let namespace = data_stream
-                .and_then(|ds| ds.get("namespace"))
-                .map(|value| value.to_string_lossy().into_owned())
+            let namespace = log.get(event_path!("data_stream", "namespace"))
+                .map(|v| v.to_string_lossy().into_owned())
                 .or_else(|| self.namespace(log))?;
             (dtype, dataset, namespace)
         };

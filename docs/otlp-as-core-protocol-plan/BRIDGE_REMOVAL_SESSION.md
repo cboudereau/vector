@@ -46,10 +46,10 @@ Four conversion functions that translate between OTel proto structs and legacy V
 | `to_legacy_metric()` | 40 | 13 | **27 (68%)** |
 | **Total** | **115** | **23** | **92 (80%)** |
 
-92 commits, 1789 tests passing.
-Session 2: Rewrites 1, 2, 4, 5 (partial) done. 8 bridge calls eliminated.
-22 test callers migrated. Remaining: proto.rs (6), docker_logs (1),
-datadog_search (2), lua metric (1), json codec (1), metric_to_log (2).
+94 commits, 1789 tests passing.
+Session 2: Rewrites 1, 2, 3, 4, 5 (partial) done. 14 bridge calls eliminated.
+22 test callers migrated. Remaining external call sites: datadog_search (2),
+docker_logs (1), lua metric (1), metric_to_log (2), normalize internal (3).
 
 ### What was done
 
@@ -203,6 +203,9 @@ datadog_search (2), lua metric (1), json codec (1), metric_to_log (2).
 - **Rewrite 5 partial** ✅ — Splunk HEC logs rewritten for OtelLog.
   HecProcessedEvent uses OtelLog. process_log and partition use render_string()
   directly. 1 to_log_event() call eliminated. find_key_by_meaning() added to OtelLog.
+- **Rewrite 3** ✅ — proto.rs serializes OTel types directly to buffer proto.
+  From<OtelLog/OtelSpan/OtelMetric> for WithMetadata<Log/Trace/Metric>.
+  6 bridge calls eliminated. No buffer format change.
 
 ### Remaining 23 calls by rewrite task
 
@@ -240,15 +243,14 @@ transform (Rewrite 7). Tests updated with `OtelLog::from_log_event()` at call si
 
 ---
 
-#### Rewrite 3 — proto.rs buffer serialization (6 calls, MEDIUM priority)
+#### Rewrite 3 — proto.rs buffer serialization (6 calls, MEDIUM priority) — DONE
 
 **File:** `lib/vector-core/src/event/proto.rs`
-**Calls:** from_logs (1), from_metrics (1), from_traces (1), WithMetadata (3)
-**Blocker:** Converts OTel types → legacy types → Vector protobuf for disk buffers.
-**Plan:** Encode OTel proto bytes directly into buffer, or add OTLP proto
-message types to the Vector proto schema.
-**Estimate:** ~200 lines. High complexity — buffer format change with
-backward compat implications.
+**Done:** Added `From<OtelLog>`, `From<OtelSpan>`, `From<OtelMetric>` for
+`WithMetadata<Log/Trace/Metric>`. These use `to_value_legacy_layout()` (now
+pub(crate)) to build the Value tree directly, then encode to proto fields.
+No buffer format change — same proto wire format, just skips LogEvent/Metric
+intermediates. 6 bridge calls eliminated.
 
 ---
 

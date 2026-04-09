@@ -6,7 +6,7 @@ use serde::{Deserialize, de};
 use vector_lib::{
     codecs::{JsonSerializerConfig, TextSerializerConfig},
     config::{LegacyKey, LogNamespace, log_schema},
-    event::{Event, EventMetadata, LogEvent, Value},
+    event::{Event, EventMetadata, LogEvent, OtelLog, Value},
     lookup::lookup_v2::OptionalTargetPath,
     schema::{Definition, meaning},
 };
@@ -54,7 +54,7 @@ struct HecEventText {
 
 fn get_encoded_event<D: de::DeserializeOwned>(
     encoding: EncodingConfig,
-    processed_event: ProcessedEvent<LogEvent, HecLogsProcessedEventMetadata>,
+    processed_event: ProcessedEvent<OtelLog, HecLogsProcessedEventMetadata>,
 ) -> D {
     let encoder = hec_encoder(encoding);
     let mut bytes = Vec::new();

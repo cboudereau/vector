@@ -698,6 +698,11 @@ impl OtelLog {
             })
     }
 
+    /// Find the path for a field by its semantic meaning.
+    pub fn find_key_by_meaning(&self, meaning: impl AsRef<str>) -> Option<&vrl::path::OwnedTargetPath> {
+        self.metadata.schema_definition().meaning_path(meaning.as_ref())
+    }
+
     /// Get a field value by path.
     /// Builds a Value tree matching to_log_event() layout, without constructing LogEvent.
     pub fn get<'a>(&self, path: impl lookup::lookup_v2::TargetPath<'a>) -> Option<Value> {

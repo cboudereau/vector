@@ -72,7 +72,7 @@ impl Encoder<Vec<HecProcessedEvent>> for HecLogsEncoder {
         let encoded_input: Vec<u8> = input
             .into_iter()
             .filter_map(|processed_event| {
-                let mut event = Event::from(processed_event.event);
+                let mut event = Event::Log(processed_event.event);
                 let metadata = processed_event.metadata;
                 self.transformer.transform(&mut event);
 

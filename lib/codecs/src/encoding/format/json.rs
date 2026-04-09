@@ -77,7 +77,6 @@ impl JsonSerializer {
     pub fn to_json_value(&self, event: Event) -> Result<serde_json::Value, vector_common::Error> {
         match event {
             Event::Log(log) => serde_json::to_value(&log),
-            // TEMPORARY BRIDGE — OtelMetric Serialize still uses to_legacy_metric()
             Event::Metric(metric) => serde_json::to_value(&metric),
             Event::Trace(trace) => serde_json::to_value(&trace),
         }

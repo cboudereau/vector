@@ -46,10 +46,10 @@ Four conversion functions that translate between OTel proto structs and legacy V
 | `to_legacy_metric()` | 40 | 13 | **27 (68%)** |
 | **Total** | **115** | **23** | **92 (80%)** |
 
-90 commits, 1789 tests passing.
-Session 2: Rewrite 4 partial (22 test callers), Rewrite 1 done (3 calls),
-Rewrite 2 done (2 of 3 calls — Elasticsearch log pipeline OtelLog-native).
-MetricSet/MetricNormalizer accept OtelMetric. ES pipeline uses OtelLog directly.
+92 commits, 1789 tests passing.
+Session 2: Rewrites 1, 2, 4, 5 (partial) done. 8 bridge calls eliminated.
+22 test callers migrated. Remaining: proto.rs (6), docker_logs (1),
+datadog_search (2), lua metric (1), json codec (1), metric_to_log (2).
 
 ### What was done
 
@@ -200,6 +200,9 @@ MetricSet/MetricNormalizer accept OtelMetric. ES pipeline uses OtelLog directly.
 - **Rewrite 2 partial** ✅ — Elasticsearch log pipeline rewritten for OtelLog.
   ProcessedEvent.log changed to OtelLog. process_log, mode.index/bulk_action/version,
   DataStreamConfig all accept OtelLog directly. 2 to_log_event() calls eliminated.
+- **Rewrite 5 partial** ✅ — Splunk HEC logs rewritten for OtelLog.
+  HecProcessedEvent uses OtelLog. process_log and partition use render_string()
+  directly. 1 to_log_event() call eliminated. find_key_by_meaning() added to OtelLog.
 
 ### Remaining 23 calls by rewrite task
 
@@ -265,15 +268,17 @@ lua (1), metrics/tests (1), test_util (2), aws_ec2_metadata (2) remain.
 
 ---
 
-#### Rewrite 5 — Sink pipeline type changes (2 calls, MEDIUM priority)
+#### Rewrite 5 — Sink pipeline type changes (2 calls, MEDIUM priority) — PARTIAL
 
-**Splunk HEC** (1 call): `render_template_string_from_log` takes `&LogEvent`.
-Need `Template::render_string` to work with `&OtelLog` or be generic.
-~80 lines, medium complexity.
+**Splunk HEC** (1 call) ✅: HecProcessedEvent changed to OtelLog.
+process_log accepts OtelLog directly. Template rendering uses
+render_string(&OtelLog). Added find_key_by_meaning() to OtelLog.
+1 to_log_event() call eliminated.
 
 **Docker logs** (1 call): Full pipeline `Stream<Item=LogEvent>` → need
 `Stream<Item=OtelLog>` including `add_hostname`, `line_agg_adapter`.
-`OtelLog::merge_body()` API ready. ~100 lines, high complexity.
+Blocked by `LogEventMergeState` which only works with LogEvent.
+~100 lines, high complexity.
 
 ---
 

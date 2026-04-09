@@ -2427,7 +2427,25 @@ impl OtelMetric {
     /// an intermediate Metric. Used by aggregate and other transforms that
     /// store MetricSeries/MetricData separately.
     pub fn into_metric_parts(self) -> (super::metric::MetricSeries, super::metric::MetricData, super::EventMetadata) {
-        self.to_legacy_metric().into_parts()
+        use super::metric::{MetricData, MetricName, MetricSeries, MetricTime};
+
+        let name = self.metric.name.clone();
+        let namespace = self.namespace().map(|s| s.to_string());
+        let metric_tags = self.tags();
+        let (kind, value) = (self.kind(), self.value());
+        let timestamp = self.timestamp();
+        let interval_ms = self.reconstruct_interval_ms();
+
+        let series = MetricSeries {
+            name: MetricName { name, namespace },
+            tags: metric_tags,
+        };
+        let data = MetricData {
+            time: MetricTime { timestamp, interval_ms },
+            kind,
+            value,
+        };
+        (series, data, self.metadata)
     }
 
     fn reconstruct_interval_ms(&self) -> Option<std::num::NonZeroU32> {

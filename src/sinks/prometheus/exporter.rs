@@ -816,10 +816,14 @@ mod tests {
     async fn updates_timestamps() {
         let timestamp1 = Utc::now();
         let (name, event1) = create_metric_gauge(None, 123.4);
-        let event1 = Event::from(event1.into_metric().with_timestamp(Some(timestamp1)));
+        let mut m1 = event1.into_otel_metric();
+        m1.set_timestamp(Some(timestamp1));
+        let event1 = Event::Metric(m1);
         let (_, event2) = create_metric_gauge(Some(name.clone()), 12.0);
         let timestamp2 = timestamp1 + Duration::seconds(1);
-        let event2 = Event::from(event2.into_metric().with_timestamp(Some(timestamp2)));
+        let mut m2 = event2.into_otel_metric();
+        m2.set_timestamp(Some(timestamp2));
+        let event2 = Event::Metric(m2);
         let events = vec![event1, event2];
 
         let body = export_and_fetch(None, events, false).await;
@@ -842,8 +846,9 @@ mod tests {
     async fn suppress_timestamp() {
         let timestamp = Utc::now();
         let (name, event) = create_metric_gauge(None, 123.4);
-        let event = Event::from(event.into_metric().with_timestamp(Some(timestamp)));
-        let events = vec![event];
+        let mut m = event.into_otel_metric();
+        m.set_timestamp(Some(timestamp));
+        let events = vec![Event::Metric(m)];
 
         let body = export_and_fetch(None, events, true).await;
         assert_eq!(

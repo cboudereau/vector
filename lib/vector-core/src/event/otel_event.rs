@@ -2027,6 +2027,21 @@ impl OtelMetric {
         chrono::DateTime::from_timestamp(secs, nsecs)
     }
 
+    /// Set the timestamp on all data points.
+    pub fn set_timestamp(&mut self, ts: Option<chrono::DateTime<chrono::Utc>>) {
+        use opentelemetry_proto::tonic::metrics::v1::metric::Data as MetricData;
+        let nanos = ts.map(|t| t.timestamp_nanos_opt().unwrap_or(0) as u64).unwrap_or(0);
+        if let Some(data) = self.metric.data.as_mut() {
+            match data {
+                MetricData::Sum(s) => { for dp in &mut s.data_points { dp.time_unix_nano = nanos; } }
+                MetricData::Gauge(g) => { for dp in &mut g.data_points { dp.time_unix_nano = nanos; } }
+                MetricData::Histogram(h) => { for dp in &mut h.data_points { dp.time_unix_nano = nanos; } }
+                MetricData::Summary(s) => { for dp in &mut s.data_points { dp.time_unix_nano = nanos; } }
+                MetricData::ExponentialHistogram(e) => { for dp in &mut e.data_points { dp.time_unix_nano = nanos; } }
+            }
+        }
+    }
+
     /// Build MetricTags from proto data point, resource, and scope attributes.
     ///
     /// Returns an owned `MetricTags` (not a reference) because the tags are

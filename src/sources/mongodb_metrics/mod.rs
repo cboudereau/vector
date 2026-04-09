@@ -1156,7 +1156,7 @@ mod integration_tests {
 
             assert!(events.len() > 100);
             for event in events {
-                let metric = event.into_metric();
+                let metric = event.into_otel_metric();
                 // validate namespace
                 assert!(metric.namespace() == Some(namespace));
                 // validate timestamp

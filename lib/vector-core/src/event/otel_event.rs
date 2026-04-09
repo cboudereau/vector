@@ -3047,7 +3047,7 @@ mod tests {
         let event: Event = m.into();
         assert!(matches!(event, Event::Metric(_)), "expected Event::Metric, got {event:?}");
 
-        let metric = event.try_into_metric().expect("should convert back");
+        let metric = event.try_into_otel_metric().expect("should convert back");
         assert_eq!(metric.name(), "test");
     }
 

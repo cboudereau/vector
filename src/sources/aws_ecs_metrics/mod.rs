@@ -592,7 +592,7 @@ mod test {
 
         let metrics = events
             .into_iter()
-            .map(|e| e.into_metric())
+            .map(|e| e.into_otel_metric())
             .collect::<Vec<_>>();
 
         match metrics
@@ -600,7 +600,7 @@ mod test {
             .find(|m| m.name() == "network_receive_bytes_total")
         {
             Some(m) => {
-                assert_eq!(m.value(), &MetricValue::Counter { value: 329932716.0 });
+                assert_eq!(m.value(), MetricValue::Counter { value: 329932716.0 });
                 assert_eq!(m.namespace(), Some("awsecs"));
 
                 match m.tags() {

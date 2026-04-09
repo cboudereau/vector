@@ -373,12 +373,12 @@ Scoreboard: ____S_____I______R____I_______KK___D__C__G_L____________W___________
         .await;
         let metrics = events
             .into_iter()
-            .map(|e| e.into_metric())
+            .map(|e| e.into_otel_metric())
             .collect::<Vec<_>>();
 
         match metrics.iter().find(|m| m.name() == "up") {
             Some(m) => {
-                assert_eq!(m.value(), &MetricValue::Gauge { value: 1.0 });
+                assert_eq!(m.value(), MetricValue::Gauge { value: 1.0 });
 
                 match m.tags() {
                     Some(tags) => {
@@ -434,14 +434,14 @@ Scoreboard: ____S_____I______R____I_______KK___D__C__G_L____________W___________
         let metrics = collect_ready(rx)
             .await
             .into_iter()
-            .map(|e| e.into_metric())
+            .map(|e| e.into_otel_metric())
             .collect::<Vec<_>>();
 
         // we still publish `up=1` for bad status codes following the pattern of the Prometheus exporter:
         //
         // https://github.com/Lusitaniae/apache_exporter/blob/712a6796fb84f741ef3cd562dc11418f2ee8b741/apache_exporter.go#L200
         match metrics.iter().find(|m| m.name() == "up") {
-            Some(m) => assert_eq!(m.value(), &MetricValue::Gauge { value: 1.0 }),
+            Some(m) => assert_eq!(m.value(), MetricValue::Gauge { value: 1.0 }),
             None => error!(message = "Could not find up metric in.", metrics = ?metrics),
         }
     }
@@ -468,11 +468,11 @@ Scoreboard: ____S_____I______R____I_______KK___D__C__G_L____________W___________
         let metrics = collect_ready(rx)
             .await
             .into_iter()
-            .map(|e| e.into_metric())
+            .map(|e| e.into_otel_metric())
             .collect::<Vec<_>>();
 
         match metrics.iter().find(|m| m.name() == "up") {
-            Some(m) => assert_eq!(m.value(), &MetricValue::Gauge { value: 0.0 }),
+            Some(m) => assert_eq!(m.value(), MetricValue::Gauge { value: 0.0 }),
             None => error!(message = "Could not find up metric in.", metrics = ?metrics),
         }
     }

@@ -1138,7 +1138,7 @@ mod integration_tests {
         .await;
 
         for event in events {
-            let metric = event.into_metric();
+            let metric = event.into_otel_metric();
 
             if let Some(db) = metric.tags().unwrap().get("db") {
                 assert!(db == "vector" || db == "postgres");
@@ -1157,7 +1157,7 @@ mod integration_tests {
         .await;
 
         for event in events {
-            let metric = event.into_metric();
+            let metric = event.into_otel_metric();
 
             if let Some(db) = metric.tags().unwrap().get("db") {
                 assert!(db != "vector" && db != "postgres");
@@ -1181,7 +1181,7 @@ mod integration_tests {
         .await;
 
         for event in events {
-            let metric = event.into_metric();
+            let metric = event.into_otel_metric();
 
             if let Some(db) = metric.tags().unwrap().get("db") {
                 assert!(db == "template1");

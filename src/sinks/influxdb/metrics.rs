@@ -1017,10 +1017,10 @@ mod integration_tests {
         );
 
         for event in events {
-            let metric = event.into_metric();
+            let metric = event.into_otel_metric();
             let name = format!("{}.{}", metric.namespace().unwrap(), metric.name());
             let value = match metric.value() {
-                MetricValue::Counter { value } => *value,
+                MetricValue::Counter { value } => value,
                 _ => unreachable!(),
             };
             let timestamp = format_timestamp(metric.timestamp().unwrap(), SecondsFormat::Nanos);

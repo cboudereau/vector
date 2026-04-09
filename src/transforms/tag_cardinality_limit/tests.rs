@@ -217,7 +217,7 @@ async fn drop_tag(config: TagCardinalityLimitConfig) {
         assert_ne!(new_event3, Some(event3));
 
         let new_event3 = new_event3.unwrap();
-        let m3 = new_event3.to_metric();
+        let m3 = new_event3.as_metric();
         assert!(!m3.tags().unwrap().contains_key("tag1"));
         assert_eq!(
             "val1",
@@ -528,11 +528,11 @@ async fn separate_value_limit_per_metric_name(config: TagCardinalityLimitConfig)
         }
 
         assert_eq!(new_event_a1, Some(event_a1));
-        let m_a2 = new_event_a2.unwrap().to_metric();
+        let m_a2 = new_event_a2.unwrap().into_otel_metric();
         assert!(!m_a2.tags().unwrap().contains_key("tag1"));
         assert_eq!("val1", m_a2.tags().unwrap().get("tag2").unwrap());
 
-        let m_a3 = new_event_a3.unwrap().to_metric();
+        let m_a3 = new_event_a3.unwrap().into_otel_metric();
         assert!(!m_a3.tags().unwrap().contains_key("tag2"));
         assert_eq!("val1", m_a3.tags().unwrap().get("tag1").unwrap());
 
@@ -542,7 +542,7 @@ async fn separate_value_limit_per_metric_name(config: TagCardinalityLimitConfig)
 
         assert_eq!(new_event_c1, Some(event_c1));
         assert_eq!(new_event_c2, Some(event_c2));
-        let m_c3 = new_event_c3.unwrap().to_metric();
+        let m_c3 = new_event_c3.unwrap().into_otel_metric();
         assert!(!m_c3.tags().unwrap().contains_key("tag2"));
         assert_eq!("val1", m_c3.tags().unwrap().get("tag1").unwrap());
     })

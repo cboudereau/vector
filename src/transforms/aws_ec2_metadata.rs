@@ -1203,7 +1203,7 @@ mod integration_tests {
                 let event = out.recv().await.unwrap();
                 assert_eq!(
                     event
-                        .to_metric()
+                        .as_metric()
                         .tag_value("ec2.metadata.availability-zone"),
                     Some("us-east-1a".to_string())
                 );
@@ -1237,7 +1237,7 @@ mod integration_tests {
 
                 let event = out.recv().await.unwrap();
                 assert_eq!(
-                    event.to_metric().tag_value(AVAILABILITY_ZONE_KEY),
+                    event.as_metric().tag_value(AVAILABILITY_ZONE_KEY),
                     Some("us-east-1a".to_string())
                 );
 

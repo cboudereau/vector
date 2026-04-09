@@ -55,6 +55,18 @@ impl<'a> EventRef<'a> {
         }
     }
 
+    /// Convert this reference into an `OtelMetric` by cloning.
+    ///
+    /// # Panics
+    ///
+    /// This will panic if this is not a `Metric` reference.
+    pub fn into_otel_metric(self) -> OtelMetric {
+        match self {
+            Self::Metric(metric) => metric.clone(),
+            _ => panic!("Failed type coercion, {self:?} is not a metric reference"),
+        }
+    }
+
     /// Convert this reference into a legacy `Metric` by cloning and converting.
     ///
     /// # Panics
@@ -153,6 +165,18 @@ impl<'a> EventMutRef<'a> {
     pub fn as_metric(self) -> &'a OtelMetric {
         match self {
             Self::Metric(metric) => metric,
+            _ => panic!("Failed type coercion, {self:?} is not a metric reference"),
+        }
+    }
+
+    /// Convert this reference into an `OtelMetric` by cloning.
+    ///
+    /// # Panics
+    ///
+    /// This will panic if this is not a `Metric` reference.
+    pub fn into_otel_metric(self) -> OtelMetric {
+        match self {
+            Self::Metric(metric) => metric.clone(),
             _ => panic!("Failed type coercion, {self:?} is not a metric reference"),
         }
     }

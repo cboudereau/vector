@@ -414,7 +414,7 @@ mod test {
 
         let metrics: Vec<_> = events
             .into_iter()
-            .map(|event| event.into_metric())
+            .map(|event| event.into_otel_metric())
             .collect();
 
         for metric in metrics {
@@ -466,7 +466,7 @@ mod test {
 
         let metrics: Vec<_> = events
             .into_iter()
-            .map(|event| event.into_metric())
+            .map(|event| event.into_otel_metric())
             .collect();
 
         for metric in metrics {
@@ -530,17 +530,16 @@ mod test {
         .await;
         assert!(!events.is_empty());
 
-        let metrics: Vec<vector_lib::event::Metric> = events
+        let metrics: Vec<_> = events
             .into_iter()
-            .map(|event| event.into_metric())
+            .map(|event| event.into_otel_metric())
             .collect();
         let metric = &metrics[0];
 
         assert_eq!(metric.name(), "metric_label");
 
-        let code_tag = metric
-            .tags()
-            .unwrap()
+        let tags = metric.tags().unwrap();
+        let code_tag = tags
             .iter_all()
             .filter(|(name, _value)| *name == "code")
             .map(|(_name, value)| value)
@@ -601,7 +600,7 @@ mod test {
 
         let metrics: Vec<_> = events
             .into_iter()
-            .map(|event| event.into_metric())
+            .map(|event| event.into_otel_metric())
             .collect();
 
         let expected = HashMap::from([
@@ -795,7 +794,7 @@ mod integration_tests {
 
         let metrics: Vec<_> = events
             .into_iter()
-            .map(|event| event.into_metric())
+            .map(|event| event.into_otel_metric())
             .collect();
 
         let find_metric = |name: &str| {
@@ -808,7 +807,7 @@ mod integration_tests {
         // Sample some well-known metrics
         let build = find_metric("prometheus_build_info");
         assert!(matches!(build.kind(), MetricKind::Absolute));
-        assert!(matches!(build.value(), &MetricValue::Gauge { .. }));
+        assert!(matches!(build.value(), MetricValue::Gauge { .. }));
         assert!(build.tags().unwrap().contains_key("branch"));
         assert!(build.tags().unwrap().contains_key("version"));
         assert_eq!(
@@ -822,7 +821,7 @@ mod integration_tests {
 
         let queries = find_metric("prometheus_engine_queries");
         assert!(matches!(queries.kind(), MetricKind::Absolute));
-        assert!(matches!(queries.value(), &MetricValue::Gauge { .. }));
+        assert!(matches!(queries.value(), MetricValue::Gauge { .. }));
         assert_eq!(
             queries.tag_value("instance"),
             Some("prometheus:9090".to_string())

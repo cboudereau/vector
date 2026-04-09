@@ -52,7 +52,7 @@ async fn insert_metrics(url: &str) {
         assert_eq!(values.as_array().unwrap().len(), 5);
 
         for event in events {
-            let metric = event.into_metric();
+            let metric = event.into_otel_metric();
             let result = query(
                 url,
                 &format!(r#"SELECT * FROM "{}".."{}""#, database, metric.name()),
@@ -65,11 +65,12 @@ async fn insert_metrics(url: &str) {
 
             match metric.value() {
                 MetricValue::Gauge { value } => {
-                    assert_eq!(output["value"], Value::Number((*value as u32).into()))
+                    assert_eq!(output["value"], Value::Number((value as u32).into()))
                 }
                 _ => panic!("Unhandled metric value, fix the test"),
             }
-            for (tag, value) in metric.tags().unwrap().iter_single() {
+            let tags = metric.tags().unwrap();
+            for (tag, value) in tags.iter_single() {
                 assert_eq!(output[tag], Value::String(value.to_string()));
             }
             let timestamp =

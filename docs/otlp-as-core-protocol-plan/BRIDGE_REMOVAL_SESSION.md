@@ -192,6 +192,12 @@ all_event_fields_skip_array_elements/merge_body added.
 - **Task G partial** ✅ — GraphQL API wraps OtelLog/OtelMetric directly
 - **Task F2 partial** ✅ — Lua IntoLua uses OtelLog::value(), test migrated
 - **Mock transforms** ✅ — metric branch modifies proto data points directly
+- **Rewrite 4 partial** ✅ — EventRef/EventMutRef: `into_otel_metric()` added.
+  22 test callers migrated from `to_metric()/into_metric()` to `as_metric()/into_otel_metric()`.
+  Files: prometheus/scrape (5), apache_metrics (3), postgresql_metrics (3),
+  tag_cardinality_limit tests (4), aws_ec2_metadata (2), influxdb tests (1),
+  prometheus/remote_write tests (1), aws_ecs_metrics (1), mongodb_metrics (1),
+  otel_event test (1). Production sink callers blocked on Rewrite 1 (MetricSet).
 
 ### Remaining 23 calls by rewrite task
 
@@ -239,15 +245,19 @@ backward compat implications.
 
 ---
 
-#### Rewrite 4 — Event public metric API (5 calls, MEDIUM priority)
+#### Rewrite 4 — Event public metric API (5 calls, MEDIUM priority) — PARTIAL
 
 **Files:** `lib/vector-core/src/event/mod.rs` (3), `lib/vector-core/src/event/ref.rs` (2)
 **Calls:** `to_metric()`, `into_metric()`, `try_into_metric()`,
 `EventRef::into_metric()`, `EventMutRef::into_metric()`
-**Blocker:** Public API returning legacy `Metric`, called from ~20 files.
-**Plan:** Add parallel methods returning `OtelMetric` (`as_otel_metric()`,
-`into_otel_metric()`), migrate callers one-by-one, then deprecate legacy methods.
-**Estimate:** ~20 lines in core, ~100 lines across callers.
+**Done:** OTel-native methods already existed on Event (`into_otel_metric()`,
+`try_into_otel_metric()`, `as_otel_metric()`). Added `into_otel_metric()` to
+EventRef and EventMutRef. Migrated 22 test callers across 10 files.
+**Remaining:** 60 callers across 16 files still use bridge methods. Production
+sink callers (influxdb, statsd, sematext, cloudwatch, new_relic, prometheus,
+greptimedb, splunk_hec, gcp stackdriver) are blocked on Rewrite 1 (MetricSet).
+Test callers in log_to_metric (26), aggregate (15), prometheus/exporter (4),
+lua (1), metrics/tests (1), test_util (2), aws_ec2_metadata (2) remain.
 
 ---
 

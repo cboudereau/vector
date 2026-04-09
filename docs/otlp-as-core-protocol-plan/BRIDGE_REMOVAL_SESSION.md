@@ -46,14 +46,13 @@ Four conversion functions that translate between OTel proto structs and legacy V
 | `to_legacy_metric()` | 40 | 13 | **27 (68%)** |
 | **Total** | **115** | **23** | **92 (80%)** |
 
-95 commits, 1789 tests passing.
-Session 2: Rewrites 1–5 done (all 7 rewrite tasks addressed). 14 bridge calls
-eliminated at call sites, 22 test callers migrated to OTel-native API.
-Remaining: datadog_search (2, Matcher<LogEvent> infra), docker_logs (1,
-LogEventMergeState pipeline), lua metric (1, LuaMetric 750 lines),
-metric_to_log (2, transform+ES metric path), normalize internal (3).
-Event method definitions (mod.rs 3 + ref.rs 2) have ~60 remaining callers
-in production sinks that need full per-sink pipeline rewrites.
+98 commits, 1789 tests passing.
+Session 2: Rewrites 1–5 done, Rewrite 3 done. 23 bridge calls in code (down
+from 115 original). into_metric_parts() now extracts from proto directly.
+OtelMetric::set_timestamp() added, 3 more prometheus test callers migrated.
+Remaining external: datadog_search (2), docker_logs (1), lua metric (1),
+metric_to_log (2), normalize internal (3). Event method definitions (5)
+have ~55 remaining callers in production sinks/tests.
 
 ### What was done
 

@@ -24,8 +24,7 @@ impl event_array::Events {
     fn from_logs(logs: array::LogArray) -> Self {
         let logs = logs
             .into_iter()
-            // TEMPORARY BRIDGE — serialize OtelLog proto directly (Phase 4)
-            .map(|otel| Log::from(otel.to_log_event()))
+            .map(|otel| WithMetadata::<Log>::from(otel).data)
             .collect();
         Self::Logs(LogArray { logs })
     }
@@ -33,8 +32,7 @@ impl event_array::Events {
     fn from_metrics(metrics: array::MetricArray) -> Self {
         let metrics = metrics
             .into_iter()
-            // TEMPORARY BRIDGE — serialize OtelMetric proto directly (Phase 4)
-            .map(|otel| Metric::from(otel.to_legacy_metric()))
+            .map(|otel| WithMetadata::<Metric>::from(otel).data)
             .collect();
         Self::Metrics(MetricArray { metrics })
     }
@@ -42,11 +40,7 @@ impl event_array::Events {
     fn from_traces(traces: array::TraceArray) -> Self {
         let traces = traces
             .into_iter()
-            .map(|otel| {
-                // TEMPORARY BRIDGE — serialize OtelSpan proto directly (Phase 4)
-                let te: super::TraceEvent = super::TraceEvent::from(otel.to_log_event());
-                Trace::from(te)
-            })
+            .map(|otel| WithMetadata::<Trace>::from(otel).data)
             .collect();
         Self::Traces(TraceArray { traces })
     }
@@ -373,6 +367,123 @@ impl From<super::LogEvent> for WithMetadata<Log> {
     }
 }
 
+impl From<super::OtelLog> for WithMetadata<Log> {
+    fn from(otel_log: super::OtelLog) -> Self {
+        let value = otel_log.to_value_legacy_layout();
+        let (_, _, _, metadata) = otel_log.into_parts();
+
+        let (fields, value) = if let VrlValue::Object(fields) = value {
+            let fields = fields
+                .into_iter()
+                .map(|(k, v)| (k.into(), encode_value(v)))
+                .collect::<BTreeMap<_, _>>();
+            (fields, None)
+        } else {
+            let mut dummy_fields = BTreeMap::new();
+            dummy_fields.insert(".".to_owned(), encode_value(VrlValue::Null));
+            (dummy_fields, Some(encode_value(value)))
+        };
+
+        #[allow(deprecated)]
+        let data = Log {
+            fields,
+            value,
+            metadata: Some(encode_value(metadata.value().clone())),
+            metadata_full: Some(metadata.clone().into()),
+        };
+
+        Self { data, metadata }
+    }
+}
+
+impl From<super::OtelSpan> for WithMetadata<Trace> {
+    fn from(otel_span: super::OtelSpan) -> Self {
+        let value = otel_span.to_value_legacy_layout();
+        let (_, _, _, metadata) = otel_span.into_parts();
+
+        let fields = match value {
+            VrlValue::Object(fields) => fields
+                .into_iter()
+                .map(|(k, v)| (k.into(), encode_value(v)))
+                .collect::<BTreeMap<_, _>>(),
+            _ => BTreeMap::new(),
+        };
+
+        #[allow(deprecated)]
+        let data = Trace {
+            fields,
+            metadata: Some(encode_value(metadata.value().clone())),
+            metadata_full: Some(metadata.clone().into()),
+        };
+
+        Self { data, metadata }
+    }
+}
+
+impl From<super::OtelMetric> for WithMetadata<Metric> {
+    fn from(otel_metric: super::OtelMetric) -> Self {
+        let (series, data, metadata) = otel_metric.into_metric_parts();
+        let name = series.name.name;
+        let namespace = series.name.namespace.unwrap_or_default();
+
+        let timestamp = data.time.timestamp.map(|ts| prost_types::Timestamp {
+            seconds: ts.timestamp(),
+            nanos: ts.timestamp_subsec_nanos() as i32,
+        });
+
+        let interval_ms = data.time.interval_ms.map_or(0, std::num::NonZeroU32::get);
+
+        let tags = series.tags.unwrap_or_default();
+
+        let kind = match data.kind {
+            super::MetricKind::Incremental => metric::Kind::Incremental,
+            super::MetricKind::Absolute => metric::Kind::Absolute,
+        }
+        .into();
+
+        let metric = MetricValue::from(data.value);
+
+        let tags_v1 = tags
+            .0
+            .iter()
+            .filter_map(|(tag, values)| {
+                values
+                    .as_single()
+                    .map(|value| (tag.clone(), value.to_string()))
+            })
+            .collect();
+        let tags_v2 = tags
+            .0
+            .into_iter()
+            .map(|(tag, values)| {
+                let values = values
+                    .into_iter()
+                    .map(|value| TagValue {
+                        value: value.into_option(),
+                    })
+                    .collect();
+                (tag, TagValues { values })
+            })
+            .collect();
+
+        #[allow(deprecated)]
+        let data = Metric {
+            name,
+            namespace,
+            timestamp,
+            tags_v1,
+            tags_v2,
+            kind,
+            interval_ms,
+            value: Some(metric),
+            metadata: Some(encode_value(metadata.value().clone())),
+            metadata_full: Some(metadata.clone().into()),
+        };
+
+        Self { data, metadata }
+    }
+}
+
 impl From<super::TraceEvent> for WithMetadata<Trace> {
     fn from(trace: super::TraceEvent) -> Self {
         let (fields, metadata) = trace.into_parts();
@@ -514,16 +625,14 @@ impl From<super::Event> for Event {
 impl From<super::Event> for WithMetadata<Event> {
     fn from(event: super::Event) -> Self {
         match event {
-            // TEMPORARY BRIDGE — serialize OTel types to proto directly (Phase 4)
             super::Event::Log(otel_log) => {
-                WithMetadata::<Log>::from(otel_log.to_log_event()).into()
+                WithMetadata::<Log>::from(otel_log).into()
             }
             super::Event::Metric(otel_metric) => {
-                WithMetadata::<Metric>::from(otel_metric.to_legacy_metric()).into()
+                WithMetadata::<Metric>::from(otel_metric).into()
             }
             super::Event::Trace(otel_span) => {
-                let te: super::TraceEvent = super::TraceEvent::from(otel_span.to_log_event());
-                WithMetadata::<Trace>::from(te).into()
+                WithMetadata::<Trace>::from(otel_span).into()
             }
         }
     }

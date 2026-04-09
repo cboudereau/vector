@@ -2403,6 +2403,13 @@ impl OtelMetric {
             .with_interval_ms(interval_ms)
     }
 
+    /// Decompose this OtelMetric into legacy metric parts without creating
+    /// an intermediate Metric. Used by aggregate and other transforms that
+    /// store MetricSeries/MetricData separately.
+    pub fn into_metric_parts(self) -> (super::metric::MetricSeries, super::metric::MetricData, super::EventMetadata) {
+        self.to_legacy_metric().into_parts()
+    }
+
     fn reconstruct_interval_ms(&self) -> Option<std::num::NonZeroU32> {
         use opentelemetry_proto::tonic::metrics::v1::metric::Data as MetricData;
         let dp_times = match self.metric.data.as_ref()? {

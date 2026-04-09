@@ -36,20 +36,20 @@ Four conversion functions that translate between OTel proto structs and legacy V
 - `to_log_event()` on OtelSpan — used by `trace_to_log` transform
 - `to_legacy_metric()` body — used by transforms that need full Metric mutation
 
-## Progress (updated 2026-04-08)
+## Progress (updated 2026-04-09)
 
 ### Bridge call counts
 
-| Function | Before session | After session | Removed |
-|----------|---------------|---------------|---------|
+| Function | Before session | Current | Removed |
+|----------|---------------|---------|---------|
 | `to_log_event()` | 75 | 10 | **65 (87%)** |
 | `to_legacy_metric()` | 40 | 13 | **27 (68%)** |
 | **Total** | **115** | **23** | **92 (80%)** |
 
-85 commits, 1773 tests passing.
-This session: ReduceState, tag_cardinality_limit, mock transforms, GraphQL API,
-Lua IntoLua all migrated. OtelLog: all_event_fields/all_metadata_fields/
-all_event_fields_skip_array_elements/merge_body added.
+86 commits, 1789 tests passing.
+Rewrite 4 partial: 22 test callers migrated from Event bridge methods to
+OtelMetric-native API. EventRef/EventMutRef: `into_otel_metric()` added.
+Next: Rewrite 1 (MetricSet).
 
 ### What was done
 

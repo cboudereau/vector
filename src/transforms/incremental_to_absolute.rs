@@ -77,10 +77,7 @@ impl IncrementalToAbsolute {
     }
     pub fn transform_one(&mut self, event: Event) -> Option<Event> {
         match event {
-            Event::Metric(otel) => {
-                let legacy = otel.to_legacy_metric();
-                self.data.make_absolute(legacy).map(|m| Event::from(m))
-            }
+            Event::Metric(otel) => self.data.make_absolute_otel(otel),
             other => Some(other),
         }
     }

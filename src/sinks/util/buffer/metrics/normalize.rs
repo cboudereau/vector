@@ -10,7 +10,7 @@ use vector_config_macros::configurable_component;
 use vector_lib::{
     ByteSizeOf,
     event::{
-        EventMetadata, Metric, MetricKind,
+        Event, EventMetadata, Metric, MetricKind, OtelMetric,
         metric::{MetricData, MetricSeries},
     },
 };
@@ -171,6 +171,12 @@ impl<N: MetricNormalize> MetricNormalizer<N> {
     /// For more information about normalization, see the documentation for [`MetricNormalize::normalize`].
     pub fn normalize(&mut self, metric: Metric) -> Option<Metric> {
         self.normalizer.normalize(&mut self.state, metric)
+    }
+
+    /// OtelMetric variant of `normalize` — accepts OtelMetric, returns Event.
+    /// Bridges internally through legacy Metric for the normalization pipeline.
+    pub fn normalize_otel(&mut self, otel: OtelMetric) -> Option<Event> {
+        self.normalize(otel.to_legacy_metric()).map(Event::from)
     }
 }
 
@@ -574,6 +580,18 @@ impl MetricSet {
             MetricKind::Absolute => self.absolute_to_incremental(metric),
             MetricKind::Incremental => Some(metric),
         }
+    }
+
+    /// OtelMetric variant of `make_absolute` — accepts OtelMetric, returns Event.
+    /// Bridges internally through legacy Metric for value arithmetic.
+    pub fn make_absolute_otel(&mut self, otel: OtelMetric) -> Option<Event> {
+        self.make_absolute(otel.to_legacy_metric()).map(Event::from)
+    }
+
+    /// OtelMetric variant of `make_incremental` — accepts OtelMetric, returns Event.
+    /// Bridges internally through legacy Metric for value arithmetic.
+    pub fn make_incremental_otel(&mut self, otel: OtelMetric) -> Option<Event> {
+        self.make_incremental(otel.to_legacy_metric()).map(Event::from)
     }
 
     /// Convert the incremental metric into an absolute one, using the

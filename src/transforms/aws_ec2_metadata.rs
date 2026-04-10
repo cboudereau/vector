@@ -777,7 +777,7 @@ mod integration_tests {
 
     use super::*;
     use crate::{
-        event::{LogEvent, Metric, metric},
+        event::{LogEvent, Metric, OtelMetric, metric},
         test_util::{addr::next_addr, components::assert_transform_compliance},
         transforms::test::create_topology,
     };
@@ -1004,11 +1004,12 @@ mod integration_tests {
             for (k, v) in expected_metric_fields().iter() {
                 expected_metric.replace_tag(k.to_string(), v.to_string());
             }
+            let expected_otel = OtelMetric::from_legacy_metric(expected_metric);
 
             tx.send(metric.into()).await.unwrap();
 
             let event = out.recv().await.unwrap();
-            assert_event_data_eq!(event.into_metric(), expected_metric);
+            assert_event_data_eq!(event.into_otel_metric(), expected_otel);
 
             drop(tx);
             topology.stop().await;
@@ -1093,11 +1094,12 @@ mod integration_tests {
             );
             expected_metric
                 .replace_tag(format!("{}[{}]", TAGS_KEY, "Test"), "test-tag".to_string());
+            let expected_otel = OtelMetric::from_legacy_metric(expected_metric);
 
             tx.send(metric.into()).await.unwrap();
 
             let event = out.recv().await.unwrap();
-            assert_event_data_eq!(event.into_metric(), expected_metric);
+            assert_event_data_eq!(event.into_otel_metric(), expected_otel);
 
             drop(tx);
             topology.stop().await;

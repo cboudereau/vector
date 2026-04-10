@@ -471,7 +471,7 @@ mod tests {
     use crate::{
         event::{
             Event, LogEvent, Value,
-            metric::{Metric, MetricKind, MetricValue},
+            metric::{Metric, MetricKind, MetricValue}, OtelMetric,
         },
         test_util,
         test_util::{components::assert_transform_compliance, random_string},
@@ -984,7 +984,10 @@ mod tests {
 
                 tx.send(metric.into()).await.unwrap();
 
-                assert_eq!(next_event(&out, "in").await.to_metric(), expected);
+                assert_eq!(
+                    next_event(&out, "in").await.into_otel_metric(),
+                    OtelMetric::from_legacy_metric(expected),
+                );
             },
         )
         .await;

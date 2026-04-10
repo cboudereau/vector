@@ -67,16 +67,12 @@ impl<'a> EventRef<'a> {
         }
     }
 
-    /// Convert this reference into a legacy `Metric` by cloning and converting.
-    ///
-    /// # Panics
-    ///
-    /// This will panic if this is not a `Metric` reference.
+    /// Convert this reference into a legacy `Metric` (deprecated).
+    #[deprecated(note = "use into_otel_metric() instead")]
+    #[allow(deprecated)]
     pub fn into_metric(self) -> Metric {
-        match self {
-            Self::Metric(metric) => metric.clone().to_legacy_metric(),
-            _ => panic!("Failed type coercion, {self:?} is not a metric reference"),
-        }
+        let (series, data, metadata) = self.into_otel_metric().into_metric_parts();
+        Metric::from_parts(series, data, metadata)
     }
 }
 
@@ -181,16 +177,12 @@ impl<'a> EventMutRef<'a> {
         }
     }
 
-    /// Convert this reference into a legacy `Metric` by cloning and converting.
-    ///
-    /// # Panics
-    ///
-    /// This will panic if this is not a `Metric` reference.
+    /// Convert this reference into a legacy `Metric` (deprecated).
+    #[deprecated(note = "use into_otel_metric() instead")]
+    #[allow(deprecated)]
     pub fn into_metric(self) -> Metric {
-        match self {
-            Self::Metric(metric) => metric.clone().to_legacy_metric(),
-            _ => panic!("Failed type coercion, {self:?} is not a metric reference"),
-        }
+        let (series, data, metadata) = self.into_otel_metric().into_metric_parts();
+        Metric::from_parts(series, data, metadata)
     }
 
     /// Access the metadata in this reference.

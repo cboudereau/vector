@@ -262,6 +262,7 @@ mod test {
         },
     };
 
+    #[allow(deprecated)]
     fn events_to_metrics(events: Vec<Event>) -> Vec<Metric> {
         events.into_iter().map(Event::into_metric).collect()
     }

@@ -245,6 +245,7 @@ mod test {
             .expect("invalid timestamp")
     });
 
+    #[allow(deprecated)]
     fn events_to_metrics(
         events: Result<Vec<Event>, ParserError>,
     ) -> Result<Vec<Metric>, ParserError> {

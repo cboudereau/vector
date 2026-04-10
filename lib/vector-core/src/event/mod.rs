@@ -203,34 +203,38 @@ impl Event {
         }
     }
 
-    /// Convert self to a legacy `Metric` (for backward compat with sinks).
-    ///
-    /// # Panics
-    ///
-    /// This function panics if self is not a metric event.
+    /// Convert self to a legacy `Metric` (deprecated — use as_metric() instead).
+    #[deprecated(note = "use as_metric() or into_otel_metric() instead")]
     pub fn to_metric(&self) -> Metric {
         match self {
-            Event::Metric(otel) => otel.clone().to_legacy_metric(),
+            Event::Metric(otel) => {
+                let (series, data, metadata) = otel.clone().into_metric_parts();
+                Metric::from_parts(series, data, metadata)
+            }
             _ => panic!("Failed type coercion, {self:?} is not a metric"),
         }
     }
 
-    /// Coerces self into a legacy `Metric`.
-    ///
-    /// # Panics
-    ///
-    /// This function panics if self is not an `Event::Metric`.
+    /// Coerces self into a legacy `Metric` (deprecated).
+    #[deprecated(note = "use into_otel_metric() + into_metric_parts() instead")]
     pub fn into_metric(self) -> Metric {
         match self {
-            Event::Metric(otel) => otel.to_legacy_metric(),
+            Event::Metric(otel) => {
+                let (series, data, metadata) = otel.into_metric_parts();
+                Metric::from_parts(series, data, metadata)
+            }
             _ => panic!("Failed type coercion, {self:?} is not a metric"),
         }
     }
 
-    /// Fallibly coerces self into a legacy `Metric`.
+    /// Fallibly coerces self into a legacy `Metric` (deprecated).
+    #[deprecated(note = "use try_into_otel_metric() + into_metric_parts() instead")]
     pub fn try_into_metric(self) -> Option<Metric> {
         match self {
-            Event::Metric(otel) => Some(otel.to_legacy_metric()),
+            Event::Metric(otel) => {
+                let (series, data, metadata) = otel.into_metric_parts();
+                Some(Metric::from_parts(series, data, metadata))
+            }
             _ => None,
         }
     }

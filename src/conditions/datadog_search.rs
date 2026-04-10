@@ -3,7 +3,7 @@ use std::{borrow::Cow, str::FromStr};
 use bytes::Bytes;
 use vector_lib::{
     configurable::configurable_component,
-    event::{Event, EventRef, LogEvent, Value},
+    event::{Event, EventRef, OtelLog, Value},
 };
 use vector_vrl_metrics::MetricsStorage;
 use vrl::{
@@ -34,7 +34,7 @@ impl Default for DatadogSearchConfig {
 }
 
 impl DatadogSearchConfig {
-    pub fn build_matcher(&self) -> crate::Result<Box<dyn Matcher<LogEvent>>> {
+    pub fn build_matcher(&self) -> crate::Result<Box<dyn Matcher<OtelLog>>> {
         Ok(build_matcher(&self.source, &EventFilter)?)
     }
 }
@@ -58,7 +58,7 @@ impl_generate_config_from_default!(DatadogSearchConfig);
 /// a [Datadog Search Syntax query](https://docs.datadoghq.com/logs/explorer/search_syntax/).
 #[derive(Debug, Clone)]
 pub struct DatadogSearchRunner {
-    matcher: Box<dyn Matcher<LogEvent>>,
+    matcher: Box<dyn Matcher<OtelLog>>,
 }
 
 impl TryFrom<&DatadogSearchConfig> for DatadogSearchRunner {
@@ -71,7 +71,7 @@ impl TryFrom<&DatadogSearchConfig> for DatadogSearchRunner {
 impl DatadogSearchRunner {
     pub fn matches<'a>(&self, event: impl Into<EventRef<'a>>) -> bool {
         match event.into() {
-            EventRef::Log(log) => self.matcher.run(&log.to_log_event()),
+            EventRef::Log(log) => self.matcher.run(log),
             _ => false,
         }
     }
@@ -124,8 +124,8 @@ impl Resolver for EventFilter {
     }
 }
 
-impl Filter<LogEvent> for EventFilter {
-    fn exists(&self, field: Field) -> Result<Box<dyn Matcher<LogEvent>>, PathParseError> {
+impl Filter<OtelLog> for EventFilter {
+    fn exists(&self, field: Field) -> Result<Box<dyn Matcher<OtelLog>>, PathParseError> {
         Ok(match field {
             Field::Tag(tag) => {
                 let starts_with = format!("{tag}:");
@@ -151,7 +151,7 @@ impl Filter<LogEvent> for EventFilter {
         &self,
         field: Field,
         to_match: &str,
-    ) -> Result<Box<dyn Matcher<LogEvent>>, PathParseError> {
+    ) -> Result<Box<dyn Matcher<OtelLog>>, PathParseError> {
         Ok(match field {
             // Default fields are compared by word boundary.
             Field::Default(field) => {
@@ -200,7 +200,7 @@ impl Filter<LogEvent> for EventFilter {
         &self,
         field: Field,
         prefix: &str,
-    ) -> Result<Box<dyn Matcher<LogEvent>>, PathParseError> {
+    ) -> Result<Box<dyn Matcher<OtelLog>>, PathParseError> {
         Ok(match field {
             // Default fields are matched by word boundary.
             Field::Default(field) => {
@@ -238,7 +238,7 @@ impl Filter<LogEvent> for EventFilter {
         &self,
         field: Field,
         wildcard: &str,
-    ) -> Result<Box<dyn Matcher<LogEvent>>, PathParseError> {
+    ) -> Result<Box<dyn Matcher<OtelLog>>, PathParseError> {
         Ok(match field {
             Field::Default(field) => {
                 let re = word_regex(wildcard);
@@ -269,13 +269,13 @@ impl Filter<LogEvent> for EventFilter {
         field: Field,
         comparator: Comparison,
         comparison_value: ComparisonValue,
-    ) -> Result<Box<dyn Matcher<LogEvent>>, PathParseError> {
+    ) -> Result<Box<dyn Matcher<OtelLog>>, PathParseError> {
         let rhs = Cow::from(comparison_value.to_string());
 
         Ok(match field {
             // Attributes are compared numerically if the value is numeric, or as strings otherwise.
             Field::Attribute(f) => {
-                Run::boxed(move |log: &LogEvent| {
+                Run::boxed(move |log: &OtelLog| {
                     match (
                         log.parse_path_and_get_value(f.as_str()).ok().flatten(),
                         &comparison_value,
@@ -283,19 +283,19 @@ impl Filter<LogEvent> for EventFilter {
                         // Integers.
                         (Some(Value::Integer(lhs)), ComparisonValue::Integer(rhs)) => {
                             match comparator {
-                                Comparison::Lt => lhs < rhs,
-                                Comparison::Lte => lhs <= rhs,
-                                Comparison::Gt => lhs > rhs,
-                                Comparison::Gte => lhs >= rhs,
+                                Comparison::Lt => lhs < *rhs,
+                                Comparison::Lte => lhs <= *rhs,
+                                Comparison::Gt => lhs > *rhs,
+                                Comparison::Gte => lhs >= *rhs,
                             }
                         }
                         // Integer value - Float boundary
                         (Some(Value::Integer(lhs)), ComparisonValue::Float(rhs)) => {
                             match comparator {
-                                Comparison::Lt => (*lhs as f64) < *rhs,
-                                Comparison::Lte => *lhs as f64 <= *rhs,
-                                Comparison::Gt => *lhs as f64 > *rhs,
-                                Comparison::Gte => *lhs as f64 >= *rhs,
+                                Comparison::Lt => (lhs as f64) < *rhs,
+                                Comparison::Lte => lhs as f64 <= *rhs,
+                                Comparison::Gt => lhs as f64 > *rhs,
+                                Comparison::Gte => lhs as f64 >= *rhs,
                             }
                         }
                         // Floats.
@@ -318,7 +318,7 @@ impl Filter<LogEvent> for EventFilter {
                         }
                         // Where the rhs is a string ref, the lhs is coerced into a string.
                         (Some(Value::Bytes(v)), ComparisonValue::String(rhs)) => {
-                            let lhs = String::from_utf8_lossy(v);
+                            let lhs = String::from_utf8_lossy(&v);
                             let rhs = Cow::from(rhs);
 
                             match comparator {
@@ -330,7 +330,7 @@ impl Filter<LogEvent> for EventFilter {
                         }
                         // Otherwise, compare directly as strings.
                         (Some(Value::Bytes(v)), _) => {
-                            let lhs = String::from_utf8_lossy(v);
+                            let lhs = String::from_utf8_lossy(&v);
 
                             match comparator {
                                 Comparison::Lt => lhs < rhs,
@@ -382,13 +382,13 @@ impl Filter<LogEvent> for EventFilter {
 }
 
 // Returns a `Matcher` that returns true if the field exists.
-fn exists_match<S>(field: S) -> Box<dyn Matcher<LogEvent>>
+fn exists_match<S>(field: S) -> Box<dyn Matcher<OtelLog>>
 where
     S: Into<String>,
 {
     let field = field.into();
 
-    Run::boxed(move |log: &LogEvent| {
+    Run::boxed(move |log: &OtelLog| {
         log.parse_path_and_get_value(field.as_str())
             .ok()
             .flatten()
@@ -398,17 +398,17 @@ where
 
 /// Returns a `Matcher` that returns true if the field resolves to a string,
 /// numeric, or boolean which matches the provided `func`.
-fn simple_scalar_match<S, F>(field: S, func: F) -> Box<dyn Matcher<LogEvent>>
+fn simple_scalar_match<S, F>(field: S, func: F) -> Box<dyn Matcher<OtelLog>>
 where
     S: Into<String>,
     F: Fn(Cow<str>) -> bool + Send + Sync + Clone + 'static,
 {
     let field = field.into();
 
-    Run::boxed(move |log: &LogEvent| {
+    Run::boxed(move |log: &OtelLog| {
         match log.parse_path_and_get_value(field.as_str()).ok().flatten() {
             Some(Value::Boolean(v)) => func(v.to_string().into()),
-            Some(Value::Bytes(v)) => func(String::from_utf8_lossy(v)),
+            Some(Value::Bytes(v)) => func(String::from_utf8_lossy(&v)),
             Some(Value::Integer(v)) => func(v.to_string().into()),
             Some(Value::Float(v)) => func(v.to_string().into()),
             _ => false,
@@ -418,27 +418,27 @@ where
 
 /// Returns a `Matcher` that returns true if the field resolves to a string which
 /// matches the provided `func`.
-fn string_match<S, F>(field: S, func: F) -> Box<dyn Matcher<LogEvent>>
+fn string_match<S, F>(field: S, func: F) -> Box<dyn Matcher<OtelLog>>
 where
     S: Into<String>,
     F: Fn(Cow<str>) -> bool + Send + Sync + Clone + 'static,
 {
     let field = field.into();
 
-    Run::boxed(move |log: &LogEvent| {
+    Run::boxed(move |log: &OtelLog| {
         match log.parse_path_and_get_value(field.as_str()).ok().flatten() {
-            Some(Value::Bytes(v)) => func(String::from_utf8_lossy(v)),
+            Some(Value::Bytes(v)) => func(String::from_utf8_lossy(&v)),
             _ => false,
         }
     })
 }
 
 // Returns a `Matcher` that returns true if any provided field exists.
-fn exists_match_multiple<S>(fields: Vec<S>) -> Box<dyn Matcher<LogEvent>>
+fn exists_match_multiple<S>(fields: Vec<S>) -> Box<dyn Matcher<OtelLog>>
 where
     S: Into<String> + Clone + Send + Sync + 'static,
 {
-    Run::boxed(move |log: &LogEvent| {
+    Run::boxed(move |log: &OtelLog| {
         fields
             .iter()
             .any(|field| exists_match(field.clone()).run(log))
@@ -447,19 +447,19 @@ where
 
 /// Returns a `Matcher` that returns true if any provided field resolves to a string which
 /// matches the provided `func`.
-fn string_match_multiple<S, F>(fields: Vec<S>, func: F) -> Box<dyn Matcher<LogEvent>>
+fn string_match_multiple<S, F>(fields: Vec<S>, func: F) -> Box<dyn Matcher<OtelLog>>
 where
     S: Into<String> + Clone + Send + Sync + 'static,
     F: Fn(Cow<str>) -> bool + Send + Sync + Clone + 'static,
 {
-    Run::boxed(move |log: &LogEvent| {
+    Run::boxed(move |log: &OtelLog| {
         fields
             .iter()
             .any(|field| string_match(field.clone(), func.clone()).run(log))
     })
 }
 
-fn any_string_match_multiple<S, F>(fields: Vec<S>, func: F) -> Box<dyn Matcher<LogEvent>>
+fn any_string_match_multiple<S, F>(fields: Vec<S>, func: F) -> Box<dyn Matcher<OtelLog>>
 where
     S: Into<String> + Clone + Send + Sync + 'static,
     F: Fn(Cow<str>) -> bool + Send + Sync + Clone + 'static,
@@ -472,7 +472,7 @@ where
 
 /// Returns a `Matcher` that returns true if any provided field of the log event resolves to an array, where
 /// at least one `Value` it contains matches the provided `func`.
-fn any_match_multiple<S, F>(fields: Vec<S>, func: F) -> Box<dyn Matcher<LogEvent>>
+fn any_match_multiple<S, F>(fields: Vec<S>, func: F) -> Box<dyn Matcher<OtelLog>>
 where
     S: Into<String> + Clone + Send + Sync + 'static,
     F: Fn(&Value) -> bool + Send + Sync + Clone + 'static,
@@ -482,16 +482,16 @@ where
 
 /// Returns a `Matcher` that returns true if any provided field of the log event resolves to an array, where
 /// the vector of `Value`s the array contains matches the provided `func`.
-fn array_match_multiple<S, F>(fields: Vec<S>, func: F) -> Box<dyn Matcher<LogEvent>>
+fn array_match_multiple<S, F>(fields: Vec<S>, func: F) -> Box<dyn Matcher<OtelLog>>
 where
     S: Into<String> + Clone + Send + Sync + 'static,
     F: Fn(&Vec<Value>) -> bool + Send + Sync + Clone + 'static,
 {
-    Run::boxed(move |log: &LogEvent| {
+    Run::boxed(move |log: &OtelLog| {
         fields.iter().any(|field| {
             let field = field.clone().into();
             match log.parse_path_and_get_value(field.as_str()).ok().flatten() {
-                Some(Value::Array(values)) => func(values),
+                Some(Value::Array(values)) => func(&values),
                 _ => false,
             }
         })
@@ -501,7 +501,7 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::log_event;
+    use crate::{event::LogEvent, log_event};
 
     /// Returns the following: Datadog Search Syntax source (to be parsed), an `Event` that
     /// should pass when matched against the compiled source, and an `Event` that should fail.
@@ -1651,7 +1651,7 @@ mod test {
     #[test]
     /// Parse each Datadog Search Syntax query and check that it passes/fails.
     fn event_filter() {
-        test_filter(EventFilter, |ev| ev.into_log().to_log_event())
+        test_filter(EventFilter, |ev| ev.into_log())
     }
 
     #[test]

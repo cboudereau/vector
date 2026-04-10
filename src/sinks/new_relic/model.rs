@@ -65,13 +65,13 @@ impl TryFrom<Vec<Event>> for MetricsApiModel {
         let metric_array: Vec<_> = buf_events
             .into_iter()
             .filter_map(|event| {
-                let Some(metric) = event.try_into_metric() else {
+                let Some(otel_metric) = event.try_into_otel_metric() else {
                     num_non_metric_events += 1;
                     return None;
                 };
 
                 // Generate Value::Object() from BTreeMap<String, String>
-                let (series, data, _) = metric.into_parts();
+                let (series, data, _) = otel_metric.into_metric_parts();
 
                 // We only handle gauge and counter metrics
                 // Extract value & type and set type-related attributes

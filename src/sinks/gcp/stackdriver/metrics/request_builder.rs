@@ -2,7 +2,7 @@ use std::io;
 
 use bytes::Bytes;
 use chrono::Utc;
-use vector_lib::event::{Metric, MetricValue};
+use vector_lib::event::{MetricValue, OtelMetric};
 
 use crate::sinks::{gcp, prelude::*, util::http::HttpRequest};
 
@@ -11,9 +11,9 @@ pub(super) struct StackdriverMetricsRequestBuilder {
     pub(super) encoder: StackdriverMetricsEncoder,
 }
 
-impl RequestBuilder<Vec<Metric>> for StackdriverMetricsRequestBuilder {
+impl RequestBuilder<Vec<OtelMetric>> for StackdriverMetricsRequestBuilder {
     type Metadata = EventFinalizers;
-    type Events = Vec<Metric>;
+    type Events = Vec<OtelMetric>;
     type Encoder = StackdriverMetricsEncoder;
     type Payload = Bytes;
     type Request = HttpRequest<()>;
@@ -29,7 +29,7 @@ impl RequestBuilder<Vec<Metric>> for StackdriverMetricsRequestBuilder {
 
     fn split_input(
         &self,
-        mut events: Vec<Metric>,
+        mut events: Vec<OtelMetric>,
     ) -> (Self::Metadata, RequestMetadataBuilder, Self::Events) {
         let finalizers = events.take_finalizers();
         let builder = RequestMetadataBuilder::from_events(&events);
@@ -53,13 +53,13 @@ pub struct StackdriverMetricsEncoder {
     pub(super) resource: gcp::GcpTypedResource,
 }
 
-impl encoding::Encoder<Vec<Metric>> for StackdriverMetricsEncoder {
+impl encoding::Encoder<Vec<OtelMetric>> for StackdriverMetricsEncoder {
     /// Create the object defined [here][api_docs].
     ///
     /// [api_docs]: https://cloud.google.com/monitoring/api/ref_v3/rest/v3/projects.timeSeries/create
     fn encode_input(
         &self,
-        input: Vec<Metric>,
+        input: Vec<OtelMetric>,
         writer: &mut dyn io::Write,
     ) -> io::Result<(usize, GroupedCountByteSize)> {
         let mut byte_size = telemetry().create_request_count_byte_size();
@@ -68,7 +68,7 @@ impl encoding::Encoder<Vec<Metric>> for StackdriverMetricsEncoder {
             .map(|metric| {
                 byte_size.add_event(&metric, metric.estimated_json_encoded_size_of());
 
-                let (series, data, _metadata) = metric.into_parts();
+                let (series, data, _metadata) = metric.into_metric_parts();
                 let namespace = series
                     .name
                     .namespace

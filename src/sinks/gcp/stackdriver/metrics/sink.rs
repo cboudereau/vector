@@ -3,6 +3,7 @@ use vector_lib::event::{Metric, MetricValue};
 use super::request_builder::StackdriverMetricsRequestBuilder;
 use crate::sinks::{
     prelude::*,
+    util::buffer::metrics::MetricNormalizer,
     util::{
         buffer::metrics::{MetricNormalize, MetricSet},
         http::HttpRequest,
@@ -50,22 +51,24 @@ where
     }
 
     async fn run_inner(self: Box<Self>, input: BoxStream<'_, Event>) -> Result<(), ()> {
+        let mut normalizer = MetricNormalizer::<StackdriverMetricsNormalize>::default();
         input
-            .filter_map(|event| {
-                let Some(metric) = event.try_into_metric() else {
+            .filter_map(move |event| {
+                let Some(otel) = event.try_into_otel_metric() else {
                     return future::ready(None);
                 };
 
-                future::ready(match metric.value() {
-                    &MetricValue::Counter { .. } => Some(metric),
-                    &MetricValue::Gauge { .. } => Some(metric),
+                // Filter unsupported types before normalization
+                future::ready(match otel.value() {
+                    MetricValue::Counter { .. } | MetricValue::Gauge { .. } => {
+                        normalizer.normalize_otel(otel).and_then(|e| e.try_into_otel_metric())
+                    }
                     not_supported => {
                         warn!("Unsupported metric type: {:?}.", not_supported);
                         None
                     }
                 })
             })
-            .normalized_with_default::<StackdriverMetricsNormalize>()
             .batched(self.batch_settings.as_byte_size_config())
             .request_builder(
                 default_request_builder_concurrency_limit(),

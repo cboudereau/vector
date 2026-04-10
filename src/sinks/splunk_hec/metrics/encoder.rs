@@ -53,9 +53,9 @@ impl HecMetricsEncoder {
         let metadata = processed_event.metadata;
         let metric = processed_event.event;
 
-        let fields = metric
-            .tags()
-            .into_iter()
+        let metric_tags = metric.tags();
+        let fields = metric_tags
+            .iter()
             .flat_map(|tags| tags.iter_single())
             // skip the metric tags used for templating
             .filter(|(k, _)| !metadata.templated_field_keys.iter().any(|f| f == k))

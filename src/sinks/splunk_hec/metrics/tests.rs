@@ -5,7 +5,7 @@ use futures_util::StreamExt;
 use serde_json::{Value as JsonValue, json};
 use vector_lib::{
     ByteSizeOf,
-    event::{Event, Metric, MetricKind, MetricValue},
+    event::{Event, Metric, MetricKind, MetricValue, OtelMetric},
     metric_tags,
 };
 use vrl::owned_value_path;
@@ -67,9 +67,10 @@ fn get_processed_event(
     default_namespace: Option<&str>,
 ) -> HecProcessedEvent {
     let event_byte_size = metric.size_of();
+    let otel = OtelMetric::from_legacy_metric(metric);
 
     process_metric(
-        metric,
+        otel,
         event_byte_size,
         sourcetype.as_ref(),
         source.as_ref(),
@@ -135,7 +136,7 @@ fn test_process_metric_unsupported_type_returns_none() {
     let default_namespace = None;
     assert!(
         process_metric(
-            metric,
+            OtelMetric::from_legacy_metric(metric),
             event_byte_size,
             sourcetype,
             source,

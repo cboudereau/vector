@@ -1,7 +1,7 @@
 use std::{fmt, sync::Arc};
 
 use serde::Serialize;
-use vector_lib::event::{Metric, MetricValue};
+use vector_lib::event::{MetricValue, OtelMetric};
 use vrl::path::OwnedValuePath;
 
 use super::request_builder::HecMetricsRequestBuilder;
@@ -9,7 +9,7 @@ use crate::{
     internal_events::SplunkInvalidMetricReceivedError,
     sinks::{
         prelude::*,
-        splunk_hec::common::{render_template_string_from_metric, request::HecRequest},
+        splunk_hec::common::{render_template_string, request::HecRequest},
         util::{encode_namespace, processed_event::ProcessedEvent},
     },
 };
@@ -43,7 +43,7 @@ where
         input
             .filter_map(|event| {
                 let byte_size = event.size_of();
-                future::ready(event.try_into_metric().map(|m| (byte_size, m)))
+                future::ready(event.try_into_otel_metric().map(|m| (byte_size, m)))
             })
             .filter_map(move |(event_byte_size, metric)| {
                 future::ready(process_metric(
@@ -125,17 +125,17 @@ impl ByteSizeOf for HecMetricsProcessedEventMetadata {
 }
 
 impl HecMetricsProcessedEventMetadata {
-    fn extract_metric_name(metric: &Metric, default_namespace: Option<&str>) -> String {
+    fn extract_metric_name(metric: &OtelMetric, default_namespace: Option<&str>) -> String {
         encode_namespace(metric.namespace().or(default_namespace), '.', metric.name())
     }
 
-    fn extract_metric_value(metric: &Metric) -> Option<f64> {
-        match *metric.value() {
+    fn extract_metric_value(metric: &OtelMetric) -> Option<f64> {
+        match metric.value() {
             MetricValue::Counter { value } => Some(value),
             MetricValue::Gauge { value } => Some(value),
-            _ => {
+            value => {
                 emit!(SplunkInvalidMetricReceivedError {
-                    value: metric.value(),
+                    value: &value,
                     kind: &metric.kind(),
                     error: "Metric kind not supported.".into(),
                 });
@@ -145,10 +145,10 @@ impl HecMetricsProcessedEventMetadata {
     }
 }
 
-pub type HecProcessedEvent = ProcessedEvent<Metric, HecMetricsProcessedEventMetadata>;
+pub type HecProcessedEvent = ProcessedEvent<OtelMetric, HecMetricsProcessedEventMetadata>;
 
 pub fn process_metric(
-    metric: Metric,
+    metric: OtelMetric,
     event_byte_size: usize,
     sourcetype: Option<&Template>,
     source: Option<&Template>,
@@ -168,11 +168,11 @@ pub fn process_metric(
     let metric_value = HecMetricsProcessedEventMetadata::extract_metric_value(&metric)?;
 
     let sourcetype = sourcetype
-        .and_then(|sourcetype| render_template_string_from_metric(sourcetype, &metric, "sourcetype"));
+        .and_then(|sourcetype| render_template_string(sourcetype, &metric, "sourcetype"));
     let source =
-        source.and_then(|source| render_template_string_from_metric(source, &metric, "source"));
+        source.and_then(|source| render_template_string(source, &metric, "source"));
     let index =
-        index.and_then(|index| render_template_string_from_metric(index, &metric, "index"));
+        index.and_then(|index| render_template_string(index, &metric, "index"));
     let host = host_key.and_then(|key| metric.tag_value(key.to_string().as_str()));
 
     let metadata = HecMetricsProcessedEventMetadata {

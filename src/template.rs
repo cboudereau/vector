@@ -15,7 +15,7 @@ use vector_lib::{
 
 use crate::{
     config::log_schema,
-    event::{EventRef, LogEvent, Metric, OtelLog, OtelMetric},
+    event::{EventRef, OtelMetric},
 };
 
 static RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\{\{(?P<key>[^\}]+)\}\}").unwrap());
@@ -172,21 +172,6 @@ impl Template {
         } else {
             self.render_event(event.into())
         }
-    }
-
-    /// Renders the given template with data from a legacy `LogEvent`.
-    pub fn render_string_from_log(&self, log: &LogEvent) -> Result<String, TemplateRenderingError> {
-        let otel = OtelLog::from_log_event(log.clone());
-        self.render_string(&otel)
-    }
-
-    /// Renders the given template with data from a legacy `Metric`.
-    pub fn render_string_from_metric(
-        &self,
-        metric: &Metric,
-    ) -> Result<String, TemplateRenderingError> {
-        let otel = OtelMetric::from_legacy_metric(metric.clone());
-        self.render_string(&otel)
     }
 
     fn render_event(&self, event: EventRef<'_>) -> Result<String, TemplateRenderingError> {
@@ -635,7 +620,7 @@ mod tests {
     use vrl::{event_path, path};
 
     use super::*;
-    use crate::event::{Event, LogEvent, MetricKind, MetricValue};
+    use crate::event::{Event, LogEvent, Metric, MetricKind, MetricValue};
 
     #[test]
     fn get_fields() {

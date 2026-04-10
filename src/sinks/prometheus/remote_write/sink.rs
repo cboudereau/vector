@@ -2,7 +2,7 @@ use std::fmt;
 
 use vector_lib::{
     byte_size_of::ByteSizeOf,
-    event::Metric,
+    event::{Metric, OtelMetric},
     stream::batcher::{data::BatchData, limiter::ByteSizeOfItemSize},
 };
 
@@ -226,7 +226,7 @@ fn make_remote_write_event(
 ) -> Option<RemoteWriteMetric> {
     let tenant_id = tenant_id.and_then(|template| {
         template
-            .render_string_from_metric(&metric)
+            .render_string(&OtelMetric::from_legacy_metric(metric.clone()))
             .map_err(|error| {
                 emit!(TemplateRenderingError {
                     error,

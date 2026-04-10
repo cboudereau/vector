@@ -452,7 +452,7 @@ mod tests {
         out.clear();
         agg.flush_into(&mut out);
         assert_eq!(1, out.len());
-        assert_eq!(counter_a_summed.clone().into_metric(), out[0].clone().into_metric());
+        assert_eq!(counter_a_summed.clone().into_otel_metric(), out[0].clone().into_otel_metric());
 
         let counter_b_1 = make_metric(
             "counter_b",
@@ -467,10 +467,10 @@ mod tests {
         assert_eq!(2, out.len());
         // B/c we don't know the order they'll come back
         for event in out {
-            let metric = event.clone().into_metric();
-            match metric.series().name.name.as_str() {
-                "counter_a" => assert_eq!(counter_a_1.clone().into_metric(), metric),
-                "counter_b" => assert_eq!(counter_b_1.clone().into_metric(), metric),
+            let metric = event.clone().into_otel_metric();
+            match metric.name() {
+                "counter_a" => assert_eq!(counter_a_1.clone().into_otel_metric(), metric),
+                "counter_b" => assert_eq!(counter_b_1.clone().into_otel_metric(), metric),
                 _ => panic!("Unexpected metric name in aggregate output"),
             }
         }
@@ -534,10 +534,10 @@ mod tests {
         assert_eq!(2, out.len());
         // B/c we don't know the order they'll come back
         for event in out {
-            let metric = event.clone().into_metric();
-            match metric.series().name.name.as_str() {
-                "gauge_a" => assert_eq!(gauge_a_1.clone().into_metric(), metric),
-                "gauge_b" => assert_eq!(gauge_b_1.clone().into_metric(), metric),
+            let metric = event.clone().into_otel_metric();
+            match metric.name() {
+                "gauge_a" => assert_eq!(gauge_a_1.clone().into_otel_metric(), metric),
+                "gauge_b" => assert_eq!(gauge_b_1.clone().into_otel_metric(), metric),
                 _ => panic!("Unexpected metric name in aggregate output"),
             }
         }
@@ -954,7 +954,7 @@ mod tests {
         // We should flush 1 item counter
         agg.flush_into(&mut out);
         assert_eq!(1, out.len());
-        assert_eq!(summed.into_metric(), out[0].clone().into_metric());
+        assert_eq!(summed.into_otel_metric(), out[0].clone().into_otel_metric());
     }
 
     #[test]
@@ -1009,7 +1009,7 @@ mod tests {
         // We should flush 1 item incremental
         agg.flush_into(&mut out);
         assert_eq!(1, out.len());
-        assert_eq!(summed.into_metric(), out[0].clone().into_metric());
+        assert_eq!(summed.into_otel_metric(), out[0].clone().into_otel_metric());
     }
 
     #[tokio::test]
@@ -1064,10 +1064,10 @@ interval_ms = 999999
         let mut count = 0_u8;
         while let Some(event) = out_stream.next().await {
             count += 1;
-            let metric = event.clone().into_metric();
-            match metric.series().name.name.as_str() {
-                "counter_a" => assert_eq!(counter_a_summed.clone().into_metric(), metric),
-                "gauge_a" => assert_eq!(gauge_a_2.clone().into_metric(), metric),
+            let metric = event.clone().into_otel_metric();
+            match metric.name() {
+                "counter_a" => assert_eq!(counter_a_summed.clone().into_otel_metric(), metric),
+                "gauge_a" => assert_eq!(gauge_a_2.clone().into_otel_metric(), metric),
                 _ => panic!("Unexpected metric name in aggregate output"),
             };
         }
@@ -1131,10 +1131,10 @@ interval_ms = 999999
             while count < 2 {
                 match out.next().await {
                     Some(event) => {
-                        let metric = event.clone().into_metric();
-                        match metric.series().name.name.as_str() {
-                            "counter_a" => assert_eq!(counter_a_summed.clone().into_metric(), metric),
-                            "gauge_a" => assert_eq!(gauge_a_2.clone().into_metric(), metric),
+                        let metric = event.clone().into_otel_metric();
+                        match metric.name() {
+                            "counter_a" => assert_eq!(counter_a_summed.clone().into_otel_metric(), metric),
+                            "gauge_a" => assert_eq!(gauge_a_2.clone().into_otel_metric(), metric),
                             _ => panic!("Unexpected metric name in aggregate output"),
                         };
                         count += 1;

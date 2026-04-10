@@ -42,15 +42,17 @@ Four conversion functions that translate between OTel proto structs and legacy V
 
 | Function | Before session | Current | Removed |
 |----------|---------------|---------|---------|
-| `to_log_event()` | 75 | 10 | **65 (87%)** |
-| `to_legacy_metric()` | 40 | 13 | **27 (68%)** |
-| **Total** | **115** | **23** | **92 (80%)** |
+| `to_log_event()` | 75 | **0** | **75 (100%)** |
+| `to_legacy_metric()` | 40 | **0** | **40 (100%)** |
+| **Total** | **115** | **0** | **115 (100%)** |
 
-142 commits, 1789 tests passing.
-Session 2 COMPLETE: **Bridge methods removed from public API.**
+149 commits, 1789 tests passing.
+Session 2 COMPLETE: **ALL OTel→Legacy bridge code deleted** (~250 lines).
 - `to_log_event()` DELETED from OtelLog and OtelSpan
 - `to_legacy_metric()` DELETED from OtelMetric
-- `to_metric()`/`into_metric()`/`try_into_metric()` deprecated on Event (zero callers)
+- `to_metric()`/`into_metric()`/`try_into_metric()` DELETED from Event/EventRef/EventMutRef
+- `render_string_from_log()`/`render_string_from_metric()` DELETED from Template
+- `render_template_string_from_log()`/`render_template_string_from_metric()` DELETED from splunk_hec
 - All 10 metric sinks migrated to OtelMetric pipelines
 - normalize.rs bridge-free, `to_value_legacy_layout()` public
 - 115 → 0 bridge callers (100% eliminated)

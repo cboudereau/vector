@@ -259,7 +259,7 @@ impl CloudWatchMetricsSvc {
                 stream::iter({
                     let byte_size = event.allocated_bytes();
                     let json_byte_size = event.estimated_json_encoded_size_of();
-                    event.try_into_metric().and_then(|m| normalizer.normalize(m)).map(|mut metric| {
+                    event.try_into_otel_metric().and_then(|m| normalizer.normalize_otel_to_metric(m)).map(|mut metric| {
                         let namespace = metric
                             .take_namespace()
                             .unwrap_or_else(|| default_namespace.clone());

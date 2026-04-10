@@ -554,9 +554,11 @@ impl StreamSink<Event> for PrometheusExporter {
             }
 
             // Now process the metric we got.
-            let Some(mut metric) = event.try_into_metric() else {
+            let Some(otel) = event.try_into_otel_metric() else {
                 continue;
             };
+            let (series, data, metadata) = otel.into_metric_parts();
+            let mut metric = Metric::from_parts(series, data, metadata);
             let finalizers = metric.take_finalizers();
 
             match self.normalize(metric) {

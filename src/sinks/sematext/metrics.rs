@@ -188,8 +188,8 @@ impl SematextMetricsService {
                     let byte_size = event.size_of();
                     let json_byte_size = event.estimated_json_encoded_size_of();
                     event
-                        .try_into_metric()
-                        .and_then(|m| normalizer.normalize(m))
+                        .try_into_otel_metric()
+                        .and_then(|m| normalizer.normalize_otel_to_metric(m))
                         .map(|item| Ok(EncodedEvent::new(item, byte_size, json_byte_size)))
                 })
             })

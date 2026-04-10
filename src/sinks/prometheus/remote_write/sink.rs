@@ -177,7 +177,12 @@ where
         let expire_metrics_secs = self.expire_metrics_secs;
 
         input
-            .filter_map(|event| future::ready(event.try_into_metric()))
+            .filter_map(|event| {
+                future::ready(event.try_into_otel_metric().map(|otel| {
+                    let (series, data, metadata) = otel.into_metric_parts();
+                    Metric::from_parts(series, data, metadata)
+                }))
+            })
             .normalized_with_ttl::<PrometheusMetricNormalize>(expire_metrics_secs)
             .filter_map(move |event| {
                 future::ready(make_remote_write_event(tenant_id.as_ref(), event))

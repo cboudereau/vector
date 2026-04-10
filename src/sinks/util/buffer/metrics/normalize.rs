@@ -176,8 +176,14 @@ impl<N: MetricNormalize> MetricNormalizer<N> {
     /// OtelMetric variant of `normalize` — accepts OtelMetric, returns Event.
     /// Uses into_metric_parts() to avoid the legacy Metric round-trip.
     pub fn normalize_otel(&mut self, otel: OtelMetric) -> Option<Event> {
+        self.normalize_otel_to_metric(otel).map(Event::from)
+    }
+
+    /// OtelMetric variant of `normalize` — returns legacy Metric directly.
+    /// For sinks that still need Metric for their buffer/encoder pipeline.
+    pub fn normalize_otel_to_metric(&mut self, otel: OtelMetric) -> Option<Metric> {
         let (series, data, metadata) = otel.into_metric_parts();
-        self.normalize(Metric::from_parts(series, data, metadata)).map(Event::from)
+        self.normalize(Metric::from_parts(series, data, metadata))
     }
 }
 

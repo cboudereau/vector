@@ -13,7 +13,7 @@ use crate::sinks::{
         service::GreptimeDBGrpcService,
     },
     prelude::*,
-    util::buffer::metrics::{MetricNormalize, MetricSet},
+    util::buffer::metrics::{MetricNormalize, MetricNormalizer, MetricSet},
 };
 
 #[derive(Clone, Debug, Default)]
@@ -40,9 +40,15 @@ pub struct GreptimeDBGrpcSink {
 
 impl GreptimeDBGrpcSink {
     async fn run_inner(self: Box<Self>, input: BoxStream<'_, Event>) -> Result<(), ()> {
+        let mut normalizer = MetricNormalizer::<GreptimeDBMetricNormalize>::default();
         input
-            .filter_map(|event| ready(event.try_into_metric()))
-            .normalized_with_default::<GreptimeDBMetricNormalize>()
+            .filter_map(move |event| {
+                ready(
+                    event.try_into_otel_metric()
+                        .and_then(|m| normalizer.normalize_otel(m))
+                        .and_then(|e| e.try_into_otel_metric()),
+                )
+            })
             .batched(
                 self.batch_settings
                     .as_item_size_config(GreptimeDBBatchSizer),

@@ -1,7 +1,7 @@
 use chrono::Utc;
 use greptimedb_ingester::{api::v1::*, helpers::values::*};
 use vector_lib::event::{
-    Metric, MetricValue,
+    MetricValue, OtelMetric,
     metric::{Bucket, Quantile, Sample},
 };
 
@@ -30,7 +30,7 @@ fn encode_f64_value(
 }
 
 pub fn metric_to_insert_request(
-    metric: Metric,
+    metric: OtelMetric,
     options: &RequestBuilderOptions,
 ) -> RowInsertRequest {
     let ns = metric.namespace();
@@ -72,7 +72,7 @@ pub fn metric_to_insert_request(
                 } else {
                     LEGACY_VALUE_COLUMN_NAME
                 },
-                *value,
+                value,
                 &mut schema,
                 &mut columns,
             );
@@ -84,7 +84,7 @@ pub fn metric_to_insert_request(
                 } else {
                     LEGACY_VALUE_COLUMN_NAME
                 },
-                *value,
+                value,
                 &mut schema,
                 &mut columns,
             );
@@ -102,7 +102,7 @@ pub fn metric_to_insert_request(
             );
         }
         MetricValue::Distribution { samples, .. } => {
-            encode_distribution(samples, &mut schema, &mut columns);
+            encode_distribution(&samples, &mut schema, &mut columns);
         }
 
         MetricValue::AggregatedHistogram {
@@ -111,8 +111,8 @@ pub fn metric_to_insert_request(
             sum,
         } => {
             encode_histogram(buckets.as_ref(), &mut schema, &mut columns);
-            encode_f64_value("count", *count as f64, &mut schema, &mut columns);
-            encode_f64_value("sum", *sum, &mut schema, &mut columns);
+            encode_f64_value("count", count as f64, &mut schema, &mut columns);
+            encode_f64_value("sum", sum, &mut schema, &mut columns);
         }
         MetricValue::AggregatedSummary {
             quantiles,
@@ -120,8 +120,8 @@ pub fn metric_to_insert_request(
             sum,
         } => {
             encode_quantiles(quantiles.as_ref(), &mut schema, &mut columns);
-            encode_f64_value("count", *count as f64, &mut schema, &mut columns);
-            encode_f64_value("sum", *sum, &mut schema, &mut columns);
+            encode_f64_value("count", count as f64, &mut schema, &mut columns);
+            encode_f64_value("sum", sum, &mut schema, &mut columns);
         }
     }
 
@@ -209,7 +209,7 @@ mod tests {
     use similar_asserts::assert_eq;
 
     use super::*;
-    use crate::event::metric::{MetricKind, StatisticKind};
+    use crate::event::{Metric, OtelMetric, metric::{MetricKind, StatisticKind}};
 
     fn get_column(rows: &Rows, name: &str) -> f64 {
         let (col_index, _) = rows
@@ -245,7 +245,7 @@ mod tests {
             use_new_naming: false,
         };
 
-        let insert = metric_to_insert_request(metric, &options);
+        let insert = metric_to_insert_request(OtelMetric::from_legacy_metric(metric), &options);
 
         assert_eq!(insert.table_name, "ns_load1");
         let rows = insert.rows.expect("Empty insert request");
@@ -268,7 +268,7 @@ mod tests {
             MetricKind::Absolute,
             MetricValue::Gauge { value: 1.1 },
         );
-        let insert2 = metric_to_insert_request(metric2, &options);
+        let insert2 = metric_to_insert_request(OtelMetric::from_legacy_metric(metric2), &options);
         assert_eq!(insert2.table_name, "load1");
     }
 
@@ -287,7 +287,7 @@ mod tests {
             use_new_naming: true,
         };
 
-        let insert = metric_to_insert_request(metric, &options);
+        let insert = metric_to_insert_request(OtelMetric::from_legacy_metric(metric), &options);
 
         assert_eq!(insert.table_name, "ns_load1");
         let rows = insert.rows.expect("Empty insert request");
@@ -310,7 +310,7 @@ mod tests {
             MetricKind::Absolute,
             MetricValue::Gauge { value: 1.1 },
         );
-        let insert2 = metric_to_insert_request(metric2, &options);
+        let insert2 = metric_to_insert_request(OtelMetric::from_legacy_metric(metric2), &options);
         assert_eq!(insert2.table_name, "load1");
     }
 
@@ -325,7 +325,7 @@ mod tests {
             use_new_naming: false,
         };
 
-        let insert = metric_to_insert_request(metric, &options);
+        let insert = metric_to_insert_request(OtelMetric::from_legacy_metric(metric), &options);
         let rows = insert.rows.expect("Empty insert request");
         assert_eq!(rows.rows[0].values.len(), 2);
 
@@ -345,7 +345,7 @@ mod tests {
             use_new_naming: false,
         };
 
-        let insert = metric_to_insert_request(metric, &options);
+        let insert = metric_to_insert_request(OtelMetric::from_legacy_metric(metric), &options);
         let rows = insert.rows.expect("Empty insert request");
         assert_eq!(rows.rows[0].values.len(), 2);
 
@@ -366,7 +366,7 @@ mod tests {
             use_new_naming: false,
         };
 
-        let insert = metric_to_insert_request(metric, &options);
+        let insert = metric_to_insert_request(OtelMetric::from_legacy_metric(metric), &options);
         let rows = insert.rows.expect("Empty insert request");
         assert_eq!(
             rows.rows[0].values.len(),
@@ -402,7 +402,7 @@ mod tests {
             use_new_naming: false,
         };
 
-        let insert = metric_to_insert_request(metric, &options);
+        let insert = metric_to_insert_request(OtelMetric::from_legacy_metric(metric), &options);
         let rows = insert.rows.expect("Empty insert request");
         assert_eq!(
             rows.rows[0].values.len(),
@@ -433,7 +433,7 @@ mod tests {
             use_new_naming: false,
         };
 
-        let insert = metric_to_insert_request(metric, &options);
+        let insert = metric_to_insert_request(OtelMetric::from_legacy_metric(metric), &options);
         let rows = insert.rows.expect("Empty insert request");
         assert_eq!(
             rows.rows[0].values.len(),

@@ -1,5 +1,5 @@
 use vector_lib::{
-    event::{Metric, MetricValue},
+    event::{MetricValue, OtelMetric},
     stream::batcher::limiter::ItemBatchSize,
 };
 
@@ -15,13 +15,13 @@ const I64_BYTE_SIZE: usize = 8;
 pub struct GreptimeDBBatchSizer;
 
 impl GreptimeDBBatchSizer {
-    pub fn estimated_size_of(&self, item: &Metric) -> usize {
+    pub fn estimated_size_of(&self, item: &OtelMetric) -> usize {
         // Metric name.
-        item.series().name().name().len()
+        item.name().len()
         // Metric namespace, with an additional 1 to account for the namespace separator.
-        + item.series().name().namespace().map(|s| s.len() + 1).unwrap_or(0)
+        + item.namespace().map(|s| s.len() + 1).unwrap_or(0)
         // Metric tags, with an additional 1 per tag to account for the tag key/value separator.
-        + item.series().tags().map(|t| {
+        + item.tags().map(|t| {
             t.iter_all().map(|(k, v)| {
                 k.len() + 1 + v.map(|v| v.len()).unwrap_or(0)
             })
@@ -41,8 +41,8 @@ impl GreptimeDBBatchSizer {
     }
 }
 
-impl ItemBatchSize<Metric> for GreptimeDBBatchSizer {
-    fn size(&self, item: &Metric) -> usize {
+impl ItemBatchSize<OtelMetric> for GreptimeDBBatchSizer {
+    fn size(&self, item: &OtelMetric) -> usize {
         self.estimated_size_of(item)
     }
 }

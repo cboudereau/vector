@@ -1,7 +1,7 @@
 use std::num::NonZeroUsize;
 
 use greptimedb_ingester::{Error as GreptimeError, api::v1::*};
-use vector_lib::event::Metric;
+use vector_lib::event::OtelMetric;
 
 use crate::sinks::{
     greptimedb::metrics::{
@@ -23,7 +23,7 @@ pub struct GreptimeDBGrpcRequest {
 
 impl GreptimeDBGrpcRequest {
     // convert metrics event to GreptimeDBGrpcRequest
-    pub(super) fn from_metrics(metrics: Vec<Metric>, options: &RequestBuilderOptions) -> Self {
+    pub(super) fn from_metrics(metrics: Vec<OtelMetric>, options: &RequestBuilderOptions) -> Self {
         let mut items = Vec::with_capacity(metrics.len());
         let mut finalizers = EventFinalizers::default();
         let mut request_metadata_builder = RequestMetadataBuilder::default();

@@ -46,17 +46,16 @@ Four conversion functions that translate between OTel proto structs and legacy V
 | `to_legacy_metric()` | 40 | 13 | **27 (68%)** |
 | **Total** | **115** | **23** | **92 (80%)** |
 
-103 commits, 1789 tests passing.
-Session 2: All 7 rewrites addressed. 17 bridge calls in code (down from 115,
-85% eliminated). Code review fixes applied (DRY proto helpers, round-trip
-tests, double-extraction fix). OtelSpan::to_trace_event() bypasses bridge.
+109 commits, 1789 tests passing.
+Session 2: All 7 rewrites addressed. to_log_event/to_legacy_metric down to 17.
+Event bridge method callers (to_metric/into_metric/try_into_metric) down to 13
+(from ~80). 69 test callers migrated total. Code review fixes applied.
 
-Remaining 17 calls by category:
-- Definitions: mod.rs (3) + ref.rs (2) — removed when callers migrate
-- Internal: normalize.rs (3) — intentional encapsulation inside _otel()
-- Tests: otel_event.rs (4) — testing bridge methods themselves
-- Doc comment: otel_event.rs (1)
-- Production: docker_logs (1), ES metric (1), metric_to_log (1), lua (1)
+Remaining bridge calls:
+- to_log_event/to_legacy_metric (17): definitions (5), normalize internal (3),
+  tests (4), doc (1), production (4: docker_logs, ES metric, metric_to_log, lua)
+- Event method callers (13): 10 production sinks (need full pipeline rewrites),
+  3 test utilities (MetricState/metrics_tests dependency)
 
 ### What was done
 

@@ -976,7 +976,7 @@ mod tests {
     use crate::{
         config::log_schema,
         event::{
-            Event, LogEvent,
+            Event, LogEvent, OtelMetric,
             metric::{Metric, MetricKind, MetricValue, StatisticKind},
         },
         test_util::components::assert_transform_compliance,
@@ -1087,15 +1087,15 @@ mod tests {
         let metric = do_transform(config, event).await.unwrap();
 
         assert_eq!(
-            metric.into_metric(),
-            Metric::new_with_metadata(
+            metric.into_otel_metric(),
+            OtelMetric::from_legacy_metric(Metric::new_with_metadata(
                 "status",
                 MetricKind::Incremental,
                 MetricValue::Counter { value: 1.0 },
                 metadata,
             )
             .with_timestamp(Some(ts()))
-        );
+        ));
     }
 
     #[tokio::test]
@@ -1125,8 +1125,8 @@ mod tests {
         let metric = do_transform(config, event).await.unwrap();
 
         assert_eq!(
-            metric.into_metric(),
-            Metric::new_with_metadata(
+            metric.into_otel_metric(),
+            OtelMetric::from_legacy_metric(Metric::new_with_metadata(
                 "http_requests_total",
                 MetricKind::Incremental,
                 MetricValue::Counter { value: 1.0 },
@@ -1139,7 +1139,7 @@ mod tests {
                 "host" => "localhost",
             )))
             .with_timestamp(Some(ts()))
-        );
+        ));
     }
 
     #[tokio::test]
@@ -1174,8 +1174,8 @@ mod tests {
         let metric = do_transform(config, event).await.unwrap();
 
         assert_eq!(
-            metric.into_metric(),
-            Metric::new_with_metadata(
+            metric.into_otel_metric(),
+            OtelMetric::from_legacy_metric(Metric::new_with_metadata(
                 "http_requests_total",
                 MetricKind::Incremental,
                 MetricValue::Counter { value: 1.0 },
@@ -1187,7 +1187,7 @@ mod tests {
                 "two" => "baz",
             )))
             .with_timestamp(Some(ts()))
-        );
+        ));
     }
     #[tokio::test]
     async fn count_http_requests_with_colliding_dynamic_tags() {
@@ -1221,7 +1221,7 @@ mod tests {
         metadata.set_schema_definition(&Arc::new(Definition::any()));
         set_test_source_metadata(&mut metadata);
 
-        let metric = do_transform(config, event).await.unwrap().into_metric();
+        let metric = do_transform(config, event).await.unwrap().into_otel_metric();
         let tags = metric.tags().expect("Metric should have tags");
 
         assert_eq!(tags.iter_single().collect::<Vec<_>>()[0].0, "l1_key1");
@@ -1250,7 +1250,7 @@ mod tests {
         );
 
         let event = create_event("message", "I am log");
-        let metric = do_transform(config, event).await.unwrap().into_metric();
+        let metric = do_transform(config, event).await.unwrap().into_otel_metric();
         let tags = metric.tags().expect("Metric should have tags");
 
         assert_eq!(tags.iter_single().collect::<Vec<_>>(), vec![("tag", "two")]);
@@ -1281,7 +1281,7 @@ mod tests {
         test_dict.insert("one".into(), Value::from(vec!["foo", "baz"]));
         log.insert("dict", Value::from(test_dict));
 
-        let metric = do_transform(config, event).await.unwrap().into_metric();
+        let metric = do_transform(config, event).await.unwrap().into_otel_metric();
         let tags = metric.tags().expect("Metric should have tags");
 
         assert_eq!(
@@ -1309,7 +1309,7 @@ mod tests {
         );
 
         let event = create_event("message", "I am log");
-        let metric = do_transform(config, event).await.unwrap().into_metric();
+        let metric = do_transform(config, event).await.unwrap().into_otel_metric();
         let tags = metric.tags().expect("Metric should have tags");
 
         assert_eq!(tags.iter_single().collect::<Vec<_>>(), vec![("tag", "two")]);
@@ -1344,15 +1344,15 @@ mod tests {
         let metric = do_transform(config, event).await.unwrap();
 
         assert_eq!(
-            metric.into_metric(),
-            Metric::new_with_metadata(
+            metric.into_otel_metric(),
+            OtelMetric::from_legacy_metric(Metric::new_with_metadata(
                 "exception_total",
                 MetricKind::Incremental,
                 MetricValue::Counter { value: 1.0 },
                 metadata
             )
             .with_timestamp(Some(ts()))
-        );
+        ));
     }
 
     #[tokio::test]
@@ -1393,15 +1393,15 @@ mod tests {
         let metric = do_transform(config, event).await.unwrap();
 
         assert_eq!(
-            metric.into_metric(),
-            Metric::new_with_metadata(
+            metric.into_otel_metric(),
+            OtelMetric::from_legacy_metric(Metric::new_with_metadata(
                 "amount_total",
                 MetricKind::Incremental,
                 MetricValue::Counter { value: 33.99 },
                 metadata,
             )
             .with_timestamp(Some(ts()))
-        );
+        ));
     }
 
     #[tokio::test]
@@ -1429,15 +1429,15 @@ mod tests {
         let metric = do_transform(config, event).await.unwrap();
 
         assert_eq!(
-            metric.into_metric(),
-            Metric::new_with_metadata(
+            metric.into_otel_metric(),
+            OtelMetric::from_legacy_metric(Metric::new_with_metadata(
                 "amount_total",
                 MetricKind::Absolute,
                 MetricValue::Counter { value: 33.99 },
                 metadata,
             )
             .with_timestamp(Some(ts()))
-        );
+        ));
     }
 
     #[tokio::test]
@@ -1465,15 +1465,15 @@ mod tests {
         let metric = do_transform(config, event).await.unwrap();
 
         assert_eq!(
-            metric.into_metric(),
-            Metric::new_with_metadata(
+            metric.into_otel_metric(),
+            OtelMetric::from_legacy_metric(Metric::new_with_metadata(
                 "memory_rss_bytes",
                 MetricKind::Absolute,
                 MetricValue::Gauge { value: 123.0 },
                 metadata,
             )
             .with_timestamp(Some(ts()))
-        );
+        ));
     }
 
     #[tokio::test]
@@ -1556,25 +1556,25 @@ mod tests {
 
         assert_eq!(2, output.len());
         assert_eq!(
-            output[0].clone().into_metric(),
-            Metric::new_with_metadata(
+            output[0].clone().into_otel_metric(),
+            OtelMetric::from_legacy_metric(Metric::new_with_metadata(
                 "status",
                 MetricKind::Incremental,
                 MetricValue::Counter { value: 1.0 },
                 metadata.clone(),
             )
             .with_timestamp(Some(ts()))
-        );
+        ));
         assert_eq!(
-            output[1].clone().into_metric(),
-            Metric::new_with_metadata(
+            output[1].clone().into_otel_metric(),
+            OtelMetric::from_legacy_metric(Metric::new_with_metadata(
                 "exception_total",
                 MetricKind::Incremental,
                 MetricValue::Counter { value: 1.0 },
                 metadata,
             )
             .with_timestamp(Some(ts()))
-        );
+        ));
     }
 
     #[tokio::test]
@@ -1665,8 +1665,8 @@ mod tests {
         let metric = do_transform(config, event).await.unwrap();
 
         assert_eq!(
-            metric.into_metric(),
-            Metric::new_with_metadata(
+            metric.into_otel_metric(),
+            OtelMetric::from_legacy_metric(Metric::new_with_metadata(
                 "unique_user_ip",
                 MetricKind::Incremental,
                 MetricValue::Set {
@@ -1675,7 +1675,7 @@ mod tests {
                 metadata,
             )
             .with_timestamp(Some(ts()))
-        );
+        ));
     }
 
     #[tokio::test]
@@ -1702,8 +1702,8 @@ mod tests {
         let metric = do_transform(config, event).await.unwrap();
 
         assert_eq!(
-            metric.into_metric(),
-            Metric::new_with_metadata(
+            metric.into_otel_metric(),
+            OtelMetric::from_legacy_metric(Metric::new_with_metadata(
                 "response_time",
                 MetricKind::Incremental,
                 MetricValue::Distribution {
@@ -1713,7 +1713,7 @@ mod tests {
                 metadata
             )
             .with_timestamp(Some(ts()))
-        );
+        ));
     }
 
     #[tokio::test]
@@ -1740,8 +1740,8 @@ mod tests {
         let metric = do_transform(config, event).await.unwrap();
 
         assert_eq!(
-            metric.into_metric(),
-            Metric::new_with_metadata(
+            metric.into_otel_metric(),
+            OtelMetric::from_legacy_metric(Metric::new_with_metadata(
                 "response_time",
                 MetricKind::Incremental,
                 MetricValue::Distribution {
@@ -1751,7 +1751,7 @@ mod tests {
                 metadata
             )
             .with_timestamp(Some(ts()))
-        );
+        ));
     }
 
     //  Metric Metadata Tests

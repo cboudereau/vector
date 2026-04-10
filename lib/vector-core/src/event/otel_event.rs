@@ -704,7 +704,7 @@ impl OtelLog {
     }
 
     /// Get a field value by path.
-    /// Builds a Value tree matching to_log_event() layout, without constructing LogEvent.
+    /// Builds a Value tree matching the legacy layout, without constructing LogEvent.
     pub fn get<'a>(&self, path: impl lookup::lookup_v2::TargetPath<'a>) -> Option<Value> {
         match path.prefix() {
             lookup::PathPrefix::Event => {
@@ -755,8 +755,8 @@ impl OtelLog {
         }
     }
 
-    /// Build a Value tree with the SAME layout as to_log_event() — no LogEvent constructed.
-    /// This ensures all 465 callers see the same field names and types.
+    /// Build a Value tree with the legacy layout — no LogEvent constructed.
+    /// This ensures callers see the same field names and types.
     pub(crate) fn to_value_legacy_layout(&self) -> Value {
         let mut map = ObjectMap::new();
 
@@ -1383,8 +1383,7 @@ impl OtelSpan {
     // Field access methods (same pattern as OtelLog — see comment above)
     // -----------------------------------------------------------------------
 
-    /// Build a Value tree with the same layout as the old to_log_event() —
-    /// no LogEvent constructed.
+    /// Build a Value tree with the legacy layout — no LogEvent constructed.
     pub(crate) fn to_value_legacy_layout(&self) -> Value {
         let mut map = ObjectMap::new();
 
@@ -1529,8 +1528,13 @@ impl OtelSpan {
     }
 
     /// Convert this OtelSpan into a legacy `TraceEvent`.
+    /// Builds the Value tree directly without constructing an intermediate LogEvent bridge.
     pub fn to_trace_event(&self) -> TraceEvent {
-        TraceEvent::from(self.to_log_event())
+        let map = match self.to_value_legacy_layout() {
+            Value::Object(m) => m,
+            _ => ObjectMap::new(),
+        };
+        TraceEvent::from(LogEvent::from_map(map, self.metadata.clone()))
     }
 }
 

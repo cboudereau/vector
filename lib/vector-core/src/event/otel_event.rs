@@ -757,7 +757,7 @@ impl OtelLog {
 
     /// Build a Value tree with the legacy layout — no LogEvent constructed.
     /// This ensures callers see the same field names and types.
-    pub(crate) fn to_value_legacy_layout(&self) -> Value {
+    pub fn to_value_legacy_layout(&self) -> Value {
         let mut map = ObjectMap::new();
 
         // Body: KvList → expand to top-level; other → "body" field
@@ -1384,7 +1384,7 @@ impl OtelSpan {
     // -----------------------------------------------------------------------
 
     /// Build a Value tree with the legacy layout — no LogEvent constructed.
-    pub(crate) fn to_value_legacy_layout(&self) -> Value {
+    pub fn to_value_legacy_layout(&self) -> Value {
         let mut map = ObjectMap::new();
 
         if !self.span.name.is_empty() {

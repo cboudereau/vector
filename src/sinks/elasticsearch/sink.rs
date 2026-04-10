@@ -8,7 +8,7 @@ use super::{
     encoder::{DocumentMetadata, DocumentVersion, DocumentVersionType},
 };
 use crate::{
-    event::OtelLog,
+    event::{Metric, OtelLog},
     sinks::{
         elasticsearch::{
             BulkAction, ElasticsearchCommonMode, encoder::ProcessedEvent,
@@ -70,9 +70,12 @@ where
         input
             .scan(self.metric_to_log, |metric_to_log, event| {
                 future::ready(Some(match event {
-                    Event::Metric(metric) => metric_to_log
-                        .transform_one(metric.to_legacy_metric())
-                        .map(OtelLog::from_log_event),
+                    Event::Metric(metric) => {
+                        let (series, data, metadata) = metric.into_metric_parts();
+                        metric_to_log
+                            .transform_one(Metric::from_parts(series, data, metadata))
+                            .map(OtelLog::from_log_event)
+                    }
                     Event::Log(log) => Some(log),
                     Event::Trace(_) => None,
                 }))

@@ -338,7 +338,10 @@ impl MetricToLog {
 impl FunctionTransform for MetricToLog {
     fn transform(&mut self, output: &mut OutputBuffer, event: Event) {
         let metric = match event {
-            Event::Metric(otel) => otel.to_legacy_metric(),
+            Event::Metric(otel) => {
+                let (series, data, metadata) = otel.into_metric_parts();
+                Metric::from_parts(series, data, metadata)
+            }
             other => {
                 output.push(other);
                 return;

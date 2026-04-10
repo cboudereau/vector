@@ -44,7 +44,7 @@ use crate::{
     common::backoff::ExponentialBackoff,
     config::{DataType, SourceConfig, SourceContext, SourceOutput, log_schema},
     docker::{DockerTlsConfig, docker},
-    event::{self, EstimatedJsonEncodedSizeOf, LogEvent, Value, merge_state::LogEventMergeState, string_value},
+    event::{self, EstimatedJsonEncodedSizeOf, LogEvent, ObjectMap, Value, merge_state::LogEventMergeState, string_value},
     internal_events::{
         DockerLogsCommunicationError, DockerLogsContainerEventReceived,
         DockerLogsContainerMetadataFetchError, DockerLogsContainerUnwatch,
@@ -1150,7 +1150,14 @@ impl ContainerLogInfo {
                 timestamp.timestamp_nanos_opt().unwrap_or(0) as u64;
         }
 
-        let mut log = otel_log.to_log_event();
+        let mut log = {
+            let value = otel_log.to_value_legacy_layout();
+            let map = match value {
+                Value::Object(m) => m,
+                _ => ObjectMap::new(),
+            };
+            LogEvent::from_map(map, otel_log.metadata().clone())
+        };
 
         // If automatic partial event merging is requested - perform the
         // merging.

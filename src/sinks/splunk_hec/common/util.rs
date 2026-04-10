@@ -185,7 +185,6 @@ pub fn render_template_string_from_log(
         .ok()
 }
 
-
 pub fn render_template_string_from_metric(
     template: &Template,
     metric: &Metric,

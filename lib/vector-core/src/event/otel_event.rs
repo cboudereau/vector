@@ -2028,6 +2028,10 @@ impl OtelMetric {
     }
 
     /// Set the timestamp on all data points.
+    ///
+    /// Note: `None` sets `time_unix_nano` to 0, which `timestamp()` reads back
+    /// as `None`. A `Some(ts)` at the Unix epoch (1970-01-01T00:00:00Z) also
+    /// produces nanos == 0 and will round-trip as `None`.
     pub fn set_timestamp(&mut self, ts: Option<chrono::DateTime<chrono::Utc>>) {
         use opentelemetry_proto::tonic::metrics::v1::metric::Data as MetricData;
         let nanos = ts.map(|t| t.timestamp_nanos_opt().unwrap_or(0) as u64).unwrap_or(0);
@@ -2432,8 +2436,7 @@ impl OtelMetric {
         let name = self.metric.name.clone();
         let namespace = self.namespace().map(|s| s.to_string());
         let metric_tags = self.tags();
-        let (kind, value) = (self.kind(), self.value());
-        let timestamp = self.timestamp();
+        let (kind, value, timestamp, _dp_attrs) = self.extract_metric_data();
         let interval_ms = self.reconstruct_interval_ms();
 
         let series = MetricSeries {

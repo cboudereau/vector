@@ -326,44 +326,38 @@ impl From<super::TraceEvent> for Trace {
     }
 }
 
+/// Encode a Value + EventMetadata into a proto Log with metadata.
+///
+/// Due to backwards compatibility, "fields" must not be empty (decodes as
+/// empty array). A dummy value is placed when the root is not an object.
+fn encode_log_proto(value: VrlValue, metadata: super::EventMetadata) -> WithMetadata<Log> {
+    let (fields, value) = if let VrlValue::Object(fields) = value {
+        let fields = fields
+            .into_iter()
+            .map(|(k, v)| (k.into(), encode_value(v)))
+            .collect::<BTreeMap<_, _>>();
+        (fields, None)
+    } else {
+        let mut dummy_fields = BTreeMap::new();
+        dummy_fields.insert(".".to_owned(), encode_value(VrlValue::Null));
+        (dummy_fields, Some(encode_value(value)))
+    };
+
+    #[allow(deprecated)]
+    let data = Log {
+        fields,
+        value,
+        metadata: Some(encode_value(metadata.value().clone())),
+        metadata_full: Some(metadata.clone().into()),
+    };
+
+    WithMetadata { data, metadata }
+}
+
 impl From<super::LogEvent> for WithMetadata<Log> {
     fn from(log_event: super::LogEvent) -> Self {
         let (value, metadata) = log_event.into_parts();
-
-        // Due to the backwards compatibility requirement by the
-        // "event_can_go_from_raw_prost_to_eventarray_encodable" test, "fields" must not
-        // be empty, since that will decode as an empty array. A "dummy" value is placed
-        // in fields instead which is ignored during decoding. To reduce encoding bloat
-        // from a dummy value, it is only used when the root value type is not an object.
-        // Once this backwards compatibility is no longer required, "fields" can
-        // be entirely removed from the Log object
-        let (fields, value) = if let VrlValue::Object(fields) = value {
-            // using only "fields" to prevent having to use the dummy value
-            let fields = fields
-                .into_iter()
-                .map(|(k, v)| (k.into(), encode_value(v)))
-                .collect::<BTreeMap<_, _>>();
-
-            (fields, None)
-        } else {
-            // Must insert at least one field, otherwise the field is omitted entirely on the
-            // Protocol Buffers side. The dummy field value is ultimately ignored in the decoding
-            // step since `value` is provided.
-            let mut dummy_fields = BTreeMap::new();
-            dummy_fields.insert(".".to_owned(), encode_value(VrlValue::Null));
-
-            (dummy_fields, Some(encode_value(value)))
-        };
-
-        #[allow(deprecated)]
-        let data = Log {
-            fields,
-            value,
-            metadata: Some(encode_value(metadata.value().clone())),
-            metadata_full: Some(metadata.clone().into()),
-        };
-
-        Self { data, metadata }
+        encode_log_proto(value, metadata)
     }
 }
 
@@ -371,135 +365,116 @@ impl From<super::OtelLog> for WithMetadata<Log> {
     fn from(otel_log: super::OtelLog) -> Self {
         let value = otel_log.to_value_legacy_layout();
         let (_, _, _, metadata) = otel_log.into_parts();
-
-        let (fields, value) = if let VrlValue::Object(fields) = value {
-            let fields = fields
-                .into_iter()
-                .map(|(k, v)| (k.into(), encode_value(v)))
-                .collect::<BTreeMap<_, _>>();
-            (fields, None)
-        } else {
-            let mut dummy_fields = BTreeMap::new();
-            dummy_fields.insert(".".to_owned(), encode_value(VrlValue::Null));
-            (dummy_fields, Some(encode_value(value)))
-        };
-
-        #[allow(deprecated)]
-        let data = Log {
-            fields,
-            value,
-            metadata: Some(encode_value(metadata.value().clone())),
-            metadata_full: Some(metadata.clone().into()),
-        };
-
-        Self { data, metadata }
+        encode_log_proto(value, metadata)
     }
+}
+
+/// Encode an ObjectMap + EventMetadata into a proto Trace with metadata.
+fn encode_trace_proto(fields: ObjectMap, metadata: super::EventMetadata) -> WithMetadata<Trace> {
+    let fields = fields
+        .into_iter()
+        .map(|(k, v)| (k.into(), encode_value(v)))
+        .collect::<BTreeMap<_, _>>();
+
+    #[allow(deprecated)]
+    let data = Trace {
+        fields,
+        metadata: Some(encode_value(metadata.value().clone())),
+        metadata_full: Some(metadata.clone().into()),
+    };
+
+    WithMetadata { data, metadata }
+}
+
+/// Encode MetricSeries + MetricData + EventMetadata into a proto Metric with metadata.
+fn encode_metric_proto(
+    series: super::metric::MetricSeries,
+    data: super::metric::MetricData,
+    metadata: super::EventMetadata,
+) -> WithMetadata<Metric> {
+    let name = series.name.name;
+    let namespace = series.name.namespace.unwrap_or_default();
+
+    let timestamp = data.time.timestamp.map(|ts| prost_types::Timestamp {
+        seconds: ts.timestamp(),
+        nanos: ts.timestamp_subsec_nanos() as i32,
+    });
+
+    let interval_ms = data.time.interval_ms.map_or(0, std::num::NonZeroU32::get);
+
+    let tags = series.tags.unwrap_or_default();
+
+    let kind = match data.kind {
+        super::MetricKind::Incremental => metric::Kind::Incremental,
+        super::MetricKind::Absolute => metric::Kind::Absolute,
+    }
+    .into();
+
+    let metric = MetricValue::from(data.value);
+
+    let tags_v1 = tags
+        .0
+        .iter()
+        .filter_map(|(tag, values)| {
+            values
+                .as_single()
+                .map(|value| (tag.clone(), value.to_string()))
+        })
+        .collect();
+    let tags_v2 = tags
+        .0
+        .into_iter()
+        .map(|(tag, values)| {
+            let values = values
+                .into_iter()
+                .map(|value| TagValue {
+                    value: value.into_option(),
+                })
+                .collect();
+            (tag, TagValues { values })
+        })
+        .collect();
+
+    #[allow(deprecated)]
+    let data = Metric {
+        name,
+        namespace,
+        timestamp,
+        tags_v1,
+        tags_v2,
+        kind,
+        interval_ms,
+        value: Some(metric),
+        metadata: Some(encode_value(metadata.value().clone())),
+        metadata_full: Some(metadata.clone().into()),
+    };
+
+    WithMetadata { data, metadata }
 }
 
 impl From<super::OtelSpan> for WithMetadata<Trace> {
     fn from(otel_span: super::OtelSpan) -> Self {
         let value = otel_span.to_value_legacy_layout();
         let (_, _, _, metadata) = otel_span.into_parts();
-
         let fields = match value {
-            VrlValue::Object(fields) => fields
-                .into_iter()
-                .map(|(k, v)| (k.into(), encode_value(v)))
-                .collect::<BTreeMap<_, _>>(),
-            _ => BTreeMap::new(),
+            VrlValue::Object(fields) => fields,
+            _ => ObjectMap::new(),
         };
-
-        #[allow(deprecated)]
-        let data = Trace {
-            fields,
-            metadata: Some(encode_value(metadata.value().clone())),
-            metadata_full: Some(metadata.clone().into()),
-        };
-
-        Self { data, metadata }
+        encode_trace_proto(fields, metadata)
     }
 }
 
 impl From<super::OtelMetric> for WithMetadata<Metric> {
     fn from(otel_metric: super::OtelMetric) -> Self {
         let (series, data, metadata) = otel_metric.into_metric_parts();
-        let name = series.name.name;
-        let namespace = series.name.namespace.unwrap_or_default();
-
-        let timestamp = data.time.timestamp.map(|ts| prost_types::Timestamp {
-            seconds: ts.timestamp(),
-            nanos: ts.timestamp_subsec_nanos() as i32,
-        });
-
-        let interval_ms = data.time.interval_ms.map_or(0, std::num::NonZeroU32::get);
-
-        let tags = series.tags.unwrap_or_default();
-
-        let kind = match data.kind {
-            super::MetricKind::Incremental => metric::Kind::Incremental,
-            super::MetricKind::Absolute => metric::Kind::Absolute,
-        }
-        .into();
-
-        let metric = MetricValue::from(data.value);
-
-        let tags_v1 = tags
-            .0
-            .iter()
-            .filter_map(|(tag, values)| {
-                values
-                    .as_single()
-                    .map(|value| (tag.clone(), value.to_string()))
-            })
-            .collect();
-        let tags_v2 = tags
-            .0
-            .into_iter()
-            .map(|(tag, values)| {
-                let values = values
-                    .into_iter()
-                    .map(|value| TagValue {
-                        value: value.into_option(),
-                    })
-                    .collect();
-                (tag, TagValues { values })
-            })
-            .collect();
-
-        #[allow(deprecated)]
-        let data = Metric {
-            name,
-            namespace,
-            timestamp,
-            tags_v1,
-            tags_v2,
-            kind,
-            interval_ms,
-            value: Some(metric),
-            metadata: Some(encode_value(metadata.value().clone())),
-            metadata_full: Some(metadata.clone().into()),
-        };
-
-        Self { data, metadata }
+        encode_metric_proto(series, data, metadata)
     }
 }
 
 impl From<super::TraceEvent> for WithMetadata<Trace> {
     fn from(trace: super::TraceEvent) -> Self {
         let (fields, metadata) = trace.into_parts();
-        let fields = fields
-            .into_iter()
-            .map(|(k, v)| (k.into(), encode_value(v)))
-            .collect::<BTreeMap<_, _>>();
-
-        #[allow(deprecated)]
-        let data = Trace {
-            fields,
-            metadata: Some(encode_value(metadata.value().clone())),
-            metadata_full: Some(metadata.clone().into()),
-        };
-
-        Self { data, metadata }
+        encode_trace_proto(fields, metadata)
     }
 }
 
@@ -552,67 +527,7 @@ impl From<super::MetricValue> for MetricValue {
 impl From<super::Metric> for WithMetadata<Metric> {
     fn from(metric: super::Metric) -> Self {
         let (series, data, metadata) = metric.into_parts();
-        let name = series.name.name;
-        let namespace = series.name.namespace.unwrap_or_default();
-
-        let timestamp = data.time.timestamp.map(|ts| prost_types::Timestamp {
-            seconds: ts.timestamp(),
-            nanos: ts.timestamp_subsec_nanos() as i32,
-        });
-
-        let interval_ms = data.time.interval_ms.map_or(0, std::num::NonZeroU32::get);
-
-        let tags = series.tags.unwrap_or_default();
-
-        let kind = match data.kind {
-            super::MetricKind::Incremental => metric::Kind::Incremental,
-            super::MetricKind::Absolute => metric::Kind::Absolute,
-        }
-        .into();
-
-        let metric = MetricValue::from(data.value);
-
-        // Include the "single" value of the tags in order to be forward-compatible with older
-        // versions of Vector.
-        let tags_v1 = tags
-            .0
-            .iter()
-            .filter_map(|(tag, values)| {
-                values
-                    .as_single()
-                    .map(|value| (tag.clone(), value.to_string()))
-            })
-            .collect();
-        // These are the full tag values.
-        let tags_v2 = tags
-            .0
-            .into_iter()
-            .map(|(tag, values)| {
-                let values = values
-                    .into_iter()
-                    .map(|value| TagValue {
-                        value: value.into_option(),
-                    })
-                    .collect();
-                (tag, TagValues { values })
-            })
-            .collect();
-
-        #[allow(deprecated)]
-        let data = Metric {
-            name,
-            namespace,
-            timestamp,
-            tags_v1,
-            tags_v2,
-            kind,
-            interval_ms,
-            value: Some(metric),
-            metadata: Some(encode_value(metadata.value().clone())),
-            metadata_full: Some(metadata.clone().into()),
-        };
-
-        Self { data, metadata }
+        encode_metric_proto(series, data, metadata)
     }
 }
 
@@ -831,5 +746,86 @@ fn encode_map(fields: ObjectMap) -> ValueMap {
 fn encode_array(items: Vec<super::Value>) -> ValueArray {
     ValueArray {
         items: items.into_iter().map(encode_value).collect(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use prost::Message;
+    use super::*;
+    use crate::event::{LogEvent, Metric, MetricKind, MetricValue, OtelLog, OtelMetric, OtelSpan};
+
+    /// Verify that From<OtelLog> and From<LogEvent> produce identical proto
+    /// bytes for the same logical event. This is critical for disk buffer
+    /// backward compatibility.
+    #[test]
+    fn otel_log_proto_matches_log_event_proto() {
+        let mut log = LogEvent::from("hello world");
+        log.insert("key", "value");
+        log.insert("num", 42);
+
+        // Path A: LogEvent → proto
+        let via_log_event = WithMetadata::<Log>::from(log.clone());
+
+        // Path B: LogEvent → OtelLog → proto
+        let otel = OtelLog::from_log_event(log);
+        let via_otel = WithMetadata::<Log>::from(otel);
+
+        assert_eq!(
+            via_log_event.data.encode_to_vec(),
+            via_otel.data.encode_to_vec(),
+            "OtelLog proto encoding must match LogEvent proto encoding"
+        );
+    }
+
+    /// Verify that From<OtelMetric> and From<Metric> produce identical proto
+    /// bytes for the same logical metric.
+    #[test]
+    fn otel_metric_proto_matches_legacy_metric_proto() {
+        let metric = Metric::new(
+            "test_counter",
+            MetricKind::Incremental,
+            MetricValue::Counter { value: 42.0 },
+        )
+        .with_namespace(Some("ns"))
+        .with_tags(Some(crate::metric_tags!("env" => "prod")));
+
+        // Path A: Metric → proto
+        let via_legacy = WithMetadata::<super::Metric>::from(metric.clone());
+
+        // Path B: Metric → OtelMetric → proto
+        let otel = OtelMetric::from_legacy_metric(metric);
+        let via_otel = WithMetadata::<super::Metric>::from(otel);
+
+        assert_eq!(
+            via_legacy.data.encode_to_vec(),
+            via_otel.data.encode_to_vec(),
+            "OtelMetric proto encoding must match legacy Metric proto encoding"
+        );
+    }
+
+    /// Verify that From<OtelSpan> produces valid proto that round-trips
+    /// through decode. Note: OtelSpan and TraceEvent encode timestamps
+    /// differently (proto Timestamp vs string) so byte equality is not
+    /// expected; we verify structural fields instead.
+    #[test]
+    fn otel_span_proto_encodes_fields_correctly() {
+        let mut log = LogEvent::from("span data");
+        log.insert("trace_id", "abc123");
+
+        let otel_log = OtelLog::from_log_event(log);
+        let otel_span = OtelSpan::from_otel_log(otel_log);
+        let encoded = WithMetadata::<Trace>::from(otel_span);
+
+        // Verify fields are present and non-empty
+        assert!(!encoded.data.fields.is_empty(), "trace fields must not be empty");
+        assert!(encoded.data.fields.contains_key("body"), "must have body field");
+        assert!(encoded.data.fields.contains_key("trace_id"), "must have trace_id field");
+        assert!(encoded.data.metadata_full.is_some(), "must have metadata");
+
+        // Verify proto round-trips through encode/decode
+        let bytes = encoded.data.encode_to_vec();
+        let decoded = Trace::decode(bytes.as_slice()).expect("proto must decode");
+        assert_eq!(decoded.fields.len(), encoded.data.fields.len());
     }
 }

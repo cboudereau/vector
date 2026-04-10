@@ -4,7 +4,7 @@ use std::{
 };
 
 use vector_lib::event::{
-    Event, EventMetadata, Metric, MetricValue, StatisticKind,
+    Event, EventMetadata, Metric, MetricValue, OtelMetric, StatisticKind,
     metric::{Bucket, MetricData, MetricSeries, Sample},
 };
 
@@ -49,6 +49,10 @@ impl<N: MetricNormalize> MetricState<N> {
         }
     }
 
+    pub fn merge_otel(&mut self, otel: OtelMetric) {
+        self.merge(otel.to_legacy_metric())
+    }
+
     pub fn finish(self) -> SplitMetrics {
         let mut latest = self.latest;
 
@@ -70,7 +74,7 @@ impl<N: MetricNormalize> MetricState<N> {
 impl<N: MetricNormalize> Extend<Event> for MetricState<N> {
     fn extend<T: IntoIterator<Item = Event>>(&mut self, iter: T) {
         for event in iter.into_iter() {
-            self.merge(event.into_metric());
+            self.merge_otel(event.into_otel_metric());
         }
     }
 }
@@ -79,7 +83,7 @@ impl<N: MetricNormalize + Default> FromIterator<Event> for MetricState<N> {
     fn from_iter<T: IntoIterator<Item = Event>>(iter: T) -> Self {
         let mut state = MetricState::default();
         for event in iter.into_iter() {
-            state.merge(event.into_metric());
+            state.merge_otel(event.into_otel_metric());
         }
         state
     }

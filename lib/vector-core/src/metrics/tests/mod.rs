@@ -27,11 +27,11 @@ fn test_labels_injection() {
     let metric = super::Controller::get()
         .unwrap()
         .capture_metrics()
-        .map(|e| e.into_metric())
+        .map(|e| e.into_otel_metric())
         .find(|metric| metric.name() == "labels_injected_total")
         .unwrap();
 
-    let expected_tags = Some(
+    let expected_tags: Option<super::super::event::MetricTags> = Some(
         vec![
             ("component_id".to_owned(), "my_component_id".to_owned()),
             ("component_type".to_owned(), "my_component_type".to_owned()),
@@ -41,7 +41,7 @@ fn test_labels_injection() {
         .collect(),
     );
 
-    assert_eq!(metric.tags(), expected_tags.as_ref());
+    assert_eq!(metric.tags(), expected_tags);
 }
 
 #[test]

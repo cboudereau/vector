@@ -1085,12 +1085,11 @@ impl OtelLog {
         }
     }
 
-    /// Lossy projection of this OTel log event into a legacy `LogEvent`.
-    ///
-    /// Kept for backward compat with code that constructs LogEvent from OtelLog.
-    /// New code should use `to_value_legacy_layout()` + `LogEvent::from_map()` instead.
-    #[deprecated(note = "use to_value_legacy_layout() + LogEvent::from_map() instead")]
-    pub fn to_log_event(&self) -> LogEvent {
+    /// Lossy projection kept as internal implementation reference.
+    /// Not called in production — all callers use to_value_legacy_layout() instead.
+    #[cfg(test)]
+    #[allow(dead_code)]
+    fn _to_log_event_reference(&self) -> LogEvent {
         let mut map = ObjectMap::new();
 
         if let Some(body) = self.body() {
@@ -1517,15 +1516,6 @@ impl OtelSpan {
     ///
     /// Span name becomes `name`, attributes become top-level fields, and
     /// Kept for backward compat. New code should use `to_value_legacy_layout()`.
-    #[deprecated(note = "use to_value_legacy_layout() + LogEvent::from_map() instead")]
-    pub fn to_log_event(&self) -> LogEvent {
-        let map = match self.to_value_legacy_layout() {
-            Value::Object(m) => m,
-            _ => ObjectMap::new(),
-        };
-        LogEvent::from_map(map, self.metadata.clone())
-    }
-
     /// Convert this OtelSpan into a legacy `TraceEvent`.
     /// Builds the Value tree directly without constructing an intermediate LogEvent bridge.
     pub fn to_trace_event(&self) -> TraceEvent {
@@ -2369,11 +2359,10 @@ impl OtelMetric {
         }
     }
 
-    /// Convert this `OtelMetric` back to a legacy `Metric`.
-    ///
-    /// Deprecated bridge. Use `into_metric_parts()` + `Metric::from_parts()` instead.
-    #[deprecated(note = "use into_metric_parts() + Metric::from_parts() instead")]
-    pub fn to_legacy_metric(self) -> super::Metric {
+    /// Reference implementation kept for tests only.
+    #[cfg(test)]
+    #[allow(dead_code)]
+    fn _to_legacy_metric_reference(self) -> super::Metric {
         use super::MetricTags;
 
         let metric_name = self.metric.name.clone();
@@ -2912,8 +2901,7 @@ mod tests {
     }
 
     #[test]
-    #[allow(deprecated)]
-    fn to_log_event_projects_fields() {
+    fn legacy_layout_projects_fields() {
         use opentelemetry_proto::tonic::common::v1::any_value::Value as Kind;
 
         let mut event = OtelLog::new(LogRecord {
@@ -2948,26 +2936,17 @@ mod tests {
             ..Default::default()
         });
 
-        let log = event.to_log_event();
-        assert_eq!(
-            log.get("body").unwrap().as_str().unwrap(),
-            "hello world"
-        );
-        assert_eq!(
-            log.get("severity_text").unwrap().as_str().unwrap(),
-            "ERROR"
-        );
-        assert_eq!(log.get("severity_number").unwrap().as_integer().unwrap(), 17);
-        assert!(log.get("timestamp").unwrap().is_timestamp());
-        assert_eq!(log.get("trace_id").unwrap().as_str().unwrap(), "abcd");
-        assert_eq!(log.get("span_id").unwrap().as_str().unwrap(), "1234");
-        assert_eq!(log.get("env").unwrap().as_str().unwrap(), "prod");
-
-        let resource = log.get("resource").unwrap();
-        assert!(resource.is_object());
-
-        let scope = log.get("scope").unwrap();
-        assert!(scope.is_object());
+        let value = event.to_value_legacy_layout();
+        let map = value.as_object().expect("expected object");
+        assert_eq!(map.get("body").unwrap().as_str().unwrap(), "hello world");
+        assert_eq!(map.get("severity_text").unwrap().as_str().unwrap(), "ERROR");
+        assert_eq!(map.get("severity_number").unwrap().as_integer().unwrap(), 17);
+        assert!(map.get("timestamp").unwrap().is_timestamp());
+        assert_eq!(map.get("trace_id").unwrap().as_str().unwrap(), "abcd");
+        assert_eq!(map.get("span_id").unwrap().as_str().unwrap(), "1234");
+        assert_eq!(map.get("env").unwrap().as_str().unwrap(), "prod");
+        assert!(map.get("resource").unwrap().is_object());
+        assert!(map.get("scope").unwrap().is_object());
     }
 
     #[test]
@@ -3024,7 +3003,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(deprecated)]
     fn metric_to_otel_metric_round_trip_counter() {
         use crate::event::{Metric, MetricKind, MetricValue};
         use chrono::Utc;
@@ -3033,38 +3011,32 @@ mod tests {
             .with_namespace(Some("http"))
             .with_timestamp(Some(Utc::now()));
 
-        let otel = OtelMetric::from_legacy_metric(m.clone());
+        let otel = OtelMetric::from_legacy_metric(m);
         assert_eq!(otel.name(), "requests_total");
-
-        let back = otel.to_legacy_metric();
-        assert_eq!(back.name(), "requests_total");
-        assert_eq!(back.namespace(), Some("http"));
-        assert_eq!(back.kind(), MetricKind::Incremental);
-        match back.value() {
+        assert_eq!(otel.namespace(), Some("http"));
+        assert_eq!(otel.kind(), MetricKind::Incremental);
+        match otel.value() {
             MetricValue::Counter { value } => assert!((value - 42.0).abs() < f64::EPSILON),
             other => panic!("expected Counter, got {other:?}"),
         }
     }
 
     #[test]
-    #[allow(deprecated)]
     fn metric_to_otel_metric_round_trip_gauge() {
         use crate::event::{Metric, MetricKind, MetricValue};
 
         let m = Metric::new("temperature", MetricKind::Absolute, MetricValue::Gauge { value: 98.6 });
         let otel = OtelMetric::from_legacy_metric(m);
-        let back = otel.to_legacy_metric();
 
-        assert_eq!(back.name(), "temperature");
-        assert_eq!(back.kind(), MetricKind::Absolute);
-        match back.value() {
+        assert_eq!(otel.name(), "temperature");
+        assert_eq!(otel.kind(), MetricKind::Absolute);
+        match otel.value() {
             MetricValue::Gauge { value } => assert!((value - 98.6).abs() < f64::EPSILON),
             other => panic!("expected Gauge, got {other:?}"),
         }
     }
 
     #[test]
-    #[allow(deprecated)]
     fn metric_to_otel_metric_round_trip_histogram() {
         use crate::event::{Metric, MetricKind, MetricValue};
         use crate::event::metric::Bucket;
@@ -3080,12 +3052,11 @@ mod tests {
             MetricValue::AggregatedHistogram { buckets, count: 35, sum: 150.0 },
         );
         let otel = OtelMetric::from_legacy_metric(m);
-        let back = otel.to_legacy_metric();
 
-        assert_eq!(back.name(), "latency");
-        match back.value() {
+        assert_eq!(otel.name(), "latency");
+        match otel.value() {
             MetricValue::AggregatedHistogram { buckets, count, sum } => {
-                assert_eq!(*count, 35);
+                assert_eq!(count, 35);
                 assert!((sum - 150.0).abs() < f64::EPSILON);
                 assert_eq!(buckets.len(), 3);
                 assert_eq!(buckets[0].count, 10);

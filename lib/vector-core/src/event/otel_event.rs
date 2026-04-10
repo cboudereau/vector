@@ -1087,10 +1087,9 @@ impl OtelLog {
 
     /// Lossy projection of this OTel log event into a legacy `LogEvent`.
     ///
-    /// The body becomes `message`, attributes become top-level fields, and
-    /// resource / scope are preserved as nested objects.  Useful for
-    /// text-oriented serializers (text, logfmt, CSV, GELF, CEF, syslog, etc.)
-    /// that only understand `LogEvent`.
+    /// Kept for backward compat with code that constructs LogEvent from OtelLog.
+    /// New code should use `to_value_legacy_layout()` + `LogEvent::from_map()` instead.
+    #[deprecated(note = "use to_value_legacy_layout() + LogEvent::from_map() instead")]
     pub fn to_log_event(&self) -> LogEvent {
         let mut map = ObjectMap::new();
 
@@ -1517,8 +1516,8 @@ impl OtelSpan {
     /// Lossy projection of this OTel span event into a legacy `LogEvent`.
     ///
     /// Span name becomes `name`, attributes become top-level fields, and
-    /// trace_id/span_id/timestamps/status are included.  Useful for
-    /// `trace_to_log` and text-oriented serializers.
+    /// Kept for backward compat. New code should use `to_value_legacy_layout()`.
+    #[deprecated(note = "use to_value_legacy_layout() + LogEvent::from_map() instead")]
     pub fn to_log_event(&self) -> LogEvent {
         let map = match self.to_value_legacy_layout() {
             Value::Object(m) => m,
@@ -2154,7 +2153,7 @@ impl OtelMetric {
     /// Extract (MetricKind, MetricValue, timestamp, data-point attributes) from proto.
     ///
     /// Single source of truth for metric data interpretation — used by `value()`,
-    /// `kind()`, and `to_legacy_metric()`.
+    /// `kind()`, and `into_metric_parts()`.
     fn extract_metric_data(
         &self,
     ) -> (
@@ -2372,7 +2371,8 @@ impl OtelMetric {
 
     /// Convert this `OtelMetric` back to a legacy `Metric`.
     ///
-    /// Temporary bridge for sinks/transforms that still expect `Event::Metric`.
+    /// Deprecated bridge. Use `into_metric_parts()` + `Metric::from_parts()` instead.
+    #[deprecated(note = "use into_metric_parts() + Metric::from_parts() instead")]
     pub fn to_legacy_metric(self) -> super::Metric {
         use super::MetricTags;
 
@@ -2912,6 +2912,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn to_log_event_projects_fields() {
         use opentelemetry_proto::tonic::common::v1::any_value::Value as Kind;
 
@@ -3023,6 +3024,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn metric_to_otel_metric_round_trip_counter() {
         use crate::event::{Metric, MetricKind, MetricValue};
         use chrono::Utc;
@@ -3045,6 +3047,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn metric_to_otel_metric_round_trip_gauge() {
         use crate::event::{Metric, MetricKind, MetricValue};
 
@@ -3061,6 +3064,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn metric_to_otel_metric_round_trip_histogram() {
         use crate::event::{Metric, MetricKind, MetricValue};
         use crate::event::metric::Bucket;

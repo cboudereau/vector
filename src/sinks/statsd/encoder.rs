@@ -5,7 +5,7 @@ use std::{
 
 use bytes::{BufMut, BytesMut};
 use tokio_util::codec::Encoder;
-use vector_lib::event::{Metric, MetricKind, MetricTags, MetricValue, StatisticKind};
+use vector_lib::event::{MetricKind, MetricTags, MetricValue, OtelMetric, StatisticKind};
 
 use crate::{
     internal_events::StatsdInvalidMetricError,
@@ -39,13 +39,13 @@ impl StatsdEncoder {
     }
 }
 
-impl<'a> Encoder<&'a Metric> for StatsdEncoder {
+impl<'a> Encoder<&'a OtelMetric> for StatsdEncoder {
     type Error = InfallibleIo;
 
-    fn encode(&mut self, metric: &'a Metric, buf: &mut BytesMut) -> Result<(), Self::Error> {
+    fn encode(&mut self, metric: &'a OtelMetric, buf: &mut BytesMut) -> Result<(), Self::Error> {
         let namespace = metric.namespace().or(self.default_namespace.as_deref());
         let name = encode_namespace(namespace, '.', metric.name());
-        let tags = metric.tags().map(encode_tags);
+        let tags = metric.tags().as_ref().map(encode_tags);
 
         match metric.value() {
             MetricValue::Counter { value } => {
@@ -96,9 +96,9 @@ impl<'a> Encoder<&'a Metric> for StatsdEncoder {
                     encode_and_write_single_event(buf, &name, tags.as_deref(), val, "s", None);
                 }
             }
-            _ => {
+            value => {
                 emit!(StatsdInvalidMetricError {
-                    value: metric.value(),
+                    value: &value,
                     kind: metric.kind(),
                 });
 
@@ -154,7 +154,7 @@ fn encode_and_write_single_event<V: Display>(
 #[cfg(test)]
 mod tests {
     #[cfg(feature = "sources-statsd")]
-    use vector_lib::event::{Metric, MetricKind, MetricValue, StatisticKind};
+    use vector_lib::event::{Metric, MetricKind, MetricValue, OtelMetric, StatisticKind};
     use vector_lib::{
         event::{MetricTags, metric::TagValue},
         metric_tags,
@@ -166,11 +166,12 @@ mod tests {
     fn encode_metric(metric: &Metric) -> bytes::BytesMut {
         use tokio_util::codec::Encoder;
 
+        let otel = OtelMetric::from_legacy_metric(metric.clone());
         let mut encoder = super::StatsdEncoder {
             default_namespace: None,
         };
         let mut frame = bytes::BytesMut::new();
-        encoder.encode(metric, &mut frame).unwrap();
+        encoder.encode(&otel, &mut frame).unwrap();
         frame
     }
 

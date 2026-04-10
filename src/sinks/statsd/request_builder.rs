@@ -5,7 +5,7 @@ use tokio_util::codec::Encoder;
 use vector_lib::{
     EstimatedJsonEncodedSizeOf,
     config::telemetry,
-    event::{EventFinalizers, Finalizable, Metric},
+    event::{EventFinalizers, Finalizable, OtelMetric},
     request_metadata::RequestMetadata,
 };
 
@@ -58,7 +58,7 @@ impl Clone for StatsdRequestBuilder {
     }
 }
 
-impl IncrementalRequestBuilder<Vec<Metric>> for StatsdRequestBuilder {
+impl IncrementalRequestBuilder<Vec<OtelMetric>> for StatsdRequestBuilder {
     type Metadata = (EventFinalizers, RequestMetadata);
     type Payload = Vec<u8>;
     type Request = StatsdRequest;
@@ -66,7 +66,7 @@ impl IncrementalRequestBuilder<Vec<Metric>> for StatsdRequestBuilder {
 
     fn encode_events_incremental(
         &mut self,
-        mut input: Vec<Metric>,
+        mut input: Vec<OtelMetric>,
     ) -> Vec<Result<(Self::Metadata, Self::Payload), Self::Error>> {
         let mut results = Vec::new();
         let mut pending = None;

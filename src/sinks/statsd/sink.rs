@@ -17,7 +17,7 @@ use super::{
     batch::StatsdBatchSizer, normalizer::StatsdNormalizer, request_builder::StatsdRequestBuilder,
     service::StatsdRequest,
 };
-use crate::sinks::util::SinkBuilderExt;
+use crate::sinks::util::{SinkBuilderExt, buffer::metrics::MetricNormalizer};
 
 pub(crate) struct StatsdSink<S> {
     service: S,
@@ -49,14 +49,17 @@ where
     }
 
     async fn run_inner(self: Box<Self>, input: BoxStream<'_, Event>) -> Result<(), ()> {
+        let mut normalizer = MetricNormalizer::<StatsdNormalizer>::default();
         input
-            // Convert `Event` to `Metric` so we don't have to deal with constant conversions.
-            .filter_map(|event| ready(event.try_into_metric()))
-            // Converts absolute counters into incremental counters, but otherwise leaves everything
-            // else alone. The encoder will handle the difference in absolute vs incremental for
-            // other metric types in type-specific ways i.e. incremental gauge updates use a
-            // different syntax, etc.
-            .normalized_with_default::<StatsdNormalizer>()
+            // Convert Event to OtelMetric, normalize, and produce OtelMetric stream.
+            .filter_map(move |event| {
+                ready(match event {
+                    Event::Metric(otel) => normalizer
+                        .normalize_otel(otel)
+                        .and_then(|e| e.try_into_otel_metric()),
+                    _ => None,
+                })
+            })
             .batched(self.batch_settings.as_item_size_config(StatsdBatchSizer))
             // We build our requests "incrementally", which means that for a single batch of
             // metrics, we might generate N requests to represent all of the metrics in the batch.

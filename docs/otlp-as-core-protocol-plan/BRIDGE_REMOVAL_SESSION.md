@@ -46,13 +46,14 @@ Four conversion functions that translate between OTel proto structs and legacy V
 | `to_legacy_metric()` | 40 | 13 | **27 (68%)** |
 | **Total** | **115** | **23** | **92 (80%)** |
 
-98 commits, 1789 tests passing.
-Session 2: Rewrites 1–5 done, Rewrite 3 done. 23 bridge calls in code (down
-from 115 original). into_metric_parts() now extracts from proto directly.
-OtelMetric::set_timestamp() added, 3 more prometheus test callers migrated.
-Remaining external: datadog_search (2), docker_logs (1), lua metric (1),
-metric_to_log (2), normalize internal (3). Event method definitions (5)
-have ~55 remaining callers in production sinks/tests.
+101 commits, 1789 tests passing.
+Session 2: All 7 rewrites addressed. 21 bridge calls in code (down from 115).
+DD search migrated to Matcher<OtelLog>. into_metric_parts() proto-native.
+OtelMetric::set_timestamp() added. Stale comment cleaned from json.rs.
+Remaining: docker_logs (1, pervasive stream pipeline), lua metric (1,
+750-line bidirectional API), metric_to_log+ES (2, behavior change),
+normalize internal (3), otel_event.rs definitions+internal (9),
+Event method definitions mod.rs(3)+ref.rs(2) with ~55 sink/test callers.
 
 ### What was done
 
@@ -209,6 +210,10 @@ have ~55 remaining callers in production sinks/tests.
 - **Rewrite 3** ✅ — proto.rs serializes OTel types directly to buffer proto.
   From<OtelLog/OtelSpan/OtelMetric> for WithMetadata<Log/Trace/Metric>.
   6 bridge calls eliminated. No buffer format change.
+- **Rewrite 6 partial** ✅ — DD search changed from Matcher<LogEvent> to
+  Matcher<OtelLog>. 2 to_log_event() calls eliminated.
+- OtelMetric::set_timestamp() added, prometheus exporter tests migrated.
+- OtelMetric::into_metric_parts() rewritten to extract from proto directly.
 
 ### Remaining 23 calls by rewrite task
 
@@ -287,13 +292,14 @@ Blocked by `LogEventMergeState` which only works with LogEvent.
 
 ---
 
-#### Rewrite 6 — Remaining adapters (3 calls, LOW priority — can defer)
+#### Rewrite 6 — Remaining adapters (3 calls, LOW priority) — PARTIAL
 
-**DD search** (2 calls): `Filter<LogEvent>` matcher — DD adapter responsibility.
-Rewrite requires changing the DD search filter infrastructure to work with OtelLog.
+**DD search** (2 calls) ✅: Changed `Matcher<LogEvent>` to `Matcher<OtelLog>`.
+All matchers use `parse_path_and_get_value()` which OtelLog has. Adjusted
+owned-vs-reference patterns for OtelLog returns. 2 bridge calls eliminated.
 
-**Lua metric** (1 call): `LuaMetric` wraps legacy `Metric`. Need either
-`LuaOtelMetric` or make LuaMetric generic over OtelMetric.
+**Lua metric** (1 call): `LuaMetric` wraps legacy `Metric` with bidirectional
+Lua API (750 lines). Needs full rewrite to `LuaOtelMetric`.
 
 ---
 

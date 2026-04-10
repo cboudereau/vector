@@ -1072,3 +1072,205 @@ Sources:
 - [Arroyo SQL engine on DataFusion](https://www.arroyo.dev/blog/why-arrow-and-datafusion/)
 - [Flink SQL streaming](https://www.ververica.com/blog/flink-streaming-sql-ksql-stream-processing)
 - [Netflix streaming SQL in Data Mesh](https://netflixtechblog.com/streaming-sql-in-data-mesh-0d83f5a00d08)
+
+---
+
+## 16. DataFusion from Scratch vs Vector Fork — Build vs Reuse
+
+### 16.1 The question
+
+If DataFusion can handle streaming transforms AND analytical queries, should you build your entire product on DataFusion from scratch instead of forking Vector?
+
+### 16.2 What Vector gives you (~400K LOC of battle-tested infrastructure)
+
+| Component | LOC | What it does | Rebuild difficulty |
+|-----------|-----|-------------|-------------------|
+| **31 sources** | ~75K | OTLP gRPC/HTTP, Kafka, K8s logs, Prometheus scrape, syslog, file tailing, AWS S3/SQS/Kinesis, Docker, journald, etc. | VERY HIGH (31 protocols) |
+| **52 sinks** | ~80K | S3, Elasticsearch, Loki, Prometheus remote_write, Kafka, ClickHouse, Datadog, Splunk, HTTP, etc. | VERY HIGH (52 APIs) |
+| **Buffer/durability** | ~17K | WAL on disk, at-least-once delivery, ack tracking, crash recovery | VERY HIGH |
+| **Topology orchestration** | ~6K | DAG-based pipeline, backpressure propagation, graceful reload, component health | VERY HIGH |
+| **Networking** | ~38K | TLS/mTLS, auth (Basic/Bearer/OAuth/AWS SigV4/OIDC), proxy (HTTP/SOCKS5), compression (gzip/snappy/zstd) | HIGH |
+| **Configuration** | ~16K | YAML/TOML/JSON, env var interpolation, hot reload, validation, schema generation | HIGH |
+| **Internal observability** | ~16K | Per-component metrics, health checks, GraphQL API | MODERATE-HIGH |
+| **Graceful shutdown** | ~9K | Signal handling, drain, coordinated task cancellation | MODERATE |
+| **VRL runtime** | ~1K local + external crate | Full language: compiler, 100+ stdlib functions, type checker, diagnostics | EXTREME |
+| **Codecs** | ~15K | JSON, protobuf, syslog, Apache log, CSV, GELF, native, Arrow IPC, OTLP | HIGH |
+| **TOTAL** | **~400K** | | |
+
+### 16.3 What DataFusion gives you
+
+| Component | What it provides |
+|-----------|-----------------|
+| **SQL query engine** | Parse, plan, optimize, execute SQL on Arrow batches |
+| **Parquet reader/writer** | Native, fast, with predicate pushdown |
+| **Streaming execution** | Unbounded mode for infinite data streams |
+| **UDF support** | Register custom Rust functions callable from SQL |
+| **Memory management** | Per-query limits, spill-to-disk |
+| **Arrow integration** | Zero-copy data interchange |
+| **Table providers** | Pluggable data sources (S3, local files, custom) |
+
+### 16.4 What DataFusion does NOT give you
+
+| You need | DataFusion provides | You must build |
+|----------|-------------------|----------------|
+| OTLP receiver (gRPC + HTTP) | Nothing | tonic gRPC server + proto decoding (~3K LOC minimum) |
+| Network sources (Kafka, syslog, file, K8s) | Nothing | Each source from scratch |
+| Network sinks (S3, Loki, Prometheus, ES) | Parquet writer only | Each sink from scratch |
+| Buffer / WAL / at-least-once | Nothing | Full durability system (~17K LOC) |
+| Backpressure | Nothing | Channel-based flow control |
+| TLS / mTLS / auth | Nothing | openssl integration, auth middleware |
+| Configuration DSL | Nothing | Config loading, validation, hot reload |
+| Graceful shutdown | Nothing | Signal handling, drain coordination |
+| Internal metrics | Nothing | Per-component instrumentation |
+| Event routing (fan-out, filter, route) | WHERE clause only | Multi-output routing logic |
+| Error handling (reroute_dropped) | Query errors | Per-event error routing |
+
+### 16.5 Can DataFusion act as an OTel Agent?
+
+**No.** An OTel Agent needs:
+
+| Agent requirement | DataFusion capability |
+|------------------|----------------------|
+| Run as lightweight sidecar/daemon (~20MB RAM) | DataFusion is a query engine (~100MB+ baseline) |
+| Tail local log files | No file watching capability |
+| Receive OTLP from local apps | No gRPC/HTTP server |
+| Scrape Prometheus endpoints | No HTTP client for scraping |
+| Collect host metrics (CPU, disk, memory) | No system metric access |
+| Forward to gateway with backpressure | No outbound connection management |
+| Survive restarts (disk buffer) | No persistence layer |
+
+DataFusion is designed to **query data**, not **collect data**. Using it as an agent would be like using PostgreSQL as a log collector — technically possible but fundamentally the wrong tool.
+
+### 16.6 Can DataFusion act as an OTel Gateway?
+
+**Partially, with significant effort.** A Gateway needs:
+
+| Gateway requirement | DataFusion capability | Gap |
+|--------------------|----------------------|-----|
+| Receive OTLP from agents | No — need tonic gRPC server | Must build |
+| Transform events | **Yes** — streaming SQL | Works |
+| Route to multiple backends | No — SQL has no "output routing" concept | Must build |
+| Sample / rate-limit | Partial — WHERE clause filters, but no token-bucket rate limiting | Must build |
+| Buffer under load | No durability | Must build |
+| Forward to backends (OTLP, S3, Loki, etc.) | Parquet writer only | Must build sinks |
+| TLS / auth | No | Must build |
+| Backpressure | No | Must build |
+
+You'd end up building ~80% of what Vector already provides, but with SQL transforms instead of VRL. The transform layer is only ~10% of Vector's codebase — the other 90% is infrastructure.
+
+### 16.7 The honest comparison
+
+```
+Option A: Start from DataFusion
+┌──────────────────────────────────────────────────┐
+│  You build:                                       │
+│  ┌──────────────┐  ┌───────────┐  ┌───────────┐  │
+│  │ OTLP receiver│→ │ DataFusion│→ │ Parquet   │  │
+│  │ (build)      │  │ (exists)  │  │ writer    │  │
+│  │              │  │           │  │ (exists)  │  │
+│  │ + TLS        │  │ streaming │  │           │  │
+│  │ + auth       │  │ SQL       │  │ + S3 sink │  │
+│  │ + backpress. │  │ transforms│  │ (build)   │  │
+│  │ + buffers    │  │           │  │           │  │
+│  └──────────────┘  └───────────┘  └───────────┘  │
+│                                                   │
+│  What you get: SQL transforms + SQL queries       │
+│  What you lose: 31 sources, 52 sinks, VRL,        │
+│    durability, backpressure, config, observability │
+│  Time to MVP: 6-12+ months                        │
+│  Risk: HIGH — building infra from scratch          │
+└──────────────────────────────────────────────────┘
+
+Option B: Fork Vector + add DataFusion
+┌──────────────────────────────────────────────────┐
+│  Vector (exists):          You add:               │
+│  ┌──────────────┐  ┌───────────┐  ┌───────────┐  │
+│  │ 31 sources   │→ │ VRL/SQL   │→ │ Parquet   │  │
+│  │ (exists)     │  │ transforms│  │ sink      │  │
+│  │              │  │ (VRL      │  │ (build)   │  │
+│  │ + OTLP       │  │  exists,  │  │           │  │
+│  │ + TLS/auth   │  │  add SQL) │  │ DataFusion│  │
+│  │ + buffers    │  │           │  │ query API │  │
+│  │ + backpress. │  │           │  │ (build)   │  │
+│  └──────────────┘  └───────────┘  └───────────┘  │
+│                                                   │
+│  What you get: EVERYTHING + SQL queries            │
+│  What you build: Parquet sink + query API          │
+│  Time to MVP: 2-4 months                           │
+│  Risk: LOW — building on proven infrastructure     │
+└──────────────────────────────────────────────────┘
+```
+
+### 16.8 What about Arroyo? (DataFusion-based streaming)
+
+Arroyo is a streaming SQL engine built on DataFusion. Could you use Arroyo instead of Vector?
+
+| Arroyo provides | Arroyo lacks |
+|----------------|-------------|
+| Streaming SQL on DataFusion | No OTLP source (Kafka + WebSocket only) |
+| Windowed aggregations | No observability-specific features |
+| Watermarks and late data handling | No Parquet/S3 analytical query mode |
+| Kafka source/sink | No Loki/Tempo/Prometheus API compatibility |
+| Web UI | No durability/WAL for at-least-once |
+
+Arroyo is closer to a Flink alternative than a Vector alternative. It handles the **streaming compute** layer well, but lacks the **observability infrastructure** (OTLP, telemetry-specific parsing, Grafana API compatibility).
+
+### 16.9 The right architecture: Vector for plumbing, DataFusion for brains
+
+The industry pattern is clear:
+
+| Product | Plumbing (I/O, buffers, networking) | Brains (query, analytics) |
+|---------|-------------------------------------|--------------------------|
+| **InfluxDB 3.0** | Custom ingestion layer | DataFusion |
+| **Parseable** | Custom HTTP receiver | DataFusion |
+| **Arroyo** | Custom connectors (Kafka, WebSocket) | DataFusion |
+| **Comet (Spark)** | Apache Spark | DataFusion |
+| **Your product** | **Vector** (exists, proven) | **DataFusion** (add) |
+
+Nobody uses DataFusion for I/O. Everyone uses DataFusion for **query and compute**. The pattern is: let a mature I/O framework handle the plumbing (sources, sinks, buffers, TLS, auth) and plug DataFusion in for the intelligence layer.
+
+### 16.10 Decision matrix
+
+| Criteria | DataFusion from scratch | Vector fork + DataFusion |
+|----------|------------------------|--------------------------|
+| Time to MVP | 6-12+ months | 2-4 months |
+| OTLP support | Must build | Exists (3 signals, gRPC+HTTP) |
+| Sources (Kafka, K8s, syslog, etc.) | Must build each one | 31 exist |
+| Sinks (S3, Loki, Prom, etc.) | Must build each one | 52 exist |
+| Durability / at-least-once | Must build WAL (~17K LOC) | Exists, battle-tested |
+| Backpressure | Must build | Exists, production-grade |
+| TLS / auth | Must build | Exists (mTLS, OAuth, SigV4, etc.) |
+| SQL transforms | Native | Add as new transform type |
+| SQL analytical queries | Native | Add via DataFusion integration |
+| Agent mode | Poor fit (too heavy) | Exists |
+| Gateway mode | Must build routing | Exists |
+| Backend mode | Good fit | Add storage + query layer |
+| Code ownership (no CLA) | 100% yours | Your new files are yours; Vector files are MPL-2.0 |
+| Technical debt | None (fresh start) | Inherit Vector's codebase |
+| Community / ecosystem | Start from zero | Leverage Vector's ecosystem |
+| License cleanliness | Apache-2.0 (DataFusion) | MPL-2.0 (Vector) + your license (new files) |
+
+### 16.11 Recommendation
+
+**Fork Vector. Add DataFusion for the backend layer.**
+
+DataFusion is the right choice for:
+- The query engine (SQL over Parquet)
+- Streaming SQL transforms (as a new transform type alongside VRL)
+- Memory-managed analytical processing
+
+DataFusion is the wrong choice for:
+- Data collection (agent)
+- Network I/O (sources, sinks)
+- Durability (buffers, WAL)
+- Pipeline orchestration (backpressure, routing, fan-out)
+
+The 90% of Vector you'd be throwing away by starting fresh is the **hardest, most boring, most time-consuming infrastructure to rebuild** — and it has nothing to do with VRL or transforms. It's networking, buffers, auth, config, shutdown, and integrations. That's 400K LOC of production-grade Rust you'd be rewriting.
+
+**The winning architecture is: Vector handles the I/O, DataFusion handles the intelligence.**
+
+Sources:
+- [InfluxDB 3.0 on DataFusion](https://www.influxdata.com/blog/7-datafusion-projects-influxdb/)
+- [Arroyo SQL engine on DataFusion](https://www.arroyo.dev/blog/why-arrow-and-datafusion/)
+- [DataFusion as streaming framework](https://www.streamingdata.tech/p/exploring-apache-datafusion-streaming-framework)
+- [DataFusion documentation](https://datafusion.apache.org/user-guide/introduction.html)

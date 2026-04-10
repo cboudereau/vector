@@ -46,14 +46,11 @@ Four conversion functions that translate between OTel proto structs and legacy V
 | `to_legacy_metric()` | 40 | 13 | **27 (68%)** |
 | **Total** | **115** | **23** | **92 (80%)** |
 
-132 commits, 1789 tests passing.
-Session 2: Bridge calls down to **9** (from 115 original, **92% eliminated**).
-All production sink callers migrated. Event bridge methods deprecated and
-rewritten to use into_metric_parts(). normalize.rs bridge-free.
-
-Remaining 9:
-- otel_event.rs (5): doc comment (1) + test round-trips (3) + test (1)
-- Production (4): lua metric (1), metric_to_log (1), ES metric (1), docker_logs (1)
+136 commits, 1789 tests passing.
+Session 2: Bridge calls down to **5** (from 115 original, **96% eliminated**).
+**ALL production bridge calls eliminated.** Only bridge method definitions
+and their tests remain in otel_event.rs (doc comment + 4 test round-trips).
+Event bridge methods deprecated. normalize.rs bridge-free. All 10 sinks migrated.
 
 ### What was done
 

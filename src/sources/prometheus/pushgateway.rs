@@ -262,9 +262,11 @@ mod test {
         },
     };
 
-    #[allow(deprecated)]
     fn events_to_metrics(events: Vec<Event>) -> Vec<Metric> {
-        events.into_iter().map(Event::into_metric).collect()
+        events.into_iter().map(|e| {
+            let (s, d, md) = e.into_otel_metric().into_metric_parts();
+            Metric::from_parts(s, d, md)
+        }).collect()
     }
 
     #[test]

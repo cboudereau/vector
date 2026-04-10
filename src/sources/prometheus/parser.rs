@@ -245,11 +245,13 @@ mod test {
             .expect("invalid timestamp")
     });
 
-    #[allow(deprecated)]
     fn events_to_metrics(
         events: Result<Vec<Event>, ParserError>,
     ) -> Result<Vec<Metric>, ParserError> {
-        events.map(|events| events.into_iter().map(Event::into_metric).collect())
+        events.map(|events| events.into_iter().map(|e| {
+            let (s, d, md) = e.into_otel_metric().into_metric_parts();
+            Metric::from_parts(s, d, md)
+        }).collect())
     }
 
     #[test]

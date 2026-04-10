@@ -52,10 +52,10 @@ fn test_cardinality_metric() {
         let metric = super::Controller::get()
             .unwrap()
             .capture_metrics()
-            .map(Event::into_metric)
+            .map(|e| e.into_otel_metric())
             .find(|metric| metric.name() == super::CARDINALITY_KEY_NAME)
             .unwrap();
-        match metric.data.value {
+        match metric.value() {
             crate::event::MetricValue::Counter { value } => value,
             _ => panic!("invalid metric value type, expected counter, got something else"),
         }

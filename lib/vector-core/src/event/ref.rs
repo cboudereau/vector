@@ -3,7 +3,7 @@
 use vector_common::EventDataEq;
 
 use super::{
-    Event, EventMetadata, Metric, OtelLog, OtelMetric, OtelSpan,
+    Event, EventMetadata, OtelLog, OtelMetric, OtelSpan,
 };
 
 /// A wrapper for references to inner event types, where reconstituting
@@ -67,13 +67,6 @@ impl<'a> EventRef<'a> {
         }
     }
 
-    /// Convert this reference into a legacy `Metric` (deprecated).
-    #[deprecated(note = "use into_otel_metric() instead")]
-    #[allow(deprecated)]
-    pub fn into_metric(self) -> Metric {
-        let (series, data, metadata) = self.into_otel_metric().into_metric_parts();
-        Metric::from_parts(series, data, metadata)
-    }
 }
 
 impl<'a> From<&'a Event> for EventRef<'a> {
@@ -175,14 +168,6 @@ impl<'a> EventMutRef<'a> {
             Self::Metric(metric) => metric.clone(),
             _ => panic!("Failed type coercion, {self:?} is not a metric reference"),
         }
-    }
-
-    /// Convert this reference into a legacy `Metric` (deprecated).
-    #[deprecated(note = "use into_otel_metric() instead")]
-    #[allow(deprecated)]
-    pub fn into_metric(self) -> Metric {
-        let (series, data, metadata) = self.into_otel_metric().into_metric_parts();
-        Metric::from_parts(series, data, metadata)
     }
 
     /// Access the metadata in this reference.

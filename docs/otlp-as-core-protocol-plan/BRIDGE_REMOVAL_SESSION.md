@@ -57,7 +57,13 @@ Session 2 COMPLETE: **ALL OTel→Legacy bridge code deleted** (~250 lines).
 - normalize.rs bridge-free, `to_value_legacy_layout()` public
 - 115 → 0 bridge callers (100% eliminated)
 
+Remaining forward direction: 124 `from_log_event`/`from_legacy_metric` calls.
+- ~9 production: Event::from impls (2), apply_value_legacy_layout (3),
+  method definitions (2), influxdb decoder (1), discriminant definition (1)
+- ~115 test: constructing events via legacy types for convenience
 Next: LEGACY_REMOVAL_PLAN Phase A (VRL migration rules) + Phase E (type deletion).
+Phase E requires: sources emit OTel directly, VRL write-back without
+from_log_event round-trip, OtelMetric convenience constructors for tests.
 
 ### What was done
 

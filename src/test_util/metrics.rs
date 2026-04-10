@@ -50,7 +50,8 @@ impl<N: MetricNormalize> MetricState<N> {
     }
 
     pub fn merge_otel(&mut self, otel: OtelMetric) {
-        self.merge(otel.to_legacy_metric())
+        let (series, data, metadata) = otel.into_metric_parts();
+        self.merge(Metric::from_parts(series, data, metadata))
     }
 
     pub fn finish(self) -> SplitMetrics {

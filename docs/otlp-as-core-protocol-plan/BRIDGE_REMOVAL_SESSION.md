@@ -46,17 +46,14 @@ Four conversion functions that translate between OTel proto structs and legacy V
 | `to_legacy_metric()` | 40 | 13 | **27 (68%)** |
 | **Total** | **115** | **23** | **92 (80%)** |
 
-122 commits, 1789 tests passing.
-Session 2: All 7 rewrites addressed. **5 production sinks migrated** to
-OtelMetric (StatsD, Splunk HEC metrics, GCP Stackdriver, GreptimeDB,
-New Relic). 72 test callers migrated. Code review fixes applied.
+126 commits, 1789 tests passing.
+Session 2: **ALL Event bridge method callers eliminated** (to_metric,
+into_metric, try_into_metric — ZERO callers in codebase). All 10 production
+sinks migrated. 72 test callers migrated. normalize.rs bridge-free.
 
-Remaining Event method callers: **5** production sinks
-- Old-style MetricsBuffer+EncodedEvent pattern: influxdb, sematext, cloudwatch
-- Shared Prometheus collector infra: exporter, remote_write
-
-Remaining to_log_event/to_legacy_metric: **17**
-- Definitions (5), normalize internal (3), tests (4), doc (1)
+Remaining to_log_event/to_legacy_metric: **14**
+- Definitions only: mod.rs (3) + ref.rs (2) — can be removed now
+- Internal/tests: otel_event.rs (5) — definitions + test round-trips
 - Production (4): docker_logs, ES metric, metric_to_log, lua
 
 ### What was done

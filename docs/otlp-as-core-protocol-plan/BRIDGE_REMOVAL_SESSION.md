@@ -46,11 +46,17 @@ Four conversion functions that translate between OTel proto structs and legacy V
 | `to_legacy_metric()` | 40 | 13 | **27 (68%)** |
 | **Total** | **115** | **23** | **92 (80%)** |
 
-136 commits, 1789 tests passing.
-Session 2: Bridge calls down to **5** (from 115 original, **96% eliminated**).
-**ALL production bridge calls eliminated.** Only bridge method definitions
-and their tests remain in otel_event.rs (doc comment + 4 test round-trips).
-Event bridge methods deprecated. normalize.rs bridge-free. All 10 sinks migrated.
+140 commits, 1789 tests passing.
+Session 2 COMPLETE: Bridge calls down to **5** (from 115, **96% eliminated**).
+**ALL production bridge calls eliminated.** All bridge methods deprecated:
+- `to_log_event()`, `to_legacy_metric()` on OtelLog/OtelSpan/OtelMetric
+- `to_metric()`, `into_metric()`, `try_into_metric()` on Event/EventRef/EventMutRef
+All 10 metric sinks migrated to OtelMetric pipelines.
+normalize.rs bridge-free. 72+ test callers migrated.
+`to_value_legacy_layout()` now public.
+
+Remaining 5 occurrences: otel_event.rs definitions + round-trip tests only.
+Next: LEGACY_REMOVAL_PLAN Phase A (VRL migration rules) + Phase E (type deletion).
 
 ### What was done
 

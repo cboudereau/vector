@@ -62,39 +62,19 @@ impl From<EventArray> for array::EventArray {
         let events = events.events.unwrap();
 
         match events {
-            event_array::Events::Logs(logs) => {
-                array::EventArray::Logs(
-                    logs.logs
-                        .into_iter()
-                        .map(|proto| {
-                            let log: super::LogEvent = proto.into();
-                            let (value, metadata) = log.into_parts();
-                            super::OtelLog::from_value_map(value, metadata)
-                        })
-                        .collect(),
-                )
-            }
-            event_array::Events::Metrics(metrics) => {
-                array::EventArray::Metrics(
-                    metrics
-                        .metrics
-                        .into_iter()
-                        .map(|proto| super::OtelMetric::from_legacy_metric(proto.into()))
-                        .collect(),
-                )
-            }
-            event_array::Events::Traces(traces) => {
-                array::EventArray::Traces(
-                    traces
-                        .traces
-                        .into_iter()
-                        .map(|proto| {
-                            let te: super::TraceEvent = proto.into();
-                            super::OtelSpan::from_trace_event(te)
-                        })
-                        .collect(),
-                )
-            }
+            event_array::Events::Logs(logs) => array::EventArray::Logs(
+                logs.logs.into_iter().map(super::OtelLog::from).collect(),
+            ),
+            event_array::Events::Metrics(metrics) => array::EventArray::Metrics(
+                metrics
+                    .metrics
+                    .into_iter()
+                    .map(|proto| super::OtelMetric::from_legacy_metric(proto.into()))
+                    .collect(),
+            ),
+            event_array::Events::Traces(traces) => array::EventArray::Traces(
+                traces.traces.into_iter().map(super::OtelSpan::from).collect(),
+            ),
         }
     }
 }
@@ -123,55 +103,54 @@ impl From<Trace> for Event {
     }
 }
 
-impl From<Log> for super::LogEvent {
+/// Decode proto metadata into `EventMetadata`, supporting both the current
+/// `metadata_full` field and the deprecated `metadata` field for
+/// backwards-compatible disk buffer reads.
+fn decode_proto_metadata(
+    metadata_full: Option<Metadata>,
+    metadata: Option<Value>,
+) -> EventMetadata {
+    #[allow(deprecated)]
+    metadata_full
+        .map(Into::into)
+        .or_else(|| {
+            metadata
+                .and_then(decode_value)
+                .map(EventMetadata::default_with_value)
+        })
+        .unwrap_or_default()
+}
+
+impl From<Log> for super::OtelLog {
     fn from(log: Log) -> Self {
         #[allow(deprecated)]
-        let metadata = log
-            .metadata_full
-            .map(Into::into)
-            .or_else(|| {
-                log.metadata
-                    .and_then(decode_value)
-                    .map(EventMetadata::default_with_value)
-            })
-            .unwrap_or_default();
-
-        if let Some(value) = log.value {
-            Self::from_parts(decode_value(value).unwrap_or(VrlValue::Null), metadata)
+        let metadata = decode_proto_metadata(log.metadata_full, log.metadata);
+        let value = if let Some(v) = log.value {
+            decode_value(v).unwrap_or(VrlValue::Null)
         } else {
-            // This is for backwards compatibility. Only `value` should be set
+            // Backwards compat: only `value` should be set; fall back to
+            // decoding the flat `fields` map produced by older disk buffers.
             let fields = log
                 .fields
                 .into_iter()
                 .filter_map(|(k, v)| decode_value(v).map(|value| (k.into(), value)))
                 .collect::<ObjectMap>();
-
-            Self::from_map(fields, metadata)
-        }
+            VrlValue::Object(fields)
+        };
+        super::OtelLog::from_value_map(value, metadata)
     }
 }
 
-impl From<Trace> for super::TraceEvent {
+impl From<Trace> for super::OtelSpan {
     fn from(trace: Trace) -> Self {
         #[allow(deprecated)]
-        let metadata = trace
-            .metadata_full
-            .map(Into::into)
-            .or_else(|| {
-                trace
-                    .metadata
-                    .and_then(decode_value)
-                    .map(EventMetadata::default_with_value)
-            })
-            .unwrap_or_default();
-
+        let metadata = decode_proto_metadata(trace.metadata_full, trace.metadata);
         let fields = trace
             .fields
             .into_iter()
             .filter_map(|(k, v)| decode_value(v).map(|value| (k.into(), value)))
             .collect::<ObjectMap>();
-
-        Self::from(super::LogEvent::from_map(fields, metadata))
+        super::OtelSpan::from_value_map(VrlValue::Object(fields), metadata)
     }
 }
 
@@ -299,22 +278,12 @@ impl From<Metric> for super::Metric {
 
 impl From<EventWrapper> for super::Event {
     fn from(proto: EventWrapper) -> Self {
-        let event = proto.event.unwrap();
-
-        match event {
-            Event::Log(proto) => {
-                let log_event: super::LogEvent = proto.into();
-                let (value, metadata) = log_event.into_parts();
-                super::Event::Log(super::OtelLog::from_value_map(value, metadata))
-            }
+        match proto.event.unwrap() {
+            Event::Log(proto) => super::Event::Log(proto.into()),
             Event::Metric(proto) => {
-                let metric: super::Metric = proto.into();
-                super::Event::Metric(super::OtelMetric::from_legacy_metric(metric))
+                super::Event::Metric(super::OtelMetric::from_legacy_metric(proto.into()))
             }
-            Event::Trace(proto) => {
-                let trace: super::TraceEvent = proto.into();
-                super::Event::Trace(super::OtelSpan::from_trace_event(trace))
-            }
+            Event::Trace(proto) => super::Event::Trace(proto.into()),
         }
     }
 }

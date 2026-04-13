@@ -1214,19 +1214,27 @@ impl OtelSpan {
 
     /// Convert a legacy `TraceEvent` into an `OtelSpan`.
     ///
-    /// Routes native span fields (name, trace_id, span_id, parent_span_id,
-    /// start/end times, kind, status) into their proto slots; everything
-    /// else becomes `span.attributes`. See `apply_value_legacy_layout` for
-    /// the full routing contract.
+    /// Thin wrapper over `from_value_map`/`apply_value_legacy_layout` — see
+    /// that method for the full field-routing contract.
     pub fn from_trace_event(trace: super::TraceEvent) -> Self {
         let (map, metadata) = trace.into_parts();
+        Self::from_value_map(Value::Object(map), metadata)
+    }
+
+    /// Construct an `OtelSpan` from a legacy-layout Value + metadata.
+    ///
+    /// Routes native span fields (`name`, `trace_id`, `span_id`,
+    /// `parent_span_id`, `start_time`/`end_time`, `kind`, `status`) into
+    /// their proto slots; everything else becomes `span.attributes`. See
+    /// `apply_value_legacy_layout` for the full routing contract.
+    pub fn from_value_map(value: Value, metadata: EventMetadata) -> Self {
         let mut out = Self {
             span: Span::default(),
             resource: None,
             scope: None,
             metadata,
         };
-        out.apply_value_legacy_layout(Value::Object(map));
+        out.apply_value_legacy_layout(value);
         out
     }
 

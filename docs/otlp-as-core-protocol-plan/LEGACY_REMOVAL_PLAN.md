@@ -43,21 +43,27 @@ that still produce legacy types are migrated (out of scope for bridge
 removal; tracked separately under "Source emission" in
 `CONSOLIDATED_MIGRATION_PLAN.md`).
 
-| Function | Callers (approx) | Role |
-|----------|------------------|------|
-| `OtelLog::from_log_event(LogEvent)` | 18 (13 tests, 5 prod) | `Event::from(LogEvent)`, disk buffer, amqp sink |
-| `OtelLog::from_value_map(Value, meta)` | 9 prod | Direct Value-tree construction at I/O (preferred over `from_log_event`) |
-| `OtelSpan::from_trace_event(TraceEvent)` | 6 | `Event::from(TraceEvent)`, disk buffer |
-| `OtelMetric::from_legacy_metric(Metric)` | ~72 (mostly tests) | `Event::from(Metric)`, legacy-API test convenience, prometheus remote_write transitional shim |
+Accurate caller inventory (2026-04-13 audit):
 
-Of the 72 `from_legacy_metric` calls, only **~5 are production**:
-- `src/transforms/aws_ec2_metadata.rs` (2) — test assertions comparing
-  legacy and OTel metrics
-- `src/sinks/prometheus/remote_write/sink.rs:233` — `TODO(otlp-migration)`
-  pending BatchedMetrics/MetricRef migration
-- `src/sinks/greptimedb/metrics/request_builder.rs` (4) — test inputs
-- `src/sinks/statsd/encoder.rs:169` — test assertion
-- `lib/vector-core/src/event/mod.rs:522` — `Event::from(Metric)` impl
+| Function | Call sites | Role |
+|----------|------------|------|
+| `OtelLog::from_log_event(LogEvent)` | 20 | 17 in test modules, 1 in `Event::from(LogEvent)` impl (permanent bridge), 1 definition + doc, 1 `From<Log>` production path now migrated away |
+| `OtelLog::from_value_map(Value, meta)` | 10 | Direct Value-tree construction at I/O — preferred entry point |
+| `OtelSpan::from_trace_event(TraceEvent)` | 2 | Definition + `Event::from(TraceEvent)` impl |
+| `OtelSpan::from_value_map(Value, meta)` | 2 | Direct Value-tree construction — new as of this session |
+| `OtelMetric::from_legacy_metric(Metric)` | ~72 | ~67 in test modules; `Event::from(Metric)` impl; `prometheus remote_write` (TODO, blocked on BatchedMetrics migration) |
+
+**All actively-called non-bridge production uses are gone.** The remaining
+callers are either:
+- Tests that construct test inputs via the ergonomic legacy API
+- The three `Event::from(LogEvent/Metric/TraceEvent)` bridge impls
+  (permanent until source emission goes native OTel)
+- `prometheus/remote_write/sink.rs` — already marked `TODO(otlp-migration)`,
+  blocked on `MetricRef`/`BatchedMetrics` migration
+
+The previous version of this plan claimed "~5 production callers"; that
+count was wrong. On close inspection all sites are either test modules
+(`#[cfg(test)]`, `mod tests`) or bridge `impl From<...>` definitions.
 
 ### Legacy types — still defined, usage shrinking
 
@@ -70,9 +76,12 @@ Of the 72 `from_legacy_metric` calls, only **~5 are production**:
 
 `LogEvent` is the widest-remaining legacy type. Removal requires:
 1. Replacing `VrlTarget::Log(LogEvent)` with direct `OtelLog` mutation
-   (VRL_OTEL_NATIVE_TARGETS.md Phase 2 — deferred)
-2. Migrating 5 production `from_log_event` call sites to `from_value_map`
-   (mechanical — see "Next targets" below)
+   (VRL_OTEL_NATIVE_TARGETS.md Phase 2 — deferred, large VRL change)
+2. Removing the `From<LogEvent>` / `From<TraceEvent>` / `From<Metric>`
+   bridge impls — blocked on all sources/transforms/codecs that still
+   emit legacy types being migrated to direct OTel construction
+3. Deleting `lua/log.rs`, `lua/event.rs` Lua adapters (only non-proto
+   places that still construct `LogEvent` directly)
 
 ### VRL aliases / paths
 
@@ -114,6 +123,14 @@ see `VRL_MIGRATION_TOOL.md`) should rewrite before being removed.
    — `TODO(otlp-migration)` marker added; blocked on
    BatchedMetrics/MetricRef migration. Not easily fixable in isolation.
 
+7. **Proto disk-buffer decode went through LogEvent/TraceEvent**
+   (FIXED this session) — `From<EventWrapper> for Event` no longer
+   constructs intermediate LogEvent/TraceEvent. `impl From<Log> for
+   OtelLog` and `impl From<Trace> for OtelSpan` decode proto fields
+   straight into OTel types. Removed ~50 lines including the now-unused
+   `From<Log> for LogEvent` and `From<Trace> for TraceEvent` impls.
+   Shared `decode_proto_metadata` helper replaces duplicated decoding.
+
 ## Remaining phases
 
 - **A — VRL migration tool rules**: Rewrite rules to transform user VRL
@@ -149,15 +166,18 @@ see `VRL_MIGRATION_TOOL.md`) should rewrite before being removed.
 
 ## Next concrete targets (ordered)
 
-1. **Migrate 5 production `from_log_event` callers to `from_value_map`**
-   (mechanical): `src/sinks/amqp/config.rs`, 2 × `proto.rs`,
-   `event/mod.rs:528`, `event/array.rs:336` (test arbitrary).
-2. **Deprecate `from_log_event`** (keep impl as thin wrapper), update doc
-   to steer new code to `from_value_map`.
-3. **VRL migration tool MVP** (Phase A) — at least `LOG-01`/`MET-06`/`MET-07`
-   rules compile and rewrite real programs.
-4. **Remove OtelSpan `to_log_event`-style fallbacks**
-   in `trace_to_log.rs` after verifying `from_value_map` covers the path.
+1. **VRL migration tool MVP** (Phase A) — at least `LOG-01`/`MET-06`/`MET-07`
+   rules compile and rewrite real programs. **This is the single blocking
+   item for further bridge removal.**
+2. **Audit `lua/log.rs` and `lua/event.rs`** — last non-proto sites that
+   construct `LogEvent` directly. Decide whether to migrate the Lua
+   adapters to OtelLog or deprecate the V1 Lua transform.
+3. **`Metric::from_parts`/`into_parts` normalizer path** — `MetricSet`,
+   `BatchedMetrics`, `MetricRef` still use legacy `Metric` as the
+   normalization key. Migrating to a native OtelMetric `MetricSet` would
+   remove the biggest remaining legacy footprint in the hot path.
+4. **`VrlTarget::Log(LogEvent)` → `VrlTarget::OtelLog`** — largest
+   single change, gated on Phase A + stable OtelLog VRL semantics.
 
 ## Verification
 

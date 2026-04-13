@@ -131,6 +131,19 @@ see `VRL_MIGRATION_TOOL.md`) should rewrite before being removed.
    `From<Log> for LogEvent` and `From<Trace> for TraceEvent` impls.
    Shared `decode_proto_metadata` helper replaces duplicated decoding.
 
+8. **Pre-1970 span timestamps silently wrapped to huge u64 values**
+   (FIXED this session) — `OtelSpan::apply_value_legacy_layout` cast
+   negative i64 nanos directly to u64. Now rejects negative values and
+   preserves the original as an attribute. Covered by
+   `otel_span_pre_epoch_timestamp_preserved_as_attribute`.
+
+9. **Lua adapter still constructed LogEvent** (FIXED this session)
+   — `lua/event.rs` `FromLua for Event` now builds `OtelLog` directly
+   via `from_value_map(Value::from_lua(...), EventMetadata::default())`.
+   Deleted `lua/log.rs` entirely (80 lines, zero external callers).
+   This removes the last non-proto, non-bridge-impl production site
+   that constructed `LogEvent`.
+
 ## Remaining phases
 
 - **A — VRL migration tool rules**: Rewrite rules to transform user VRL
@@ -169,15 +182,15 @@ see `VRL_MIGRATION_TOOL.md`) should rewrite before being removed.
 1. **VRL migration tool MVP** (Phase A) — at least `LOG-01`/`MET-06`/`MET-07`
    rules compile and rewrite real programs. **This is the single blocking
    item for further bridge removal.**
-2. **Audit `lua/log.rs` and `lua/event.rs`** — last non-proto sites that
-   construct `LogEvent` directly. Decide whether to migrate the Lua
-   adapters to OtelLog or deprecate the V1 Lua transform.
-3. **`Metric::from_parts`/`into_parts` normalizer path** — `MetricSet`,
+2. **`Metric::from_parts`/`into_parts` normalizer path** — `MetricSet`,
    `BatchedMetrics`, `MetricRef` still use legacy `Metric` as the
    normalization key. Migrating to a native OtelMetric `MetricSet` would
    remove the biggest remaining legacy footprint in the hot path.
-4. **`VrlTarget::Log(LogEvent)` → `VrlTarget::OtelLog`** — largest
+3. **`VrlTarget::Log(LogEvent)` → `VrlTarget::OtelLog`** — largest
    single change, gated on Phase A + stable OtelLog VRL semantics.
+4. **Audit remaining `LogEvent` use sites in sources/codecs**
+   — ~14 files import `LogEvent`. Each is a candidate to decode straight
+   into `OtelLog` via `from_value_map`.
 
 ## Verification
 

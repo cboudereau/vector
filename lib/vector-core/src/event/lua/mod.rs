@@ -1,6 +1,6 @@
+/// Implementations of `IntoLua` / `FromLua` for Vector event types
+/// (`Event`, `Metric`). `OtelLog` exposes its underlying `Value` tree for
+/// Lua interop via `event::LuaEvent`.
 pub mod event;
-/// This module contains implementations of `ToLua` and `FromLua` traits for
-/// Vector data types
-pub mod log;
 pub mod metric;
 pub mod util;

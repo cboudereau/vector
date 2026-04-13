@@ -1,7 +1,8 @@
 use mlua::prelude::*;
+use vrl::value::Value;
 
 use super::{
-    super::{Event, LogEvent, Metric},
+    super::{Event, EventMetadata, Metric, OtelLog},
     metric::LuaMetric,
 };
 
@@ -55,8 +56,13 @@ impl FromLua for Event {
         };
         match (table.raw_get("log")?, table.raw_get("metric")?) {
             (LuaValue::Table(log), LuaValue::Nil) => {
-                let log_event = LogEvent::from_lua(LuaValue::Table(log), lua)?;
-                Ok(Event::from(log_event))
+                // Construct OtelLog directly from the Lua-decoded Value tree,
+                // bypassing the LogEvent intermediate.
+                let value = Value::from_lua(LuaValue::Table(log), lua)?;
+                Ok(Event::Log(OtelLog::from_value_map(
+                    value,
+                    EventMetadata::default(),
+                )))
             }
             (LuaValue::Nil, LuaValue::Table(metric)) => {
                 let metric = Metric::from_lua(LuaValue::Table(metric), lua)?;
@@ -104,8 +110,11 @@ mod test {
 
     #[test]
     fn into_lua_log() {
-        let mut event = LogEvent::default();
-        event.insert("field", "value");
+        // Build an OtelLog by round-tripping through Lua FromLua — this
+        // exercises the production path (Value tree → OtelLog) without
+        // requiring a LogEvent intermediate.
+        let lua_event = r#"{ log = { field = "value" } }"#;
+        let event = Lua::new().load(lua_event).eval::<Event>().unwrap();
 
         let assertions = vec![
             "type(event) == 'table'",
@@ -114,7 +123,7 @@ mod test {
             "event.log.field == 'value'",
         ];
 
-        assert_event(event.into(), assertions);
+        assert_event(event, assertions);
     }
 
     #[test]

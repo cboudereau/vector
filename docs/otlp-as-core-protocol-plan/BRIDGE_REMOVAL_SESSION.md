@@ -432,36 +432,32 @@ Needs a full transform rewrite to work with OtelMetric proto directly.
 
 ## Code review follow-ups (2026-04-13)
 
-A full code review was run against `0154497..HEAD` (60+ commits). Critical
-findings below. None are regressions introduced in this session — they are
-pre-existing asymmetries faithfully preserved by `apply_value_legacy_layout`,
-which now needs explicit test coverage so Phase E does not forget them.
+A full code review was run against `0154497..HEAD` (60+ commits). The
+initial findings listed three preserved asymmetries (severity/trace_id/
+span_id dropped on round-trip, OtelSpan fields dropped on round-trip,
+`with_tags` dropping multi-value tags). **All three have since been fixed
+and are no longer gaps.**
 
-### Known gaps — preserved asymmetries (Phase E candidates)
+### Fixes shipped
 
-**1. `OtelLog` severity/trace_id/span_id lost on `insert()` round-trip**
-`to_value_legacy_layout` exports `severity_text`/`severity_number`/`trace_id`/
-`span_id` from proto fields (lines 788–793, 821–826 in `otel_event.rs`).
-`apply_value_legacy_layout` (line 903) sweeps them into `record.attributes`
-as plain `KeyValue` entries — matches `from_log_event` (line 375), so not a
-regression, but a lossy round-trip when starting from proto-native data.
-→ Add ignored tests (`insert_preserves_severity_text`,
-`insert_preserves_trace_id`, `insert_preserves_span_id`) documenting the
-gap and asserting ideal behavior.
+**1. `OtelLog` severity/trace_id/span_id round-trip — FIXED**
+`apply_value_legacy_layout` now extracts `severity_text` (Bytes →
+String), `severity_number` (Integer), `trace_id` / `span_id` (hex-decoded
+→ Vec<u8>) into their native `LogRecord` slots. Malformed hex falls back
+to attribute storage so no data is dropped. `from_log_event` now delegates
+to `apply_value_legacy_layout` via `from_value_map` so both paths share
+one implementation. Previously-ignored tests now pass as regular tests.
 
-**2. `OtelSpan::apply_value_legacy_layout` drops all span-native fields**
-Sets only `span.attributes`, discards `trace_id`/`span_id`/`parent_span_id`/
-`name`/`kind`/start/end/status on every `insert()`. Mirrors `from_trace_event`
-(line 1214), same asymmetry story as above but ~10 fields instead of 4.
-→ Add ignored round-trip test documenting the gap.
+**2. `OtelSpan::apply_value_legacy_layout` — FIXED**
+Extracts `name`, `trace_id`, `span_id`, `parent_span_id`, `start_time` /
+`end_time` (Value::Timestamp → nanos), `kind`, `status` (nested
+`code`/`message` sub-object). `from_trace_event` now delegates to the
+same routine.
 
-**3. `OtelMetric::with_tags` silently drops multi-value tags**
-Builder uses `MetricTags::iter_single()`, which returns only the last value
-for each key. `from_legacy_metric` preserves all values (one `KeyValue`
-per value). `multi_value_tags_yaml` test in `log_to_metric.rs` is already
-`#[ignore]`'d because of this.
-→ Extend `with_tags` to iterate all values, OR add a `debug_assert!` + log
-warning when fed multi-value input so the loss isn't silent.
+**3. `OtelMetric::with_tags` multi-value — FIXED**
+Iterates via `iter_sets()` like `from_legacy_metric`; emits `StringValue`
+or `ArrayValue` per key. Covered by `with_tags_preserves_multi_value`
+test.
 
 ### Misleading doc comments
 

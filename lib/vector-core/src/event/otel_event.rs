@@ -83,6 +83,29 @@ fn hex_encode(bytes: &[u8]) -> Value {
     Value::Bytes(s.into())
 }
 
+/// Decode a hex string Value back to bytes. Accepts `Value::Bytes` holding
+/// an even-length ASCII hex string. Returns `None` if the input is not a
+/// well-formed hex byte sequence — in that case the caller should fall back
+/// to storing the original Value as an attribute, so corrupt data does not
+/// silently disappear.
+fn hex_decode(value: &Value) -> Option<Vec<u8>> {
+    let bytes = match value {
+        Value::Bytes(b) => b,
+        _ => return None,
+    };
+    let s = std::str::from_utf8(bytes).ok()?;
+    if s.is_empty() || s.len() % 2 != 0 {
+        return None;
+    }
+    let mut out = Vec::with_capacity(s.len() / 2);
+    for pair in s.as_bytes().chunks_exact(2) {
+        let hi = (pair[0] as char).to_digit(16)?;
+        let lo = (pair[1] as char).to_digit(16)?;
+        out.push(((hi << 4) | lo) as u8);
+    }
+    Some(out)
+}
+
 pub fn vrl_value_to_any_value(value: &Value) -> AnyValue {
     let kind = match value {
         Value::Bytes(b) => match std::str::from_utf8(b) {
@@ -334,90 +357,11 @@ impl OtelLog {
 
     /// Convert a legacy `LogEvent` into an `OtelLog`.
     ///
-    /// Field routing:
-    /// - `body` (or legacy `message` fallback) → `LogRecord.body`
-    /// - `timestamp` (various keys, see `extract_timestamp_nanos`) →
-    ///   `LogRecord.time_unix_nano`
-    /// - `source_type` / `host` → `Resource.attributes` as `source_type` /
-    ///   `host.name` (so that round-trip through `to_value_legacy_layout` is
-    ///   lossless)
-    /// - Everything else, including `severity_text`/`severity_number`/
-    ///   `trace_id`/`span_id`, is stored as a plain `KeyValue` in
-    ///   `LogRecord.attributes`. Native proto fields for those are NOT
-    ///   populated by this function (see `BRIDGE_REMOVAL_SESSION.md` —
-    ///   this is a known asymmetry with `to_value_legacy_layout`).
+    /// Thin wrapper over `from_value_map`/`apply_value_legacy_layout` — see
+    /// that method for the full field-routing contract.
     pub fn from_log_event(log: LogEvent) -> Self {
         let (value, metadata) = log.into_parts();
-        match value {
-            Value::Object(mut map) => {
-                let body = map.remove("body")
-                    .or_else(|| map.remove("message"))  // legacy fallback during transition
-                    .map(|v| vrl_value_to_any_value(&v));
-                let ts_extract = extract_timestamp_nanos(&mut map);
-                let time_unix_nano = ts_extract.nanos;
-
-                // Route well-known log_schema fields back to resource attributes
-                // so that from_log_event ↔ to_log_event round-trips are lossless.
-                let mut resource_attrs: Vec<KeyValue> = Vec::new();
-                if let Some(v) = map.remove("source_type") {
-                    resource_attrs.push(KeyValue {
-                        key: "source_type".to_string(),
-                        value: Some(vrl_value_to_any_value(&v)),
-                    });
-                }
-                if let Some(v) = map.remove("host") {
-                    resource_attrs.push(KeyValue {
-                        key: "host.name".to_string(),
-                        value: Some(vrl_value_to_any_value(&v)),
-                    });
-                }
-                let resource = if resource_attrs.is_empty() {
-                    None
-                } else {
-                    Some(Resource {
-                        attributes: resource_attrs,
-                        dropped_attributes_count: 0,
-                    })
-                };
-
-                let mut attributes: Vec<KeyValue> = map
-                    .into_iter()
-                    .map(|(k, v)| KeyValue {
-                        key: k.to_string(),
-                        value: Some(vrl_value_to_any_value(&v)),
-                    })
-                    .collect();
-                if let Some(ref overflow_ts) = ts_extract.overflow_rfc3339 {
-                    attributes.push(KeyValue {
-                        key: "vector.timestamp_overflow".to_string(),
-                        value: Some(string_value(overflow_ts)),
-                    });
-                }
-                Self {
-                    record: LogRecord {
-                        body,
-                        time_unix_nano,
-                        attributes,
-                        ..Default::default()
-                    },
-                    resource,
-                    scope: None,
-                    metadata,
-                }
-            }
-            other => {
-                let body = vrl_value_to_any_value(&other);
-                Self {
-                    record: LogRecord {
-                        body: Some(body),
-                        ..Default::default()
-                    },
-                    resource: None,
-                    scope: None,
-                    metadata,
-                }
-            }
-        }
+        Self::from_value_map(value, metadata)
     }
 
     /// Create an `OtelLog` from raw bytes, setting `record.body` to a string value.
@@ -855,8 +799,14 @@ impl OtelLog {
     }
 
     /// Write back a Value tree (legacy layout) to proto fields.
-    /// Mirrors from_log_event() field routing exactly, but without
-    /// constructing an intermediate LogEvent.
+    ///
+    /// Symmetric with `to_value_legacy_layout`: well-known proto fields
+    /// (`body`/`message`, `timestamp`, `severity_text`, `severity_number`,
+    /// `trace_id`, `span_id`) are extracted into their native `LogRecord`
+    /// slots; `source_type`/`host` go to resource attributes; the remainder
+    /// becomes `record.attributes`. Malformed hex for `trace_id`/`span_id`
+    /// falls back to storing the raw Value as an attribute so corrupt data
+    /// is not silently dropped.
     fn apply_value_legacy_layout(&mut self, value: Value) {
         let mut map = match value {
             Value::Object(m) => m,
@@ -872,7 +822,7 @@ impl OtelLog {
             }
         };
 
-        // Body (with legacy "message" fallback — matches from_log_event)
+        // Body (with legacy "message" fallback)
         let body = map.remove("body")
             .or_else(|| map.remove("message"))
             .map(|v| vrl_value_to_any_value(&v));
@@ -881,8 +831,53 @@ impl OtelLog {
         let ts_extract = extract_timestamp_nanos(&mut map);
         let time_unix_nano = ts_extract.nanos;
 
+        // Severity: Value::Bytes → severity_text, Value::Integer → severity_number.
+        let severity_text = match map.remove("severity_text") {
+            Some(Value::Bytes(b)) => {
+                String::from_utf8(b.to_vec()).unwrap_or_default()
+            }
+            Some(other) => {
+                // Non-bytes value: keep as attribute so we don't drop data.
+                map.insert("severity_text".into(), other);
+                String::new()
+            }
+            None => String::new(),
+        };
+        let severity_number = match map.remove("severity_number") {
+            Some(Value::Integer(i)) => i as i32,
+            Some(other) => {
+                map.insert("severity_number".into(), other);
+                0
+            }
+            None => 0,
+        };
+
+        // Trace/span IDs: hex-decode back to bytes. If decoding fails
+        // (corrupt hex), preserve the original Value as an attribute.
+        let trace_id = match map.remove("trace_id") {
+            Some(v) => match hex_decode(&v) {
+                Some(bytes) => bytes,
+                None => {
+                    map.insert("trace_id".into(), v);
+                    Vec::new()
+                }
+            },
+            None => Vec::new(),
+        };
+        let span_id = match map.remove("span_id") {
+            Some(v) => match hex_decode(&v) {
+                Some(bytes) => bytes,
+                None => {
+                    map.insert("span_id".into(), v);
+                    Vec::new()
+                }
+            },
+            None => Vec::new(),
+        };
+
         // Route well-known log_schema fields (source_type, host) back to resource attrs
-        // — exactly as from_log_event does, so round-trips are lossless.
+        // — matches `to_value_legacy_layout`'s resource hoisting so round-trips
+        // are lossless.
         let mut resource_attrs: Vec<KeyValue> = Vec::new();
         if let Some(v) = map.remove("source_type") {
             resource_attrs.push(KeyValue {
@@ -905,9 +900,8 @@ impl OtelLog {
             })
         };
 
-        // Everything else → record.attributes (INCLUDING "resource" and "scope"
-        // sub-objects if present — they become regular attributes, matching
-        // from_log_event's behavior).
+        // Everything else → record.attributes (including "resource"/"scope"
+        // sub-objects if present — they become regular attributes).
         let mut attributes: Vec<KeyValue> = map
             .into_iter()
             .map(|(k, v)| KeyValue {
@@ -925,10 +919,13 @@ impl OtelLog {
         self.record = LogRecord {
             body,
             time_unix_nano,
+            severity_text,
+            severity_number,
+            trace_id,
+            span_id,
             attributes,
             ..Default::default()
         };
-        // scope is cleared (from_log_event always sets it to None)
         self.scope = None;
     }
 
@@ -1217,26 +1214,20 @@ impl OtelSpan {
 
     /// Convert a legacy `TraceEvent` into an `OtelSpan`.
     ///
-    /// The `TraceEvent`'s fields are stored as span attributes.
-
+    /// Routes native span fields (name, trace_id, span_id, parent_span_id,
+    /// start/end times, kind, status) into their proto slots; everything
+    /// else becomes `span.attributes`. See `apply_value_legacy_layout` for
+    /// the full routing contract.
     pub fn from_trace_event(trace: super::TraceEvent) -> Self {
         let (map, metadata) = trace.into_parts();
-        let attributes: Vec<KeyValue> = map
-            .into_iter()
-            .map(|(k, v)| KeyValue {
-                key: k.to_string(),
-                value: Some(vrl_value_to_any_value(&v)),
-            })
-            .collect();
-        Self {
-            span: Span {
-                attributes,
-                ..Default::default()
-            },
+        let mut out = Self {
+            span: Span::default(),
             resource: None,
             scope: None,
             metadata,
-        }
+        };
+        out.apply_value_legacy_layout(Value::Object(map));
+        out
     }
 
     pub fn from_parts(
@@ -1443,13 +1434,96 @@ impl OtelSpan {
     }
 
     /// Write back a Value tree (legacy layout) to proto fields.
-    /// Mirrors from_trace_event's field routing without constructing
-    /// an intermediate TraceEvent/LogEvent.
+    ///
+    /// Symmetric with `to_value_legacy_layout`: native span proto fields
+    /// (`name`, `trace_id`, `span_id`, `parent_span_id`, `start_time`,
+    /// `end_time`, `kind`, `status`) are extracted into their `Span` slots;
+    /// the remainder becomes `span.attributes`. Malformed hex IDs and
+    /// non-matching shapes fall back to attribute storage so no data is
+    /// silently lost.
     fn apply_value_legacy_layout(&mut self, value: Value) {
-        let map = match value {
+        use opentelemetry_proto::tonic::trace::v1::Status;
+
+        let mut map = match value {
             Value::Object(m) => m,
             _ => ObjectMap::new(),
         };
+
+        let name = match map.remove("name") {
+            Some(Value::Bytes(b)) => String::from_utf8(b.to_vec()).unwrap_or_default(),
+            Some(other) => {
+                map.insert("name".into(), other);
+                String::new()
+            }
+            None => String::new(),
+        };
+
+        // Hex-encoded IDs; malformed → kept as attribute.
+        let take_id = |map: &mut ObjectMap, key: &str| -> Vec<u8> {
+            match map.remove(key) {
+                Some(v) => match hex_decode(&v) {
+                    Some(bytes) => bytes,
+                    None => {
+                        map.insert(key.into(), v);
+                        Vec::new()
+                    }
+                },
+                None => Vec::new(),
+            }
+        };
+        let trace_id = take_id(&mut map, "trace_id");
+        let span_id = take_id(&mut map, "span_id");
+        let parent_span_id = take_id(&mut map, "parent_span_id");
+
+        // Timestamps encoded as Value::Timestamp → nanos.
+        let take_time = |map: &mut ObjectMap, key: &str| -> u64 {
+            match map.remove(key) {
+                Some(Value::Timestamp(ts)) => ts.timestamp_nanos_opt().unwrap_or(0) as u64,
+                Some(other) => {
+                    map.insert(key.into(), other);
+                    0
+                }
+                None => 0,
+            }
+        };
+        let start_time_unix_nano = take_time(&mut map, "start_time");
+        let end_time_unix_nano = take_time(&mut map, "end_time");
+
+        let kind = match map.remove("kind") {
+            Some(Value::Integer(i)) => i as i32,
+            Some(other) => {
+                map.insert("kind".into(), other);
+                0
+            }
+            None => 0,
+        };
+
+        // Status: { message: String, code: Integer }.
+        let status = match map.remove("status") {
+            Some(Value::Object(mut status_map)) => {
+                let message = match status_map.remove("message") {
+                    Some(Value::Bytes(b)) => {
+                        String::from_utf8(b.to_vec()).unwrap_or_default()
+                    }
+                    _ => String::new(),
+                };
+                let code = match status_map.remove("code") {
+                    Some(Value::Integer(i)) => i as i32,
+                    _ => 0,
+                };
+                if message.is_empty() && code == 0 && status_map.is_empty() {
+                    None
+                } else {
+                    Some(Status { message, code })
+                }
+            }
+            Some(other) => {
+                map.insert("status".into(), other);
+                None
+            }
+            None => None,
+        };
+
         let attributes: Vec<KeyValue> = map
             .into_iter()
             .map(|(k, v)| KeyValue {
@@ -1457,8 +1531,16 @@ impl OtelSpan {
                 value: Some(vrl_value_to_any_value(&v)),
             })
             .collect();
-        // Preserve metadata; reset span fields to match from_trace_event behavior.
+
         self.span = Span {
+            name,
+            trace_id,
+            span_id,
+            parent_span_id,
+            start_time_unix_nano,
+            end_time_unix_nano,
+            kind,
+            status,
             attributes,
             ..Default::default()
         };
@@ -2877,7 +2959,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Known gap: OtelSpan::apply_value_legacy_layout drops all native span fields (name, trace_id, span_id, parent_span_id, start/end times, kind, status) into span.attributes. Mirrors from_trace_event behavior."]
     fn otel_span_insert_preserves_native_fields() {
         let span = Span {
             name: "test-span".to_string(),
@@ -3430,30 +3511,22 @@ mod tests {
         );
     }
 
-    // --- Known-gap round-trip tests -----------------------------------------
+    // --- Round-trip fidelity for native proto fields -----------------------
     //
-    // These tests document a preserved asymmetry between
-    // `to_value_legacy_layout` (which exports native proto fields to the top
-    // of the Value map) and `apply_value_legacy_layout` /  `from_log_event`
-    // (which sweep them into `record.attributes` as plain KeyValues).
-    //
-    // They assert the IDEAL behavior and are marked #[ignore] so CI tracks
-    // the gap without failing. See BRIDGE_REMOVAL_SESSION.md "Known gaps".
+    // `apply_value_legacy_layout` extracts these fields symmetrically with
+    // `to_value_legacy_layout`, so a round-trip via `insert()` preserves them.
 
     #[test]
-    #[ignore = "Known gap: apply_value_legacy_layout routes severity_text to record.attributes instead of LogRecord.severity_text"]
     fn insert_preserves_severity_text_via_round_trip() {
         let mut event = OtelLog::new(LogRecord {
             severity_text: "ERROR".into(),
             ..Default::default()
         });
         event.insert(vrl::event_path!("new_field"), "new_value");
-        // Ideal: native proto field survives the round-trip.
         assert_eq!(event.severity_text(), "ERROR");
     }
 
     #[test]
-    #[ignore = "Known gap: apply_value_legacy_layout routes severity_number to record.attributes instead of LogRecord.severity_number"]
     fn insert_preserves_severity_number_via_round_trip() {
         let mut event = OtelLog::new(LogRecord {
             severity_number: 17,
@@ -3464,7 +3537,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Known gap: apply_value_legacy_layout routes trace_id (hex-encoded) to record.attributes instead of decoding back to LogRecord.trace_id"]
     fn insert_preserves_trace_id_via_round_trip() {
         let trace_id_bytes = vec![
             0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11,
@@ -3479,7 +3551,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Known gap: apply_value_legacy_layout routes span_id (hex-encoded) to record.attributes instead of decoding back to LogRecord.span_id"]
     fn insert_preserves_span_id_via_round_trip() {
         let span_id_bytes = vec![0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11];
         let mut event = OtelLog::new(LogRecord {
@@ -3488,6 +3559,21 @@ mod tests {
         });
         event.insert(vrl::event_path!("new_field"), "new_value");
         assert_eq!(event.span_id(), span_id_bytes.as_slice());
+    }
+
+    #[test]
+    fn insert_preserves_corrupt_trace_id_as_attribute() {
+        // If trace_id contains non-hex data (e.g. from a user-set attribute
+        // via VRL), hex_decode fails and the value is preserved as an
+        // attribute rather than dropped.
+        let mut event = OtelLog::new(LogRecord::default());
+        event.insert(vrl::event_path!("trace_id"), "not-hex-data");
+        assert!(event.trace_id().is_empty(), "native field should stay empty for invalid hex");
+        assert_eq!(
+            event.get(vrl::event_path!("trace_id")).and_then(|v| v.as_str().map(|s| s.into_owned())),
+            Some("not-hex-data".to_string()),
+            "invalid hex should be preserved as an attribute"
+        );
     }
 
     #[test]

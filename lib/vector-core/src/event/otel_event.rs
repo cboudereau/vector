@@ -833,18 +833,82 @@ impl OtelLog {
     }
 
     /// Write back a Value tree (legacy layout) to proto fields.
+    /// Write back a Value tree (legacy layout) to proto fields.
+    /// Mirrors from_log_event() field routing exactly, but without
+    /// constructing an intermediate LogEvent.
     fn apply_value_legacy_layout(&mut self, value: Value) {
-        // TODO(bridge-removal): Replace with direct proto field mutation.
-        // Currently round-trips through from_log_event to parse the flat map
-        // back into proto fields (body, timestamp, resource attrs, etc.).
-        let log = LogEvent::from_map(
-            match value {
-                Value::Object(m) => m,
-                _ => ObjectMap::new(),
-            },
-            self.metadata.clone(),
-        );
-        *self = Self::from_log_event(log);
+        let mut map = match value {
+            Value::Object(m) => m,
+            other => {
+                // Non-object: store as body, clear everything else
+                self.record = LogRecord {
+                    body: Some(vrl_value_to_any_value(&other)),
+                    ..Default::default()
+                };
+                self.resource = None;
+                self.scope = None;
+                return;
+            }
+        };
+
+        // Body (with legacy "message" fallback — matches from_log_event)
+        let body = map.remove("body")
+            .or_else(|| map.remove("message"))
+            .map(|v| vrl_value_to_any_value(&v));
+
+        // Timestamp
+        let ts_extract = extract_timestamp_nanos(&mut map);
+        let time_unix_nano = ts_extract.nanos;
+
+        // Route well-known log_schema fields (source_type, host) back to resource attrs
+        // — exactly as from_log_event does, so round-trips are lossless.
+        let mut resource_attrs: Vec<KeyValue> = Vec::new();
+        if let Some(v) = map.remove("source_type") {
+            resource_attrs.push(KeyValue {
+                key: "source_type".to_string(),
+                value: Some(vrl_value_to_any_value(&v)),
+            });
+        }
+        if let Some(v) = map.remove("host") {
+            resource_attrs.push(KeyValue {
+                key: "host.name".to_string(),
+                value: Some(vrl_value_to_any_value(&v)),
+            });
+        }
+        self.resource = if resource_attrs.is_empty() {
+            None
+        } else {
+            Some(Resource {
+                attributes: resource_attrs,
+                dropped_attributes_count: 0,
+            })
+        };
+
+        // Everything else → record.attributes (INCLUDING "resource" and "scope"
+        // sub-objects if present — they become regular attributes, matching
+        // from_log_event's behavior).
+        let mut attributes: Vec<KeyValue> = map
+            .into_iter()
+            .map(|(k, v)| KeyValue {
+                key: k.to_string(),
+                value: Some(vrl_value_to_any_value(&v)),
+            })
+            .collect();
+        if let Some(ref overflow_ts) = ts_extract.overflow_rfc3339 {
+            attributes.push(KeyValue {
+                key: "vector.timestamp_overflow".to_string(),
+                value: Some(string_value(overflow_ts)),
+            });
+        }
+
+        self.record = LogRecord {
+            body,
+            time_unix_nano,
+            attributes,
+            ..Default::default()
+        };
+        // scope is cleared (from_log_event always sets it to None)
+        self.scope = None;
     }
 
     /// Get the timestamp from the event (LogEvent-compatible bridge).

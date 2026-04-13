@@ -209,13 +209,9 @@ mod tests {
 
     #[test]
     fn encodes_counter_without_error() {
-        use vector_core::event::{Metric, MetricKind, MetricValue};
+        use vector_core::event::MetricKind;
         let mut ser = make_serializer();
-        let metric = OtelMetric::from_legacy_metric(Metric::new(
-            "http_requests_total",
-            MetricKind::Incremental,
-            MetricValue::Counter { value: 100.0 },
-        ));
+        let metric = OtelMetric::new_counter("http_requests_total", MetricKind::Incremental, 100.0);
         let mut buf = BytesMut::new();
         ser.encode(Event::Metric(metric), &mut buf)
             .expect("counter encode must succeed");
@@ -224,13 +220,8 @@ mod tests {
 
     #[test]
     fn encodes_gauge_without_error() {
-        use vector_core::event::{Metric, MetricKind, MetricValue};
         let mut ser = make_serializer();
-        let metric = OtelMetric::from_legacy_metric(Metric::new(
-            "cpu_usage",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 0.75 },
-        ));
+        let metric = OtelMetric::new_gauge("cpu_usage", 0.75);
         let mut buf = BytesMut::new();
         ser.encode(Event::Metric(metric), &mut buf)
             .expect("gauge encode must succeed");

@@ -8,7 +8,7 @@ use smallvec::SmallVec;
 use vector_config::configurable_component;
 use vector_core::{
     config::{DataType, LogNamespace},
-    event::{Event, Metric, MetricKind, MetricTags, MetricValue, OtelMetric},
+    event::{Event, MetricTags, OtelMetric},
     schema,
 };
 use vrl::value::{Kind, kind::Collection};
@@ -124,11 +124,10 @@ impl Deserializer for InfluxdbDeserializer {
                             }
                             FieldValue::String(_) => return None, // String values cannot be modelled in our schema
                         };
-                        Some(Event::Metric(OtelMetric::from_legacy_metric(
-                            Metric::new(
+                        Some(Event::Metric(
+                            OtelMetric::new_gauge(
                                 format!("{0}_{1}", measurement, f.0),
-                                MetricKind::Absolute,
-                                MetricValue::Gauge { value: val },
+                                val,
                             )
                             .with_tags(tags.map(|ts| {
                                 MetricTags::from_iter(
@@ -136,7 +135,7 @@ impl Deserializer for InfluxdbDeserializer {
                                 )
                             }))
                             .with_timestamp(timestamp.map(DateTime::from_timestamp_nanos)),
-                        )))
+                        ))
                     })
                     .collect::<Vec<_>>()
             })

@@ -1422,15 +1422,27 @@ impl OtelSpan {
     }
 
     /// Write back a Value tree (legacy layout) to proto fields.
+    /// Mirrors from_trace_event's field routing without constructing
+    /// an intermediate TraceEvent/LogEvent.
     fn apply_value_legacy_layout(&mut self, value: Value) {
         let map = match value {
             Value::Object(m) => m,
             _ => ObjectMap::new(),
         };
-        let trace = super::TraceEvent::from(LogEvent::from_map(map, self.metadata.clone()));
-        let metadata = std::mem::take(&mut self.metadata);
-        *self = Self::from_trace_event(trace);
-        self.metadata = metadata;
+        let attributes: Vec<KeyValue> = map
+            .into_iter()
+            .map(|(k, v)| KeyValue {
+                key: k.to_string(),
+                value: Some(vrl_value_to_any_value(&v)),
+            })
+            .collect();
+        // Preserve metadata; reset span fields to match from_trace_event behavior.
+        self.span = Span {
+            attributes,
+            ..Default::default()
+        };
+        self.resource = None;
+        self.scope = None;
     }
 
     /// Get a field value by path.

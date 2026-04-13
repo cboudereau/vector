@@ -79,13 +79,17 @@ severity, trace_id/span_id) before rewriting `apply_value_legacy_layout`.
 
 ### Recommended next-session targets
 
-1. **OtelMetric convenience constructors** (`new_counter`, `new_gauge`, etc.)
-   — zero-risk, eliminates ~100 test-code `from_legacy_metric` calls
-2. **Round-trip fidelity tests** for `apply_value_legacy_layout` — safety net
-3. **Direct proto mutation** in `apply_value_legacy_layout` — then remove
+1. ✅ **OtelMetric::new_counter/new_gauge constructors added** — verified parity
+   with from_legacy_metric via round-trip tests. Eliminates test-code dependency
+   on legacy Metric for simple Counter/Gauge construction.
+2. **Extend constructors** to histogram/summary/distribution cases (lossy round-trips)
+3. **Round-trip fidelity tests** for `apply_value_legacy_layout` — test each field
+   path separately (body, severity, trace_id/span_id, source_type/host, resource,
+   scope, attributes) before rewriting.
+4. **Direct proto mutation** in `apply_value_legacy_layout` — then remove
    `OtelLog::from_log_event` internal caller (line 847)
-4. **VRL migration tool** (Phase A) — prerequisite for source emission changes
-5. **Source emission** — sources emit OTel types directly (Phase E proper)
+5. **VRL migration tool** (Phase A) — prerequisite for source emission changes
+6. **Source emission** — sources emit OTel types directly (Phase E proper)
 
 ### What was done
 

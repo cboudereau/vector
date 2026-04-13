@@ -232,20 +232,16 @@ mod tests {
 
     #[test]
     fn test_metric_data_to_insert_request() {
-        let metric = Metric::new(
-            "load1",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 1.1 },
-        )
-        .with_namespace(Some("ns"))
-        .with_tags(Some([("host".to_owned(), "my_host".to_owned())].into()))
-        .with_timestamp(Some(Utc::now()));
+        let metric = OtelMetric::new_gauge("load1", 1.1)
+            .with_namespace(Some("ns"))
+            .with_tags(Some([("host".to_owned(), "my_host".to_owned())].into()))
+            .with_timestamp(Some(Utc::now()));
 
         let options = RequestBuilderOptions {
             use_new_naming: false,
         };
 
-        let insert = metric_to_insert_request(OtelMetric::from_legacy_metric(metric), &options);
+        let insert = metric_to_insert_request(metric, &options);
 
         assert_eq!(insert.table_name, "ns_load1");
         let rows = insert.rows.expect("Empty insert request");
@@ -263,31 +259,23 @@ mod tests {
 
         assert_eq!(get_column(&rows, LEGACY_VALUE_COLUMN_NAME), 1.1);
 
-        let metric2 = Metric::new(
-            "load1",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 1.1 },
-        );
-        let insert2 = metric_to_insert_request(OtelMetric::from_legacy_metric(metric2), &options);
+        let metric2 = OtelMetric::new_gauge("load1", 1.1);
+        let insert2 = metric_to_insert_request(metric2, &options);
         assert_eq!(insert2.table_name, "load1");
     }
 
     #[test]
     fn test_metric_data_to_insert_request_new_naming() {
-        let metric = Metric::new(
-            "load1",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 1.1 },
-        )
-        .with_namespace(Some("ns"))
-        .with_tags(Some([("host".to_owned(), "my_host".to_owned())].into()))
-        .with_timestamp(Some(Utc::now()));
+        let metric = OtelMetric::new_gauge("load1", 1.1)
+            .with_namespace(Some("ns"))
+            .with_tags(Some([("host".to_owned(), "my_host".to_owned())].into()))
+            .with_timestamp(Some(Utc::now()));
 
         let options = RequestBuilderOptions {
             use_new_naming: true,
         };
 
-        let insert = metric_to_insert_request(OtelMetric::from_legacy_metric(metric), &options);
+        let insert = metric_to_insert_request(metric, &options);
 
         assert_eq!(insert.table_name, "ns_load1");
         let rows = insert.rows.expect("Empty insert request");
@@ -305,27 +293,23 @@ mod tests {
 
         assert_eq!(get_column(&rows, VALUE_COLUMN_NAME), 1.1);
 
-        let metric2 = Metric::new(
-            "load1",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 1.1 },
-        );
-        let insert2 = metric_to_insert_request(OtelMetric::from_legacy_metric(metric2), &options);
+        let metric2 = OtelMetric::new_gauge("load1", 1.1);
+        let insert2 = metric_to_insert_request(metric2, &options);
         assert_eq!(insert2.table_name, "load1");
     }
 
     #[test]
     fn test_counter() {
-        let metric = Metric::new(
+        let metric = OtelMetric::new_counter(
             "cpu_seconds_total",
             MetricKind::Incremental,
-            MetricValue::Counter { value: 1.1 },
+            1.1,
         );
         let options = RequestBuilderOptions {
             use_new_naming: false,
         };
 
-        let insert = metric_to_insert_request(OtelMetric::from_legacy_metric(metric), &options);
+        let insert = metric_to_insert_request(metric, &options);
         let rows = insert.rows.expect("Empty insert request");
         assert_eq!(rows.rows[0].values.len(), 2);
 

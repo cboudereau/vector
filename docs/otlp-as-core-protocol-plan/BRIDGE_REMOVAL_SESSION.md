@@ -113,20 +113,28 @@ Eliminates the internal from_log_event call on line 847.
 ✅ **pub OtelLog::from_value_map(value, metadata)** — constructor for sources
    that have a Value map ready. Used by trace_to_log and enrichment_tables/memory.
 
-### Production bridge callers remaining
+### Production bridge callers remaining (after this session)
 
-Core conversion points (can't be removed without Phase E source migration):
+✅ **Eliminated** (this session):
+- OtelLog::apply_value_legacy_layout (VRL write-back)
+- OtelSpan::apply_value_legacy_layout (VRL write-back for spans)
+- trace_to_log transform
+- enrichment_tables/memory/source (2 sites)
+- logstash source
+- elasticsearch sink (metric_to_log path)
+- proto.rs Log deserialization (2 sites)
+- influxdb decoder
+
+**Core fundamental conversion points** (require Phase E source migration to remove):
 - `Event::from(Metric/LogEvent/TraceEvent)` in `mod.rs` (3 sites)
-- `proto.rs` buffer deserialization (6 sites)
-- `vrl_target.rs` metric VRL target (1 site)
-- `fanout.rs` legacy event copies (1 site)
-- `elasticsearch/sink.rs` metric_to_log path (1 site)
-- `influxdb` decoder (1 site)
-- `logstash` source (1 site)
-- `amqp/config.rs` property rendering (1 site — test helper)
+- `proto.rs` Metric/TraceEvent buffer deserialization (4 sites)
+- `vrl_target.rs` VrlTarget::Metric output (1 site — requires Phase E variant deletion)
+
+**Per-sink specific (sink's internal pipeline still uses Metric type):**
 - `prometheus/remote_write` template rendering (1 site)
-- `greptimedb` test helpers (9 sites)
+- `amqp/config.rs` property rendering (1 site — test helper)
 - `statsd/encoder.rs` test helper (1 site)
+- `greptimedb` test helpers (9 sites)
 - `log_to_metric` test expectations (22 sites)
 
 ### Recommended next-session targets

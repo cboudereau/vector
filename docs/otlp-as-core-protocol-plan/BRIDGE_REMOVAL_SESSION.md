@@ -104,14 +104,37 @@ source_type/host → resource attrs, everything else → record.attributes,
 scope cleared). DD search tests pass (previously regressed with naive rewrite).
 Eliminates the internal from_log_event call on line 847.
 
+### apply_value_legacy_layout rewrites complete
+
+✅ **OtelLog::apply_value_legacy_layout** — direct proto mutation, mirrors
+   from_log_event routing. Safety net: 5 round-trip fidelity tests.
+✅ **OtelSpan::apply_value_legacy_layout** — direct proto mutation, mirrors
+   from_trace_event (all fields → span.attributes).
+✅ **pub OtelLog::from_value_map(value, metadata)** — constructor for sources
+   that have a Value map ready. Used by trace_to_log and enrichment_tables/memory.
+
+### Production bridge callers remaining
+
+Core conversion points (can't be removed without Phase E source migration):
+- `Event::from(Metric/LogEvent/TraceEvent)` in `mod.rs` (3 sites)
+- `proto.rs` buffer deserialization (6 sites)
+- `vrl_target.rs` metric VRL target (1 site)
+- `fanout.rs` legacy event copies (1 site)
+- `elasticsearch/sink.rs` metric_to_log path (1 site)
+- `influxdb` decoder (1 site)
+- `logstash` source (1 site)
+- `amqp/config.rs` property rendering (1 site — test helper)
+- `prometheus/remote_write` template rendering (1 site)
+- `greptimedb` test helpers (9 sites)
+- `statsd/encoder.rs` test helper (1 site)
+- `log_to_metric` test expectations (22 sites)
+
 ### Recommended next-session targets
 
-1. **Apply same rewrite to OtelSpan's `apply_value_legacy_layout`** (still uses
-   TraceEvent round-trip)
-2. **Extend OtelMetric constructors** to Histogram/Summary/Distribution
-3. **Multi-value tags builder** — current with_tags only handles single-value
-4. **VRL migration tool** (Phase A)
-5. **Source emission** — sources emit OTel types directly (Phase E proper)
+1. **Extend OtelMetric constructors** to Histogram/Summary/Distribution
+2. **Multi-value tags builder** — current with_tags only handles single-value
+3. **VRL migration tool** (Phase A)
+4. **Source emission** — sources emit OTel types directly (Phase E proper)
 
 ### What was done
 

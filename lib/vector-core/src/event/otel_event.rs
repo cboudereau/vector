@@ -334,10 +334,18 @@ impl OtelLog {
 
     /// Convert a legacy `LogEvent` into an `OtelLog`.
     ///
-    /// The `LogEvent`'s value tree is stored as a kvlist body.
-    /// The `body` field (or `message` as legacy fallback) becomes LogRecord.body.
-    /// Known fields (`timestamp`, `severity_text`, etc.) are extracted into
-    /// their corresponding `LogRecord` fields.
+    /// Field routing:
+    /// - `body` (or legacy `message` fallback) → `LogRecord.body`
+    /// - `timestamp` (various keys, see `extract_timestamp_nanos`) →
+    ///   `LogRecord.time_unix_nano`
+    /// - `source_type` / `host` → `Resource.attributes` as `source_type` /
+    ///   `host.name` (so that round-trip through `to_value_legacy_layout` is
+    ///   lossless)
+    /// - Everything else, including `severity_text`/`severity_number`/
+    ///   `trace_id`/`span_id`, is stored as a plain `KeyValue` in
+    ///   `LogRecord.attributes`. Native proto fields for those are NOT
+    ///   populated by this function (see `BRIDGE_REMOVAL_SESSION.md` —
+    ///   this is a known asymmetry with `to_value_legacy_layout`).
     pub fn from_log_event(log: LogEvent) -> Self {
         let (value, metadata) = log.into_parts();
         match value {
@@ -2108,12 +2116,35 @@ impl OtelMetric {
     }
 
     /// Builder-style: set tags as data point attributes.
-    /// Only sets single-value tags; use replace_tag for more control.
+    ///
+    /// Preserves multi-value tags: each key becomes a single `KeyValue` whose
+    /// value is a `StringValue` (single) or an `ArrayValue` of strings/nulls
+    /// (multi). Mirrors the tag encoding used by `from_legacy_metric`.
     pub fn with_tags(mut self, tags: Option<super::metric::MetricTags>) -> Self {
-        if let Some(tags) = tags {
-            for (key, value) in tags.iter_single() {
-                self.replace_tag(key, value);
-            }
+        use opentelemetry_proto::tonic::common::v1::{ArrayValue, any_value};
+        let Some(tags) = tags else { return self };
+        for (key, tag_set) in tags.iter_sets() {
+            let raw_vals: Vec<Option<&str>> = tag_set.into_iter().collect();
+            let value = if raw_vals.len() == 1 {
+                match raw_vals[0] {
+                    Some(v) => string_value(v),
+                    None => AnyValue { value: None },
+                }
+            } else {
+                AnyValue {
+                    value: Some(any_value::Value::ArrayValue(ArrayValue {
+                        values: raw_vals
+                            .iter()
+                            .map(|v| match v {
+                                Some(s) => string_value(*s),
+                                None => AnyValue { value: None },
+                            })
+                            .collect(),
+                    })),
+                }
+            };
+            self.remove_data_point_attribute(key);
+            self.set_data_point_attribute(key.to_string(), value);
         }
         self
     }
@@ -2846,6 +2877,35 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Known gap: OtelSpan::apply_value_legacy_layout drops all native span fields (name, trace_id, span_id, parent_span_id, start/end times, kind, status) into span.attributes. Mirrors from_trace_event behavior."]
+    fn otel_span_insert_preserves_native_fields() {
+        let span = Span {
+            name: "test-span".to_string(),
+            trace_id: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+            span_id: vec![1, 2, 3, 4, 5, 6, 7, 8],
+            parent_span_id: vec![9, 10, 11, 12, 13, 14, 15, 16],
+            start_time_unix_nano: 1000,
+            end_time_unix_nano: 2000,
+            kind: 2, // SPAN_KIND_SERVER
+            ..Default::default()
+        };
+        let mut event = OtelSpan::new(span);
+
+        // Trigger the round-trip: insert → to_value_legacy_layout →
+        // apply_value_legacy_layout.
+        event.insert(vrl::event_path!("new_field"), "new_value");
+
+        // Ideal: native proto fields survive.
+        assert_eq!(event.name(), "test-span");
+        assert_eq!(event.trace_id().len(), 16);
+        assert_eq!(event.span_id().len(), 8);
+        assert_eq!(event.parent_span_id().len(), 8);
+        assert_eq!(event.start_time_unix_nano(), 1000);
+        assert_eq!(event.end_time_unix_nano(), 2000);
+        assert_eq!(event.kind(), 2);
+    }
+
+    #[test]
     fn otel_metric_event_name_and_unit() {
         let metric = OtelMetricProto {
             name: "http.request.duration".to_string(),
@@ -3370,6 +3430,66 @@ mod tests {
         );
     }
 
+    // --- Known-gap round-trip tests -----------------------------------------
+    //
+    // These tests document a preserved asymmetry between
+    // `to_value_legacy_layout` (which exports native proto fields to the top
+    // of the Value map) and `apply_value_legacy_layout` /  `from_log_event`
+    // (which sweep them into `record.attributes` as plain KeyValues).
+    //
+    // They assert the IDEAL behavior and are marked #[ignore] so CI tracks
+    // the gap without failing. See BRIDGE_REMOVAL_SESSION.md "Known gaps".
+
+    #[test]
+    #[ignore = "Known gap: apply_value_legacy_layout routes severity_text to record.attributes instead of LogRecord.severity_text"]
+    fn insert_preserves_severity_text_via_round_trip() {
+        let mut event = OtelLog::new(LogRecord {
+            severity_text: "ERROR".into(),
+            ..Default::default()
+        });
+        event.insert(vrl::event_path!("new_field"), "new_value");
+        // Ideal: native proto field survives the round-trip.
+        assert_eq!(event.severity_text(), "ERROR");
+    }
+
+    #[test]
+    #[ignore = "Known gap: apply_value_legacy_layout routes severity_number to record.attributes instead of LogRecord.severity_number"]
+    fn insert_preserves_severity_number_via_round_trip() {
+        let mut event = OtelLog::new(LogRecord {
+            severity_number: 17,
+            ..Default::default()
+        });
+        event.insert(vrl::event_path!("new_field"), "new_value");
+        assert_eq!(event.severity_number(), 17);
+    }
+
+    #[test]
+    #[ignore = "Known gap: apply_value_legacy_layout routes trace_id (hex-encoded) to record.attributes instead of decoding back to LogRecord.trace_id"]
+    fn insert_preserves_trace_id_via_round_trip() {
+        let trace_id_bytes = vec![
+            0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11,
+            0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19,
+        ];
+        let mut event = OtelLog::new(LogRecord {
+            trace_id: trace_id_bytes.clone(),
+            ..Default::default()
+        });
+        event.insert(vrl::event_path!("new_field"), "new_value");
+        assert_eq!(event.trace_id(), trace_id_bytes.as_slice());
+    }
+
+    #[test]
+    #[ignore = "Known gap: apply_value_legacy_layout routes span_id (hex-encoded) to record.attributes instead of decoding back to LogRecord.span_id"]
+    fn insert_preserves_span_id_via_round_trip() {
+        let span_id_bytes = vec![0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11];
+        let mut event = OtelLog::new(LogRecord {
+            span_id: span_id_bytes.clone(),
+            ..Default::default()
+        });
+        event.insert(vrl::event_path!("new_field"), "new_value");
+        assert_eq!(event.span_id(), span_id_bytes.as_slice());
+    }
+
     #[test]
     fn with_namespace_tags_timestamp_matches_from_legacy_metric() {
         use crate::event::{Metric, MetricKind, MetricValue};
@@ -3402,5 +3522,54 @@ mod tests {
         assert_eq!(direct.value(), via_legacy.value());
         assert_eq!(direct.timestamp(), via_legacy.timestamp());
         assert_eq!(direct.tag_value("env"), via_legacy.tag_value("env"));
+    }
+
+    #[test]
+    fn with_tags_preserves_multi_value() {
+        use crate::event::{Metric, MetricKind, MetricValue, metric::TagValue};
+        use opentelemetry_proto::tonic::common::v1::any_value;
+
+        // Build MetricTags with a single-value "host" and a multi-value
+        // "env" tag ({"prod", None, "staging"}).
+        let mut tags = super::super::MetricTags::default();
+        tags.replace("host".to_string(), TagValue::Value("srv01".to_string()));
+        tags.set_multi_value(
+            "env".to_string(),
+            vec![
+                TagValue::Value("prod".to_string()),
+                TagValue::Bare,
+                TagValue::Value("staging".to_string()),
+            ],
+        );
+
+        let direct = OtelMetric::new_counter("requests", MetricKind::Incremental, 1.0)
+            .with_tags(Some(tags.clone()));
+
+        let via_legacy = OtelMetric::from_legacy_metric(
+            Metric::new(
+                "requests",
+                MetricKind::Incremental,
+                MetricValue::Counter { value: 1.0 },
+            )
+            .with_tags(Some(tags)),
+        );
+
+        // The key "env" must encode as an ArrayValue in both paths.
+        let find_env = |m: &OtelMetric| -> any_value::Value {
+            m.first_data_point_attributes()
+                .iter()
+                .find(|a| a.key == "env")
+                .and_then(|a| a.value.as_ref())
+                .and_then(|v| v.value.clone())
+                .expect("env attribute missing")
+        };
+        match (find_env(&direct), find_env(&via_legacy)) {
+            (any_value::Value::ArrayValue(a), any_value::Value::ArrayValue(b)) => {
+                assert_eq!(a.values.len(), 3);
+                assert_eq!(a.values.len(), b.values.len());
+            }
+            other => panic!("expected ArrayValue on both sides, got {other:?}"),
+        }
+        assert_eq!(direct.tag_value("host"), via_legacy.tag_value("host"));
     }
 }

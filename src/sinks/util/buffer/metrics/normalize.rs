@@ -174,13 +174,19 @@ impl<N: MetricNormalize> MetricNormalizer<N> {
     }
 
     /// OtelMetric variant of `normalize` — accepts OtelMetric, returns Event.
-    /// Uses into_metric_parts() to avoid the legacy Metric round-trip.
+    ///
+    /// Transitional shim: unpacks the proto cheaply via `into_metric_parts()`
+    /// and delegates to the legacy-Metric normalizer. A native OtelMetric
+    /// `MetricSet` (keyed on proto identity) would remove the rebuild; pending
+    /// Phase E of the OTLP migration.
     pub fn normalize_otel(&mut self, otel: OtelMetric) -> Option<Event> {
         self.normalize_otel_to_metric(otel).map(Event::from)
     }
 
     /// OtelMetric variant of `normalize` — returns legacy Metric directly.
     /// For sinks that still need Metric for their buffer/encoder pipeline.
+    ///
+    /// Transitional shim: see `normalize_otel`.
     pub fn normalize_otel_to_metric(&mut self, otel: OtelMetric) -> Option<Metric> {
         let (series, data, metadata) = otel.into_metric_parts();
         self.normalize(Metric::from_parts(series, data, metadata))
@@ -590,14 +596,18 @@ impl MetricSet {
     }
 
     /// OtelMetric variant of `make_absolute` — accepts OtelMetric, returns Event.
-    /// Uses into_metric_parts() to avoid the legacy Metric round-trip.
+    ///
+    /// Transitional shim: unpacks the proto via `into_metric_parts()` and
+    /// delegates to the legacy-Metric path. See `MetricNormalizer::normalize_otel`.
     pub fn make_absolute_otel(&mut self, otel: OtelMetric) -> Option<Event> {
         let (series, data, metadata) = otel.into_metric_parts();
         self.make_absolute(Metric::from_parts(series, data, metadata)).map(Event::from)
     }
 
     /// OtelMetric variant of `make_incremental` — accepts OtelMetric, returns Event.
-    /// Uses into_metric_parts() to avoid the legacy Metric round-trip.
+    ///
+    /// Transitional shim: unpacks the proto via `into_metric_parts()` and
+    /// delegates to the legacy-Metric path. See `MetricNormalizer::normalize_otel`.
     pub fn make_incremental_otel(&mut self, otel: OtelMetric) -> Option<Event> {
         let (series, data, metadata) = otel.into_metric_parts();
         self.make_incremental(Metric::from_parts(series, data, metadata)).map(Event::from)
@@ -682,7 +692,9 @@ impl MetricSet {
     }
 
     /// OtelMetric variant of `insert_update`.
-    /// Uses into_metric_parts() to avoid the legacy Metric round-trip.
+    ///
+    /// Transitional shim: unpacks the proto via `into_metric_parts()` and
+    /// delegates to the legacy-Metric path. See `MetricNormalizer::normalize_otel`.
     pub fn insert_update_otel(&mut self, otel: OtelMetric) {
         let (series, data, metadata) = otel.into_metric_parts();
         self.insert_update(Metric::from_parts(series, data, metadata));

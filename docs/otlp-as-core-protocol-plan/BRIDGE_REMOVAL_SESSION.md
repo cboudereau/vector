@@ -430,6 +430,71 @@ Needs a full transform rewrite to work with OtelMetric proto directly.
 6. **Rewrite 6** (DD search + Lua metric) — 3 calls, adapter work
 7. **Rewrite 7** (metric_to_log) — 1 call, full transform rewrite
 
+## Code review follow-ups (2026-04-13)
+
+A full code review was run against `0154497..HEAD` (60+ commits). Critical
+findings below. None are regressions introduced in this session — they are
+pre-existing asymmetries faithfully preserved by `apply_value_legacy_layout`,
+which now needs explicit test coverage so Phase E does not forget them.
+
+### Known gaps — preserved asymmetries (Phase E candidates)
+
+**1. `OtelLog` severity/trace_id/span_id lost on `insert()` round-trip**
+`to_value_legacy_layout` exports `severity_text`/`severity_number`/`trace_id`/
+`span_id` from proto fields (lines 788–793, 821–826 in `otel_event.rs`).
+`apply_value_legacy_layout` (line 903) sweeps them into `record.attributes`
+as plain `KeyValue` entries — matches `from_log_event` (line 375), so not a
+regression, but a lossy round-trip when starting from proto-native data.
+→ Add ignored tests (`insert_preserves_severity_text`,
+`insert_preserves_trace_id`, `insert_preserves_span_id`) documenting the
+gap and asserting ideal behavior.
+
+**2. `OtelSpan::apply_value_legacy_layout` drops all span-native fields**
+Sets only `span.attributes`, discards `trace_id`/`span_id`/`parent_span_id`/
+`name`/`kind`/start/end/status on every `insert()`. Mirrors `from_trace_event`
+(line 1214), same asymmetry story as above but ~10 fields instead of 4.
+→ Add ignored round-trip test documenting the gap.
+
+**3. `OtelMetric::with_tags` silently drops multi-value tags**
+Builder uses `MetricTags::iter_single()`, which returns only the last value
+for each key. `from_legacy_metric` preserves all values (one `KeyValue`
+per value). `multi_value_tags_yaml` test in `log_to_metric.rs` is already
+`#[ignore]`'d because of this.
+→ Extend `with_tags` to iterate all values, OR add a `debug_assert!` + log
+warning when fed multi-value input so the loss isn't silent.
+
+### Misleading doc comments
+
+**4. `normalize_otel*` methods are transitional shims, not round-trip-free**
+`normalize.rs:177-180` comment claims "Uses into_metric_parts() to avoid
+the legacy Metric round-trip", but all five `_otel` methods decompose
+OtelMetric and rebuild a legacy `Metric::from_parts` before delegating.
+→ Reword comments to state the actual purpose: cheap unpack of the proto
+to feed the existing legacy-Metric normalizer, pending a native
+OtelMetric `MetricSet`.
+
+**5. `from_log_event` doc lies about extraction**
+`otel_event.rs:339` says "Known fields (`timestamp`, `severity_text`, etc.)
+are extracted into their corresponding `LogRecord` fields" — but only
+`timestamp` and `body` are extracted. `severity_*`, `trace_id`, `span_id`
+go into `record.attributes`.
+→ Fix the doc OR fix the behavior (preferred is the latter but see #1).
+
+**6. Prometheus remote_write double-converts**
+`remote_write/sink.rs:229` converts legacy Metric back to OtelMetric just
+for template rendering. Acceptable transitional shim (MetricRef/BatchedMetrics
+still use legacy types). → Add `TODO(otlp-migration)` marker so it is not
+missed during the final sweep.
+
+### Passing with flying colors
+
+- DD search `Matcher<OtelLog>` rewrite (`src/conditions/datadog_search.rs`) —
+  clean, path lookups preserve semantics
+- JSON encoder test migration (`lib/codecs/src/encoding/format/json.rs`) —
+  no assertions weakened, full wire format still validated
+- Sink migrations (StatsD, GCP Stackdriver, GreptimeDB, Splunk HEC, Elasticsearch) —
+  all metric types still handled, no silent data drops
+
 ## Verification
 
 - `cargo test -p vector --lib` — 1789 passed, 0 failed

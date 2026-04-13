@@ -224,6 +224,10 @@ fn make_remote_write_event(
     tenant_id: Option<&Template>,
     metric: Metric,
 ) -> Option<RemoteWriteMetric> {
+    // TODO(otlp-migration): upstream callers still pass a legacy `Metric`
+    // because `BatchedMetrics`/`MetricRef`/the collector use legacy types;
+    // when those are migrated, accept `OtelMetric` directly here and drop
+    // this clone+convert round-trip. See BRIDGE_REMOVAL_SESSION.md.
     let tenant_id = tenant_id.and_then(|template| {
         template
             .render_string(&OtelMetric::from_legacy_metric(metric.clone()))

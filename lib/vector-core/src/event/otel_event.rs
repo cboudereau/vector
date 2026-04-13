@@ -3160,6 +3160,127 @@ mod tests {
         assert_eq!(direct.value(), via_legacy.value());
     }
 
+    /// Round-trip fidelity test: OtelLog → to_value_legacy_layout → apply_value_legacy_layout
+    /// should produce an OtelLog equivalent to the starting one for field lookups.
+    /// This protects against regressions when rewriting apply_value_legacy_layout.
+    #[test]
+    fn insert_preserves_body_via_round_trip() {
+        use opentelemetry_proto::tonic::common::v1::any_value::Value as Kind;
+
+        let mut event = OtelLog::new(LogRecord {
+            body: Some(AnyValue {
+                value: Some(Kind::StringValue("hello".into())),
+            }),
+            ..Default::default()
+        });
+        // Insert triggers the full round-trip
+        event.insert(vrl::event_path!("new_field"), "new_value");
+        assert_eq!(
+            event.get(vrl::event_path!("body")).and_then(|v| v.as_str().map(|s| s.into_owned())),
+            Some("hello".to_string())
+        );
+        assert_eq!(
+            event.get(vrl::event_path!("new_field")).and_then(|v| v.as_str().map(|s| s.into_owned())),
+            Some("new_value".to_string())
+        );
+    }
+
+    #[test]
+    fn insert_preserves_source_type_resource_attr() {
+        use opentelemetry_proto::tonic::common::v1::any_value::Value as Kind;
+
+        let mut event = OtelLog::new(LogRecord::default());
+        event.set_resource(Resource {
+            attributes: vec![KeyValue {
+                key: "source_type".into(),
+                value: Some(AnyValue { value: Some(Kind::StringValue("syslog".into())) }),
+            }],
+            dropped_attributes_count: 0,
+        });
+        event.insert(vrl::event_path!("another"), "x");
+        // source_type should survive the round-trip
+        assert_eq!(
+            event.get(vrl::event_path!("source_type")).and_then(|v| v.as_str().map(|s| s.into_owned())),
+            Some("syslog".to_string())
+        );
+    }
+
+    #[test]
+    fn from_log_event_with_tags_array_preserves_field_access() {
+        // DD search pattern: LogEvent with "tags" array field,
+        // converted via from_log_event, queried via get().
+        let mut log = crate::event::LogEvent::from("msg");
+        log.insert(
+            vrl::event_path!("tags"),
+            Value::Array(vec![Value::Bytes("a:foo".into())]),
+        );
+        let otel = OtelLog::from_log_event(log);
+
+        // Lookup via get() — this is what DD search matcher does
+        let tags = otel.get(vrl::event_path!("tags"));
+        assert!(tags.is_some(), "tags field must be accessible after from_log_event");
+        match tags.unwrap() {
+            Value::Array(arr) => {
+                assert_eq!(arr.len(), 1);
+                assert_eq!(arr[0].as_str().map(|s| s.into_owned()), Some("a:foo".to_string()));
+            }
+            other => panic!("expected Array, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn insert_preserves_other_resource_attrs() {
+        use opentelemetry_proto::tonic::common::v1::any_value::Value as Kind;
+
+        // Resource attrs OTHER than source_type/host.name — these end up
+        // in the "resource" sub-object in legacy layout. The round-trip
+        // through from_log_event drops these because from_log_event only
+        // reads source_type/host from the top level.
+        // This test documents the current (lossy) behavior — any rewrite
+        // should preserve it (or intentionally improve it).
+        let mut event = OtelLog::new(LogRecord::default());
+        event.set_resource(Resource {
+            attributes: vec![KeyValue {
+                key: "service.name".into(),
+                value: Some(AnyValue { value: Some(Kind::StringValue("my-svc".into())) }),
+            }],
+            dropped_attributes_count: 0,
+        });
+        // Before insert, we can read the resource attr via the resource sub-object
+        let before = event.get(vrl::event_path!("resource", "service.name"))
+            .and_then(|v| v.as_str().map(|s| s.into_owned()));
+        assert_eq!(before, Some("my-svc".to_string()),
+            "resource sub-object should be readable before insert");
+
+        event.insert(vrl::event_path!("attr"), "val");
+
+        // After insert: the current implementation's behavior (for regression detection)
+        let after = event.get(vrl::event_path!("resource", "service.name"))
+            .and_then(|v| v.as_str().map(|s| s.into_owned()));
+        assert_eq!(after, before,
+            "resource sub-object fidelity must be preserved across insert");
+    }
+
+    #[test]
+    fn insert_preserves_host_resource_attr() {
+        use opentelemetry_proto::tonic::common::v1::any_value::Value as Kind;
+
+        let mut event = OtelLog::new(LogRecord::default());
+        event.set_resource(Resource {
+            attributes: vec![KeyValue {
+                key: "host.name".into(),
+                value: Some(AnyValue { value: Some(Kind::StringValue("srv01".into())) }),
+            }],
+            dropped_attributes_count: 0,
+        });
+        event.insert(vrl::event_path!("attr"), "val");
+        // host.name → top-level "host" in value layout
+        assert_eq!(
+            event.get(vrl::event_path!("host")).and_then(|v| v.as_str().map(|s| s.into_owned())),
+            Some("srv01".to_string())
+        );
+    }
+
     #[test]
     fn with_namespace_tags_timestamp_matches_from_legacy_metric() {
         use crate::event::{Metric, MetricKind, MetricValue};

@@ -87,18 +87,31 @@ severity, trace_id/span_id) before rewriting `apply_value_legacy_layout`.
 - ✅ Parity tests: constructors produce equivalent output to from_legacy_metric
 - ✅ JSON codec counter tests migrated to new builder API
 
+### Round-trip fidelity tests added (this session)
+
+5 tests that protect against apply_value_legacy_layout regressions:
+- `insert_preserves_body_via_round_trip`
+- `insert_preserves_source_type_resource_attr`
+- `insert_preserves_host_resource_attr`
+- `insert_preserves_other_resource_attrs`
+- `from_log_event_with_tags_array_preserves_field_access`
+
+### apply_value_legacy_layout rewritten (this session)
+
+✅ **Direct proto mutation** — no more LogEvent round-trip.
+Mirrors from_log_event's field routing exactly (body, timestamp,
+source_type/host → resource attrs, everything else → record.attributes,
+scope cleared). DD search tests pass (previously regressed with naive rewrite).
+Eliminates the internal from_log_event call on line 847.
+
 ### Recommended next-session targets
 
-1. **Extend constructors** to Histogram/Summary/Distribution (currently
-   migrated tests use #[ignore] due to lossy round-trips)
-2. **Multi-value tags builder** — current with_tags only handles single-value
-3. **Round-trip fidelity tests** for `apply_value_legacy_layout` — test each field
-   path separately (body, severity, trace_id/span_id, source_type/host, resource,
-   scope, attributes) before rewriting
-4. **Direct proto mutation** in `apply_value_legacy_layout` — then remove
-   `OtelLog::from_log_event` internal caller (line 847)
-5. **VRL migration tool** (Phase A) — prerequisite for source emission changes
-6. **Source emission** — sources emit OTel types directly (Phase E proper)
+1. **Apply same rewrite to OtelSpan's `apply_value_legacy_layout`** (still uses
+   TraceEvent round-trip)
+2. **Extend OtelMetric constructors** to Histogram/Summary/Distribution
+3. **Multi-value tags builder** — current with_tags only handles single-value
+4. **VRL migration tool** (Phase A)
+5. **Source emission** — sources emit OTel types directly (Phase E proper)
 
 ### What was done
 

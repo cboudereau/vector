@@ -1994,6 +1994,41 @@ impl OtelMetric {
         }
     }
 
+    /// Builder-style: set the metric namespace (stored as `metric.namespace` resource attribute).
+    pub fn with_namespace(mut self, namespace: Option<impl Into<String>>) -> Self {
+        if let Some(ns) = namespace {
+            let ns_str = ns.into();
+            let resource = self.resource.get_or_insert_with(|| Resource {
+                attributes: Vec::new(),
+                dropped_attributes_count: 0,
+            });
+            // Remove existing metric.namespace if present
+            resource.attributes.retain(|kv| kv.key != "metric.namespace");
+            resource.attributes.push(KeyValue {
+                key: "metric.namespace".to_string(),
+                value: Some(string_value(&ns_str)),
+            });
+        }
+        self
+    }
+
+    /// Builder-style: set the timestamp on all data points.
+    pub fn with_timestamp(mut self, ts: Option<chrono::DateTime<chrono::Utc>>) -> Self {
+        self.set_timestamp(ts);
+        self
+    }
+
+    /// Builder-style: set tags as data point attributes.
+    /// Only sets single-value tags; use replace_tag for more control.
+    pub fn with_tags(mut self, tags: Option<super::metric::MetricTags>) -> Self {
+        if let Some(tags) = tags {
+            for (key, value) in tags.iter_single() {
+                self.replace_tag(key, value);
+            }
+        }
+        self
+    }
+
     /// Build MetricTags from proto data point, resource, and scope attributes.
     ///
     /// Returns an owned `MetricTags` (not a reference) because the tags are
@@ -3123,5 +3158,39 @@ mod tests {
         assert_eq!(direct.name(), via_legacy.name());
         assert_eq!(direct.kind(), via_legacy.kind());
         assert_eq!(direct.value(), via_legacy.value());
+    }
+
+    #[test]
+    fn with_namespace_tags_timestamp_matches_from_legacy_metric() {
+        use crate::event::{Metric, MetricKind, MetricValue};
+        use chrono::{TimeZone, Utc};
+
+        let ts = Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap();
+        let tags: super::super::MetricTags = vec![("env".to_string(), "prod".to_string())]
+            .into_iter()
+            .collect();
+
+        let direct = OtelMetric::new_counter("requests", MetricKind::Incremental, 42.0)
+            .with_namespace(Some("http"))
+            .with_tags(Some(tags.clone()))
+            .with_timestamp(Some(ts));
+
+        let via_legacy = OtelMetric::from_legacy_metric(
+            Metric::new(
+                "requests",
+                MetricKind::Incremental,
+                MetricValue::Counter { value: 42.0 },
+            )
+            .with_namespace(Some("http"))
+            .with_tags(Some(tags))
+            .with_timestamp(Some(ts)),
+        );
+
+        assert_eq!(direct.name(), via_legacy.name());
+        assert_eq!(direct.namespace(), via_legacy.namespace());
+        assert_eq!(direct.kind(), via_legacy.kind());
+        assert_eq!(direct.value(), via_legacy.value());
+        assert_eq!(direct.timestamp(), via_legacy.timestamp());
+        assert_eq!(direct.tag_value("env"), via_legacy.tag_value("env"));
     }
 }

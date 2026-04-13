@@ -142,25 +142,21 @@ mod tests {
 
     #[test]
     fn serialize_json_metric_counter() {
-        let event = Event::Metric(OtelMetric::from_legacy_metric(
-            Metric::new(
-                "foos",
-                MetricKind::Incremental,
-                MetricValue::Counter { value: 100.0 },
-            )
-            .with_namespace(Some("vector"))
-            .with_tags(Some(metric_tags!(
-                "key2" => "value2",
-                "key1" => "value1",
-                "Key3" => "Value3",
-            )))
-            .with_timestamp(Some(
-                Utc.with_ymd_and_hms(2018, 11, 14, 8, 9, 10)
-                    .single()
-                    .and_then(|t| t.with_nanosecond(11))
-                    .expect("invalid timestamp"),
-            )),
-        ));
+        let event = Event::Metric(
+            OtelMetric::new_counter("foos", MetricKind::Incremental, 100.0)
+                .with_namespace(Some("vector"))
+                .with_tags(Some(metric_tags!(
+                    "key2" => "value2",
+                    "key1" => "value1",
+                    "Key3" => "Value3",
+                )))
+                .with_timestamp(Some(
+                    Utc.with_ymd_and_hms(2018, 11, 14, 8, 9, 10)
+                        .single()
+                        .and_then(|t| t.with_nanosecond(11))
+                        .expect("invalid timestamp"),
+                )),
+        );
 
         let bytes = serialize(JsonSerializerConfig::default(), event);
 

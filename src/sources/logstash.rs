@@ -27,7 +27,7 @@ use crate::{
         DataType, GenerateConfig, Resource, SourceAcknowledgementsConfig, SourceConfig,
         SourceContext, SourceOutput,
     },
-    event::{Event, LogEvent, OtelLog, Value, string_value},
+    event::{Event, OtelLog, Value, string_value},
     serde::bool_or_struct,
     tcp::TcpKeepaliveConfig,
     tls::{MaybeTlsSettings, TlsSourceConfig},
@@ -656,13 +656,15 @@ fn bytes_remaining(src: &BytesMut, rest: &[u8]) -> usize {
 
 impl From<LogstashEventFrame> for Event {
     fn from(frame: LogstashEventFrame) -> Self {
-        Event::Log(OtelLog::from_log_event(LogEvent::from(
-            frame
-                .fields
-                .into_iter()
-                .map(|(key, value)| (key, Value::from(value)))
-                .collect::<BTreeMap<_, _>>(),
-        )))
+        let map: vrl::value::ObjectMap = frame
+            .fields
+            .into_iter()
+            .map(|(key, value)| (key.into(), Value::from(value)))
+            .collect();
+        Event::Log(OtelLog::from_value_map(
+            Value::Object(map),
+            vector_lib::event::EventMetadata::default(),
+        ))
     }
 }
 

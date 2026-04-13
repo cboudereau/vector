@@ -66,7 +66,11 @@ impl From<EventArray> for array::EventArray {
                 array::EventArray::Logs(
                     logs.logs
                         .into_iter()
-                        .map(|proto| super::OtelLog::from_log_event(proto.into()))
+                        .map(|proto| {
+                            let log: super::LogEvent = proto.into();
+                            let (value, metadata) = log.into_parts();
+                            super::OtelLog::from_value_map(value, metadata)
+                        })
                         .collect(),
                 )
             }
@@ -300,7 +304,8 @@ impl From<EventWrapper> for super::Event {
         match event {
             Event::Log(proto) => {
                 let log_event: super::LogEvent = proto.into();
-                super::Event::Log(super::OtelLog::from_log_event(log_event))
+                let (value, metadata) = log_event.into_parts();
+                super::Event::Log(super::OtelLog::from_value_map(value, metadata))
             }
             Event::Metric(proto) => {
                 let metric: super::Metric = proto.into();

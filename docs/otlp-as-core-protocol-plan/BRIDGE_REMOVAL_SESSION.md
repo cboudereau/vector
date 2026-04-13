@@ -61,9 +61,31 @@ Remaining forward direction: 124 `from_log_event`/`from_legacy_metric` calls.
 - ~9 production: Event::from impls (2), apply_value_legacy_layout (3),
   method definitions (2), influxdb decoder (1), discriminant definition (1)
 - ~115 test: constructing events via legacy types for convenience
-Next: LEGACY_REMOVAL_PLAN Phase A (VRL migration rules) + Phase E (type deletion).
-Phase E requires: sources emit OTel directly, VRL write-back without
-from_log_event round-trip, OtelMetric convenience constructors for tests.
+
+### Phase E prerequisites (discovered in this session)
+
+**VRL write-back regression**: Attempted rewrite of `apply_value_legacy_layout`
+to direct proto mutation (instead of `from_log_event` round-trip) broke
+DD search tests. Root cause: field-routing asymmetry between
+`to_value_legacy_layout` OUTPUT and `from_log_event` INPUT:
+- `to_value_legacy_layout` extracts `source_type`/`host` from resource attrs
+  to top-level, puts remaining resource attrs in `resource` sub-object
+- `from_log_event` routes `source_type`/`host` back to resource attrs but
+  treats `resource`/`scope` sub-objects as plain record attributes
+
+**Needed**: focused round-trip tests verifying each field path
+(source_type, host, resource sub-object, scope sub-object, timestamp,
+severity, trace_id/span_id) before rewriting `apply_value_legacy_layout`.
+
+### Recommended next-session targets
+
+1. **OtelMetric convenience constructors** (`new_counter`, `new_gauge`, etc.)
+   — zero-risk, eliminates ~100 test-code `from_legacy_metric` calls
+2. **Round-trip fidelity tests** for `apply_value_legacy_layout` — safety net
+3. **Direct proto mutation** in `apply_value_legacy_layout` — then remove
+   `OtelLog::from_log_event` internal caller (line 847)
+4. **VRL migration tool** (Phase A) — prerequisite for source emission changes
+5. **Source emission** — sources emit OTel types directly (Phase E proper)
 
 ### What was done
 

@@ -1458,6 +1458,50 @@ impl OtelMetric {
         }
     }
 
+    /// Convenience constructor for a counter metric.
+    /// Builds the OTLP proto directly without going through legacy Metric.
+    pub fn new_counter(name: impl Into<String>, kind: super::MetricKind, value: f64) -> Self {
+        use opentelemetry_proto::tonic::metrics::v1::{
+            self as otel_metrics, metric::Data, number_data_point::Value as NDPValue, NumberDataPoint, Sum,
+        };
+        let temporality = match kind {
+            super::MetricKind::Incremental => otel_metrics::AggregationTemporality::Delta as i32,
+            super::MetricKind::Absolute => otel_metrics::AggregationTemporality::Cumulative as i32,
+        };
+        let proto = OtelMetricProto {
+            name: name.into(),
+            data: Some(Data::Sum(Sum {
+                data_points: vec![NumberDataPoint {
+                    value: Some(NDPValue::AsDouble(value)),
+                    ..Default::default()
+                }],
+                aggregation_temporality: temporality,
+                is_monotonic: true,
+            })),
+            ..Default::default()
+        };
+        Self::new(proto)
+    }
+
+    /// Convenience constructor for a gauge metric.
+    /// Builds the OTLP proto directly without going through legacy Metric.
+    pub fn new_gauge(name: impl Into<String>, value: f64) -> Self {
+        use opentelemetry_proto::tonic::metrics::v1::{
+            metric::Data, number_data_point::Value as NDPValue, Gauge, NumberDataPoint,
+        };
+        let proto = OtelMetricProto {
+            name: name.into(),
+            data: Some(Data::Gauge(Gauge {
+                data_points: vec![NumberDataPoint {
+                    value: Some(NDPValue::AsDouble(value)),
+                    ..Default::default()
+                }],
+            })),
+            ..Default::default()
+        };
+        Self::new(proto)
+    }
+
     /// Convert a legacy Vector `Metric` into an `OtelMetric`.
     ///
     /// Maps MetricValue variants to OTel metric data types:
@@ -3047,5 +3091,37 @@ mod tests {
             MetricValue::Gauge { value: 0.0 },
         ));
         assert!(empty.tags().is_none());
+    }
+
+    #[test]
+    fn new_counter_matches_from_legacy_metric() {
+        use crate::event::{Metric, MetricKind, MetricValue};
+
+        let direct = OtelMetric::new_counter("requests", MetricKind::Incremental, 42.0);
+        let via_legacy = OtelMetric::from_legacy_metric(Metric::new(
+            "requests",
+            MetricKind::Incremental,
+            MetricValue::Counter { value: 42.0 },
+        ));
+
+        assert_eq!(direct.name(), via_legacy.name());
+        assert_eq!(direct.kind(), via_legacy.kind());
+        assert_eq!(direct.value(), via_legacy.value());
+    }
+
+    #[test]
+    fn new_gauge_matches_from_legacy_metric() {
+        use crate::event::{Metric, MetricKind, MetricValue};
+
+        let direct = OtelMetric::new_gauge("temperature", 98.6);
+        let via_legacy = OtelMetric::from_legacy_metric(Metric::new(
+            "temperature",
+            MetricKind::Absolute,
+            MetricValue::Gauge { value: 98.6 },
+        ));
+
+        assert_eq!(direct.name(), via_legacy.name());
+        assert_eq!(direct.kind(), via_legacy.kind());
+        assert_eq!(direct.value(), via_legacy.value());
     }
 }

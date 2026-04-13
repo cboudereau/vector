@@ -70,8 +70,9 @@ impl FunctionTransform for TraceToLog {
                 // Convert span to log: span fields become log attributes,
                 // resource and scope are preserved.
                 let map = span.as_map().unwrap_or_default();
-                let log = vector_lib::event::OtelLog::from_log_event(
-                    vector_lib::event::LogEvent::from_map(map, span.metadata().clone()),
+                let log = vector_lib::event::OtelLog::from_value_map(
+                    vrl::value::Value::Object(map),
+                    span.metadata().clone(),
                 );
                 output.push(Event::Log(log));
             }

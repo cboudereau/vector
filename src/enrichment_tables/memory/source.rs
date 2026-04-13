@@ -7,7 +7,7 @@ use tokio_stream::wrappers::IntervalStream;
 use vector_lib::{
     ByteSizeOf, EstimatedJsonEncodedSizeOf,
     config::LogNamespace,
-    event::{Event, EventMetadata, LogEvent, OtelLog},
+    event::{Event, EventMetadata, OtelLog},
     internal_event::{
         ByteSize, BytesReceived, BytesReceivedHandle, CountByteSize, EventsReceived,
         EventsReceivedHandle, InternalEventHandle, Protocol,
@@ -102,11 +102,11 @@ impl MemorySource {
                             v.get_one().map(|v| (k, v))
                         })
                         .filter_map(|(k, v)| {
-                            let log_event = LogEvent::from_map(
-                                v.as_object_map(now, k).ok()?,
+                            let map = v.as_object_map(now, k).ok()?;
+                            let mut event = Event::Log(OtelLog::from_value_map(
+                                vrl::value::Value::Object(map),
                                 EventMetadata::default(),
-                            );
-                            let mut event = Event::Log(OtelLog::from_log_event(log_event));
+                            ));
                             if let Event::Log(ref mut otel_log) = event {
                                 otel_log.set_source_metadata(MemoryConfig::NAME, utc_now);
                             }
@@ -151,11 +151,11 @@ impl MemorySource {
                      key,
                      entry: expired_event,
                  }| {
-                    let log_event = LogEvent::from_map(
-                        expired_event.as_object_map(now, &key).ok()?,
+                    let map = expired_event.as_object_map(now, &key).ok()?;
+                    let mut event = Event::Log(OtelLog::from_value_map(
+                        vrl::value::Value::Object(map),
                         EventMetadata::default(),
-                    );
-                    let mut event = Event::Log(OtelLog::from_log_event(log_event));
+                    ));
                     if let Event::Log(ref mut otel_log) = event {
                         otel_log.set_source_metadata(MemoryConfig::NAME, Utc::now());
                     }

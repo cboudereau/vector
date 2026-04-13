@@ -832,7 +832,20 @@ impl OtelLog {
         Value::Object(map)
     }
 
-    /// Write back a Value tree (legacy layout) to proto fields.
+    /// Construct an OtelLog from a legacy-layout Value + metadata.
+    /// Routes fields exactly like from_log_event: body, timestamp, source_type/host
+    /// → resource attrs, everything else → record.attributes. Clears scope.
+    pub fn from_value_map(value: Value, metadata: EventMetadata) -> Self {
+        let mut out = Self {
+            record: LogRecord::default(),
+            resource: None,
+            scope: None,
+            metadata,
+        };
+        out.apply_value_legacy_layout(value);
+        out
+    }
+
     /// Write back a Value tree (legacy layout) to proto fields.
     /// Mirrors from_log_event() field routing exactly, but without
     /// constructing an intermediate LogEvent.

@@ -1483,10 +1483,19 @@ impl OtelSpan {
         let span_id = take_id(&mut map, "span_id");
         let parent_span_id = take_id(&mut map, "parent_span_id");
 
-        // Timestamps encoded as Value::Timestamp → nanos.
+        // Timestamps encoded as Value::Timestamp → nanos since epoch.
+        // Span proto fields are u64: pre-epoch or out-of-range timestamps
+        // cannot be represented, so we preserve the original value as an
+        // attribute rather than wrapping negatives to huge future times.
         let take_time = |map: &mut ObjectMap, key: &str| -> u64 {
             match map.remove(key) {
-                Some(Value::Timestamp(ts)) => ts.timestamp_nanos_opt().unwrap_or(0) as u64,
+                Some(Value::Timestamp(ts)) => match ts.timestamp_nanos_opt() {
+                    Some(n) if n >= 0 => n as u64,
+                    _ => {
+                        map.insert(key.into(), Value::Timestamp(ts));
+                        0
+                    }
+                },
                 Some(other) => {
                     map.insert(key.into(), other);
                     0
@@ -2964,6 +2973,34 @@ mod tests {
         assert_eq!(event.start_time_unix_nano(), 1000);
         assert_eq!(event.end_time_unix_nano(), 2000);
         assert_eq!(event.kind(), 2);
+    }
+
+    #[test]
+    fn otel_span_pre_epoch_timestamp_preserved_as_attribute() {
+        use chrono::{TimeZone, Utc};
+        // Pre-1970 timestamps cannot be represented in a u64 nanos field.
+        // Confirm they are preserved as attributes rather than wrapping
+        // to huge future values via an `i64 as u64` cast.
+        let pre_epoch = Utc.with_ymd_and_hms(1960, 1, 1, 0, 0, 0).unwrap();
+        let mut event = OtelSpan::new(Span::default());
+        event.insert(vrl::event_path!("start_time"), Value::Timestamp(pre_epoch));
+        event.insert(vrl::event_path!("new_field"), "v");
+
+        // Native field must stay zero — no u64 wrap.
+        assert_eq!(event.start_time_unix_nano(), 0);
+        // Pre-epoch value is preserved as an attribute. OTLP AnyValue has
+        // no native timestamp kind, so it round-trips as its RFC3339 string
+        // representation.
+        let back = event.get(vrl::event_path!("start_time"));
+        let s = match back {
+            Some(Value::Bytes(b)) => String::from_utf8(b.to_vec()).unwrap(),
+            Some(Value::Timestamp(t)) => t.to_rfc3339(),
+            other => panic!("expected Bytes or Timestamp, got {other:?}"),
+        };
+        assert!(
+            s.starts_with("1960-01-01"),
+            "pre-epoch start_time should survive as attribute; got {s:?}"
+        );
     }
 
     #[test]

@@ -77,15 +77,24 @@ DD search tests. Root cause: field-routing asymmetry between
 (source_type, host, resource sub-object, scope sub-object, timestamp,
 severity, trace_id/span_id) before rewriting `apply_value_legacy_layout`.
 
+### OTel-native API additions (this session)
+
+- ✅ `OtelMetric::new_counter(name, kind, value)` — Sum proto with temporality
+- ✅ `OtelMetric::new_gauge(name, value)` — Gauge proto
+- ✅ `OtelMetric::with_namespace(Option<impl Into<String>>)` — sets resource attr
+- ✅ `OtelMetric::with_tags(Option<MetricTags>)` — single-value tags
+- ✅ `OtelMetric::with_timestamp(Option<DateTime<Utc>>)` — all data points
+- ✅ Parity tests: constructors produce equivalent output to from_legacy_metric
+- ✅ JSON codec counter tests migrated to new builder API
+
 ### Recommended next-session targets
 
-1. ✅ **OtelMetric::new_counter/new_gauge constructors added** — verified parity
-   with from_legacy_metric via round-trip tests. Eliminates test-code dependency
-   on legacy Metric for simple Counter/Gauge construction.
-2. **Extend constructors** to histogram/summary/distribution cases (lossy round-trips)
+1. **Extend constructors** to Histogram/Summary/Distribution (currently
+   migrated tests use #[ignore] due to lossy round-trips)
+2. **Multi-value tags builder** — current with_tags only handles single-value
 3. **Round-trip fidelity tests** for `apply_value_legacy_layout` — test each field
    path separately (body, severity, trace_id/span_id, source_type/host, resource,
-   scope, attributes) before rewriting.
+   scope, attributes) before rewriting
 4. **Direct proto mutation** in `apply_value_legacy_layout` — then remove
    `OtelLog::from_log_event` internal caller (line 847)
 5. **VRL migration tool** (Phase A) — prerequisite for source emission changes

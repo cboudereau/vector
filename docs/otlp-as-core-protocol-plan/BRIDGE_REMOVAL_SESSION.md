@@ -134,8 +134,28 @@ Eliminates the internal from_log_event call on line 847.
 - `prometheus/remote_write` template rendering (1 site)
 - `amqp/config.rs` property rendering (1 site — test helper)
 - `statsd/encoder.rs` test helper (1 site)
-- `greptimedb` test helpers (9 sites)
+- `greptimedb` test helpers (4 sites — set/summary/histogram/distribution)
 - `log_to_metric` test expectations (22 sites)
+
+### Migrated to OtelMetric constructors (this session)
+- influxdb decoder: OtelMetric::new_gauge + with_tags/with_timestamp
+- greptimedb tests: 5 Counter/Gauge test cases → new_counter/new_gauge
+
+### Session totals (all sessions combined)
+
+- Public bridge methods DELETED: to_log_event, to_legacy_metric (on OtelLog,
+  OtelSpan, OtelMetric), to_metric/into_metric/try_into_metric (on Event,
+  EventRef, EventMutRef), render_string_from_log/metric (on Template)
+- Production reverse bridge callers eliminated: VRL write-back (2 sites),
+  trace_to_log, enrichment memory source (2 sites), logstash source,
+  elasticsearch sink, proto Log deserialization (2 sites), influxdb decoder
+- New OTel-native APIs: OtelLog::from_value_map, OtelMetric::new_counter,
+  OtelMetric::new_gauge, OtelMetric::with_namespace/with_tags/with_timestamp,
+  OtelLog::find_key_by_meaning, OtelMetric::set_timestamp,
+  OtelMetric::into_metric_parts, MetricSet::normalize_otel*/make_absolute_otel/
+  make_incremental_otel, From<OtelLog/OtelSpan/OtelMetric> for WithMetadata<Log/Trace/Metric>
+- All 10 metric sinks migrated to OtelMetric pipelines
+- 1789 tests passing. 10 round-trip fidelity tests protect VRL write-back.
 
 ### Recommended next-session targets
 

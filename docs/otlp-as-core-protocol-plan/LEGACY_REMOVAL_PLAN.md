@@ -177,20 +177,155 @@ see `VRL_MIGRATION_TOOL.md`) should rewrite before being removed.
 | MET-06 | `.value.counter.value` | `.data.sum.data_points[0].value` |
 | MET-07 | `.value.gauge.value` | `.data.gauge.data_points[0].value` |
 
-## Next concrete targets (ordered)
+## Full legacy-code audit (2026-04-13)
 
-1. **VRL migration tool MVP** (Phase A) — at least `LOG-01`/`MET-06`/`MET-07`
-   rules compile and rewrite real programs. **This is the single blocking
-   item for further bridge removal.**
-2. **`Metric::from_parts`/`into_parts` normalizer path** — `MetricSet`,
-   `BatchedMetrics`, `MetricRef` still use legacy `Metric` as the
-   normalization key. Migrating to a native OtelMetric `MetricSet` would
-   remove the biggest remaining legacy footprint in the hot path.
-3. **`VrlTarget::Log(LogEvent)` → `VrlTarget::OtelLog`** — largest
-   single change, gated on Phase A + stable OtelLog VRL semantics.
-4. **Audit remaining `LogEvent` use sites in sources/codecs**
-   — ~14 files import `LogEvent`. Each is a candidate to decode straight
-   into `OtelLog` via `from_value_map`.
+A codebase-wide audit revealed the **~14 source/codec files** estimate
+was wrong — ~80 production files still construct or accept legacy
+types. Grouped below so nothing is lost.
+
+### Group A — Dead code, safe to delete right now
+
+| Item | Location | Note |
+|------|----------|------|
+| `VrlTarget::LogEvent` variant | `lib/vector-core/src/event/vrl_target.rs:633` | `VrlTarget::new` never constructs it; 23 match arms exist but no write site |
+| `VrlTarget::Trace` variant | `vrl_target.rs:639` | same — dead |
+| `VrlTarget::Metric { metric, .. }` variant | `vrl_target.rs:634` | same — dead |
+| `TargetIter<LogEvent>` + `TargetIter<TraceEvent>` iterators | `vrl_target.rs:669, 686` | only consumed by the dead variants |
+| `create_log_event` helper | `vrl_target.rs:663` | only used by dead TargetIter |
+
+**Action**: delete these and prune 23 match arms. Reduces `vrl_target.rs`
+by ~300 lines and narrows the mental model of VRL targets. **Tracked as
+task #30.**
+
+### Group B — Codecs (the Deserializer/Encoder trait layer)
+
+The `Deserializer::parse` trait already returns `Event` (which wraps
+`OtelLog`), so callers unavoidably go through `Event::from(LogEvent)`.
+17 codec files still construct `LogEvent`:
+
+```
+lib/codecs/src/decoding/format/
+  avro.rs, gelf.rs, protobuf.rs, syslog.rs, vrl.rs
+lib/codecs/src/encoding/
+  encoder.rs, transformer.rs, format/
+    arrow.rs, avro.rs, cef.rs, csv.rs, gelf.rs, json.rs, logfmt.rs,
+    raw_message.rs, syslog.rs, text.rs
+```
+
+**Migration path**: update each decoder to return an `OtelLog` (or
+`OtelSpan` for trace codecs) directly via `from_value_map`. Encoders
+read from `&OtelLog` already (via `Event::as_log() → &OtelLog`) but some
+still pass through `LogEvent` internally.
+
+### Group C — Sources (I/O boundary, LogEvent for field assembly)
+
+14 sources build `LogEvent` before `.into()` into `Event`:
+
+```
+src/sources/
+  dnstap/, docker_logs/, fluent/, heroku_logs.rs, http_client/,
+  journald.rs, kubernetes_logs/{parser/cri, parser/docker,
+  namespace_metadata_annotator, node_metadata_annotator,
+  pod_metadata_annotator, partial_events_merger},
+  socket/, splunk_hec/, syslog.rs, util/framestream,
+  util/http/{headers, query}
+```
+
+**Migration path**: replace `LogEvent::default(); log.insert(...)` +
+`.into()` patterns with direct `OtelLog::from_value_map(...)`.
+Mechanical but high volume.
+
+### Group D — Sinks (reading LogEvent; mostly test helpers)
+
+13 sink files mention `LogEvent`; most are test/util:
+
+```
+src/sinks/
+  amqp/config.rs, aws_cloudwatch_logs/request_builder.rs,
+  azure_blob/test.rs, console/sink.rs, file/mod.rs,
+  gcp/cloud_storage.rs, humio/logs.rs, influxdb/logs.rs,
+  kafka/request_builder.rs, loki/sink.rs, mezmo.rs,
+  papertrail.rs, socket.rs, util/encoding.rs,
+  webhdfs/test.rs, websocket_server/sink.rs
+```
+
+Most use `event.as_log() → &OtelLog` correctly now; remaining sites
+create LogEvent for template rendering or test setup. Low priority.
+
+### Group E — Transforms (VRL, log_to_metric, metric_to_log, etc.)
+
+12 transform files. Key ones:
+
+```
+src/transforms/
+  aws_ec2_metadata.rs (tests), dedupe/config.rs, filter.rs,
+  log_to_metric.rs, lua/v1/mod.rs, lua/v2/mod.rs,
+  metric_to_log.rs, reduce/{transform, merge_strategy},
+  remap.rs, throttle/transform.rs, window/transform.rs
+```
+
+`remap.rs` is the VRL entry point — gated on Phase A.
+`log_to_metric.rs` / `metric_to_log.rs` are explicit bridges that
+should stay until source emission is native OTel.
+
+### Group F — Internal infrastructure
+
+| Site | Role | Priority |
+|------|------|----------|
+| `src/trace.rs` | Vector's own log-event emission for internal tracing | Low — isolated subsystem |
+| `src/template.rs` | Template rendering (test helpers) | Low |
+| `src/common/http/server_auth.rs` | HTTP auth VRL evaluation | Low — calls VrlTarget::new |
+| `src/config/unit_test/mod.rs` | Unit test config plumbing | Low |
+| `lib/opentelemetry-proto/src/logs.rs:255-261` | **OTLP→LogEvent conversion (ironic)** | Medium — should go OTLP→OtelLog direct |
+| `lib/opentelemetry-proto/src/buffer_codec.rs` | Disk buffer OTLP codec | Medium |
+| `lib/vector-core/src/config/mod.rs` | log_schema field hoisting | Low |
+| `lib/vector-core/src/transform/mod.rs` | FunctionTransform trait uses LogEvent | Medium — trait-level change |
+| `lib/vector-core/src/fanout.rs` | Internal plumbing (tests) | Low |
+| `lib/vector-core/src/schema/definition.rs` | Schema definition (tests) | Low |
+| `lib/vector-vrl-metrics/src/common.rs` | VRL-metrics converter | Medium |
+
+### Group G — Legacy Metric API
+
+1. **`api/schema/metrics/*` (8 files)** — Vector's GraphQL API wraps
+   legacy `Metric` for component observability. Untracked previously.
+   Not in any hot path but a full-width legacy dependency.
+
+2. **`src/sinks/util/normalizer.rs`** — helper; feeds into the
+   `MetricNormalizer` / `MetricSet` infrastructure.
+
+3. **`src/sinks/prometheus/{mod, remote_write/*}.rs`** — still use
+   legacy Metric for BatchedMetrics/MetricRef collector path (blocked).
+
+4. **`lib/vector-vrl-metrics/src/common.rs`** — VRL metric
+   manipulation functions.
+
+### Group H — Bridges (permanent)
+
+| Function | Role |
+|----------|------|
+| `Event::from(LogEvent / Metric / TraceEvent)` | Fundamental coercion — stays until all sources emit OTel directly |
+| `OtelLog::from_log_event` | Thin wrapper over `from_value_map`; useful for test ergonomics |
+| `OtelSpan::from_trace_event` | Same as above |
+| `OtelMetric::from_legacy_metric` | Same as above |
+
+## Next concrete targets (ordered, reality-checked)
+
+1. **Delete dead `VrlTarget` legacy variants + TargetIter impls**
+   (task #30) — pure cleanup, ~300 lines gone, no behavior change.
+2. **VRL migration tool MVP** (Phase A) — at least `LOG-01`/`MET-06`/
+   `MET-07` rules compile and rewrite real programs. Blocks Phase B.
+3. **`Metric::from_parts`/`into_parts` normalizer path** — migrate
+   `MetricSet`/`BatchedMetrics`/`MetricRef` to native OtelMetric. Unlocks
+   prometheus sinks + removes the normalizer `_otel` transitional shim.
+4. **Migrate codecs (Group B)** — 17 files. Decoders should return
+   `OtelLog` via `from_value_map`; encoders can stop constructing
+   `LogEvent` internally.
+5. **Migrate high-traffic sources (Group C)**: splunk_hec, journald,
+   docker_logs, kubernetes_logs first.
+6. **Fix OTLP proto converter (Group F)** — `logs.rs` should produce
+   `OtelLog` directly instead of LogEvent.
+7. **Replace `FunctionTransform` trait's LogEvent signature** (Group F)
+   — blocks deep transform migration.
 
 ## Verification
 

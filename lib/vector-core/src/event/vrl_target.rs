@@ -1,12 +1,6 @@
-use std::{
-    borrow::Cow,
-    collections::BTreeMap,
-    convert::TryFrom,
-    marker::PhantomData,
-    num::{NonZero, TryFromIntError},
-};
+use std::{collections::BTreeMap, marker::PhantomData};
 
-use lookup::{OwnedTargetPath, OwnedValuePath, PathPrefix, lookup_v2::OwnedSegment};
+use lookup::{OwnedTargetPath, OwnedValuePath, PathPrefix};
 use opentelemetry_proto::tonic::common::v1::{
     AnyValue as OtelAnyValue, ArrayValue as OtelArrayValue, KeyValue as OtelKeyValue,
     KeyValueList as OtelKeyValueList, InstrumentationScope as OtelScope,
@@ -20,26 +14,11 @@ use vrl::{
     value::{Kind, ObjectMap, Value},
 };
 
-use super::{
-    Event, EventMetadata, LogEvent, Metric, MetricKind, OtelLog, OtelMetric,
-    OtelSpan, TraceEvent, metric::TagValue,
-};
+use super::{Event, EventMetadata, OtelLog, OtelMetric, OtelSpan};
 use crate::{
     config::{LogNamespace, log_schema},
     schema::Definition,
 };
-
-const VALID_METRIC_PATHS_SET: &str = ".name, .namespace, .interval_ms, .timestamp, .kind, .tags";
-
-/// We can get the `type` of the metric in Remap, but can't set it.
-const VALID_METRIC_PATHS_GET: &str =
-    ".name, .namespace, .interval_ms, .timestamp, .kind, .tags, .type";
-
-/// Metrics aren't interested in paths that have a length longer than 3.
-///
-/// The longest path is 2, and we need to check that a third segment doesn't exist as we don't want
-/// fields such as `.tags.host.thing`.
-const MAX_METRIC_PATH_DEPTH: usize = 3;
 
 const VALID_OTEL_METRIC_PATHS_SET: &str = ".name, .description, .unit, .resource, .scope, .attributes, .data.*.data_points[*].attributes";
 const VALID_OTEL_METRIC_PATHS_GET: &str =
@@ -628,15 +607,6 @@ fn number_data_points_to_value(dps: &[opentelemetry_proto::tonic::metrics::v1::N
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub enum VrlTarget {
-    // `LogEvent` is essentially just a destructured `event::LogEvent`, but without the semantics
-    // that `fields` must always be a `Map` variant.
-    LogEvent(Value, EventMetadata),
-    Metric {
-        metric: Metric,
-        value: Value,
-        multi_value_tags: bool,
-    },
-    Trace(Value, EventMetadata),
     OtelLog(Value, EventMetadata),
     OtelSpan(Value, EventMetadata),
     OtelMetric {
@@ -647,8 +617,6 @@ pub enum VrlTarget {
 
 pub enum TargetEvents {
     One(Event),
-    Logs(TargetIter<LogEvent>),
-    Traces(TargetIter<TraceEvent>),
     OtelLogs(TargetIter<OtelLog>),
     OtelSpans(TargetIter<OtelSpan>),
 }
@@ -657,46 +625,6 @@ pub struct TargetIter<T> {
     iter: std::vec::IntoIter<Value>,
     metadata: EventMetadata,
     _marker: PhantomData<T>,
-    log_namespace: LogNamespace,
-}
-
-fn create_log_event(value: Value, metadata: EventMetadata) -> LogEvent {
-    let mut log = LogEvent::new_with_metadata(metadata);
-    log.maybe_insert(log_schema().message_key_target_path(), value);
-    log
-}
-
-impl Iterator for TargetIter<LogEvent> {
-    type Item = Event;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next().map(|v| {
-            match self.log_namespace {
-                LogNamespace::Legacy => match v {
-                    value @ Value::Object(_) => LogEvent::from_parts(value, self.metadata.clone()),
-                    value => create_log_event(value, self.metadata.clone()),
-                },
-                LogNamespace::Vector => LogEvent::from_parts(v, self.metadata.clone()),
-            }
-            .into()
-        })
-    }
-}
-
-impl Iterator for TargetIter<TraceEvent> {
-    type Item = Event;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next().map(|v| {
-            match v {
-                value @ Value::Object(_) => {
-                    TraceEvent::from(LogEvent::from_parts(value, self.metadata.clone()))
-                }
-                value => TraceEvent::from(create_log_event(value, self.metadata.clone())),
-            }
-            .into()
-        })
-    }
 }
 
 impl Iterator for TargetIter<OtelLog> {
@@ -756,45 +684,8 @@ impl VrlTarget {
     ///
     /// This returns an iterator of events as one event can be turned into multiple by assigning an
     /// array to `.` in VRL.
-    pub fn into_events(self, log_namespace: LogNamespace) -> TargetEvents {
+    pub fn into_events(self, _log_namespace: LogNamespace) -> TargetEvents {
         match self {
-            VrlTarget::LogEvent(value, metadata) => match value {
-                value @ Value::Object(_) => {
-                    TargetEvents::One(LogEvent::from_parts(value, metadata).into())
-                }
-
-                Value::Array(values) => TargetEvents::Logs(TargetIter {
-                    iter: values.into_iter(),
-                    metadata,
-                    _marker: PhantomData,
-                    log_namespace,
-                }),
-
-                v => match log_namespace {
-                    LogNamespace::Vector => {
-                        TargetEvents::One(LogEvent::from_parts(v, metadata).into())
-                    }
-                    LogNamespace::Legacy => TargetEvents::One(create_log_event(v, metadata).into()),
-                },
-            },
-            VrlTarget::Trace(value, metadata) => match value {
-                value @ Value::Object(_) => {
-                    let log = LogEvent::from_parts(value, metadata);
-                    TargetEvents::One(TraceEvent::from(log).into())
-                }
-
-                Value::Array(values) => TargetEvents::Traces(TargetIter {
-                    iter: values.into_iter(),
-                    metadata,
-                    _marker: PhantomData,
-                    log_namespace,
-                }),
-
-                v => TargetEvents::One(create_log_event(v, metadata).into()),
-            },
-            VrlTarget::Metric { metric, .. } => {
-                TargetEvents::One(Event::Metric(OtelMetric::from_legacy_metric(metric)))
-            }
             VrlTarget::OtelLog(value, metadata) => match value {
                 value @ Value::Object(_) => {
                     TargetEvents::One(Event::Log(value_to_otel_log_event(value, metadata)))
@@ -803,7 +694,6 @@ impl VrlTarget {
                     iter: values.into_iter(),
                     metadata,
                     _marker: PhantomData,
-                    log_namespace,
                 }),
                 value => {
                     TargetEvents::One(Event::Log(value_to_otel_log_event(value, metadata)))
@@ -817,7 +707,6 @@ impl VrlTarget {
                     iter: values.into_iter(),
                     metadata,
                     _marker: PhantomData,
-                    log_namespace,
                 }),
                 value => {
                     TargetEvents::One(Event::Trace(value_to_otel_span_event(value, metadata)))
@@ -829,22 +718,14 @@ impl VrlTarget {
 
     fn metadata(&self) -> &EventMetadata {
         match self {
-            VrlTarget::LogEvent(_, metadata)
-            | VrlTarget::Trace(_, metadata)
-            | VrlTarget::OtelLog(_, metadata)
-            | VrlTarget::OtelSpan(_, metadata) => metadata,
-            VrlTarget::Metric { metric, .. } => metric.metadata(),
+            VrlTarget::OtelLog(_, metadata) | VrlTarget::OtelSpan(_, metadata) => metadata,
             VrlTarget::OtelMetric { event, .. } => event.metadata(),
         }
     }
 
     fn metadata_mut(&mut self) -> &mut EventMetadata {
         match self {
-            VrlTarget::LogEvent(_, metadata)
-            | VrlTarget::Trace(_, metadata)
-            | VrlTarget::OtelLog(_, metadata)
-            | VrlTarget::OtelSpan(_, metadata) => metadata,
-            VrlTarget::Metric { metric, .. } => metric.metadata_mut(),
+            VrlTarget::OtelLog(_, metadata) | VrlTarget::OtelSpan(_, metadata) => metadata,
             VrlTarget::OtelMetric { event, .. } => event.metadata_mut(),
         }
     }
@@ -899,45 +780,12 @@ fn merge_array_definitions(mut definition: Definition) -> Definition {
     definition
 }
 
-fn set_metric_tag_values(name: String, value: &Value, metric: &mut Metric, multi_value_tags: bool) {
-    if multi_value_tags {
-        let values = if let Value::Array(values) = value {
-            values.as_slice()
-        } else {
-            std::slice::from_ref(value)
-        };
-
-        let tag_values = values
-            .iter()
-            .filter_map(|value| match value {
-                Value::Bytes(bytes) => {
-                    Some(TagValue::Value(String::from_utf8_lossy(bytes).to_string()))
-                }
-                Value::Null => Some(TagValue::Bare),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-
-        metric.set_multi_value_tag(name, tag_values);
-    } else {
-        // set a single tag value
-        if let Ok(tag_value) = value.try_bytes_utf8_lossy().map(Cow::into_owned) {
-            metric.replace_tag(name, tag_value);
-        } else if value.is_null() {
-            metric.set_multi_value_tag(name, vec![TagValue::Bare]);
-        }
-    }
-}
-
 impl Target for VrlTarget {
     fn target_insert(&mut self, target_path: &OwnedTargetPath, value: Value) -> Result<(), String> {
         let path = &target_path.path;
         match target_path.prefix {
             PathPrefix::Event => match self {
-                VrlTarget::LogEvent(log, _)
-                | VrlTarget::Trace(log, _)
-                | VrlTarget::OtelLog(log, _)
-                | VrlTarget::OtelSpan(log, _) => {
+                VrlTarget::OtelLog(log, _) | VrlTarget::OtelSpan(log, _) => {
                     log.insert(path, value);
                     Ok(())
                 }
@@ -1011,86 +859,6 @@ impl Target for VrlTarget {
                     }
                     .to_string())
                 }
-                VrlTarget::Metric {
-                    metric,
-                    value: metric_value,
-                    multi_value_tags,
-                } => {
-                    if path.is_root() {
-                        return Err(MetricPathError::SetPathError.to_string());
-                    }
-
-                    if let Some(paths) = path.to_alternative_components(MAX_METRIC_PATH_DEPTH) {
-                        match paths.as_slice() {
-                            ["tags"] => {
-                                let value =
-                                    value.clone().try_object().map_err(|e| e.to_string())?;
-
-                                metric.remove_tags();
-                                for (field, value) in &value {
-                                    set_metric_tag_values(
-                                        field[..].into(),
-                                        value,
-                                        metric,
-                                        *multi_value_tags,
-                                    );
-                                }
-                            }
-                            ["tags", field] => {
-                                set_metric_tag_values(
-                                    (*field).to_owned(),
-                                    &value,
-                                    metric,
-                                    *multi_value_tags,
-                                );
-                            }
-                            ["name"] => {
-                                let value = value.clone().try_bytes().map_err(|e| e.to_string())?;
-                                metric.series.name.name =
-                                    String::from_utf8_lossy(&value).into_owned();
-                            }
-                            ["namespace"] => {
-                                let value = value.clone().try_bytes().map_err(|e| e.to_string())?;
-                                metric.series.name.namespace =
-                                    Some(String::from_utf8_lossy(&value).into_owned());
-                            }
-                            ["interval_ms"] => {
-                                let value: i64 =
-                                    value.clone().try_into_i64().map_err(|e| e.to_string())?;
-                                let value: u32 = value
-                                    .try_into()
-                                    .map_err(|e: TryFromIntError| e.to_string())?;
-                                let value = NonZero::try_from(value).map_err(|e| e.to_string())?;
-                                metric.data.time.interval_ms = Some(value);
-                            }
-                            ["timestamp"] => {
-                                let value =
-                                    value.clone().try_timestamp().map_err(|e| e.to_string())?;
-                                metric.data.time.timestamp = Some(value);
-                            }
-                            ["kind"] => {
-                                metric.data.kind = MetricKind::try_from(value.clone())?;
-                            }
-                            _ => {
-                                return Err(MetricPathError::InvalidPath {
-                                    path: &path.to_string(),
-                                    expected: VALID_METRIC_PATHS_SET,
-                                }
-                                .to_string());
-                            }
-                        }
-
-                        metric_value.insert(path, value);
-
-                        return Ok(());
-                    }
-
-                    Err(MetricPathError::InvalidPath {
-                        path: &path.to_string(),
-                        expected: VALID_METRIC_PATHS_SET,
-                    }
-                    .to_string())
-                }
             },
             PathPrefix::Metadata => {
                 self.metadata_mut()
@@ -1105,11 +873,9 @@ impl Target for VrlTarget {
     fn target_get(&self, target_path: &OwnedTargetPath) -> Result<Option<&Value>, String> {
         match target_path.prefix {
             PathPrefix::Event => match self {
-                VrlTarget::LogEvent(log, _)
-                | VrlTarget::Trace(log, _)
-                | VrlTarget::OtelLog(log, _)
-                | VrlTarget::OtelSpan(log, _) => Ok(log.get(&target_path.path)),
-                VrlTarget::Metric { value, .. } => target_get_metric(&target_path.path, value),
+                VrlTarget::OtelLog(log, _) | VrlTarget::OtelSpan(log, _) => {
+                    Ok(log.get(&target_path.path))
+                }
                 VrlTarget::OtelMetric { value, .. } => {
                     target_get_otel_metric(&target_path.path, value)
                 }
@@ -1124,11 +890,9 @@ impl Target for VrlTarget {
     ) -> Result<Option<&mut Value>, String> {
         match target_path.prefix {
             PathPrefix::Event => match self {
-                VrlTarget::LogEvent(log, _)
-                | VrlTarget::Trace(log, _)
-                | VrlTarget::OtelLog(log, _)
-                | VrlTarget::OtelSpan(log, _) => Ok(log.get_mut(&target_path.path)),
-                VrlTarget::Metric { value, .. } => target_get_mut_metric(&target_path.path, value),
+                VrlTarget::OtelLog(log, _) | VrlTarget::OtelSpan(log, _) => {
+                    Ok(log.get_mut(&target_path.path))
+                }
                 VrlTarget::OtelMetric { value, .. } => {
                     target_get_mut_otel_metric(&target_path.path, value)
                 }
@@ -1144,56 +908,8 @@ impl Target for VrlTarget {
     ) -> Result<Option<vrl::value::Value>, String> {
         match target_path.prefix {
             PathPrefix::Event => match self {
-                VrlTarget::LogEvent(log, _)
-                | VrlTarget::Trace(log, _)
-                | VrlTarget::OtelLog(log, _)
-                | VrlTarget::OtelSpan(log, _) => {
+                VrlTarget::OtelLog(log, _) | VrlTarget::OtelSpan(log, _) => {
                     Ok(log.remove(&target_path.path, compact))
-                }
-                VrlTarget::Metric {
-                    metric,
-                    value,
-                    multi_value_tags: _,
-                } => {
-                    if target_path.path.is_root() {
-                        return Err(MetricPathError::SetPathError.to_string());
-                    }
-
-                    if let Some(paths) = target_path
-                        .path
-                        .to_alternative_components(MAX_METRIC_PATH_DEPTH)
-                    {
-                        let removed_value = match paths.as_slice() {
-                            ["namespace"] => metric.series.name.namespace.take().map(Into::into),
-                            ["timestamp"] => metric.data.time.timestamp.take().map(Into::into),
-                            ["interval_ms"] => metric
-                                .data
-                                .time
-                                .interval_ms
-                                .take()
-                                .map(u32::from)
-                                .map(Into::into),
-                            ["tags"] => metric.series.tags.take().map(|map| {
-                                map.into_iter_single()
-                                    .map(|(k, v)| (k, v.into()))
-                                    .collect::<vrl::value::Value>()
-                            }),
-                            ["tags", field] => metric.remove_tag(field).map(Into::into),
-                            _ => {
-                                return Err(MetricPathError::InvalidPath {
-                                    path: &target_path.path.to_string(),
-                                    expected: VALID_METRIC_PATHS_SET,
-                                }
-                                .to_string());
-                            }
-                        };
-
-                        value.remove(&target_path.path, false);
-
-                        Ok(removed_value)
-                    } else {
-                        Ok(None)
-                    }
                 }
                 VrlTarget::OtelMetric { event: _, value } => {
                     if target_path.path.is_root() {
@@ -1222,79 +938,6 @@ impl SecretTarget for VrlTarget {
 
     fn remove_secret(&mut self, key: &str) {
         self.metadata_mut().secrets_mut().remove_secret(key);
-    }
-}
-
-/// Retrieves a value from a the provided metric using the path.
-/// Currently the root path and the following paths are supported:
-/// - `name`
-/// - `namespace`
-/// - `interval_ms`
-/// - `timestamp`
-/// - `kind`
-/// - `tags`
-/// - `tags.<tagname>`
-/// - `type`
-///
-/// Any other paths result in a `MetricPathError::InvalidPath` being returned.
-fn target_get_metric<'a>(
-    path: &OwnedValuePath,
-    value: &'a Value,
-) -> Result<Option<&'a Value>, String> {
-    if path.is_root() {
-        return Ok(Some(value));
-    }
-
-    let value = value.get(path);
-
-    let Some(paths) = path.to_alternative_components(MAX_METRIC_PATH_DEPTH) else {
-        return Ok(None);
-    };
-
-    match paths.as_slice() {
-        ["name"]
-        | ["kind"]
-        | ["type"]
-        | ["tags", _]
-        | ["namespace"]
-        | ["timestamp"]
-        | ["interval_ms"]
-        | ["tags"] => Ok(value),
-        _ => Err(MetricPathError::InvalidPath {
-            path: &path.to_string(),
-            expected: VALID_METRIC_PATHS_GET,
-        }
-        .to_string()),
-    }
-}
-
-fn target_get_mut_metric<'a>(
-    path: &OwnedValuePath,
-    value: &'a mut Value,
-) -> Result<Option<&'a mut Value>, String> {
-    if path.is_root() {
-        return Ok(Some(value));
-    }
-
-    let value = value.get_mut(path);
-
-    let Some(paths) = path.to_alternative_components(MAX_METRIC_PATH_DEPTH) else {
-        return Ok(None);
-    };
-
-    match paths.as_slice() {
-        ["name"]
-        | ["kind"]
-        | ["tags", _]
-        | ["namespace"]
-        | ["timestamp"]
-        | ["interval_ms"]
-        | ["tags"] => Ok(value),
-        _ => Err(MetricPathError::InvalidPath {
-            path: &path.to_string(),
-            expected: VALID_METRIC_PATHS_SET,
-        }
-        .to_string()),
     }
 }
 
@@ -1348,122 +991,6 @@ fn target_get_mut_otel_metric<'a>(
     }
 }
 
-#[allow(dead_code)]
-fn precompute_metric_value(metric: &Metric, info: &ProgramInfo, multi_value_tags: bool) -> Value {
-    struct MetricProperty {
-        property: &'static str,
-        getter: fn(&Metric) -> Option<Value>,
-        set: bool,
-    }
-
-    impl MetricProperty {
-        fn new(property: &'static str, getter: fn(&Metric) -> Option<Value>) -> Self {
-            Self {
-                property,
-                getter,
-                set: false,
-            }
-        }
-
-        fn insert(&mut self, metric: &Metric, map: &mut ObjectMap) {
-            if self.set {
-                return;
-            }
-            if let Some(value) = (self.getter)(metric) {
-                map.insert(self.property.into(), value);
-                self.set = true;
-            }
-        }
-    }
-
-    fn get_single_value_tags(metric: &Metric) -> Option<Value> {
-        metric.tags().cloned().map(|tags| {
-            tags.into_iter_single()
-                .map(|(tag, value)| (tag.into(), value.into()))
-                .collect::<ObjectMap>()
-                .into()
-        })
-    }
-
-    fn get_multi_value_tags(metric: &Metric) -> Option<Value> {
-        metric.tags().cloned().map(|tags| {
-            tags.iter_sets()
-                .map(|(tag, tag_set)| {
-                    let array_values: Vec<Value> = tag_set
-                        .iter()
-                        .map(|v| match v {
-                            Some(s) => Value::Bytes(s.as_bytes().to_vec().into()),
-                            None => Value::Null,
-                        })
-                        .collect();
-                    (tag.into(), Value::Array(array_values))
-                })
-                .collect::<ObjectMap>()
-                .into()
-        })
-    }
-
-    let mut name = MetricProperty::new("name", |metric| Some(metric.name().to_owned().into()));
-    let mut kind = MetricProperty::new("kind", |metric| Some(metric.kind().into()));
-    let mut type_ = MetricProperty::new("type", |metric| Some(metric.value().clone().into()));
-    let mut namespace = MetricProperty::new("namespace", |metric| {
-        metric.namespace().map(String::from).map(Into::into)
-    });
-    let mut interval_ms =
-        MetricProperty::new("interval_ms", |metric| metric.interval_ms().map(Into::into));
-    let mut timestamp =
-        MetricProperty::new("timestamp", |metric| metric.timestamp().map(Into::into));
-    let mut tags = MetricProperty::new(
-        "tags",
-        if multi_value_tags {
-            get_multi_value_tags
-        } else {
-            get_single_value_tags
-        },
-    );
-
-    let mut map = ObjectMap::default();
-
-    for target_path in &info.target_queries {
-        // Accessing a root path requires us to pre-populate all fields.
-        if target_path == &OwnedTargetPath::event_root() {
-            let mut properties = [
-                &mut name,
-                &mut kind,
-                &mut type_,
-                &mut namespace,
-                &mut interval_ms,
-                &mut timestamp,
-                &mut tags,
-            ];
-            for property in &mut properties {
-                property.insert(metric, &mut map);
-            }
-            break;
-        }
-
-        // For non-root paths, we continuously populate the value with the
-        // relevant data.
-        if let Some(OwnedSegment::Field(field)) = target_path.path.segments.first() {
-            let property = match field.as_ref() {
-                "name" => Some(&mut name),
-                "kind" => Some(&mut kind),
-                "type" => Some(&mut type_),
-                "namespace" => Some(&mut namespace),
-                "timestamp" => Some(&mut timestamp),
-                "interval_ms" => Some(&mut interval_ms),
-                "tags" => Some(&mut tags),
-                _ => None,
-            };
-            if let Some(property) = property {
-                property.insert(metric, &mut map);
-            }
-        }
-    }
-
-    map.into()
-}
-
 #[derive(Debug, Snafu)]
 enum MetricPathError<'a> {
     #[snafu(display("cannot set root path"))]
@@ -1480,7 +1007,7 @@ mod test {
     use similar_asserts::assert_eq;
     use vrl::{btreemap, value::kind::Index};
 
-    use super::{super::MetricValue, *};
+    use super::{super::{Metric, MetricValue}, *};
     use crate::metric_tags;
 
     #[test]
@@ -1741,8 +1268,6 @@ mod test {
             assert_eq!(
                 match target.into_events(LogNamespace::Legacy) {
                     TargetEvents::One(event) => vec![event],
-                    TargetEvents::Logs(events) => events.collect::<Vec<_>>(),
-                    TargetEvents::Traces(events) => events.collect::<Vec<_>>(),
                     TargetEvents::OtelLogs(events) => events.collect::<Vec<_>>(),
                     TargetEvents::OtelSpans(events) => events.collect::<Vec<_>>(),
                 }
@@ -1889,8 +1414,6 @@ mod test {
             assert_eq!(
                 match target.into_events(LogNamespace::Legacy) {
                     TargetEvents::One(event) => vec![event],
-                    TargetEvents::Logs(events) => events.collect::<Vec<_>>(),
-                    TargetEvents::Traces(events) => events.collect::<Vec<_>>(),
                     TargetEvents::OtelLogs(events) => events.collect::<Vec<_>>(),
                     TargetEvents::OtelSpans(events) => events.collect::<Vec<_>>(),
                 },

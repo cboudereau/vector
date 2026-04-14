@@ -574,10 +574,6 @@ where
         match result {
             Ok(_) => match target.into_events(log_namespace) {
                 TargetEvents::One(event) => push_default(event, output),
-                TargetEvents::Logs(events) => events.for_each(|event| push_default(event, output)),
-                TargetEvents::Traces(events) => {
-                    events.for_each(|event| push_default(event, output))
-                }
                 TargetEvents::OtelLogs(events) => {
                     events.for_each(|event| push_default(event, output))
                 }

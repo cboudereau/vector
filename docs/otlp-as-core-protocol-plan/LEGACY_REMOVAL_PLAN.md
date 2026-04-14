@@ -330,20 +330,14 @@ should stay until source emission is native OTel.
    `MetadataInsertable` trait makes `insert_source_metadata` /
    `insert_vector_metadata` generic over LogEvent and OtelLog.
    Sources can now be incrementally migrated.
-7. **Migrate sources (Group C)** — **all migratable done** (4/14:
-   heroku_logs, fluent, journald, splunk_hec). Remaining sources
-   only have LogEvent in test code, except:
-   - dnstap: BLOCKED on `DnstapParser::parse(&mut LogEvent)` in
-     lib/dnstap-parser — requires parser rewrite
-   - docker_logs: BLOCKED on `LogEventMergeState`
-   - kubernetes_logs: BLOCKED on `partial_events_merger`
-   docker_logs: **DONE** — LogEventMergeState migrated to OtelLog,
-   OtelLog::merge() added.
-   kubernetes_logs: **DONE** — pod_metadata_annotator functions take
-   &mut OtelLog; partial_events_merger was already OtelLog-native.
-   **1 remaining blocker**:
-   - dnstap: BLOCKED on `DnstapParser::parse(&mut LogEvent)` in
-     lib/dnstap-parser — requires parser rewrite (~1000 lines)
+7. **Migrate sources (Group C)** — **8/14 sources done**:
+   heroku_logs, fluent, journald, splunk_hec, docker_logs,
+   kubernetes_logs (pod/namespace/node metadata annotators).
+   OtelLog::merge() + LogEventMergeState unblocked docker_logs.
+   kubernetes_logs parsers (cri/docker/mod) still use LogEvent
+   internally for `parse_json(&mut LogEvent)`.
+   **1 hard blocker**: dnstap (`DnstapParser::parse(&mut LogEvent)`,
+   ~1000 lines in lib/dnstap-parser).
 8. **Migrate transforms (Group E)** — reduce transform and
    metric_to_log transform now output OtelLog directly.
    `ReduceValueMerger::insert_into` takes `&mut OtelLog`.

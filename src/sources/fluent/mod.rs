@@ -18,7 +18,7 @@ use vector_lib::{
     config::{LegacyKey, LogNamespace},
     configurable::configurable_component,
     ipallowlist::IpAllowlistConfig,
-    lookup::{OwnedValuePath, lookup_v2::parse_value_path, metadata_path, owned_value_path, path},
+    lookup::{OwnedValuePath, lookup_v2::parse_value_path, owned_value_path, path},
     schema::Definition,
 };
 use vrl::value::{Kind, Value, kind::Collection};
@@ -29,7 +29,7 @@ use crate::{
         DataType, GenerateConfig, Resource, SourceAcknowledgementsConfig, SourceConfig,
         SourceContext, SourceOutput, log_schema,
     },
-    event::{Event, LogEvent, string_value},
+    event::{Event, OtelLog, string_value},
     internal_events::{FluentMessageDecodeError, FluentMessageReceived},
     serde::bool_or_struct,
     tcp::TcpKeepaliveConfig,
@@ -757,23 +757,6 @@ struct FluentEvent<'a> {
 
 impl From<FluentEvent<'_>> for Event {
     fn from(frame: FluentEvent) -> Event {
-        LogEvent::from(frame).into()
-    }
-}
-
-struct FluentFrame {
-    events: SmallVec<[Event; 1]>,
-    chunk: Option<String>,
-}
-
-impl From<FluentFrame> for SmallVec<[Event; 1]> {
-    fn from(frame: FluentFrame) -> Self {
-        frame.events
-    }
-}
-
-impl From<FluentEvent<'_>> for LogEvent {
-    fn from(frame: FluentEvent) -> LogEvent {
         let FluentEvent {
             tag,
             timestamp,
@@ -781,7 +764,7 @@ impl From<FluentEvent<'_>> for LogEvent {
             log_namespace,
         } = frame;
 
-        let mut log = LogEvent::default();
+        let mut log = OtelLog::new(Default::default());
 
         log_namespace.insert_vector_metadata(
             &mut log,
@@ -792,11 +775,17 @@ impl From<FluentEvent<'_>> for LogEvent {
 
         match log_namespace {
             LogNamespace::Vector => {
-                log.insert(metadata_path!(FluentConfig::NAME, "timestamp"), timestamp);
-                log.insert(metadata_path!("vector", "ingest_timestamp"), Utc::now());
+                log.metadata_mut()
+                    .value_mut()
+                    .insert(path!(FluentConfig::NAME, "timestamp"), timestamp);
+                log.metadata_mut()
+                    .value_mut()
+                    .insert(path!("vector", "ingest_timestamp"), Utc::now());
             }
             LogNamespace::Legacy => {
-                log.maybe_insert(log_schema().timestamp_key_target_path(), timestamp);
+                if let Some(key) = log_schema().timestamp_key_target_path() {
+                    log.insert(key, timestamp);
+                }
             }
         }
 
@@ -818,7 +807,19 @@ impl From<FluentEvent<'_>> for LogEvent {
                 value,
             );
         }
-        log
+
+        Event::Log(log)
+    }
+}
+
+struct FluentFrame {
+    events: SmallVec<[Event; 1]>,
+    chunk: Option<String>,
+}
+
+impl From<FluentFrame> for SmallVec<[Event; 1]> {
+    fn from(frame: FluentFrame) -> Self {
+        frame.events
     }
 }
 
@@ -840,7 +841,7 @@ mod tests {
     use crate::{
         SourceSender,
         config::{SourceConfig, SourceContext},
-        event::EventStatus,
+        event::{EventStatus, LogEvent},
         test_util::{self, addr::next_addr, trace_init, wait_for_tcp},
     };
 

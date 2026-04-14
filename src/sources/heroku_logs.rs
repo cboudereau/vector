@@ -29,7 +29,7 @@ use crate::{
         GenerateConfig, Resource, SourceAcknowledgementsConfig, SourceConfig, SourceContext,
         SourceOutput, log_schema,
     },
-    event::{Event, LogEvent, string_value},
+    event::{Event, OtelLog, string_value},
     http::KeepaliveConfig,
     internal_events::{HerokuLogplexRequestReadError, HerokuLogplexRequestReceived},
     serde::{bool_or_struct, default_decoding, default_framing_message_based},
@@ -392,7 +392,12 @@ fn line_to_events(
             fields = parts.len()
         );
 
-        events.push(LogEvent::from_str_legacy(line).into())
+        let mut log = OtelLog::from_bytes(bytes::Bytes::from(line.to_owned()));
+        log.record_mut().time_unix_nano = Utc::now()
+            .timestamp_nanos_opt()
+            .unwrap_or(0)
+            .max(0) as u64;
+        events.push(Event::Log(log))
     };
 
     let now = Utc::now();

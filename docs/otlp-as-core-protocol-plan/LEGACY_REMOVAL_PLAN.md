@@ -337,11 +337,13 @@ should stay until source emission is native OTel.
      lib/dnstap-parser — requires parser rewrite
    - docker_logs: BLOCKED on `LogEventMergeState`
    - kubernetes_logs: BLOCKED on `partial_events_merger`
-   docker_logs: **UNBLOCKED + DONE** — LogEventMergeState migrated to
-   OtelLog, OtelLog::merge() added. 2 remaining blockers:
+   docker_logs: **DONE** — LogEventMergeState migrated to OtelLog,
+   OtelLog::merge() added.
+   kubernetes_logs: **DONE** — pod_metadata_annotator functions take
+   &mut OtelLog; partial_events_merger was already OtelLog-native.
+   **1 remaining blocker**:
    - dnstap: BLOCKED on `DnstapParser::parse(&mut LogEvent)` in
-     lib/dnstap-parser — requires parser rewrite
-   - kubernetes_logs: BLOCKED on `partial_events_merger`
+     lib/dnstap-parser — requires parser rewrite (~1000 lines)
 8. **Migrate transforms (Group E)** — reduce transform and
    metric_to_log transform now output OtelLog directly.
    `ReduceValueMerger::insert_into` takes `&mut OtelLog`.

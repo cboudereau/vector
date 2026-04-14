@@ -57,7 +57,7 @@ use self::{
 use crate::{
     SourceSender,
     config::{DataType, Resource, SourceConfig, SourceContext, SourceOutput, log_schema},
-    event::{Event, LogEvent, Value},
+    event::{Event, EventMetadata, OtelLog, Value},
     http::{KeepaliveConfig, MaxConnectionAgeLayer, build_http_trace_layer},
     internal_events::{
         EventsReceived, HttpBytesReceived, SplunkHecRequestBodyInvalidError, SplunkHecRequestError,
@@ -741,7 +741,7 @@ impl<'de, R: JsonRead<'de>> From<EventIteratorGenerator<'de, R>> for EventIterat
 impl<'de, R: JsonRead<'de>> EventIterator<'de, R> {
     fn build_event(&mut self, mut json: JsonValue) -> Result<Event, Rejection> {
         // Construct Event from parsed json event
-        let mut log = match self.log_namespace {
+        let mut log: OtelLog = match self.log_namespace {
             LogNamespace::Vector => self.build_log_vector(&mut json)?,
             LogNamespace::Legacy => self.build_log_legacy(&mut json)?,
         };
@@ -854,11 +854,11 @@ impl<'de, R: JsonRead<'de>> EventIterator<'de, R> {
     /// Build the log event for the vector namespace.
     /// In this namespace the log event is created entirely from the event field.
     /// No renaming of the `line` field is done.
-    fn build_log_vector(&mut self, json: &mut JsonValue) -> Result<LogEvent, Rejection> {
+    fn build_log_vector(&mut self, json: &mut JsonValue) -> Result<OtelLog, Rejection> {
         match json.get("event") {
             Some(event) => {
                 let event: Value = event.into();
-                let mut log = LogEvent::from(event);
+                let mut log = OtelLog::from_value_map(event, EventMetadata::default());
 
                 // EstimatedJsonSizeOf must be calculated before enrichment
                 self.events_received
@@ -882,15 +882,17 @@ impl<'de, R: JsonRead<'de>> EventIterator<'de, R> {
     /// If the event is a string, or the event contains a field called `line` that is a string
     /// (the docker splunk logger places the message in the event.line field) that string
     /// is placed in the message field.
-    fn build_log_legacy(&mut self, json: &mut JsonValue) -> Result<LogEvent, Rejection> {
-        let mut log = LogEvent::default();
+    fn build_log_legacy(&mut self, json: &mut JsonValue) -> Result<OtelLog, Rejection> {
+        let mut log = OtelLog::new(Default::default());
         match json.get_mut("event") {
             Some(event) => match event.take() {
                 JsonValue::String(string) => {
                     if string.is_empty() {
                         return Err(ApiError::EmptyEventField { event: self.events }.into());
                     }
-                    log.maybe_insert(log_schema().message_key_target_path(), string);
+                    if let Some(key) = log_schema().message_key_target_path() {
+                        log.insert(key, string);
+                    }
                 }
                 JsonValue::Object(mut object) => {
                     if object.is_empty() {
@@ -902,16 +904,18 @@ impl<'de, R: JsonRead<'de>> EventIterator<'de, R> {
                         match line {
                             // This don't quite fit the meaning of a event::schema().message_key
                             JsonValue::Array(_) | JsonValue::Object(_) => {
-                                log.insert(event_path!("line"), line);
+                                log.insert(event_path!("line"), Value::from(line));
                             }
                             _ => {
-                                log.maybe_insert(log_schema().message_key_target_path(), line);
+                                if let Some(key) = log_schema().message_key_target_path() {
+                                    log.insert(key, Value::from(line));
+                                }
                             }
                         }
                     }
 
                     for (key, value) in object {
-                        log.insert(event_path!(key.as_str()), value);
+                        log.insert(event_path!(key.as_str()), Value::from(value));
                     }
                 }
                 _ => return Err(ApiError::InvalidDataFormat { event: self.events }.into()),
@@ -1022,7 +1026,7 @@ impl DefaultExtractor {
         }
     }
 
-    fn extract(&mut self, log: &mut LogEvent, value: &mut JsonValue) {
+    fn extract(&mut self, log: &mut OtelLog, value: &mut JsonValue) {
         // Process json_field
         if let Some(JsonValue::String(new_value)) = value.get_mut(self.field).map(JsonValue::take) {
             self.value = Some(new_value.into());
@@ -1081,10 +1085,12 @@ fn raw_event(
 
     // Construct event
     let mut log = match log_namespace {
-        LogNamespace::Vector => LogEvent::from(message),
+        LogNamespace::Vector => OtelLog::from_value_map(message, EventMetadata::default()),
         LogNamespace::Legacy => {
-            let mut log = LogEvent::default();
-            log.maybe_insert(log_schema().message_key_target_path(), message);
+            let mut log = OtelLog::new(Default::default());
+            if let Some(key) = log_schema().message_key_target_path() {
+                log.insert(key, message);
+            }
             log
         }
     };
@@ -1125,7 +1131,7 @@ fn raw_event(
         log = log.with_batch_notifier(&batch);
     }
 
-    Ok(Event::from(log))
+    Ok(Event::Log(log))
 }
 
 #[derive(Clone, Copy, Debug, Snafu)]

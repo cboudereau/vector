@@ -21,7 +21,7 @@ use super::{
     Config,
     path_helpers::{LogFileInfo, parse_log_file_path},
 };
-use crate::event::{Event, LogEvent, string_value};
+use crate::event::{Event, OtelLog, string_value};
 
 /// Configuration for how the events are enriched with Pod metadata.
 #[configurable_component]
@@ -236,7 +236,7 @@ impl PodMetadataAnnotator {
 
 #[allow(dead_code)]
 fn annotate_from_file_info(
-    log: &mut LogEvent,
+    log: &mut OtelLog,
     fields_spec: &FieldsSpec,
     file_info: &LogFileInfo<'_>,
     log_namespace: LogNamespace,
@@ -259,7 +259,7 @@ fn annotate_from_file_info(
 
 #[allow(dead_code)]
 fn annotate_from_metadata(
-    log: &mut LogEvent,
+    log: &mut OtelLog,
     fields_spec: &FieldsSpec,
     metadata: &ObjectMeta,
     log_namespace: LogNamespace,
@@ -350,7 +350,7 @@ fn annotate_from_metadata(
 
 #[allow(dead_code)]
 fn annotate_from_pod_spec(
-    log: &mut LogEvent,
+    log: &mut OtelLog,
     fields_spec: &FieldsSpec,
     pod_spec: &PodSpec,
     log_namespace: LogNamespace,
@@ -375,7 +375,7 @@ fn annotate_from_pod_spec(
 
 #[allow(dead_code)]
 fn annotate_from_pod_status(
-    log: &mut LogEvent,
+    log: &mut OtelLog,
     fields_spec: &FieldsSpec,
     pod_status: &PodStatus,
     log_namespace: LogNamespace,
@@ -416,7 +416,7 @@ fn annotate_from_pod_status(
 
 #[allow(dead_code)]
 fn annotate_from_container_status(
-    log: &mut LogEvent,
+    log: &mut OtelLog,
     fields_spec: &FieldsSpec,
     container_status: &ContainerStatus,
     log_namespace: LogNamespace,
@@ -456,7 +456,7 @@ fn annotate_from_container_status(
 
 #[allow(dead_code)]
 fn annotate_from_container(
-    log: &mut LogEvent,
+    log: &mut OtelLog,
     fields_spec: &FieldsSpec,
     container: &Container,
     log_namespace: LogNamespace,
@@ -595,6 +595,7 @@ mod tests {
     use vector_lib::lookup::{event_path, metadata_path};
 
     use super::*;
+    use crate::event::LogEvent;
 
     #[test]
     fn test_annotate_from_metadata() {
@@ -856,8 +857,9 @@ mod tests {
         ];
 
         for (fields_spec, metadata, expected, log_namespace) in cases.into_iter() {
-            let mut log = LogEvent::default();
+            let mut log = OtelLog::from_log_event(LogEvent::default());
             annotate_from_metadata(&mut log, &fields_spec, &metadata, log_namespace);
+            let expected = OtelLog::from_log_event(expected);
             assert_eq!(log, expected);
         }
     }
@@ -913,9 +915,10 @@ mod tests {
         ];
 
         for (fields_spec, file, expected, log_namespace) in cases.into_iter() {
-            let mut log = LogEvent::default();
+            let mut log = OtelLog::from_log_event(LogEvent::default());
             let file_info = parse_log_file_path(file).unwrap();
             annotate_from_file_info(&mut log, &fields_spec, &file_info, log_namespace);
+            let expected = OtelLog::from_log_event(expected);
             assert_eq!(log, expected);
         }
     }
@@ -964,8 +967,9 @@ mod tests {
         ];
 
         for (fields_spec, pod_spec, expected, log_namespace) in cases.into_iter() {
-            let mut log = LogEvent::default();
+            let mut log = OtelLog::from_log_event(LogEvent::default());
             annotate_from_pod_spec(&mut log, &fields_spec, &pod_spec, log_namespace);
+            let expected = OtelLog::from_log_event(expected);
             assert_eq!(log, expected);
         }
     }
@@ -1072,8 +1076,9 @@ mod tests {
         ];
 
         for (fields_spec, pod_status, expected, log_namespace) in cases.into_iter() {
-            let mut log = LogEvent::default();
+            let mut log = OtelLog::from_log_event(LogEvent::default());
             annotate_from_pod_status(&mut log, &fields_spec, &pod_status, log_namespace);
+            let expected = OtelLog::from_log_event(expected);
             assert_eq!(log, expected);
         }
     }
@@ -1116,13 +1121,14 @@ mod tests {
             ),
         ];
         for (fields_spec, container_status, expected, log_namespace) in cases.into_iter() {
-            let mut log = LogEvent::default();
+            let mut log = OtelLog::from_log_event(LogEvent::default());
             annotate_from_container_status(
                 &mut log,
                 &fields_spec,
                 &container_status,
                 log_namespace,
             );
+            let expected = OtelLog::from_log_event(expected);
             assert_eq!(log, expected);
         }
     }
@@ -1172,8 +1178,9 @@ mod tests {
         ];
 
         for (fields_spec, container, expected, log_namespace) in cases.into_iter() {
-            let mut log = LogEvent::default();
+            let mut log = OtelLog::from_log_event(LogEvent::default());
             annotate_from_container(&mut log, &fields_spec, &container, log_namespace);
+            let expected = OtelLog::from_log_event(expected);
             assert_eq!(log, expected);
         }
     }

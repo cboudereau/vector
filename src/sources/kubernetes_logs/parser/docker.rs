@@ -1,17 +1,12 @@
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use serde_json::Value as JsonValue;
-use snafu::{OptionExt, ResultExt, Snafu};
-use vector_lib::{
-    config::{LegacyKey, LogNamespace},
-    lookup::{self, OwnedTargetPath, path},
-};
+use snafu::Snafu;
+use vector_lib::config::LogNamespace;
 
 use crate::{
-    config::log_schema,
-    event::{self, Event, LogEvent, Value},
+    event::{self, Event},
     internal_events::KubernetesLogsDockerFormatParseError,
-    sources::kubernetes_logs::{Config, transform_utils::get_message_path},
     transforms::{FunctionTransform, OutputBuffer},
 };
 
@@ -50,52 +45,6 @@ impl FunctionTransform for Docker {
             }
         }
         output.push(event);
-    }
-}
-
-/// Parses `message` as json object and removes it.
-#[allow(dead_code)]
-fn parse_json(log: &mut LogEvent, log_namespace: LogNamespace) -> Result<(), ParsingError> {
-    let target_path = get_message_path(log_namespace);
-
-    let value = log
-        .remove(&target_path)
-        .ok_or(ParsingError::NoMessageField)?;
-
-    let bytes = match value {
-        Value::Bytes(bytes) => bytes,
-        _ => return Err(ParsingError::MessageFieldNotInBytes),
-    };
-
-    match serde_json::from_slice(bytes.as_ref()) {
-        Ok(JsonValue::Object(object)) => {
-            for (key, value) in object {
-                match key.as_str() {
-                    MESSAGE_KEY => drop(log.insert(&target_path, value)),
-                    STREAM_KEY => log_namespace.insert_source_metadata(
-                        Config::NAME,
-                        log,
-                        Some(LegacyKey::Overwrite(path!(STREAM_KEY))),
-                        path!(STREAM_KEY),
-                        value,
-                    ),
-                    TIMESTAMP_KEY => log_namespace.insert_source_metadata(
-                        Config::NAME,
-                        log,
-                        log_schema().timestamp_key().map(LegacyKey::Overwrite),
-                        path!("timestamp"),
-                        value,
-                    ),
-                    _ => unreachable!("all json-file keys should be matched"),
-                };
-            }
-            Ok(())
-        }
-        Ok(_) => Err(ParsingError::NotAnObject { message: bytes }),
-        Err(err) => Err(ParsingError::InvalidJson {
-            source: err,
-            message: bytes,
-        }),
     }
 }
 
@@ -190,76 +139,6 @@ fn normalize_event_otel(otel_log: &mut crate::event::OtelLog) -> Result<(), Norm
     Ok(())
 }
 
-#[allow(dead_code)]
-fn normalize_event(
-    log: &mut LogEvent,
-    log_namespace: LogNamespace,
-) -> Result<(), NormalizationError> {
-    // Parse timestamp.
-    let timestamp_key = match log_namespace {
-        LogNamespace::Vector => Some(OwnedTargetPath::metadata(lookup::owned_value_path!(
-            "kubernetes_logs",
-            "timestamp"
-        ))),
-        LogNamespace::Legacy => log_schema()
-            .timestamp_key()
-            .map(|path| OwnedTargetPath::event(path.clone())),
-    };
-
-    if let Some(timestamp_key) = timestamp_key {
-        let time = log.remove(&timestamp_key).context(TimeFieldMissingSnafu)?;
-        let time = time
-            .as_str()
-            .ok_or(NormalizationError::TimeValueUnexpectedType)?;
-        let time = DateTime::parse_from_rfc3339(time.as_ref()).context(TimeParsingSnafu)?;
-        log_namespace.insert_source_metadata(
-            Config::NAME,
-            log,
-            log_schema().timestamp_key().map(LegacyKey::Overwrite),
-            path!("timestamp"),
-            time.with_timezone(&Utc),
-        );
-    }
-
-    // Parse message, remove trailing newline and detect if it's partial.
-    let message_path = get_message_path(log_namespace);
-    let message = log.remove(&message_path).context(LogFieldMissingSnafu)?;
-    let mut message = match message {
-        Value::Bytes(val) => val,
-        _ => return Err(NormalizationError::LogValueUnexpectedType),
-    };
-    // Here we apply out heuristics to detect if message is partial.
-    // Partial messages are only split in docker at the maximum message length
-    // (`DOCKER_MESSAGE_SPLIT_THRESHOLD`).
-    // Thus, for a message to be partial it also has to have exactly that
-    // length.
-    // Now, whether that message will or won't actually be partial if it has
-    // exactly the max length is unknown. We consider all messages with the
-    // exact length of `DOCKER_MESSAGE_SPLIT_THRESHOLD` bytes partial
-    // by default, and then, if they end with newline - consider that
-    // an exception and make them non-partial.
-    // This is still not ideal, and can potentially be improved.
-    let mut is_partial = message.len() == DOCKER_MESSAGE_SPLIT_THRESHOLD;
-    if message.last().map(|&b| b as char == '\n').unwrap_or(false) {
-        message.truncate(message.len() - 1);
-        is_partial = false;
-    };
-    log.insert(&message_path, message);
-
-    // For partial messages add a partial event indicator.
-    if is_partial {
-        log_namespace.insert_source_metadata(
-            Config::NAME,
-            log,
-            Some(LegacyKey::Overwrite(path!(event::PARTIAL))),
-            path!(event::PARTIAL),
-            true,
-        );
-    }
-
-    Ok(())
-}
-
 #[derive(Debug, Snafu)]
 enum ParsingError {
     NoMessageField,
@@ -294,7 +173,7 @@ pub mod tests {
     use vrl::value;
 
     use super::{super::test_util, *};
-    use crate::test_util::trace_init;
+    use crate::{event::LogEvent, test_util::trace_init};
 
     fn make_long_string(base: &str, len: usize) -> String {
         base.chars().cycle().take(len).collect()

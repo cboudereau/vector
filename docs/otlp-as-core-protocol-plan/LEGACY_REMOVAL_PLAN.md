@@ -334,8 +334,8 @@ should stay until source emission is native OTel.
    heroku_logs, fluent, journald, splunk_hec, docker_logs,
    kubernetes_logs (pod/namespace/node metadata annotators).
    OtelLog::merge() + LogEventMergeState unblocked docker_logs.
-   kubernetes_logs parsers (cri/docker/mod) still use LogEvent
-   internally for `parse_json(&mut LogEvent)`.
+   kubernetes_logs docker parser: dead LogEvent code deleted
+   (−125 lines), production uses parse_json_otel already.
    **1 hard blocker**: dnstap (`DnstapParser::parse(&mut LogEvent)`,
    ~1000 lines in lib/dnstap-parser).
 8. **Migrate transforms (Group E)** — reduce transform and

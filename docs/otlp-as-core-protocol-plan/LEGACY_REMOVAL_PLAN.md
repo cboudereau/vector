@@ -337,10 +337,11 @@ should stay until source emission is native OTel.
      lib/dnstap-parser — requires parser rewrite
    - docker_logs: BLOCKED on `LogEventMergeState`
    - kubernetes_logs: BLOCKED on `partial_events_merger`
-   These 3 blockers share a pattern: downstream code takes `&mut LogEvent`
-   in its API. Unblocking them requires either: (a) change the API to
-   `&mut OtelLog`, or (b) add a trait like MetadataInsertable for the
-   mutation operations each uses.
+   docker_logs: **UNBLOCKED + DONE** — LogEventMergeState migrated to
+   OtelLog, OtelLog::merge() added. 2 remaining blockers:
+   - dnstap: BLOCKED on `DnstapParser::parse(&mut LogEvent)` in
+     lib/dnstap-parser — requires parser rewrite
+   - kubernetes_logs: BLOCKED on `partial_events_merger`
 8. **Migrate transforms (Group E)** — reduce transform and
    metric_to_log transform now output OtelLog directly.
    `ReduceValueMerger::insert_into` takes `&mut OtelLog`.

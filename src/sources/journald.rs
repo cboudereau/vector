@@ -34,7 +34,7 @@ use vector_lib::{
     internal_event::{
         ByteSize, BytesReceived, CountByteSize, InternalEventHandle as _, Protocol, Registered,
     },
-    lookup::{metadata_path, owned_value_path, path},
+    lookup::{owned_value_path, path},
     schema::Definition,
 };
 use vrl::{
@@ -48,7 +48,7 @@ use crate::{
         DataType, SourceAcknowledgementsConfig, SourceConfig, SourceContext, SourceOutput,
         log_schema,
     },
-    event::{BatchNotifier, BatchStatus, BatchStatusReceiver, LogEvent},
+    event::{BatchNotifier, BatchStatus, BatchStatusReceiver, Event, OtelLog},
     internal_events::{
         EventsReceived, JournaldCheckpointFileOpenError, JournaldCheckpointSetError,
         JournaldInvalidRecordError, JournaldReadError, JournaldStartJournalctlError,
@@ -585,7 +585,7 @@ impl JournaldSource {
 }
 
 struct Batch<'a> {
-    events: Vec<LogEvent>,
+    events: Vec<OtelLog>,
     record_size: usize,
     exiting: Option<bool>,
     batch: Option<BatchNotifier>,
@@ -677,7 +677,12 @@ impl<'a> Batch<'a> {
             let byte_size = self.events.estimated_json_encoded_size_of();
             events_received.emit(CountByteSize(count, byte_size));
 
-            match self.source.out.send_batch(self.events).await {
+            match self
+                .source
+                .out
+                .send_batch(self.events.into_iter().map(Event::Log))
+                .await
+            {
                 Ok(_) => {
                     if let Some(cursor) = self.cursor {
                         finalizer.finalize(cursor, self.receiver).await;
@@ -837,14 +842,19 @@ async fn get_systemd_version_from_journalctl(journalctl_path: &PathBuf) -> crate
         })?)
 }
 
-fn enrich_log_event(log: &mut LogEvent, log_namespace: LogNamespace) {
+fn enrich_log_event(log: &mut OtelLog, log_namespace: LogNamespace) {
     match log_namespace {
         LogNamespace::Vector => {
-            if let Some(host) = log
-                .get(metadata_path!(JournaldConfig::NAME, "metadata"))
+            let host = log
+                .metadata()
+                .value()
+                .get(path!(JournaldConfig::NAME, "metadata"))
                 .and_then(|meta| meta.get(HOSTNAME))
-            {
-                log.insert(metadata_path!(JournaldConfig::NAME, "host"), host.clone());
+                .cloned();
+            if let Some(host) = host {
+                log.metadata_mut()
+                    .value_mut()
+                    .insert(path!(JournaldConfig::NAME, "host"), host);
             }
         }
         LogNamespace::Legacy => {
@@ -861,20 +871,24 @@ fn enrich_log_event(log: &mut LogEvent, log_namespace: LogNamespace) {
     }
 
     // Create a Utc timestamp from an existing log field if present.
-    let timestamp_value = match log_namespace {
+    let timestamp_value: Option<Value> = match log_namespace {
         LogNamespace::Vector => log
-            .get(metadata_path!(JournaldConfig::NAME, "metadata"))
+            .metadata()
+            .value()
+            .get(path!(JournaldConfig::NAME, "metadata"))
             .and_then(|meta| {
                 meta.get(SOURCE_TIMESTAMP)
                     .or_else(|| meta.get(RECEIVED_TIMESTAMP))
-            }),
+            })
+            .cloned(),
         LogNamespace::Legacy => log
             .get(event_path!(SOURCE_TIMESTAMP))
             .or_else(|| log.get(event_path!(RECEIVED_TIMESTAMP))),
     };
 
     let timestamp = timestamp_value
-        .filter(|&ts| ts.is_bytes())
+        .as_ref()
+        .filter(|ts| ts.is_bytes())
         .and_then(|ts| ts.as_str().unwrap().parse::<u64>().ok())
         .map(|ts| {
             chrono::Utc
@@ -886,15 +900,21 @@ fn enrich_log_event(log: &mut LogEvent, log_namespace: LogNamespace) {
     // Add timestamp.
     match log_namespace {
         LogNamespace::Vector => {
-            log.insert(metadata_path!("vector", "ingest_timestamp"), Utc::now());
+            log.metadata_mut()
+                .value_mut()
+                .insert(path!("vector", "ingest_timestamp"), Utc::now());
 
             if let Some(ts) = timestamp {
-                log.insert(metadata_path!(JournaldConfig::NAME, "timestamp"), ts);
+                log.metadata_mut()
+                    .value_mut()
+                    .insert(path!(JournaldConfig::NAME, "timestamp"), ts);
             }
         }
         LogNamespace::Legacy => {
             if let Some(ts) = timestamp {
-                log.maybe_insert(log_schema().timestamp_key_target_path(), ts);
+                if let Some(key) = log_schema().timestamp_key_target_path() {
+                    log.insert(key, ts);
+                }
             }
         }
     }
@@ -912,7 +932,7 @@ fn create_log_event_from_record(
     mut record: Record,
     batch: &Option<BatchNotifier>,
     log_namespace: LogNamespace,
-) -> LogEvent {
+) -> OtelLog {
     match log_namespace {
         LogNamespace::Vector => {
             let message_value = record
@@ -920,7 +940,11 @@ fn create_log_event_from_record(
                 .map(|msg| Value::Bytes(Bytes::from(msg)))
                 .unwrap_or(Value::Null);
 
-            let mut log = LogEvent::from(message_value).with_batch_notifier_option(batch);
+            let mut log = OtelLog::from_value_map(
+                message_value,
+                crate::event::EventMetadata::default(),
+            )
+            .with_batch_notifier_option(batch);
 
             // Add the remaining fields from the Record to the log event into an object to avoid collisions.
             record.iter().for_each(|(key, value)| {
@@ -932,10 +956,20 @@ fn create_log_event_from_record(
             log
         }
         LogNamespace::Legacy => {
-            let mut log = LogEvent::from_iter(record).with_batch_notifier_option(batch);
+            let fields: vrl::value::ObjectMap = record
+                .into_iter()
+                .map(|(k, v)| (k.into(), Value::Bytes(Bytes::from(v))))
+                .collect();
+            let mut log = OtelLog::from_value_map(
+                Value::Object(fields),
+                crate::event::EventMetadata::default(),
+            )
+            .with_batch_notifier_option(batch);
 
             if let Some(message) = log.remove(event_path!(MESSAGE)) {
-                log.maybe_insert(log_schema().message_key_target_path(), message);
+                if let Some(key) = log_schema().message_key_target_path() {
+                    log.insert(key, message);
+                }
             }
 
             log
@@ -1220,7 +1254,7 @@ mod tests {
     use super::*;
     use crate::{
         config::ComponentKey,
-        event::{Event, EventStatus},
+        event::{Event, EventStatus, LogEvent},
         test_util::components::assert_source_compliance,
     };
 

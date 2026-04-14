@@ -15,7 +15,7 @@ use vector_lib::{
 };
 
 use super::Config;
-use crate::event::{Event, LogEvent, string_value};
+use crate::event::{Event, OtelLog, string_value};
 
 /// Configuration for how the events are enriched with Node metadata.
 #[configurable_component]
@@ -80,7 +80,7 @@ impl NodeMetadataAnnotator {
 
 #[allow(dead_code)]
 fn annotate_from_metadata(
-    log: &mut LogEvent,
+    log: &mut OtelLog,
     fields_spec: &FieldsSpec,
     metadata: &ObjectMeta,
     log_namespace: LogNamespace,
@@ -122,6 +122,7 @@ mod tests {
     use vector_lib::lookup::{event_path, lookup_v2::parse_target_path, metadata_path};
 
     use super::*;
+    use crate::event::LogEvent;
 
     #[test]
     fn test_annotate_from_metadata() {
@@ -218,8 +219,9 @@ mod tests {
         ];
 
         for (fields_spec, metadata, expected, log_namespace) in cases.into_iter() {
-            let mut log = LogEvent::default();
+            let mut log = OtelLog::from_log_event(LogEvent::default());
             annotate_from_metadata(&mut log, &fields_spec, &metadata, log_namespace);
+            let expected = OtelLog::from_log_event(expected);
             assert_eq!(log, expected);
         }
     }

@@ -19,7 +19,7 @@ use crate::{
         DataType, GenerateConfig, Input, OutputId, TransformConfig, TransformContext,
         TransformOutput, log_schema,
     },
-    event::{self, Event, LogEvent, Metric},
+    event::{self, Event, Metric, OtelLog},
     internal_events::MetricToLogSerializeError,
     schema::Definition,
     transforms::{FunctionTransform, OutputBuffer, Transform},
@@ -282,7 +282,7 @@ impl MetricToLog {
         }
     }
 
-    pub fn transform_one(&self, mut metric: Metric) -> Option<LogEvent> {
+    pub fn transform_one(&self, mut metric: Metric) -> Option<OtelLog> {
         if self.tag_values == MetricTagValues::Single {
             metric.reduce_tags_to_single();
         }
@@ -292,12 +292,14 @@ impl MetricToLog {
             .and_then(|value| match value {
                 Value::Object(object) => {
                     let (_, _, metadata) = metric.into_parts();
-                    let mut log = LogEvent::new_with_metadata(metadata);
-
-                    // converting all fields from serde `Value` to Vector `Value`
-                    for (key, value) in object {
-                        log.insert(event_path!(&key), value);
-                    }
+                    let fields: vrl::value::ObjectMap = object
+                        .into_iter()
+                        .map(|(k, v)| (k.into(), event::Value::from(v)))
+                        .collect();
+                    let mut log = OtelLog::from_value_map(
+                        event::Value::Object(fields),
+                        metadata,
+                    );
 
                     if self.log_namespace == LogNamespace::Legacy {
                         // "Vector" namespace just leaves the `timestamp` in place.
@@ -311,22 +313,25 @@ impl MetricToLog {
                             })
                             .unwrap_or_else(|| event::Value::Timestamp(Utc::now()));
 
-                        log.maybe_insert(log_schema().timestamp_key_target_path(), timestamp);
+                        if let Some(key) = log_schema().timestamp_key_target_path() {
+                            log.insert(key, timestamp);
+                        }
 
                         if let Some(host_tag) = &self.host_tag
                             && let Some(host_value) =
-                                log.remove_prune((PathPrefix::Event, host_tag), true)
+                                log.remove((PathPrefix::Event, host_tag))
                         {
-                            log.maybe_insert(log_schema().host_key_target_path(), host_value);
+                            if let Some(key) = log_schema().host_key_target_path() {
+                                log.insert(key, host_value);
+                            }
                         }
                     }
                     if self.log_namespace == LogNamespace::Vector {
                         // Create vector metadata since this is used as a marker to see which namespace is used at runtime.
                         // This can be removed once metrics support namespacing.
-                        log.insert(
-                            (PathPrefix::Metadata, path!("vector")),
-                            vrl::value::Value::Object(BTreeMap::new()),
-                        );
+                        log.metadata_mut()
+                            .value_mut()
+                            .insert(path!("vector"), vrl::value::Value::Object(BTreeMap::new()));
                     }
                     Some(log)
                 }
@@ -347,7 +352,7 @@ impl FunctionTransform for MetricToLog {
                 return;
             }
         };
-        let retval: Option<Event> = self.transform_one(metric).map(|log| log.into());
+        let retval: Option<Event> = self.transform_one(metric).map(Event::Log);
         output.extend(retval.into_iter())
     }
 }

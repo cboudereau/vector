@@ -356,7 +356,7 @@ async fn handle_metrics() {
     es.request_builder
         .encoder
         .encode_input(
-            vec![process_log(OtelLog::from_log_event(log), &es.mode, None, &config.encoding).unwrap()],
+            vec![process_log(log, &es.mode, None, &config.encoding).unwrap()],
             &mut encoded,
         )
         .unwrap();

@@ -74,10 +74,6 @@ where
                         let (series, data, metadata) = metric.into_metric_parts();
                         metric_to_log
                             .transform_one(Metric::from_parts(series, data, metadata))
-                            .map(|log| {
-                                let (value, metadata) = log.into_parts();
-                                OtelLog::from_value_map(value, metadata)
-                            })
                     }
                     Event::Log(log) => Some(log),
                     Event::Trace(_) => None,

@@ -11,11 +11,12 @@ use vector_vrl_metrics::MetricsStorage;
 use vrl::{
     path::{OwnedTargetPath, parse_target_path},
     prelude::KeyString,
+    value::Value,
 };
 
 use crate::{
     conditions::Condition,
-    event::{Event, EventMetadata, LogEvent, OtelLog, discriminant::Discriminant},
+    event::{Event, EventMetadata, OtelLog, discriminant::Discriminant},
     internal_events::{ReduceAddEventError, ReduceStaleEventFlushed},
     transforms::{
         TaskTransform,
@@ -125,8 +126,11 @@ impl ReduceState {
         self.stale_since = Instant::now();
     }
 
-    fn flush(mut self) -> LogEvent {
-        let mut event = LogEvent::new_with_metadata(self.metadata);
+    fn flush(mut self) -> OtelLog {
+        let mut event = OtelLog::from_value_map(
+            Value::Object(Default::default()),
+            self.metadata,
+        );
         for (path, v) in self.fields.drain() {
             if let Err(error) = v.insert_into(&path, &mut event) {
                 warn!(message = "Failed to merge values for field.", %error);

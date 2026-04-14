@@ -7,7 +7,7 @@ use ordered_float::NotNan;
 use vector_lib::configurable::configurable_component;
 use vrl::path::OwnedTargetPath;
 
-use crate::event::{LogEvent, Value};
+use crate::event::{OtelLog, Value};
 
 /// Strategies for merging events.
 #[configurable_component]
@@ -73,7 +73,7 @@ impl ReduceValueMerger for DiscardMerger {
     fn insert_into(
         self: Box<Self>,
         path: &OwnedTargetPath,
-        v: &mut LogEvent,
+        v: &mut OtelLog,
     ) -> Result<(), String> {
         v.insert(path, self.v);
         Ok(())
@@ -103,7 +103,7 @@ impl ReduceValueMerger for RetainMerger {
     fn insert_into(
         self: Box<Self>,
         path: &OwnedTargetPath,
-        v: &mut LogEvent,
+        v: &mut OtelLog,
     ) -> Result<(), String> {
         v.insert(path, self.v);
         Ok(())
@@ -147,7 +147,7 @@ impl ReduceValueMerger for ConcatMerger {
     fn insert_into(
         self: Box<Self>,
         path: &OwnedTargetPath,
-        v: &mut LogEvent,
+        v: &mut OtelLog,
     ) -> Result<(), String> {
         v.insert(path, Value::Bytes(self.v.into()));
         Ok(())
@@ -178,7 +178,7 @@ impl ReduceValueMerger for ConcatArrayMerger {
     fn insert_into(
         self: Box<Self>,
         path: &OwnedTargetPath,
-        v: &mut LogEvent,
+        v: &mut OtelLog,
     ) -> Result<(), String> {
         v.insert(path, Value::Array(self.v));
         Ok(())
@@ -205,7 +205,7 @@ impl ReduceValueMerger for ArrayMerger {
     fn insert_into(
         self: Box<Self>,
         path: &OwnedTargetPath,
-        v: &mut LogEvent,
+        v: &mut OtelLog,
     ) -> Result<(), String> {
         v.insert(path, Value::Array(self.v));
         Ok(())
@@ -241,7 +241,7 @@ impl ReduceValueMerger for LongestArrayMerger {
     fn insert_into(
         self: Box<Self>,
         path: &OwnedTargetPath,
-        v: &mut LogEvent,
+        v: &mut OtelLog,
     ) -> Result<(), String> {
         v.insert(path, Value::Array(self.v));
         Ok(())
@@ -277,7 +277,7 @@ impl ReduceValueMerger for ShortestArrayMerger {
     fn insert_into(
         self: Box<Self>,
         path: &OwnedTargetPath,
-        v: &mut LogEvent,
+        v: &mut OtelLog,
     ) -> Result<(), String> {
         v.insert(path, Value::Array(self.v));
         Ok(())
@@ -326,7 +326,7 @@ impl ReduceValueMerger for FlatUniqueMerger {
     fn insert_into(
         self: Box<Self>,
         path: &OwnedTargetPath,
-        v: &mut LogEvent,
+        v: &mut OtelLog,
     ) -> Result<(), String> {
         v.insert(path, Value::Array(self.v.into_iter().collect()));
         Ok(())
@@ -364,7 +364,7 @@ impl ReduceValueMerger for TimestampWindowMerger {
     fn insert_into(
         self: Box<Self>,
         path: &OwnedTargetPath,
-        v: &mut LogEvent,
+        v: &mut OtelLog,
     ) -> Result<(), String> {
         v.insert(
             format!("{path}_end").as_str(),
@@ -432,7 +432,7 @@ impl ReduceValueMerger for AddNumbersMerger {
     fn insert_into(
         self: Box<Self>,
         path: &OwnedTargetPath,
-        v: &mut LogEvent,
+        v: &mut OtelLog,
     ) -> Result<(), String> {
         match self.v {
             NumberMergerValue::Float(f) => v.insert(path, Value::Float(f)),
@@ -495,7 +495,7 @@ impl ReduceValueMerger for MaxNumberMerger {
     fn insert_into(
         self: Box<Self>,
         path: &OwnedTargetPath,
-        v: &mut LogEvent,
+        v: &mut OtelLog,
     ) -> Result<(), String> {
         match self.v {
             NumberMergerValue::Float(f) => v.insert(path, Value::Float(f)),
@@ -558,7 +558,7 @@ impl ReduceValueMerger for MinNumberMerger {
     fn insert_into(
         self: Box<Self>,
         path: &OwnedTargetPath,
-        v: &mut LogEvent,
+        v: &mut OtelLog,
     ) -> Result<(), String> {
         match self.v {
             NumberMergerValue::Float(f) => v.insert(path, Value::Float(f)),
@@ -570,7 +570,7 @@ impl ReduceValueMerger for MinNumberMerger {
 
 pub trait ReduceValueMerger: std::fmt::Debug + Send + Sync + DynClone {
     fn add(&mut self, v: Value) -> Result<(), String>;
-    fn insert_into(self: Box<Self>, path: &OwnedTargetPath, v: &mut LogEvent)
+    fn insert_into(self: Box<Self>, path: &OwnedTargetPath, v: &mut OtelLog)
     -> Result<(), String>;
 }
 
@@ -670,7 +670,6 @@ mod test {
     use vrl::owned_event_path;
 
     use super::*;
-    use crate::event::LogEvent;
 
     #[test]
     fn initial_values() {
@@ -933,9 +932,9 @@ mod test {
     fn merge(initial: Value, additional: Value, strategy: &MergeStrategy) -> Result<Value, String> {
         let mut merger = get_value_merger(initial, strategy)?;
         merger.add(additional)?;
-        let mut output = LogEvent::default();
+        let mut output = OtelLog::new(Default::default());
         let out_path = owned_event_path!("out");
         merger.insert_into(&out_path, &mut output)?;
-        Ok(output.remove(&out_path).unwrap())
+        Ok(output.remove(vrl::event_path!("out")).unwrap())
     }
 }

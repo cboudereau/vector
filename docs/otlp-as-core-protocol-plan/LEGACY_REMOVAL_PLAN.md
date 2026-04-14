@@ -322,19 +322,21 @@ should stay until source emission is native OTel.
 4. **`Metric::from_parts`/`into_parts` normalizer path** — migrate
    `MetricSet`/`BatchedMetrics`/`MetricRef` to native OtelMetric. Unlocks
    prometheus sinks + removes the normalizer `_otel` transitional shim.
-5. **Migrate codecs (Group B)** — 17 files. Decoders should return
-   `OtelLog` via `from_value_map`; encoders can stop constructing
-   `LogEvent` internally.
+5. **Migrate codecs (Group B)** — 17 files total; 2 EASY decoders done
+   (avro, protobuf); encoders mostly DONE already; 4 BLOCKED (gelf
+   decoder, syslog decoder/encoder, vrl decoder) on log_schema/namespace
+   integration; rest TEST_ONLY.
 6. **Migrate high-traffic sources (Group C)**: splunk_hec, journald,
    docker_logs, kubernetes_logs first.
 7. **Replace `FunctionTransform` trait's LogEvent signature** (Group F)
    — blocks deep transform migration.
 
-## Verification
+## Verification (updated 2026-04-14)
 
-- `cargo test -p vector --lib` — 1789/1789 pass after write-back fix
-- `cargo test -p vector-core --lib event::otel_event` — 34/34 pass,
-  0 ignored (all previously-ignored gap tests resolved)
+- `cargo test -p vector --lib` — 1789/1789 pass
+- `cargo test -p vector-core --lib event::otel_event` — 35/35 pass, 0 ignored
+- `cargo test -p codecs --lib` — 171/171 pass
+- `cargo test -p vector-opentelemetry-proto --lib` — 22/22 pass
 - `cargo test -p vector --lib sinks::` — 551/551 pass
 - `cargo check -p vector` — compiles clean
 

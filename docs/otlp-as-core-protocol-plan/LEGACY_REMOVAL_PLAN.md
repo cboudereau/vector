@@ -326,9 +326,16 @@ should stay until source emission is native OTel.
    (avro, protobuf); encoders mostly DONE already; 4 BLOCKED (gelf
    decoder, syslog decoder/encoder, vrl decoder) on log_schema/namespace
    integration; rest TEST_ONLY.
-6. **Migrate high-traffic sources (Group C)**: splunk_hec, journald,
-   docker_logs, kubernetes_logs first.
-7. **Replace `FunctionTransform` trait's LogEvent signature** (Group F)
+6. ~~Unblock source migrations~~ — **DONE** (`af17230`).
+   `MetadataInsertable` trait makes `insert_source_metadata` /
+   `insert_vector_metadata` generic over LogEvent and OtelLog.
+   Sources can now be incrementally migrated.
+7. **Migrate sources (Group C)** — 1/14 done (heroku_logs). Next:
+   fluent, dnstap, journald (MEDIUM — use insert_source_metadata which
+   now accepts OtelLog). docker_logs BLOCKED on `LogEventMergeState`.
+   splunk_hec MEDIUM (4 production sites). kubernetes_logs BLOCKED on
+   `partial_events_merger` which uses LogEvent.
+8. **Replace `FunctionTransform` trait's LogEvent signature** (Group F)
    — blocks deep transform migration.
 
 ## Verification (updated 2026-04-14)

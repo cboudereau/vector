@@ -707,6 +707,27 @@ impl OtelLog {
         }
     }
 
+    /// Merge fields from `incoming` into this log, concatenating byte
+    /// values for specified fields. Same semantics as `LogEvent::merge`.
+    pub fn merge(&mut self, mut incoming: OtelLog, fields: &[impl AsRef<str>]) {
+        for field in fields {
+            let field_path = vrl::event_path!(field.as_ref());
+            let Some(incoming_val) = incoming.remove(field_path) else {
+                continue;
+            };
+            match self.get(field_path) {
+                None => {
+                    self.insert(field_path, incoming_val);
+                }
+                Some(mut current_val) => {
+                    current_val.merge(incoming_val);
+                    self.insert(field_path, current_val);
+                }
+            }
+        }
+        self.metadata.merge(incoming.metadata);
+    }
+
     /// Build a Value tree with the legacy layout — no LogEvent constructed.
     /// This ensures callers see the same field names and types.
     pub fn to_value_legacy_layout(&self) -> Value {

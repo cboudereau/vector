@@ -44,7 +44,7 @@ use crate::{
     common::backoff::ExponentialBackoff,
     config::{DataType, SourceConfig, SourceContext, SourceOutput, log_schema},
     docker::{DockerTlsConfig, docker},
-    event::{self, EstimatedJsonEncodedSizeOf, LogEvent, ObjectMap, Value, merge_state::LogEventMergeState, string_value},
+    event::{self, EstimatedJsonEncodedSizeOf, Event, OtelLog, Value, merge_state::LogEventMergeState, string_value},
     internal_events::{
         DockerLogsCommunicationError, DockerLogsContainerEventReceived,
         DockerLogsContainerMetadataFetchError, DockerLogsContainerUnwatch,
@@ -851,7 +851,7 @@ impl EventStreamBuilder {
             .filter_map(|v| ready(v.ok().flatten()))
             .take_until(self.shutdown.clone());
 
-        let events_stream: Box<dyn Stream<Item = LogEvent> + Unpin + Send> =
+        let events_stream: Box<dyn Stream<Item = OtelLog> + Unpin + Send> =
             if let Some(ref line_agg_config) = core.line_agg_config {
                 Box::new(line_agg_adapter(
                     events_stream,
@@ -866,7 +866,8 @@ impl EventStreamBuilder {
         let hostname = self.hostname.clone();
         let result = {
             let mut stream = events_stream
-                .map(move |event| add_hostname(event, &host_key, &hostname, self.log_namespace));
+                .map(move |log| add_hostname(log, &host_key, &hostname, self.log_namespace))
+                .map(Event::Log);
             self.out.send_event_stream(&mut stream).await.map_err(|_| {
                 let (count, _) = stream.size_hint();
                 emit!(StreamClosedError { count });
@@ -895,11 +896,11 @@ impl EventStreamBuilder {
 }
 
 fn add_hostname(
-    mut log: LogEvent,
+    mut log: OtelLog,
     host_key: &Option<OwnedValuePath>,
     hostname: &Option<String>,
     log_namespace: LogNamespace,
-) -> LogEvent {
+) -> OtelLog {
     if let Some(hostname) = hostname {
         let legacy_host_key = host_key.as_ref().map(LegacyKey::Overwrite);
 
@@ -1034,7 +1035,7 @@ impl ContainerLogInfo {
         partial_event_merge_state: &mut Option<LogEventMergeState>,
         bytes_received: &Registered<BytesReceived>,
         log_namespace: LogNamespace,
-    ) -> Option<LogEvent> {
+    ) -> Option<OtelLog> {
         let (stream, mut bytes_message) = match log_output {
             LogOutput::StdErr { message } => (STDERR.clone(), message),
             LogOutput::StdOut { message } => (STDOUT.clone(), message),
@@ -1150,14 +1151,7 @@ impl ContainerLogInfo {
                 timestamp.timestamp_nanos_opt().unwrap_or(0) as u64;
         }
 
-        let mut log = {
-            let value = otel_log.to_value_legacy_layout();
-            let map = match value {
-                Value::Object(m) => m,
-                _ => ObjectMap::new(),
-            };
-            LogEvent::from_map(map, otel_log.metadata().clone())
-        };
+        let mut log = otel_log;
 
         // If automatic partial event merging is requested - perform the
         // merging.
@@ -1280,10 +1274,10 @@ impl ContainerMetadata {
 }
 
 fn line_agg_adapter(
-    inner: impl Stream<Item = LogEvent> + Unpin,
-    logic: line_agg::Logic<Bytes, LogEvent>,
+    inner: impl Stream<Item = OtelLog> + Unpin,
+    logic: line_agg::Logic<Bytes, OtelLog>,
     log_namespace: LogNamespace,
-) -> impl Stream<Item = LogEvent> {
+) -> impl Stream<Item = OtelLog> {
     let line_agg_in = inner.map(move |mut log| {
         let message_value = match log_namespace {
             LogNamespace::Vector => log
@@ -1310,7 +1304,7 @@ fn line_agg_adapter(
         let message = message_value.coerce_to_bytes();
         (stream, message, log)
     });
-    let line_agg_out = LineAgg::<_, Bytes, LogEvent>::new(line_agg_in, logic);
+    let line_agg_out = LineAgg::<_, Bytes, OtelLog>::new(line_agg_in, logic);
     line_agg_out.map(move |(_, message, mut log, _)| {
         match log_namespace {
             LogNamespace::Vector => log.insert(event_path!(), message),

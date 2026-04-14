@@ -310,20 +310,23 @@ should stay until source emission is native OTel.
 
 ## Next concrete targets (ordered, reality-checked)
 
-1. **Delete dead `VrlTarget` legacy variants + TargetIter impls**
-   (task #30) — pure cleanup, ~300 lines gone, no behavior change.
-2. **VRL migration tool MVP** (Phase A) — at least `LOG-01`/`MET-06`/
+1. ~~Delete dead `VrlTarget` legacy variants~~ — **DONE** (`2e1b80e`,
+   −492 lines).
+2. ~~Fix OTLP buffer codec to use `into_otel_event_iter`~~ — **DONE**
+   (this commit). `buffer_codec.rs` now decodes via `into_otel_event_iter`
+   for logs, metrics, and spans. Zero LogEvent/TraceEvent in the
+   OTLP buffer decode path. Legacy `into_event_iter` kept for 2 test
+   callers in `spans.rs` that assert the legacy layout.
+3. **VRL migration tool MVP** (Phase A) — at least `LOG-01`/`MET-06`/
    `MET-07` rules compile and rewrite real programs. Blocks Phase B.
-3. **`Metric::from_parts`/`into_parts` normalizer path** — migrate
+4. **`Metric::from_parts`/`into_parts` normalizer path** — migrate
    `MetricSet`/`BatchedMetrics`/`MetricRef` to native OtelMetric. Unlocks
    prometheus sinks + removes the normalizer `_otel` transitional shim.
-4. **Migrate codecs (Group B)** — 17 files. Decoders should return
+5. **Migrate codecs (Group B)** — 17 files. Decoders should return
    `OtelLog` via `from_value_map`; encoders can stop constructing
    `LogEvent` internally.
-5. **Migrate high-traffic sources (Group C)**: splunk_hec, journald,
+6. **Migrate high-traffic sources (Group C)**: splunk_hec, journald,
    docker_logs, kubernetes_logs first.
-6. **Fix OTLP proto converter (Group F)** — `logs.rs` should produce
-   `OtelLog` directly instead of LogEvent.
 7. **Replace `FunctionTransform` trait's LogEvent signature** (Group F)
    — blocks deep transform migration.
 

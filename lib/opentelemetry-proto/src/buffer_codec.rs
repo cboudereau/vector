@@ -436,7 +436,7 @@ fn batch_to_event_array(batch: OtlpBufferBatch) -> EventArray {
             .resource_logs
             .into_iter()
             .flat_map(|rl| {
-                rl.into_event_iter(vector_core::config::LogNamespace::Vector)
+                rl.into_otel_event_iter()
                     .filter_map(|e| e.try_into_log())
             })
             .collect();
@@ -446,7 +446,7 @@ fn batch_to_event_array(batch: OtlpBufferBatch) -> EventArray {
             .resource_metrics
             .into_iter()
             .flat_map(|rm| {
-                rm.into_event_iter()
+                rm.into_otel_event_iter()
                     .filter_map(|e| e.try_into_otel_metric())
             })
             .collect();
@@ -456,7 +456,7 @@ fn batch_to_event_array(batch: OtlpBufferBatch) -> EventArray {
             .resource_spans
             .into_iter()
             .flat_map(|rs| {
-                rs.into_event_iter()
+                rs.into_otel_event_iter()
                     .filter_map(|e| e.try_into_trace())
             })
             .collect();

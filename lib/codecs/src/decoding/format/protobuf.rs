@@ -8,7 +8,7 @@ use smallvec::{SmallVec, smallvec};
 use vector_config::configurable_component;
 use vector_core::{
     config::{DataType, LogNamespace, log_schema},
-    event::{Event, LogEvent},
+    event::{Event, EventMetadata, OtelLog},
     schema,
 };
 use vrl::{
@@ -145,7 +145,7 @@ impl Deserializer for ProtobufDeserializer {
         log_namespace: LogNamespace,
     ) -> vector_common::Result<SmallVec<[Event; 1]>> {
         let vrl_value = extract_vrl_value(bytes, &self.message_descriptor, &self.options)?;
-        let mut log = LogEvent::from(vrl_value);
+        let mut log = OtelLog::from_value_map(vrl_value, EventMetadata::default());
 
         if log_namespace == LogNamespace::Legacy {
             let timestamp = Utc::now();
@@ -156,7 +156,7 @@ impl Deserializer for ProtobufDeserializer {
             }
         }
 
-        Ok(smallvec![Event::from(log)])
+        Ok(smallvec![Event::Log(log)])
     }
 }
 

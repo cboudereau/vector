@@ -1,12 +1,11 @@
 use bytes::{Buf, Bytes};
 use chrono::Utc;
-use lookup::event_path;
 use serde::{Deserialize, Serialize};
 use smallvec::{SmallVec, smallvec};
 use vector_config::configurable_component;
 use vector_core::{
     config::{DataType, LogNamespace, log_schema},
-    event::{Event, LogEvent},
+    event::{Event, EventMetadata, OtelLog},
     schema,
 };
 use vrl::value::KeyString;
@@ -154,10 +153,11 @@ impl Deserializer for AvroDeserializer {
             return Err(vector_common::Error::from("Expected an avro Record"));
         };
 
-        let mut log = LogEvent::default();
+        let mut map = vrl::value::ObjectMap::new();
         for (k, v) in fields {
-            log.insert(event_path!(k.as_str()), try_from(v)?);
+            map.insert(k.into(), try_from(v)?);
         }
+        let mut log = OtelLog::from_value_map(VrlValue::Object(map), EventMetadata::default());
 
         if log_namespace == LogNamespace::Legacy {
             if let Some(timestamp_key) = log_schema().timestamp_key_target_path() {
@@ -167,7 +167,7 @@ impl Deserializer for AvroDeserializer {
                 }
             }
         }
-        Ok(smallvec![Event::from(log)])
+        Ok(smallvec![Event::Log(log)])
     }
 }
 

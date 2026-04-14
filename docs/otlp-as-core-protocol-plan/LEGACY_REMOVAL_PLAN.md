@@ -330,12 +330,17 @@ should stay until source emission is native OTel.
    `MetadataInsertable` trait makes `insert_source_metadata` /
    `insert_vector_metadata` generic over LogEvent and OtelLog.
    Sources can now be incrementally migrated.
-7. **Migrate sources (Group C)** — 3/14 done (heroku_logs, fluent,
-   journald). dnstap BLOCKED on `DnstapParser::parse(&mut LogEvent)`.
-   docker_logs BLOCKED on `LogEventMergeState`. kubernetes_logs BLOCKED
-   on `partial_events_merger` (uses LogEvent). splunk_hec MEDIUM
-   (4 production sites, uses log_schema patterns). syslog/socket are
-   TEST_ONLY in production code.
+7. **Migrate sources (Group C)** — **all migratable done** (4/14:
+   heroku_logs, fluent, journald, splunk_hec). Remaining sources
+   only have LogEvent in test code, except:
+   - dnstap: BLOCKED on `DnstapParser::parse(&mut LogEvent)` in
+     lib/dnstap-parser — requires parser rewrite
+   - docker_logs: BLOCKED on `LogEventMergeState`
+   - kubernetes_logs: BLOCKED on `partial_events_merger`
+   These 3 blockers share a pattern: downstream code takes `&mut LogEvent`
+   in its API. Unblocking them requires either: (a) change the API to
+   `&mut OtelLog`, or (b) add a trait like MetadataInsertable for the
+   mutation operations each uses.
 8. **Replace `FunctionTransform` trait's LogEvent signature** (Group F)
    — blocks deep transform migration.
 

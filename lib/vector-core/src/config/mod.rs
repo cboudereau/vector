@@ -603,12 +603,6 @@ impl LogNamespace {
         }
     }
 
-    pub fn new_log_from_data(&self, value: impl Into<Value>) -> LogEvent {
-        match self {
-            LogNamespace::Vector | LogNamespace::Legacy => LogEvent::from(value.into()),
-        }
-    }
-
     // combine a global (self) and local value to get the actual namespace
     #[must_use]
     pub fn merge(&self, override_value: Option<impl Into<LogNamespace>>) -> LogNamespace {

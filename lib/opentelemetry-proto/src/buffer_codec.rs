@@ -290,45 +290,12 @@ fn metrics_to_export(metrics: &[vector_core::event::Metric]) -> ExportMetricsSer
 
 // --- Traces -----------------------------------------------------------------
 
-#[allow(dead_code)]
-fn traces_to_export(traces: &[vector_core::event::TraceEvent]) -> ExportTraceServiceRequest {
-    ExportTraceServiceRequest {
-        resource_spans: traces.iter().map(trace_event_to_resource_spans).collect(),
-    }
-}
-
-/// Convert a single `TraceEvent` into a `ResourceSpans` proto, preserving
-/// resource and scope metadata alongside the span.
-pub fn trace_event_to_resource_spans(
-    trace: &vector_core::event::TraceEvent,
-) -> ResourceSpans {
-    let resource = trace
-        .get(event_path!(spans::RESOURCE_KEY))
-        .and_then(|v| value_to_kv_list(v))
-        .map(|attrs| Resource {
-            attributes: attrs,
-            dropped_attributes_count: 0,
-        });
-
-    let scope = read_scope_from_trace_event(trace);
-
-    ResourceSpans {
-        resource,
-        scope_spans: vec![ScopeSpans {
-            scope,
-            spans: vec![trace_event_to_span(trace)],
-            schema_url: String::new(),
-        }],
-        schema_url: String::new(),
-    }
-}
-
 /// Convert a single `TraceEvent` into an OTel `Span`.
 ///
-/// Reads all fields that the OTel source ingest path (`spans.rs`) stores on
-/// the event — IDs, name, kind, timestamps, attributes, events, links,
-/// status, trace_state, and all dropped-count fields.
-pub fn trace_event_to_span(trace: &vector_core::event::TraceEvent) -> Span {
+/// Retained for backward compat with legacy buffer reads. Not used in the
+/// current OTLP buffer path (which uses OtelSpan directly).
+#[allow(dead_code)]
+fn trace_event_to_span(trace: &vector_core::event::TraceEvent) -> Span {
     let trace_id = trace
         .get(event_path!(spans::TRACE_ID_KEY))
         .and_then(|v| hex_value_to_bytes(v, 16))
@@ -516,6 +483,7 @@ fn read_scope_from_metadata(
     })
 }
 
+#[allow(dead_code)]
 fn read_scope_from_trace_event(
     trace: &vector_core::event::TraceEvent,
 ) -> Option<InstrumentationScope> {

@@ -1274,3 +1274,939 @@ Sources:
 - [Arroyo SQL engine on DataFusion](https://www.arroyo.dev/blog/why-arrow-and-datafusion/)
 - [DataFusion as streaming framework](https://www.streamingdata.tech/p/exploring-apache-datafusion-streaming-framework)
 - [DataFusion documentation](https://datafusion.apache.org/user-guide/introduction.html)
+
+---
+
+## 17. Unified Backend vs Separate Backends: Problems, Blockers, and Trade-offs
+
+### 17.1 The status quo: separate backends (Grafana model)
+
+```
+                      ┌─────────┐
+                      │ Grafana │  ← 3 query languages (PromQL, LogQL, TraceQL)
+                      └────┬────┘
+                           │
+              ┌────────────┼────────────┐
+              ▼            ▼            ▼
+         ┌─────────┐ ┌─────────┐ ┌─────────┐
+         │  Mimir   │ │  Loki   │ │  Tempo  │  ← 3 separate backends
+         │ (metrics)│ │ (logs)  │ │ (traces)│  ← 3 storage engines
+         │ PromQL   │ │ LogQL   │ │ TraceQL │  ← 3 query languages
+         └─────────┘ └─────────┘ └─────────┘  ← 3 operational burdens
+```
+
+### 17.2 Problems NOT solved by separate backends
+
+#### A. Cross-signal correlation is superficial, not analytical
+
+| Problem | Detail | Impact |
+|---------|--------|--------|
+| **No cross-signal JOINs** | Grafana links signals via UI navigation (click from metric → trace → log). But the BACKENDS cannot perform joint analysis. You cannot ask "which services have error logs that correlate with latency spikes?" in a single query. | Debugging is manual. MTTR increases. |
+| **"Swivel-chair analysis"** | Engineers get a metric alert in Mimir, pivot to Loki to search logs, pivot to Tempo to find traces. Each pivot is a manual step with context loss. | 38% of teams cite poor signal-to-noise as their #1 obstacle. |
+| **No causal correlation** | When CPU spikes, you see the metric. But was it caused by a specific trace? A burst of error logs? Separate backends can't answer this — they literally don't have each other's data. | Root cause analysis depends on engineer intuition, not data. |
+| **Duplicate data across backends** | trace_id stored in Loki logs AND Tempo traces. service_name in all three. resource attributes duplicated 3x. | Storage waste: 15-30% overhead from duplication. |
+
+#### B. Alerting is fragmented and signal-blind
+
+| Problem | Detail | Impact |
+|---------|--------|--------|
+| **Alerts can't span signals** | Mimir alerts on metrics only. Loki alerts on log patterns only. You CANNOT create an alert like: "fire when p99 latency > 500ms AND error logs > 100/min AND trace error rate > 5% for service X". | Most critical incidents involve multiple signals. Single-signal alerts miss compound failures. |
+| **Alert correlation is manual** | When 3 alerts fire simultaneously (metric spike + error logs + failed traces), a human must correlate them. No system knows they're the same incident. | Alert fatigue: teams receive N separate alerts for 1 incident. |
+| **No metric-from-logs** | You can't efficiently create a metric (e.g., error rate) from log data without shipping logs through a separate pipeline to Mimir. | Duplication of pipeline logic. Some signals never become metrics. |
+| **No metric-from-traces** | Same problem: deriving RED metrics (Rate, Errors, Duration) from traces requires a separate spanmetrics connector, duplicating data into Mimir. | Added complexity, data staleness. |
+
+#### C. Operational cost multiplied by 3
+
+| Problem | Detail | Impact |
+|---------|--------|--------|
+| **3 backends to operate** | Mimir, Loki, Tempo each need: deployment, scaling, monitoring, upgrades, backup, disaster recovery. | 3x operational overhead. Most teams don't have dedicated infra for each. |
+| **3 scaling models** | Mimir scales by metric series cardinality. Loki scales by log volume. Tempo scales by trace throughput. Different knobs, different bottlenecks. | Expertise needed in 3 different systems. |
+| **3 storage strategies** | Each backend has its own compaction, retention, tiering, and garbage collection. | Configuration complexity. Risk of misconfiguration. |
+| **3 query languages to learn** | PromQL, LogQL, TraceQL. Each with its own syntax, semantics, and limitations. | Higher learning curve. Fewer engineers can be effective. |
+| **Inconsistent retention** | Metrics kept for 13 months, logs for 14 days, traces for 7 days. When investigating a historical issue, some signals are gone. | Incomplete investigations. Blind spots. |
+
+#### D. Data consistency gaps
+
+| Problem | Detail | Impact |
+|---------|--------|--------|
+| **Clock skew between backends** | Logs, metrics, and traces ingested at slightly different times, with different timestamp precision. | Visual correlation in Grafana is approximate, not exact. |
+| **Schema divergence** | service_name might be `service.name` in traces but `service` in logs and `job` in metrics. No shared schema enforcement. | Manual field mapping. Broken correlations when naming changes. |
+| **Partial failures** | If Loki ingestion is down but Mimir is up, you have metrics without corresponding logs for that period. No system detects this inconsistency. | Incomplete data without visibility into the gap. |
+
+### 17.3 What a UNIFIED backend unblocks
+
+#### A. True cross-signal analytics (the biggest unlock)
+
+```sql
+-- IMPOSSIBLE with separate backends. TRIVIAL with unified:
+
+-- "What services have error logs correlated with latency spikes?"
+SELECT
+    t.service_name,
+    AVG(t.duration_ms) as avg_latency,
+    COUNT(l.severity) FILTER (WHERE l.severity = 'ERROR') as error_logs,
+    COUNT(DISTINCT t.trace_id) as trace_count
+FROM traces t
+LEFT JOIN logs l ON t.trace_id = l.trace_id
+WHERE t.timestamp > now() - INTERVAL '1 hour'
+  AND t.duration_ms > 500
+GROUP BY t.service_name
+HAVING error_logs > 0
+ORDER BY error_logs DESC;
+
+-- "Alert: fire when latency AND errors AND log volume all spike together"
+-- With unified data, this is a single SQL query on one table set.
+```
+
+#### B. Compound alerting across signals
+
+| Unified alert capability | How it works |
+|-------------------------|-------------|
+| **Multi-signal alerts** | One alert rule queries logs + metrics + traces together. "p99 latency > 500ms AND error_log_rate > 100/min for service X" |
+| **Automatic incident grouping** | Alerts from the same time window + same service are one incident, because the data is in one place. |
+| **Derived metrics from any signal** | Compute error_rate from logs, RED metrics from traces — no separate pipeline needed. |
+| **Anomaly detection across signals** | ML model sees all signals together. A CPU spike alone is normal; a CPU spike + error logs + slow traces is an incident. |
+
+#### C. Operational simplification
+
+| Before (3 backends) | After (1 backend) |
+|---------------------|-------------------|
+| 3 deployments to manage | 1 deployment |
+| 3 scaling strategies | 1 scaling strategy (data volume) |
+| 3 storage configurations | 1 storage configuration (Parquet on S3) |
+| 3 retention policies | 1 unified retention policy |
+| 3 query languages (PromQL, LogQL, TraceQL) | 1 language (SQL) |
+| 3 backup/DR procedures | 1 backup/DR procedure |
+| Inconsistent data across backends | Single source of truth |
+
+#### D. Cost reduction through deduplication
+
+| Duplicated data in separate backends | Unified backend |
+|-------------------------------------|-----------------|
+| trace_id stored in Loki AND Tempo | Stored once, JOINed by reference |
+| service_name in all 3 backends | Stored once in resource table |
+| resource attributes (3x copies) | Stored once, shared across signals |
+| Estimated 15-30% storage waste | Eliminated |
+
+### 17.4 Trade-offs and challenges of a UNIFIED backend
+
+**This is where honesty matters.** A unified backend isn't free — there are real engineering challenges:
+
+#### A. Metrics have fundamentally different access patterns
+
+| Aspect | Logs & Traces | Metrics | Conflict |
+|--------|--------------|---------|----------|
+| **Query pattern** | Search (needle in haystack) + analytics (aggregations) | Time-series (plot over time, range queries) | Metrics need fast range scans; logs need full-text search |
+| **Write pattern** | Append-only, immutable events | Continuous streams of data points, often at fixed intervals | Metrics are tiny (timestamp + value), logs are large (KB+ each) |
+| **Cardinality** | Naturally high (each event is unique) | Must be controlled (each label combo = separate series) | High-cardinality metrics in Parquet is fine; but PromQL assumes low-cardinality series |
+| **Aggregation** | On-demand (GROUP BY at query time) | Often pre-aggregated (rollups, recording rules) | Without pre-aggregation, metric dashboards are slow on raw Parquet |
+| **Freshness** | Seconds acceptable | Sub-second expected for dashboards | Hot tier must be very fast for metrics; logs can tolerate slight delay |
+| **Retention** | Days to weeks (logs), days (traces) | Months to years (metrics for capacity planning) | Different retention needs per signal type |
+
+**The core tension**: Metrics dashboards expect sub-second response on time-range queries. Parquet-on-S3 delivers seconds, not milliseconds. A unified backend MUST have a hot tier for recent metrics to match Prometheus/Mimir dashboard performance.
+
+#### B. Pre-aggregation / rollups are still needed for metrics
+
+| Without rollups | With rollups |
+|----------------|-------------|
+| Dashboard "avg CPU over 30 days" scans 2.6M data points per metric | Scans 720 pre-aggregated hourly points |
+| Query: 2-10 seconds on Parquet | Query: <100ms from pre-computed table |
+| Cost: high (full scan per dashboard load) | Cost: low (small pre-computed tables) |
+
+**The trade-off of rollups**: Once data is rolled up, original fidelity is gone. If the aggregation was too coarse or wrong dimensions were omitted, there is no way to recover them. This creates **observability blind spots**.
+
+**Solution**: Store raw data in Parquet (unlimited retention, full fidelity) AND maintain rollup tables for dashboard performance. Query the rollups for dashboards, query raw Parquet for investigations. This is more complex than pure Mimir but gives you both speed and fidelity.
+
+#### C. PromQL compatibility is harder without a TSDB
+
+| PromQL feature | Native TSDB (Mimir) | Columnar/Parquet backend |
+|---------------|---------------------|--------------------------|
+| `rate()` over counter resets | Built-in, handles resets automatically | Must detect resets in raw data, more complex |
+| `histogram_quantile()` | Native histogram bucket support | Must reconstruct from raw histogram data points |
+| `absent()` / `absent_over_time()` | Knows all registered series | Must infer from data — harder without series registry |
+| Label matchers (`{job=~".*"}`) | Inverted index, sub-millisecond | Column scan, slower for high-cardinality labels |
+| Recording rules | Native, continuous evaluation | Must build a scheduler for continuous SQL queries |
+| Alert evaluation | Native PromQL evaluator | Must build SQL-based alert evaluator |
+
+**Implication**: Full PromQL compatibility on Parquet is a **significant engineering effort**. It's easier to support SQL and offer a Grafana plugin that translates simple PromQL to SQL, accepting that complex PromQL (recording rules, histogram functions) requires custom implementation.
+
+#### D. Reliability: single point of failure
+
+| Separate backends | Unified backend |
+|-------------------|----------------|
+| Loki down → logs lost, but metrics and traces still work | Backend down → ALL signals lost |
+| Mimir slow → metric dashboards slow, but log search still fast | Backend slow → everything slow |
+| Can upgrade Tempo without touching Loki or Mimir | Upgrade affects all signals |
+| Blast radius is 1/3 of observability | Blast radius is 100% of observability |
+
+**Mitigation**: This is a standard single-point-of-failure problem, solvable with:
+- Replication (multi-AZ, read replicas)
+- Separate ingestion and query paths (ingestion writes to S3 directly — survives query outages)
+- Buffer/WAL in Vector pipeline (survives backend downtime)
+- The dual-runtime architecture (Section 14.3) helps: pipeline runtime keeps buffering even if query runtime crashes
+
+#### E. Schema complexity for metrics
+
+| Signal | Schema | Complexity |
+|--------|--------|-----------|
+| **Logs** | `(timestamp, body, severity, attributes, trace_id, resource)` | Simple — each log is a self-contained row |
+| **Traces** | `(trace_id, span_id, parent_span_id, name, duration, attributes, resource)` | Moderate — tree structure, but each span is a row |
+| **Metrics** | `(timestamp, name, value, type, attributes, resource)` BUT with Gauge/Sum/Histogram/ExponentialHistogram/Summary subtypes, each with different fields | **Complex** — histogram has `bucket_counts[]`, `explicit_bounds[]`; summary has `quantile_values[]`; counters need reset handling |
+
+Metrics in OTLP are significantly more complex than logs or traces. A unified Parquet schema must handle all metric subtypes without wasting storage on sparse columns.
+
+**Solution**: Use Parquet's nested types and separate partition for metric subtypes:
+```
+parquet/
+├── logs/          ← simple schema
+├── traces/        ← moderate schema
+├── metrics/
+│   ├── gauge/     ← (timestamp, name, value, attributes)
+│   ├── sum/       ← (timestamp, name, value, is_monotonic, attributes)
+│   ├── histogram/ ← (timestamp, name, count, sum, bucket_counts[], bounds[], attributes)
+│   └── summary/   ← (timestamp, name, count, sum, quantiles[], attributes)
+```
+
+### 17.5 Decision framework: which problems justify unification?
+
+| Problem | Severity with separate backends | Fixed by unification? | Trade-off introduced? |
+|---------|-------------------------------|----------------------|----------------------|
+| **Cross-signal SQL JOINs** | Cannot do at all | **Yes — fully solved** | None |
+| **Compound alerting** | Cannot do at all | **Yes — fully solved** | Must build alert evaluator |
+| **"Swivel-chair" debugging** | Severe (manual context-switching) | **Yes — one query** | None |
+| **3x operational overhead** | Real cost (3 systems to run) | **Yes — one system** | Single point of failure (mitigable) |
+| **Data duplication** | 15-30% storage waste | **Yes — eliminated** | None |
+| **Schema consistency** | Divergent naming across backends | **Yes — one schema** | Must handle metric complexity |
+| **Metric dashboard speed** | Not a problem (Mimir is fast) | **Regression risk** | Must build hot tier + rollups |
+| **PromQL compatibility** | Not a problem (Mimir is native) | **Regression risk** | Must build PromQL-to-SQL or subset |
+| **Counter reset handling** | Not a problem (Mimir handles natively) | **Regression risk** | Must implement in query layer |
+| **Recording rules** | Not a problem (Mimir native) | **Regression risk** | Must build continuous query scheduler |
+| **Reliability / blast radius** | Isolated (1/3 at risk) | **Regression risk** | Must invest in replication + buffer |
+
+### 17.6 Recommended strategy: unified storage, phased signal support
+
+Given the trade-offs, the pragmatic approach is:
+
+```
+Phase 1 (MVP): Logs only → unified backend (SQL + Loki API)
+  ✓ Logs are simplest schema
+  ✓ Highest customer pain (cost)
+  ✓ No PromQL/metrics complexity
+  ✓ Proves the architecture
+
+Phase 2: Add Traces → unified backend (SQL + Tempo API)
+  ✓ Traces are second-simplest (spans as rows)
+  ✓ Unlocks cross-signal JOINs (logs ↔ traces via trace_id)
+  ✓ Enables compound alerting (error logs + slow traces)
+  ✓ This is where "unified" becomes visibly superior
+
+Phase 3: Add Metrics → unified backend (SQL + Prometheus API)
+  ⚠ Most complex signal (histogram, counter resets, rollups)
+  ⚠ Requires hot tier for dashboard speed
+  ⚠ Requires pre-aggregation / continuous queries for PromQL-like behavior
+  ⚠ Consider: start with gauge/sum only, add histogram later
+
+Alternative for Phase 3: Proxy to Mimir for metrics
+  → Accept that metrics are hard and proxy PromQL queries to a Mimir instance
+  → Still store raw metric data in Parquet for SQL analytics
+  → Dashboards use Mimir (fast), investigations use SQL on Parquet (powerful)
+  → This is a pragmatic compromise that avoids rebuilding a TSDB
+```
+
+### 17.7 Summary
+
+| | Separate backends | Unified backend |
+|--|-------------------|-----------------|
+| **Unblocked** | — | Cross-signal JOINs, compound alerting, single operational burden, no data duplication, one query language, consistent schema |
+| **Regressed** | — | Metric dashboard latency (needs hot tier), PromQL compatibility (needs translation), blast radius (needs replication), metric complexity (needs special handling) |
+| **Net assessment** | The problems that separate backends CANNOT solve (cross-signal correlation, compound alerting) are the highest-value features in the market. The trade-offs introduced by unification (metric performance, PromQL compat) are **solvable engineering problems**, not fundamental limitations. |
+
+**Bottom line**: The features that unification enables are **impossible** to add to separate backends. The trade-offs that unification introduces are **hard but solvable**. This asymmetry favors the unified approach — but phase it wisely (logs first, traces second, metrics last).
+
+Sources:
+- [Dynatrace - Unified observability](https://www.dynatrace.com/news/blog/unified-observability-why-storing-opentelemetry-signals-in-one-place-matters/)
+- [ClickHouse - Observability as analytics](https://clickhouse.com/resources/engineering/what-is-observability)
+- [ClickHouse - Three villains of observability](https://clickhouse.com/blog/three-villains-agentic-observability)
+- [Parseable - High cardinality and columnar](https://www.parseable.com/blog/high-cardinality-meets-columnar-time-series-system)
+- [ClickHouse - Lakehouses for observability](https://clickhouse.com/blog/lakehouses-path-to-low-cost-scalable-no-lockin-observability)
+- [OpenObserve - Full-stack observability](https://openobserve.ai/blog/full-stack-observability-logs-metrics-traces/)
+- [SigNoz - Unified observability](https://signoz.io/unified-observability/)
+- [Grafana Observability Survey 2025](https://grafana.com/observability-survey/2025/)
+
+### 17.8 Correction: OTLP delta temporality eliminates counter reset handling
+
+The previous analysis (Section 17.4.C) listed PromQL counter reset handling as a trade-off. **This is incorrect for an OTLP-native backend.**
+
+OTLP metrics use **delta temporality** by default: the producer pushes the difference since the last report, not an ever-increasing counter. This means:
+
+| Prometheus model (pull, cumulative) | OTLP model (push, delta) |
+|-------------------------------------|--------------------------|
+| Counter is monotonically increasing | Delta is the increment since last push |
+| Receiver must detect resets (process restart → counter drops to 0) | **No resets to detect** — delta is always positive |
+| `rate()` must handle reset math | `rate()` is just `SUM(deltas) / time_window` |
+| Complex stateful logic in query engine | Simple stateless aggregation |
+
+**Impact on unified backend**: One of the hardest PromQL implementation challenges (counter reset detection) **disappears entirely** when ingesting OTLP delta metrics. This significantly reduces the engineering effort for metrics support.
+
+What remains hard:
+- `histogram_quantile()` — still needs to reconstruct from OTLP ExponentialHistogram buckets
+- `absent()` / `absent_over_time()` — still needs series awareness
+- Recording rules — still needs a continuous query scheduler
+
+---
+
+### 17.9 Infrastructure cost comparison: Parquet+DataFusion vs Mimir+Loki+Tempo
+
+#### A. Baseline: Grafana LGTM stack resource requirements
+
+**Mimir (metrics)** — for 1M active series, ~25K samples/sec:
+
+| Component | CPU | Memory | Disk | Replicas | Total CPU | Total Memory |
+|-----------|-----|--------|------|----------|-----------|-------------|
+| Distributor | 1 | 1 GB | — | 1 | 1 | 1 GB |
+| Ingester | 3.3 | 8.3 GB | 16.7 GB | 3 (replication) | 10 | 25 GB |
+| Querier | 1 | 1 GB | — | 1 | 1 | 1 GB |
+| Store-gateway | 1 | 1 GB | 13 GB | 1 | 1 | 1 GB |
+| Compactor | 1 | 4 GB | 300 GB | 1 | 1 | 4 GB |
+| Query-frontend | 1 | 1 GB | — | 1 | 1 | 1 GB |
+| **TOTAL** | | | | | **15 CPU** | **33 GB RAM** |
+
+Formula: 1 CPU / 25K samples/sec (distributor), 1 CPU / 300K series (ingester), 2.5 GB / 300K series (ingester memory)
+
+**Loki (logs)** — small tier (<3 TB/day):
+
+| Component | CPU | Memory | Replicas | Total CPU | Total Memory |
+|-----------|-----|--------|----------|-----------|-------------|
+| Distributor | 2 | 0.5 GB | 4 | 8 | 2 GB |
+| Ingester | 2 | 4 GB | 6 | 12 | 24 GB |
+| Querier | 1 | 1 GB | 10 | 10 | 10 GB |
+| Query-frontend | 1 | 2 GB | 2 | 2 | 4 GB |
+| Index-gateway | 0.5 | 2 GB | 4 | 2 | 8 GB |
+| Compactor | 2 | 10 GB | 1 | 2 | 10 GB |
+| **TOTAL** | | | | **36 CPU** | **58 GB RAM** |
+
+**Tempo (traces)** — minimum viable:
+
+| Component | CPU | Memory | Notes |
+|-----------|-----|--------|-------|
+| Minimum node | 16 | 64 GB | Grafana recommends 1:4 CPU:memory ratio, minimum 16 cores |
+| **TOTAL** | **16 CPU** | **64 GB RAM** | Plus SSD for WAL, S3 for blocks |
+
+**Combined LGTM stack total** (for a modest deployment):
+
+| Signal | CPU | Memory | Disk |
+|--------|-----|--------|------|
+| Mimir (metrics) | 15 | 33 GB | 330 GB SSD |
+| Loki (logs) | 36 | 58 GB | S3 + index |
+| Tempo (traces) | 16 | 64 GB | SSD + S3 |
+| **TOTAL** | **67 CPU** | **155 GB RAM** | **330+ GB SSD + S3** |
+
+Plus: 3 separate deployments to manage, 3 sets of config, 3 upgrade cycles.
+
+#### B. Estimated: Unified Parquet+DataFusion backend
+
+For equivalent workload (1M metric series, <3 TB/day logs, traces):
+
+**Ingestion path** (Vector pipeline):
+
+| Component | CPU | Memory | Notes |
+|-----------|-----|--------|-------|
+| OTLP receiver | 2 | 2 GB | tonic gRPC server, all 3 signals |
+| Transforms (VRL/SQL) | 4 | 4 GB | Depends on transform complexity |
+| Parquet writer | 2 | 4 GB | Batch Arrow records → Parquet, flush to S3 |
+| Buffer/WAL | — | 2 GB | In-memory buffer + disk WAL |
+| **Pipeline total** | **8 CPU** | **12 GB RAM** | Single process (Vector) |
+
+**Query path** (DataFusion):
+
+| Component | CPU | Memory | Notes |
+|-----------|-----|--------|-------|
+| DataFusion engine | 4-8 | 8-16 GB | Configurable per-query memory limit |
+| HTTP API server | 1 | 1 GB | Loki/Tempo/Prometheus-compatible endpoints |
+| **Query total** | **5-9 CPU** | **9-17 GB RAM** | Second runtime in same process |
+
+**Hot tier** (recent data, fast queries):
+
+| Option | CPU | Memory | Notes |
+|--------|-----|--------|-------|
+| In-memory ring buffer | 0 | 4-16 GB | Last 15-60 min of all signals, sub-ms queries |
+| Redis/DragonflyDB | 2 | 8-32 GB | External process, discussed below |
+| Local SSD cache | 1 | 2 GB | Parquet files cached on NVMe, 10-100ms queries |
+
+**Unified backend total** (conservative estimate):
+
+| Component | CPU | Memory |
+|-----------|-----|--------|
+| Pipeline (Vector) | 8 | 12 GB |
+| Query engine (DataFusion) | 9 | 17 GB |
+| Hot tier (in-memory) | 0 | 16 GB |
+| **TOTAL** | **17 CPU** | **45 GB RAM** |
+
+#### C. Side-by-side comparison
+
+| Resource | LGTM stack (3 backends) | Unified backend | Savings |
+|----------|------------------------|----------------|---------|
+| **CPU** | 67 cores | 17 cores | **~75% less** |
+| **Memory** | 155 GB | 45 GB | **~71% less** |
+| **SSD disk** | 330+ GB | ~50 GB (WAL + cache) | **~85% less** |
+| **S3 storage** | 3x copies (Mimir blocks + Loki chunks + Tempo blocks) | 1x Parquet (deduplicated) | **~60% less** |
+| **Processes** | 15-20+ (across 3 stacks) | 1 (Vector all-in-one) | **~95% less** |
+| **Deployments** | 3 separate Helm charts | 1 binary | **~67% less** |
+
+**Caveats on these estimates**:
+- Loki/Mimir/Tempo numbers are from Grafana's official documentation for production deployments
+- Unified backend numbers are estimates based on DataFusion benchmarks and Vector's current resource profile
+- Actual savings depend on query patterns, retention, and data volume
+- The unified backend has not been benchmarked in production yet
+
+#### D. Where the unified backend costs MORE
+
+| Scenario | LGTM wins | Why |
+|----------|-----------|-----|
+| **Metric dashboards** (sub-second range queries) | Mimir ingester serves from memory, ~10ms | DataFusion on Parquet: 100ms-2s. Needs hot tier. |
+| **Log full-text search** | Loki's inverted index is optimized for grep-like queries | Parquet column scan: slower for substring search across all log bodies |
+| **High-concurrency dashboard refresh** | Mimir/Loki handle hundreds of concurrent queries | DataFusion single-process: needs careful concurrency limits |
+| **Very high metric cardinality** (>10M series) | Mimir ingester is purpose-built for this | DataFusion handles it via Parquet column scans, but slower for time-range queries on specific series |
+
+#### E. Query latency comparison
+
+| Query type | Mimir/Loki/Tempo | DataFusion + Parquet (S3) | DataFusion + hot tier |
+|-----------|-----------------|--------------------------|----------------------|
+| Metric range (last 1h) | ~10-50ms | 500ms-2s | **~10-50ms** (from cache) |
+| Metric range (last 30d) | ~100-500ms | 1-5s | 1-5s (cold, from S3) |
+| Log search (last 1h) | ~100-500ms | 200ms-1s | **~50-200ms** (from cache) |
+| Log search (last 30d) | ~1-10s | 2-10s | 2-10s (comparable) |
+| Trace by ID | ~50-200ms | 200ms-1s (needs bloom filter) | **~10-50ms** (from cache) |
+| Cross-signal JOIN | **IMPOSSIBLE** | 1-5s | **~500ms-2s** (from cache) |
+
+**Key insight**: For recent data (where 90%+ of queries land), a hot tier makes the unified backend **competitive with LGTM**. For historical data, the unified backend is slightly slower but offers SQL JOINs that LGTM cannot do at all.
+
+### 17.10 Redis / DragonflyDB as hot tier for rollup tables
+
+#### A. Why Redis is a strong fit
+
+| Capability | Redis/Dragonfly | Why it matters |
+|-----------|-----------------|---------------|
+| **Sub-millisecond reads** | Hash/sorted set lookups | Dashboard metrics need <50ms response |
+| **Built-in TTL** | Auto-expire old data | Hot tier retains last N minutes, cold goes to Parquet |
+| **RedisTimeSeries module** | Native downsampling + aggregation rules | `TS.CREATERULE` auto-computes rollups (avg, sum, min, max per minute/hour) |
+| **Sorted sets** | Range queries by timestamp | `ZRANGEBYSCORE` for time-range metric queries |
+| **Pub/Sub** | Real-time tailing | Live log/trace tailing for Grafana |
+| **Low operational overhead** | Single process, battle-tested | Simpler than running Mimir ingesters |
+
+#### B. Architecture with Redis hot tier
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                     Vector Pipeline                      │
+│                                                         │
+│  OTLP in → transform → ┬→ Parquet writer → S3 (cold)   │
+│                         │                               │
+│                         └→ Redis writer → Redis (hot)   │
+│                            (last 1-4 hours)             │
+└─────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────┐
+│                     Query Engine                         │
+│                                                         │
+│  Query arrives → router decides:                        │
+│                                                         │
+│  Recent data (last 1-4h)?                               │
+│    → Query Redis (sub-ms)                               │
+│    → For metrics: read pre-computed rollups              │
+│    → For logs/traces: read from sorted sets             │
+│                                                         │
+│  Historical data (>4h)?                                 │
+│    → Query DataFusion on Parquet/S3 (seconds)           │
+│    → Full SQL power, JOINs across signals               │
+│                                                         │
+│  Cross-signal analytics?                                │
+│    → Always DataFusion (SQL JOINs on Parquet)           │
+└─────────────────────────────────────────────────────────┘
+```
+
+#### C. Redis resource requirements for hot tier
+
+| Data volume (hot window) | Redis memory | CPU | Notes |
+|-------------------------|-------------|-----|-------|
+| 1 GB/hour (small) | 4-8 GB | 1 | 4h retention = ~4-32 GB with overhead |
+| 10 GB/hour (medium) | 32-64 GB | 2-4 | Dragonfly handles this on a single node |
+| 100 GB/hour (large) | Redis Cluster | 8+ | Shard across nodes |
+
+For rollup tables specifically (pre-aggregated metrics):
+
+| Metric series | Rollup granularity | Redis memory | Notes |
+|--------------|-------------------|-------------|-------|
+| 1M series | 1-min aggregates, 4h retention | ~2 GB | 240 data points × 1M × ~8 bytes |
+| 1M series | 1-hour aggregates, 30d retention | ~6 GB | 720 data points × 1M × ~8 bytes |
+| 10M series | 1-min aggregates, 4h retention | ~20 GB | Scales linearly |
+
+#### D. Redis vs alternatives for hot tier
+
+| Option | Latency | Memory cost | Ops complexity | Fit |
+|--------|---------|------------|----------------|-----|
+| **Redis/Dragonfly** | <1ms | Medium (data in RAM) | Low (single process) | **Best for rollups + metric queries** |
+| **In-process ring buffer** | <0.1ms | Low (shared memory) | None (same process) | **Best for log/trace tailing (last 15-60 min)** |
+| **Local NVMe Parquet cache** | 1-10ms | Low (disk-based) | Low | **Best for recent analytical queries (last 4-24h)** |
+| **Memcached** | <1ms | Medium | Low | Simpler but no data structures (no sorted sets, no TS) |
+| **ClickHouse** | 10-100ms | High | High | Overkill; adds the complexity you're trying to eliminate |
+
+#### E. Recommended hybrid hot tier
+
+Combine strategies for different query patterns:
+
+| Query type | Hot tier | Retention | Latency |
+|-----------|---------|-----------|---------|
+| **Metric dashboard** (last 4h) | Redis with pre-computed rollups | 4h raw, 30d rollups | <10ms |
+| **Log tail** (last 15 min) | In-process ring buffer | 15-60 min | <1ms |
+| **Trace by ID** (recent) | Redis hash (trace_id → spans) | 4h | <1ms |
+| **Analytical query** (any range) | DataFusion on Parquet | Unlimited | 500ms-5s |
+| **Cross-signal JOIN** | DataFusion on Parquet | Unlimited | 1-5s |
+
+#### F. Cost comparison: Redis hot tier vs Mimir/Loki/Tempo ingesters
+
+| | Mimir+Loki+Tempo ingesters | Redis hot tier + Parquet |
+|---|---|---|
+| **Memory** | 25 GB (Mimir) + 24 GB (Loki) + 64 GB (Tempo) = **113 GB** | 16-32 GB (Redis) + 4 GB (ring buffer) = **20-36 GB** |
+| **CPU** | 10 (Mimir) + 12 (Loki) + 16 (Tempo) = **38 cores** | 2-4 (Redis) + 0 (ring buffer) = **2-4 cores** |
+| **Disk** | 330+ GB SSD | ~0 (Redis is in-memory; Parquet goes to S3) |
+| **Monthly cloud cost** (estimate) | ~$800-1200/mo (38 CPU + 113 GB RAM + SSD) | ~$200-400/mo (4 CPU + 36 GB RAM) |
+
+**The hot tier with Redis is ~3-4x cheaper than running Mimir+Loki+Tempo ingesters**, while providing equivalent dashboard latency for recent data.
+
+### 17.11 Can DataFusion match a dedicated TSDB for time series?
+
+#### A. The honest answer: it depends on the query type
+
+InfluxDB 3.0 **bet the company** on replacing their custom TSDB with DataFusion + Parquet. The results are instructive:
+
+| Workload | DataFusion (InfluxDB 3.0) | Dedicated TSDB | Winner |
+|----------|--------------------------|----------------|--------|
+| **Ingestion** (<1M devices) | 320K rows/sec | QuestDB: 11.4M rows/sec | TSDB wins 12-36x |
+| **Ingestion** (>1M devices, high cardinality) | Better than InfluxDB 1.x/2.x | Cardinality collapse in traditional TSDBs | **DataFusion wins** |
+| **Simple aggregation** (avg over time window) | Competitive (Parquet column scan) | Slightly faster (pre-indexed) | TSDB wins ~2-5x |
+| **Complex analytical query** (GROUP BY, JOIN, subquery) | **Native SQL, fast** | Limited or no SQL support | **DataFusion wins** |
+| **High-cardinality queries** (user_id, trace_id in metrics) | **No degradation** (columnar scan) | Exponential degradation | **DataFusion wins dramatically** |
+| **Compression** | 10-100x on Parquet | 5-15x on custom formats | **DataFusion wins** |
+| **Dashboard "last 1h" range query** | 100ms-2s from Parquet | 10-50ms from memory/index | TSDB wins 10-50x |
+
+**Summary**: DataFusion is slower for simple time-range queries on indexed data, but wins on high cardinality, complex analytics, and storage efficiency. The trade-off is **dashboard latency vs analytical power**.
+
+#### B. Why this trade-off is acceptable for your product
+
+1. **The hot tier (Redis) covers dashboard queries**
+   - 90%+ of metric dashboard queries hit the last 1-4 hours
+   - Redis serves these in <10ms — matching Mimir/Prometheus
+   - Only historical/analytical queries go to DataFusion on Parquet
+
+2. **OTLP delta temporality is simpler than Prometheus pull**
+   - No counter reset detection needed
+   - Delta metrics are just increments — aggregate with SUM
+   - This eliminates the most complex TSDB logic
+
+3. **High cardinality is where traditional TSDBs fail**
+   - Prometheus/Mimir force teams to drop labels (user_id, trace_id) to prevent cardinality explosion
+   - Parquet/DataFusion handles unlimited cardinality without degradation
+   - This is a major selling point: "keep all your labels, query everything"
+
+4. **Cross-signal JOINs are impossible with a TSDB**
+   - No TSDB can JOIN metrics with logs or traces
+   - DataFusion does this natively — the whole point of unified storage
+
+5. **InfluxDB 3.0 validates the approach**
+   - They accepted the ingestion/simple-query trade-off
+   - In exchange for: SQL support, high cardinality, better compression, Parquet portability
+   - GA in April 2025 — production-proven
+
+#### C. What you'd lose vs a dedicated TSDB (and mitigations)
+
+| TSDB feature | Lost? | Mitigation |
+|-------------|-------|-----------|
+| **Sub-10ms range queries** | Yes (Parquet is 100ms+) | Redis hot tier for recent data |
+| **Continuous aggregation / recording rules** | Yes (no built-in scheduler) | Build a simple cron-like scheduler that runs SQL queries periodically and writes results to Redis rollup tables |
+| **Automatic downsampling** | Yes | Redis `TS.CREATERULE` for automatic rollups; or Vector transform that pre-aggregates before storage |
+| **Native PromQL** | Yes | Grafana plugin that translates common PromQL to SQL; accept subset compatibility |
+| **Ingestion throughput >1M rows/sec** | Possibly (DataFusion ingestion is slower than QuestDB) | For observability workloads, this is rarely the bottleneck — network I/O is |
+| **`absent()` detection** | Yes (no series registry) | Build a lightweight series registry (just a set of active series names) |
+
+#### D. The key insight: you're not building a TSDB
+
+Your product is not a time-series database. It's an **observability analytics platform**. The difference matters:
+
+| TSDB (Prometheus, InfluxDB) | Observability analytics (your product) |
+|----------------------------|---------------------------------------|
+| Optimized for time-series queries | Optimized for cross-signal investigation |
+| One signal type (metrics) | All signals (logs + metrics + traces) |
+| Pre-defined dashboards | Ad-hoc SQL exploration |
+| Low cardinality assumed | High cardinality supported |
+| Index-heavy, fast point queries | Scan-heavy, powerful aggregations |
+
+DataFusion is not trying to be the best TSDB. It's the best **analytical engine** that also handles time series — and for an observability platform, analytical power (JOINs, arbitrary SQL, high cardinality) matters more than raw TSDB throughput.
+
+Sources:
+- [Mimir capacity planning](https://grafana.com/docs/mimir/latest/manage/run-production-environment/planning-capacity/)
+- [Mimir resource calculator](https://o11y.tools/mimircalc/)
+- [Loki sizing guide](https://grafana.com/docs/loki/latest/setup/size/)
+- [Tempo hardware requirements](https://grafana.com/docs/enterprise-traces/latest/setup/hardware-requirements/)
+- [DataFusion ClickBench results](https://datafusion.apache.org/blog/2024/11/18/datafusion-fastest-single-node-parquet-clickbench/)
+- [Redis TimeSeries](https://redis.io/docs/latest/develop/data-types/timeseries/)
+- [Parseable - Parquet for observability](https://www.parseable.com/blog/observability-apache-parquet)
+- [Parquet S3 query latency](https://www.alluxio.io/whitepaper/meet-in-the-middle-for-a-1-000x-performance-boost-querying-parquet-files-on-petabyte-scale-data-lakes)
+- [QuestDB vs InfluxDB 3 benchmarks](https://questdb.com/blog/influxdb3-core-benchmarks/)
+- [InfluxDB 3.0 GA announcement](https://blocksandfiles.com/2025/04/15/influxdata-ingests-and-analyses-time-series-data-faster/)
+- [InfluxDB 3 performance comparison](https://tdengine.com/influxdb-3-performance-comparison/)
+- [InfluxDB official benchmarks](https://www.influxdata.com/benchmarks/)
+
+---
+
+## 18. Are We Reinventing InfluxDB 3.0? Is the POC Still Relevant?
+
+### 18.1 What InfluxDB 3.0 actually is
+
+InfluxDB 3.0 uses the exact same tech stack: **Rust + DataFusion + Arrow + Parquet**. It claims to store metrics, logs, and traces. So the question is legitimate.
+
+| Capability | InfluxDB 3.0 | Your project |
+|-----------|-------------|-------------|
+| Storage format | Parquet | Parquet |
+| Query engine | DataFusion | DataFusion |
+| In-memory format | Arrow | Arrow |
+| SQL support | Yes | Yes |
+| OTLP ingestion | Yes (via otel2influx converter) | Yes (native, via Vector OTLP source) |
+| Language | Rust | Rust |
+
+**At the storage/query layer, it's the same architecture.** No point pretending otherwise.
+
+### 18.2 What InfluxDB 3.0 is NOT (and where you're different)
+
+| Capability | InfluxDB 3.0 | Your project | Why it matters |
+|-----------|-------------|-------------|---------------|
+| **Pipeline / transforms** | None. It's a database only. Needs external OTel Collector. | Built-in (Vector). VRL/SQL transforms, sampling, routing, PII redaction, enrichment. | "Pipeline-included" is your moat. InfluxDB can't transform data before storing it. |
+| **Loki API** (`/loki/api/v1/query`) | No. | Yes (planned). | Grafana can't query InfluxDB as a Loki log datasource. Your product works with Grafana's log panel natively. |
+| **Tempo API** (`/api/traces/{id}`) | No. | Yes (planned). | Grafana can't query InfluxDB as a Tempo trace datasource. |
+| **Prometheus API** (`/api/v1/query`) | No (has its own InfluxDB plugin). | Yes (planned). | Not a drop-in Prometheus replacement. |
+| **Agent mode** | No. | Yes (Vector). | InfluxDB can't run on each host as a sidecar collector. |
+| **Gateway mode** | No. | Yes (Vector). | InfluxDB can't aggregate/route from multiple agents. |
+| **Signal focus** | **Metrics-first**. Logs and traces are secondary (converted to line protocol). | **All signals equal**. Native OTLP schema for all 3. | InfluxDB's log/trace support is "we can store them" — not "we designed for them". |
+| **Cross-signal JOINs** | Technically possible (all in one DB), but not designed for it. | **Core feature**. SQL JOINs across logs+metrics+traces. | InfluxDB's schema (line protocol) makes JOINs awkward. OTLP-native Parquet schema makes them natural. |
+| **Alerting** | Basic (Kapacitor, deprecated). | Planned (compound alerts across signals). | InfluxDB alerting is weak and being phased out. |
+| **Cost control** | None. | Built-in (pipeline sampling, budget caps). | Pipeline transforms = cost control before storage. |
+| **Grafana drop-in** | Partial (InfluxDB datasource only). | Full (Loki + Tempo + Prometheus APIs). | Users must learn InfluxDB query syntax in Grafana. Your users use familiar LogQL/PromQL/TraceQL or SQL. |
+| **Data portability / BYOS3** | No (InfluxDB manages its own storage). | Yes (Parquet on customer's S3). | InfluxDB Cloud locks your data. |
+| **SaaS model** | InfluxDB Cloud (metrics-focused, proprietary). | Your SaaS (all signals, open backend). | Different market positioning. |
+| **License** | Core: MIT/Apache. Enterprise: proprietary. | Pipeline: MPL-2.0 (Vector). Backend: your choice (AGPL recommended). | Similar open-core models. |
+
+### 18.3 The real difference: database vs platform
+
+```
+InfluxDB 3.0 is a DATABASE:
+  OTel Collector → InfluxDB → Grafana (InfluxDB plugin)
+  └── No transforms ──┘  └── InfluxDB-specific queries ──┘
+
+Your project is a PLATFORM:
+  OTLP in → Vector (transform/sample/route) → Parquet on S3 → DataFusion → Grafana (Loki/Tempo/Prom APIs)
+  └── Pipeline transforms ──────────────────┘  └── Native Grafana compat ──────────────────────┘
+  └── Cost control ─────────────────────────┘  └── Cross-signal SQL JOINs ──────────────────────┘
+```
+
+InfluxDB 3.0 is one **component** (the database). Your product is the **complete stack** (collector + pipeline + database + query APIs + Grafana compatibility).
+
+### 18.4 Could you just USE InfluxDB 3.0 as your storage layer?
+
+Theoretically yes, but it adds problems:
+
+| Using InfluxDB 3.0 | Using Parquet on S3 directly |
+|--------------------|------------------------------|
+| Another service to deploy and operate | Files on S3 — zero operational overhead |
+| InfluxDB manages storage (vendor dependency) | You own the files (BYOS3) |
+| InfluxDB line protocol schema | Native OTLP Parquet schema |
+| License: MIT Core, but Enterprise features locked | Full control |
+| Adds latency (Vector → network → InfluxDB → disk) | Direct write (Vector → Parquet → S3) |
+| Query via InfluxDB's API | Query via DataFusion in your process |
+
+The Parquet-on-S3 approach is **simpler, cheaper, and more portable** than adding InfluxDB as a dependency. You'd inherit InfluxDB's limitations (line protocol schema, no Loki/Tempo API) without gaining much — since DataFusion + Parquet is what InfluxDB uses internally anyway.
+
+### 18.5 What InfluxDB 3.0 VALIDATES for your project
+
+InfluxDB 3.0 is **strong validation**, not competition:
+
+1. **DataFusion + Parquet works for time series** — InfluxDB proved it in production (GA April 2025)
+2. **SQL over observability data has demand** — InfluxDB added SQL for this reason
+3. **High cardinality is solvable with columnar** — InfluxDB eliminated cardinality limits
+4. **The FDAP stack (Flight, DataFusion, Arrow, Parquet) is production-grade** — InfluxDB bet the company on it
+5. **A complete rewrite to columnar is worth it** — InfluxDB rewrote from scratch for this
+
+### 18.6 Why the POC is still relevant
+
+| Your unique value | InfluxDB 3.0 equivalent | Gap |
+|------------------|------------------------|-----|
+| Pipeline-included (transforms before storage) | None — needs external collector | **Wide gap** |
+| Grafana-native (Loki/Tempo/Prometheus APIs) | InfluxDB datasource only | **Wide gap** |
+| OTLP-native schema (not line protocol) | otel2influx converter (lossy) | **Medium gap** |
+| Cross-signal compound alerting | Kapacitor (deprecated) | **Wide gap** |
+| BYOS3 (customer owns their data) | InfluxDB manages storage | **Wide gap** |
+| Cost control (pipeline sampling + budget caps) | None | **Wide gap** |
+| One binary (agent + gateway + backend) | Database only | **Wide gap** |
+| "One ring" (one tool for all roles) | One component only | **Fundamental difference** |
+
+**The POC is relevant because you're building something InfluxDB 3.0 is NOT**: an end-to-end observability platform with pipeline integration. InfluxDB is a database. You're building the full stack around a database — and you happen to use the same query engine internally.
+
+The analogy: InfluxDB 3.0 is to your product as **PostgreSQL is to Datadog**. Yes, Datadog probably uses a database internally. That doesn't make PostgreSQL a competitor to Datadog.
+
+### 18.7 Updated competitive positioning
+
+| Competitor | What they are | How you differ |
+|-----------|--------------|---------------|
+| **Datadog** | Full platform, proprietary, expensive | Open backend, 10x cheaper, pipeline-included |
+| **Grafana Cloud** | 3 backends (Mimir+Loki+Tempo), PromQL/LogQL/TraceQL | 1 unified backend, SQL, pipeline-included |
+| **SigNoz** | Unified backend (ClickHouse), OTel-native | Parquet on S3 (cheaper), pipeline-included (Vector), BYOS3 |
+| **InfluxDB 3.0** | Database (DataFusion+Parquet), metrics-first | Full platform, all signals equal, Grafana-native APIs, pipeline |
+| **Parseable** | Log storage (DataFusion+Parquet), logs-only | All signals, pipeline-included, Grafana-native APIs |
+
+Your closest competitor is **SigNoz** (unified, OTel-native), not InfluxDB. The differentiator vs SigNoz is: **Parquet on S3 (cheaper than ClickHouse) + pipeline integration (Vector) + BYOS3**.
+
+Sources:
+- [InfluxDB 3 OTLP tutorial](https://www.influxdata.com/blog/opentelemetry-tutorial-collect-traces-logs-metrics-influxdb-3-0-jaeger-grafana/)
+- [InfluxDB observability repo](https://github.com/influxdata/influxdb-observability)
+- [InfluxDB 3 Core docs](https://docs.influxdata.com/influxdb3/core/)
+- [InfluxDB 3 Core - Grafana deep dive](https://grafana.com/blog/influxdb-3-core-a-complete-rewrite-designed-for-speed-and-simplicity/)
+
+---
+
+## 19. Open Data Export — A SaaS Differentiator
+
+### 19.1 The model
+
+The SaaS **owns and manages storage** (simpler operations, standard SaaS model). The differentiator: because data is stored as **open-format Parquet**, customers can **export their data at any time** — trivially, losslessly, and in a format every analytics tool understands.
+
+```
+Traditional SaaS (Datadog, Grafana Cloud):
+  Vendor stores data in proprietary format.
+  Export? Slow, lossy, rate-limited, or impossible.
+
+Your SaaS:
+  You store data as Parquet (open columnar format).
+  Export? Download Parquet files. Done.
+  Query exported data? DuckDB, Athena, Spark — any tool, no conversion.
+```
+
+### 19.2 Why this matters
+
+#### A. No data hostage
+
+| Vendor | Export capability | Format | Friction |
+|--------|-----------------|--------|----------|
+| **Datadog** | Archive to S3 (JSON), limited API export | JSON (lossy, verbose) | Days to export, throttled, expensive at scale |
+| **Grafana Cloud** | No bulk export; query API only | Signal-dependent (proprietary chunks) | Must query page-by-page; no bulk download |
+| **SigNoz** | ClickHouse native format | ClickHouse-specific | Requires ClickHouse to read |
+| **InfluxDB Cloud** | CSV/line protocol export | Line protocol (lossy for logs/traces) | Format conversion needed |
+| **Your SaaS** | **Parquet file download / S3 sync** | **Apache Parquet (open, columnar)** | **Zero conversion. Any tool reads it.** |
+
+**The pitch**: "Cancel anytime. Take your data with you. It's standard Parquet — open it with DuckDB on your laptop in 10 seconds."
+
+#### B. Data reuse beyond observability
+
+Exported Parquet files are immediately usable by the customer's existing data tools:
+
+| Tool | Use case |
+|------|---------|
+| **DuckDB** | Ad-hoc investigation from a laptop (`SELECT * FROM 'exported/*.parquet'`) |
+| **AWS Athena** | Serverless SQL on exported files — zero infrastructure |
+| **Spark / Databricks** | ML training on telemetry patterns (anomaly detection, capacity forecasting) |
+| **dbt** | Transform telemetry into business metrics (SLO reporting, cost attribution) |
+| **Jupyter** | Data science notebooks on observability data |
+| **BI tools** (Tableau, Looker, Metabase) | Executive dashboards on service health trends |
+
+No other observability SaaS makes this easy. Telemetry becomes a **data asset**, not a cost center.
+
+#### C. GDPR: sensitive data must never reach the backend
+
+GDPR compliance is **not a backend problem — it's a pipeline problem**. Sensitive data (PII, credentials, health data) must be filtered, redacted, or dropped **before** it reaches the SaaS backend. The backend should never store sensitive data in the first place.
+
+This is where the **pipeline-included architecture** is a structural advantage:
+
+```
+App (OTLP SDK) → Vector agent (on customer's infra)
+                    │
+                    ├── VRL/SQL transform: redact PII
+                    │   .email = redact(.email)
+                    │   del(.user.password)
+                    │   .ip = "xxx.xxx.xxx." + split(.ip, ".")[3]
+                    │
+                    ├── VRL/SQL transform: drop sensitive fields
+                    │   if contains(.body, "credit_card") { abort }
+                    │
+                    └── Forward cleaned data → Your SaaS backend
+                        (no sensitive data crosses the network)
+```
+
+| GDPR requirement | How the pipeline solves it |
+|-----------------|--------------------------|
+| **Data minimization** (Art. 5) | VRL/SQL transforms drop fields that aren't needed for observability before sending |
+| **Purpose limitation** (Art. 5) | Pipeline filters ensure only operational telemetry reaches the backend — no business data |
+| **No PII in storage** | Redaction happens at the agent/gateway level, on the customer's infra, before any data leaves their network |
+| **Data portability** (Art. 20) | Export in Parquet — machine-readable, standard, open format |
+| **Right to erasure** (Art. 17) | If no PII was stored, there's nothing sensitive to erase |
+
+**Key architectural point**: The Vector agent runs **on the customer's infrastructure**. PII filtering happens there — the data that reaches your SaaS backend is already clean. This means:
+- Your SaaS never processes PII (simpler DPA, less liability)
+- Customer controls what leaves their network (they can audit the VRL/SQL transforms)
+- No need for complex PII scanning in the backend — it was removed at the source
+
+#### D. Disaster recovery / vendor risk
+
+| Scenario | Traditional SaaS | Your SaaS |
+|----------|-----------------|-----------|
+| Vendor outage | No data access | Export recent data periodically; query offline with DuckDB |
+| Vendor shuts down | Data at risk | Already exported Parquet files remain usable forever |
+| Vendor raises prices | Locked in (data migration is painful) | Export and migrate to any Parquet-compatible backend |
+
+### 19.3 Export implementation
+
+**Export API** (simple, no vendor lock-in):
+
+```
+GET /api/v1/export?signal=logs&from=2026-04-01&to=2026-04-10&format=parquet
+  → Returns: download link to Parquet files (or streams them)
+
+GET /api/v1/export?signal=traces&service=api-gateway&format=parquet
+  → Returns: filtered Parquet export
+
+POST /api/v1/export/schedule
+  { "signal": "all", "frequency": "daily", "destination": "s3://customer-bucket/backup/" }
+  → Scheduled export: daily Parquet sync to customer's own S3 (optional add-on)
+```
+
+**Export format**: Parquet only. Open, columnar, compressed, queryable by every analytics tool. No need for lossy conversions.
+
+### 19.4 Competitive positioning
+
+**For procurement / finance:**
+> "You're never locked in. Your data is stored in Apache Parquet — an open industry standard. Export it anytime, query it with any tool. No proprietary format, no conversion fees."
+
+**For engineering:**
+> "Export your last month of traces as Parquet, run `SELECT * FROM 'traces.parquet' WHERE duration_ms > 1000` in DuckDB on your laptop. Try doing that with Datadog."
+
+**For compliance:**
+> "PII never reaches our servers. The Vector agent on your infra redacts sensitive data before it leaves your network. Our backend only stores clean operational telemetry. Simpler DPA, less liability, GDPR by design."
+
+### 19.5 Summary
+
+| Feature | Traditional vendors | Your SaaS |
+|---------|-------------------|-----------|
+| Storage managed by | Vendor | Vendor (same) |
+| Internal storage format | Proprietary | **Open (Parquet)** |
+| Export | Slow, lossy, rate-limited | **Fast, lossless, open format** |
+| Exported data usable by | Vendor's tools only | **Any analytics tool** |
+| Vendor lock-in | High (data migration is painful) | **Low (export + switch is trivial)** |
+| GDPR data portability | Technically compliant, practically painful | **Genuinely portable** |
+
+---
+
+## 20. Renaming: Trademark and Branding Requirements
+
+### 20.1 Legal obligation
+
+MPL-2.0 Section 2.3 states:
+
+> *"This License does not grant any rights in the trademarks, service marks, or logos of any Contributor."*
+
+**"Vector" is a trademark of Datadog / Timber Technologies.** You cannot use it as the name of your product, SaaS, or company. Renaming is not optional — it is required.
+
+### 20.2 What you MUST do
+
+| Action | Required? | Details |
+|--------|----------|---------|
+| **Rename the product** | Yes | Choose a new name for the binary, docs, website, and all marketing |
+| **Rename the binary** | Yes | `vector` CLI → `your-name` CLI (change `Cargo.toml` `[[bin]]` name) |
+| **Remove Vector logos** | Yes | Replace with your own branding |
+| **Remove references to "Vector" as product name** | Yes | In docs, CLI help text, error messages, config examples |
+| **Keep MPL-2.0 license notices** | Yes | Do NOT remove copyright headers or the LICENSE file from forked code |
+| **Keep attribution** | Recommended | A line like "Built on technology originally from the Vector project (MPL-2.0)" is good practice |
+| **Remove "Datadog" references** | Yes | Do not imply endorsement by or affiliation with Datadog |
+
+### 20.3 What you CAN do
+
+| Action | Allowed? | Details |
+|--------|---------|---------|
+| Use any new name you choose | Yes | No restrictions on what you name your fork |
+| Create your own logo and branding | Yes | Fully independent identity |
+| State it's a fork of Vector | Yes | Factual statements are fine: "forked from the Vector project" |
+| Describe compatibility with Vector | Yes | "Compatible with Vector configurations" is a factual claim |
+| Use "Vector" in comparative marketing | Yes (carefully) | "Alternative to Vector" or "migrating from Vector" is fair use. Do not imply endorsement. |
+
+### 20.4 What to rename (checklist)
+
+| Location | Current | Change to |
+|----------|---------|-----------|
+| `Cargo.toml` — `name` / `[[bin]]` | `vector` | `your-product-name` |
+| `src/app.rs` — startup banner | "Vector" | Your product name |
+| CLI `--version` output | `vector X.Y.Z` | `your-name X.Y.Z` |
+| Config file default name | `vector.toml` / `vector.yaml` | `your-name.toml` / `your-name.yaml` |
+| Systemd service name | `vector.service` | `your-name.service` |
+| Docker image name | `timberio/vector` | `your-org/your-name` |
+| Documentation / website | vector.dev references | Your own domain |
+| Error messages mentioning "Vector" | Throughout codebase | Your product name |
+| Environment variable prefix | `VECTOR_*` | `YOUR_NAME_*` |
+| Internal metrics prefix | `vector_*` | `your_name_*` |
+
+### 20.5 Precedent: successful open-source renames
+
+| Original | Fork | License | Outcome |
+|----------|------|---------|---------|
+| OpenOffice (Oracle) | **LibreOffice** | LGPL | Became the dominant fork |
+| MySQL (Oracle) | **MariaDB** | GPL | Drop-in replacement, independent brand |
+| Elasticsearch (Elastic) | **OpenSearch** (AWS) | Apache-2.0 | AWS built a full ecosystem around the fork |
+| Terraform (HashiCorp) | **OpenTofu** | MPL-2.0 → OpenTofu (same license situation as you) | Community-driven fork after BSL relicense |
+| Redis (Redis Ltd) | **Valkey** (Linux Foundation) | BSD | Fork after license change |
+
+**OpenTofu is the closest precedent**: it's an MPL-2.0 project that was forked and renamed. The community successfully built an independent brand and ecosystem. Your situation is analogous.
+
+### 20.6 Naming considerations for your product
+
+When choosing a name, consider:
+
+| Criterion | Why it matters |
+|-----------|---------------|
+| **Not generic** | "observability" or "telemetry" are too broad; hard to trademark |
+| **Distinct from "Vector"** | Avoid confusion; establish independent identity |
+| **Evokes the value proposition** | Pipeline + analytics + unified signals |
+| **Available as domain + GitHub org** | Check before committing |
+| **Short, memorable** | CLI users type it many times a day |
+| **No existing trademark conflicts** | Search USPTO / EUIPO before committing |
+
+### 20.7 Chosen name: **Sol** — Single Observability Layer
+
+```
+ ███████╗  ██████╗  ██╗
+ ██╔════╝ ██╔═══██╗ ██║
+ ███████╗ ██║   ██║ ██║
+ ╚════██║ ██║   ██║ ██║
+ ███████║ ╚██████╔╝ ███████╗
+ ╚══════╝  ╚═════╝  ╚══════╝
+ Single Observability Layer
+```
+
+**Sol** = **S**ingle **O**bservability **L**ayer
+
+| Aspect | Fit |
+|--------|-----|
+| **Meaning** | "Sun" (Latin) — one source of light that illuminates everything |
+| **Backronym** | Single Observability Layer — one tool, one backend, one layer for all signals |
+| **Simplicity** | 3 letters, fast to type, easy to remember |
+| **CLI** | `sol --mode all`, `sol start`, `sol query "SELECT ..."` |
+| **Philosophy** | One binary. One deployment. One query language. All signals. |
+| **SQL echo** | Sol ≈ SQL — the product's query language. Subtle, memorable. |
+| **Distinct from Vector** | Completely different name, no confusion |
+
+**Before committing**: verify availability of:
+- [ ] Domain: `sol.dev`, `getsol.dev`, `sol-observability.dev`, or similar
+- [ ] GitHub org: `github.com/sol-observability` or similar
+- [ ] Crate name: `sol` on crates.io
+- [ ] Trademark: search USPTO (US) and EUIPO (EU) for "Sol" in software/SaaS class
+
+### 20.8 Timeline
+
+Renaming can happen at any time, but earlier is better:
+- **Before any public release or marketing**: mandatory — launching under "Vector" would be trademark infringement
+- **During development**: optional — you can develop internally as "vector-fork" and rename before release
+- **The rename is a mechanical refactoring**: find-and-replace across the codebase, update Cargo.toml, regenerate docs. Not technically difficult, just thorough.

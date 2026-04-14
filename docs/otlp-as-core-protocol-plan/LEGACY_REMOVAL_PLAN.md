@@ -349,6 +349,29 @@ should stay until source emission is native OTel.
 9. **Replace `FunctionTransform` trait's LogEvent signature** (Group F)
    — blocks deep transform migration.
 
+## Current state (2026-04-14)
+
+### `from_log_event` callers
+- **1 production**: `Event::from(LogEvent)` bridge impl — permanent
+- **~18 test sites** — test convenience, acceptable
+
+### `from_legacy_metric` callers
+- **2 production**: `Event::from(Metric)` bridge + prometheus remote_write TODO
+- **~67 test sites** — test convenience
+
+### `from_trace_event` callers
+- **1 production**: `Event::from(TraceEvent)` bridge impl — permanent
+- **0 test sites** outside the bridge
+
+### Dead code deleted this session
+- `VrlTarget::LogEvent/Trace/Metric` variants (−492 lines)
+- `TargetIter<LogEvent>/<TraceEvent>`, `create_log_event`, `set_metric_tag_values`
+- `precompute_metric_value`, `target_get_metric`, `target_get_mut_metric`
+- `VALID_METRIC_PATHS_SET/GET`, `MAX_METRIC_PATH_DEPTH`
+- `lua/log.rs` (−80 lines)
+- `LogNamespace::new_log_from_data` (0 callers)
+- `traces_to_export` + `trace_event_to_resource_spans` in buffer_codec
+
 ## Verification (updated 2026-04-14)
 
 - `cargo test -p vector --lib` — 1789/1789 pass

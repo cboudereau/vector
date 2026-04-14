@@ -341,7 +341,12 @@ should stay until source emission is native OTel.
    in its API. Unblocking them requires either: (a) change the API to
    `&mut OtelLog`, or (b) add a trait like MetadataInsertable for the
    mutation operations each uses.
-8. **Replace `FunctionTransform` trait's LogEvent signature** (Group F)
+8. **Migrate transforms (Group E)** — reduce transform and
+   metric_to_log transform now output OtelLog directly.
+   `ReduceValueMerger::insert_into` takes `&mut OtelLog`.
+   `MetricToLog::transform_one` returns `Option<OtelLog>`.
+   Elasticsearch sink drops the `from_value_map` wrapper.
+9. **Replace `FunctionTransform` trait's LogEvent signature** (Group F)
    — blocks deep transform migration.
 
 ## Verification (updated 2026-04-14)

@@ -21,7 +21,56 @@ pub use vector_common::config::ComponentKey;
 use vector_config::configurable_component;
 use vrl::value::Value;
 
-use crate::{event::LogEvent, schema};
+use crate::{
+    event::{EventMetadata, LogEvent, OtelLog},
+    schema,
+};
+
+/// Trait for event types that support the metadata insertion patterns used
+/// by `LogNamespace::insert_source_metadata` / `insert_vector_metadata`.
+///
+/// Both `LogEvent` and `OtelLog` implement this so that sources can switch
+/// to producing `OtelLog` directly without changing the insertion API.
+pub trait MetadataInsertable {
+    fn insert_by_path<'a>(&mut self, path: impl ValuePath<'a>, value: impl Into<Value>);
+    fn try_insert_by_path<'a>(&mut self, path: impl ValuePath<'a>, value: impl Into<Value>);
+    fn maybe_insert_by_path<'a>(&mut self, path: Option<impl ValuePath<'a>>, value: impl Into<Value>);
+    fn event_metadata_mut(&mut self) -> &mut EventMetadata;
+}
+
+impl MetadataInsertable for LogEvent {
+    fn insert_by_path<'a>(&mut self, path: impl ValuePath<'a>, value: impl Into<Value>) {
+        self.insert((PathPrefix::Event, path), value);
+    }
+    fn try_insert_by_path<'a>(&mut self, path: impl ValuePath<'a>, value: impl Into<Value>) {
+        self.try_insert((PathPrefix::Event, path), value);
+    }
+    fn maybe_insert_by_path<'a>(&mut self, path: Option<impl ValuePath<'a>>, value: impl Into<Value>) {
+        if let Some(path) = path {
+            self.insert((PathPrefix::Event, path), value);
+        }
+    }
+    fn event_metadata_mut(&mut self) -> &mut EventMetadata {
+        self.metadata_mut()
+    }
+}
+
+impl MetadataInsertable for OtelLog {
+    fn insert_by_path<'a>(&mut self, path: impl ValuePath<'a>, value: impl Into<Value>) {
+        self.insert((PathPrefix::Event, path), value);
+    }
+    fn try_insert_by_path<'a>(&mut self, path: impl ValuePath<'a>, value: impl Into<Value>) {
+        self.try_insert((PathPrefix::Event, path), value);
+    }
+    fn maybe_insert_by_path<'a>(&mut self, path: Option<impl ValuePath<'a>>, value: impl Into<Value>) {
+        if let Some(path) = path {
+            self.insert((PathPrefix::Event, path), value);
+        }
+    }
+    fn event_metadata_mut(&mut self) -> &mut EventMetadata {
+        self.metadata_mut()
+    }
+}
 
 pub const MEMORY_BUFFER_DEFAULT_MAX_EVENTS: NonZeroUsize =
     vector_buffers::config::memory_buffer_default_max_events();
@@ -444,24 +493,24 @@ impl LogNamespace {
     pub fn insert_source_metadata<'a>(
         &self,
         source_name: &'a str,
-        log: &mut LogEvent,
+        log: &mut impl MetadataInsertable,
         legacy_key: Option<LegacyKey<impl ValuePath<'a>>>,
         metadata_key: impl ValuePath<'a>,
         value: impl Into<Value>,
     ) {
         match self {
             LogNamespace::Vector => {
-                log.metadata_mut()
+                log.event_metadata_mut()
                     .value_mut()
                     .insert(path!(source_name).concat(metadata_key), value);
             }
             LogNamespace::Legacy => match legacy_key {
                 None => { /* don't insert */ }
                 Some(LegacyKey::Overwrite(key)) => {
-                    log.insert((PathPrefix::Event, key), value);
+                    log.insert_by_path(key, value);
                 }
                 Some(LegacyKey::InsertIfEmpty(key)) => {
-                    log.try_insert((PathPrefix::Event, key), value);
+                    log.try_insert_by_path(key, value);
                 }
             },
         }
@@ -493,7 +542,7 @@ impl LogNamespace {
     /// only if a field with that name doesn't already exist.
     pub fn insert_standard_vector_source_metadata(
         &self,
-        log: &mut LogEvent,
+        log: &mut impl MetadataInsertable,
         source_name: &'static str,
         now: DateTime<Utc>,
     ) {
@@ -517,20 +566,20 @@ impl LogNamespace {
     /// Legacy: This is stored on the event root, only if a field with that name doesn't already exist.
     pub fn insert_vector_metadata<'a>(
         &self,
-        log: &mut LogEvent,
+        log: &mut impl MetadataInsertable,
         legacy_key: Option<impl ValuePath<'a>>,
         metadata_key: impl ValuePath<'a>,
         value: impl Into<Value>,
     ) {
         match self {
             LogNamespace::Vector => {
-                log.metadata_mut()
+                log.event_metadata_mut()
                     .value_mut()
                     .insert(path!("vector").concat(metadata_key), value);
             }
             LogNamespace::Legacy => {
                 if let Some(legacy_key) = legacy_key {
-                    log.try_insert((PathPrefix::Event, legacy_key), value);
+                    log.try_insert_by_path(legacy_key, value);
                 }
             }
         }

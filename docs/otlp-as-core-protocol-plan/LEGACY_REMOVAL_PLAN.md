@@ -395,20 +395,29 @@ O(depth of path). In hot paths this matters:
 | Site | Inserts / event | Throughput impact |
 |------|------------------|-------------------|
 | `lib/codecs/src/decoding/format/syslog.rs` | 8–12 | 3.5% event loss at 10k msg/s (FIXED) |
-| `src/sources/kubernetes_logs/pod_metadata_annotator.rs` | up to 48 | Not measured; likely significant |
-| `src/sources/kubernetes_logs/namespace_metadata_annotator.rs` | up to 14 | Not measured |
-| `src/sources/kubernetes_logs/node_metadata_annotator.rs` | up to 6 | Not measured |
-| `src/sources/splunk_hec/mod.rs` | ~8 | Not measured |
+| `src/sources/splunk_hec/mod.rs` `build_log_legacy` | ~N record fields | Not measured (potentially O(N) per event) |
+| `src/sources/kafka.rs` | 1 | Negligible |
 
-**The "build-once" pattern** avoids this: build the full `ObjectMap`
-in one pass, then `OtelLog::from_value_map(Value::Object(map), metadata)`
-once. Used by syslog + gelf decoders. For sites that need to mutate
-an existing `OtelLog` (annotators, source metadata injection), a
-`modify_as_value` closure API is needed to amortize the round-trip
-across multiple mutations.
+**k8s annotators re-audit (2026-04-15)**: the production k8s annotators
+(`pod_metadata_annotator`, `namespace_metadata_annotator`,
+`node_metadata_annotator`) use `OtelLog::set_resource_attribute` /
+`set_attribute`, which are **O(1) amortized direct proto mutations**
+— no round-trip. The earlier "up to 48 inserts" count was inflated by
+test code. Only the test blocks use `insert(event_path!(...))` for
+expected-value construction. No migration needed.
 
-**TODO**: Add `OtelLog::modify_as_value(|v: &mut Value| { ... })` and
-migrate the kubernetes_logs annotators (48 inserts) to use it.
+**Mitigations**
+
+1. **"Build-once" pattern** for initial construction: build a full
+   `ObjectMap` in one pass, then `OtelLog::from_value_map(...)` once.
+   Used by syslog + gelf decoders.
+2. **`OtelLog::modify_as_value(|v| { ... })`** for bulk mutation of
+   existing events. Amortizes the round-trip across N mutations in
+   the closure. Regression test: `modify_as_value_equivalent_to_multiple_inserts`.
+3. **Prefer direct proto APIs** (`set_attribute`, `set_resource_attribute`,
+   `record_mut().time_unix_nano`, etc.) when the semantic mutation
+   targets a specific proto field. These are O(1) and bypass the
+   legacy layout entirely.
 
 ## Verification (updated 2026-04-14)
 

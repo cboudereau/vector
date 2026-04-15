@@ -344,6 +344,53 @@ cosmetic (e.g. internal GraphQL schema names).
 | k8s annotators "48 inserts" | **NOT a perf issue** — production uses `set_resource_attribute` (O(1) proto), tests use `insert()` |
 | Benchmarks, test-only sites | **NOT blockers** — no runtime impact |
 
+### Blocker unblock actions (review 2026-04-15)
+
+**B1 — dnstap parser** (HIGH)
+- Recommended: `modify_as_value` at top-level entry point — change internal
+  helpers to take `&mut Value`, wrap in a single `modify_as_value` call
+  site. One round-trip per frame vs. 17+.
+- Action: write `DNSTAP_PARSER_MIGRATION.md` specifying field mapping
+  and test strategy before execution. ~1 day effort.
+
+**B2 — Prometheus `MetricRef`** (MEDIUM)
+- Recommended: add `impl From<&OtelMetric> for MetricRef`. Keeps the
+  existing exporter de-dup logic untouched. ~2 hours. Unblocks
+  prometheus exporter from requiring legacy `Metric` inputs.
+
+**B3 — `BatchedMetrics` + `MetricSet`** (MEDIUM)
+- Three viable options:
+  1. Make `BatchedMetrics` generic over `M: Into<Metric>` — narrow,
+     low-risk. ~4 hours.
+  2. Full native-OtelMetric `MetricSet` — large refactor, needs
+     `METRICSINK_PIPELINE_REFACTOR.md` design doc first. ~1 week.
+  3. Accept `_otel` wrappers as permanent and stop calling them "shims".
+     Zero code change, honest documentation.
+
+**B4 — VRL migration tool (Phase A)** (MEDIUM)
+- Spec exists in `VRL_MIGRATION_TOOL.md` (8 log + 6 metric rules).
+  Scaffolding exists in `src/vrl_migrate/`.
+- First action: audit `src/vrl_migrate/rules/` for existing
+  implementations — may find work already done.
+- Then: implement MVP rules (LOG-01, MET-06, MET-07) with fixture tests.
+
+**B5 — `src/trace.rs`** (LOW, quick win)
+- Action: add `impl From<&tracing::Event> for OtelLog`, swap
+  `Vec<LogEvent>` → `Vec<OtelLog>` throughout. ~1 hour.
+
+**B6 — `components/validation/resources/event.rs`** (LOW, quick win)
+- Action: switch `Log(String)` → `OtelLog::from_bytes()`,
+  `LogBuilder(HashMap)` → build `ObjectMap` + `OtelLog::from_value_map`.
+  ~30 min.
+
+### Recommended execution order
+
+1. **B5 + B6** — 1.5h of quick wins, no design needed
+2. **B2 (MetricRef option 1)** — 2h, isolated
+3. **B3 option 1 or 3** — 4h or 0h depending on appetite
+4. **B4 audit** — 1h discovery before committing to implementation
+5. **B1 dnstap** — biggest remaining, needs design doc first
+
 ## Historical completion log
 
 1. ~~Delete dead `VrlTarget` legacy variants~~ — **DONE** (`2e1b80e`, −492 lines)

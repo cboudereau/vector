@@ -319,7 +319,7 @@ cosmetic (e.g. internal GraphQL schema names).
 
 | # | Blocker | Location | Scope | Priority | Plan doc |
 |---|---------|----------|-------|----------|----------|
-| B1 | **dnstap parser** | `lib/dnstap-parser/src/parser.rs` | 17 fns with `&mut LogEvent`, ~1000 lines | HIGH | **MISSING** → needs `DNSTAP_PARSER_MIGRATION.md` |
+| B1 | ~~dnstap parser~~ | `lib/dnstap-parser/src/parser.rs` | **DONE** (`c8e02e1`): 17 fns now take `&mut Value`. Source uses `OtelLog::modify_as_value` to amortize round-trip. VRL function drops LogEvent intermediate. | ~~HIGH~~ **DONE** | `DNSTAP_PARSER_MIGRATION.md` |
 | B2 | ~~Prometheus `MetricRef` dedup key~~ | `src/sinks/prometheus/exporter.rs` | **UNBLOCKED** (`887b657`): `MetricRef::from_otel_metric` added + parity test. Designates the OTel-native entry point; exporter's input path can migrate without touching dedup logic. | ~~MEDIUM~~ **DONE (unblock)** | — |
 | B3 | **`BatchedMetrics` + `MetricSet`** | `src/sinks/prometheus/remote_write/sink.rs:66`, `src/sinks/util/buffer/metrics/` | Remote-write batcher + normalizer keyed on legacy `Metric`; `_otel` wrappers are transitional shims | MEDIUM | Partial in `BRIDGE_REMOVAL_SESSION.md` Rewrite 1 — needs `METRICSINK_PIPELINE_REFACTOR.md` |
 | B4 | **VRL migration tool (Phase A)** | `src/vrl_migrate/` (scaffolding exists) | MVP rules: LOG-01, MET-06, MET-07 minimum; blocks Phase B (alias removal) | MEDIUM | Fully specced in `VRL_MIGRATION_TOOL.md` — implementation not tracked |

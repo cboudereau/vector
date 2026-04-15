@@ -395,7 +395,7 @@ O(depth of path). In hot paths this matters:
 | Site | Inserts / event | Throughput impact |
 |------|------------------|-------------------|
 | `lib/codecs/src/decoding/format/syslog.rs` | 8–12 | 3.5% event loss at 10k msg/s (FIXED) |
-| `src/sources/splunk_hec/mod.rs` `build_log_legacy` | ~N record fields | Not measured (potentially O(N) per event) |
+| `src/sources/splunk_hec/mod.rs` `build_log_legacy` | ~N record fields | **FIXED** via `modify_as_value` — N → 1 round-trip |
 | `src/sources/kafka.rs` | 1 | Negligible |
 
 **k8s annotators re-audit (2026-04-15)**: the production k8s annotators

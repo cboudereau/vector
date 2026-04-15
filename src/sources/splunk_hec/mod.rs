@@ -28,7 +28,7 @@ use vector_lib::{
     configurable::configurable_component,
     event::BatchNotifier,
     internal_event::{CountByteSize, InternalEventHandle as _, Registered},
-    lookup::{self, event_path, lookup_v2::OptionalValuePath, owned_value_path},
+    lookup::{self, lookup_v2::OptionalValuePath, owned_value_path},
     schema::meaning,
     sensitive_string::SensitiveString,
     source_sender::SendError,
@@ -899,24 +899,34 @@ impl<'de, R: JsonRead<'de>> EventIterator<'de, R> {
                         return Err(ApiError::EmptyEventField { event: self.events }.into());
                     }
 
-                    // Add 'line' value as 'event::schema().message_key'
-                    if let Some(line) = object.remove("line") {
-                        match line {
-                            // This don't quite fit the meaning of a event::schema().message_key
-                            JsonValue::Array(_) | JsonValue::Object(_) => {
-                                log.insert(event_path!("line"), Value::from(line));
-                            }
-                            _ => {
-                                if let Some(key) = log_schema().message_key_target_path() {
-                                    log.insert(key, Value::from(line));
+                    // Batch all field insertions into a single legacy-layout
+                    // round-trip to avoid O(N²) cost for large event objects.
+                    let message_key_path = log_schema().message_key().cloned();
+                    log.modify_as_value(|v| {
+                        let Some(map) = v.as_object_mut() else {
+                            return;
+                        };
+                        // Add 'line' value as 'event::schema().message_key'
+                        if let Some(line) = object.remove("line") {
+                            match line {
+                                // Arrays/objects don't fit message_key — store at top-level "line"
+                                JsonValue::Array(_) | JsonValue::Object(_) => {
+                                    map.insert("line".into(), Value::from(line));
+                                }
+                                _ => {
+                                    if let Some(ref key_path) = message_key_path {
+                                        let key: vrl::prelude::KeyString =
+                                            key_path.to_string().into();
+                                        map.insert(key, Value::from(line));
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    for (key, value) in object {
-                        log.insert(event_path!(key.as_str()), Value::from(value));
-                    }
+                        for (key, value) in object {
+                            map.insert(key.into(), Value::from(value));
+                        }
+                    });
                 }
                 _ => return Err(ApiError::InvalidDataFormat { event: self.events }.into()),
             },
@@ -1323,7 +1333,7 @@ mod tests {
         schema::Definition,
         sensitive_string::SensitiveString,
     };
-    use vrl::path::PathPrefix;
+    use vrl::{event_path, path::PathPrefix};
 
     use super::*;
     use crate::{

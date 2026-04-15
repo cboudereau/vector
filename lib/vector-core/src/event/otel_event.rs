@@ -707,6 +707,18 @@ impl OtelLog {
         }
     }
 
+    /// Insert at `path` only if `path` is Some. Convenience wrapper around
+    /// `insert` mirroring `LogEvent::maybe_insert`.
+    pub fn maybe_insert<'a>(
+        &mut self,
+        path: Option<impl lookup::lookup_v2::TargetPath<'a>>,
+        value: impl Into<Value>,
+    ) {
+        if let Some(path) = path {
+            self.insert(path, value);
+        }
+    }
+
     /// Merge fields from `incoming` into this log, concatenating byte
     /// values for specified fields. Same semantics as `LogEvent::merge`.
     pub fn merge(&mut self, mut incoming: OtelLog, fields: &[impl AsRef<str>]) {

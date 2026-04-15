@@ -3,13 +3,13 @@ use std::borrow::Cow;
 use bytes::Bytes;
 use chrono::{DateTime, Datelike, Utc};
 use derivative::Derivative;
-use lookup::{OwnedTargetPath, OwnedValuePath, event_path, owned_value_path};
+use lookup::{OwnedTargetPath, OwnedValuePath, owned_value_path};
 use smallvec::{SmallVec, smallvec};
 use syslog_loose::{IncompleteDate, Message, ProcId, Protocol, Variant};
 use vector_config::configurable_component;
 use vector_core::{
     config::{DataType, LegacyKey, LogNamespace, log_schema},
-    event::{Event, LogEvent, ObjectMap, Value},
+    event::{Event, EventMetadata, ObjectMap, OtelLog, Value},
     schema,
 };
 use vrl::value::{Kind, kind::Collection};
@@ -283,18 +283,22 @@ impl Deserializer for SyslogDeserializer {
 
         let log = match (self.source, log_namespace) {
             (Some(source), LogNamespace::Vector) => {
-                let mut log = LogEvent::from(Value::Bytes(Bytes::from(parsed.msg.to_string())));
+                let mut log = OtelLog::from_value_map(
+                    Value::Bytes(Bytes::from(parsed.msg.to_string())),
+                    EventMetadata::default(),
+                );
                 insert_metadata_fields_from_syslog(&mut log, source, parsed, log_namespace);
                 log
             }
             _ => {
-                let mut log = LogEvent::from(Value::Object(ObjectMap::new()));
-                insert_fields_from_syslog(&mut log, parsed, log_namespace);
-                log
+                // Build the full Value tree in one pass, then convert once.
+                // Avoids the per-insert to_value_legacy_layout round-trip.
+                let map = build_fields_from_syslog(parsed, log_namespace);
+                OtelLog::from_value_map(Value::Object(map), EventMetadata::default())
             }
         };
 
-        Ok(smallvec![Event::from(log)])
+        Ok(smallvec![Event::Log(log)])
     }
 }
 
@@ -315,7 +319,7 @@ fn resolve_year((month, _date, _hour, _min, _sec): IncompleteDate) -> i32 {
 }
 
 fn insert_metadata_fields_from_syslog(
-    log: &mut LogEvent,
+    log: &mut OtelLog,
     source: &'static str,
     parsed: Message<&str>,
     log_namespace: LogNamespace,
@@ -418,55 +422,57 @@ fn insert_metadata_fields_from_syslog(
     );
 }
 
-fn insert_fields_from_syslog(
-    log: &mut LogEvent,
+fn build_fields_from_syslog(
     parsed: Message<&str>,
     log_namespace: LogNamespace,
-) {
-    match log_namespace {
-        LogNamespace::Legacy => {
-            log.maybe_insert(log_schema().message_key_target_path(), parsed.msg);
-        }
-        LogNamespace::Vector => {
-            log.insert(event_path!("body"), parsed.msg);
-        }
-    }
+) -> ObjectMap {
+    let mut map = ObjectMap::new();
+
+    let message_key: vrl::prelude::KeyString = match log_namespace {
+        LogNamespace::Legacy => log_schema()
+            .message_key()
+            .and_then(|p| p.to_string().parse().ok())
+            .map(|k: String| k.into())
+            .unwrap_or_else(|| "message".into()),
+        LogNamespace::Vector => "body".into(),
+    };
+    map.insert(message_key, Value::from(parsed.msg));
 
     if let Some(timestamp) = parsed.timestamp {
         let timestamp = DateTime::<Utc>::from(timestamp);
-        match log_namespace {
-            LogNamespace::Legacy => {
-                log.maybe_insert(log_schema().timestamp_key_target_path(), timestamp);
-            }
-            LogNamespace::Vector => {
-                log.insert(event_path!("timestamp"), timestamp);
-            }
+        let timestamp_key: vrl::prelude::KeyString = match log_namespace {
+            LogNamespace::Legacy => log_schema()
+                .timestamp_key()
+                .map(|p| p.to_string().into())
+                .unwrap_or_else(|| "timestamp".into()),
+            LogNamespace::Vector => "timestamp".into(),
         };
+        map.insert(timestamp_key, Value::Timestamp(timestamp));
     }
     if let Some(host) = parsed.hostname {
-        log.insert(event_path!("hostname"), host.to_string());
+        map.insert("hostname".into(), Value::from(host.to_string()));
     }
     if let Some(severity) = parsed.severity {
-        log.insert(event_path!("severity"), severity.as_str().to_owned());
+        map.insert("severity".into(), Value::from(severity.as_str().to_owned()));
     }
     if let Some(facility) = parsed.facility {
-        log.insert(event_path!("facility"), facility.as_str().to_owned());
+        map.insert("facility".into(), Value::from(facility.as_str().to_owned()));
     }
     if let Protocol::RFC5424(version) = parsed.protocol {
-        log.insert(event_path!("version"), version as i64);
+        map.insert("version".into(), Value::from(version as i64));
     }
     if let Some(app_name) = parsed.appname {
-        log.insert(event_path!("appname"), app_name.to_owned());
+        map.insert("appname".into(), Value::from(app_name.to_owned()));
     }
     if let Some(msg_id) = parsed.msgid {
-        log.insert(event_path!("msgid"), msg_id.to_owned());
+        map.insert("msgid".into(), Value::from(msg_id.to_owned()));
     }
     if let Some(procid) = parsed.procid {
         let value: Value = match procid {
             ProcId::PID(pid) => pid.into(),
             ProcId::Name(name) => name.to_string().into(),
         };
-        log.insert(event_path!("procid"), value);
+        map.insert("procid".into(), value);
     }
 
     for element in parsed.structured_data.into_iter() {
@@ -474,8 +480,10 @@ fn insert_fields_from_syslog(
         for (name, value) in element.params() {
             sdata.insert(name.to_string().into(), value.into());
         }
-        log.insert(event_path!(element.id), sdata);
+        map.insert(element.id.to_string().into(), Value::Object(sdata));
     }
+
+    map
 }
 
 #[cfg(test)]

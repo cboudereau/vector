@@ -9,7 +9,7 @@ use vector_lib::{
         JsonSerializer, LengthDelimitedEncoder, LogfmtSerializer, MetricTagValues,
         NewlineDelimitedEncoder, encoding, encoding::format::JsonSerializerOptions,
     },
-    event::{Event, LogEvent},
+    event::{Event, EventMetadata, OtelLog},
 };
 
 use vector_lib::codecs::Encoder;
@@ -52,15 +52,19 @@ impl EventData {
     /// Converts this event data into an `Event`.
     pub fn into_event(self) -> Event {
         match self {
-            Self::Log(message) => Event::from(LogEvent::from_bytes_legacy(&message.into())),
+            Self::Log(message) => {
+                Event::Log(OtelLog::from_bytes(bytes::Bytes::from(message)))
+            }
             Self::LogBuilder(data) => {
-                let mut log_event = LogEvent::default();
+                // Build a Value tree using VRL path parsing, then convert
+                // to OtelLog in one pass (avoids per-insert round-trips).
+                let mut value = vrl::value::Value::Object(Default::default());
                 for (k, v) in data {
-                    log_event
-                        .parse_path_and_insert(&k, v)
-                        .unwrap_or_else(|_| panic!("Unable to build log event for {}", &k));
+                    let path = vrl::path::parse_value_path(&k)
+                        .unwrap_or_else(|_| panic!("Unable to parse path {k}"));
+                    value.insert(&path, v);
                 }
-                Event::from(log_event)
+                Event::Log(OtelLog::from_value_map(value, EventMetadata::default()))
             }
         }
     }

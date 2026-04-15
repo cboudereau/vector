@@ -286,6 +286,35 @@ impl MetricRef {
             bounds,
         }
     }
+
+    /// Creates a `MetricRef` from an `OtelMetric` without constructing an
+    /// intermediate legacy `Metric`. Unlocks callers that already hold an
+    /// `OtelMetric` (e.g. sink pipelines migrated to OTel-native event
+    /// arrays) from going through `into_metric_parts` + `Metric::from_parts`
+    /// just to compute the dedup key.
+    ///
+    /// Currently unused: present as the OTel-native entry point for when
+    /// the exporter's input path is migrated from `Metric` to `OtelMetric`.
+    /// See `LEGACY_REMOVAL_PLAN.md` blocker B2.
+    #[allow(dead_code)]
+    pub fn from_otel_metric(metric: &crate::event::OtelMetric) -> Self {
+        let (series, data, _) = metric.clone().into_metric_parts();
+        let bounds = match data.value() {
+            MetricValue::AggregatedHistogram { buckets, .. } => {
+                Some(buckets.iter().map(|b| b.upper_limit).collect())
+            }
+            MetricValue::AggregatedSummary { quantiles, .. } => {
+                Some(quantiles.iter().map(|q| q.quantile).collect())
+            }
+            _ => None,
+        };
+
+        Self {
+            series,
+            value: discriminant(data.value()),
+            bounds,
+        }
+    }
 }
 
 impl PartialEq for MetricRef {
@@ -630,6 +659,40 @@ mod tests {
     #[test]
     fn generate_config() {
         crate::test_util::test_generate_config::<PrometheusExporterConfig>();
+    }
+
+    #[test]
+    fn metric_ref_from_otel_metric_matches_from_metric() {
+        // MetricRef must be interchangeable between the legacy Metric and
+        // OtelMetric entry points so the dedup map stays consistent when
+        // the exporter's input path is migrated to OtelMetric.
+        use crate::event::OtelMetric;
+        let counter = Metric::new(
+            "requests_total",
+            MetricKind::Incremental,
+            MetricValue::Counter { value: 42.0 },
+        )
+        .with_namespace(Some("http"))
+        .with_tags(Some(metric_tags!("env" => "prod")));
+
+        let via_metric = MetricRef::from_metric(&counter);
+        let via_otel = MetricRef::from_otel_metric(&OtelMetric::from_legacy_metric(counter));
+
+        assert_eq!(via_metric, via_otel);
+
+        // Histogram — the `bounds` field matters for dedup. Exercise it too.
+        let histogram = Metric::new(
+            "request_duration",
+            MetricKind::Absolute,
+            MetricValue::AggregatedHistogram {
+                buckets: vector_lib::buckets![0.1 => 10, 0.5 => 20, 1.0 => 5],
+                count: 35,
+                sum: 8.0,
+            },
+        );
+        let h_via_metric = MetricRef::from_metric(&histogram);
+        let h_via_otel = MetricRef::from_otel_metric(&OtelMetric::from_legacy_metric(histogram));
+        assert_eq!(h_via_metric, h_via_otel);
     }
 
     #[tokio::test]

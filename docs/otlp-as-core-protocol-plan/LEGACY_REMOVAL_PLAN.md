@@ -322,10 +322,12 @@ should stay until source emission is native OTel.
 4. **`Metric::from_parts`/`into_parts` normalizer path** — migrate
    `MetricSet`/`BatchedMetrics`/`MetricRef` to native OtelMetric. Unlocks
    prometheus sinks + removes the normalizer `_otel` transitional shim.
-5. **Migrate codecs (Group B)** — 17 files total; 2 EASY decoders done
-   (avro, protobuf); encoders mostly DONE already; 4 BLOCKED (gelf
-   decoder, syslog decoder/encoder, vrl decoder) on log_schema/namespace
-   integration; rest TEST_ONLY.
+5. **Migrate codecs (Group B)** — 3 decoders done (avro, protobuf,
+   syslog). Syslog needed a refactor: per-insert OtelLog round-trips
+   dropped events under load, so now builds the full ObjectMap once
+   and converts via from_value_map. Remaining: gelf decoder, vrl
+   decoder (partially blocked on schema meanings); encoder sites
+   mostly test-only.
 6. ~~Unblock source migrations~~ — **DONE** (`af17230`).
    `MetadataInsertable` trait makes `insert_source_metadata` /
    `insert_vector_metadata` generic over LogEvent and OtelLog.
@@ -368,6 +370,14 @@ should stay until source emission is native OTel.
 - `lua/log.rs` (−80 lines)
 - `LogNamespace::new_log_from_data` (0 callers)
 - `traces_to_export` + `trace_event_to_resource_spans` in buffer_codec
+- k8s docker parser `parse_json(&mut LogEvent)` + `normalize_event` (−125 lines)
+
+### New OtelLog helpers added this session
+- `OtelLog::merge()` — field-level byte concatenation (unblocks LogEventMergeState)
+- `OtelLog::maybe_insert()` — convenience mirroring LogEvent::maybe_insert
+- `OtelLog::from_value_map()` — preferred entry point for constructing from Value tree
+- `MetadataInsertable` trait — makes `LogNamespace::insert_source_metadata`
+  and `insert_vector_metadata` generic over LogEvent and OtelLog
 
 ## Verification (updated 2026-04-14)
 

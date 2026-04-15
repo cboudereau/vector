@@ -13,10 +13,10 @@ use vector_core::event::{
     EventArray, LogArray, MetricArray, OtelLogArray, OtelMetricArray, OtelSpanArray, OtlpCodec,
     TraceArray,
 };
-use vrl::{event_path, path, value::Value};
+use vrl::{event_path, value::Value};
 
 use crate::{
-    logs, spans,
+    spans,
     proto::{
         collector::{
             logs::v1::ExportLogsServiceRequest,

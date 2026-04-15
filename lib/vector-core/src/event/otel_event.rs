@@ -74,6 +74,43 @@ pub fn int_value(i: i64) -> AnyValue {
     }
 }
 
+/// Tracing `Visit` implementation that accumulates into an `ObjectMap`.
+/// Used by `OtelLog::from_tracing_event` to batch all field insertions into
+/// a single `from_value_map` conversion.
+#[derive(Default)]
+struct OtelLogTracingBuilder {
+    map: ObjectMap,
+}
+
+impl tracing::field::Visit for OtelLogTracingBuilder {
+    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+        self.map
+            .insert(field.name().into(), Value::Bytes(value.to_string().into()));
+    }
+
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        self.map
+            .insert(field.name().into(), Value::Bytes(format!("{value:?}").into()));
+    }
+
+    fn record_i64(&mut self, field: &tracing::field::Field, value: i64) {
+        self.map.insert(field.name().into(), Value::Integer(value));
+    }
+
+    fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
+        match i64::try_from(value) {
+            Ok(v) => self.map.insert(field.name().into(), Value::Integer(v)),
+            Err(_) => self
+                .map
+                .insert(field.name().into(), Value::Bytes(value.to_string().into())),
+        };
+    }
+
+    fn record_bool(&mut self, field: &tracing::field::Field, value: bool) {
+        self.map.insert(field.name().into(), Value::Boolean(value));
+    }
+}
+
 fn hex_encode(bytes: &[u8]) -> Value {
     let mut s = String::with_capacity(bytes.len() * 2);
     for b in bytes {
@@ -410,6 +447,44 @@ impl OtelLog {
             scope,
             metadata,
         }
+    }
+
+    /// Build an `OtelLog` from a `tracing::Event` — the same semantics as
+    /// `LogEvent::from(&tracing::Event)` but without the intermediate
+    /// `LogEvent`. Accumulates fields via the `tracing::field::Visit`
+    /// trait into a single `ObjectMap`, then converts to `OtelLog` once
+    /// to amortize the legacy-layout round-trip.
+    pub fn from_tracing_event(event: &tracing::Event<'_>) -> Self {
+        let mut builder = OtelLogTracingBuilder::default();
+        event.record(&mut builder);
+
+        let meta = event.metadata();
+        builder.map.insert(
+            "timestamp".into(),
+            Value::Timestamp(chrono::Utc::now()),
+        );
+        let kind_value = if meta.is_event() {
+            Value::Bytes("event".to_string().into())
+        } else if meta.is_span() {
+            Value::Bytes("span".to_string().into())
+        } else {
+            Value::Null
+        };
+        let mut metadata_map = ObjectMap::new();
+        metadata_map.insert("kind".into(), kind_value);
+        metadata_map.insert("level".into(), Value::Bytes(meta.level().to_string().into()));
+        metadata_map.insert(
+            "module_path".into(),
+            meta.module_path()
+                .map_or(Value::Null, |mp| Value::Bytes(mp.to_string().into())),
+        );
+        metadata_map.insert(
+            "target".into(),
+            Value::Bytes(meta.target().to_string().into()),
+        );
+        builder.map.insert("metadata".into(), Value::Object(metadata_map));
+
+        OtelLog::from_value_map(Value::Object(builder.map), EventMetadata::default())
     }
 
     pub fn into_parts(

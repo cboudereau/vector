@@ -41,15 +41,10 @@ pub mod gelf_fields {
     // < Every field with an underscore (_) prefix will be treated as an additional field. >
 }
 
-/// GELF owned target paths.
+/// GELF owned target paths used by the encoder for header field validation.
 pub(crate) struct GelfTargetPaths {
     pub version: OwnedTargetPath,
     pub host: OwnedTargetPath,
-    pub full_message: OwnedTargetPath,
-    pub level: OwnedTargetPath,
-    pub facility: OwnedTargetPath,
-    pub line: OwnedTargetPath,
-    pub file: OwnedTargetPath,
     pub short_message: OwnedTargetPath,
 }
 
@@ -58,11 +53,6 @@ pub(crate) static GELF_TARGET_PATHS: LazyLock<GelfTargetPaths> =
     LazyLock::new(|| GelfTargetPaths {
         version: OwnedTargetPath::event(owned_value_path!(gelf_fields::VERSION)),
         host: OwnedTargetPath::event(owned_value_path!(gelf_fields::HOST)),
-        full_message: OwnedTargetPath::event(owned_value_path!(gelf_fields::FULL_MESSAGE)),
-        level: OwnedTargetPath::event(owned_value_path!(gelf_fields::LEVEL)),
-        facility: OwnedTargetPath::event(owned_value_path!(gelf_fields::FACILITY)),
-        line: OwnedTargetPath::event(owned_value_path!(gelf_fields::LINE)),
-        file: OwnedTargetPath::event(owned_value_path!(gelf_fields::FILE)),
         short_message: OwnedTargetPath::event(owned_value_path!(gelf_fields::SHORT_MESSAGE)),
     });
 

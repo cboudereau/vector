@@ -3,20 +3,20 @@ use std::collections::HashMap;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use derivative::Derivative;
-use lookup::{event_path, owned_value_path};
+use lookup::owned_value_path;
 use serde::{Deserialize, Serialize};
 use serde_with::{TimestampSecondsWithFrac, serde_as};
 use smallvec::{SmallVec, smallvec};
 use vector_config::configurable_component;
 use vector_core::{
     config::{DataType, LogNamespace, log_schema},
-    event::{Event, LogEvent},
+    event::{Event, EventMetadata, OtelLog},
     schema,
 };
-use vrl::value::{Kind, Value, kind::Collection};
+use vrl::value::{Kind, ObjectMap, Value, kind::Collection};
 
 use super::{Deserializer, default_lossy};
-use crate::{VALID_FIELD_REGEX, gelf::GELF_TARGET_PATHS, gelf_fields::*};
+use crate::{VALID_FIELD_REGEX, gelf_fields::*};
 
 // On GELF decoding behavior:
 //   Graylog has a relaxed decoding. They are much more lenient than the spec would
@@ -131,11 +131,12 @@ impl GelfDeserializer {
         GelfDeserializer { lossy, validation }
     }
 
-    /// Builds a LogEvent from the parsed GelfMessage.
+    /// Builds an OtelLog Event from the parsed GelfMessage.
     /// The logic follows strictly the documented GELF standard.
+    /// Builds the full ObjectMap in one pass and converts via
+    /// `OtelLog::from_value_map` once to avoid expensive per-insert
+    /// round-trips.
     fn message_to_event(&self, parsed: &GelfMessage) -> vector_common::Result<Event> {
-        let mut log = LogEvent::from_str_legacy(parsed.short_message.to_string());
-
         // GELF spec defines the version as 1.1 which has not changed since 2013
         if self.validation == ValidationMode::Strict && parsed.version != GELF_VERSION {
             return Err(
@@ -143,36 +144,44 @@ impl GelfDeserializer {
             );
         }
 
-        log.insert(&GELF_TARGET_PATHS.version, parsed.version.to_string());
-        log.insert(&GELF_TARGET_PATHS.host, parsed.host.to_string());
+        let mut map = ObjectMap::new();
+
+        // short_message becomes the message_key (Legacy) or body
+        let message_key = log_schema()
+            .message_key()
+            .map(|k| k.to_string())
+            .unwrap_or_else(|| "message".to_string());
+        map.insert(message_key.into(), Value::from(parsed.short_message.to_string()));
+
+        map.insert(VERSION.into(), Value::from(parsed.version.to_string()));
+        map.insert(HOST.into(), Value::from(parsed.host.to_string()));
 
         if let Some(full_message) = &parsed.full_message {
-            log.insert(&GELF_TARGET_PATHS.full_message, full_message.to_string());
+            map.insert(FULL_MESSAGE.into(), Value::from(full_message.to_string()));
         }
 
-        if let Some(timestamp_key) = log_schema().timestamp_key_target_path() {
-            if let Some(timestamp) = parsed.timestamp {
-                log.insert(timestamp_key, timestamp);
-                // per GELF spec- add timestamp if not provided
-            } else {
-                log.insert(timestamp_key, Utc::now());
-            }
+        if let Some(timestamp_key) = log_schema().timestamp_key() {
+            let ts: Value = parsed
+                .timestamp
+                .map(Value::Timestamp)
+                .unwrap_or_else(|| Value::Timestamp(Utc::now()));
+            map.insert(timestamp_key.to_string().into(), ts);
         }
 
         if let Some(level) = parsed.level {
-            log.insert(&GELF_TARGET_PATHS.level, level);
+            map.insert(LEVEL.into(), Value::from(level));
         }
         if let Some(facility) = &parsed.facility {
-            log.insert(&GELF_TARGET_PATHS.facility, facility.to_string());
+            map.insert(FACILITY.into(), Value::from(facility.to_string()));
         }
         if let Some(line) = parsed.line {
-            log.insert(
-                &GELF_TARGET_PATHS.line,
+            map.insert(
+                LINE.into(),
                 Value::Float(ordered_float::NotNan::new(line).expect("JSON doesn't allow NaNs")),
             );
         }
         if let Some(file) = &parsed.file {
-            log.insert(&GELF_TARGET_PATHS.file, file.to_string());
+            map.insert(FILE.into(), Value::from(file.to_string()));
         }
 
         if let Some(add) = &parsed.additional_fields {
@@ -200,8 +209,7 @@ impl GelfDeserializer {
 
                 // per GELF spec, Additional field values must be either strings or numbers
                 if self.validation != ValidationMode::Strict || val.is_string() || val.is_number() {
-                    let vector_val: Value = val.into();
-                    log.insert(event_path!(key.as_str()), vector_val);
+                    map.insert(key.as_str().into(), val.into());
                 } else {
                     let type_ = match val {
                         serde_json::Value::Null => "null",
@@ -216,7 +224,9 @@ impl GelfDeserializer {
                 }
             }
         }
-        Ok(Event::from(log))
+
+        let log = OtelLog::from_value_map(Value::Object(map), EventMetadata::default());
+        Ok(Event::Log(log))
     }
 }
 

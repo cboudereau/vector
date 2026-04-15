@@ -320,11 +320,11 @@ cosmetic (e.g. internal GraphQL schema names).
 | # | Blocker | Location | Scope | Priority | Plan doc |
 |---|---------|----------|-------|----------|----------|
 | B1 | **dnstap parser** | `lib/dnstap-parser/src/parser.rs` | 17 fns with `&mut LogEvent`, ~1000 lines | HIGH | **MISSING** → needs `DNSTAP_PARSER_MIGRATION.md` |
-| B2 | **Prometheus `MetricRef` dedup key** | `src/sinks/prometheus/exporter.rs:225, 263` | `IndexMap<MetricRef, (Metric, Meta)>`; MetricRef built from `&Metric`; hot-path dedup | MEDIUM | **MISSING** (part of item 3) |
+| B2 | ~~Prometheus `MetricRef` dedup key~~ | `src/sinks/prometheus/exporter.rs` | **UNBLOCKED** (`887b657`): `MetricRef::from_otel_metric` added + parity test. Designates the OTel-native entry point; exporter's input path can migrate without touching dedup logic. | ~~MEDIUM~~ **DONE (unblock)** | — |
 | B3 | **`BatchedMetrics` + `MetricSet`** | `src/sinks/prometheus/remote_write/sink.rs:66`, `src/sinks/util/buffer/metrics/` | Remote-write batcher + normalizer keyed on legacy `Metric`; `_otel` wrappers are transitional shims | MEDIUM | Partial in `BRIDGE_REMOVAL_SESSION.md` Rewrite 1 — needs `METRICSINK_PIPELINE_REFACTOR.md` |
 | B4 | **VRL migration tool (Phase A)** | `src/vrl_migrate/` (scaffolding exists) | MVP rules: LOG-01, MET-06, MET-07 minimum; blocks Phase B (alias removal) | MEDIUM | Fully specced in `VRL_MIGRATION_TOOL.md` — implementation not tracked |
-| B5 | **`src/trace.rs`** | `src/trace.rs:32` | Internal `Mutex<Vec<LogEvent>>` buffering startup logs | LOW | — (1 file, ~1 hr) |
-| B6 | **`components/validation/resources/event.rs`** | 2 sites | Validation framework `LogEvent::default()` / `from_bytes_legacy` | LOW | — (small, mechanical) |
+| B5 | ~~`src/trace.rs`~~ | `src/trace.rs` | **DONE** (`234eb6d`): migrated to `OtelLog`. Added `OtelLog::from_tracing_event` (visitor-based build-once). | ~~LOW~~ **DONE** | — |
+| B6 | ~~`components/validation/resources/event.rs`~~ | `src/components/validation/resources/event.rs` | **DONE** (`3f2e957`): `EventData::into_event` uses `OtelLog::from_bytes` / `from_value_map`. | ~~LOW~~ **DONE** | — |
 
 ### Dead code (cleanable, not really blockers)
 

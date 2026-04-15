@@ -4,10 +4,9 @@
 /// `vector_core::event::register_otlp_codec` so that `vector-core`'s disk-buffer
 /// layer can encode/decode without a circular crate dependency.
 ///
-/// The public conversion helpers (`log_event_to_log_record`,
-/// `log_event_to_resource_logs`, `trace_event_to_span`,
-/// `trace_event_to_resource_spans`) are reused by the gRPC sink so that every
-/// path through Vector produces identical OTLP output.
+/// The encode path uses `otel_logs_to_export`, `otel_metrics_to_export`, and
+/// `otel_spans_to_export` to produce proto directly from OTel-native event
+/// arrays.
 use bytes::Bytes;
 use prost::Message as _;
 use vector_core::event::{
@@ -178,116 +177,6 @@ fn otel_spans_to_export(otel_spans: &OtelSpanArray) -> ExportTraceServiceRequest
     }
 }
 
-// --- Logs -------------------------------------------------------------------
-
-#[allow(dead_code)]
-fn logs_to_export(logs: &[vector_core::event::LogEvent]) -> ExportLogsServiceRequest {
-    ExportLogsServiceRequest {
-        resource_logs: logs.iter().map(log_event_to_resource_logs).collect(),
-    }
-}
-
-/// Convert a single `LogEvent` into a `ResourceLogs` proto, preserving
-/// resource, scope, timestamps, severity, attributes, and trace context.
-pub fn log_event_to_resource_logs(log: &vector_core::event::LogEvent) -> ResourceLogs {
-    ResourceLogs {
-        resource: read_resource_from_metadata(log.metadata()),
-        scope_logs: vec![ScopeLogs {
-            scope: read_scope_from_metadata(log.metadata()),
-            log_records: vec![log_event_to_log_record(log)],
-            schema_url: String::new(),
-        }],
-        schema_url: String::new(),
-    }
-}
-
-/// Convert a single `LogEvent` into an OTel `LogRecord`.
-///
-/// Reads all fields that the OTel source ingest path (`logs.rs`) stores on
-/// the event — body, timestamps, severity, attributes, trace/span IDs,
-/// flags, and dropped-attributes count.
-pub fn log_event_to_log_record(log: &vector_core::event::LogEvent) -> LogRecord {
-    let meta = log.metadata().value();
-    let otel = |key| meta.get(path!("opentelemetry", key));
-
-    let body = value_into_any_value(log.value().clone());
-
-    let time_unix_nano = otel("timestamp")
-        .and_then(|v| v.as_timestamp())
-        .and_then(|ts| ts.timestamp_nanos_opt())
-        .unwrap_or(0) as u64;
-
-    let observed_time_unix_nano = otel(logs::OBSERVED_TIMESTAMP_KEY)
-        .and_then(|v| v.as_timestamp())
-        .and_then(|ts| ts.timestamp_nanos_opt())
-        .unwrap_or(0) as u64;
-
-    let severity_number = otel(logs::SEVERITY_NUMBER_KEY)
-        .and_then(|v| v.as_integer())
-        .unwrap_or(0) as i32;
-
-    let severity_text = otel(logs::SEVERITY_TEXT_KEY)
-        .and_then(|v| v.as_str().map(|s| s.to_string()))
-        .unwrap_or_default();
-
-    let attributes = otel(logs::ATTRIBUTES_KEY)
-        .and_then(|v| value_to_kv_list(v))
-        .unwrap_or_default();
-
-    let dropped_attributes_count = otel(logs::DROPPED_ATTRIBUTES_COUNT_KEY)
-        .and_then(|v| v.as_integer())
-        .unwrap_or(0) as u32;
-
-    let flags = otel(logs::FLAGS_KEY)
-        .and_then(|v| v.as_integer())
-        .unwrap_or(0) as u32;
-
-    let trace_id = otel(logs::TRACE_ID_KEY)
-        .and_then(|v| hex_value_to_bytes(v, 16))
-        .unwrap_or_default();
-
-    let span_id = otel(logs::SPAN_ID_KEY)
-        .and_then(|v| hex_value_to_bytes(v, 8))
-        .unwrap_or_default();
-
-    LogRecord {
-        time_unix_nano,
-        observed_time_unix_nano,
-        severity_number,
-        severity_text,
-        body: Some(AnyValue { value: Some(body) }),
-        attributes,
-        dropped_attributes_count,
-        flags,
-        trace_id,
-        span_id,
-    }
-}
-
-// --- Metrics ----------------------------------------------------------------
-
-#[allow(dead_code)]
-fn metrics_to_export(metrics: &[vector_core::event::Metric]) -> ExportMetricsServiceRequest {
-    use crate::proto::metrics::v1::{ResourceMetrics, ScopeMetrics};
-
-    let otel_metrics: Vec<crate::proto::metrics::v1::Metric> = metrics
-        .iter()
-        .map(crate::metrics::metric_event_to_otel_metric)
-        .collect();
-
-    ExportMetricsServiceRequest {
-        resource_metrics: vec![ResourceMetrics {
-            resource: None,
-            scope_metrics: vec![ScopeMetrics {
-                scope: None,
-                metrics: otel_metrics,
-                schema_url: String::new(),
-            }],
-            schema_url: String::new(),
-        }],
-    }
-}
-
 // --- Traces -----------------------------------------------------------------
 
 /// Convert a single `TraceEvent` into an OTel `Span`.
@@ -436,52 +325,6 @@ fn batch_to_event_array(batch: OtlpBufferBatch) -> EventArray {
 // ---------------------------------------------------------------------------
 // Shared metadata readers
 // ---------------------------------------------------------------------------
-
-fn read_resource_from_metadata(meta: &vector_core::event::EventMetadata) -> Option<Resource> {
-    let attrs = meta
-        .value()
-        .get(path!("opentelemetry", logs::RESOURCE_KEY))
-        .and_then(|v| value_to_kv_list(v))?;
-    if attrs.is_empty() {
-        return None;
-    }
-    Some(Resource {
-        attributes: attrs,
-        dropped_attributes_count: 0,
-    })
-}
-
-fn read_scope_from_metadata(
-    meta: &vector_core::event::EventMetadata,
-) -> Option<InstrumentationScope> {
-    let scope_val = meta.value().get(path!("opentelemetry", logs::SCOPE_KEY))?;
-    let name = scope_val
-        .get("name")
-        .and_then(|v| v.as_str().map(|s| s.to_string()))
-        .unwrap_or_default();
-    let version = scope_val
-        .get("version")
-        .and_then(|v| v.as_str().map(|s| s.to_string()))
-        .unwrap_or_default();
-    let attributes = scope_val
-        .get("attributes")
-        .and_then(|v| value_to_kv_list(v))
-        .unwrap_or_default();
-    let dropped_attributes_count = scope_val
-        .get("dropped_attributes_count")
-        .and_then(|v| v.as_integer())
-        .unwrap_or(0) as u32;
-
-    if name.is_empty() && version.is_empty() && attributes.is_empty() {
-        return None;
-    }
-    Some(InstrumentationScope {
-        name,
-        version,
-        attributes,
-        dropped_attributes_count,
-    })
-}
 
 #[allow(dead_code)]
 fn read_scope_from_trace_event(

@@ -308,44 +308,51 @@ should stay until source emission is native OTel.
 | `OtelSpan::from_trace_event` | Same as above |
 | `OtelMetric::from_legacy_metric` | Same as above |
 
-## Next concrete targets (ordered, reality-checked)
+## Definitive blocker inventory (2026-04-15)
 
-1. ~~Delete dead `VrlTarget` legacy variants~~ — **DONE** (`2e1b80e`,
-   −492 lines).
-2. ~~Fix OTLP buffer codec to use `into_otel_event_iter`~~ — **DONE**
-   (this commit). `buffer_codec.rs` now decodes via `into_otel_event_iter`
-   for logs, metrics, and spans. Zero LogEvent/TraceEvent in the
-   OTLP buffer decode path. Legacy `into_event_iter` kept for 2 test
-   callers in `spans.rs` that assert the legacy layout.
-3. **VRL migration tool MVP** (Phase A) — at least `LOG-01`/`MET-06`/
-   `MET-07` rules compile and rewrite real programs. Blocks Phase B.
-4. **`Metric::from_parts`/`into_parts` normalizer path** — migrate
-   `MetricSet`/`BatchedMetrics`/`MetricRef` to native OtelMetric. Unlocks
-   prometheus sinks + removes the normalizer `_otel` transitional shim.
-5. **Migrate codecs (Group B)** — **all 5 decoders done**: avro,
-   protobuf, syslog, gelf, vrl. The "build map once → convert once"
-   pattern (introduced for syslog after a 10000-msg/s test failure)
-   was applied uniformly. Encoder sites mostly test-only or already
-   read via Event::as_log() → &OtelLog.
-6. ~~Unblock source migrations~~ — **DONE** (`af17230`).
-   `MetadataInsertable` trait makes `insert_source_metadata` /
-   `insert_vector_metadata` generic over LogEvent and OtelLog.
-   Sources can now be incrementally migrated.
-7. **Migrate sources (Group C)** — **8/14 sources done**:
-   heroku_logs, fluent, journald, splunk_hec, docker_logs,
-   kubernetes_logs (pod/namespace/node metadata annotators).
-   OtelLog::merge() + LogEventMergeState unblocked docker_logs.
-   kubernetes_logs docker parser: dead LogEvent code deleted
-   (−125 lines), production uses parse_json_otel already.
-   **1 hard blocker**: dnstap (`DnstapParser::parse(&mut LogEvent)`,
-   ~1000 lines in lib/dnstap-parser).
-8. **Migrate transforms (Group E)** — reduce transform and
-   metric_to_log transform now output OtelLog directly.
-   `ReduceValueMerger::insert_into` takes `&mut OtelLog`.
-   `MetricToLog::transform_one` returns `Option<OtelLog>`.
-   Elasticsearch sink drops the `from_value_map` wrapper.
-9. **Replace `FunctionTransform` trait's LogEvent signature** (Group F)
-   — blocks deep transform migration.
+Per the comprehensive codebase audit, these are the **only** remaining
+production blockers. All other LogEvent/Metric references are either
+test convenience, permanent `Event::from(...)` bridge impls, or
+cosmetic (e.g. internal GraphQL schema names).
+
+### Real blockers
+
+| # | Blocker | Location | Scope | Priority | Plan doc |
+|---|---------|----------|-------|----------|----------|
+| B1 | **dnstap parser** | `lib/dnstap-parser/src/parser.rs` | 17 fns with `&mut LogEvent`, ~1000 lines | HIGH | **MISSING** → needs `DNSTAP_PARSER_MIGRATION.md` |
+| B2 | **Prometheus `MetricRef` dedup key** | `src/sinks/prometheus/exporter.rs:225, 263` | `IndexMap<MetricRef, (Metric, Meta)>`; MetricRef built from `&Metric`; hot-path dedup | MEDIUM | **MISSING** (part of item 3) |
+| B3 | **`BatchedMetrics` + `MetricSet`** | `src/sinks/prometheus/remote_write/sink.rs:66`, `src/sinks/util/buffer/metrics/` | Remote-write batcher + normalizer keyed on legacy `Metric`; `_otel` wrappers are transitional shims | MEDIUM | Partial in `BRIDGE_REMOVAL_SESSION.md` Rewrite 1 — needs `METRICSINK_PIPELINE_REFACTOR.md` |
+| B4 | **VRL migration tool (Phase A)** | `src/vrl_migrate/` (scaffolding exists) | MVP rules: LOG-01, MET-06, MET-07 minimum; blocks Phase B (alias removal) | MEDIUM | Fully specced in `VRL_MIGRATION_TOOL.md` — implementation not tracked |
+| B5 | **`src/trace.rs`** | `src/trace.rs:32` | Internal `Mutex<Vec<LogEvent>>` buffering startup logs | LOW | — (1 file, ~1 hr) |
+| B6 | **`components/validation/resources/event.rs`** | 2 sites | Validation framework `LogEvent::default()` / `from_bytes_legacy` | LOW | — (small, mechanical) |
+
+### Dead code (cleanable, not really blockers)
+
+| Item | Location | Why dead |
+|------|----------|----------|
+| `logs_to_export` | `lib/opentelemetry-proto/src/buffer_codec.rs:184` | Zero external callers; production path uses `otel_logs_to_export` |
+| `log_event_to_resource_logs` | `buffer_codec.rs:192` | Only called from dead `logs_to_export` |
+| `log_event_to_log_record` | `buffer_codec.rs:197` | Only called from dead `log_event_to_resource_logs` |
+| `trace_event_to_span` / `read_scope_from_trace_event` | `buffer_codec.rs` | Already `#[allow(dead_code)]`, 0 external callers |
+
+### Corrections to earlier assessments
+
+| Item | Reclassification |
+|------|------------------|
+| `FunctionTransform` trait | **NOT a blocker** — takes `Event`, not `LogEvent`; already OTel-compatible |
+| `api/schema/metrics/*` (GraphQL) | **NOT a blocker** — internal observability API, runtime-invisible |
+| k8s annotators "48 inserts" | **NOT a perf issue** — production uses `set_resource_attribute` (O(1) proto), tests use `insert()` |
+| Benchmarks, test-only sites | **NOT blockers** — no runtime impact |
+
+## Historical completion log
+
+1. ~~Delete dead `VrlTarget` legacy variants~~ — **DONE** (`2e1b80e`, −492 lines)
+2. ~~Fix OTLP buffer codec to use `into_otel_event_iter`~~ — **DONE** (`2bd9027`)
+3. ~~Migrate codecs (Group B)~~ — **DONE**: all 5 decoders (avro, protobuf, syslog, gelf, vrl)
+4. ~~Unblock source migrations via `MetadataInsertable`~~ — **DONE** (`af17230`)
+5. ~~Migrate sources (Group C)~~ — **8/14 done** (heroku_logs, fluent, journald, splunk_hec, docker_logs, kubernetes_logs × 3 annotators). dnstap remains (= B1).
+6. ~~Migrate transforms (Group E)~~ — **DONE**: reduce + metric_to_log
+7. ~~Performance: per-insert round-trips~~ — **DONE** via `OtelLog::modify_as_value`, applied to splunk_hec `build_log_legacy`
 
 ## Current state (2026-04-14)
 

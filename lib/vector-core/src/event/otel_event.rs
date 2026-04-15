@@ -707,6 +707,36 @@ impl OtelLog {
         }
     }
 
+    /// Amortize the `to_value_legacy_layout` → `apply_value_legacy_layout`
+    /// round-trip across multiple mutations. Each call to `insert` /
+    /// `remove` / `maybe_insert` on `OtelLog` does a full round-trip via
+    /// the legacy layout (O(event size)). Hot paths that mutate many
+    /// fields per event (e.g. kubernetes_logs annotators, syslog
+    /// decoder's header injection) can call this instead:
+    ///
+    /// ```ignore
+    /// log.modify_as_value(|v| {
+    ///     if let Some(m) = v.as_object_mut() {
+    ///         m.insert("key1".into(), val1);
+    ///         m.insert("key2".into(), val2);
+    ///         m.insert("key3".into(), val3);
+    ///     }
+    /// });
+    /// ```
+    ///
+    /// All mutations happen on a single owned `Value` tree, with a
+    /// single round-trip on entry and exit. See `LEGACY_REMOVAL_PLAN.md`
+    /// — "Performance findings" for details.
+    pub fn modify_as_value<F, R>(&mut self, f: F) -> R
+    where
+        F: FnOnce(&mut Value) -> R,
+    {
+        let mut value = self.to_value_legacy_layout();
+        let result = f(&mut value);
+        self.apply_value_legacy_layout(value);
+        result
+    }
+
     /// Insert at `path` only if `path` is Some. Convenience wrapper around
     /// `insert` mirroring `LogEvent::maybe_insert`.
     pub fn maybe_insert<'a>(
@@ -3652,6 +3682,37 @@ mod tests {
             Some("not-hex-data".to_string()),
             "invalid hex should be preserved as an attribute"
         );
+    }
+
+    #[test]
+    fn modify_as_value_equivalent_to_multiple_inserts() {
+        // Confirm that one modify_as_value with N mutations produces the
+        // same event state as N individual insert() calls.
+        let seed_record = LogRecord {
+            body: Some(AnyValue {
+                value: Some(
+                    opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(
+                        "seed".into(),
+                    ),
+                ),
+            }),
+            ..Default::default()
+        };
+        let mut via_inserts = OtelLog::new(seed_record.clone());
+        via_inserts.insert(vrl::event_path!("field_a"), "a");
+        via_inserts.insert(vrl::event_path!("field_b"), 42i64);
+        via_inserts.insert(vrl::event_path!("field_c"), true);
+
+        let mut via_modify = OtelLog::new(seed_record);
+        via_modify.modify_as_value(|v| {
+            if let Some(m) = v.as_object_mut() {
+                m.insert("field_a".into(), Value::from("a"));
+                m.insert("field_b".into(), Value::from(42i64));
+                m.insert("field_c".into(), Value::from(true));
+            }
+        });
+
+        assert_eq!(via_inserts, via_modify);
     }
 
     #[test]

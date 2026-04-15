@@ -378,6 +378,38 @@ should stay until source emission is native OTel.
 - `MetadataInsertable` trait — makes `LogNamespace::insert_source_metadata`
   and `insert_vector_metadata` generic over LogEvent and OtelLog
 
+### Performance findings
+
+**Per-insert round-trip cost (discovered 2026-04-14 via syslog test failure)**
+
+`OtelLog::insert(event_path!(...), value)` is **O(size of event)**:
+1. Calls `to_value_legacy_layout()` — clones the entire event into a
+   flat `Value` tree (with field routing).
+2. Calls `Value::insert()` on the flat tree.
+3. Calls `apply_value_legacy_layout()` — reparses the flat tree back
+   into proto `LogRecord` + `Resource` + `Scope` + `EventMetadata`.
+
+Each insert does at least 1 full round-trip. `LogEvent::insert` is
+O(depth of path). In hot paths this matters:
+
+| Site | Inserts / event | Throughput impact |
+|------|------------------|-------------------|
+| `lib/codecs/src/decoding/format/syslog.rs` | 8–12 | 3.5% event loss at 10k msg/s (FIXED) |
+| `src/sources/kubernetes_logs/pod_metadata_annotator.rs` | up to 48 | Not measured; likely significant |
+| `src/sources/kubernetes_logs/namespace_metadata_annotator.rs` | up to 14 | Not measured |
+| `src/sources/kubernetes_logs/node_metadata_annotator.rs` | up to 6 | Not measured |
+| `src/sources/splunk_hec/mod.rs` | ~8 | Not measured |
+
+**The "build-once" pattern** avoids this: build the full `ObjectMap`
+in one pass, then `OtelLog::from_value_map(Value::Object(map), metadata)`
+once. Used by syslog + gelf decoders. For sites that need to mutate
+an existing `OtelLog` (annotators, source metadata injection), a
+`modify_as_value` closure API is needed to amortize the round-trip
+across multiple mutations.
+
+**TODO**: Add `OtelLog::modify_as_value(|v: &mut Value| { ... })` and
+migrate the kubernetes_logs annotators (48 inserts) to use it.
+
 ## Verification (updated 2026-04-14)
 
 - `cargo test -p vector --lib` — 1789/1789 pass

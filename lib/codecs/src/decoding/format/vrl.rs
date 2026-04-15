@@ -99,16 +99,20 @@ pub struct VrlDeserializer {
 }
 
 fn parse_bytes(bytes: Bytes, log_namespace: LogNamespace) -> Event {
-    use vector_core::{config::log_schema, event::LogEvent};
+    use vector_core::{
+        config::log_schema,
+        event::{EventMetadata, OtelLog},
+    };
+    let value = vrl::value::Value::from(bytes);
     let log = match log_namespace {
-        LogNamespace::Vector => LogEvent::from(vrl::value::Value::from(bytes)),
+        LogNamespace::Vector => OtelLog::from_value_map(value, EventMetadata::default()),
         LogNamespace::Legacy => {
-            let mut log = LogEvent::default();
-            log.maybe_insert(log_schema().message_key_target_path(), bytes);
+            let mut log = OtelLog::new(Default::default());
+            log.maybe_insert(log_schema().message_key_target_path(), value);
             log
         }
     };
-    Event::from(log)
+    Event::Log(log)
 }
 
 impl Deserializer for VrlDeserializer {

@@ -63,6 +63,15 @@ impl Partitioner for PrometheusTenantIdPartitioner {
     }
 }
 
+/// Holds metrics in either aggregated (deduped via `MetricSet`) or
+/// unaggregated form for the prometheus remote_write batcher.
+///
+/// Uses legacy `Metric` rather than `OtelMetric` because the prometheus
+/// wire format is closely tied to `MetricValue`'s variant structure
+/// (counter/gauge/histogram with bucket bounds, summary with quantiles).
+/// The `_otel` wrappers on `MetricNormalizer` / `MetricSet` are the
+/// permanent boundary between the OTel-native event arrays carried by
+/// the rest of Vector's pipeline and this sink-internal legacy type.
 pub(super) enum BatchedMetrics {
     Aggregated(MetricSet),
     Unaggregated(Vec<Metric>),
@@ -224,10 +233,10 @@ fn make_remote_write_event(
     tenant_id: Option<&Template>,
     metric: Metric,
 ) -> Option<RemoteWriteMetric> {
-    // TODO(otlp-migration): upstream callers still pass a legacy `Metric`
-    // because `BatchedMetrics`/`MetricRef`/the collector use legacy types;
-    // when those are migrated, accept `OtelMetric` directly here and drop
-    // this clone+convert round-trip. See BRIDGE_REMOVAL_SESSION.md.
+    // The prometheus sink internals use legacy `Metric` (see the
+    // BatchedMetrics doc comment) but Template::render_string requires
+    // OtelMetric. Convert here at the boundary — `from_legacy_metric` is
+    // a cheap proto-tuple move on a clone of the metric.
     let tenant_id = tenant_id.and_then(|template| {
         template
             .render_string(&OtelMetric::from_legacy_metric(metric.clone()))

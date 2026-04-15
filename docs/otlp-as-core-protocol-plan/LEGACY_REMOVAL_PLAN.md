@@ -322,12 +322,11 @@ should stay until source emission is native OTel.
 4. **`Metric::from_parts`/`into_parts` normalizer path** — migrate
    `MetricSet`/`BatchedMetrics`/`MetricRef` to native OtelMetric. Unlocks
    prometheus sinks + removes the normalizer `_otel` transitional shim.
-5. **Migrate codecs (Group B)** — 3 decoders done (avro, protobuf,
-   syslog). Syslog needed a refactor: per-insert OtelLog round-trips
-   dropped events under load, so now builds the full ObjectMap once
-   and converts via from_value_map. Remaining: gelf decoder, vrl
-   decoder (partially blocked on schema meanings); encoder sites
-   mostly test-only.
+5. **Migrate codecs (Group B)** — **all 5 decoders done**: avro,
+   protobuf, syslog, gelf, vrl. The "build map once → convert once"
+   pattern (introduced for syslog after a 10000-msg/s test failure)
+   was applied uniformly. Encoder sites mostly test-only or already
+   read via Event::as_log() → &OtelLog.
 6. ~~Unblock source migrations~~ — **DONE** (`af17230`).
    `MetadataInsertable` trait makes `insert_source_metadata` /
    `insert_vector_metadata` generic over LogEvent and OtelLog.

@@ -146,24 +146,141 @@ see `VRL_MIGRATION_TOOL.md`) should rewrite before being removed.
 
 ## Remaining phases
 
-- **A — VRL migration tool rules**: Rewrite rules to transform user VRL
-  programs. Blocked by aliases still being live. See `VRL_MIGRATION_TOOL.md`.
-- **B — Remove VRL aliases**: Once Phase A ships, remove `.message`,
-  `.timestamp`, etc. Expect ~15-25 test breakages.
+- **A — VRL migration tool rules**: **DONE** (B4) — `src/vrl_migrate/`
+  ships 22 rules across 3 passes, CLI wired into `vector vrl-migrate`,
+  29/29 tests green. See `VRL_MIGRATION_TOOL.md`.
+- **B — Remove VRL aliases**: Pending product decision. With Phase A
+  shipped, `.message`/`.timestamp`/`.tags`/etc. aliases on OtelLog VRL
+  paths can be removed. Expect ~15-25 test breakages — users would
+  pre-run `vector vrl-migrate` on their configs.
 - **C — OtelLog/OtelSpan/OtelMetric OTel-to-Legacy bridge**: **DONE**
 - **D — OtelMetric Legacy-to-OTel bridge** (`from_legacy_metric`):
-  Requires migrating ~5 production sites to native construction. Low
-  priority — `from_legacy_metric` is useful for test ergonomics.
-- **E — Remove legacy types**: Requires:
-  - `VrlTarget::Log` → `VrlTarget::OtelLog` (deferred, complex VRL work)
-  - Disk-buffer proto (`lib/vector-core/src/event/proto.rs`) to stop
-    producing intermediate LogEvent/TraceEvent (currently does
-    `LogEvent::from(proto_log) → OtelLog::from_value_map`)
-  - 5 production `from_log_event` callers → `from_value_map`
-  - `TraceEvent` is a newtype over `LogEvent`; drops for free with
-    LogEvent
-  - Metric cannot be removed until `MetricSet/BatchedMetrics/MetricRef`
-    go native OtelMetric
+  Folded into Phase F.
+- **E — Remove legacy types from production**: **DONE** — only one
+  true production caller of `LogEvent` remained
+  (`http_client/client.rs:464`), the rest were tests. All blockers B1–B6
+  resolved.
+- **F — Delete legacy types entirely** (LogEvent, TraceEvent, Metric):
+  see dedicated section below.
+
+## Phase F — Delete legacy types entirely
+
+Goal: remove `LogEvent`, `TraceEvent`, and `Metric` (the struct, not
+its primitive sub-types) from the codebase. After Phase E the types
+exist only as test ergonomics + a thin set of `From` bridges.
+
+### Scope (audit 2026-04-15)
+
+| Surface | Sites | Effort |
+|---------|-------|--------|
+| `Event::from(LogEvent)` impl | 1 prod (`http_client/client.rs:464`) + 248 test | small + 248 mechanical |
+| `Event::from(Metric)` impl | 0 prod + 18 test | 18 mechanical |
+| `Event::from(TraceEvent)` impl | 0 prod + 1 test | 1 mechanical |
+| `LogEvent::from`/`default`/`from_str_legacy`/etc. test sites | 524 | ~1 day mechanical |
+| `Metric::new` test sites | 390 | needs OtelMetric Histogram/Summary/Distribution/Set constructors first |
+| `TraceEvent::from` test sites | 2 | 2 mechanical |
+| `LogEvent` type definition | `lib/vector-core/src/event/log_event.rs` (1217 lines) | delete after callers gone |
+| `TraceEvent` type definition | `lib/vector-core/src/event/trace.rs` (192 lines) | delete after callers gone |
+| `Metric` struct + impls | `lib/vector-core/src/event/metric/mod.rs` (~1180 lines) | delete after callers gone |
+
+### Types that **stay** even after Phase F
+
+The metric subsystem has primitive types that `OtelMetric` depends on
+heavily — these are NOT removable:
+
+- `MetricKind` (Absolute/Incremental enum)
+- `MetricValue` (Counter/Gauge/Distribution/Set/Histogram/Summary)
+- `MetricTags`, `TagValue`, `TagValueSet`
+- `Bucket`, `Quantile`, `Sample`, `StatisticKind`
+- `MetricSeries`, `MetricName`, `MetricData`, `MetricTime`
+
+`OtelMetric::into_metric_parts()` returns these; `with_tags`,
+`with_namespace`, `with_timestamp` consume them. They are the OtelMetric
+public API.
+
+### Hidden dependencies to address first
+
+- `Discriminant::from_log_event(&LogEvent)` (`event/discriminant.rs:27`)
+  — used by `transforms/aggregate`, `transforms/dedupe`, `transforms/reduce`.
+  Needs `Discriminant::from_otel_log(&OtelLog)` equivalent.
+- `LogEvent::merge` — already migrated to `OtelLog::merge` for production
+  paths via `LogEventMergeState`. Test convenience uses still exist.
+- `OtelMetric` lacks constructors for Histogram, Summary, Distribution,
+  Set. Need `OtelMetric::new_histogram`, `new_summary`, etc. so tests
+  don't need `Metric::new(name, kind, MetricValue::AggregatedHistogram { ... })`.
+- `lib/vector-core/src/event/proto.rs` disk buffer `From<Log> for OtelLog`
+  is already direct (no LogEvent intermediate); same for `From<Trace> for OtelSpan`.
+- `lib/vector-core/src/event/array.rs:336` `Arbitrary` impl uses
+  `OtelLog::from_log_event(LogEvent::arbitrary(g))`. Could be rewritten
+  to construct OtelLog directly via `OtelLog::from_value_map(Value::arbitrary(g), ...)`.
+
+### Execution sequence
+
+Phase F is **not a session** — it is an iterative campaign across many
+sessions. Recommended order:
+
+**F.1 — One real production caller (15 min)**
+- Migrate `http_client/client.rs:464` to construct `OtelLog` directly
+  for the empty VRL target.
+
+**F.2 — `Discriminant::from_otel_log` (~2 hours)**
+- Add `Discriminant::from_otel_log(&OtelLog, &[impl AsRef<str>])`.
+- Migrate `transforms/aggregate`, `transforms/dedupe`,
+  `transforms/reduce` callers to use it where they hold OtelLog.
+- Keep `from_log_event` for tests that still use `LogEvent`.
+
+**F.3 — Extend OtelMetric constructors (~half day)**
+- Add `OtelMetric::new_histogram`, `new_summary`, `new_distribution`,
+  `new_set`. Cover the 5 `MetricValue` variants currently only
+  reachable via `from_legacy_metric`.
+- Add tests verifying parity with `from_legacy_metric` for each.
+
+**F.4 — Delete `Event::from(TraceEvent)` (~30 min)**
+- Smallest of the three bridges. 1 test caller.
+- Migrate the 2 `TraceEvent::from` test sites to `OtelSpan::from_value_map`.
+- Delete `TraceEvent::from_*` impls + `Event::from(TraceEvent)`.
+- Delete `lib/vector-core/src/event/trace.rs` (192 lines).
+
+**F.5 — Delete `Event::from(Metric)` (~half day)**
+- 18 test callers. Each one does `Event::from(Metric::new(...))`.
+- Replace with `Event::Metric(OtelMetric::new_<variant>(...))`.
+- Delete `Event::from(Metric)` impl.
+- Delete `OtelMetric::from_legacy_metric`.
+- Delete `Metric::new` and its 390 test convenience callers (mechanical
+  but high volume — split across multiple sessions or apply via macro
+  refactor).
+- Delete `lib/vector-core/src/event/metric/mod.rs` `Metric` struct
+  + impls. Keep the primitive sub-types.
+
+**F.6 — Delete `Event::from(LogEvent)` (~1-2 days)**
+- 248 test callers. Highest volume.
+- Replace with `Event::Log(OtelLog::from_bytes(...))` or
+  `OtelLog::from_value_map(...)` patterns.
+- Migrate the 524 `LogEvent::from`/`default`/etc. test convenience
+  sites. Most are simple: `LogEvent::from("text")` → `OtelLog::from_bytes(Bytes::from_static(b"text"))`.
+- Delete `OtelLog::from_log_event`.
+- Delete `LogEvent::*` type definition + impls (1217 lines).
+- Delete `Discriminant::from_log_event`.
+
+**F.7 — Final cleanup (~1 hour)**
+- Delete `lib/vector-core/src/event/array.rs` `LogEvent::arbitrary`
+  call; rewrite as direct OtelLog construction.
+- Delete `MetricEvent` type alias if any.
+- Audit re-exports in `lib/vector-lib/src/lib.rs` and `vector_core`.
+- Update `BRIDGE_REMOVAL_SESSION.md` final report.
+
+### Estimated total
+**~4–6 sessions** of focused work. Lowest-risk site (F.4 trace) first;
+highest-volume site (F.6 log) last. Each session leaves the codebase
+green.
+
+### Risk
+LOW per session, MEDIUM cumulative. Mostly mechanical text replacement
+with clear failure modes (compile errors). Main risk:
+`LogEvent::from_str_legacy` adds a Legacy-namespace timestamp; naive
+replacements may forget it, causing test assertions on `timestamp`
+fields to fail. Mitigation: provide an `OtelLog::from_str_legacy`
+helper with the same semantics during the migration window.
 
 ## VRL Migration Rules (Phase A, reference)
 
@@ -325,6 +442,13 @@ cosmetic (e.g. internal GraphQL schema names).
 | B4 | ~~VRL migration tool (Phase A)~~ | `src/vrl_migrate/` | **DONE** — discovered fully implemented. 22 rules across 3 passes (10 structural + 7 semantic + 5 metric), CLI wired into `vector vrl-migrate` subcommand, 29/29 tests passing. Blocks Phase B (alias removal) only on the user-facing decision to remove aliases. | ~~MEDIUM~~ **DONE** | `VRL_MIGRATION_TOOL.md` |
 | B5 | ~~`src/trace.rs`~~ | `src/trace.rs` | **DONE** (`234eb6d`): migrated to `OtelLog`. Added `OtelLog::from_tracing_event` (visitor-based build-once). | ~~LOW~~ **DONE** | — |
 | B6 | ~~`components/validation/resources/event.rs`~~ | `src/components/validation/resources/event.rs` | **DONE** (`3f2e957`): `EventData::into_event` uses `OtelLog::from_bytes` / `from_value_map`. | ~~LOW~~ **DONE** | — |
+
+### Beyond blockers — Phase F goal: delete legacy types entirely
+
+All B1–B6 blockers are resolved. The remaining work is the **Phase F
+campaign** to delete `LogEvent`, `TraceEvent`, and the `Metric` struct
+themselves (~2600 lines of type definitions + ~916 mechanical test
+migrations). See the dedicated "Phase F" section below.
 
 ### Dead code (cleanable, not really blockers)
 

@@ -298,8 +298,11 @@ impl MetricRef {
     /// See `LEGACY_REMOVAL_PLAN.md` blocker B2.
     #[allow(dead_code)]
     pub fn from_otel_metric(metric: &crate::event::OtelMetric) -> Self {
-        let (series, data, _) = metric.clone().into_metric_parts();
-        let bounds = match data.value() {
+        // Read series/value/bounds directly from the proto accessors —
+        // no clone and no `into_metric_parts` consumption.
+        use crate::event::metric::MetricName;
+        let value = metric.value();
+        let bounds = match &value {
             MetricValue::AggregatedHistogram { buckets, .. } => {
                 Some(buckets.iter().map(|b| b.upper_limit).collect())
             }
@@ -308,10 +311,16 @@ impl MetricRef {
             }
             _ => None,
         };
-
+        let series = MetricSeries {
+            name: MetricName {
+                name: metric.name().to_owned(),
+                namespace: metric.namespace().map(str::to_owned),
+            },
+            tags: metric.tags(),
+        };
         Self {
             series,
-            value: discriminant(data.value()),
+            value: discriminant(&value),
             bounds,
         }
     }

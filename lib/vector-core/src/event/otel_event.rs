@@ -769,15 +769,25 @@ impl OtelLog {
         &mut self,
         path: impl lookup::lookup_v2::TargetPath<'a>,
     ) -> Option<Value> {
+        self.remove_prune(path, false)
+    }
+
+    /// Remove at `path`. If `prune` is true, empty parent objects along
+    /// the path are also removed. Same semantics as `LogEvent::remove_prune`.
+    pub fn remove_prune<'a>(
+        &mut self,
+        path: impl lookup::lookup_v2::TargetPath<'a>,
+        prune: bool,
+    ) -> Option<Value> {
         match path.prefix() {
             lookup::PathPrefix::Event => {
                 let mut val = self.to_value_legacy_layout();
-                let old = val.remove(path.value_path(), false);
+                let old = val.remove(path.value_path(), prune);
                 self.apply_value_legacy_layout(val);
                 old
             }
             lookup::PathPrefix::Metadata => {
-                self.metadata.value_mut().remove(path.value_path(), false)
+                self.metadata.value_mut().remove(path.value_path(), prune)
             }
         }
     }
@@ -3571,6 +3581,94 @@ mod tests {
         assert_eq!(direct.name(), via_legacy.name());
         assert_eq!(direct.kind(), via_legacy.kind());
         assert_eq!(direct.value(), via_legacy.value());
+    }
+
+    #[test]
+    fn from_tracing_event_matches_log_event() {
+        // Parity check: OtelLog::from_tracing_event must produce the same
+        // field shape as LogEvent::from(&tracing::Event) for src/trace.rs
+        // to be a drop-in replacement. Covers standard metadata (kind,
+        // level, module_path, target) plus the timestamp field.
+        use crate::event::LogEvent;
+        use tracing::info;
+        use tracing_subscriber::{Layer, layer::Context, prelude::*, registry::LookupSpan};
+
+        // A tiny tracing Layer that snapshots the next event it sees
+        // through both conversion paths and stores them for assertion.
+        struct Capture {
+            from_log: std::sync::Mutex<Option<LogEvent>>,
+            from_otel: std::sync::Mutex<Option<OtelLog>>,
+        }
+        impl<S> Layer<S> for &'static Capture
+        where
+            S: tracing::Subscriber + for<'a> LookupSpan<'a>,
+        {
+            fn on_event(&self, event: &tracing::Event<'_>, _: Context<'_, S>) {
+                *self.from_log.lock().unwrap() = Some(LogEvent::from(event));
+                *self.from_otel.lock().unwrap() = Some(OtelLog::from_tracing_event(event));
+            }
+        }
+
+        let cap: &'static Capture = Box::leak(Box::new(Capture {
+            from_log: std::sync::Mutex::new(None),
+            from_otel: std::sync::Mutex::new(None),
+        }));
+
+        let subscriber = tracing_subscriber::registry().with(cap);
+        tracing::subscriber::with_default(subscriber, || {
+            info!(message = "hello", count = 42, ready = true, "static msg");
+        });
+
+        let le = cap.from_log.lock().unwrap().clone().expect("captured");
+        let ol = cap.from_otel.lock().unwrap().clone().expect("captured");
+
+        // Both paths produce the standard metadata fields.
+        assert_eq!(
+            le.get(vrl::event_path!("metadata", "level"))
+                .and_then(|v| v.as_str().map(|s| s.into_owned())),
+            ol.get(vrl::event_path!("metadata", "level"))
+                .and_then(|v| v.as_str().map(|s| s.into_owned())),
+            "metadata.level must match"
+        );
+        assert_eq!(
+            le.get(vrl::event_path!("metadata", "target"))
+                .and_then(|v| v.as_str().map(|s| s.into_owned())),
+            ol.get(vrl::event_path!("metadata", "target"))
+                .and_then(|v| v.as_str().map(|s| s.into_owned())),
+            "metadata.target must match"
+        );
+        assert_eq!(
+            le.get(vrl::event_path!("metadata", "kind"))
+                .and_then(|v| v.as_str().map(|s| s.into_owned())),
+            ol.get(vrl::event_path!("metadata", "kind"))
+                .and_then(|v| v.as_str().map(|s| s.into_owned())),
+            "metadata.kind must match"
+        );
+        // Visitor records fields at top level. Exercise three Visit
+        // branches: &str, i64, bool.
+        assert_eq!(
+            le.get(vrl::event_path!("count")).and_then(|v| v.as_integer()),
+            ol.get(vrl::event_path!("count")).and_then(|v| v.as_integer()),
+            "i64 field via record_i64"
+        );
+        assert_eq!(
+            le.get(vrl::event_path!("ready")).and_then(|v| v.as_boolean()),
+            ol.get(vrl::event_path!("ready")).and_then(|v| v.as_boolean()),
+            "bool field via record_bool"
+        );
+        // Timestamp is present on both.
+        assert!(
+            le.get(vrl::event_path!("timestamp"))
+                .map(|v| matches!(v, vrl::value::Value::Timestamp(_)))
+                .unwrap_or(false),
+            "LogEvent has timestamp"
+        );
+        assert!(
+            ol.get(vrl::event_path!("timestamp"))
+                .map(|v| matches!(v, vrl::value::Value::Timestamp(_)))
+                .unwrap_or(false),
+            "OtelLog has timestamp"
+        );
     }
 
     /// Round-trip fidelity test: OtelLog → to_value_legacy_layout → apply_value_legacy_layout

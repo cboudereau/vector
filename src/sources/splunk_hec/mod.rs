@@ -903,6 +903,15 @@ impl<'de, R: JsonRead<'de>> EventIterator<'de, R> {
                     // round-trip to avoid O(N²) cost for large event objects.
                     let message_key_path = log_schema().message_key().cloned();
                     log.modify_as_value(|v| {
+                        // Invariant: OtelLog::new(Default::default()) always
+                        // produces Value::Object via to_value_legacy_layout.
+                        // If this ever becomes a scalar (e.g., upstream
+                        // deserialization change), fail loudly in tests
+                        // rather than silently drop all field insertions.
+                        debug_assert!(
+                            matches!(v, Value::Object(_)),
+                            "splunk_hec: OtelLog legacy layout must be Value::Object"
+                        );
                         let Some(map) = v.as_object_mut() else {
                             return;
                         };

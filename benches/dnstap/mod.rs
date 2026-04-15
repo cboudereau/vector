@@ -3,10 +3,10 @@ use bytes::Bytes;
 use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
 use dnsmsg_parser::dns_message_parser::DnsParserOptions;
 use dnstap_parser::parser::DnstapParser;
-use vector::event::LogEvent;
+use vrl::value::Value;
 
 fn benchmark_query_parsing(c: &mut Criterion) {
-    let mut event = LogEvent::default();
+    let mut event = Value::Object(Default::default());
     let raw_dnstap_data = "ChVqYW1lcy1WaXJ0dWFsLU1hY2hpbmUSC0JJTkQgOS4xNi4zcnoIAxACGAEiEAAAAAAAAA\
     AAAAAAAAAAAAAqECABBQJwlAAAAAAAAAAAADAw8+0CODVA7+zq9wVNMU3WNlI2kwIAAAABAAAAAAABCWZhY2Vib29rMQNjb\
     20AAAEAAQAAKQIAAACAAAAMAAoACOxjCAG9zVgzWgUDY29tAHgB";
@@ -33,7 +33,7 @@ fn benchmark_query_parsing(c: &mut Criterion) {
 }
 
 fn benchmark_update_parsing(c: &mut Criterion) {
-    let mut event = LogEvent::default();
+    let mut event = Value::Object(Default::default());
     let raw_dnstap_data = "ChVqYW1lcy1WaXJ0dWFsLU1hY2hpbmUSC0JJTkQgOS4xNi4zcmsIDhABGAEiBH8AAA\
     EqBH8AAAEwrG44AEC+iu73BU14gfofUh1wi6gAAAEAAAAAAAAHZXhhbXBsZQNjb20AAAYAAWC+iu73BW0agDwvch1wi6gAA\
     AEAAAAAAAAHZXhhbXBsZQNjb20AAAYAAXgB";

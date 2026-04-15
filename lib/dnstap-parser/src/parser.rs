@@ -17,7 +17,7 @@ use hickory_proto::{
 use prost::Message;
 use snafu::Snafu;
 use vector_common::{Error, Result, internal_event::emit};
-use vector_core::event::{LogEvent, Value};
+use vector_core::event::Value;
 use vrl::{owned_value_path, path};
 
 #[allow(warnings, clippy::all, clippy::pedantic, clippy::nursery)]
@@ -37,7 +37,7 @@ use dnstap_proto::{
     message::Type as DnstapMessageType,
 };
 use vector_core::config::log_schema;
-use vector_lookup::{PathPrefix, lookup_v2::ValuePath};
+use vector_lookup::lookup_v2::ValuePath;
 
 use crate::{internal_events::DnstapParseWarning, schema::DNSTAP_VALUE_PATHS};
 
@@ -79,7 +79,7 @@ pub struct DnstapParser;
 
 impl DnstapParser {
     fn insert<'a, V>(
-        event: &mut LogEvent,
+        event: &mut Value,
         prefix: impl ValuePath<'a>,
         path: impl ValuePath<'a>,
         value: V,
@@ -87,11 +87,11 @@ impl DnstapParser {
     where
         V: Into<Value> + Debug,
     {
-        event.insert((PathPrefix::Event, prefix.concat(path)), value)
+        event.insert(prefix.concat(path), value)
     }
 
     pub fn parse(
-        event: &mut LogEvent,
+        event: &mut Value,
         frame: Bytes,
         parsing_options: DnsParserOptions,
     ) -> Result<()> {
@@ -171,7 +171,7 @@ impl DnstapParser {
     }
 
     fn parse_dnstap_message<'a>(
-        event: &mut LogEvent,
+        event: &mut Value,
         prefix: impl ValuePath<'a>,
         dnstap_message: DnstapMessage,
         parsing_options: DnsParserOptions,
@@ -251,7 +251,7 @@ impl DnstapParser {
     }
 
     fn parse_dnstap_message_type<'a>(
-        event: &mut LogEvent,
+        event: &mut Value,
         prefix: impl ValuePath<'a>,
         dnstap_message_type_id: i32,
         dnstap_message: DnstapMessage,
@@ -347,7 +347,7 @@ impl DnstapParser {
     }
 
     fn parse_dnstap_message_time<'a>(
-        event: &mut LogEvent,
+        event: &mut Value,
         prefix: impl ValuePath<'a>,
         time_sec: u64,
         time_nsec: Option<u32>,
@@ -402,7 +402,7 @@ impl DnstapParser {
     }
 
     fn parse_dnstap_message_socket_family<'a>(
-        event: &mut LogEvent,
+        event: &mut Value,
         prefix: impl ValuePath<'a>,
         socket_family: i32,
         dnstap_message: &DnstapMessage,
@@ -490,7 +490,7 @@ impl DnstapParser {
     }
 
     fn log_time<'a>(
-        event: &mut LogEvent,
+        event: &mut Value,
         prefix: impl ValuePath<'a>,
         time: i64,
         time_precision: &str,
@@ -505,7 +505,7 @@ impl DnstapParser {
     }
 
     fn log_raw_dns_message<'a>(
-        event: &mut LogEvent,
+        event: &mut Value,
         prefix: impl ValuePath<'a>,
         raw_dns_message: &[u8],
     ) {
@@ -518,7 +518,7 @@ impl DnstapParser {
     }
 
     fn parse_dns_query_message<'a>(
-        event: &mut LogEvent,
+        event: &mut Value,
         prefix: impl ValuePath<'a>,
         dns_message_parser: &mut DnsMessageParser,
     ) -> Result<()> {
@@ -580,7 +580,7 @@ impl DnstapParser {
     }
 
     fn log_dns_query_message_header<'a>(
-        event: &mut LogEvent,
+        event: &mut Value,
         prefix: impl ValuePath<'a>,
         header: &QueryHeader,
     ) {
@@ -631,7 +631,7 @@ impl DnstapParser {
     }
 
     fn log_dns_query_message_query_section<'a>(
-        event: &mut LogEvent,
+        event: &mut Value,
         prefix: impl ValuePath<'a>,
         questions: &[QueryQuestion],
     ) {
@@ -642,7 +642,7 @@ impl DnstapParser {
     }
 
     fn log_dns_query_question<'a>(
-        event: &mut LogEvent,
+        event: &mut Value,
         prefix: impl ValuePath<'a>,
         question: &QueryQuestion,
     ) {
@@ -675,7 +675,7 @@ impl DnstapParser {
     }
 
     fn parse_dns_update_message<'a>(
-        event: &mut LogEvent,
+        event: &mut Value,
         prefix: impl ValuePath<'a>,
         dns_message_parser: &mut DnsMessageParser,
     ) -> Result<()> {
@@ -731,7 +731,7 @@ impl DnstapParser {
     }
 
     fn log_dns_update_message_header<'a>(
-        event: &mut LogEvent,
+        event: &mut Value,
         prefix: impl ValuePath<'a>,
         header: &UpdateHeader,
     ) {
@@ -783,7 +783,7 @@ impl DnstapParser {
     }
 
     fn log_dns_update_message_zone_section<'a>(
-        event: &mut LogEvent,
+        event: &mut Value,
         prefix: impl ValuePath<'a>,
         zone: &ZoneInfo,
     ) {
@@ -816,7 +816,7 @@ impl DnstapParser {
     }
 
     fn log_edns<'a>(
-        event: &mut LogEvent,
+        event: &mut Value,
         prefix: impl ValuePath<'a>,
         opt_section: &Option<OptPseudoSection>,
     ) {
@@ -854,14 +854,14 @@ impl DnstapParser {
         }
     }
 
-    fn log_edns_ede<'a>(event: &mut LogEvent, prefix: impl ValuePath<'a>, options: &[EDE]) {
+    fn log_edns_ede<'a>(event: &mut Value, prefix: impl ValuePath<'a>, options: &[EDE]) {
         options.iter().enumerate().for_each(|(i, entry)| {
             let index_segment = path!(i as isize);
             DnstapParser::log_edns_ede_entry(event, prefix.concat(index_segment), entry);
         });
     }
 
-    fn log_edns_ede_entry<'a>(event: &mut LogEvent, prefix: impl ValuePath<'a>, entry: &EDE) {
+    fn log_edns_ede_entry<'a>(event: &mut Value, prefix: impl ValuePath<'a>, entry: &EDE) {
         DnstapParser::insert(
             event,
             prefix.clone(),
@@ -882,7 +882,7 @@ impl DnstapParser {
     }
 
     fn log_edns_options<'a>(
-        event: &mut LogEvent,
+        event: &mut Value,
         prefix: impl ValuePath<'a>,
         options: &[EdnsOptionEntry],
     ) {
@@ -892,7 +892,7 @@ impl DnstapParser {
         });
     }
 
-    fn log_edns_opt<'a>(event: &mut LogEvent, prefix: impl ValuePath<'a>, opt: &EdnsOptionEntry) {
+    fn log_edns_opt<'a>(event: &mut Value, prefix: impl ValuePath<'a>, opt: &EdnsOptionEntry) {
         DnstapParser::insert(
             event,
             prefix.clone(),
@@ -914,7 +914,7 @@ impl DnstapParser {
     }
 
     fn log_dns_message_record_section<'a>(
-        event: &mut LogEvent,
+        event: &mut Value,
         prefix: impl ValuePath<'a>,
         records: &[DnsRecord],
     ) {
@@ -924,7 +924,7 @@ impl DnstapParser {
         }
     }
 
-    fn log_dns_record<'a>(event: &mut LogEvent, prefix: impl ValuePath<'a>, record: &DnsRecord) {
+    fn log_dns_record<'a>(event: &mut Value, prefix: impl ValuePath<'a>, record: &DnsRecord) {
         DnstapParser::insert(
             event,
             prefix.clone(),
@@ -1036,8 +1036,24 @@ mod tests {
 
     use chrono::DateTime;
     use dnsmsg_parser::dns_message_parser::DnsParserOptions;
+    use vector_core::event::LogEvent;
 
     use super::*;
+
+    /// Test helper: parse into a `LogEvent` so existing assertions that
+    /// read via `log_event.get(path)` keep working. Production callers
+    /// (src/sources/dnstap and the parse_dnstap VRL function) use the
+    /// `&mut Value` API directly. See `DNSTAP_PARSER_MIGRATION.md`.
+    fn parse_into_log_event(
+        event: &mut LogEvent,
+        frame: Bytes,
+        opts: DnsParserOptions,
+    ) -> Result<()> {
+        let mut value = event.value().clone();
+        DnstapParser::parse(&mut value, frame, opts)?;
+        *event.value_mut() = value;
+        Ok(())
+    }
 
     #[test]
     fn test_parse_dnstap_data_with_query_message() {
@@ -1048,7 +1064,7 @@ mod tests {
         let dnstap_data = BASE64_STANDARD
             .decode(raw_dnstap_data)
             .expect("Invalid base64 encoded data.");
-        let parse_result = DnstapParser::parse(
+        let parse_result = parse_into_log_event(
             &mut log_event,
             Bytes::from(dnstap_data),
             DnsParserOptions::default(),
@@ -1149,14 +1165,14 @@ mod tests {
         let dnstap_data = BASE64_STANDARD
             .decode(raw_dnstap_data)
             .expect("Invalid base64 encoded data.");
-        let parse_result = DnstapParser::parse(
+        let parse_result = parse_into_log_event(
             &mut lowercase_log_event,
             Bytes::from(dnstap_data.clone()),
             DnsParserOptions {
                 lowercase_hostnames: true,
             },
         );
-        let no_lowercase_result = DnstapParser::parse(
+        let no_lowercase_result = parse_into_log_event(
             &mut log_event,
             Bytes::from(dnstap_data),
             DnsParserOptions::default(),
@@ -1207,7 +1223,7 @@ mod tests {
         let dnstap_data = BASE64_STANDARD
             .decode(raw_dnstap_data)
             .expect("Invalid base64 encoded data.");
-        let parse_result = DnstapParser::parse(
+        let parse_result = parse_into_log_event(
             &mut log_event,
             Bytes::from(dnstap_data),
             DnsParserOptions::default(),
@@ -1244,7 +1260,7 @@ mod tests {
         let dnstap_data = BASE64_STANDARD
             .decode(raw_dnstap_data)
             .expect("Invalid base64 encoded data.");
-        let parse_result = DnstapParser::parse(
+        let parse_result = parse_into_log_event(
             &mut log_event,
             Bytes::from(dnstap_data),
             DnsParserOptions::default(),
@@ -1331,7 +1347,7 @@ mod tests {
     #[test]
     fn test_parse_dnstap_data_with_invalid_data() {
         let mut log_event = LogEvent::default();
-        let e = DnstapParser::parse(
+        let e = parse_into_log_event(
             &mut log_event,
             Bytes::from(vec![1, 2, 3]),
             DnsParserOptions::default(),
@@ -1343,7 +1359,7 @@ mod tests {
     #[test]
     fn test_parse_dnstap_data_with_invalid_timestamp() {
         fn test_one_timestamp_parse(time_sec: u64, time_nsec: Option<u32>) -> Result<()> {
-            let mut event = LogEvent::default();
+            let mut event = Value::Object(Default::default());
             let root = owned_value_path!();
             let type_ids = HashSet::from([1]);
             DnstapParser::parse_dnstap_message_time(
@@ -1370,7 +1386,7 @@ mod tests {
     fn test_parse_dnstap_message_socket_family_bad_addr() {
         // while parsing address is optional, but in this function assume otherwise
         fn test_one_input(socket_family: i32, msg: DnstapMessage) -> Result<()> {
-            let mut event = LogEvent::default();
+            let mut event = Value::Object(Default::default());
             let root = owned_value_path!();
             DnstapParser::parse_dnstap_message_socket_family(&mut event, &root, socket_family, &msg)
         }

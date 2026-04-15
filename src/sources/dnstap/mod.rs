@@ -8,13 +8,13 @@ use dnstap_parser::{
 };
 use vector_lib::{
     configurable::configurable_component,
-    event::{Event, LogEvent},
+    event::{Event, OtelLog},
     internal_event::{ByteSize, BytesReceived, InternalEventHandle, Protocol, Registered},
     lookup::{owned_value_path, path},
     tls::MaybeTlsSettings,
 };
 use vrl::{
-    path::{OwnedValuePath, PathPrefix},
+    path::OwnedValuePath,
     value::{Kind, kind::Collection},
 };
 
@@ -275,30 +275,39 @@ impl FrameHandler for CommonFrameHandler {
     ) -> Option<vector_lib::event::Event> {
         self.bytes_received.emit(ByteSize(frame.len()));
 
-        let mut log_event = LogEvent::default();
+        let mut log = OtelLog::new(Default::default());
 
         if let Some(host) = received_from {
             self.log_namespace.insert_source_metadata(
                 DnstapConfig::NAME,
-                &mut log_event,
+                &mut log,
                 self.host_key.as_ref().map(LegacyKey::Overwrite),
                 path!("host"),
                 host,
             );
         }
 
-        if self.raw_data_only {
-            log_event.insert(
-                (PathPrefix::Event, &DNSTAP_VALUE_PATHS.raw_data),
-                BASE64_STANDARD.encode(&frame),
-            );
-        } else if let Err(err) = DnstapParser::parse(
-            &mut log_event,
-            frame,
-            DnsParserOptions {
-                lowercase_hostnames: self.lowercase_hostnames,
-            },
-        ) {
+        // Drive the dnstap parser through modify_as_value: the parser's
+        // ~50 internal Value inserts share a single legacy-layout
+        // round-trip on OtelLog. See DNSTAP_PARSER_MIGRATION.md.
+        let parse_result = log.modify_as_value(|value| {
+            if self.raw_data_only {
+                value.insert(
+                    &DNSTAP_VALUE_PATHS.raw_data,
+                    BASE64_STANDARD.encode(&frame),
+                );
+                Ok(())
+            } else {
+                DnstapParser::parse(
+                    value,
+                    frame,
+                    DnsParserOptions {
+                        lowercase_hostnames: self.lowercase_hostnames,
+                    },
+                )
+            }
+        });
+        if let Err(err) = parse_result {
             emit!(DnstapParseError {
                 error: format!("Dnstap protobuf decode error {err:?}.")
             });
@@ -308,7 +317,7 @@ impl FrameHandler for CommonFrameHandler {
         if self.log_namespace == LogNamespace::Vector {
             // The timestamp is inserted by the parser which caters for the Legacy namespace.
             self.log_namespace.insert_vector_metadata(
-                &mut log_event,
+                &mut log,
                 self.timestamp_key(),
                 path!("ingest_timestamp"),
                 chrono::Utc::now(),
@@ -316,13 +325,13 @@ impl FrameHandler for CommonFrameHandler {
         }
 
         self.log_namespace.insert_vector_metadata(
-            &mut log_event,
+            &mut log,
             self.source_type_key(),
             path!("source_type"),
             DnstapConfig::NAME,
         );
 
-        Some(Event::from(log_event))
+        Some(Event::Log(log))
     }
 
     fn multithreaded(&self) -> bool {

@@ -2,7 +2,6 @@ use std::sync::LazyLock;
 
 use base64::prelude::{BASE64_STANDARD, Engine as _};
 use dnsmsg_parser::dns_message_parser::DnsParserOptions;
-use vector_core::event::LogEvent;
 use vrl::prelude::*;
 
 use crate::{parser::DnstapParser, schema::DnstapEventSchema};
@@ -193,10 +192,10 @@ impl FunctionExpression for ParseDnstapFn {
         let value = self.value.resolve(ctx)?;
         let input = value.try_bytes_utf8_lossy()?;
 
-        let mut event = LogEvent::default();
+        let mut value = vrl::value::Value::Object(Default::default());
 
         DnstapParser::parse(
-            &mut event,
+            &mut value,
             BASE64_STANDARD
                 .decode(input.as_bytes())
                 .map_err(|_| format!("{input} is not a valid base64 encoded string"))?
@@ -210,7 +209,7 @@ impl FunctionExpression for ParseDnstapFn {
         )
         .map_err(|e| format!("dnstap parsing failed for {input}: {e}"))?;
 
-        Ok(event.value().clone())
+        Ok(value)
     }
 
     fn type_def(&self, _: &TypeState) -> TypeDef {

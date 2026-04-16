@@ -397,7 +397,7 @@ mod tests {
     use futures_util::stream;
     use http::{StatusCode, request::Parts};
     use serde_json::json;
-    use vector_lib::event::{BatchNotifier, BatchStatus, Event, LogEvent};
+    use vector_lib::event::{BatchNotifier, BatchStatus, Event, LogEvent, OtelLog};
 
     use super::*;
     use crate::{

@@ -92,7 +92,7 @@ fn bench_field_filter(c: &mut Criterion) {
         .map(|i| {
             let mut event = LogEvent::default();
             event.insert(event_path!("the_field"), (i % 10).to_string());
-            Event::from(event)
+            Event::Log(OtelLog::from_log_event(event))
         })
         .collect::<Vec<_>>();
 

@@ -620,7 +620,7 @@ mod tests {
     use vrl::{event_path, path};
 
     use super::*;
-    use crate::event::{Event, LogEvent, MetricKind, OtelMetric};
+    use crate::event::{Event, LogEvent, OtelLog, MetricKind, OtelMetric};
 
     #[test]
     fn get_fields() {

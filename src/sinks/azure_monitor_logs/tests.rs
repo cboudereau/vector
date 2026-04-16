@@ -11,7 +11,7 @@ use super::{
     sink::JsonEncoding,
 };
 use crate::{
-    event::LogEvent,
+    event::{LogEvent, OtelLog},
     sinks::{prelude::*, util::encoding::Encoder},
     test_util::{
         components::{SINK_TAGS, run_and_assert_sink_compliance},

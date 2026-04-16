@@ -234,7 +234,7 @@ mod test {
 
     use crate::{
         config::SinkContext,
-        event::{Event, LogEvent},
+        event::{Event, LogEvent, OtelLog},
         test_util::{
             CountReceiver,
             addr::{next_addr, next_addr_v6},

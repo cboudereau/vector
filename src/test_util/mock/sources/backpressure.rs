@@ -8,7 +8,7 @@ use futures_util::FutureExt;
 use vector_lib::{
     config::{DataType, LogNamespace, SourceOutput},
     configurable::configurable_component,
-    event::{Event, LogEvent},
+    event::{Event, LogEvent, OtelLog},
     schema::Definition,
     source::Source,
 };

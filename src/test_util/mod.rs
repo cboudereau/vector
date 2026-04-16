@@ -85,7 +85,7 @@ macro_rules! log_event {
     ($($key:expr_2021 => $value:expr_2021),*  $(,)?) => {
         #[allow(unused_variables)]
         {
-            let mut event = $crate::event::Event::from($crate::event::LogEvent::default());
+            let mut event = $crate::event::Event::Log($crate::event::OtelLog::new(Default::default()));
             let log = event.as_mut_log();
             $(
                 log.insert($key, $value);
@@ -358,7 +358,7 @@ where
         .map(|_| LogEvent::from_str_legacy(random_string(len)))
         .enumerate()
         .map(update_fn)
-        .map(|log| Event::Log(OtelLog::from_log_event(log)))
+        .map(|log| Event::from(log))
         .collect::<Vec<_>>();
     let stream = map_batch_stream(
         stream::iter(events.clone()),

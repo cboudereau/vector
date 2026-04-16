@@ -282,7 +282,7 @@ impl HttpEventEncoder<BytesMut> for InfluxDbLogsEncoder {
         });
 
         let log = {
-            let mut event = Event::from(log);
+            let mut event = Event::Log(log);
             self.transformer.transform(&mut event);
             event.into_log()
         };
@@ -394,7 +394,7 @@ mod tests {
     use http::{StatusCode, request::Parts};
     use indoc::indoc;
     use vector_lib::{
-        event::{BatchNotifier, BatchStatus, Event, LogEvent},
+        event::{BatchNotifier, BatchStatus, Event, LogEvent, OtelLog},
         lookup::owned_value_path,
     };
 

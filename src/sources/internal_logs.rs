@@ -196,7 +196,7 @@ async fn run(
             Utc::now(),
         );
 
-        if (out.send_event(Event::from(log)).await).is_err() {
+        if (out.send_event(Event::Log(log)).await).is_err() {
             // this wont trigger any infinite loop considering it stops the component
             emit!(StreamClosedError { count: 1 });
             return Err(());

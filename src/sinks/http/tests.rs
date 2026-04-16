@@ -16,7 +16,7 @@ use vector_lib::{
         JsonSerializerConfig, NewlineDelimitedEncoderConfig, TextSerializerConfig,
         encoding::{Framer, FramingConfig},
     },
-    event::{BatchNotifier, BatchStatus, Event, LogEvent},
+    event::{BatchNotifier, BatchStatus, Event, LogEvent, OtelLog},
     finalization::AddBatchNotifier,
 };
 

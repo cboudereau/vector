@@ -470,7 +470,7 @@ mod tests {
     use super::*;
     use crate::{
         event::{
-            Event, LogEvent, Value,
+            Event, LogEvent, OtelLog, Value,
             metric::{Metric, MetricKind, MetricValue}, OtelMetric,
         },
         test_util,

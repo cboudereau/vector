@@ -477,7 +477,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        event::LogEvent,
+        event::{LogEvent, OtelLog},
         test_util::{
             components::{SINK_TAGS, run_and_assert_sink_compliance},
             http::{always_200_response, spawn_blackhole_http_server},

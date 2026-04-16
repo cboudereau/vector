@@ -5,7 +5,7 @@ use vector_lib::transform::TransformOutputsBuf;
 
 use crate::{
     config::{ConfigBuilder, DataType, TransformOutput, build_unit_tests},
-    event::{Event, LogEvent},
+    event::{Event, LogEvent, OtelLog},
     test_util::components::{COMPONENT_MULTIPLE_OUTPUTS_TESTS, init_test},
     transforms::{
         SyncTransform,

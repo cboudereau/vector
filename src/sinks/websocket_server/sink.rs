@@ -450,7 +450,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        event::{Event, LogEvent},
+        event::{Event, LogEvent, OtelLog},
         sinks::websocket_server::{
             buffering::{BufferingAckConfig, ClientKeyConfig},
             config::InternalMetricsConfig,

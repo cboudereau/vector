@@ -656,7 +656,7 @@ mod tests {
     use crate::{
         config::{ConfigBuilder, build_unit_tests},
         event::{
-            LogEvent, Metric, OtelMetric, Value,
+            LogEvent, OtelLog, Metric, OtelMetric, Value,
             metric::{MetricKind, MetricValue},
         },
         metrics::Controller,

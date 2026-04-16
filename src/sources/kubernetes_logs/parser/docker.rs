@@ -173,7 +173,7 @@ pub mod tests {
     use vrl::value;
 
     use super::{super::test_util, *};
-    use crate::{event::LogEvent, test_util::trace_init};
+    use crate::{event::{LogEvent, OtelLog}, test_util::trace_init};
 
     fn make_long_string(base: &str, len: usize) -> String {
         base.chars().cycle().take(len).collect()

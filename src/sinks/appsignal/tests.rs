@@ -2,7 +2,7 @@ use futures::{future::ready, stream};
 use serde::Deserialize;
 use vector_lib::{
     configurable::component::GenerateConfig,
-    event::{Event, LogEvent},
+    event::{Event, LogEvent, OtelLog},
 };
 
 use super::config::AppsignalConfig;

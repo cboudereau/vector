@@ -471,7 +471,7 @@ mod test {
     use super::*;
     use crate::{
         config::log_schema,
-        event::{Event, LogEvent},
+        event::{Event, LogEvent, OtelLog},
         test_util::{
             CountReceiver,
             addr::next_addr,

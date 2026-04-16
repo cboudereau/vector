@@ -1350,7 +1350,7 @@ mod tests {
         codecs::{DecodingConfig, EncodingConfig},
         components::validation::prelude::*,
         config::{SinkConfig, SinkContext, SourceConfig, SourceContext, log_schema},
-        event::{Event, LogEvent},
+        event::{Event, LogEvent, OtelLog},
         sinks::{
             Healthcheck, VectorSink,
             splunk_hec::logs::config::HecLogsSinkConfig,

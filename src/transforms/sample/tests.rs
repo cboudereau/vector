@@ -7,7 +7,7 @@ use vrl::owned_value_path;
 use crate::{
     conditions::{Condition, ConditionalConfig, VrlConfig},
     config::log_schema,
-    event::{Event, EventMetadata, LogEvent, OtelSpan, Value},
+    event::{Event, EventMetadata, LogEvent, OtelLog, OtelSpan, Value},
     template::Template,
     test_util::{components::assert_transform_compliance, random_lines},
     transforms::{

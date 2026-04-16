@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tokio::sync::oneshot::{Receiver, channel};
 use vector_lib::{
     config::{ComponentKey, OutputId},
-    event::{Event, EventArray, EventContainer, LogEvent},
+    event::{Event, EventArray, EventContainer, LogEvent, OtelLog},
 };
 
 use crate::{

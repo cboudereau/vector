@@ -646,7 +646,7 @@ fn build_input_event(input: &TestInput) -> Result<Event, String> {
                         .parse_path_and_insert(path, value.clone())
                         .map_err(|e| e.to_string())?;
                 }
-                Ok(Event::Log(OtelLog::from_log_event(event)))
+                Ok(Event::from(event))
             } else {
                 Err("input type 'log' requires the field 'log_fields'".to_string())
             }

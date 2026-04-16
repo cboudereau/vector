@@ -111,7 +111,7 @@ mod test {
     use crate::{
         conditions::ConditionConfig,
         config::schema::Definition,
-        event::{Event, LogEvent},
+        event::{Event, LogEvent, OtelLog},
         test_util::components::assert_transform_compliance,
         transforms::test::create_topology,
     };

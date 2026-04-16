@@ -17,7 +17,7 @@ async fn emits_lag_time_for_log() {
     emit_and_test(|timestamp| {
         let mut log = LogEvent::from("Log message");
         log.insert("timestamp", timestamp);
-        Event::from(log)
+        Event::Log(OtelLog::from_log_event(log))
     })
     .await;
 }

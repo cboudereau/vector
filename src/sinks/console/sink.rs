@@ -74,7 +74,7 @@ mod test {
 
     use super::*;
     use crate::{
-        event::{Event, LogEvent},
+        event::{Event, LogEvent, OtelLog},
         test_util::components::{SINK_TAGS, run_and_assert_sink_compliance},
     };
 

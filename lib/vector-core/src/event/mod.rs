@@ -516,6 +516,22 @@ impl From<OtelSpan> for Event {
     }
 }
 
+/// Convenience bridge: allows `Event::from(LogEvent::from(...))`.
+///
+/// In production code, prefer `Event::Log(OtelLog::new(...))` or
+/// `Event::Log(OtelLog::from_value_map(...))` for new event construction.
+/// This impl exists for backward compatibility with test code and legacy
+/// codecs that construct LogEvent as an intermediate.
+///
+/// Phase F of the OTLP migration plans to gate this behind `#[cfg(test)]`
+/// once all ~150 downstream test sites are migrated. See
+/// `LEGACY_REMOVAL_PLAN.md`.
+impl From<LogEvent> for Event {
+    fn from(log: LogEvent) -> Self {
+        Event::Log(OtelLog::from_log_event(log))
+    }
+}
+
 pub trait MaybeAsLogMut {
     fn maybe_as_log_mut(&mut self) -> Option<&mut OtelLog>;
 }

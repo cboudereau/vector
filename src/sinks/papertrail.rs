@@ -191,7 +191,7 @@ mod tests {
     use tokio_util::codec::Encoder as _;
     use vector_lib::{
         codecs::JsonSerializerConfig,
-        event::{Event, LogEvent},
+        event::{Event, LogEvent, OtelLog},
     };
 
     use super::*;

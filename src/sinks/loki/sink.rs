@@ -571,7 +571,7 @@ mod tests {
     use futures::stream::StreamExt;
     use vector_lib::{
         codecs::JsonSerializerConfig,
-        event::{Event, LogEvent, ObjectMap, Value},
+        event::{Event, LogEvent, OtelLog, ObjectMap, Value},
         lookup::PathPrefix,
     };
 

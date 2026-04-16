@@ -19,7 +19,7 @@ use vector_lib::{
 
 use crate::{
     config::{Config, ConfigDiff, SinkOuter},
-    event::{Event, EventArray, EventContainer, LogEvent, into_event_stream},
+    event::{Event, EventArray, EventContainer, LogEvent, OtelLog, into_event_stream},
     schema::Definition,
     test_util::{
         mock::{

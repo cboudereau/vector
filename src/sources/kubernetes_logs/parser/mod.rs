@@ -133,7 +133,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        event::{Event, LogEvent},
+        event::{Event, LogEvent, OtelLog},
         test_util::trace_init,
     };
 

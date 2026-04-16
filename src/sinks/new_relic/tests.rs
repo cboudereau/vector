@@ -10,7 +10,7 @@ use vrl::value;
 use super::*;
 use crate::{
     config::{GenerateConfig, SinkConfig, SinkContext},
-    event::{Event, LogEvent, Metric, MetricKind, MetricValue, OtelMetric},
+    event::{Event, LogEvent, OtelLog, Metric, MetricKind, MetricValue, OtelMetric},
     test_util::{
         components::{
             DATA_VOLUME_SINK_TAGS, SINK_TAGS, run_and_assert_data_volume_sink_compliance,

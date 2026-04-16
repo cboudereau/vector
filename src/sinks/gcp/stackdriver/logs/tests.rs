@@ -17,7 +17,7 @@ use super::{
 };
 use crate::{
     config::{GenerateConfig, SinkConfig, SinkContext},
-    event::{LogEvent, Value},
+    event::{LogEvent, OtelLog, Value},
     gcp::GcpAuthenticator,
     sinks::{
         gcp::stackdriver::logs::{

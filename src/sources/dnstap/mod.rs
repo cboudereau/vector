@@ -357,7 +357,7 @@ impl FrameHandler for CommonFrameHandler {
 
 #[cfg(test)]
 mod tests {
-    use vector_lib::event::{Event, LogEvent};
+    use vector_lib::event::{Event, LogEvent, OtelLog};
 
     use super::*;
 

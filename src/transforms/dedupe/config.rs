@@ -93,7 +93,7 @@ mod tests {
 
     use crate::{
         config::schema::Definition,
-        event::{Event, LogEvent, ObjectMap, Value},
+        event::{Event, LogEvent, OtelLog, ObjectMap, Value},
         test_util::components::assert_transform_compliance,
         transforms::{
             dedupe::{

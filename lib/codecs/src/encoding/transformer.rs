@@ -320,7 +320,7 @@ mod tests {
             log.insert("e.a", 1);
             log.insert("e.b", 1);
         }
-        let mut event = Event::from(log);
+        let mut event = Event::Log(OtelLog::from_log_event(log));
         transformer.transform(&mut event);
         let log = event.as_log();
         assert!(!log.parse_path_and_get_value("a.b.c").ok().flatten().is_some());
@@ -357,7 +357,7 @@ mod tests {
             log.insert("h", BTreeMap::new());
             log.insert("i", Vec::<Value>::new());
         }
-        let mut event = Event::from(log);
+        let mut event = Event::Log(OtelLog::from_log_event(log));
         transformer.transform(&mut event);
         let log = event.as_log();
         assert!(log.parse_path_and_get_value("a.b.c").ok().flatten().is_some());
@@ -467,7 +467,7 @@ mod tests {
 
         let schema = schema.with_meaning(parse_target_path("thing.service").unwrap(), "service");
 
-        let mut event = Event::from(log);
+        let mut event = Event::Log(OtelLog::from_log_event(log));
 
         event
             .metadata_mut()
@@ -508,7 +508,7 @@ mod tests {
 
         let schema = schema.with_meaning(parse_target_path("thing.service").unwrap(), "service");
 
-        let mut event = Event::from(log);
+        let mut event = Event::Log(OtelLog::from_log_event(log));
 
         event
             .metadata_mut()

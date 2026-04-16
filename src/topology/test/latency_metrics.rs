@@ -7,7 +7,7 @@ use vector_lib::metrics::Controller;
 
 use crate::{
     config::Config,
-    event::{Event, LogEvent, Metric, MetricValue},
+    event::{Event, LogEvent, OtelLog, Metric, MetricValue},
     test_util::{
         mock::{
             basic_source,

@@ -3,7 +3,7 @@ use vector_lib::{configurable::component::GenerateConfig, lookup::lookup_v2::Opt
 use vrl::value::{ObjectMap, Value};
 
 use crate::{
-    event::{Event, LogEvent},
+    event::{Event, LogEvent, OtelLog},
     sinks::pulsar::config::PulsarSinkConfig,
 };
 

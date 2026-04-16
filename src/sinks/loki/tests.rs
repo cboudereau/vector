@@ -29,7 +29,7 @@ async fn interpolate_labels() {
     let client = config.build_client(cx).unwrap();
     let mut sink = LokiSink::new(config, client).unwrap();
 
-    let mut e1 = Event::Log(OtelLog::from_log_event(LogEvent::from("hello world")));
+    let mut e1 = Event::from(LogEvent::from("hello world"));
 
     e1.as_mut_log().insert("foo", "bar");
 
@@ -70,7 +70,7 @@ async fn use_label_from_dropped_fields() {
     let client = config.build_client(cx).unwrap();
     let mut sink = LokiSink::new(config, client).unwrap();
 
-    let mut e1 = Event::Log(OtelLog::from_log_event(LogEvent::from("hello world")));
+    let mut e1 = Event::from(LogEvent::from("hello world"));
 
     e1.as_mut_log().insert("foo", "bar");
 
@@ -194,7 +194,7 @@ async fn structured_metadata_as_json() {
     let client = config.build_client(cx).unwrap();
     let mut sink = LokiSink::new(config, client).unwrap();
 
-    let mut e1 = Event::Log(OtelLog::from_log_event(LogEvent::from("hello world")));
+    let mut e1 = Event::from(LogEvent::from("hello world"));
     e1.as_mut_log().insert("foo", "bar");
 
     let event = sink.encoder.encode_event(e1).unwrap();

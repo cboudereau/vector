@@ -531,7 +531,7 @@ mod tests {
     use similar_asserts::assert_eq;
     use vector_lib::{
         codecs::JsonSerializerConfig,
-        event::{EventMetadata, LogEvent, OtelSpan},
+        event::{EventMetadata, LogEvent, OtelLog, OtelSpan},
         sink::VectorSink,
     };
     use vrl::value::Value;

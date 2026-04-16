@@ -13,7 +13,7 @@ use vector_lib::{
 use super::{config::AzureBlobSinkConfig, request_builder::AzureBlobRequestOptions};
 use crate::{
     codecs::{Encoder, EncodingConfigWithFraming},
-    event::{Event, LogEvent},
+    event::{Event, LogEvent, OtelLog},
     sinks::util::{
         Compression,
         request_builder::{EncodeResult, RequestBuilder},

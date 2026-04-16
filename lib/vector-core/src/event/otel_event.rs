@@ -3729,7 +3729,7 @@ mod tests {
             S: tracing::Subscriber + for<'a> LookupSpan<'a>,
         {
             fn on_event(&self, event: &tracing::Event<'_>, _: Context<'_, S>) {
-                *self.from_log.lock().unwrap() = Some(LogEvent::from(event));
+                *self.from_log.lock().unwrap() = Some(LogEvent::Log(OtelLog::from_log_event(event)));
                 *self.from_otel.lock().unwrap() = Some(OtelLog::from_tracing_event(event));
             }
         }

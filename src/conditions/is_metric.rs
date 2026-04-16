@@ -17,7 +17,7 @@ pub(crate) fn check_is_metric_with_context(e: Event) -> (Result<(), String>, Eve
 mod test {
     use super::check_is_metric;
     use crate::event::{
-        Event, LogEvent, OtelMetric,
+        Event, LogEvent, OtelLog, OtelMetric,
         metric::MetricKind,
     };
     use opentelemetry_proto::tonic::metrics::v1::Metric as OtelMetricProto;

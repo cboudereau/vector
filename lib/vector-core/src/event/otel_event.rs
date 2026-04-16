@@ -1313,6 +1313,37 @@ impl OtelLog {
         }
     }
 
+    pub fn from_str_legacy(msg: impl Into<String>) -> Self {
+        let mut log = Self::from(msg.into());
+        log.record_mut().time_unix_nano = chrono::Utc::now()
+            .timestamp_nanos_opt()
+            .unwrap_or(0)
+            .max(0) as u64;
+        log
+    }
+
+    pub fn from_map(map: ObjectMap, metadata: EventMetadata) -> Self {
+        Self::from_value_map(Value::Object(map), metadata)
+    }
+
+    pub fn new_with_metadata(metadata: EventMetadata) -> Self {
+        Self {
+            record: LogRecord::default(),
+            resource: None,
+            scope: None,
+            metadata,
+        }
+    }
+
+    pub fn parse_path_and_insert(
+        &mut self,
+        path: impl AsRef<str>,
+        value: impl Into<Value>,
+    ) -> Result<Option<Value>, vrl::path::PathParseError> {
+        let target_path = vrl::path::parse_target_path(path.as_ref())?;
+        Ok(self.insert(&target_path, value))
+    }
+
 }
 
 // -- OtelSpan --
@@ -2978,6 +3009,56 @@ impl EventDataEq for OtelMetric {
         self.metric == other.metric
             && self.resource == other.resource
             && self.scope == other.scope
+    }
+}
+
+impl Default for OtelLog {
+    fn default() -> Self {
+        Self::new(LogRecord::default())
+    }
+}
+
+impl From<&str> for OtelLog {
+    fn from(s: &str) -> Self {
+        Self::from_bytes(bytes::Bytes::from(s.to_owned()))
+    }
+}
+
+impl From<String> for OtelLog {
+    fn from(s: String) -> Self {
+        Self::from_bytes(bytes::Bytes::from(s))
+    }
+}
+
+impl From<bytes::Bytes> for OtelLog {
+    fn from(b: bytes::Bytes) -> Self {
+        Self::from_bytes(b)
+    }
+}
+
+impl From<Value> for OtelLog {
+    fn from(value: Value) -> Self {
+        Self::from_value_map(value, EventMetadata::default())
+    }
+}
+
+impl From<ObjectMap> for OtelLog {
+    fn from(map: ObjectMap) -> Self {
+        Self::from_value_map(Value::Object(map), EventMetadata::default())
+    }
+}
+
+impl From<std::collections::BTreeMap<String, Value>> for OtelLog {
+    fn from(map: std::collections::BTreeMap<String, Value>) -> Self {
+        let obj: ObjectMap = map.into_iter().map(|(k, v)| (k.into(), v)).collect();
+        Self::from(obj)
+    }
+}
+
+impl From<std::collections::HashMap<vrl::prelude::KeyString, Value>> for OtelLog {
+    fn from(map: std::collections::HashMap<vrl::prelude::KeyString, Value>) -> Self {
+        let obj: ObjectMap = map.into_iter().collect();
+        Self::from(obj)
     }
 }
 

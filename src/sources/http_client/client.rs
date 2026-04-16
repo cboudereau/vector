@@ -19,7 +19,7 @@ use vector_lib::{
     compile_vrl,
     config::{LogNamespace, SourceOutput},
     configurable::configurable_component,
-    event::{Event, LogEvent, VrlTarget},
+    event::{Event, OtelLog, VrlTarget},
 };
 use vrl::{
     compiler::{CompileConfig, Function, Program, runtime::Runtime},
@@ -461,7 +461,7 @@ impl HttpClientBuilder for HttpClientContext {
 }
 
 fn resolve_vrl(value: &str, program: &Program) -> Option<String> {
-    let mut target = VrlTarget::new(Event::from(LogEvent::default()), program.info(), false);
+    let mut target = VrlTarget::new(Event::Log(OtelLog::new(Default::default())), program.info(), false);
     let timezone = TimeZone::default();
 
     Runtime::default()

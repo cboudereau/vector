@@ -219,27 +219,23 @@ public API.
 Phase F is **not a session** — it is an iterative campaign across many
 sessions. Recommended order:
 
-**F.1 — One real production caller (15 min)**
-- Migrate `http_client/client.rs:464` to construct `OtelLog` directly
-  for the empty VRL target.
+**F.1 — One real production caller** — **DONE** (`b53ce0c`)
+- `http_client/client.rs:464` now uses `OtelLog::new(Default::default())`.
 
-**F.2 — `Discriminant::from_otel_log` (~2 hours)**
-- Add `Discriminant::from_otel_log(&OtelLog, &[impl AsRef<str>])`.
-- Migrate `transforms/aggregate`, `transforms/dedupe`,
-  `transforms/reduce` callers to use it where they hold OtelLog.
-- Keep `from_log_event` for tests that still use `LogEvent`.
+**F.2 — `Discriminant::from_otel_log`** — **ALREADY DONE** (pre-existing)
+- `from_otel_log` already existed and was used by reduce transform.
+- `from_log_event` has zero external callers (only discriminant.rs tests).
 
-**F.3 — Extend OtelMetric constructors (~half day)**
-- Add `OtelMetric::new_histogram`, `new_summary`, `new_distribution`,
-  `new_set`. Cover the 5 `MetricValue` variants currently only
-  reachable via `from_legacy_metric`.
-- Add tests verifying parity with `from_legacy_metric` for each.
+**F.3 — Extend OtelMetric constructors** — **DONE** (`eb6dfbf`)
+- Added `new_histogram`, `new_summary`, `new_set`, `new_distribution`.
+- Parity tests: histogram + summary match `from_legacy_metric` output.
 
-**F.4 — Delete `Event::from(TraceEvent)` (~30 min)**
-- Smallest of the three bridges. 1 test caller.
-- Migrate the 2 `TraceEvent::from` test sites to `OtelSpan::from_value_map`.
-- Delete `TraceEvent::from_*` impls + `Event::from(TraceEvent)`.
-- Delete `lib/vector-core/src/event/trace.rs` (192 lines).
+**F.4 — Delete `Event::from(TraceEvent)` + bridge** — **DONE** (`b5befe5`)
+- 10 test callers migrated to `OtelSpan::from_value_map`.
+- GraphQL API `Trace` struct now holds `OtelSpan` directly.
+- Deleted `to_trace_event`, `from_trace_event`, `From<TraceEvent> for Event`,
+  `From<TraceEvent> for EventArray`.
+- `trace.rs` type kept for now (proto.rs backward compat encoding).
 
 **F.5 — Delete `Event::from(Metric)` (~half day)**
 - 18 test callers. Each one does `Event::from(Metric::new(...))`.

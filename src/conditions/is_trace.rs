@@ -17,17 +17,19 @@ pub(crate) fn check_is_trace_with_context(e: Event) -> (Result<(), String>, Even
 mod test {
     use super::check_is_trace;
     use crate::event::{
-        Event, LogEvent, OtelSpan, TraceEvent,
+        Event, EventMetadata, OtelSpan,
         metric::{Metric, MetricKind, MetricValue},
     };
     use opentelemetry_proto::tonic::trace::v1::Span;
+    use vrl::value::Value;
 
     #[test]
     fn is_trace_basic() {
         assert!(
-            check_is_trace(Event::from(TraceEvent::from(LogEvent::from(
-                "just a trace"
-            ))))
+            check_is_trace(Event::Trace(OtelSpan::from_value_map(
+                Value::from("just a trace"),
+                EventMetadata::default(),
+            )))
             .0
         );
         assert!(

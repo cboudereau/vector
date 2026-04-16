@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use chrono::{DateTime, TimeZone, Utc};
 use prost::Message;
-use vector_core::event::{Event, EventMetadata, OtelSpan, TraceEvent};
+use vector_core::event::{Event, EventMetadata, OtelSpan};
 use vrl::{
     event_path,
     value::{KeyString, Value},
@@ -105,7 +105,7 @@ struct ResourceSpan {
 // insert all attributes into log root, just like what datadog_agent/traces does.
 impl ResourceSpan {
     fn into_event(self, now: DateTime<Utc>) -> Event {
-        let mut trace = TraceEvent::default();
+        let mut trace = OtelSpan::new(Default::default());
         let span = self.span;
         trace.insert(
             event_path!(TRACE_ID_KEY),

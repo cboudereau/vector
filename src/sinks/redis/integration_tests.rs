@@ -11,7 +11,7 @@ use super::config::{
     DataTypeConfig, ListMethod, ListOption, RedisSinkConfig, SortedSetMethod, SortedSetOption,
 };
 use crate::{
-    event::{BatchNotifier, BatchStatus, Event, Metric, MetricKind, MetricValue, TraceEvent},
+    event::{BatchNotifier, BatchStatus, Event, Metric, MetricKind, MetricValue, OtelSpan},
     serde::OneOrMany,
     sinks::prelude::*,
     test_util::{
@@ -650,7 +650,7 @@ async fn redis_sink_traces() {
         let (sink, _) = config.build(cx).await.unwrap();
 
         // Create a  trace event
-        let mut trace = TraceEvent::default();
+        let mut trace = OtelSpan::new(Default::default());
         trace.insert("name", "test_trace");
         trace.insert("service", "redis_test");
 

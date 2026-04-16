@@ -67,7 +67,7 @@ pub(crate) fn from_tap_payload_to_output_events(t: TapPayload) -> Vec<OutputEven
         TapPayload::Trace(output, trace_array) => trace_array
             .into_iter()
             .map(|trace| {
-                OutputEventsPayload::Trace(Trace::new(output.clone(), trace.to_trace_event()))
+                OutputEventsPayload::Trace(Trace::new(output.clone(), trace))
             })
             .collect(),
     }

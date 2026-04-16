@@ -19,8 +19,6 @@ use vector_common::{
 };
 use vrl::value::{ObjectMap, Value};
 
-use super::TraceEvent;
-
 use super::{
     BatchNotifier, EstimatedJsonEncodedSizeOf, EventFinalizer, EventMetadata, LogEvent,
 };
@@ -1360,15 +1358,6 @@ impl OtelSpan {
         }
     }
 
-    /// Convert a legacy `TraceEvent` into an `OtelSpan`.
-    ///
-    /// Thin wrapper over `from_value_map`/`apply_value_legacy_layout` — see
-    /// that method for the full field-routing contract.
-    pub fn from_trace_event(trace: super::TraceEvent) -> Self {
-        let (map, metadata) = trace.into_parts();
-        Self::from_value_map(Value::Object(map), metadata)
-    }
-
     /// Construct an `OtelSpan` from a legacy-layout Value + metadata.
     ///
     /// Routes native span fields (`name`, `trace_id`, `span_id`,
@@ -1767,19 +1756,6 @@ impl OtelSpan {
         Ok(self.get(&target_path))
     }
 
-    /// Lossy projection of this OTel span event into a legacy `LogEvent`.
-    ///
-    /// Span name becomes `name`, attributes become top-level fields, and
-    /// Kept for backward compat. New code should use `to_value_legacy_layout()`.
-    /// Convert this OtelSpan into a legacy `TraceEvent`.
-    /// Builds the Value tree directly without constructing an intermediate LogEvent bridge.
-    pub fn to_trace_event(&self) -> TraceEvent {
-        let map = match self.to_value_legacy_layout() {
-            Value::Object(m) => m,
-            _ => ObjectMap::new(),
-        };
-        TraceEvent::from(LogEvent::from_map(map, self.metadata.clone()))
-    }
 }
 
 // -- OtelMetric --

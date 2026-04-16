@@ -529,12 +529,6 @@ impl From<LogEvent> for Event {
     }
 }
 
-impl From<TraceEvent> for Event {
-    fn from(trace: TraceEvent) -> Self {
-        Event::Trace(OtelSpan::from_trace_event(trace))
-    }
-}
-
 pub trait MaybeAsLogMut {
     fn maybe_as_log_mut(&mut self) -> Option<&mut OtelLog>;
 }

@@ -1,5 +1,5 @@
 use async_graphql::Object;
-use vector_lib::{encode_logfmt, event, tap::topology::TapOutput};
+use vector_lib::{encode_logfmt, event::OtelSpan, tap::topology::TapOutput};
 use vrl::event_path;
 
 use super::EventEncodingType;
@@ -7,11 +7,11 @@ use super::EventEncodingType;
 #[derive(Debug, Clone)]
 pub struct Trace {
     output: TapOutput,
-    event: event::TraceEvent,
+    event: OtelSpan,
 }
 
 impl Trace {
-    pub const fn new(output: TapOutput, event: event::TraceEvent) -> Self {
+    pub fn new(output: TapOutput, event: OtelSpan) -> Self {
         Self { output, event }
     }
 }
@@ -38,19 +38,22 @@ impl Trace {
     async fn string(&self, encoding: EventEncodingType) -> String {
         match encoding {
             EventEncodingType::Json => serde_json::to_string(&self.event)
-                .expect("JSON serialization of log event failed. Please report."),
+                .expect("JSON serialization of trace event failed. Please report."),
             EventEncodingType::Yaml => serde_yaml::to_string(&self.event)
-                .expect("YAML serialization of log event failed. Please report."),
-            EventEncodingType::Logfmt => encode_logfmt::encode_map(self.event.as_map())
-                .expect("logfmt serialization of log event failed. Please report."),
+                .expect("YAML serialization of trace event failed. Please report."),
+            EventEncodingType::Logfmt => {
+                let map = self.event.as_map().unwrap_or_default();
+                encode_logfmt::encode_map(&map)
+                    .expect("logfmt serialization of trace event failed. Please report.")
+            }
         }
     }
 
     /// Get JSON field data on the trace event, by field name
     async fn json(&self, field: String) -> Option<String> {
         self.event.get(event_path!(field.as_str())).map(|field| {
-            serde_json::to_string(field)
-                .expect("JSON serialization of log event field failed. Please report.")
+            serde_json::to_string(&field)
+                .expect("JSON serialization of trace event field failed. Please report.")
         })
     }
 }

@@ -88,14 +88,15 @@ mod tests {
     use crate::transforms::test::create_topology;
     use tokio::sync::mpsc;
     use tokio_stream::wrappers::ReceiverStream;
-    use vector_lib::event::{OtelLog, TraceEvent};
+    use vector_lib::event::{EventMetadata, OtelLog, OtelSpan};
+    use vrl::value::Value;
 
     #[test]
     fn generate_config() {
         crate::test_util::test_generate_config::<TraceToLogConfig>();
     }
 
-    async fn do_transform(trace: TraceEvent) -> Option<OtelLog> {
+    async fn do_transform(trace: OtelSpan) -> Option<OtelLog> {
         assert_transform_compliance(async move {
             let config = TraceToLogConfig {
                 log_namespace: Some(false),
@@ -103,7 +104,7 @@ mod tests {
             let (tx, rx) = mpsc::channel(1);
             let (topology, mut out) = create_topology(ReceiverStream::new(rx), config).await;
 
-            tx.send(trace.into()).await.unwrap();
+            tx.send(Event::Trace(trace)).await.unwrap();
 
             let result = out.recv().await;
 
@@ -119,16 +120,17 @@ mod tests {
 
     #[tokio::test]
     async fn transform_trace() {
-        use vrl::btreemap;
+        let trace = OtelSpan::from_value_map(
+            Value::Object(vrl::value::ObjectMap::from_iter([
+                ("span_id".into(), Value::from("abc123")),
+                ("trace_id".into(), Value::from("xyz789")),
+                ("span_name".into(), Value::from("test-span")),
+                ("service".into(), Value::from("my-service")),
+            ])),
+            EventMetadata::default(),
+        );
 
-        let trace = TraceEvent::from(btreemap! {
-            "span_id" => "abc123",
-            "trace_id" => "xyz789",
-            "span_name" => "test-span",
-            "service" => "my-service",
-        });
-
-        let (expected_map, _) = trace.clone().into_parts();
+        let expected_map = trace.as_map().unwrap();
 
         let log = do_transform(trace).await.unwrap();
         let actual_map = log

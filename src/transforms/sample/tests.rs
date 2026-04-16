@@ -7,7 +7,7 @@ use vrl::owned_value_path;
 use crate::{
     conditions::{Condition, ConditionalConfig, VrlConfig},
     config::log_schema,
-    event::{Event, LogEvent, TraceEvent, Value},
+    event::{Event, EventMetadata, LogEvent, OtelSpan, Value},
     template::Template,
     test_util::{components::assert_transform_compliance, random_lines},
     transforms::{
@@ -279,8 +279,10 @@ fn sampler_adds_sampling_rate_to_event() {
 
 #[test]
 fn handles_trace_event() {
-    let event: TraceEvent = LogEvent::from("trace").into();
-    let trace = Event::from(event);
+    let trace = Event::Trace(OtelSpan::from_value_map(
+        Value::from("trace"),
+        EventMetadata::default(),
+    ));
 
     let mut sampler = Sample::new(
         "sample".to_string(),

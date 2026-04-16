@@ -5,7 +5,7 @@ use quickcheck::{Arbitrary, Gen, empty_shrinker};
 use vrl::value::{ObjectMap, Value};
 
 use super::super::{
-    Event, EventMetadata, LogEvent, Metric, MetricKind, MetricValue, StatisticKind, TraceEvent,
+    Event, EventMetadata, LogEvent, Metric, MetricKind, MetricValue, OtelSpan, StatisticKind,
     metric::{
         Bucket, MetricData, MetricName, MetricSeries, MetricTags, MetricTime,
         Quantile, Sample,
@@ -88,18 +88,20 @@ impl Arbitrary for LogEvent {
     }
 }
 
-impl Arbitrary for TraceEvent {
+impl Arbitrary for OtelSpan {
     fn arbitrary(g: &mut Gen) -> Self {
-        Self::from(LogEvent::arbitrary(g))
+        let log = LogEvent::arbitrary(g);
+        let (value, metadata) = log.into_parts();
+        OtelSpan::from_value_map(value, metadata)
     }
 
     fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
-        let (fields, metadata) = self.clone().into_parts();
+        let map = self.as_map().unwrap_or_default();
+        let metadata = self.metadata().clone();
 
         Box::new(
-            fields
-                .shrink()
-                .map(move |x| TraceEvent::from_parts(x, metadata.clone())),
+            map.shrink()
+                .map(move |x| OtelSpan::from_value_map(Value::Object(x), metadata.clone())),
         )
     }
 }

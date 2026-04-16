@@ -7,7 +7,7 @@ use vrl::event_path;
 use super::*;
 use crate::{
     config::{DataType, SourceOutput},
-    event::{Event, LogEvent, Metric, MetricKind, MetricValue, TraceEvent},
+    event::{Event, LogEvent, Metric, MetricKind, MetricValue, OtelSpan},
     metrics::{self, Controller},
 };
 
@@ -42,9 +42,9 @@ async fn emits_lag_time_for_metric() {
 #[ignore = "Lag time computation disabled for OTel event types"]
 async fn emits_lag_time_for_trace() {
     emit_and_test(|timestamp| {
-        let mut trace = TraceEvent::default();
+        let mut trace = OtelSpan::new(Default::default());
         trace.insert(event_path!("timestamp"), timestamp);
-        Event::from(trace)
+        Event::Trace(trace)
     })
     .await;
 }
@@ -273,10 +273,10 @@ async fn per_signal_backpressure_isolation() {
         .expect("log send must not block when metric channel is full")
         .expect("log send must succeed");
 
-    let mut trace = TraceEvent::default();
+    let mut trace = OtelSpan::new(Default::default());
     trace.insert(event_path!("msg"), "hi");
     let trace_future =
-        sender.send_batch_named("traces", vec![Event::from(trace)]);
+        sender.send_batch_named("traces", vec![Event::Trace(trace)]);
     timeout(StdDuration::from_millis(200), trace_future)
         .await
         .expect("trace send must not block when metric channel is full")

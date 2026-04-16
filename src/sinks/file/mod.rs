@@ -531,7 +531,7 @@ mod tests {
     use similar_asserts::assert_eq;
     use vector_lib::{
         codecs::JsonSerializerConfig,
-        event::{LogEvent, TraceEvent},
+        event::{EventMetadata, LogEvent, OtelSpan},
         sink::VectorSink,
     };
     use vrl::value::Value;
@@ -900,11 +900,18 @@ mod tests {
     async fn run_assert_trace_sink(config: &FileSinkConfig, events: Vec<String>) {
         run_assert_sink(
             config,
-            events
-                .into_iter()
-                .map(LogEvent::from)
-                .map(TraceEvent::from)
-                .map(Event::from),
+            events.into_iter().map(|s| {
+                // Build a trace event with the string as a named span
+                // attribute so it survives serialization (OtelSpan
+                // serializes via to_value_legacy_layout which maps
+                // attributes to top-level fields).
+                let mut map = vrl::value::ObjectMap::new();
+                map.insert("message".into(), Value::from(s));
+                Event::Trace(OtelSpan::from_value_map(
+                    Value::Object(map),
+                    EventMetadata::default(),
+                ))
+            }),
         )
         .await;
     }

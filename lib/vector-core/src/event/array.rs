@@ -16,7 +16,7 @@ use vector_common::{
 
 use super::{
     EstimatedJsonEncodedSizeOf, Event, EventDataEq, EventFinalizer, EventMetadata, EventMutRef,
-    EventRef, LogEvent, Metric, OtelLog, OtelMetric, OtelSpan, TraceEvent,
+    EventRef, LogEvent, Metric, OtelLog, OtelMetric, OtelSpan,
 };
 
 /// The type alias for an array of `OtelLog` elements.
@@ -216,12 +216,6 @@ impl From<LogEvent> for EventArray {
 impl From<Metric> for EventArray {
     fn from(metric: Metric) -> Self {
         Event::from(metric).into()
-    }
-}
-
-impl From<TraceEvent> for EventArray {
-    fn from(trace: TraceEvent) -> Self {
-        Event::from(trace).into()
     }
 }
 

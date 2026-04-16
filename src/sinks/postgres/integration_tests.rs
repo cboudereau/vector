@@ -13,7 +13,7 @@ use vrl::event_path;
 
 use crate::{
     config::{SinkConfig, SinkContext},
-    event::{ObjectMap, TraceEvent, Value},
+    event::{ObjectMap, OtelSpan, Value},
     sinks::{postgres::PostgresConfig, util::test::load_sink},
     test_util::{
         addr::next_addr,
@@ -96,8 +96,8 @@ fn create_span(resource: &str) -> ObjectMap {
     ])
 }
 
-pub fn create_trace(resource: &str) -> TraceEvent {
-    let mut t = TraceEvent::default();
+pub fn create_trace(resource: &str) -> OtelSpan {
+    let mut t = OtelSpan::new(Default::default());
     t.insert(event_path!("trace_id"), Value::Integer(123));
     t.insert(
         event_path!("spans"),

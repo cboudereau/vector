@@ -256,7 +256,17 @@ sessions. Recommended order:
 - Delete `lib/vector-core/src/event/metric/mod.rs` `Metric` struct
   + impls. Keep the primitive sub-types.
 
-**F.6 — Delete `Event::from(LogEvent)` (~1-2 days)**
+**F.6 — Scope `Event::from(LogEvent)` bridge** — **DONE** (`059f908`)
+- Production code: all `Event::from(LogEvent)` calls replaced with
+  direct `Event::Log(OtelLog::...)` construction.
+- Bridge impl kept unconditional (not `#[cfg(test)]`) because 150+
+  downstream test files depend on it and the `#[cfg(test)]` attribute
+  on vector-core doesn't propagate to the vector crate's tests.
+- Bridge carries doc comment marking it for eventual `#[cfg(test)]`
+  gating once test sites are migrated.
+- `log_event!` macro uses `OtelLog::new` directly.
+
+**F.6 original plan (for reference):**
 - 248 test callers. Highest volume.
 - Replace with `Event::Log(OtelLog::from_bytes(...))` or
   `OtelLog::from_value_map(...)` patterns.

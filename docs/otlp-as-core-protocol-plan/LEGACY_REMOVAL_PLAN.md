@@ -237,7 +237,15 @@ sessions. Recommended order:
   `From<TraceEvent> for EventArray`.
 - `trace.rs` type kept for now (proto.rs backward compat encoding).
 
-**F.5 — Delete `Event::from(Metric)` (~half day)**
+**F.5 — Delete `Event::from(Metric)` bridge** — **DONE** (`ffe8423`)
+- 60+ callers across 40 files migrated to explicit
+  `Event::Metric(OtelMetric::from_legacy_metric(...))` or direct
+  OtelMetric constructors.
+- `impl From<Metric> for Event` deleted.
+- `Metric` struct kept (used by MetricSet normalizer + OtelMetric
+  round-trip internally).
+
+**F.5 original plan (for reference):**
 - 18 test callers. Each one does `Event::from(Metric::new(...))`.
 - Replace with `Event::Metric(OtelMetric::new_<variant>(...))`.
 - Delete `Event::from(Metric)` impl.

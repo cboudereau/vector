@@ -476,7 +476,7 @@ mod tests {
     use super::{ControlMessage, Fanout};
     use crate::{
         config::ComponentKey,
-        event::{Event, EventArray, EventContainer, LogEvent, OtelLog},
+        event::{Event, EventArray, EventContainer, OtelLog},
         test_util::{collect_ready, collect_ready_events},
     };
 
@@ -904,8 +904,8 @@ mod tests {
         }
     }
 
-    fn make_events_inner(count: usize) -> impl Iterator<Item = LogEvent> {
-        (0..count).map(|i| LogEvent::from(format!("line {i}")))
+    fn make_events_inner(count: usize) -> impl Iterator<Item = OtelLog> {
+        (0..count).map(|i| OtelLog::from(format!("line {i}")))
     }
 
     fn make_events(count: usize) -> Vec<Event> {

@@ -16,7 +16,7 @@ use crate::{
     SourceSender,
     config::{SourceConfig, SourceContext, SourceOutput},
     event::{
-        EventMetadata, Metric, MetricKind,
+        Event, EventMetadata, Metric, MetricKind, OtelMetric,
         metric::{MetricData, MetricName, MetricSeries, MetricTime, MetricValue},
     },
     internal_events::{EventsReceived, StreamClosedError},
@@ -185,7 +185,8 @@ impl StaticMetrics {
                 .into_iter()
                 .map(|metric| metric.with_timestamp(Some(Utc::now())));
 
-            if (self.out.send_batch(batch).await).is_err() {
+            let events: Vec<Event> = batch.map(|m| Event::Metric(OtelMetric::from_legacy_metric(m))).collect();
+            if (self.out.send_batch(events).await).is_err() {
                 emit!(StreamClosedError { count });
                 return Err(());
             }

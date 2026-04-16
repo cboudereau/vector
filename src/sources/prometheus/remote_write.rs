@@ -205,7 +205,7 @@ impl HttpSource for RemoteWriteSource {
 mod test {
     use chrono::{SubsecRound as _, Utc};
     use vector_lib::{
-        event::{EventStatus, Metric, MetricKind, MetricValue},
+        event::{EventStatus, Metric, MetricKind, MetricValue, OtelMetric},
         metric_tags,
     };
 
@@ -288,42 +288,46 @@ mod test {
     fn make_events() -> Vec<Event> {
         let timestamp = || Utc::now().trunc_subsecs(3);
         vec![
-            Metric::new(
-                "counter_1",
-                MetricKind::Absolute,
-                MetricValue::Counter { value: 42.0 },
-            )
-            .with_timestamp(Some(timestamp()))
-            .into(),
-            Metric::new(
-                "gauge_2",
-                MetricKind::Absolute,
-                MetricValue::Gauge { value: 41.0 },
-            )
-            .with_timestamp(Some(timestamp()))
-            .into(),
-            Metric::new(
-                "histogram_3",
-                MetricKind::Absolute,
-                MetricValue::AggregatedHistogram {
-                    buckets: vector_lib::buckets![ 2.3 => 11, 4.2 => 85 ],
-                    count: 96,
-                    sum: 156.2,
-                },
-            )
-            .with_timestamp(Some(timestamp()))
-            .into(),
-            Metric::new(
-                "summary_4",
-                MetricKind::Absolute,
-                MetricValue::AggregatedSummary {
-                    quantiles: vector_lib::quantiles![ 0.1 => 1.2, 0.5 => 3.6, 0.9 => 5.2 ],
-                    count: 23,
-                    sum: 8.6,
-                },
-            )
-            .with_timestamp(Some(timestamp()))
-            .into(),
+            Event::Metric(OtelMetric::from_legacy_metric(
+                Metric::new(
+                    "counter_1",
+                    MetricKind::Absolute,
+                    MetricValue::Counter { value: 42.0 },
+                )
+                .with_timestamp(Some(timestamp())),
+            )),
+            Event::Metric(OtelMetric::from_legacy_metric(
+                Metric::new(
+                    "gauge_2",
+                    MetricKind::Absolute,
+                    MetricValue::Gauge { value: 41.0 },
+                )
+                .with_timestamp(Some(timestamp())),
+            )),
+            Event::Metric(OtelMetric::from_legacy_metric(
+                Metric::new(
+                    "histogram_3",
+                    MetricKind::Absolute,
+                    MetricValue::AggregatedHistogram {
+                        buckets: vector_lib::buckets![ 2.3 => 11, 4.2 => 85 ],
+                        count: 96,
+                        sum: 156.2,
+                    },
+                )
+                .with_timestamp(Some(timestamp())),
+            )),
+            Event::Metric(OtelMetric::from_legacy_metric(
+                Metric::new(
+                    "summary_4",
+                    MetricKind::Absolute,
+                    MetricValue::AggregatedSummary {
+                        quantiles: vector_lib::quantiles![ 0.1 => 1.2, 0.5 => 3.6, 0.9 => 5.2 ],
+                        count: 23,
+                        sum: 8.6,
+                    },
+                )
+                .with_timestamp(Some(timestamp())),
+            )),
         ]
     }
 
@@ -465,30 +469,32 @@ mod test {
         let timestamp = Utc::now().trunc_subsecs(3);
 
         let events = vec![
-            Metric::new(
-                "gauge_2",
-                MetricKind::Absolute,
-                MetricValue::Gauge { value: 41.0 },
-            )
-            .with_timestamp(Some(timestamp))
-            .with_tags(Some(metric_tags! {
-                "code" => "200".to_string(),
-                "code" => "success".to_string(),
-            }))
-            .into(),
+            Event::Metric(OtelMetric::from_legacy_metric(
+                Metric::new(
+                    "gauge_2",
+                    MetricKind::Absolute,
+                    MetricValue::Gauge { value: 41.0 },
+                )
+                .with_timestamp(Some(timestamp))
+                .with_tags(Some(metric_tags! {
+                    "code" => "200".to_string(),
+                    "code" => "success".to_string(),
+                })),
+            )),
         ];
 
         let expected = vec![
-            Metric::new(
-                "gauge_2",
-                MetricKind::Absolute,
-                MetricValue::Gauge { value: 41.0 },
-            )
-            .with_timestamp(Some(timestamp))
-            .with_tags(Some(metric_tags! {
-                "code" => "success".to_string(),
-            }))
-            .into(),
+            Event::Metric(OtelMetric::from_legacy_metric(
+                Metric::new(
+                    "gauge_2",
+                    MetricKind::Absolute,
+                    MetricValue::Gauge { value: 41.0 },
+                )
+                .with_timestamp(Some(timestamp))
+                .with_tags(Some(metric_tags! {
+                    "code" => "success".to_string(),
+                })),
+            )),
         ];
 
         let output = test_util::spawn_collect_ready(

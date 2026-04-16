@@ -240,7 +240,7 @@ mod tests {
     use super::*;
     use crate::{
         event::{
-            Event, Metric,
+            Event, Metric, OtelMetric,
             metric::{MetricKind, MetricValue, StatisticKind},
         },
         sinks::util::test::{build_test_server, load_sink},
@@ -295,7 +295,7 @@ mod tests {
 
         // Make our test metrics.
         let metrics = vec![
-            Event::from(
+            Event::Metric(OtelMetric::from_legacy_metric(
                 Metric::new(
                     "metric1",
                     MetricKind::Incremental,
@@ -307,8 +307,8 @@ mod tests {
                         .single()
                         .expect("invalid timestamp"),
                 )),
-            ),
-            Event::from(
+            )),
+            Event::Metric(OtelMetric::from_legacy_metric(
                 Metric::new(
                     "metric2",
                     MetricKind::Absolute,
@@ -323,7 +323,7 @@ mod tests {
                         .single()
                         .expect("invalid timestamp"),
                 )),
-            ),
+            )),
         ];
 
         let len = metrics.len();
@@ -360,7 +360,7 @@ mod tests {
         tokio::spawn(server);
 
         // Make our test metrics.
-        let metrics = vec![Event::from(
+        let metrics = vec![Event::Metric(OtelMetric::from_legacy_metric(
             Metric::new(
                 "metric1",
                 MetricKind::Incremental,
@@ -375,7 +375,7 @@ mod tests {
                     .single()
                     .expect("invalid timestamp"),
             )),
-        )];
+        ))];
 
         let len = metrics.len();
         run_and_assert_sink_compliance(sink, stream::iter(metrics), &HTTP_SINK_TAGS).await;

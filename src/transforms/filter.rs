@@ -104,7 +104,7 @@ mod test {
     use tokio_stream::wrappers::ReceiverStream;
     use vector_lib::{
         config::ComponentKey,
-        event::{Metric, MetricKind, MetricValue},
+        event::{MetricKind, OtelMetric},
     };
 
     use super::*;
@@ -150,11 +150,7 @@ mod test {
 
             assert_eq!(out.recv().await.unwrap(), log);
 
-            let metric = Event::from(Metric::new(
-                "test metric",
-                MetricKind::Incremental,
-                MetricValue::Counter { value: 1.0 },
-            ));
+            let metric = Event::Metric(OtelMetric::new_counter("test metric", MetricKind::Incremental, 1.0));
             tx.send(metric).await.unwrap();
 
             drop(tx);

@@ -372,7 +372,7 @@ mod tests {
     use super::*;
     use crate::{
         event::{
-            KeyString, Metric, OtelLog, Value,
+            KeyString, Metric, OtelLog, OtelMetric, Value,
             metric::{MetricKind, MetricTags, MetricValue, StatisticKind, TagValue, TagValueSet},
         },
         test_util::{components::assert_transform_compliance, random_string},
@@ -395,7 +395,7 @@ mod tests {
             let (tx, rx) = mpsc::channel(1);
             let (topology, mut out) = create_topology(ReceiverStream::new(rx), config).await;
 
-            tx.send(Event::from(metric)).await.unwrap();
+            tx.send(Event::Metric(OtelMetric::from_legacy_metric(metric))).await.unwrap();
 
             let result = out.recv().await;
 
@@ -742,7 +742,7 @@ mod tests {
             ..Default::default()
         }
         .build_transform(&TransformContext::default())
-        .transform(&mut output, counter.into());
+        .transform(&mut output, Event::Metric(OtelMetric::from_legacy_metric(counter)));
 
         assert_eq!(output.len(), 1);
         output.into_events().next().unwrap().into_log().get("tags").unwrap()

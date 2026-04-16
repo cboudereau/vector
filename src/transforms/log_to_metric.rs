@@ -5,7 +5,7 @@ use indexmap::IndexMap;
 use vector_lib::{
     configurable::configurable_component,
     event::{
-        OtelLog,
+        OtelLog, OtelMetric,
         metric::{Bucket, Quantile, Sample},
     },
 };
@@ -867,7 +867,7 @@ impl FunctionTransform for LogToMetric {
         if self.all_metrics {
             match to_metrics(&event) {
                 Ok(metric) => {
-                    output.push(Event::from(metric));
+                    output.push(Event::Metric(OtelMetric::from_legacy_metric(metric)));
                 }
                 Err(err) => {
                     match err {
@@ -907,7 +907,7 @@ impl FunctionTransform for LogToMetric {
             for config in self.metrics.iter() {
                 match to_metric_with_config(config, &event) {
                     Ok(metric) => {
-                        buffer.push(Event::from(metric));
+                        buffer.push(Event::Metric(OtelMetric::from_legacy_metric(metric)));
                     }
                     Err(err) => {
                         match err {

@@ -16,7 +16,7 @@ use vector_lib::{
 
 use crate::{
     config::{DataType, Input, OutputId, TransformConfig, TransformContext, TransformOutput},
-    event::{Event, EventMetadata},
+    event::{Event, EventMetadata, OtelMetric},
     internal_events::{AggregateEventRecorded, AggregateFlushed, AggregateUpdateFailed},
     schema,
     transforms::{TaskTransform, Transform},
@@ -261,7 +261,7 @@ impl Aggregate {
             {
                 emit!(AggregateUpdateFailed);
             }
-            output.push(metric.into());
+            output.push(Event::Metric(OtelMetric::from_legacy_metric(metric)));
         }
 
         let multi_map = std::mem::take(&mut self.multi_map);
@@ -292,7 +292,7 @@ impl Aggregate {
             match self.mode {
                 AggregationMode::Mean => {
                     let metric = Metric::from_parts(series, final_mean, final_metadata);
-                    output.push(metric.into());
+                    output.push(Event::Metric(OtelMetric::from_legacy_metric(metric)));
                 }
                 AggregationMode::Stdev => {
                     let variance = entries
@@ -312,7 +312,7 @@ impl Aggregate {
                         *value = variance.sqrt()
                     }
                     let metric = Metric::from_parts(series, final_stdev, final_metadata);
-                    output.push(metric.into());
+                    output.push(Event::Metric(OtelMetric::from_legacy_metric(metric)));
                 }
                 _ => (),
             }
@@ -378,7 +378,7 @@ mod tests {
     use super::*;
     use crate::{
         event::{
-            Event, Metric,
+            Event, Metric, OtelMetric,
             metric::{MetricKind, MetricValue},
         },
         schema::Definition,
@@ -392,7 +392,7 @@ mod tests {
     }
 
     fn make_metric(name: &'static str, kind: MetricKind, value: MetricValue) -> Event {
-        let mut event = Event::from(Metric::new(name, kind, value))
+        let mut event = Event::Metric(OtelMetric::from_legacy_metric(Metric::new(name, kind, value)))
             .with_source_id(Arc::new(ComponentKey::from("in")))
             .with_upstream_id(Arc::new(OutputId::from("transform")));
         event.metadata_mut().set_schema_definition(&Arc::new(

@@ -169,7 +169,7 @@ mod test {
 
     use super::*;
     use crate::{
-        event::{Metric, MetricKind, MetricValue},
+        event::{Metric, MetricKind, MetricValue, OtelMetric},
         log_event,
     };
 
@@ -219,7 +219,7 @@ mod test {
             //     Ok(()),
             // ),
             (
-                Event::from(
+                Event::Metric(OtelMetric::from_legacy_metric(
                     Metric::new(
                         "zork",
                         MetricKind::Incremental,
@@ -227,7 +227,7 @@ mod test {
                     )
                     .with_namespace(Some("zerk"))
                     .with_tags(Some(metric_tags!("host" => "zoobub"))),
-                ),
+                )),
                 r#".name == "zork""#,
                 Ok(()),
                 Ok(()),

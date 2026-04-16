@@ -8,7 +8,7 @@ use vector_lib::prometheus::parser::{
 };
 
 use crate::event::{
-    Event,
+    Event, OtelMetric,
     metric::{Bucket, Metric, MetricKind, MetricTags, MetricValue, Quantile},
 };
 
@@ -88,7 +88,7 @@ fn reparse_groups(
                     .with_timestamp(Some(utc_timestamp(key.timestamp, start)))
                     .with_tags(tags.as_option());
 
-                    result.push(counter.into());
+                    result.push(Event::Metric(OtelMetric::from_legacy_metric(counter)));
                 }
             }
             GroupKind::Gauge(metrics) | GroupKind::Untyped(metrics) => {
@@ -110,7 +110,7 @@ fn reparse_groups(
                     .with_timestamp(Some(utc_timestamp(key.timestamp, start)))
                     .with_tags(tags.as_option());
 
-                    result.push(gauge.into());
+                    result.push(Event::Metric(OtelMetric::from_legacy_metric(gauge)));
                 }
             }
             GroupKind::Histogram(metrics) => {
@@ -138,24 +138,25 @@ fn reparse_groups(
                     }
 
                     result.push(
-                        Metric::new(
-                            group.name.clone(),
-                            metric_kind,
-                            MetricValue::AggregatedHistogram {
-                                buckets: buckets
-                                    .into_iter()
-                                    .map(|b| Bucket {
-                                        upper_limit: b.bucket,
-                                        count: b.count,
-                                    })
-                                    .collect(),
-                                count: metric.count,
-                                sum: metric.sum,
-                            },
-                        )
-                        .with_timestamp(Some(utc_timestamp(key.timestamp, start)))
-                        .with_tags(tags.as_option())
-                        .into(),
+                        Event::Metric(OtelMetric::from_legacy_metric(
+                            Metric::new(
+                                group.name.clone(),
+                                metric_kind,
+                                MetricValue::AggregatedHistogram {
+                                    buckets: buckets
+                                        .into_iter()
+                                        .map(|b| Bucket {
+                                            upper_limit: b.bucket,
+                                            count: b.count,
+                                        })
+                                        .collect(),
+                                    count: metric.count,
+                                    sum: metric.sum,
+                                },
+                            )
+                            .with_timestamp(Some(utc_timestamp(key.timestamp, start)))
+                            .with_tags(tags.as_option())
+                        )),
                     );
                 }
             }
@@ -174,26 +175,27 @@ fn reparse_groups(
                     let tags = combine_tags(key.labels, tag_overrides.clone());
 
                     result.push(
-                        Metric::new(
-                            group.name.clone(),
-                            // Summaries are always absolute: aggregating them makes no sense
-                            MetricKind::Absolute,
-                            MetricValue::AggregatedSummary {
-                                quantiles: metric
-                                    .quantiles
-                                    .into_iter()
-                                    .map(|q| Quantile {
-                                        quantile: q.quantile,
-                                        value: q.value,
-                                    })
-                                    .collect(),
-                                count: metric.count,
-                                sum: metric.sum,
-                            },
-                        )
-                        .with_timestamp(Some(utc_timestamp(key.timestamp, start)))
-                        .with_tags(tags.as_option())
-                        .into(),
+                        Event::Metric(OtelMetric::from_legacy_metric(
+                            Metric::new(
+                                group.name.clone(),
+                                // Summaries are always absolute: aggregating them makes no sense
+                                MetricKind::Absolute,
+                                MetricValue::AggregatedSummary {
+                                    quantiles: metric
+                                        .quantiles
+                                        .into_iter()
+                                        .map(|q| Quantile {
+                                            quantile: q.quantile,
+                                            value: q.value,
+                                        })
+                                        .collect(),
+                                    count: metric.count,
+                                    sum: metric.sum,
+                                },
+                            )
+                            .with_timestamp(Some(utc_timestamp(key.timestamp, start)))
+                            .with_tags(tags.as_option())
+                        )),
                     );
                 }
             }

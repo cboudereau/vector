@@ -15,6 +15,7 @@ use vector_lib::{
 use crate::{
     SourceSender,
     config::{SourceConfig, SourceContext, SourceOutput, log_schema},
+    event::{Event, OtelMetric},
     internal_events::{EventsReceived, StreamClosedError},
     metrics::Controller,
     shutdown::ShutdownSignal,
@@ -182,7 +183,8 @@ impl InternalMetrics<'_> {
                 metric
             });
 
-            if (self.out.send_batch(batch).await).is_err() {
+            let events: Vec<Event> = batch.map(|m| Event::Metric(OtelMetric::from_legacy_metric(m))).collect();
+            if (self.out.send_batch(events).await).is_err() {
                 emit!(StreamClosedError { count });
                 return Err(());
             }

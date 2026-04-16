@@ -66,7 +66,7 @@ impl FromLua for Event {
             }
             (LuaValue::Nil, LuaValue::Table(metric)) => {
                 let metric = Metric::from_lua(LuaValue::Table(metric), lua)?;
-                Ok(Event::from(metric))
+                Ok(Event::Metric(super::super::OtelMetric::from_legacy_metric(metric)))
             }
             _ => Err(LuaError::FromLuaConversionError {
                 from: value.type_name(),
@@ -84,8 +84,8 @@ impl FromLua for Event {
 mod test {
     use super::*;
     use crate::event::{
-        Metric, Value,
-        metric::{MetricKind, MetricValue},
+        Metric, OtelMetric, Value,
+        metric::MetricKind,
     };
 
     fn assert_event(event: Event, assertions: Vec<&'static str>) {
@@ -128,13 +128,7 @@ mod test {
 
     #[test]
     fn into_lua_metric() {
-        let event = Event::from(Metric::new(
-            "example counter",
-            MetricKind::Absolute,
-            MetricValue::Counter {
-                value: 0.577_215_66,
-            },
-        ));
+        let event = Event::Metric(OtelMetric::new_counter("example counter", MetricKind::Absolute, 0.577_215_66));
 
         let assertions = vec![
             "type(event) == 'table'",
@@ -176,13 +170,7 @@ mod test {
                 }
             }
         }"#;
-        let expected = Event::from(Metric::new(
-            "example counter",
-            MetricKind::Absolute,
-            MetricValue::Counter {
-                value: 0.577_215_66,
-            },
-        ));
+        let expected = Event::Metric(OtelMetric::new_counter("example counter", MetricKind::Absolute, 0.577_215_66));
 
         let event = Lua::new().load(lua_event).eval::<Event>().unwrap();
         vector_common::assert_event_data_eq!(event, expected);

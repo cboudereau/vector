@@ -656,7 +656,7 @@ mod tests {
     use crate::{
         config::{ConfigBuilder, build_unit_tests},
         event::{
-            LogEvent, Metric, Value,
+            LogEvent, Metric, OtelMetric, Value,
             metric::{MetricKind, MetricValue},
         },
         metrics::Controller,
@@ -1017,11 +1017,7 @@ mod tests {
     #[test]
     #[ignore = "VRL/OtelLog integration needs deeper adaptation"]
     fn check_remap_metric() {
-        let metric = Event::from(Metric::new(
-            "counter",
-            MetricKind::Absolute,
-            MetricValue::Counter { value: 1.0 },
-        ));
+        let metric = Event::Metric(OtelMetric::new_counter("counter", MetricKind::Absolute, 1.0));
         let metadata = metric.metadata().clone();
 
         let conf = RemapConfig {
@@ -1042,7 +1038,7 @@ mod tests {
         let result = transform_one(&mut tform, metric).unwrap();
         assert_eq!(
             result,
-            Event::from(
+            Event::Metric(OtelMetric::from_legacy_metric(
                 Metric::new_with_metadata(
                     "zork",
                     MetricKind::Incremental,
@@ -1053,7 +1049,7 @@ mod tests {
                 .with_tags(Some(metric_tags! {
                     "host" => "zoobub",
                 }))
-            )
+            ))
         );
     }
 
@@ -1153,7 +1149,7 @@ mod tests {
                 MetricValue::Counter { value: 1.0 },
             );
             metric.replace_tag("hello".into(), "world".into());
-            Event::from(metric)
+            Event::Metric(OtelMetric::from_legacy_metric(metric))
         };
 
         let abort_metric = {
@@ -1163,7 +1159,7 @@ mod tests {
                 MetricValue::Counter { value: 1.0 },
             );
             metric.replace_tag("hello".into(), "goodbye".into());
-            Event::from(metric)
+            Event::Metric(OtelMetric::from_legacy_metric(metric))
         };
 
         let error_metric = {
@@ -1173,7 +1169,7 @@ mod tests {
                 MetricValue::Counter { value: 1.0 },
             );
             metric.replace_tag("not_hello".into(), "oops".into());
-            Event::from(metric)
+            Event::Metric(OtelMetric::from_legacy_metric(metric))
         };
 
         let conf = RemapConfig {
@@ -1266,7 +1262,7 @@ mod tests {
         let output = transform_one_fallible(&mut tform, happy_metric).unwrap();
         similar_asserts::assert_eq!(
             output,
-            Event::from(
+            Event::Metric(OtelMetric::from_legacy_metric(
                 Metric::new_with_metadata(
                     "counter",
                     MetricKind::Absolute,
@@ -1278,13 +1274,13 @@ mod tests {
                     "hello" => "world",
                     "foo" => "bar",
                 }))
-            )
+            ))
         );
 
         let output = transform_one_fallible(&mut tform, abort_metric).unwrap_err();
         similar_asserts::assert_eq!(
             output,
-            Event::from(
+            Event::Metric(OtelMetric::from_legacy_metric(
                 Metric::new_with_metadata(
                     "counter",
                     MetricKind::Absolute,
@@ -1299,13 +1295,13 @@ mod tests {
                     "metadata.dropped.component_type" => "remap",
                     "metadata.dropped.component_kind" => "transform",
                 }))
-            )
+            ))
         );
 
         let output = transform_one_fallible(&mut tform, error_metric).unwrap_err();
         similar_asserts::assert_eq!(
             output,
-            Event::from(
+            Event::Metric(OtelMetric::from_legacy_metric(
                 Metric::new_with_metadata(
                     "counter",
                     MetricKind::Absolute,
@@ -1320,7 +1316,7 @@ mod tests {
                     "metadata.dropped.component_type" => "remap",
                     "metadata.dropped.component_kind" => "transform",
                 }))
-            )
+            ))
         );
     }
 

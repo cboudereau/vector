@@ -21,7 +21,7 @@ use vector_lib::{
 
 use crate::{
     config::{SourceConfig, SourceContext, SourceOutput},
-    event::metric::{Metric, MetricKind, MetricTags, MetricValue},
+    event::{Event, OtelMetric, metric::{Metric, MetricKind, MetricTags, MetricValue}},
     internal_events::{
         CollectionCompleted, EndpointBytesReceived, MongoDbMetricsBsonParseError,
         MongoDbMetricsEventsReceived, MongoDbMetricsRequestError, StreamClosedError,
@@ -148,7 +148,8 @@ impl SourceConfig for MongoDbMetricsConfig {
                 let metrics: Vec<Metric> = metrics.into_iter().flatten().collect();
                 let count = metrics.len();
 
-                if (cx.out.send_batch(metrics).await).is_err() {
+                let events: Vec<Event> = metrics.into_iter().map(|m| Event::Metric(OtelMetric::from_legacy_metric(m))).collect();
+                if (cx.out.send_batch(events).await).is_err() {
                     emit!(StreamClosedError { count });
                     return Err(());
                 }

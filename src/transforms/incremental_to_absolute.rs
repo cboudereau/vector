@@ -106,12 +106,12 @@ mod tests {
 
     use super::*;
     use crate::event::{
-        Metric,
+        Metric, OtelMetric,
         metric::{MetricKind, MetricValue},
     };
 
     fn make_metric(name: &'static str, kind: MetricKind, value: MetricValue) -> Event {
-        let mut event = Event::from(Metric::new(name, kind, value))
+        let mut event = Event::Metric(OtelMetric::from_legacy_metric(Metric::new(name, kind, value)))
             .with_source_id(Arc::new(ComponentKey::from("in")))
             .with_upstream_id(Arc::new(OutputId::from("transform")));
 

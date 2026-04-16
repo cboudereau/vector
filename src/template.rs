@@ -620,7 +620,7 @@ mod tests {
     use vrl::{event_path, path};
 
     use super::*;
-    use crate::event::{Event, LogEvent, Metric, MetricKind, MetricValue};
+    use crate::event::{Event, LogEvent, MetricKind, OtelMetric};
 
     #[test]
     fn get_fields() {
@@ -912,20 +912,16 @@ mod tests {
     #[test]
     fn render_metric_with_tags() {
         let template = Template::try_from("name={{name}} component={{tags.component}}").unwrap();
-        let metric = Event::from(Metric::new(
-            "a-counter",
-            MetricKind::Absolute,
-            MetricValue::Counter { value: 1.1 },
-        )
-        .with_timestamp(Some(
-            Utc.with_ymd_and_hms(2002, 3, 4, 5, 6, 7)
-                .single()
-                .expect("invalid timestamp"),
-        ))
-        .with_tags(Some(metric_tags!(
-            "test" => "true",
-            "component" => "template",
-        ))));
+        let metric = Event::Metric(OtelMetric::new_counter("a-counter", MetricKind::Absolute, 1.1)
+            .with_timestamp(Some(
+                Utc.with_ymd_and_hms(2002, 3, 4, 5, 6, 7)
+                    .single()
+                    .expect("invalid timestamp"),
+            ))
+            .with_tags(Some(metric_tags!(
+                "test" => "true",
+                "component" => "template",
+            ))));
         assert_eq!(
             Ok(Bytes::from("name=a-counter component=template")),
             template.render(&metric)
@@ -946,17 +942,13 @@ mod tests {
     #[test]
     fn render_metric_with_namespace() {
         let template = Template::try_from("namespace={{namespace}} name={{name}}").unwrap();
-        let metric = Event::from(Metric::new(
-            "a-counter",
-            MetricKind::Absolute,
-            MetricValue::Counter { value: 1.1 },
-        )
-        .with_timestamp(Some(
-            Utc.with_ymd_and_hms(2002, 3, 4, 5, 6, 7)
-                .single()
-                .expect("invalid timestamp"),
-        ))
-        .with_namespace(Some("vector-test")));
+        let metric = Event::Metric(OtelMetric::new_counter("a-counter", MetricKind::Absolute, 1.1)
+            .with_timestamp(Some(
+                Utc.with_ymd_and_hms(2002, 3, 4, 5, 6, 7)
+                    .single()
+                    .expect("invalid timestamp"),
+            ))
+            .with_namespace(Some("vector-test")));
         assert_eq!(
             Ok(Bytes::from("namespace=vector-test name=a-counter")),
             template.render(&metric)
@@ -1012,16 +1004,12 @@ mod tests {
     }
 
     fn sample_metric() -> Event {
-        Event::from(Metric::new(
-            "a-counter",
-            MetricKind::Absolute,
-            MetricValue::Counter { value: 1.1 },
-        )
-        .with_timestamp(Some(
-            Utc.with_ymd_and_hms(2002, 3, 4, 5, 6, 7)
-                .single()
-                .expect("invalid timestamp"),
-        )))
+        Event::Metric(OtelMetric::new_counter("a-counter", MetricKind::Absolute, 1.1)
+            .with_timestamp(Some(
+                Utc.with_ymd_and_hms(2002, 3, 4, 5, 6, 7)
+                    .single()
+                    .expect("invalid timestamp"),
+            )))
     }
 
     #[test]

@@ -10,7 +10,7 @@ use vrl::value;
 use super::*;
 use crate::{
     config::{GenerateConfig, SinkConfig, SinkContext},
-    event::{Event, LogEvent, Metric, MetricKind, MetricValue},
+    event::{Event, LogEvent, Metric, MetricKind, MetricValue, OtelMetric},
     test_util::{
         components::{
             DATA_VOLUME_SINK_TAGS, SINK_TAGS, run_and_assert_data_volume_sink_compliance,
@@ -239,11 +239,7 @@ fn generates_log_api_model_with_timestamp() {
 
 #[test]
 fn generates_metric_api_model_without_timestamp() {
-    let event = Event::from(Metric::new(
-        "my_metric",
-        MetricKind::Absolute,
-        MetricValue::Counter { value: 100.0 },
-    ));
+    let event = Event::Metric(OtelMetric::new_counter("my_metric", MetricKind::Absolute, 100.0));
     let model =
         MetricsApiModel::try_from(vec![event]).expect("Failed mapping metrics into API model");
     let metrics = &model.0[0].metrics;
@@ -270,7 +266,7 @@ fn generates_metric_api_model_with_timestamp() {
         MetricValue::Counter { value: 100.0 },
     )
     .with_timestamp(Some(stamp));
-    let event = Event::from(m);
+    let event = Event::Metric(OtelMetric::from_legacy_metric(m));
     let model =
         MetricsApiModel::try_from(vec![event]).expect("Failed mapping metrics into API model");
 
@@ -297,7 +293,7 @@ fn generates_metric_api_model_incremental_counter() {
     )
     .with_timestamp(Some(stamp))
     .with_interval_ms(NonZeroU32::new(1000));
-    let event = Event::from(m);
+    let event = Event::Metric(OtelMetric::from_legacy_metric(m));
     let model =
         MetricsApiModel::try_from(vec![event]).expect("Failed mapping metrics into API model");
 

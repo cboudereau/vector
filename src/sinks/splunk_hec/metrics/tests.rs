@@ -82,7 +82,7 @@ fn get_processed_event(
 }
 
 fn get_event_with_token(token: &str) -> Event {
-    let mut event = Event::from(get_counter());
+    let mut event = Event::Metric(OtelMetric::from_legacy_metric(get_counter()));
     event.metadata_mut().set_splunk_hec_token(Arc::from(token));
     event
 }
@@ -348,7 +348,7 @@ async fn splunk_passthrough_token() {
     let events = vec![
         get_event_with_token("passthrough-token-1"),
         get_event_with_token("passthrough-token-2"),
-        Event::from(get_counter()),
+        Event::Metric(OtelMetric::from_legacy_metric(get_counter())),
     ];
 
     sink.run_events(events).await.unwrap();

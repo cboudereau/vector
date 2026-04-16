@@ -18,7 +18,7 @@ mod test {
     use super::check_is_metric;
     use crate::event::{
         Event, LogEvent, OtelMetric,
-        metric::{Metric, MetricKind, MetricValue},
+        metric::MetricKind,
     };
     use opentelemetry_proto::tonic::metrics::v1::Metric as OtelMetricProto;
 
@@ -26,11 +26,7 @@ mod test {
     fn is_metric_basic() {
         assert!(!check_is_metric(Event::from(LogEvent::from("just a log"))).0);
         assert!(
-            check_is_metric(Event::from(Metric::new(
-                "test metric",
-                MetricKind::Incremental,
-                MetricValue::Counter { value: 1.0 },
-            )))
+            check_is_metric(Event::Metric(OtelMetric::new_counter("test metric", MetricKind::Incremental, 1.0)))
             .0,
         );
     }

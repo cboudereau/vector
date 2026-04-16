@@ -17,8 +17,8 @@ pub(crate) fn check_is_log_with_context(e: Event) -> (Result<(), String>, Event)
 mod test {
     use super::check_is_log;
     use crate::event::{
-        Event, LogEvent, OtelLog,
-        metric::{Metric, MetricKind, MetricValue},
+        Event, LogEvent, OtelLog, OtelMetric,
+        metric::MetricKind,
     };
     use opentelemetry_proto::tonic::logs::v1::LogRecord;
 
@@ -26,11 +26,7 @@ mod test {
     fn is_log_basic() {
         assert!(check_is_log(Event::from(LogEvent::from("just a log"))).0);
         assert!(
-            !check_is_log(Event::from(Metric::new(
-                "test metric",
-                MetricKind::Incremental,
-                MetricValue::Counter { value: 1.0 },
-            )))
+            !check_is_log(Event::Metric(OtelMetric::new_counter("test metric", MetricKind::Incremental, 1.0)))
             .0,
         );
     }

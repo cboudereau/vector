@@ -193,7 +193,7 @@ impl<N: MetricNormalize> MetricNormalizer<N> {
     /// `into_metric_parts` is cheap (moves the proto tuple), so the
     /// per-event cost of this conversion is negligible.
     pub fn normalize_otel(&mut self, otel: OtelMetric) -> Option<Event> {
-        self.normalize_otel_to_metric(otel).map(Event::from)
+        self.normalize_otel_to_metric(otel).map(|m| Event::Metric(OtelMetric::from_legacy_metric(m)))
     }
 
     /// OtelMetric variant of `normalize` — returns legacy Metric directly.
@@ -614,7 +614,7 @@ impl MetricSet {
     /// for the architectural rationale.
     pub fn make_absolute_otel(&mut self, otel: OtelMetric) -> Option<Event> {
         let (series, data, metadata) = otel.into_metric_parts();
-        self.make_absolute(Metric::from_parts(series, data, metadata)).map(Event::from)
+        self.make_absolute(Metric::from_parts(series, data, metadata)).map(|m| Event::Metric(OtelMetric::from_legacy_metric(m)))
     }
 
     /// OtelMetric variant of `make_incremental` — accepts OtelMetric, returns Event.
@@ -624,7 +624,7 @@ impl MetricSet {
     /// for the architectural rationale.
     pub fn make_incremental_otel(&mut self, otel: OtelMetric) -> Option<Event> {
         let (series, data, metadata) = otel.into_metric_parts();
-        self.make_incremental(Metric::from_parts(series, data, metadata)).map(Event::from)
+        self.make_incremental(Metric::from_parts(series, data, metadata)).map(|m| Event::Metric(OtelMetric::from_legacy_metric(m)))
     }
 
     /// Convert the incremental metric into an absolute one, using the

@@ -16,6 +16,7 @@ use vector_lib::{
 use crate::{
     SourceSender,
     config::{GenerateConfig, SourceConfig, SourceContext, SourceOutput},
+    event::{Event, OtelMetric},
     http::HttpClient,
     internal_events::{
         AwsEcsMetricsEventsReceived, AwsEcsMetricsParseError, HttpClientHttpError,
@@ -210,7 +211,8 @@ async fn aws_ecs_metrics(
                                     endpoint: uri.path(),
                                 });
 
-                                if (out.send_batch(metrics).await).is_err() {
+                                let events: Vec<Event> = metrics.into_iter().map(|m| Event::Metric(OtelMetric::from_legacy_metric(m))).collect();
+                                if (out.send_batch(events).await).is_err() {
                                     emit!(StreamClosedError { count });
                                     return Err(());
                                 }

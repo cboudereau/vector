@@ -517,12 +517,6 @@ impl From<OtelSpan> for Event {
     }
 }
 
-impl From<Metric> for Event {
-    fn from(metric: Metric) -> Self {
-        Event::Metric(OtelMetric::from_legacy_metric(metric))
-    }
-}
-
 impl From<LogEvent> for Event {
     fn from(log: LogEvent) -> Self {
         Event::Log(OtelLog::from_log_event(log))

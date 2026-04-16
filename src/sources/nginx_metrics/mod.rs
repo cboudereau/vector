@@ -17,7 +17,7 @@ use vector_lib::{EstimatedJsonEncodedSizeOf, configurable::configurable_componen
 
 use crate::{
     config::{SourceConfig, SourceContext, SourceOutput},
-    event::metric::{Metric, MetricKind, MetricTags, MetricValue},
+    event::{Event, OtelMetric, metric::{Metric, MetricKind, MetricTags, MetricValue}},
     http::{Auth, HttpClient},
     internal_events::{
         CollectionCompleted, EndpointBytesReceived, NginxMetricsEventsReceived,
@@ -135,7 +135,8 @@ impl SourceConfig for NginxMetricsConfig {
                 let metrics: Vec<Metric> = metrics.into_iter().flatten().collect();
                 let count = metrics.len();
 
-                if (cx.out.send_batch(metrics).await).is_err() {
+                let events: Vec<Event> = metrics.into_iter().map(|m| Event::Metric(OtelMetric::from_legacy_metric(m))).collect();
+                if (cx.out.send_batch(events).await).is_err() {
                     emit!(StreamClosedError { count });
                     return Err(());
                 }

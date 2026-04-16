@@ -314,7 +314,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        event::{Event, metric::MetricKind},
+        event::{Event, OtelMetric, metric::MetricKind},
         sinks::util::test::{build_test_server, load_sink},
         test_util::{
             addr::next_addr,
@@ -443,7 +443,7 @@ mod tests {
 
         let mut events = Vec::new();
         for (i, (namespace, metric, val)) in metrics.iter().enumerate() {
-            let event = Event::from(
+            let event = Event::Metric(OtelMetric::from_legacy_metric(
                 Metric::new(
                     *metric,
                     MetricKind::Incremental,
@@ -454,7 +454,7 @@ mod tests {
                     .with_timestamp(Some(Utc.with_ymd_and_hms(2020, 8, 18, 21, 0, 0).single()
                                          .and_then(|t| t.with_nanosecond(i as u32))
                                          .expect("invalid timestamp"))),
-            );
+            ));
             events.push(event);
         }
 

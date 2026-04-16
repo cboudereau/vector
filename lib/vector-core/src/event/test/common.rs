@@ -5,7 +5,7 @@ use quickcheck::{Arbitrary, Gen, empty_shrinker};
 use vrl::value::{ObjectMap, Value};
 
 use super::super::{
-    Event, EventMetadata, LogEvent, Metric, MetricKind, MetricValue, OtelSpan, StatisticKind,
+    Event, EventMetadata, LogEvent, Metric, MetricKind, MetricValue, OtelMetric, OtelSpan, StatisticKind,
     metric::{
         Bucket, MetricData, MetricName, MetricSeries, MetricTags, MetricTime,
         Quantile, Sample,
@@ -60,7 +60,7 @@ impl Arbitrary for Event {
         if choice.is_multiple_of(2) {
             Event::from(LogEvent::arbitrary(g))
         } else {
-            Event::from(Metric::arbitrary(g))
+            Event::Metric(OtelMetric::from_legacy_metric(Metric::arbitrary(g)))
         }
     }
 

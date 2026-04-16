@@ -654,7 +654,7 @@ mod tests {
     use super::*;
     use crate::{
         config::ProxyConfig,
-        event::metric::{Metric, MetricValue},
+        event::{OtelMetric, metric::{Metric, MetricValue}},
         http::HttpClient,
         sinks::prometheus::distribution_to_agg_histogram,
         test_util::{
@@ -1175,9 +1175,10 @@ mod tests {
         tags: Option<MetricTags>,
     ) -> (String, Event) {
         let name = name.unwrap_or_else(|| format!("vector_set_{}", random_string(16)));
-        let event = Metric::new(name.clone(), MetricKind::Incremental, value)
-            .with_tags(tags)
-            .into();
+        let event = Event::Metric(OtelMetric::from_legacy_metric(
+            Metric::new(name.clone(), MetricKind::Incremental, value)
+                .with_tags(tags),
+        ));
         (name, event)
     }
 
@@ -1202,9 +1203,9 @@ mod tests {
         let m2 = m1.clone().with_tags(Some(metric_tags!("tag1" => "value2")));
 
         let events = vec![
-            Event::from(m1.clone().with_value(MetricValue::Counter { value: 32. })),
-            Event::from(m2.clone().with_value(MetricValue::Counter { value: 33. })),
-            Event::from(m1.clone().with_value(MetricValue::Counter { value: 40. })),
+            Event::Metric(OtelMetric::from_legacy_metric(m1.clone().with_value(MetricValue::Counter { value: 32. }))),
+            Event::Metric(OtelMetric::from_legacy_metric(m2.clone().with_value(MetricValue::Counter { value: 33. }))),
+            Event::Metric(OtelMetric::from_legacy_metric(m1.clone().with_value(MetricValue::Counter { value: 40. }))),
         ];
 
         let metrics_handle = Arc::clone(&sink.metrics);
@@ -1319,7 +1320,7 @@ mod tests {
         let events = metrics
             .iter()
             .cloned()
-            .map(Event::from)
+            .map(|m| Event::Metric(OtelMetric::from_legacy_metric(m)))
             .collect::<Vec<_>>();
 
         let sink = VectorSink::from_event_streamsink(sink);
@@ -1435,7 +1436,7 @@ mod tests {
         let events = metrics
             .iter()
             .cloned()
-            .map(Event::from)
+            .map(|m| Event::Metric(OtelMetric::from_legacy_metric(m)))
             .collect::<Vec<_>>();
 
         let sink = VectorSink::from_event_streamsink(sink);
@@ -1504,7 +1505,7 @@ mod tests {
         let events = metrics
             .iter()
             .cloned()
-            .map(Event::from)
+            .map(|m| Event::Metric(OtelMetric::from_legacy_metric(m)))
             .collect::<Vec<_>>();
 
         let sink = VectorSink::from_event_streamsink(sink);

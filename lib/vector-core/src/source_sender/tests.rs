@@ -7,7 +7,7 @@ use vrl::event_path;
 use super::*;
 use crate::{
     config::{DataType, SourceOutput},
-    event::{Event, LogEvent, Metric, MetricKind, MetricValue, OtelSpan},
+    event::{Event, LogEvent, Metric, MetricKind, MetricValue, OtelMetric, OtelSpan},
     metrics::{self, Controller},
 };
 
@@ -104,11 +104,7 @@ async fn emits_component_discarded_events_total_for_send_event() {
     metrics::init_test();
     let (mut sender, _recv) = SourceSender::new_test_sender_with_options(1, None);
 
-    let event = Event::from(Metric::new(
-        "name",
-        MetricKind::Absolute,
-        MetricValue::Gauge { value: 123.4 },
-    ));
+    let event = Event::Metric(OtelMetric::new_gauge("name", 123.4));
 
     // First send will succeed.
     sender
@@ -148,11 +144,7 @@ async fn emits_component_discarded_events_total_for_send_batch() {
     let expected_drop = 100;
     let events: Vec<Event> = (0..(CHUNK_SIZE + expected_drop))
         .map(|_| {
-            Event::from(Metric::new(
-                "name",
-                MetricKind::Absolute,
-                MetricValue::Gauge { value: 123.4 },
-            ))
+            Event::Metric(OtelMetric::new_gauge("name", 123.4))
         })
         .collect();
 
@@ -181,11 +173,7 @@ async fn times_out_send_event_with_timeout() {
     let timeout_duration = StdDuration::from_millis(10);
     let (mut sender, _recv) = SourceSender::new_test_sender_with_options(1, Some(timeout_duration));
 
-    let event = Event::from(Metric::new(
-        "name",
-        MetricKind::Absolute,
-        MetricValue::Gauge { value: 123.4 },
-    ));
+    let event = Event::Metric(OtelMetric::new_gauge("name", 123.4));
 
     sender
         .send_event(event.clone())
@@ -257,11 +245,7 @@ async fn per_signal_backpressure_isolation() {
 
     // Fill the metrics channel to capacity (1 item).
     sender
-        .send_batch_named("metrics", vec![Event::from(Metric::new(
-            "fill",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 0.0 },
-        ))])
+        .send_batch_named("metrics", vec![Event::Metric(OtelMetric::new_gauge("fill", 0.0))])
         .await
         .expect("first metric send should succeed");
 

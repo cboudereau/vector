@@ -25,7 +25,7 @@ use vector_lib::{
 use crate::{
     SourceSender,
     config::{SourceConfig, SourceContext, SourceOutput},
-    event::metric::{Metric, MetricKind, MetricTags, MetricValue},
+    event::{Event, OtelMetric, metric::{Metric, MetricKind, MetricTags, MetricValue}},
     internal_events::{EventsReceived, HostMetricsScrapeDetailError, StreamClosedError},
     shutdown::ShutdownSignal,
 };
@@ -333,7 +333,8 @@ impl HostMetricsConfig {
             bytes_received.emit(ByteSize(0));
             let metrics = generator.capture_metrics().await;
             let count = metrics.len();
-            if (out.send_batch(metrics).await).is_err() {
+            let events: Vec<Event> = metrics.into_iter().map(|m| Event::Metric(OtelMetric::from_legacy_metric(m))).collect();
+            if (out.send_batch(events).await).is_err() {
                 emit!(StreamClosedError { count });
                 return Err(());
             }

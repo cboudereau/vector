@@ -12,7 +12,7 @@ use vector_lib::{EstimatedJsonEncodedSizeOf, configurable::configurable_componen
 use crate::{
     SourceSender,
     config::{GenerateConfig, ProxyConfig, SourceConfig, SourceContext, SourceOutput},
-    event::metric::{Metric, MetricKind, MetricValue},
+    event::{Event, OtelMetric, metric::{Metric, MetricKind, MetricValue}},
     http::HttpClient,
     internal_events::{
         ApacheMetricsEventsReceived, ApacheMetricsParseError, EndpointBytesReceived,
@@ -260,6 +260,7 @@ fn apache_metrics(
                     .flatten()
             })
             .flatten()
+            .map(|m| Event::Metric(OtelMetric::from_legacy_metric(m)))
             .boxed();
 
         match out.send_event_stream(&mut stream).await {

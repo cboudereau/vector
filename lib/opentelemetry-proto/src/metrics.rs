@@ -298,10 +298,11 @@ impl SumMetric {
             MetricValue::Gauge { value }
         };
 
-        MetricEvent::new(metric_name, kind, metric_value)
-            .with_tags(Some(attributes))
-            .with_timestamp(timestamp)
-            .into()
+        Event::Metric(OtelMetric::from_legacy_metric(
+            MetricEvent::new(metric_name, kind, metric_value)
+                .with_tags(Some(attributes))
+                .with_timestamp(timestamp),
+        ))
     }
 }
 
@@ -311,14 +312,15 @@ impl GaugeMetric {
         let value = self.point.value.to_f64().unwrap_or(0.0);
         let attributes = build_metric_tags(self.resource, self.scope, &self.point.attributes);
 
-        MetricEvent::new(
-            metric_name,
-            MetricKind::Absolute,
-            MetricValue::Gauge { value },
-        )
-        .with_timestamp(timestamp)
-        .with_tags(Some(attributes))
-        .into()
+        Event::Metric(OtelMetric::from_legacy_metric(
+            MetricEvent::new(
+                metric_name,
+                MetricKind::Absolute,
+                MetricValue::Gauge { value },
+            )
+            .with_timestamp(timestamp)
+            .with_tags(Some(attributes)),
+        ))
     }
 }
 
@@ -352,18 +354,19 @@ impl HistogramMetric {
             MetricKind::Absolute
         };
 
-        MetricEvent::new(
-            metric_name,
-            kind,
-            MetricValue::AggregatedHistogram {
-                buckets,
-                count: self.point.count,
-                sum: self.point.sum.unwrap_or(0.0),
-            },
-        )
-        .with_timestamp(timestamp)
-        .with_tags(Some(attributes))
-        .into()
+        Event::Metric(OtelMetric::from_legacy_metric(
+            MetricEvent::new(
+                metric_name,
+                kind,
+                MetricValue::AggregatedHistogram {
+                    buckets,
+                    count: self.point.count,
+                    sum: self.point.sum.unwrap_or(0.0),
+                },
+            )
+            .with_timestamp(timestamp)
+            .with_tags(Some(attributes)),
+        ))
     }
 }
 
@@ -408,18 +411,19 @@ impl ExpHistogramMetric {
             MetricKind::Absolute
         };
 
-        MetricEvent::new(
-            metric_name,
-            kind,
-            MetricValue::AggregatedHistogram {
-                buckets,
-                count: self.point.count,
-                sum: self.point.sum.unwrap_or(0.0),
-            },
-        )
-        .with_timestamp(timestamp)
-        .with_tags(Some(attributes))
-        .into()
+        Event::Metric(OtelMetric::from_legacy_metric(
+            MetricEvent::new(
+                metric_name,
+                kind,
+                MetricValue::AggregatedHistogram {
+                    buckets,
+                    count: self.point.count,
+                    sum: self.point.sum.unwrap_or(0.0),
+                },
+            )
+            .with_timestamp(timestamp)
+            .with_tags(Some(attributes)),
+        ))
     }
 }
 
@@ -438,18 +442,19 @@ impl SummaryMetric {
             })
             .collect();
 
-        MetricEvent::new(
-            metric_name,
-            MetricKind::Absolute,
-            MetricValue::AggregatedSummary {
-                quantiles,
-                count: self.point.count,
-                sum: self.point.sum,
-            },
-        )
-        .with_timestamp(timestamp)
-        .with_tags(Some(attributes))
-        .into()
+        Event::Metric(OtelMetric::from_legacy_metric(
+            MetricEvent::new(
+                metric_name,
+                MetricKind::Absolute,
+                MetricValue::AggregatedSummary {
+                    quantiles,
+                    count: self.point.count,
+                    sum: self.point.sum,
+                },
+            )
+            .with_timestamp(timestamp)
+            .with_tags(Some(attributes)),
+        ))
     }
 }
 

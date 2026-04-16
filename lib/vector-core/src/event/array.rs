@@ -215,7 +215,7 @@ impl From<LogEvent> for EventArray {
 
 impl From<Metric> for EventArray {
     fn from(metric: Metric) -> Self {
-        Event::from(metric).into()
+        Event::Metric(OtelMetric::from_legacy_metric(metric)).into()
     }
 }
 

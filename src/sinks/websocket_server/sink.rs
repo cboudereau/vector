@@ -472,7 +472,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_single_client() {
-        let event = Event::from(LogEvent::from("foo"));
+        let event = Event::Log(OtelLog::from_log_event(LogEvent::from("foo")));
 
         let (mut sender, input_events) = build_test_event_channel();
         let (_guard, address) = next_addr();
@@ -498,8 +498,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_single_client_late_connect() {
-        let event1 = Event::from(LogEvent::from("foo1"));
-        let event2 = Event::from(LogEvent::from("foo2"));
+        let event1 = Event::Log(OtelLog::from_log_event(LogEvent::from("foo1")));
+        let event2 = Event::Log(OtelLog::from_log_event(LogEvent::from("foo2")));
 
         let (mut sender, input_events) = build_test_event_channel();
         let (_guard, address) = next_addr();
@@ -531,7 +531,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_multiple_clients() {
-        let event = Event::from(LogEvent::from("foo"));
+        let event = Event::Log(OtelLog::from_log_event(LogEvent::from("foo")));
 
         let (mut sender, input_events) = build_test_event_channel();
         let (_guard, address) = next_addr();
@@ -560,7 +560,7 @@ mod tests {
 
     #[tokio::test]
     async fn extra_fixed_metrics_tags() {
-        let event = Event::from(LogEvent::from("foo"));
+        let event = Event::Log(OtelLog::from_log_event(LogEvent::from("foo")));
 
         let (mut sender, input_events) = build_test_event_channel();
         let (_guard, address) = next_addr();
@@ -598,7 +598,7 @@ mod tests {
 
     #[tokio::test]
     async fn extra_multiple_metrics_tags() {
-        let event = Event::from(LogEvent::from("foo"));
+        let event = Event::Log(OtelLog::from_log_event(LogEvent::from("foo")));
 
         let (mut sender, input_events) = build_test_event_channel();
         let (_guard, address) = next_addr();
@@ -658,7 +658,7 @@ mod tests {
 
     #[tokio::test]
     async fn sink_spec_compliance() {
-        let event = Event::from(LogEvent::from("foo"));
+        let event = Event::Log(OtelLog::from_log_event(LogEvent::from("foo")));
 
         let (_guard, address) = next_addr();
         let sink = WebSocketListenerSink::new(
@@ -680,8 +680,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_client_late_connect_with_buffering() {
-        let event1 = Event::from(LogEvent::from("foo1"));
-        let event2 = Event::from(LogEvent::from("foo2"));
+        let event1 = Event::Log(OtelLog::from_log_event(LogEvent::from("foo1")));
+        let event2 = Event::Log(OtelLog::from_log_event(LogEvent::from("foo2")));
 
         let (mut sender, input_events) = build_test_event_channel();
         let (_guard, address) = next_addr();
@@ -725,8 +725,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_client_late_connect_with_buffering_over_max_events_limit() {
-        let event1 = Event::from(LogEvent::from("foo1"));
-        let event2 = Event::from(LogEvent::from("foo2"));
+        let event1 = Event::Log(OtelLog::from_log_event(LogEvent::from("foo1")));
+        let event2 = Event::Log(OtelLog::from_log_event(LogEvent::from("foo2")));
 
         let (mut sender, input_events) = build_test_event_channel();
         let (_guard, address) = next_addr();
@@ -768,9 +768,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_client_late_connect_with_acks() {
-        let event1 = Event::from(LogEvent::from("foo1"));
-        let event2 = Event::from(LogEvent::from("foo2"));
-        let event3 = Event::from(LogEvent::from("foo3"));
+        let event1 = Event::Log(OtelLog::from_log_event(LogEvent::from("foo1")));
+        let event2 = Event::Log(OtelLog::from_log_event(LogEvent::from("foo2")));
+        let event3 = Event::Log(OtelLog::from_log_event(LogEvent::from("foo3")));
 
         let (mut sender, input_events) = build_test_event_channel();
         let (_guard, address) = next_addr();

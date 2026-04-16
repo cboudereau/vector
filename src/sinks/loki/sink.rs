@@ -593,7 +593,7 @@ mod tests {
             remove_structured_metadata_fields: false,
             remove_timestamp: false,
         };
-        let mut event = Event::from(LogEvent::from("hello world"));
+        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello world")));
         let log = event.as_mut_log();
         log.insert(
             (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
@@ -640,7 +640,7 @@ mod tests {
             remove_structured_metadata_fields: false,
             remove_timestamp: false,
         };
-        let mut event = Event::from(LogEvent::from("hello world"));
+        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello world")));
         let log = event.as_mut_log();
         log.insert(
             (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
@@ -711,7 +711,7 @@ mod tests {
         }
         "#;
         let msg: ObjectMap = serde_json::from_str(message)?;
-        let event = Event::from(LogEvent::from(msg));
+        let event = Event::Log(OtelLog::from_log_event(LogEvent::from(msg)));
         let record = encoder.encode_event(event).unwrap();
 
         assert_eq!(record.labels.len(), 5);
@@ -758,7 +758,7 @@ mod tests {
         }
         "#;
         let msg: ObjectMap = serde_json::from_str(message)?;
-        let event = Event::from(LogEvent::from(msg));
+        let event = Event::Log(OtelLog::from_log_event(LogEvent::from(msg)));
         let record = encoder.encode_event(event).unwrap();
 
         assert_eq!(record.labels.len(), 1);
@@ -788,7 +788,7 @@ mod tests {
         };
 
         let msg: ObjectMap = serde_json::from_str("{}")?;
-        let event = Event::from(LogEvent::from(msg));
+        let event = Event::Log(OtelLog::from_log_event(LogEvent::from(msg)));
         let record = encoder.encode_event(event).unwrap();
 
         assert_eq!(record.labels.len(), 1);
@@ -809,7 +809,7 @@ mod tests {
             remove_structured_metadata_fields: false,
             remove_timestamp: true,
         };
-        let mut event = Event::from(LogEvent::from("hello world"));
+        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello world")));
         let log = event.as_mut_log();
         log.insert(
             (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
@@ -843,7 +843,7 @@ mod tests {
             remove_structured_metadata_fields: false,
             remove_timestamp: false,
         };
-        let mut event = Event::from(LogEvent::from("hello world"));
+        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello world")));
         let log = event.as_mut_log();
         log.insert(
             (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
@@ -898,7 +898,7 @@ mod tests {
         }
         "#;
         let msg: ObjectMap = serde_json::from_str(message)?;
-        let event = Event::from(LogEvent::from(msg));
+        let event = Event::Log(OtelLog::from_log_event(LogEvent::from(msg)));
         let record = encoder.encode_event(event).unwrap();
 
         assert_eq!(record.event.structured_metadata.len(), 5);
@@ -939,7 +939,7 @@ mod tests {
         let base = chrono::Utc::now();
         let events = random_lines(100)
             .take(20)
-            .map(|e| Event::from(LogEvent::from(e)))
+            .map(|e| Event::Log(OtelLog::from_log_event(LogEvent::from(e))))
             .enumerate()
             .map(|(i, mut event)| {
                 let log = event.as_mut_log();

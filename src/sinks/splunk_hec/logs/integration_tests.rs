@@ -278,7 +278,7 @@ async fn splunk_insert_source() {
     let (sink, _) = config.build(cx).await.unwrap();
 
     let message = random_string(100);
-    let event = Event::from(LogEvent::from(message.clone()));
+    let event = Event::Log(OtelLog::from_log_event(LogEvent::from(message.clone())));
     run_and_assert_sink_compliance(sink, stream::once(ready(event)), &HTTP_SINK_TAGS).await;
 
     let entry = find_entry(message.as_str()).await;

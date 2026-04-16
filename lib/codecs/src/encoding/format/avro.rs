@@ -89,9 +89,9 @@ mod tests {
 
     #[test]
     fn serialize_avro() {
-        let event = Event::from(LogEvent::from(btreemap! {
+        let event = Event::Log(OtelLog::from_log_event(LogEvent::from(btreemap! {
             "foo" => Value::from("bar")
-        }));
+        })));
         let schema = indoc! {r#"
             {
                 "type": "record",

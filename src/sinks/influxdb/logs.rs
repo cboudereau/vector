@@ -446,7 +446,7 @@ mod tests {
 
     #[test]
     fn test_encode_event_apply_rules() {
-        let mut event = Event::from(LogEvent::from("hello"));
+        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello")));
         event.as_mut_log().insert("host", "aws.cloud.eur");
         event.as_mut_log().insert("timestamp", ts());
 
@@ -487,7 +487,7 @@ mod tests {
 
     #[test]
     fn test_encode_event_v1() {
-        let mut event = Event::from(LogEvent::from("hello"));
+        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello")));
         event.as_mut_log().insert("host", "aws.cloud.eur");
         event.as_mut_log().insert("source_type", "file");
 
@@ -532,7 +532,7 @@ mod tests {
 
     #[test]
     fn test_encode_event() {
-        let mut event = Event::from(LogEvent::from("hello"));
+        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello")));
         event.as_mut_log().insert("host", "aws.cloud.eur");
         event.as_mut_log().insert("source_type", "file");
 
@@ -577,7 +577,7 @@ mod tests {
 
     #[test]
     fn test_encode_event_without_tags() {
-        let mut event = Event::from(LogEvent::from("hello"));
+        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello")));
 
         event.as_mut_log().insert("value", 100);
         event.as_mut_log().insert("timestamp", ts());
@@ -656,7 +656,7 @@ mod tests {
 
     #[test]
     fn test_add_tag() {
-        let mut event = Event::from(LogEvent::from("hello"));
+        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello")));
         event.as_mut_log().insert("source_type", "file");
 
         event.as_mut_log().insert("as_a_tag", 10);

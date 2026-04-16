@@ -378,7 +378,7 @@ mod tests {
     #[test]
     #[ignore = "Timestamp round-trip through OtelLog loses type info"]
     fn deserialize_and_transform_timestamp() {
-        let mut base = Event::from(LogEvent::from("Demo"));
+        let mut base = Event::Log(OtelLog::from_log_event(LogEvent::from("Demo")));
         {
             let base_log = base.as_log();
             let timestamp = base_log

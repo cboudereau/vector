@@ -59,9 +59,9 @@ mod tests {
 
     #[test]
     fn serialize_logfmt() {
-        let event = Event::from(LogEvent::from(btreemap! {
+        let event = Event::Log(OtelLog::from_log_event(LogEvent::from(btreemap! {
             "foo" => Value::from("bar")
-        }));
+        })));
         let mut serializer = LogfmtSerializer;
         let mut bytes = BytesMut::new();
 

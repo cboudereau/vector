@@ -40,7 +40,7 @@ use crate::{
         self, ComponentKey, Config, ConfigBuilder, ConfigPath, SinkOuter, SourceOuter,
         TestDefinition, TestInput, TestOutput, loading, loading::ConfigBuilderLoader,
     },
-    event::{Event, EventMetadata, LogEvent, OtelMetric},
+    event::{Event, EventMetadata, LogEvent, OtelLog, OtelMetric},
     signal,
     topology::{
         RunningTopology,
@@ -606,7 +606,7 @@ fn build_outputs(
 fn build_input_event(input: &TestInput) -> Result<Event, String> {
     match input.type_str.as_ref() {
         "raw" => match input.value.as_ref() {
-            Some(v) => Ok(Event::from(LogEvent::from_str_legacy(v.clone()))),
+            Some(v) => Ok(Event::Log(OtelLog::from_log_event(LogEvent::from_str_legacy(v.clone())))),
             None => Err("input type 'raw' requires the field 'value'".to_string()),
         },
         "vrl" => {
@@ -628,10 +628,10 @@ fn build_input_event(input: &TestInput) -> Result<Event, String> {
                     .program
                     .resolve(&mut ctx)
                     .map(|_| {
-                        Event::from(LogEvent::from_parts(
+                        Event::Log(OtelLog::from_log_event(LogEvent::from_parts(
                             target.value.clone(),
                             EventMetadata::default_with_value(target.metadata.clone()),
-                        ))
+                        )))
                     })
                     .map_err(|e| e.to_string())
             } else {
@@ -646,7 +646,7 @@ fn build_input_event(input: &TestInput) -> Result<Event, String> {
                         .parse_path_and_insert(path, value.clone())
                         .map_err(|e| e.to_string())?;
                 }
-                Ok(event.into())
+                Ok(Event::Log(OtelLog::from_log_event(event)))
             } else {
                 Err("input type 'log' requires the field 'log_fields'".to_string())
             }

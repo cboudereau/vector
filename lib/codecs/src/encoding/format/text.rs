@@ -94,7 +94,7 @@ mod tests {
     fn serialize_log() {
         let buffer = serialize(
             TextSerializerConfig::default(),
-            Event::from(LogEvent::from_str_legacy("foo")),
+            Event::Log(OtelLog::from_log_event(LogEvent::from_str_legacy("foo"))),
         );
         assert_eq!(buffer, Bytes::from("foo"));
     }

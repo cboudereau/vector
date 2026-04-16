@@ -886,7 +886,7 @@ mod tests {
     #[test]
     fn check_remap_error() {
         let event = {
-            let mut event = Event::from(LogEvent::from("augment me"));
+            let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("augment me")));
             event.as_mut_log().insert("bar", "is a string");
             event
         };
@@ -914,7 +914,7 @@ mod tests {
     #[test]
     fn check_remap_error_drop() {
         let event = {
-            let mut event = Event::from(LogEvent::from("augment me"));
+            let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("augment me")));
             event.as_mut_log().insert("bar", "is a string");
             event
         };
@@ -938,7 +938,7 @@ mod tests {
     #[test]
     fn check_remap_error_infallible() {
         let event = {
-            let mut event = Event::from(LogEvent::from("augment me"));
+            let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("augment me")));
             event.as_mut_log().insert("bar", "is a string");
             event
         };
@@ -965,7 +965,7 @@ mod tests {
     #[test]
     fn check_remap_abort() {
         let event = {
-            let mut event = Event::from(LogEvent::from("augment me"));
+            let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("augment me")));
             event.as_mut_log().insert("bar", "is a string");
             event
         };
@@ -993,7 +993,7 @@ mod tests {
     #[test]
     fn check_remap_abort_drop() {
         let event = {
-            let mut event = Event::from(LogEvent::from("augment me"));
+            let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("augment me")));
             event.as_mut_log().insert("bar", "is a string");
             event
         };

@@ -755,7 +755,7 @@ mod tests {
 
         // send initial payload
         for line in input.clone() {
-            tx.send(Event::from(LogEvent::from(line))).await.unwrap();
+            tx.send(Event::Log(OtelLog::from_log_event(LogEvent::from(line)))).await.unwrap();
         }
 
         // wait for file to go idle and be closed

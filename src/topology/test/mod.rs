@@ -114,7 +114,7 @@ async fn topology_shutdown_while_active() {
     let (topology, _) = start_topology(config.build().unwrap(), false).await;
 
     let pump_handle = tokio::spawn(async move {
-        let mut stream = futures::stream::repeat(Event::from(LogEvent::from("test")));
+        let mut stream = futures::stream::repeat(Event::Log(OtelLog::from_log_event(LogEvent::from("test"))));
         in1.send_event_stream(&mut stream).await
     });
 
@@ -165,7 +165,7 @@ async fn topology_source_and_sink() {
 
     let (topology, _) = start_topology(config.build().unwrap(), false).await;
 
-    let mut event = Event::from(LogEvent::from("this"));
+    let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("this")));
     in1.send_event(event.clone()).await.unwrap();
 
     topology.stop().await;
@@ -192,8 +192,8 @@ async fn topology_multiple_sources() {
 
     let (topology, _) = start_topology(config.build().unwrap(), false).await;
 
-    let mut event1 = Event::from(LogEvent::from("this"));
-    let mut event2 = Event::from(LogEvent::from("that"));
+    let mut event1 = Event::Log(OtelLog::from_log_event(LogEvent::from("this")));
+    let mut event2 = Event::Log(OtelLog::from_log_event(LogEvent::from("that")));
 
     in1.send_event(event1.clone()).await.unwrap();
 
@@ -229,7 +229,7 @@ async fn topology_multiple_sinks() {
     let (topology, _) = start_topology(config.build().unwrap(), false).await;
 
     // Send an event into source #1:
-    let mut event = Event::from(LogEvent::from("this"));
+    let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("this")));
     in1.send_event(event.clone()).await.unwrap();
 
     // Drop the inputs to the two sources, which will ensure they drain all items and stop
@@ -265,7 +265,7 @@ async fn topology_transform_chain() {
 
     let (topology, _) = start_topology(config.build().unwrap(), false).await;
 
-    let event = Event::from(LogEvent::from("this"));
+    let event = Event::Log(OtelLog::from_log_event(LogEvent::from("this")));
 
     in1.send_event(event).await.unwrap();
 
@@ -303,8 +303,8 @@ async fn topology_remove_one_source() {
         .unwrap();
 
     // Send an event into both source #1 and source #2:
-    let mut event1 = Event::from(LogEvent::from("this"));
-    let event2 = Event::from(LogEvent::from("that"));
+    let mut event1 = Event::Log(OtelLog::from_log_event(LogEvent::from("this")));
+    let event2 = Event::Log(OtelLog::from_log_event(LogEvent::from("that")));
     let h_out1 = tokio::spawn(out1.flat_map(into_event_stream).collect::<Vec<_>>());
 
     in1.send_event(event1.clone()).await.unwrap();
@@ -346,7 +346,7 @@ async fn topology_remove_one_sink() {
         .await
         .unwrap();
 
-    let mut event = Event::from(LogEvent::from("this"));
+    let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("this")));
 
     in1.send_event(event.clone()).await.unwrap();
 
@@ -395,7 +395,7 @@ async fn topology_remove_one_transform() {
         .unwrap();
 
     // Send the same event to both sources:
-    let event = Event::from(LogEvent::from("this"));
+    let event = Event::Log(OtelLog::from_log_event(LogEvent::from("this")));
     let h_out1 = tokio::spawn(out1.flat_map(into_message_stream).collect::<Vec<_>>());
     let h_out2 = tokio::spawn(out2.flat_map(into_message_stream).collect::<Vec<_>>());
     in1.send_event(event.clone()).await.unwrap();
@@ -444,8 +444,8 @@ async fn topology_swap_source() {
         .unwrap();
 
     // Send an event into both source #1 and source #2:
-    let event1 = Event::from(LogEvent::from("this"));
-    let mut event2 = Event::from(LogEvent::from("that"));
+    let event1 = Event::Log(OtelLog::from_log_event(LogEvent::from("this")));
+    let mut event2 = Event::Log(OtelLog::from_log_event(LogEvent::from("that")));
 
     let h_out1 = tokio::spawn(out1.flat_map(into_event_stream).collect::<Vec<_>>());
     let h_out2 = tokio::spawn(out2.flat_map(into_event_stream).collect::<Vec<_>>());
@@ -505,8 +505,8 @@ async fn topology_swap_transform() {
         .unwrap();
 
     // Send an event into both source #1 and source #2:
-    let event1 = Event::from(LogEvent::from("this"));
-    let event2 = Event::from(LogEvent::from("that"));
+    let event1 = Event::Log(OtelLog::from_log_event(LogEvent::from("this")));
+    let event2 = Event::Log(OtelLog::from_log_event(LogEvent::from("that")));
 
     let h_out1 = tokio::spawn(out1.flat_map(into_message_stream).collect::<Vec<_>>());
     let h_out2 = tokio::spawn(out2.flat_map(into_message_stream).collect::<Vec<_>>());
@@ -557,8 +557,8 @@ async fn topology_swap_sink() {
         .unwrap();
 
     // Send an event into both source #1 and source #2:
-    let mut event1 = Event::from(LogEvent::from("this"));
-    let event2 = Event::from(LogEvent::from("that"));
+    let mut event1 = Event::Log(OtelLog::from_log_event(LogEvent::from("this")));
+    let event2 = Event::Log(OtelLog::from_log_event(LogEvent::from("that")));
 
     let h_out1 = tokio::spawn(out1.flat_map(into_event_stream).collect::<Vec<_>>());
     let h_out2 = tokio::spawn(out2.flat_map(into_event_stream).collect::<Vec<_>>());
@@ -602,7 +602,7 @@ async fn topology_swap_transform_is_atomic() {
     let events = move || {
         if running.load(Ordering::Acquire) {
             send_counter.fetch_add(1, Ordering::Release);
-            Some(Event::from(LogEvent::from("this")))
+            Some(Event::Log(OtelLog::from_log_event(LogEvent::from("this"))))
         } else {
             None
         }
@@ -676,8 +676,8 @@ async fn topology_rebuild_connected() {
         .await
         .unwrap();
 
-    let mut event1 = Event::from(LogEvent::from("this"));
-    let mut event2 = Event::from(LogEvent::from("that"));
+    let mut event1 = Event::Log(OtelLog::from_log_event(LogEvent::from("this")));
+    let mut event2 = Event::Log(OtelLog::from_log_event(LogEvent::from("that")));
     let h_out1 = tokio::spawn(out1.flat_map(into_event_stream).collect::<Vec<_>>());
     in1.send_event(event1.clone()).await.unwrap();
     in1.send_event(event2.clone()).await.unwrap();
@@ -726,7 +726,7 @@ async fn topology_rebuild_connected_transform() {
         .await
         .unwrap();
 
-    let mut event = Event::from(LogEvent::from("this"));
+    let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("this")));
     let h_out1 = tokio::spawn(out1.flat_map(into_event_stream).collect::<Vec<_>>());
     let h_out2 = tokio::spawn(out2.flat_map(into_event_stream).collect::<Vec<_>>());
 
@@ -824,7 +824,7 @@ async fn topology_disk_buffer_flushes_on_idle() {
     trace_init();
 
     let tmpdir = tempfile::tempdir().expect("no tmpdir");
-    let event = Event::from(LogEvent::from("foo"));
+    let event = Event::Log(OtelLog::from_log_event(LogEvent::from("foo")));
 
     let (mut in1, source1) = basic_source();
     let transform1 = basic_transform("", 0.0);
@@ -914,8 +914,8 @@ async fn source_metadata_reaches_sink() {
 
     let (topology, _) = start_topology(config.build().unwrap(), false).await;
 
-    let event1 = Event::from(LogEvent::from("this"));
-    let event2 = Event::from(LogEvent::from("that"));
+    let event1 = Event::Log(OtelLog::from_log_event(LogEvent::from("this")));
+    let event2 = Event::Log(OtelLog::from_log_event(LogEvent::from("that")));
 
     in1.send_event(event1.clone()).await.unwrap();
 

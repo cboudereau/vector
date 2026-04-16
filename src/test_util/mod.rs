@@ -39,7 +39,7 @@ use vector_lib::{
     buffers::topology::channel::LimitedReceiver,
     event::{
         BatchNotifier, BatchStatusReceiver, Event, EventArray, LogEvent, Metric, MetricKind,
-        MetricTags, MetricValue, OtelMetric,
+        MetricTags, MetricValue, OtelLog, OtelMetric,
     },
 };
 #[cfg(test)]
@@ -247,7 +247,7 @@ pub fn generate_lines_with_stream<Gen: FnMut(usize) -> String>(
 ) -> (Vec<String>, impl Stream<Item = EventArray>) {
     let lines = (0..count).map(generator).collect::<Vec<_>>();
     let stream = map_batch_stream(
-        stream::iter(lines.clone()).map(|s| Event::from(LogEvent::from_str_legacy(s))),
+        stream::iter(lines.clone()).map(|s| Event::Log(OtelLog::from_log_event(LogEvent::from_str_legacy(s)))),
         batch,
     );
     (lines, stream)
@@ -336,7 +336,7 @@ pub fn random_events_with_stream(
     batch: Option<BatchNotifier>,
 ) -> (Vec<Event>, impl Stream<Item = EventArray>) {
     let events = (0..count)
-        .map(|_| Event::from(LogEvent::from_str_legacy(random_string(len))))
+        .map(|_| Event::Log(OtelLog::from_log_event(LogEvent::from_str_legacy(random_string(len)))))
         .collect::<Vec<_>>();
     let stream = map_batch_stream(
         stream::iter(events.clone()),
@@ -358,7 +358,7 @@ where
         .map(|_| LogEvent::from_str_legacy(random_string(len)))
         .enumerate()
         .map(update_fn)
-        .map(|log| Event::from(log))
+        .map(|log| Event::Log(OtelLog::from_log_event(log)))
         .collect::<Vec<_>>();
     let stream = map_batch_stream(
         stream::iter(events.clone()),

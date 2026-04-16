@@ -172,7 +172,7 @@ async fn metrics_shape() {
 #[tokio::test]
 async fn logs_shape() {
     let events: Vec<_> = (0..5)
-        .map(|index| Event::from(LogEvent::from(format!("Log message {index}"))))
+        .map(|index| Event::Log(OtelLog::from_log_event(LogEvent::from(format!("Log message {index}")))))
         .collect();
     let api_key = push_api_key();
     let (expected, rx) = start_test(events).await;

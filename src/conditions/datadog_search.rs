@@ -862,12 +862,12 @@ mod test {
             (
                 "@a.b:x",
                 log_event!["a" => serde_json::json!({"b": "x"})],
-                Event::from(LogEvent::from(Value::from(serde_json::json!({"a.b": "x"})))),
+                Event::Log(OtelLog::from_log_event(LogEvent::from(Value::from(serde_json::json!({"a.b": "x"}))))),
             ),
             // Attribute with dot in name (flattened key) - requires escaped quotes.
             (
                 r#"@\"a.b\":x"#,
-                Event::from(LogEvent::from(Value::from(serde_json::json!({"a.b": "x"})))),
+                Event::Log(OtelLog::from_log_event(LogEvent::from(Value::from(serde_json::json!({"a.b": "x"}))))),
                 log_event!["a" => serde_json::json!({"b": "x"})],
             ),
             // Wildcard prefix.

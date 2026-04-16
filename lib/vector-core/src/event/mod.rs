@@ -376,15 +376,14 @@ impl Event {
         log_namespace: LogNamespace,
     ) -> crate::Result<Self> {
         match log_namespace {
-            LogNamespace::Vector => Ok(LogEvent::from(Value::from(value)).into()),
+            LogNamespace::Vector => Ok(Event::Log(OtelLog::from_log_event(LogEvent::from(Value::from(value))))),
             LogNamespace::Legacy => match value {
-                serde_json::Value::Object(fields) => Ok(LogEvent::from(
+                serde_json::Value::Object(fields) => Ok(Event::Log(OtelLog::from_log_event(LogEvent::from(
                     fields
                         .into_iter()
                         .map(|(k, v)| (k.into(), v.into()))
                         .collect::<ObjectMap>(),
-                )
-                .into()),
+                )))),
                 _ => Err(crate::Error::from(
                     "Attempted to convert non-Object JSON into an Event.",
                 )),
@@ -514,12 +513,6 @@ impl From<OtelMetric> for Event {
 impl From<OtelSpan> for Event {
     fn from(e: OtelSpan) -> Self {
         Event::Trace(e)
-    }
-}
-
-impl From<LogEvent> for Event {
-    fn from(log: LogEvent) -> Self {
-        Event::Log(OtelLog::from_log_event(log))
     }
 }
 

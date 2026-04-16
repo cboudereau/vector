@@ -1148,7 +1148,7 @@ mod test {
                 target_queries: vec![],
                 target_assignments: vec![],
             };
-            let target = VrlTarget::new(Event::from(LogEvent::from(value)), &info, false);
+            let target = VrlTarget::new(Event::Log(OtelLog::from_log_event(LogEvent::from(value))), &info, false);
             let path = OwnedTargetPath::event(path);
 
             assert_eq!(
@@ -1252,7 +1252,7 @@ mod test {
                 target_queries: vec![],
                 target_assignments: vec![],
             };
-            let mut target = VrlTarget::new(Event::from(LogEvent::from(object)), &info, false);
+            let mut target = VrlTarget::new(Event::Log(OtelLog::from_log_event(LogEvent::from(object))), &info, false);
             let expect = LogEvent::from(expect);
             let value: Value = value;
             let path = OwnedTargetPath::event(path);
@@ -1351,7 +1351,7 @@ mod test {
                 target_queries: vec![],
                 target_assignments: vec![],
             };
-            let mut target = VrlTarget::new(Event::from(LogEvent::from(object)), &info, false);
+            let mut target = VrlTarget::new(Event::Log(OtelLog::from_log_event(LogEvent::from(object))), &info, false);
             let path = OwnedTargetPath::event(path);
             let removed = Target::target_get(&target, &path).unwrap().cloned();
 
@@ -1404,7 +1404,7 @@ mod test {
                 target_assignments: vec![],
             };
             let mut target = VrlTarget::new(
-                Event::from(LogEvent::new_with_metadata(metadata.clone())),
+                Event::Log(OtelLog::from_log_event(LogEvent::new_with_metadata(metadata.clone()))),
                 &info,
                 false,
             );
@@ -1419,7 +1419,7 @@ mod test {
                 },
                 expect
                     .into_iter()
-                    .map(|v| Event::from(LogEvent::from_map(v, metadata.clone())))
+                    .map(|v| Event::Log(OtelLog::from_log_event(LogEvent::from_map(v, metadata.clone()))))
                     .collect::<Vec<_>>()
             );
         }

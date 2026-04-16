@@ -1841,7 +1841,7 @@ mod tests {
         }"#;
 
         let json: serde_json::Value = serde_json::from_str(record).unwrap();
-        let mut event = Event::from(LogEvent::from(vrl::value::Value::from(json)));
+        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from(vrl::value::Value::from(json))));
 
         event.as_mut_log().insert("timestamp", chrono::Utc::now());
 

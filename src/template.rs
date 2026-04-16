@@ -668,7 +668,7 @@ mod tests {
 
     #[test]
     fn render_log_static() {
-        let event = Event::from(LogEvent::from("hello world"));
+        let event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello world")));
         let template = Template::try_from("foo").unwrap();
 
         assert_eq!(Ok(Bytes::from("foo")), template.render(&event))
@@ -676,7 +676,7 @@ mod tests {
 
     #[test]
     fn render_log_unsigned_number() {
-        let event = Event::from(LogEvent::from("hello world"));
+        let event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello world")));
         let template = UnsignedIntTemplate::from(123);
 
         assert_eq!(Ok(123), template.render(&event))
@@ -684,7 +684,7 @@ mod tests {
 
     #[test]
     fn render_log_unsigned_number_dynamic() {
-        let mut event = Event::from(LogEvent::from("hello world"));
+        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello world")));
         event.as_mut_log().insert("foo", 123);
 
         let template = UnsignedIntTemplate::try_from("{{ foo }}").unwrap();
@@ -693,7 +693,7 @@ mod tests {
 
     #[test]
     fn render_log_dynamic() {
-        let mut event = Event::from(LogEvent::from("hello world"));
+        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello world")));
         event.as_mut_log().insert("log_stream", "stream");
         let template = Template::try_from("{{log_stream}}").unwrap();
 
@@ -702,7 +702,7 @@ mod tests {
 
     #[test]
     fn render_log_metadata() {
-        let mut event = Event::from(LogEvent::from("hello world"));
+        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello world")));
         event
             .as_mut_log()
             .insert(metadata_path!("metadata_key"), "metadata_value");
@@ -713,7 +713,7 @@ mod tests {
 
     #[test]
     fn render_log_dynamic_with_prefix() {
-        let mut event = Event::from(LogEvent::from("hello world"));
+        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello world")));
         event.as_mut_log().insert("log_stream", "stream");
         let template = Template::try_from("abcd-{{log_stream}}").unwrap();
 
@@ -722,7 +722,7 @@ mod tests {
 
     #[test]
     fn render_log_dynamic_with_postfix() {
-        let mut event = Event::from(LogEvent::from("hello world"));
+        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello world")));
         event.as_mut_log().insert("log_stream", "stream");
         let template = Template::try_from("{{log_stream}}-abcd").unwrap();
 
@@ -731,7 +731,7 @@ mod tests {
 
     #[test]
     fn render_log_dynamic_missing_key() {
-        let event = Event::from(LogEvent::from("hello world"));
+        let event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello world")));
         let template = Template::try_from("{{log_stream}}-{{foo}}").unwrap();
 
         assert_eq!(
@@ -744,7 +744,7 @@ mod tests {
 
     #[test]
     fn render_log_dynamic_multiple_keys() {
-        let mut event = Event::from(LogEvent::from("hello world"));
+        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello world")));
         event.as_mut_log().insert("foo", "bar");
         event.as_mut_log().insert("baz", "quux");
         let template = Template::try_from("stream-{{foo}}-{{baz}}.log").unwrap();
@@ -757,7 +757,7 @@ mod tests {
 
     #[test]
     fn render_log_dynamic_weird_junk() {
-        let mut event = Event::from(LogEvent::from("hello world"));
+        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello world")));
         event.as_mut_log().insert("foo", "bar");
         event.as_mut_log().insert("baz", "quux");
         let template = Template::try_from(r"{stream}{\{{}}}-{{foo}}-{{baz}}.log").unwrap();
@@ -775,7 +775,7 @@ mod tests {
             .single()
             .expect("invalid timestamp");
 
-        let mut event = Event::from(LogEvent::from("hello world"));
+        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello world")));
         event
             .as_mut_log()
             .insert(log_schema().timestamp_key_target_path().unwrap(), ts);
@@ -792,7 +792,7 @@ mod tests {
             .single()
             .expect("invalid timestamp");
 
-        let mut event = Event::from(LogEvent::from("hello world"));
+        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello world")));
         event.as_mut_log().insert("@timestamp", ts);
         // use Vector namespace instead of legacy
         event.as_mut_log().metadata_mut().value_mut().insert(path!("vector", "foo"), "bar");
@@ -820,7 +820,7 @@ mod tests {
             .single()
             .expect("invalid timestamp");
 
-        let mut event = Event::from(LogEvent::from("hello world"));
+        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello world")));
         event
             .as_mut_log()
             .insert(log_schema().timestamp_key_target_path().unwrap(), ts);
@@ -840,7 +840,7 @@ mod tests {
             .single()
             .expect("invalid timestamp");
 
-        let mut event = Event::from(LogEvent::from("hello world"));
+        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello world")));
         event.as_mut_log().insert("foo", "butts");
         event.as_mut_log().insert(
             (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
@@ -862,7 +862,7 @@ mod tests {
             .single()
             .expect("invalid timestamp");
 
-        let mut event = Event::from(LogEvent::from("hello world"));
+        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello world")));
         event.as_mut_log().insert("format", "%F");
         event.as_mut_log().insert(
             (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
@@ -884,7 +884,7 @@ mod tests {
             .single()
             .expect("invalid timestamp");
 
-        let mut event = Event::from(LogEvent::from("hello world"));
+        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello world")));
         event.as_mut_log().insert("\"%F\"", "foo");
         event.as_mut_log().insert(
             (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
@@ -972,7 +972,7 @@ mod tests {
         let ts = Utc.with_ymd_and_hms(2001, 2, 3, 4, 5, 6).unwrap();
 
         let template = Template::try_from("vector-%Y-%m-%d-%H.log").unwrap();
-        let mut event = Event::from(LogEvent::from("hello world"));
+        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello world")));
         event.as_mut_log().insert(
             (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
             ts,
@@ -991,7 +991,7 @@ mod tests {
         let ts = Utc.with_ymd_and_hms(2001, 2, 3, 4, 5, 6).unwrap();
 
         let template = UnsignedIntTemplate::try_from("%Y%m%d%H").unwrap();
-        let mut event = Event::from(LogEvent::from("hello world"));
+        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello world")));
         event.as_mut_log().insert(event_path!("timestamp"), ts);
 
         let tz: Tz = "Asia/Singapore".parse().unwrap();
@@ -1025,7 +1025,7 @@ mod tests {
         let template = UnsignedIntTemplate::try_from("a-%s").unwrap();
         let ts = Utc.with_ymd_and_hms(2001, 2, 3, 4, 5, 6).unwrap();
 
-        let mut event = Event::from(LogEvent::from("hello world"));
+        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello world")));
         event.as_mut_log().insert(event_path!("timestamp"), ts);
 
         assert_eq!(

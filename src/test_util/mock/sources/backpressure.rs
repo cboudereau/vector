@@ -42,7 +42,7 @@ impl SourceConfig for BackpressureSourceConfig {
             for i in 0.. {
                 let _result = cx
                     .out
-                    .send_event(Event::from(LogEvent::from(format!("event-{i}"))))
+                    .send_event(Event::Log(OtelLog::from_log_event(LogEvent::from(format!("event-{i}")))))
                     .await;
                 counter.fetch_add(1, Ordering::AcqRel);
 

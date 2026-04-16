@@ -284,7 +284,7 @@ pub mod tests {
             || Docker {
                 log_namespace: LogNamespace::Vector,
             },
-            |bytes| Event::from(LogEvent::from(value!(bytes))),
+            |bytes| Event::Log(OtelLog::from_log_event(LogEvent::from(value!(bytes)))),
             valid_cases(LogNamespace::Vector),
         );
     }
@@ -297,7 +297,7 @@ pub mod tests {
             || Docker {
                 log_namespace: LogNamespace::Legacy,
             },
-            |bytes| Event::from(LogEvent::from(bytes)),
+            |bytes| Event::Log(OtelLog::from_log_event(LogEvent::from(bytes))),
             valid_cases(LogNamespace::Legacy),
         );
     }

@@ -209,7 +209,7 @@ impl From<OtelSpan> for EventArray {
 
 impl From<LogEvent> for EventArray {
     fn from(log: LogEvent) -> Self {
-        Event::from(log).into()
+        Event::Log(OtelLog::from_log_event(log)).into()
     }
 }
 

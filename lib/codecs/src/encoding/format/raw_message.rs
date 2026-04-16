@@ -61,7 +61,7 @@ mod tests {
 
     #[test]
     fn serialize_bytes() {
-        let input = Event::from(LogEvent::from_str_legacy("foo"));
+        let input = Event::Log(OtelLog::from_log_event(LogEvent::from_str_legacy("foo")));
         let mut serializer = RawMessageSerializer;
 
         let mut buffer = BytesMut::new();

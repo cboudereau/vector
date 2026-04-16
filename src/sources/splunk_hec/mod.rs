@@ -1470,7 +1470,7 @@ mod tests {
             sink.run_events(
                 messages
                     .into_iter()
-                    .map(|s| Event::from(LogEvent::from(s.into()))),
+                    .map(|s| Event::Log(OtelLog::from_log_event(LogEvent::from(s.into())))),
             )
             .await
             .unwrap();

@@ -73,7 +73,7 @@ fn default_cfg(encoding: EncodingConfigWithFraming) -> HttpSinkConfig {
 
 #[test]
 fn http_encode_event_text() {
-    let event = Event::from(LogEvent::from("hello world"));
+    let event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello world")));
 
     let cfg = default_cfg((None::<FramingConfig>, TextSerializerConfig::default()).into());
     let encoder = cfg.build_encoder().unwrap();
@@ -90,7 +90,7 @@ fn http_encode_event_text() {
 
 #[test]
 fn http_encode_event_ndjson() {
-    let event = Event::from(LogEvent::from("hello world"));
+    let event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello world")));
 
     let cfg = default_cfg(
         (
@@ -284,7 +284,7 @@ async fn http_passes_template_headers() {
         X-Static-Template = "constant-value"
     "#,
         || {
-            let mut event = Event::from(LogEvent::from("test message"));
+            let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("test message")));
             event.as_mut_log().insert("level", "info");
             event.as_mut_log().insert("body", "templated message");
             event
@@ -340,7 +340,7 @@ async fn http_template_headers_missing_fields() {
         X-Static = "static-value"
     "#,
         || {
-            let mut event = Event::from(LogEvent::from("good event"));
+            let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("good event")));
             event.as_mut_log().insert("required_field", "present");
             event
         },
@@ -790,7 +790,7 @@ async fn missing_field_in_uri_template() {
     let (rx, trigger, server) = build_test_server(in_addr);
 
     let (batch, mut receiver) = BatchNotifier::new_with_receiver();
-    let mut event = Event::from(LogEvent::default());
+    let mut event = Event::Log(OtelLog::from_log_event(LogEvent::default()));
     event.add_batch_notifier(batch);
 
     tokio::spawn(server);
@@ -838,7 +838,7 @@ async fn http_uri_auth_conflict() {
     let (rx, trigger, server) = build_test_server(in_addr);
 
     let (batch, mut receiver) = BatchNotifier::new_with_receiver();
-    let mut event = Event::from(LogEvent::default());
+    let mut event = Event::Log(OtelLog::from_log_event(LogEvent::default()));
     event.add_batch_notifier(batch);
 
     tokio::spawn(server);

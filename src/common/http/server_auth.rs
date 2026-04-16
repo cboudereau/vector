@@ -11,7 +11,7 @@ use serde::{
 use vector_config::configurable_component;
 use vector_lib::{
     TimeZone, compile_vrl,
-    event::{Event, LogEvent, VrlTarget},
+    event::{Event, LogEvent, OtelLog, VrlTarget},
     sensitive_string::SensitiveString,
 };
 use vector_vrl_metrics::MetricsStorage;
@@ -229,7 +229,7 @@ impl HttpServerAuthMatcher {
         program: &Program,
     ) -> Result<(), ErrorMessage> {
         let mut target = VrlTarget::new(
-            Event::from(LogEvent::from_map(
+            Event::Log(OtelLog::from_log_event(LogEvent::from_map(
                 ObjectMap::from([
                     (
                         "headers".into(),
@@ -252,7 +252,7 @@ impl HttpServerAuthMatcher {
                     ("path".into(), Value::from(path.to_owned())),
                 ]),
                 Default::default(),
-            )),
+            ))),
             program.info(),
             false,
         );

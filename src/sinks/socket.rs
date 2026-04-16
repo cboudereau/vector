@@ -288,7 +288,7 @@ mod test {
         assert_sink_compliance(&SINK_TAGS, async move {
             let (sink, _healthcheck) = config.build(context).await.unwrap();
 
-            let event = Event::from(LogEvent::from("raw log line"));
+            let event = Event::Log(OtelLog::from_log_event(LogEvent::from("raw log line")));
             sink.run(stream::once(ready(event.into()))).await
         })
         .await

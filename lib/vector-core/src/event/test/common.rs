@@ -58,7 +58,7 @@ impl Arbitrary for Event {
         // Quickcheck can't derive Arbitrary for enums, see
         // https://github.com/BurntSushi/quickcheck/issues/98
         if choice.is_multiple_of(2) {
-            Event::from(LogEvent::arbitrary(g))
+            Event::Log(OtelLog::from_log_event(LogEvent::arbitrary(g)))
         } else {
             Event::Metric(OtelMetric::from_legacy_metric(Metric::arbitrary(g)))
         }

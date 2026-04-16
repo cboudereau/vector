@@ -143,7 +143,7 @@ mod test {
             let (topology, mut out) =
                 create_topology(ReceiverStream::new(rx), transform_config).await;
 
-            let mut log = Event::from(LogEvent::from("message"));
+            let mut log = Event::Log(OtelLog::from_log_event(LogEvent::from("message")));
             tx.send(log.clone()).await.unwrap();
 
             set_expected_metadata(&mut log);

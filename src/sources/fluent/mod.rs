@@ -856,7 +856,7 @@ mod tests {
     // Decode base64: https://toolslick.com/conversion/data/messagepack-to-json
 
     fn mock_event(name: &str, timestamp: &str) -> Event {
-        Event::from(LogEvent::from(ObjectMap::from([
+        Event::Log(OtelLog::from_log_event(LogEvent::from(ObjectMap::from([
             ("message".into(), Value::from(name)),
             (
                 log_schema().source_type_key().unwrap().to_string().into(),
@@ -867,7 +867,7 @@ mod tests {
                 "timestamp".into(),
                 Value::Timestamp(DateTime::parse_from_rfc3339(timestamp).unwrap().into()),
             ),
-        ])))
+        ]))))
     }
 
     #[test]

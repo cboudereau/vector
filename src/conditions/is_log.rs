@@ -24,7 +24,7 @@ mod test {
 
     #[test]
     fn is_log_basic() {
-        assert!(check_is_log(Event::from(LogEvent::from("just a log"))).0);
+        assert!(check_is_log(Event::Log(OtelLog::from_log_event(LogEvent::from("just a log")))).0);
         assert!(
             !check_is_log(Event::Metric(OtelMetric::new_counter("test metric", MetricKind::Incremental, 1.0)))
             .0,

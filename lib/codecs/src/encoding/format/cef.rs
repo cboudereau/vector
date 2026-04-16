@@ -470,7 +470,7 @@ mod tests {
     #[test]
     #[ignore = "Timestamp round-trip through OtelLog changes format (Z vs +00:00)"]
     fn serialize_extensions() {
-        let event = Event::from(LogEvent::from(btreemap! {
+        let event = Event::Log(OtelLog::from_log_event(LogEvent::from(btreemap! {
             "cef" => Value::from(btreemap! {
                 "severity" => Value::from(1),
                 "name" => Value::from("Event name"),
@@ -478,13 +478,13 @@ mod tests {
             "foo" => Value::from("bar"),
             "int" => Value::from(123),
             "comma" => Value::from("abc,bcd"),
-            "float" => Value::Float(NotNan::new(3.1415925).unwrap()),
+            "float" => Value::Float(NotNan::new(3.14159_25).unwrap()),
             "space" => Value::from("sp ace"),
             "time" => Value::Timestamp(DateTime::parse_from_rfc3339("2023-02-27T15:04:49.363+08:00").unwrap().into()),
             "quote" => Value::from("the \"quote\" should be escaped"),
             "bool" => Value::from(true),
             "other" => Value::from("data"),
-        }));
+        })));
 
         let extensions = HashMap::from([
             (

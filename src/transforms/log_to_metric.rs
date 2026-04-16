@@ -1009,7 +1009,7 @@ mod tests {
     }
 
     fn create_event(key: &str, value: impl Into<Value> + std::fmt::Debug) -> Event {
-        let mut log = Event::from(LogEvent::from("i am a log"));
+        let mut log = Event::Log(OtelLog::from_log_event(LogEvent::from("i am a log")));
         log.as_mut_log().insert(key, value);
         log.as_mut_log()
             .insert(log_schema().timestamp_key_target_path().unwrap(), ts());
@@ -1537,7 +1537,7 @@ mod tests {
             "#,
         );
 
-        let mut event = Event::from(LogEvent::from("i am a log"));
+        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("i am a log")));
         event
             .as_mut_log()
             .insert(log_schema().timestamp_key_target_path().unwrap(), ts());
@@ -1595,7 +1595,7 @@ mod tests {
             "#,
         );
 
-        let mut event = Event::from(LogEvent::from("i am a log"));
+        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("i am a log")));
         event
             .as_mut_log()
             .insert(log_schema().timestamp_key_target_path().unwrap(), ts());
@@ -1772,7 +1772,7 @@ mod tests {
         let mut metadata = EventMetadata::default();
         set_test_source_metadata(&mut metadata);
 
-        Event::from(LogEvent::from_parts(log_value, metadata.clone()))
+        Event::Log(OtelLog::from_log_event(LogEvent::from_parts(log_value, metadata.clone())))
     }
 
     #[tokio::test]

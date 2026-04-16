@@ -547,7 +547,7 @@ mod tests {
             ),
             |tx, out| async move {
                 let line2 = random_string(9);
-                tx.send(Event::from(LogEvent::from(line2.as_str())))
+                tx.send(Event::Log(OtelLog::from_log_event(LogEvent::from(line2.as_str()))))
                     .await
                     .unwrap();
                 drop(tx);
@@ -576,7 +576,7 @@ mod tests {
             """
             "#,
             |tx, out| async move {
-                let event = Event::from(LogEvent::from("program me"));
+                let event = Event::Log(OtelLog::from_log_event(LogEvent::from("program me")));
                 tx.send(event).await.unwrap();
 
                 assert_eq!(
@@ -601,7 +601,7 @@ mod tests {
             """
             "#,
             |tx, out| async move {
-                let event = Event::from(LogEvent::from("Hello, my name is Bob."));
+                let event = Event::Log(OtelLog::from_log_event(LogEvent::from("Hello, my name is Bob.")));
                 tx.send(event).await.unwrap();
 
                 assert_eq!(next_event(&out, "in").await.as_log().get("name").unwrap(), Value::from("Bob"));
@@ -1006,7 +1006,7 @@ mod tests {
             "#,
             |tx, out| async move {
                 let n: usize = 10;
-                let events = (0..n).map(|i| Event::from(LogEvent::from(format!("program me {i}"))));
+                let events = (0..n).map(|i| Event::Log(OtelLog::from_log_event(LogEvent::from(format!("program me {i}")))));
                 for event in events {
                     tx.send(event).await.unwrap();
                     assert!(out.lock().await.recv().await.is_some());

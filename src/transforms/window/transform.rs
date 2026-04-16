@@ -378,7 +378,7 @@ mod test {
     fn generate_events(range: RangeInclusive<i32>) -> Vec<Event> {
         range
             .map(|n| format!("A{n:02}"))
-            .map(|m| Event::from(LogEvent::from(m)))
+            .map(|m| Event::Log(OtelLog::from_log_event(LogEvent::from(m))))
             .collect::<Vec<Event>>()
     }
 
@@ -389,7 +389,7 @@ mod test {
     }
 
     async fn send_event(tx: &Sender<Event>, message: &str) {
-        tx.send(Event::from(LogEvent::from(message))).await.unwrap();
+        tx.send(Event::Log(OtelLog::from_log_event(LogEvent::from(message)))).await.unwrap();
     }
 
     async fn assert_event(message: &str, event: Option<Event>) {

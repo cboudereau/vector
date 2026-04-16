@@ -251,7 +251,7 @@ async fn per_signal_backpressure_isolation() {
 
     // With the metrics channel full, logs and traces must still be sendable
     // without blocking.  We give each a 200 ms budget.
-    let log_future = sender.send_batch_named("logs", vec![Event::from(LogEvent::from("hello"))]);
+    let log_future = sender.send_batch_named("logs", vec![Event::Log(OtelLog::from_log_event(LogEvent::from("hello")))]);
     timeout(StdDuration::from_millis(200), log_future)
         .await
         .expect("log send must not block when metric channel is full")
@@ -310,7 +310,7 @@ async fn emits_buffer_utilization_histogram_on_send_and_receive() {
     metrics::init_test();
     let (mut sender, mut recv) = SourceSender::new_test_sender_with_options(BUFFER_SIZE, None);
 
-    let event = Event::from(LogEvent::from("test event"));
+    let event = Event::Log(OtelLog::from_log_event(LogEvent::from("test event")));
     sender
         .send_event(event.clone())
         .await

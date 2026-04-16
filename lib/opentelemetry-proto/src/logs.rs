@@ -427,6 +427,6 @@ impl ResourceLog {
                 .insert(path!("vector", "ingest_timestamp"), now);
         }
 
-        log.into()
+        Event::Log(OtelLog::from_log_event(log))
     }
 }

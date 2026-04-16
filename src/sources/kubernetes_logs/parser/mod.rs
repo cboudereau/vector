@@ -156,7 +156,7 @@ mod tests {
         trace_init();
         test_util::test_parser(
             || Parser::new(LogNamespace::Vector),
-            |bytes| Event::from(LogEvent::from(value!(bytes))),
+            |bytes| Event::Log(OtelLog::from_log_event(LogEvent::from(value!(bytes)))),
             valid_cases(LogNamespace::Vector),
         );
     }
@@ -166,7 +166,7 @@ mod tests {
         trace_init();
         test_util::test_parser(
             || Parser::new(LogNamespace::Legacy),
-            |bytes| Event::from(LogEvent::from(bytes)),
+            |bytes| Event::Log(OtelLog::from_log_event(LogEvent::from(bytes))),
             valid_cases(LogNamespace::Legacy),
         );
     }

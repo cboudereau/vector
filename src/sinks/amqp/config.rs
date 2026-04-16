@@ -163,7 +163,7 @@ pub(super) async fn healthcheck(channels: AmqpSinkChannels) -> crate::Result<()>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vector_lib::event::LogEvent;
+    use vector_lib::event::OtelLog;
     use crate::config::format::{Format, deserialize};
 
     #[test]
@@ -171,8 +171,8 @@ mod tests {
         crate::test_util::test_generate_config::<AmqpSinkConfig>();
     }
 
-    fn assert_config_priority_eq(config: AmqpSinkConfig, event: &LogEvent, priority: u8) {
-        let otel_log = vector_lib::event::OtelLog::from_log_event(event.clone());
+    fn assert_config_priority_eq(config: AmqpSinkConfig, event: &OtelLog, priority: u8) {
+        let otel_log = event.clone();
         assert_eq!(
             config
                 .properties
@@ -228,7 +228,7 @@ mod tests {
             ),
         ] {
             let config: AmqpSinkConfig = deserialize(config, format).unwrap();
-            let event = LogEvent::from_str_legacy("message");
+            let event = OtelLog::from_str_legacy("message");
             assert_config_priority_eq(config, &event, 1);
         }
     }
@@ -277,7 +277,7 @@ mod tests {
         ] {
             let config: AmqpSinkConfig = deserialize(config, format).unwrap();
             let event = {
-                let mut event = LogEvent::from_str_legacy("message");
+                let mut event = OtelLog::from_str_legacy("message");
                 event.insert("priority", 2);
                 event
             };

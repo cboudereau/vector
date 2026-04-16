@@ -4,7 +4,7 @@ use chrono::Utc;
 use criterion::{BatchSize, Criterion, criterion_group};
 use vector::{
     config::log_schema,
-    event::{Event, LogEvent},
+    event::{Event, OtelLog},
 };
 
 fn bench_elasticsearch_index(c: &mut Criterion) {
@@ -14,7 +14,7 @@ fn bench_elasticsearch_index(c: &mut Criterion) {
 
     group.bench_function("dynamic", |b| {
         let index = Template::try_from("index-%Y.%m.%d").unwrap();
-        let mut event = Event::Log(LogEvent::from("hello world"));
+        let mut event = Event::Log(OtelLog::from("hello world"));
         event.as_mut_log().insert(
             log_schema().timestamp_key_target_path().unwrap(),
             Utc::now(),
@@ -29,7 +29,7 @@ fn bench_elasticsearch_index(c: &mut Criterion) {
 
     group.bench_function("static", |b| {
         let index = Template::try_from("index").unwrap();
-        let mut event = Event::Log(LogEvent::from("hello world"));
+        let mut event = Event::Log(OtelLog::from("hello world"));
         event.as_mut_log().insert(
             log_schema().timestamp_key_target_path().unwrap(),
             Utc::now(),

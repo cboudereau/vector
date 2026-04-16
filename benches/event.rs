@@ -1,6 +1,6 @@
 use bytes::Bytes;
 use criterion::{BatchSize, Criterion, criterion_group};
-use vector::event::LogEvent;
+use vector::event::OtelLog;
 use vrl::event_path;
 
 fn benchmark_event_iterate(c: &mut Criterion) {
@@ -9,7 +9,7 @@ fn benchmark_event_iterate(c: &mut Criterion) {
     group.bench_function("single-level", |b| {
         b.iter_batched_ref(
             || {
-                let mut log = LogEvent::default();
+                let mut log = OtelLog::default();
                 log.insert(event_path!("key1"), Bytes::from("value1"));
                 log.insert(event_path!("key2"), Bytes::from("value2"));
                 log.insert(event_path!("key3"), Bytes::from("value3"));
@@ -23,7 +23,7 @@ fn benchmark_event_iterate(c: &mut Criterion) {
     group.bench_function("nested-keys", |b| {
         b.iter_batched_ref(
             || {
-                let mut log = LogEvent::default();
+                let mut log = OtelLog::default();
                 log.insert(
                     event_path!("key1", "nested1", "nested2"),
                     Bytes::from("value1"),
@@ -43,7 +43,7 @@ fn benchmark_event_iterate(c: &mut Criterion) {
     group.bench_function("array", |b| {
         b.iter_batched_ref(
             || {
-                let mut log = LogEvent::default();
+                let mut log = OtelLog::default();
                 log.insert(event_path!("key1", "nested1", 0), Bytes::from("value1"));
                 log.insert(event_path!("key1", "nested1", 1), Bytes::from("value2"));
                 log
@@ -59,7 +59,7 @@ fn benchmark_event_create(c: &mut Criterion) {
 
     group.bench_function("single-level", |b| {
         b.iter(|| {
-            let mut log = LogEvent::default();
+            let mut log = OtelLog::default();
             log.insert(event_path!("key1"), Bytes::from("value1"));
             log.insert(event_path!("key2"), Bytes::from("value2"));
             log.insert(event_path!("key3"), Bytes::from("value3"));
@@ -68,7 +68,7 @@ fn benchmark_event_create(c: &mut Criterion) {
 
     group.bench_function("nested-keys", |b| {
         b.iter(|| {
-            let mut log = LogEvent::default();
+            let mut log = OtelLog::default();
             log.insert(
                 event_path!("key1", "nested1", "nested2"),
                 Bytes::from("value1"),
@@ -82,7 +82,7 @@ fn benchmark_event_create(c: &mut Criterion) {
     });
     group.bench_function("array", |b| {
         b.iter(|| {
-            let mut log = LogEvent::default();
+            let mut log = OtelLog::default();
             log.insert(event_path!("key1", "nested1", 0), Bytes::from("value1"));
             log.insert(event_path!("key1", "nested1", 1), Bytes::from("value2"));
         })

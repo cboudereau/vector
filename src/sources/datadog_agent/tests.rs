@@ -91,7 +91,7 @@ impl Arbitrary for LogMsg {
 }
 
 // We want to know that for any json payload that is a `Vec<LogMsg>` we can
-// correctly decode it into a `Vec<LogEvent>`. For convenience we assume
+// correctly decode it into a `Vec<OtelLog>`. For convenience we assume
 // that order is preserved in the decoding step though this is not
 // necessarily part of the contract of that function.
 #[test]

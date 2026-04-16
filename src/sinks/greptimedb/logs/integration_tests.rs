@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use futures::stream;
-use vector_lib::event::{Event, LogEvent};
+use vector_lib::event::{Event, OtelLog};
 
 use crate::{
     config::{SinkConfig, SinkContext},
@@ -136,7 +136,7 @@ impl GreptimeClient {
 }
 
 fn create_event(i: i32, base_time: DateTime<Utc>) -> Event {
-    let mut event = LogEvent::default();
+    let mut event = OtelLog::default();
     event.insert("message", format!("test message {i}"));
     event.insert("timestamp", base_time);
     event.insert("name", "test");

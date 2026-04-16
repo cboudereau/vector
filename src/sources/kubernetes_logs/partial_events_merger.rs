@@ -176,20 +176,20 @@ fn merge_partial_events_with_custom_expiration(
             state.flush_events(emitter);
         },
     )
-    // LogEvent -> Event
+    // OtelLog -> Event
     .map(|e| e.into())
 }
 
 #[cfg(test)]
 mod test {
-    use vector_lib::event::LogEvent;
+    use vector_lib::event::OtelLog;
     use vrl::value;
 
     use super::*;
 
     #[tokio::test]
     async fn merge_single_event_legacy() {
-        let mut e_1 = LogEvent::from("test message 1");
+        let mut e_1 = OtelLog::from("test message 1");
         e_1.insert("foo", 1);
 
         let input_stream = futures::stream::iter([e_1.into()]);
@@ -205,7 +205,7 @@ mod test {
 
     #[tokio::test]
     async fn merge_single_event_legacy_exceeds_max_merged_line_limit() {
-        let mut e_1 = LogEvent::from("test message 1");
+        let mut e_1 = OtelLog::from("test message 1");
         e_1.insert("foo", 1);
 
         let input_stream = futures::stream::iter([e_1.into()]);
@@ -217,11 +217,11 @@ mod test {
 
     #[tokio::test]
     async fn merge_multiple_events_legacy() {
-        let mut e_1 = LogEvent::from("test message 1");
+        let mut e_1 = OtelLog::from("test message 1");
         e_1.insert("foo", 1);
         e_1.insert("_partial", true);
 
-        let mut e_2 = LogEvent::from("test message 2");
+        let mut e_2 = OtelLog::from("test message 2");
         e_2.insert("foo2", 1);
 
         let input_stream = futures::stream::iter([e_1.into(), e_2.into()]);
@@ -237,11 +237,11 @@ mod test {
 
     #[tokio::test]
     async fn merge_multiple_events_legacy_exceeds_max_merged_line_limit() {
-        let mut e_1 = LogEvent::from("test message 1");
+        let mut e_1 = OtelLog::from("test message 1");
         e_1.insert("foo", 1);
         e_1.insert("_partial", true);
 
-        let mut e_2 = LogEvent::from("test message 2");
+        let mut e_2 = OtelLog::from("test message 2");
         e_2.insert("foo2", 1);
 
         let input_stream = futures::stream::iter([e_1.into(), e_2.into()]);
@@ -254,11 +254,11 @@ mod test {
 
     #[tokio::test]
     async fn multiple_events_flush_legacy() {
-        let mut e_1 = LogEvent::from("test message 1");
+        let mut e_1 = OtelLog::from("test message 1");
         e_1.insert("foo", 1);
         e_1.insert("_partial", true);
 
-        let mut e_2 = LogEvent::from("test message 2");
+        let mut e_2 = OtelLog::from("test message 2");
         e_2.insert("foo2", 1);
         e_1.insert("_partial", true);
 
@@ -275,11 +275,11 @@ mod test {
 
     #[tokio::test]
     async fn multiple_events_flush_legacy_exceeds_max_merged_line_limit() {
-        let mut e_1 = LogEvent::from("test message 1");
+        let mut e_1 = OtelLog::from("test message 1");
         e_1.insert("foo", 1);
         e_1.insert("_partial", true);
 
-        let mut e_2 = LogEvent::from("test message 2");
+        let mut e_2 = OtelLog::from("test message 2");
         e_2.insert("foo2", 1);
         e_1.insert("_partial", true);
 
@@ -293,11 +293,11 @@ mod test {
 
     #[tokio::test]
     async fn multiple_events_expire_legacy() {
-        let mut e_1 = LogEvent::from("test message");
+        let mut e_1 = OtelLog::from("test message");
         e_1.insert(FILE_KEY, "foo1");
         e_1.insert("_partial", true);
 
-        let mut e_2 = LogEvent::from("test message");
+        let mut e_2 = OtelLog::from("test message");
         e_2.insert(FILE_KEY, "foo2");
         e_1.insert("_partial", true);
 

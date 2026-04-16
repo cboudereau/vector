@@ -8,7 +8,7 @@ use vector_lib::{
 use super::config::WebHdfsConfig;
 use crate::{
     codecs::{Encoder, EncodingConfigWithFraming, SinkType},
-    event::LogEvent,
+    event::OtelLog,
     sinks::{
         opendal_common::{OpenDalRequest, OpenDalRequestBuilder},
         util::{
@@ -60,7 +60,7 @@ fn build_request(compression: Compression) -> OpenDalRequest {
                 .into(),
         )
     };
-    let log = LogEvent::default().into();
+    let log = OtelLog::default().into();
     let key = sink_config
         .key_partitioner()
         .unwrap()

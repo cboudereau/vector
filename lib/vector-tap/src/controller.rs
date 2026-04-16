@@ -270,7 +270,7 @@ async fn send_invalid_output_pattern_match(
 }
 
 /// Returns a tap handler that listens for topology changes, and connects sinks to observe
-/// `LogEvent`s` when a component matches one or more of the provided patterns.
+/// `OtelLog`s` when a component matches one or more of the provided patterns.
 async fn tap_handler(
     patterns: TapPatterns,
     tx: TapSender,

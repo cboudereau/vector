@@ -504,8 +504,8 @@ mod tests {
         String::from_utf8(buffer.to_vec()).unwrap()
     }
 
-    fn create_simple_log() -> LogEvent {
-        let mut log = LogEvent::from("original message");
+    fn create_simple_log() -> OtelLog {
+        let mut log = OtelLog::from("original message");
         log.insert(
             event_path!("timestamp"),
             NaiveDate::from_ymd_opt(2025, 8, 28)
@@ -519,7 +519,7 @@ mod tests {
         log
     }
 
-    fn create_test_log() -> LogEvent {
+    fn create_test_log() -> OtelLog {
         let mut log = create_simple_log();
         log.insert(event_path!("app"), "my-app");
         log.insert(event_path!("pid"), "12345");
@@ -589,7 +589,7 @@ mod tests {
 
     #[test]
     fn test_parsing_logic() {
-        let mut log = LogEvent::from("test message");
+        let mut log = OtelLog::from("test message");
         let config_fac =
             toml::from_str::<SyslogSerializerOptions>(r#"facility = ".syslog_facility""#).unwrap();
         let config_sev =
@@ -810,7 +810,7 @@ mod tests {
     "#,
         )
         .unwrap();
-        let log = LogEvent::from("");
+        let log = OtelLog::from("");
 
         let output = run_encode(config, Event::Log(OtelLog::from_log_event(log)));
         let expected_suffix = "vector - - -";
@@ -830,7 +830,7 @@ mod tests {
         )
         .unwrap();
 
-        let mut log = LogEvent::default();
+        let mut log = OtelLog::default();
         log.insert("syslog.service", "meaning-app");
 
         let schema = schema::Definition::new_with_default_metadata(

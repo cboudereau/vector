@@ -2,7 +2,7 @@ use std::{collections::HashSet, time::Duration};
 
 use config::AmqpPropertiesConfig;
 use futures::StreamExt;
-use vector_lib::{config::LogNamespace, event::LogEvent};
+use vector_lib::{config::LogNamespace, event::OtelLog};
 
 use super::*;
 use crate::{
@@ -304,7 +304,7 @@ async fn amqp_priority_with_template(
     // Send a single event with a priority defined in the event
     let input = random_string(100);
     let event = {
-        let mut event = LogEvent::from_str_legacy(&input);
+        let mut event = OtelLog::from_str_legacy(&input);
         if let Some(priority) = event_field_priority {
             event.insert("priority", priority);
         }

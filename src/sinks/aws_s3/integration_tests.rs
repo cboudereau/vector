@@ -22,7 +22,7 @@ use tokio_stream::StreamExt;
 use vector_lib::{
     codecs::{TextSerializerConfig, encoding::FramingConfig},
     config::proxy::ProxyConfig,
-    event::{BatchNotifier, BatchStatus, BatchStatusReceiver, Event, EventArray, LogEvent},
+    event::{BatchNotifier, BatchStatus, BatchStatusReceiver, Event, EventArray, OtelLog},
 };
 
 use super::S3SinkConfig;
@@ -174,7 +174,7 @@ async fn s3_rotate_files_after_the_buffer_size_is_reached() {
     let (lines, _events) = random_lines_with_stream(100, 30, None);
 
     let events = lines.clone().into_iter().enumerate().map(|(i, line)| {
-        let mut e = LogEvent::from(line);
+        let mut e = OtelLog::from(line);
         let i = if i < 10 {
             1
         } else if i < 20 {
@@ -451,7 +451,7 @@ async fn s3_flush_on_exhaustion() {
     let (lines, _events) = random_lines_with_stream(100, 2, None); // only generate two events (less than batch size)
 
     let events = lines.clone().into_iter().enumerate().map(|(i, line)| {
-        let mut e = LogEvent::from(line);
+        let mut e = OtelLog::from(line);
         let i = if i < 10 {
             1
         } else if i < 20 {

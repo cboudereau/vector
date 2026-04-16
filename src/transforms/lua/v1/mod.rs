@@ -324,7 +324,7 @@ mod tests {
     use super::*;
     use crate::{
         config::ComponentKey,
-        event::{Event, LogEvent, Value},
+        event::{Event, OtelLog, Value},
         test_util,
     };
 
@@ -334,7 +334,7 @@ mod tests {
             r#"
               event["hello"] = "goodbye"
             "#,
-            LogEvent::from("program me"),
+            OtelLog::from("program me"),
         )
         .unwrap();
 
@@ -348,7 +348,7 @@ mod tests {
               _, _, name = string.find(event["body"], "Hello, my name is (%a+).")
               event["name"] = name
             "#,
-            LogEvent::from("Hello, my name is Bob."),
+            OtelLog::from("Hello, my name is Bob."),
         )
         .unwrap();
 
@@ -357,7 +357,7 @@ mod tests {
 
     #[test]
     fn lua_remove_field() {
-        let mut log = LogEvent::default();
+        let mut log = OtelLog::default();
         log.insert("name", "Bob");
         let event = transform_one(
             r#"
@@ -372,7 +372,7 @@ mod tests {
 
     #[test]
     fn lua_drop_event() {
-        let mut log = LogEvent::default();
+        let mut log = OtelLog::default();
         log.insert("name", "Bob");
         let event = transform_one(
             r"
@@ -394,7 +394,7 @@ mod tests {
                 event["result"] = "found"
               end
             "#,
-            LogEvent::default(),
+            OtelLog::default(),
         )
         .unwrap();
 
@@ -407,7 +407,7 @@ mod tests {
             r#"
               event["number"] = 3
             "#,
-            LogEvent::default(),
+            OtelLog::default(),
         )
         .unwrap();
         assert_eq!(event.as_log().get("number").unwrap(), Value::Integer(3));
@@ -419,7 +419,7 @@ mod tests {
             r#"
               event["number"] = 3.14159
             "#,
-            LogEvent::default(),
+            OtelLog::default(),
         )
         .unwrap();
         assert_eq!(event.as_log().get("number").unwrap(), Value::from(3.14159));
@@ -431,7 +431,7 @@ mod tests {
             r#"
               event["bool"] = true
             "#,
-            LogEvent::default(),
+            OtelLog::default(),
         )
         .unwrap();
         assert_eq!(event.as_log().get("bool").unwrap(), Value::Boolean(true));
@@ -443,7 +443,7 @@ mod tests {
             r#"
               event["junk"] = {"asdf"}
             "#,
-            LogEvent::default(),
+            OtelLog::default(),
         )
         .unwrap();
         assert_eq!(event.as_log().get("junk"), None);
@@ -461,7 +461,7 @@ mod tests {
         )
         .unwrap();
 
-        let err = transform.process(LogEvent::default().into()).unwrap_err();
+        let err = transform.process(OtelLog::default().into()).unwrap_err();
         let err = format_error(&err);
         assert!(
             err.contains("error converting Lua boolean to String"),
@@ -482,7 +482,7 @@ mod tests {
         )
         .unwrap();
 
-        let err = transform.process(LogEvent::default().into()).unwrap_err();
+        let err = transform.process(OtelLog::default().into()).unwrap_err();
         let err = format_error(&err);
         assert!(
             err.contains("error converting Lua boolean to String"),
@@ -503,7 +503,7 @@ mod tests {
         )
         .unwrap();
 
-        let err = transform.process(LogEvent::default().into()).unwrap_err();
+        let err = transform.process(OtelLog::default().into()).unwrap_err();
         let err = format_error(&err);
         assert!(err.contains("this is an error"), "{}", err);
     }
@@ -556,13 +556,13 @@ mod tests {
 
         let mut transform =
             Lua::new(source, vec![dir.path().to_string_lossy().into_owned()]).unwrap();
-        let event = transform.transform_one(LogEvent::default().into()).unwrap();
+        let event = transform.transform_one(OtelLog::default().into()).unwrap();
         assert_eq!(event.as_log().get("\"new field\"").unwrap(), Value::from("new value"));
     }
 
     #[test]
     fn lua_pairs() {
-        let mut event = LogEvent::default();
+        let mut event = OtelLog::default();
         event.insert("name", "Bob");
         event.insert("friend", "Alice");
 

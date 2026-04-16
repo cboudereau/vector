@@ -6,7 +6,7 @@ use vector_lib::lookup::PathPrefix;
 use crate::{
     codecs::Transformer,
     config::ProxyConfig,
-    event::{LogEvent, Metric, MetricKind, MetricValue, ObjectMap, OtelLog, Value},
+    event::{OtelLog, Metric, MetricKind, MetricValue, ObjectMap, Value},
     sinks::{
         elasticsearch::{
             BulkAction, BulkConfig, DataStreamConfig, ElasticsearchApiVersion,
@@ -43,7 +43,7 @@ async fn sets_create_action_when_configured() {
     };
     let es = ElasticsearchCommon::parse_single(&config).await.unwrap();
 
-    let mut log = LogEvent::from("hello there");
+    let mut log = OtelLog::from("hello there");
     log.insert(
         (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
         Utc.with_ymd_and_hms(2020, 12, 1, 1, 2, 3)
@@ -57,7 +57,7 @@ async fn sets_create_action_when_configured() {
         .request_builder
         .encoder
         .encode_input(
-            vec![process_log(OtelLog::from_log_event(log), &es.mode, None, &config.encoding).unwrap()],
+            vec![process_log(log, &es.mode, None, &config.encoding).unwrap()],
             &mut encoded,
         )
         .unwrap();
@@ -111,7 +111,7 @@ async fn encoding_with_external_versioning_with_version_set_includes_version() {
         .await
         .expect("config creation failed");
 
-    let mut log = LogEvent::from("hello there");
+    let mut log = OtelLog::from("hello there");
     log.insert(
         (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
         Utc.with_ymd_and_hms(2020, 12, 1, 1, 2, 3)
@@ -126,7 +126,7 @@ async fn encoding_with_external_versioning_with_version_set_includes_version() {
         .request_builder
         .encoder
         .encode_input(
-            vec![process_log(OtelLog::from_log_event(log), &es.mode, config.id_key.as_ref(), &config.encoding).unwrap()],
+            vec![process_log(log, &es.mode, config.id_key.as_ref(), &config.encoding).unwrap()],
             &mut encoded,
         )
         .unwrap();
@@ -161,7 +161,7 @@ async fn encoding_with_external_gte_versioning_with_version_set_includes_version
         .await
         .expect("config creation failed");
 
-    let mut log = LogEvent::from("hello there");
+    let mut log = OtelLog::from("hello there");
     log.insert(
         (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
         Utc.with_ymd_and_hms(2020, 12, 1, 1, 2, 3)
@@ -176,7 +176,7 @@ async fn encoding_with_external_gte_versioning_with_version_set_includes_version
         .request_builder
         .encoder
         .encode_input(
-            vec![process_log(OtelLog::from_log_event(log), &es.mode, config.id_key.as_ref(), &config.encoding).unwrap()],
+            vec![process_log(log, &es.mode, config.id_key.as_ref(), &config.encoding).unwrap()],
             &mut encoded,
         )
         .unwrap();
@@ -243,7 +243,7 @@ async fn encode_datastream_mode() {
     };
     let es = ElasticsearchCommon::parse_single(&config).await.unwrap();
 
-    let mut log = LogEvent::from("hello there");
+    let mut log = OtelLog::from("hello there");
     log.insert(
         (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
         Utc.with_ymd_and_hms(2020, 12, 1, 1, 2, 3)
@@ -264,7 +264,7 @@ async fn encode_datastream_mode() {
         .request_builder
         .encoder
         .encode_input(
-            vec![process_log(OtelLog::from_log_event(log), &es.mode, None, &config.encoding).unwrap()],
+            vec![process_log(log, &es.mode, None, &config.encoding).unwrap()],
             &mut encoded,
         )
         .unwrap();
@@ -299,7 +299,7 @@ async fn encode_datastream_mode_no_routing() {
     };
     let es = ElasticsearchCommon::parse_single(&config).await.unwrap();
 
-    let mut log = LogEvent::from("hello there");
+    let mut log = OtelLog::from("hello there");
     log.insert(
         "data_stream",
         data_stream_body(
@@ -319,7 +319,7 @@ async fn encode_datastream_mode_no_routing() {
         .request_builder
         .encoder
         .encode_input(
-            vec![process_log(OtelLog::from_log_event(log), &es.mode, None, &config.encoding).unwrap()],
+            vec![process_log(log, &es.mode, None, &config.encoding).unwrap()],
             &mut encoded,
         )
         .unwrap();
@@ -390,10 +390,10 @@ async fn decode_bulk_action_error() {
     };
     let es = ElasticsearchCommon::parse_single(&config).await.unwrap();
 
-    let mut log = LogEvent::from("hello world");
+    let mut log = OtelLog::from("hello world");
     log.insert("foo", "bar");
     log.insert("idx", "purple");
-    let action = es.mode.bulk_action(&OtelLog::from_log_event(log));
+    let action = es.mode.bulk_action(&log);
     assert!(action.is_none());
 }
 
@@ -423,8 +423,8 @@ async fn decode_bulk_action() {
     };
     let es = ElasticsearchCommon::parse_single(&config).await.unwrap();
 
-    let log = LogEvent::from("hello there");
-    let action = es.mode.bulk_action(&OtelLog::from_log_event(log)).unwrap();
+    let log = OtelLog::from("hello there");
+    let action = es.mode.bulk_action(&log).unwrap();
     assert!(matches!(action, BulkAction::Create));
 }
 
@@ -452,7 +452,7 @@ async fn encode_datastream_mode_no_sync() {
 
     let es = ElasticsearchCommon::parse_single(&config).await.unwrap();
 
-    let mut log = LogEvent::from("hello there");
+    let mut log = OtelLog::from("hello there");
     log.insert(
         "data_stream",
         data_stream_body(
@@ -473,7 +473,7 @@ async fn encode_datastream_mode_no_sync() {
         .request_builder
         .encoder
         .encode_input(
-            vec![process_log(OtelLog::from_log_event(log), &es.mode, None, &config.encoding).unwrap()],
+            vec![process_log(log, &es.mode, None, &config.encoding).unwrap()],
             &mut encoded,
         )
         .unwrap();
@@ -500,7 +500,7 @@ async fn allows_using_except_fields() {
     };
     let es = ElasticsearchCommon::parse_single(&config).await.unwrap();
 
-    let mut log = LogEvent::from("hello there");
+    let mut log = OtelLog::from("hello there");
     log.insert("foo", "bar");
     log.insert("idx", "purple");
 
@@ -509,7 +509,7 @@ async fn allows_using_except_fields() {
         .request_builder
         .encoder
         .encode_input(
-            vec![process_log(OtelLog::from_log_event(log), &es.mode, None, &config.encoding).unwrap()],
+            vec![process_log(log, &es.mode, None, &config.encoding).unwrap()],
             &mut encoded,
         )
         .unwrap();
@@ -535,7 +535,7 @@ async fn allows_using_only_fields() {
     };
     let es = ElasticsearchCommon::parse_single(&config).await.unwrap();
 
-    let mut log = LogEvent::from("hello there");
+    let mut log = OtelLog::from("hello there");
     log.insert("foo", "bar");
     log.insert("idx", "purple");
 
@@ -544,7 +544,7 @@ async fn allows_using_only_fields() {
         .request_builder
         .encoder
         .encode_input(
-            vec![process_log(OtelLog::from_log_event(log), &es.mode, None, &config.encoding).unwrap()],
+            vec![process_log(log, &es.mode, None, &config.encoding).unwrap()],
             &mut encoded,
         )
         .unwrap();
@@ -660,7 +660,7 @@ async fn datastream_index_name() {
     ];
 
     for test_case in test_cases {
-        let mut log = LogEvent::from("hello there");
+        let mut log = OtelLog::from("hello there");
         log.insert(
             "data_stream",
             data_stream_body(
@@ -670,7 +670,7 @@ async fn datastream_index_name() {
             ),
         );
 
-        let processed_event = process_log(OtelLog::from_log_event(log), &es.mode, None, &config.encoding).unwrap();
+        let processed_event = process_log(log, &es.mode, None, &config.encoding).unwrap();
         assert_eq!(processed_event.index, test_case.want, "{test_case:?}");
     }
 }

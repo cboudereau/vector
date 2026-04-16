@@ -3,7 +3,7 @@ use std::env;
 use chrono::{DateTime, Duration, Utc};
 use futures::stream;
 use serde::{Deserialize, Serialize};
-use vector_lib::event::{BatchNotifier, BatchStatus, Event, LogEvent};
+use vector_lib::event::{BatchNotifier, BatchStatus, Event, OtelLog};
 
 use super::*;
 use crate::{
@@ -41,12 +41,12 @@ async fn axiom_logs_put_data() {
 
     let (batch, mut receiver) = BatchNotifier::new_with_receiver();
 
-    let mut event1 = LogEvent::from("message_1").with_batch_notifier(&batch);
+    let mut event1 = OtelLog::from("message_1").with_batch_notifier(&batch);
     event1.insert("host", "aws.cloud.eur");
     event1.insert("source_type", "file");
     event1.insert("test_id", test_id.clone());
 
-    let mut event2 = LogEvent::from("message_2").with_batch_notifier(&batch);
+    let mut event2 = OtelLog::from("message_2").with_batch_notifier(&batch);
     event2.insert("host", "aws.cloud.eur");
     event2.insert("source_type", "file");
     event2.insert("test_id", test_id.clone());

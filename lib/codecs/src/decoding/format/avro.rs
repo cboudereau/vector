@@ -174,7 +174,7 @@ impl Deserializer for AvroDeserializer {
 // Can't use std::convert::TryFrom because of orphan rules
 pub fn try_from(value: AvroValue) -> vector_common::Result<VrlValue> {
     // Very similar to avro to json see `impl std::convert::TryFrom<AvroValue> for serde_json::Value`
-    // LogEvent has native support for bytes, so it is used for Bytes and Fixed
+    // OtelLog has native support for bytes, so it is used for Bytes and Fixed
     match value {
         AvroValue::Array(array) => {
             let mut vector = Vec::new();

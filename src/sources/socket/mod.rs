@@ -370,7 +370,7 @@ mod test {
     use crate::{
         SourceSender,
         config::{ComponentKey, GlobalOptions, SourceConfig, SourceContext, log_schema},
-        event::{Event, LogEvent},
+        event::{Event, OtelLog},
         shutdown::{ShutdownSignal, SourceShutdownCoordinator},
         sinks::util::tcp::TcpSinkConfig,
         sources::util::net::SocketListenAddr,
@@ -852,7 +852,7 @@ mod test {
         let (sink, _healthcheck) = sink_config.build(Default::default(), encoder).unwrap();
 
         tokio::spawn(async move {
-            let input = stream::repeat_with(|| LogEvent::default().into()).boxed();
+            let input = stream::repeat_with(|| OtelLog::default().into()).boxed();
             sink.run(input).await.unwrap();
         });
 

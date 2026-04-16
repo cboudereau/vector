@@ -5,14 +5,14 @@ use futures::{SinkExt, Stream, StreamExt, stream};
 use indoc::indoc;
 use transforms::lua::v2::LuaConfig;
 use vector::{
-    event::{Event, LogEvent},
+    event::{Event, OtelLog},
     test_util::collect_ready,
     transforms::{self, OutputBuffer, Transform},
 };
 use vrl::event_path;
 
 fn bench_add_fields(c: &mut Criterion) {
-    let event = Event::from(LogEvent::default());
+    let event = Event::from(OtelLog::default());
 
     let key = "the_key";
     let value = "this is the value";
@@ -90,7 +90,7 @@ fn bench_field_filter(c: &mut Criterion) {
     let num_events = 10;
     let events = (0..num_events)
         .map(|i| {
-            let mut event = LogEvent::default();
+            let mut event = OtelLog::default();
             event.insert(event_path!("the_field"), (i % 10).to_string());
             Event::Log(OtelLog::from_log_event(event))
         })

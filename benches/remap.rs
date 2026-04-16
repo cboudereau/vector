@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 use vector::{
     config::{DataType, TransformOutput},
-    event::{Event, LogEvent, Value},
+    event::{Event, OtelLog, Value},
     transforms::{
         SyncTransform, TransformOutputsBuf,
         remap::{Remap, RemapConfig},
@@ -73,7 +73,7 @@ fn benchmark_remap(c: &mut Criterion) {
         );
 
         let event = {
-            let mut event = Event::Log(LogEvent::from("augment me"));
+            let mut event = Event::Log(OtelLog::from("augment me"));
             event
                 .as_mut_log()
                 .insert(event_path!("copy_from"), "buz".to_owned());
@@ -126,7 +126,7 @@ fn benchmark_remap(c: &mut Criterion) {
         );
 
         let event = {
-            let mut event = Event::Log(LogEvent::from("parse me"));
+            let mut event = Event::Log(OtelLog::from("parse me"));
             event
                 .as_mut_log()
                 .insert("foo", r#"{"key": "value"}"#.to_owned());
@@ -185,7 +185,7 @@ fn benchmark_remap(c: &mut Criterion) {
             .0,
         );
 
-        let mut event = Event::Log(LogEvent::from("coerce me"));
+        let mut event = Event::Log(OtelLog::from("coerce me"));
         for &(key, value) in &[
             ("number", "1234"),
             ("bool", "yes"),

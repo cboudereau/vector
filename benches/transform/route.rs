@@ -15,7 +15,7 @@ use vector::{
 };
 use vector_lib::{
     config::{DataType, TransformOutput},
-    event::{Event, EventContainer, EventMetadata, LogEvent},
+    event::{Event, EventContainer, EventMetadata, OtelLog},
     transform::SyncTransform,
 };
 use vrl::value::{ObjectMap, Value};
@@ -45,7 +45,7 @@ fn route(c: &mut Criterion) {
     ] {
         fields.insert(alpha.into(), Value::Bytes(Bytes::from(alpha)));
     }
-    let event = Event::from(LogEvent::from_map(fields, EventMetadata::default()));
+    let event = Event::from(OtelLog::from_map(fields, EventMetadata::default()));
 
     let mut outputs = Vec::new();
     for name in [

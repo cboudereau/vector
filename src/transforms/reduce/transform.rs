@@ -368,7 +368,7 @@ mod test {
     use super::*;
     use crate::{
         config::{OutputId, TransformConfig, schema, schema::Definition},
-        event::{LogEvent, Value},
+        event::{OtelLog, Value},
         test_util::components::assert_transform_compliance,
         transforms::test::create_topology,
     };
@@ -420,30 +420,30 @@ group_by = [ "request_id" ]
             let (tx, rx) = mpsc::channel(1);
             let (topology, mut out) = create_topology(ReceiverStream::new(rx), reduce_config).await;
 
-            let mut e_1 = LogEvent::from("test message 1");
+            let mut e_1 = OtelLog::from("test message 1");
             e_1.insert("counter", 1);
             e_1.insert("request_id", "1");
             let mut metadata_1 = e_1.metadata().clone();
             metadata_1.set_upstream_id(Arc::new(OutputId::from("transform")));
             metadata_1.set_schema_definition(&Arc::new(new_schema_definition.clone()));
 
-            let mut e_2 = LogEvent::from("test message 2");
+            let mut e_2 = OtelLog::from("test message 2");
             e_2.insert("counter", 2);
             e_2.insert("request_id", "2");
             let mut metadata_2 = e_2.metadata().clone();
             metadata_2.set_upstream_id(Arc::new(OutputId::from("transform")));
             metadata_2.set_schema_definition(&Arc::new(new_schema_definition.clone()));
 
-            let mut e_3 = LogEvent::from("test message 3");
+            let mut e_3 = OtelLog::from("test message 3");
             e_3.insert("counter", 3);
             e_3.insert("request_id", "1");
 
-            let mut e_4 = LogEvent::from("test message 4");
+            let mut e_4 = OtelLog::from("test message 4");
             e_4.insert("counter", 4);
             e_4.insert("request_id", "1");
             e_4.insert("test_end", "yep");
 
-            let mut e_5 = LogEvent::from("test message 5");
+            let mut e_5 = OtelLog::from("test message 5");
             e_5.insert("counter", 5);
             e_5.insert("request_id", "2");
             e_5.insert("extra_field", "value1");
@@ -509,7 +509,7 @@ merge_strategies.baz = "max"
 
             let (topology, mut out) = create_topology(ReceiverStream::new(rx), reduce_config).await;
 
-            let mut e_1 = LogEvent::from("test message 1");
+            let mut e_1 = OtelLog::from("test message 1");
             e_1.insert("foo", "first foo");
             e_1.insert("bar", "first bar");
             e_1.insert("baz", 2);
@@ -519,14 +519,14 @@ merge_strategies.baz = "max"
             metadata.set_schema_definition(&Arc::new(new_schema_definition.clone()));
             tx.send(e_1.into()).await.unwrap();
 
-            let mut e_2 = LogEvent::from("test message 2");
+            let mut e_2 = OtelLog::from("test message 2");
             e_2.insert("foo", "second foo");
             e_2.insert("bar", 2);
             e_2.insert("baz", "not number");
             e_2.insert("request_id", "1");
             tx.send(e_2.into()).await.unwrap();
 
-            let mut e_3 = LogEvent::from("test message 3");
+            let mut e_3 = OtelLog::from("test message 3");
             e_3.insert("foo", 10);
             e_3.insert("bar", "third bar");
             e_3.insert("baz", 3);
@@ -578,7 +578,7 @@ group_by = [ "request_id" ]
 
             let (topology, mut out) = create_topology(ReceiverStream::new(rx), reduce_config).await;
 
-            let mut e_1 = LogEvent::from("test message 1");
+            let mut e_1 = OtelLog::from("test message 1");
             e_1.insert("counter", 1);
             e_1.insert("request_id", "1");
             let mut metadata_1 = e_1.metadata().clone();
@@ -586,25 +586,25 @@ group_by = [ "request_id" ]
             metadata_1.set_schema_definition(&Arc::new(new_schema_definition.clone()));
             tx.send(e_1.into()).await.unwrap();
 
-            let mut e_2 = LogEvent::from("test message 2");
+            let mut e_2 = OtelLog::from("test message 2");
             e_2.insert("counter", 2);
             let mut metadata_2 = e_2.metadata().clone();
             metadata_2.set_upstream_id(Arc::new(OutputId::from("transform")));
             metadata_2.set_schema_definition(&Arc::new(new_schema_definition));
             tx.send(e_2.into()).await.unwrap();
 
-            let mut e_3 = LogEvent::from("test message 3");
+            let mut e_3 = OtelLog::from("test message 3");
             e_3.insert("counter", 3);
             e_3.insert("request_id", "1");
             tx.send(e_3.into()).await.unwrap();
 
-            let mut e_4 = LogEvent::from("test message 4");
+            let mut e_4 = OtelLog::from("test message 4");
             e_4.insert("counter", 4);
             e_4.insert("request_id", "1");
             e_4.insert("test_end", "yep");
             tx.send(e_4.into()).await.unwrap();
 
-            let mut e_5 = LogEvent::from("test message 5");
+            let mut e_5 = OtelLog::from("test message 5");
             e_5.insert("counter", 5);
             e_5.insert("extra_field", "value1");
             e_5.insert("test_end", "yep");
@@ -663,13 +663,13 @@ max_events = 1
             let (tx, rx) = mpsc::channel(1);
             let (topology, mut out) = create_topology(ReceiverStream::new(rx), reduce_config).await;
 
-            let mut e_1 = LogEvent::from("test 1");
+            let mut e_1 = OtelLog::from("test 1");
             e_1.insert("id", "1");
 
-            let mut e_2 = LogEvent::from("test 2");
+            let mut e_2 = OtelLog::from("test 2");
             e_2.insert("id", "1");
 
-            let mut e_3 = LogEvent::from("test 3");
+            let mut e_3 = OtelLog::from("test 3");
             e_3.insert("id", "1");
 
             for event in [e_1.into(), e_2.into(), e_3.into()] {
@@ -707,22 +707,22 @@ max_events = 3
             let (tx, rx) = mpsc::channel(1);
             let (topology, mut out) = create_topology(ReceiverStream::new(rx), reduce_config).await;
 
-            let mut e_1 = LogEvent::from("test 1");
+            let mut e_1 = OtelLog::from("test 1");
             e_1.insert("id", "1");
 
-            let mut e_2 = LogEvent::from("test 2");
+            let mut e_2 = OtelLog::from("test 2");
             e_2.insert("id", "1");
 
-            let mut e_3 = LogEvent::from("test 3");
+            let mut e_3 = OtelLog::from("test 3");
             e_3.insert("id", "1");
 
-            let mut e_4 = LogEvent::from("test 4");
+            let mut e_4 = OtelLog::from("test 4");
             e_4.insert("id", "1");
 
-            let mut e_5 = LogEvent::from("test 5");
+            let mut e_5 = OtelLog::from("test 5");
             e_5.insert("id", "1");
 
-            let mut e_6 = LogEvent::from("test 6");
+            let mut e_6 = OtelLog::from("test 6");
             e_6.insert("id", "1");
 
             for event in [
@@ -786,7 +786,7 @@ merge_strategies.bar = "concat"
 
             let (topology, mut out) = create_topology(ReceiverStream::new(rx), reduce_config).await;
 
-            let mut e_1 = LogEvent::from("test message 1");
+            let mut e_1 = OtelLog::from("test message 1");
             e_1.insert("foo", json!([1, 3]));
             e_1.insert("bar", json!([1, 3]));
             e_1.insert("request_id", "1");
@@ -796,7 +796,7 @@ merge_strategies.bar = "concat"
 
             tx.send(e_1.into()).await.unwrap();
 
-            let mut e_2 = LogEvent::from("test message 2");
+            let mut e_2 = OtelLog::from("test message 2");
             e_2.insert("foo", json!([2, 4]));
             e_2.insert("bar", json!([2, 4]));
             e_2.insert("request_id", "2");
@@ -805,26 +805,26 @@ merge_strategies.bar = "concat"
             metadata_2.set_schema_definition(&Arc::new(new_schema_definition));
             tx.send(e_2.into()).await.unwrap();
 
-            let mut e_3 = LogEvent::from("test message 3");
+            let mut e_3 = OtelLog::from("test message 3");
             e_3.insert("foo", json!([5, 7]));
             e_3.insert("bar", json!([5, 7]));
             e_3.insert("request_id", "1");
             tx.send(e_3.into()).await.unwrap();
 
-            let mut e_4 = LogEvent::from("test message 4");
+            let mut e_4 = OtelLog::from("test message 4");
             e_4.insert("foo", json!("done"));
             e_4.insert("bar", json!("done"));
             e_4.insert("request_id", "1");
             e_4.insert("test_end", "yep");
             tx.send(e_4.into()).await.unwrap();
 
-            let mut e_5 = LogEvent::from("test message 5");
+            let mut e_5 = OtelLog::from("test message 5");
             e_5.insert("foo", json!([6, 8]));
             e_5.insert("bar", json!([6, 8]));
             e_5.insert("request_id", "2");
             tx.send(e_5.into()).await.unwrap();
 
-            let mut e_6 = LogEvent::from("test message 6");
+            let mut e_6 = OtelLog::from("test message 6");
             e_6.insert("foo", json!("done"));
             e_6.insert("bar", json!("done"));
             e_6.insert("request_id", "2");
@@ -870,7 +870,7 @@ merge_strategies.bar = "concat"
 
             let (topology, mut out) = create_topology(ReceiverStream::new(rx), reduce_config).await;
 
-            let e_1 = LogEvent::from(Value::from(btreemap! {
+            let e_1 = OtelLog::from(Value::from(btreemap! {
                 "id" => 777,
                 "message" => btreemap! {
                     "a" => btreemap! {
@@ -885,7 +885,7 @@ merge_strategies.bar = "concat"
 
             tx.send(e_1.into()).await.unwrap();
 
-            let e_2 = LogEvent::from(Value::from(btreemap! {
+            let e_2 = OtelLog::from(Value::from(btreemap! {
                 "id" => 777,
                 "message" => btreemap! {
                         "a" => btreemap! {
@@ -977,7 +977,7 @@ merge_strategies.bar = "concat"
                 },
                 "sev" => 2,
             });
-            let mut e_1 = LogEvent::from(Value::from(
+            let mut e_1 = OtelLog::from(Value::from(
                 btreemap! {"id" => 777, "another" => btreemap!{ "a" => 1}},
             ));
             e_1.insert("events", v_1.clone());
@@ -990,7 +990,7 @@ merge_strategies.bar = "concat"
                 },
                 "sev" => 3,
             });
-            let mut e_2 = LogEvent::from(Value::from(
+            let mut e_2 = OtelLog::from(Value::from(
                 btreemap! {"id" => 777, "test_end" => "done", "another" => btreemap!{ "b" => 2}},
             ));
             e_2.insert("events", v_2.clone());
@@ -1030,10 +1030,10 @@ merge_strategies.bar = "concat"
 
             let (topology, mut out) = create_topology(ReceiverStream::new(rx), config).await;
 
-            let e_1 = LogEvent::from(Value::from(btreemap! {"a b" => 1}));
+            let e_1 = OtelLog::from(Value::from(btreemap! {"a b" => 1}));
             tx.send(e_1.into()).await.unwrap();
 
-            let e_2 = LogEvent::from(Value::from(btreemap! {"a b" => 2, "test_end" => "done"}));
+            let e_2 = OtelLog::from(Value::from(btreemap! {"a b" => 2, "test_end" => "done"}));
             tx.send(e_2.into()).await.unwrap();
 
             let output = out.recv().await.unwrap().into_log();

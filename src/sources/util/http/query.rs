@@ -78,7 +78,7 @@ mod tests {
     use vrl::value;
 
     use crate::{
-        event::LogEvent,
+        event::OtelLog,
         sources::{http_server::HttpConfigParamKind, util::add_query_parameters},
     };
 
@@ -95,7 +95,7 @@ mod tests {
         ]
         .into();
 
-        let mut events = [LogEvent::from(value!({})).into()];
+        let mut events = [OtelLog::from(value!({})).into()];
         add_query_parameters(
             &mut events,
             &query_params_names,
@@ -120,7 +120,7 @@ mod tests {
         ]
         .into();
 
-        let mut events = [LogEvent::from(value!({})).into()];
+        let mut events = [OtelLog::from(value!({})).into()];
         add_query_parameters(
             &mut events,
             &query_params_names,

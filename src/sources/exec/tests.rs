@@ -8,7 +8,7 @@ use vrl::value;
 
 use vrl::path;
 
-use crate::{event::LogEvent, sources::exec::*, test_util::trace_init};
+use crate::{event::OtelLog, sources::exec::*, test_util::trace_init};
 
 #[test]
 fn test_generate_config() {
@@ -22,7 +22,7 @@ fn test_scheduled_handle_event() {
     let data_stream = Some(STDOUT.to_string());
     let pid = Some(8888_u32);
 
-    let mut event = LogEvent::from("hello world").into();
+    let mut event = OtelLog::from("hello world").into();
     handle_event(
         &config,
         &hostname,
@@ -50,7 +50,7 @@ fn test_scheduled_handle_event_vector_namespace() {
     let pid = Some(8888_u32);
 
     let mut event: Event =
-        LogEvent::from_parts(value!("hello world"), EventMetadata::default()).into();
+        OtelLog::from_value_map(value!("hello world"), EventMetadata::default()).into();
 
     handle_event(
         &config,
@@ -99,7 +99,7 @@ fn test_streaming_create_event() {
     let data_stream = Some(STDOUT.to_string());
     let pid = Some(8888_u32);
 
-    let mut event = LogEvent::from("hello world").into();
+    let mut event = OtelLog::from("hello world").into();
     handle_event(
         &config,
         &hostname,
@@ -127,7 +127,7 @@ fn test_streaming_create_event_vector_namespace() {
     let pid = Some(8888_u32);
 
     let mut event: Event =
-        LogEvent::from_parts(value!("hello world"), EventMetadata::default()).into();
+        OtelLog::from_value_map(value!("hello world"), EventMetadata::default()).into();
 
     handle_event(
         &config,

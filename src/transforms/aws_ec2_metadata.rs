@@ -777,7 +777,7 @@ mod integration_tests {
 
     use super::*;
     use crate::{
-        event::{LogEvent, Metric, OtelMetric, metric},
+        event::{OtelLog, Metric, OtelMetric, metric},
         test_util::{addr::next_addr, components::assert_transform_compliance},
         transforms::test::create_topology,
     };
@@ -898,7 +898,7 @@ mod integration_tests {
             // We need to sleep to let the background task fetch the data.
             sleep(Duration::from_secs(1)).await;
 
-            let log = LogEvent::default();
+            let log = OtelLog::default();
             let mut expected_log = log.clone();
             for (k, v) in expected_log_fields().iter().cloned() {
                 expected_log.insert((PathPrefix::Event, &k), v);
@@ -1039,7 +1039,7 @@ mod integration_tests {
             // We need to sleep to let the background task fetch the data.
             sleep(Duration::from_secs(1)).await;
 
-            let log = LogEvent::default();
+            let log = OtelLog::default();
             let mut expected_log = log.clone();
             expected_log.insert(format!("\"{PUBLIC_IPV4_KEY}\"").as_str(), "192.0.2.54");
             expected_log.insert(format!("\"{REGION_KEY}\"").as_str(), "us-east-1");
@@ -1127,7 +1127,7 @@ mod integration_tests {
                 // We need to sleep to let the background task fetch the data.
                 sleep(Duration::from_secs(1)).await;
 
-                let log = LogEvent::default();
+                let log = OtelLog::default();
 
                 tx.send(log.into()).await.unwrap();
 
@@ -1161,7 +1161,7 @@ mod integration_tests {
                 // We need to sleep to let the background task fetch the data.
                 sleep(Duration::from_secs(1)).await;
 
-                let log = LogEvent::default();
+                let log = OtelLog::default();
 
                 tx.send(log.into()).await.unwrap();
 

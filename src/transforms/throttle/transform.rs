@@ -152,7 +152,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        event::LogEvent,
+        event::OtelLog,
         test_util::components::assert_transform_compliance,
         transforms::{Transform, test::create_topology},
     };
@@ -181,8 +181,8 @@ window_secs = 5
         // we trip it/set the interval in the future
         assert_eq!(Poll::Pending, futures::poll!(out_stream.next()));
 
-        tx.send(LogEvent::default().into()).await.unwrap();
-        tx.send(LogEvent::default().into()).await.unwrap();
+        tx.send(OtelLog::default().into()).await.unwrap();
+        tx.send(OtelLog::default().into()).await.unwrap();
 
         let mut count = 0_u8;
         while count < 2 {
@@ -199,14 +199,14 @@ window_secs = 5
 
         clock.advance(Duration::from_secs(2));
 
-        tx.send(LogEvent::default().into()).await.unwrap();
+        tx.send(OtelLog::default().into()).await.unwrap();
 
         // We should be back to pending, having the second event dropped
         assert_eq!(Poll::Pending, futures::poll!(out_stream.next()));
 
         clock.advance(Duration::from_secs(3));
 
-        tx.send(LogEvent::default().into()).await.unwrap();
+        tx.send(OtelLog::default().into()).await.unwrap();
 
         // The rate limiter should now be refreshed and allow an additional event through
         match out_stream.next().await {
@@ -252,8 +252,8 @@ exists(.special)
         // we trip it/set the interval in the future
         assert_eq!(Poll::Pending, futures::poll!(out_stream.next()));
 
-        tx.send(LogEvent::default().into()).await.unwrap();
-        tx.send(LogEvent::default().into()).await.unwrap();
+        tx.send(OtelLog::default().into()).await.unwrap();
+        tx.send(OtelLog::default().into()).await.unwrap();
 
         let mut count = 0_u8;
         while count < 2 {
@@ -270,12 +270,12 @@ exists(.special)
 
         clock.advance(Duration::from_secs(2));
 
-        tx.send(LogEvent::default().into()).await.unwrap();
+        tx.send(OtelLog::default().into()).await.unwrap();
 
         // We should be back to pending, having the second event dropped
         assert_eq!(Poll::Pending, futures::poll!(out_stream.next()));
 
-        let mut special_log = LogEvent::default();
+        let mut special_log = OtelLog::default();
         special_log.insert("special", "true");
         tx.send(special_log.into()).await.unwrap();
         // The rate limiter should allow this log through regardless of current limit
@@ -288,7 +288,7 @@ exists(.special)
 
         clock.advance(Duration::from_secs(3));
 
-        tx.send(LogEvent::default().into()).await.unwrap();
+        tx.send(OtelLog::default().into()).await.unwrap();
 
         // The rate limiter should now be refreshed and allow an additional event through
         match out_stream.next().await {
@@ -332,9 +332,9 @@ key_field = "{{ bucket }}"
         // we trip it/set the interval in the future
         assert_eq!(Poll::Pending, futures::poll!(out_stream.next()));
 
-        let mut log_a = LogEvent::default();
+        let mut log_a = OtelLog::default();
         log_a.insert("bucket", "a");
-        let mut log_b = LogEvent::default();
+        let mut log_b = OtelLog::default();
         log_b.insert("bucket", "b");
         tx.send(log_a.into()).await.unwrap();
         tx.send(log_b.into()).await.unwrap();
@@ -374,7 +374,7 @@ key_field = "{{ bucket }}"
             let (tx, rx) = mpsc::channel(1);
             let (topology, mut out) = create_topology(ReceiverStream::new(rx), config).await;
 
-            let log = LogEvent::from("hello world");
+            let log = OtelLog::from("hello world");
             tx.send(log.into()).await.unwrap();
 
             _ = out.recv().await;

@@ -25,7 +25,7 @@ type TypeId = u8;
 ///
 /// When matching fields, a CacheEntry contains a vector of optional 2-tuples.
 /// Each element in the vector represents one field in the corresponding
-/// LogEvent. Elements in the vector will correspond 1:1 (and in order) to the
+/// OtelLog. Elements in the vector will correspond 1:1 (and in order) to the
 /// fields specified in "fields.match". The tuples each store the TypeId for
 /// this field and the data as Bytes for the field. There is no need to store
 /// the field name because the elements of the vector correspond 1:1 to
@@ -35,7 +35,7 @@ type TypeId = u8;
 /// vector.
 ///
 /// When ignoring fields, a CacheEntry contains a vector of 3-tuples. Each
-/// element in the vector represents one field in the corresponding LogEvent.
+/// element in the vector represents one field in the corresponding OtelLog.
 /// The tuples will each contain the field name, TypeId, and data as Bytes for
 /// the corresponding field (in that order). Since the set of fields that might
 /// go into CacheEntries is not known at startup, we must store the field names

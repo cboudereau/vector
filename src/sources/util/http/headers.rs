@@ -81,7 +81,7 @@ mod tests {
     use warp::http::HeaderMap;
 
     use crate::{
-        event::LogEvent,
+        event::OtelLog,
         sources::{http_server::HttpConfigParamKind, util::add_headers},
     };
 
@@ -96,7 +96,7 @@ mod tests {
         headers.insert("User-Agent", "Test".parse().unwrap());
         headers.insert("Content-Encoding", "gzip".parse().unwrap());
 
-        let mut events = [LogEvent::from(value!({})).into()];
+        let mut events = [OtelLog::from(value!({})).into()];
         add_headers(
             &mut events,
             &header_names,
@@ -121,7 +121,7 @@ mod tests {
         headers.insert("User-Agent", "Test".parse().unwrap());
         headers.insert("Content-Encoding", "gzip".parse().unwrap());
 
-        let mut events = [LogEvent::from(value!({})).into()];
+        let mut events = [OtelLog::from(value!({})).into()];
         add_headers(
             &mut events,
             &header_names,

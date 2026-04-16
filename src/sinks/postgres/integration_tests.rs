@@ -6,7 +6,7 @@ use ordered_float::NotNan;
 use serde::{Deserialize, Serialize};
 use sqlx::{Connection, FromRow, PgConnection};
 use vector_lib::event::{
-    BatchNotifier, BatchStatus, BatchStatusReceiver, Event, LogEvent, Metric, MetricKind,
+    BatchNotifier, BatchStatus, BatchStatusReceiver, Event, OtelLog, Metric, MetricKind,
     MetricValue,
 };
 use vrl::event_path;
@@ -35,7 +35,7 @@ fn timestamp() -> DateTime<Utc> {
 }
 
 fn create_event(id: i64) -> Event {
-    let mut event = LogEvent::from("raw log line");
+    let mut event = OtelLog::from("raw log line");
     event.insert("id", id);
     event.insert("host", "example.com");
     let event_payload = event.clone().into_parts().0;

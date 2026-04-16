@@ -18,7 +18,7 @@ use serde_json::Value;
 use tokio::time::{Duration, timeout};
 use vector_lib::{
     codecs::encoding::{ArrowStreamSerializerConfig, BatchSerializerConfig},
-    event::{BatchNotifier, BatchStatus, BatchStatusReceiver, Event, LogEvent},
+    event::{BatchNotifier, BatchStatus, BatchStatusReceiver, Event, OtelLog},
     lookup::PathPrefix,
 };
 use warp::Filter;
@@ -396,7 +396,7 @@ async fn templated_table() {
 
 fn make_event() -> (Event, BatchStatusReceiver) {
     let (batch, receiver) = BatchNotifier::new_with_receiver();
-    let mut event = LogEvent::from("raw log line").with_batch_notifier(&batch);
+    let mut event = OtelLog::from("raw log line").with_batch_notifier(&batch);
     event.insert("host", "example.com");
     (event.into(), receiver)
 }
@@ -508,7 +508,7 @@ async fn insert_events_arrow_format() {
 
     let mut events: Vec<Event> = Vec::new();
     for i in 0..5 {
-        let mut event = LogEvent::from(format!("log message {}", i));
+        let mut event = OtelLog::from(format!("log message {}", i));
         event.insert("host", format!("host{}.example.com", i));
         event.insert("count", i as i64);
         events.push(event.into());
@@ -573,7 +573,7 @@ async fn insert_events_arrow_with_schema_fetching() {
     // Create events with various types that should match the schema
     let mut events: Vec<Event> = Vec::new();
     for i in 0..3 {
-        let mut event = LogEvent::from(format!("Test message {}", i));
+        let mut event = OtelLog::from(format!("Test message {}", i));
         event.insert("host", format!("host{}.example.com", i));
         event.insert("id", i as i64);
         event.insert("name", format!("user_{}", i));
@@ -667,7 +667,7 @@ async fn test_complex_types() {
     let mut events: Vec<Event> = Vec::new();
 
     // Event 1: Comprehensive test with all complex types
-    let mut event1 = LogEvent::from("Comprehensive complex types test");
+    let mut event1 = OtelLog::from("Comprehensive complex types test");
     event1.insert("host", "host1.example.com");
 
     // Nested arrays
@@ -880,7 +880,7 @@ async fn test_complex_types() {
     events.push(event1.into());
 
     // Event 2: Empty and edge cases
-    let mut event2 = LogEvent::from("Test empty collections");
+    let mut event2 = OtelLog::from("Test empty collections");
     event2.insert("host", "host2.example.com");
     event2.insert("nested_int_array", vector_lib::event::Value::Array(vec![]));
     event2.insert(
@@ -963,7 +963,7 @@ async fn test_complex_types() {
     events.push(event2.into());
 
     // Event 3: More varied data
-    let mut event3 = LogEvent::from("Test varied data");
+    let mut event3 = OtelLog::from("Test varied data");
     event3.insert("host", "host3.example.com");
 
     event3.insert(

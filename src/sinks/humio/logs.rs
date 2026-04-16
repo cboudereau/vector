@@ -240,7 +240,7 @@ mod integration_tests {
     use super::*;
     use crate::{
         config::{SinkConfig, SinkContext, log_schema},
-        event::LogEvent,
+        event::OtelLog,
         sinks::util::Compression,
         test_util::{
             components::{HTTP_SINK_TAGS, run_and_assert_sink_compliance},
@@ -266,7 +266,7 @@ mod integration_tests {
 
         let message = random_string(100);
         let host = "192.168.1.1".to_string();
-        let mut event = LogEvent::from(message.clone());
+        let mut event = OtelLog::from(message.clone());
         event.insert(log_schema().host_key_target_path().unwrap(), host.clone());
 
         let ts = Utc.timestamp_nanos(Utc::now().timestamp_millis() * 1_000_000 + 132_456);
@@ -310,7 +310,7 @@ mod integration_tests {
         let (sink, _) = config.build(cx).await.unwrap();
 
         let message = random_string(100);
-        let event = LogEvent::from(message.clone());
+        let event = OtelLog::from(message.clone());
         run_and_assert_sink_compliance(sink, stream::once(ready(event)), &HTTP_SINK_TAGS).await;
 
         let entry = find_entry(repo.name.as_str(), message.as_str()).await;
@@ -339,7 +339,7 @@ mod integration_tests {
             let (sink, _) = config.build(SinkContext::default()).await.unwrap();
 
             let message = random_string(100);
-            let mut event = LogEvent::from(message.clone());
+            let mut event = OtelLog::from(message.clone());
             // Humio expects to find an @timestamp field for JSON lines
             // https://docs.humio.com/ingesting-data/parsers/built-in-parsers/#json
             event.insert("@timestamp", Utc::now().to_rfc3339());
@@ -365,7 +365,7 @@ mod integration_tests {
             let (sink, _) = config.build(SinkContext::default()).await.unwrap();
 
             let message = random_string(100);
-            let event = LogEvent::from(message.clone());
+            let event = OtelLog::from(message.clone());
 
             run_and_assert_sink_compliance(sink, stream::once(ready(event)), &HTTP_SINK_TAGS).await;
 

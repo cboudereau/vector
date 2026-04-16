@@ -6,7 +6,7 @@ use serde::Deserialize;
 use snafu::ResultExt;
 use vector_lib::{
     codecs::{JsonSerializerConfig, TextSerializerConfig},
-    event::{EventArray, LogEvent},
+    event::{EventArray, OtelLog},
 };
 use vrl::value;
 
@@ -472,17 +472,17 @@ async fn nats_jetstream_message_id_valid() {
 
     let event_id = "123";
 
-    let event1 = LogEvent::from(value!({
+    let event1 = OtelLog::from(value!({
         "id": event_id,
         "message": "first message",
     }));
 
-    let event2 = LogEvent::from(value!({
+    let event2 = OtelLog::from(value!({
         "id": event_id,
         "message": "second message",
     }));
 
-    let event3 = LogEvent::from(value!({
+    let event3 = OtelLog::from(value!({
         "id": event_id,
         "message": "third message",
     }));

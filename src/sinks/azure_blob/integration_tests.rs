@@ -15,7 +15,7 @@ use vector_lib::{
 
 use super::config::AzureBlobSinkConfig;
 use crate::{
-    event::{Event, EventArray, LogEvent},
+    event::{Event, EventArray, OtelLog},
     sinks::{
         VectorSink, azure_common,
         util::{Compression, TowerRequestConfig},
@@ -369,7 +369,7 @@ fn random_lines_with_stream_with_group_key(
         .into_iter()
         .enumerate()
         .map(move |(i, line)| {
-            let mut log = LogEvent::from(line);
+            let mut log = OtelLog::from(line);
             let i = ((i / key) + 1) as i32;
             log.insert("key", i);
             Event::from(log)

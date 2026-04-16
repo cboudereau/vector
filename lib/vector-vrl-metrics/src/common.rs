@@ -202,7 +202,7 @@ pub(crate) fn resolve_tags(
 mod tests {
     use vector_core::{
         compile_vrl,
-        event::{Event, LogEvent, MetricKind, MetricTags, VrlTarget},
+        event::{Event, OtelLog, MetricKind, MetricTags, VrlTarget},
     };
     use vrl::{
         compiler::{
@@ -240,7 +240,7 @@ mod tests {
             config: _,
         } = compile(storage, vrl_source).expect("compilation failed");
 
-        let mut target = VrlTarget::new(Event::Log(LogEvent::default()), program.info(), false);
+        let mut target = VrlTarget::new(Event::Log(OtelLog::default()), program.info(), false);
         Runtime::default().resolve(&mut target, &program, &TimeZone::default())
     }
 

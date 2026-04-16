@@ -8,7 +8,7 @@ use opendal::Entry;
 use similar_asserts::assert_eq;
 use vector_lib::{
     codecs::{TextSerializerConfig, encoding::FramingConfig},
-    event::{Event, LogEvent},
+    event::{Event, OtelLog},
 };
 
 use super::WebHdfsConfig;
@@ -59,7 +59,7 @@ async fn hdfs_rotate_files_after_the_buffer_size_is_reached() {
     let (lines, _events) = random_lines_with_stream(100, 30, None);
 
     let events = lines.clone().into_iter().enumerate().map(|(i, line)| {
-        let mut e = LogEvent::from(line);
+        let mut e = OtelLog::from(line);
         let i = if i < 10 {
             1
         } else if i < 20 {

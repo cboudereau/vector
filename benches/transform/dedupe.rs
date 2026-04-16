@@ -41,7 +41,7 @@ fn dedupe(c: &mut Criterion) {
     };
     for param in &[
         // Measurement where field "message" is ignored. This field is
-        // automatically added by the LogEvent construction mechanism.
+        // automatically added by the OtelLog construction mechanism.
         Param {
             slug: "field_ignore_message",
             input: fixed_stream.clone(),

@@ -434,7 +434,7 @@ mod tests {
     where
         V: Into<Value>,
     {
-        let mut log = LogEvent::default();
+        let mut log = OtelLog::default();
         for (key, value) in fields {
             log.insert(key, value.into());
         }
@@ -491,7 +491,7 @@ mod tests {
             map_value.insert("key1".into(), Value::Integer(100));
             map_value.insert("key2".into(), Value::Integer(200));
 
-            let mut log = LogEvent::default();
+            let mut log = OtelLog::default();
             // Primitive types
             log.insert("string_field", "test");
             log.insert("int8_field", 127);
@@ -728,7 +728,7 @@ mod tests {
         #[test]
         fn test_encode_timestamp_precisions() {
             let now = Utc::now();
-            let mut log = LogEvent::default();
+            let mut log = OtelLog::default();
             log.insert("ts_second", now);
             log.insert("ts_milli", now);
             log.insert("ts_micro", now);
@@ -805,13 +805,13 @@ mod tests {
             // converted to integers internally, so they work with any timezone setting.
             let now = Utc::now();
 
-            let mut log1 = LogEvent::default();
+            let mut log1 = OtelLog::default();
             log1.insert("ts", "2025-10-22T10:18:44.256Z"); // RFC3339 String
 
-            let mut log2 = LogEvent::default();
+            let mut log2 = OtelLog::default();
             log2.insert("ts", now); // Native Timestamp
 
-            let mut log3 = LogEvent::default();
+            let mut log3 = OtelLog::default();
             log3.insert("ts", 1729594724256000000_i64); // Integer (nanoseconds)
 
             let events = vec![Event::from(log1), Event::from(log2), Event::from(log3)];
@@ -859,9 +859,9 @@ mod tests {
 
         #[test]
         fn test_config_allow_nullable_fields_overrides_schema() {
-            let mut log1 = LogEvent::default();
+            let mut log1 = OtelLog::default();
             log1.insert("strict_field", 42);
-            let log2 = LogEvent::default();
+            let log2 = OtelLog::default();
             let events = vec![Event::from(log1), Event::from(log2)];
 
             let schema = Schema::new(vec![Field::new("strict_field", DataType::Int64, false)]);

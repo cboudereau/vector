@@ -8,7 +8,7 @@ use vector::{
     conditions::Condition,
     transforms::{FunctionTransform, OutputBuffer, filter::Filter},
 };
-use vector_lib::event::{Event, LogEvent};
+use vector_lib::event::{Event, OtelLog};
 
 struct Payload {
     filter: Filter,
@@ -19,7 +19,7 @@ struct Payload {
 fn setup(total_events: usize, condition: Condition) -> Payload {
     let filter = Filter::new(condition);
     let output = OutputBuffer::from(Vec::with_capacity(total_events));
-    let events = vec![Event::Log(LogEvent::default()); total_events];
+    let events = vec![Event::Log(OtelLog::default()); total_events];
     Payload {
         filter,
         output,

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use vector_lib::{
     codecs::{JsonSerializerConfig, TextSerializerConfig},
-    event::{Event, LogEvent, Metric, MetricKind, MetricValue, OtelMetric},
+    event::{Event, OtelLog, Metric, MetricKind, MetricValue, OtelMetric},
     request_metadata::GroupedCountByteSize,
 };
 
@@ -21,7 +21,7 @@ fn generate_config() {
 fn redis_log_event_json() {
     let msg = "hello_world".to_owned();
     let mut byte_size = GroupedCountByteSize::new_untagged();
-    let mut evt = LogEvent::from(msg.clone());
+    let mut evt = OtelLog::from(msg.clone());
     evt.insert("key", "value");
     let result = encode_event(
         evt.into(),
@@ -40,7 +40,7 @@ fn redis_log_event_json() {
 #[test]
 fn redis_log_event_text() {
     let msg = "hello_world".to_owned();
-    let evt = LogEvent::from(msg.clone());
+    let evt = OtelLog::from(msg.clone());
     let mut byte_size = GroupedCountByteSize::new_untagged();
     let event = encode_event(
         evt.into(),
@@ -58,7 +58,7 @@ fn redis_log_event_text() {
 #[test]
 fn redis_log_encode_event() {
     let msg = "hello_world";
-    let mut evt = LogEvent::from(msg);
+    let mut evt = OtelLog::from(msg);
     let mut byte_size = GroupedCountByteSize::new_untagged();
     evt.insert("key", "value");
 
@@ -108,7 +108,7 @@ fn redis_metric_encode_event() {
 #[test]
 fn redis_log_scoring() {
     let msg = "hello_world";
-    let mut evt = LogEvent::from(msg);
+    let mut evt = OtelLog::from(msg);
     let mut byte_size = GroupedCountByteSize::new_untagged();
     evt.insert("key", "value");
 

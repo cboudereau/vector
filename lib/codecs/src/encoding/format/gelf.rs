@@ -46,16 +46,16 @@ impl Default for GelfSerializerOptions {
 /// Errors that can occur during GELF serialization.
 #[derive(Debug, Snafu)]
 pub enum GelfSerializerError {
-    #[snafu(display(r#"LogEvent does not contain required field: "{}""#, field))]
+    #[snafu(display(r#"OtelLog does not contain required field: "{}""#, field))]
     MissingField { field: KeyString },
     #[snafu(display(
-        r#"LogEvent contains field with invalid name not matching pattern '{}': "{}""#,
+        r#"OtelLog contains field with invalid name not matching pattern '{}': "{}""#,
         pattern,
         field,
     ))]
     InvalidField { field: KeyString, pattern: String },
     #[snafu(display(
-        r#"LogEvent contains a value with an invalid type. field = "{}" type = "{}" expected type = "{}""#,
+        r#"OtelLog contains a value with an invalid type. field = "{}" type = "{}" expected type = "{}""#,
         field,
         actual_type,
         expected_type
@@ -256,7 +256,7 @@ fn to_gelf_event(log: &mut OtelLog) -> vector_common::Result<()> {
 #[cfg(test)]
 mod tests {
     use chrono::NaiveDateTime;
-    use vector_core::event::{Event, EventMetadata, LogEvent};
+    use vector_core::event::{Event, EventMetadata, OtelLog};
     use vrl::{
         btreemap,
         value::{ObjectMap, Value},
@@ -268,7 +268,7 @@ mod tests {
     fn do_serialize(expect_success: bool, event_fields: ObjectMap) -> Option<serde_json::Value> {
         let config = GelfSerializerConfig::new(GelfSerializerOptions::default());
         let mut serializer = config.build();
-        let event: Event = LogEvent::from_map(event_fields, EventMetadata::default()).into();
+        let event: Event = OtelLog::from_map(event_fields, EventMetadata::default()).into();
         let mut buffer = BytesMut::new();
 
         if expect_success {
@@ -293,7 +293,7 @@ mod tests {
             SHORT_MESSAGE => "Some message",
         };
 
-        let log_event: Event = LogEvent::from_map(event_fields, EventMetadata::default()).into();
+        let log_event: Event = OtelLog::from_map(event_fields, EventMetadata::default()).into();
         assert!(serializer.supports_json());
         assert!(serializer.to_json_value(log_event).is_ok());
     }
@@ -302,7 +302,7 @@ mod tests {
     fn gelf_serde_json_to_value_supported_failure_to_encode() {
         let serializer = SerializerConfig::Gelf(Default::default()).build().unwrap();
         let event_fields = btreemap! {};
-        let log_event: Event = LogEvent::from_map(event_fields, EventMetadata::default()).into();
+        let log_event: Event = OtelLog::from_map(event_fields, EventMetadata::default()).into();
         assert!(serializer.supports_json());
         assert!(serializer.to_json_value(log_event).is_err());
     }

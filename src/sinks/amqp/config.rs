@@ -163,6 +163,7 @@ pub(super) async fn healthcheck(channels: AmqpSinkChannels) -> crate::Result<()>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use vector_lib::event::LogEvent;
     use crate::config::format::{Format, deserialize};
 
     #[test]

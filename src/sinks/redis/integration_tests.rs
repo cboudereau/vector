@@ -4,7 +4,7 @@ use redis::AsyncCommands;
 use vector_lib::{
     codecs::JsonSerializerConfig,
     config::{Tags, Telemetry, init_telemetry},
-    event::LogEvent,
+    event::OtelLog,
 };
 
 use super::config::{
@@ -103,7 +103,7 @@ async fn redis_sink_sentinel_rpush() {
     let mut events: Vec<Event> = Vec::new();
     for i in 0..num_events {
         let s: String = i.to_string();
-        let e = LogEvent::from(s);
+        let e = OtelLog::from(s);
         events.push(e.into());
     }
     let input = stream::iter(events.clone().into_iter().map(Into::into));
@@ -177,7 +177,7 @@ async fn redis_sink_list_lpush() {
     let mut events: Vec<Event> = Vec::new();
     for i in 0..num_events {
         let s: String = i.to_string();
-        let e = LogEvent::from(s);
+        let e = OtelLog::from(s);
         events.push(e.into());
     }
     let input = stream::iter(events.clone().into_iter().map(Into::into));
@@ -251,7 +251,7 @@ async fn redis_sink_list_rpush() {
     let mut events: Vec<Event> = Vec::new();
     for i in 0..num_events {
         let s: String = i.to_string();
-        let e = LogEvent::from(s);
+        let e = OtelLog::from(s);
         events.push(e.into());
     }
     let input = stream::iter(events.clone().into_iter().map(Into::into));
@@ -326,7 +326,7 @@ async fn redis_sink_sorted_set_zadd() {
     let mut events: Vec<Event> = Vec::new();
     for i in 0..num_events {
         let s: String = i.to_string();
-        let mut e = LogEvent::from(s);
+        let mut e = OtelLog::from(s);
         e.insert("num", i);
         events.push(e.into());
     }

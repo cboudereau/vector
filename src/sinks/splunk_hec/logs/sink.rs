@@ -9,7 +9,7 @@ use vrl::path::OwnedTargetPath;
 
 use super::request_builder::HecLogsRequestBuilder;
 use crate::{
-    event::OtelLog,
+    event::{LogEvent, OtelLog},
     internal_events::{SplunkEventTimestampInvalidType, SplunkEventTimestampMissing},
     sinks::{
         prelude::*,

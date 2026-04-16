@@ -141,7 +141,7 @@ impl ByteSizeOf for CloudwatchRequest {
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
-    use vector_lib::{config::log_schema, event::LogEvent};
+    use vector_lib::{config::log_schema, event::OtelLog};
 
     use super::{CloudwatchRequestBuilder, MAX_MESSAGE_SIZE};
 
@@ -155,7 +155,7 @@ mod tests {
         };
         let timestamp = Utc::now();
         let message = "event message";
-        let mut event = LogEvent::from(message);
+        let mut event = OtelLog::from(message);
         event.insert(log_schema().timestamp_key_target_path().unwrap(), timestamp);
 
         let request = request_builder.build(event.into()).unwrap();
@@ -174,7 +174,7 @@ mod tests {
 
         let timestamp = Utc::now();
         let oversized = "X".repeat(MAX_MESSAGE_SIZE + 1);
-        let mut event = LogEvent::from(oversized);
+        let mut event = OtelLog::from(oversized);
         event.insert(log_schema().timestamp_key_target_path().unwrap(), timestamp);
 
         let request = request_builder.build(event.into());

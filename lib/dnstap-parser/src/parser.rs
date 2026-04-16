@@ -1036,16 +1036,16 @@ mod tests {
 
     use chrono::DateTime;
     use dnsmsg_parser::dns_message_parser::DnsParserOptions;
-    use vector_core::event::LogEvent;
+    use vector_core::event::OtelLog;
 
     use super::*;
 
-    /// Test helper: parse into a `LogEvent` so existing assertions that
+    /// Test helper: parse into a `OtelLog` so existing assertions that
     /// read via `log_event.get(path)` keep working. Production callers
     /// (src/sources/dnstap and the parse_dnstap VRL function) use the
     /// `&mut Value` API directly. See `DNSTAP_PARSER_MIGRATION.md`.
     fn parse_into_log_event(
-        event: &mut LogEvent,
+        event: &mut OtelLog,
         frame: Bytes,
         opts: DnsParserOptions,
     ) -> Result<()> {
@@ -1057,7 +1057,7 @@ mod tests {
 
     #[test]
     fn test_parse_dnstap_data_with_query_message() {
-        let mut log_event = LogEvent::default();
+        let mut log_event = OtelLog::default();
         let raw_dnstap_data = "ChVqYW1lcy1WaXJ0dWFsLU1hY2hpbmUSC0JJTkQgOS4xNi4zcnoIAxACGAEiEAAAAAAAAA\
         AAAAAAAAAAAAAqECABBQJwlAAAAAAAAAAAADAw8+0CODVA7+zq9wVNMU3WNlI2kwIAAAABAAAAAAABCWZhY2Vib29rMQNjb\
         20AAAEAAQAAKQIAAACAAAAMAAoACOxjCAG9zVgzWgUDY29tAHgB";
@@ -1159,8 +1159,8 @@ mod tests {
 
     #[test]
     fn test_parse_dnstap_data_lowercase_hostnames() {
-        let mut log_event = LogEvent::default();
-        let mut lowercase_log_event = LogEvent::default();
+        let mut log_event = OtelLog::default();
+        let mut lowercase_log_event = OtelLog::default();
         let raw_dnstap_data = "Cgw2NzNiNWZiZWI5MmESMkJJTkQgOS4xOC4yMS0xK3VidW50dTIyLjA0LjErZGViLnN1cnkub3JnKzEtVWJ1bnR1cqkBCAYQARgBIgQKWQUeKgQKWQUqMMitAjg1YLXQp68GbZ9tBw9ygwGInoGAAAEABAAAAAEGVmVjdG9yA0RldgAAAQABwAwAAQABAAAAPAAEEvVWOMAMAAEAAQAAADwABBL1VnnADAABAAEAAAA8AAQS9VYSwAwAAQABAAAAPAAEEvVWWQAAKQTQAAAAAAAcAAoAGERDbSN8uKngAQAAAGXp6DXs0fbpv0n9F3gB";
         let dnstap_data = BASE64_STANDARD
             .decode(raw_dnstap_data)
@@ -1218,7 +1218,7 @@ mod tests {
 
     #[test]
     fn test_parse_dnstap_data_with_ede_options() {
-        let mut log_event = LogEvent::default();
+        let mut log_event = OtelLog::default();
         let raw_dnstap_data = "ChVqYW1lcy1WaXJ0dWFsLU1hY2hpbmUSC0JJTkQgOS4xNi4zGgBy5wEIAxACGAEiEAAAAAAAAAAAAAAAAAAAAAAqECABBQJwlAAAAAAAAAAAADAw8+0CODVA7+zq9wVNMU3WNlI2kwIAAAABAAAAAAABCWZhY2Vib29rMQNjb20AAAEAAQAAKQIAAACAAAAMAAoACOxjCAG9zVgzWgUDY29tAGAAbQAAAAByZLM4AAAAAQAAAAAAAQJoNQdleGFtcGxlA2NvbQAABgABAAApBNABAUAAADkADwA1AAlubyBTRVAgbWF0Y2hpbmcgdGhlIERTIGZvdW5kIGZvciBkbnNzZWMtZmFpbGVkLm9yZy54AQ==";
         let dnstap_data = BASE64_STANDARD
             .decode(raw_dnstap_data)
@@ -1253,7 +1253,7 @@ mod tests {
 
     #[test]
     fn test_parse_dnstap_data_with_update_message() {
-        let mut log_event = LogEvent::default();
+        let mut log_event = OtelLog::default();
         let raw_dnstap_data = "ChVqYW1lcy1WaXJ0dWFsLU1hY2hpbmUSC0JJTkQgOS4xNi4zcmsIDhABGAEiBH8AAA\
         EqBH8AAAEwrG44AEC+iu73BU14gfofUh1wi6gAAAEAAAAAAAAHZXhhbXBsZQNjb20AAAYAAWC+iu73BW0agDwvch1wi6gAA\
         AEAAAAAAAAHZXhhbXBsZQNjb20AAAYAAXgB";
@@ -1346,7 +1346,7 @@ mod tests {
 
     #[test]
     fn test_parse_dnstap_data_with_invalid_data() {
-        let mut log_event = LogEvent::default();
+        let mut log_event = OtelLog::default();
         let e = parse_into_log_event(
             &mut log_event,
             Bytes::from(vec![1, 2, 3]),

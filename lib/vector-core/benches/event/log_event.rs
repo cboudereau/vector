@@ -4,10 +4,10 @@ use criterion::{
     BatchSize, BenchmarkGroup, Criterion, SamplingMode, criterion_group, measurement::WallTime,
 };
 use lookup::event_path;
-use vector_core::event::LogEvent;
+use vector_core::event::OtelLog;
 
-fn default_log_event() -> LogEvent {
-    let mut log_event = LogEvent::default();
+fn default_log_event() -> OtelLog {
+    let mut log_event = OtelLog::default();
     log_event.insert(event_path!("one"), 1);
     log_event.insert(event_path!("two"), 2);
     log_event.insert(event_path!("three"), 3);
@@ -16,7 +16,7 @@ fn default_log_event() -> LogEvent {
 
 fn rename_key_flat(c: &mut Criterion) {
     let mut group: BenchmarkGroup<WallTime> =
-        c.benchmark_group("vector_core::event::log_event::LogEvent::rename_key_flat");
+        c.benchmark_group("vector_core::event::log_event::OtelLog::rename_key_flat");
     group.sampling_mode(SamplingMode::Auto);
 
     group.bench_function("rename_flat_key (key is present)", move |b| {

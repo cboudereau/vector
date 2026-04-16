@@ -6,7 +6,7 @@ use criterion::{
     measurement::WallTime,
 };
 use tokio_util::codec::Encoder;
-use vector::event::{Event, LogEvent};
+use vector::event::{Event, OtelLog};
 use vector_lib::{
     btreemap,
     byte_size_of::ByteSizeOf,
@@ -45,7 +45,7 @@ fn encoder(c: &mut Criterion) {
     let mut group: BenchmarkGroup<WallTime> = c.benchmark_group("encoder");
     group.sampling_mode(SamplingMode::Auto);
 
-    let input: Event = Event::Log(LogEvent::from(btreemap! {
+    let input: Event = Event::Log(OtelLog::from(btreemap! {
         "key1" => "value1",
         "key2" => "value2",
         "key3" => "value3"

@@ -970,7 +970,7 @@ mod test {
     use crate::{
         SourceSender,
         config::{ComponentKey, log_schema},
-        event::{Event, LogEvent},
+        event::{Event, OtelLog},
         shutdown::SourceShutdownCoordinator,
         sources::util::net::SocketListenAddr,
         test_util::{addr::next_addr, collect_n, collect_n_stream},
@@ -1072,7 +1072,7 @@ mod test {
         }
 
         fn handle_event(&self, received_from: Option<Bytes>, frame: Bytes) -> Option<Event> {
-            let mut log_event = LogEvent::from(frame);
+            let mut log_event = OtelLog::from(frame);
 
             log_event.insert(
                 log_schema().source_type_key_target_path().unwrap(),

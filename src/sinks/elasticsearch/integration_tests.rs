@@ -8,7 +8,7 @@ use http::{Request, StatusCode};
 use serde_json::{Value, json};
 use vector_lib::{
     config::{Tags, Telemetry, init_telemetry, log_schema},
-    event::{BatchNotifier, BatchStatus, Event, LogEvent},
+    event::{BatchNotifier, BatchStatus, Event, OtelLog},
 };
 
 use super::{config::DATA_STREAM_TIMESTAMP_KEY, *};
@@ -185,7 +185,7 @@ async fn structures_events_correctly() {
     let (sink, _hc) = config.build(cx.clone()).await.unwrap();
 
     let (batch, mut receiver) = BatchNotifier::new_with_receiver();
-    let mut input_event = LogEvent::from("raw log line").with_batch_notifier(&batch);
+    let mut input_event = OtelLog::from("raw log line").with_batch_notifier(&batch);
     input_event.insert("my_id", "42");
     input_event.insert("foo", "bar");
     drop(batch);

@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use tracing::{info, warn};
 use vector_lib::{
     codecs::{JsonSerializerConfig, MetricTagValues, encoding::FramingConfig},
-    event::{BatchNotifier, BatchStatusReceiver, Event, LogEvent, Value},
+    event::{BatchNotifier, BatchStatusReceiver, Event, OtelLog, Value},
 };
 // use vector_common::finalization::BatchStatus;
 use vector_common::sensitive_string::SensitiveString;
@@ -36,14 +36,14 @@ fn doris_address() -> String {
 
 fn make_event() -> (Event, BatchStatusReceiver) {
     let (batch, receiver) = BatchNotifier::new_with_receiver();
-    let mut event = LogEvent::from("raw log line").with_batch_notifier(&batch);
+    let mut event = OtelLog::from("raw log line").with_batch_notifier(&batch);
     event.insert("host", "example.com");
     (event.into(), receiver)
 }
 
 // Verify event fields match database row data
 fn assert_fields_match(
-    event_log: &LogEvent,
+    event_log: &OtelLog,
     db_row: &HashMap<String, DbValue>,
     fields: &[&str],
     table_name: Option<&str>,

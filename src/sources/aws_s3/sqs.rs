@@ -46,7 +46,7 @@ use crate::{
     codecs::Decoder,
     common::backoff::ExponentialBackoff,
     config::{SourceAcknowledgementsConfig, SourceContext},
-    event::{BatchNotifier, BatchStatus, EstimatedJsonEncodedSizeOf, Event, LogEvent, string_value},
+    event::{BatchNotifier, BatchStatus, EstimatedJsonEncodedSizeOf, Event, OtelLog, string_value},
     internal_events::{
         EventsReceived, S3ObjectProcessingFailed, S3ObjectProcessingSucceeded,
         SqsMessageDeleteBatchError, SqsMessageDeletePartialError, SqsMessageDeleteSucceeded,
@@ -811,7 +811,7 @@ impl IngestorProcess {
             emit!(S3ObjectProcessingSucceeded { bucket, duration });
         }
 
-        // The BatchNotifier is cloned for each LogEvent in the batch stream, but the last
+        // The BatchNotifier is cloned for each OtelLog in the batch stream, but the last
         // reference must be dropped before the status of the batch is sent to the channel.
         drop(batch);
 
@@ -914,7 +914,7 @@ impl IngestorProcess {
 
 #[allow(dead_code)]
 fn handle_single_log(
-    log: &mut LogEvent,
+    log: &mut OtelLog,
     log_namespace: LogNamespace,
     s3_event: &S3EventRecord,
     metadata: &Option<HashMap<String, String>>,

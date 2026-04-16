@@ -221,7 +221,7 @@ mod tests {
             NewlineDelimitedEncoder, TextSerializerConfig,
             encoding::{ProtobufSerializerConfig, ProtobufSerializerOptions},
         },
-        event::LogEvent,
+        event::OtelLog,
         internal_event::CountByteSize,
         json_size::JsonSize,
     };
@@ -261,7 +261,7 @@ mod tests {
         );
 
         let mut writer = Vec::new();
-        let input = vec![Event::from(LogEvent::from(BTreeMap::from([(
+        let input = vec![Event::from(OtelLog::from(BTreeMap::from([(
             KeyString::from("key"),
             Value::from("value"),
         )])))];
@@ -289,15 +289,15 @@ mod tests {
         );
 
         let input = vec![
-            Event::from(LogEvent::from(BTreeMap::from([(
+            Event::from(OtelLog::from(BTreeMap::from([(
                 KeyString::from("key"),
                 Value::from("value1"),
             )]))),
-            Event::from(LogEvent::from(BTreeMap::from([(
+            Event::from(OtelLog::from(BTreeMap::from([(
                 KeyString::from("key"),
                 Value::from("value2"),
             )]))),
-            Event::from(LogEvent::from(BTreeMap::from([(
+            Event::from(OtelLog::from(BTreeMap::from([(
                 KeyString::from("key"),
                 Value::from("value3"),
             )]))),
@@ -352,7 +352,7 @@ mod tests {
         );
 
         let mut writer = Vec::new();
-        let input = vec![Event::from(LogEvent::from(BTreeMap::from([(
+        let input = vec![Event::from(OtelLog::from(BTreeMap::from([(
             KeyString::from("key"),
             Value::from("value"),
         )])))];
@@ -380,15 +380,15 @@ mod tests {
 
         let mut writer = Vec::new();
         let input = vec![
-            Event::from(LogEvent::from(BTreeMap::from([(
+            Event::from(OtelLog::from(BTreeMap::from([(
                 KeyString::from("key"),
                 Value::from("value1"),
             )]))),
-            Event::from(LogEvent::from(BTreeMap::from([(
+            Event::from(OtelLog::from(BTreeMap::from([(
                 KeyString::from("key"),
                 Value::from("value2"),
             )]))),
-            Event::from(LogEvent::from(BTreeMap::from([(
+            Event::from(OtelLog::from(BTreeMap::from([(
                 KeyString::from("key"),
                 Value::from("value3"),
             )]))),
@@ -416,7 +416,7 @@ mod tests {
         );
 
         let mut writer = Vec::new();
-        let input = Event::from(LogEvent::from(BTreeMap::from([(
+        let input = Event::from(OtelLog::from(BTreeMap::from([(
             KeyString::from("key"),
             Value::from("value"),
         )])));
@@ -437,7 +437,7 @@ mod tests {
         );
 
         let mut writer = Vec::new();
-        let input = Event::from(LogEvent::from(BTreeMap::from([(
+        let input = Event::from(OtelLog::from(BTreeMap::from([(
             KeyString::from("message"),
             Value::from("value"),
         )])));
@@ -483,7 +483,7 @@ mod tests {
         );
 
         let mut writer = Vec::new();
-        let input = vec![Event::from(LogEvent::from(BTreeMap::from([
+        let input = vec![Event::from(OtelLog::from(BTreeMap::from([
             (KeyString::from("id"), Value::from("123")),
             (KeyString::from("name"), Value::from("Alice")),
             (KeyString::from("age"), Value::from(30)),
@@ -539,7 +539,7 @@ mod tests {
 
         let mut writer = Vec::new();
         let input = vec![
-            Event::from(LogEvent::from(BTreeMap::from([
+            Event::from(OtelLog::from(BTreeMap::from([
                 (KeyString::from("id"), Value::from("123")),
                 (KeyString::from("name"), Value::from("Alice")),
                 (KeyString::from("age"), Value::from(30)),
@@ -548,7 +548,7 @@ mod tests {
                     Value::from(vec!["alice@example.com", "alice@work.com"]),
                 ),
             ]))),
-            Event::from(LogEvent::from(BTreeMap::from([
+            Event::from(OtelLog::from(BTreeMap::from([
                 (KeyString::from("id"), Value::from("123")),
                 (KeyString::from("name"), Value::from("Alice")),
                 (KeyString::from("age"), Value::from(30)),

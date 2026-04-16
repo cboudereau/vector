@@ -12,7 +12,7 @@ use super::*;
 use crate::{
     aws::{AwsAuthentication, ClientBuilder, RegionOrEndpoint, create_client},
     config::{ProxyConfig, SinkConfig, SinkContext, log_schema},
-    event::{Event, LogEvent, Value},
+    event::{Event, OtelLog, Value},
     sinks::{aws_cloudwatch_logs::config::CloudwatchLogsClientBuilder, util::BatchConfig},
     template::Template,
     test_util::{
@@ -208,7 +208,7 @@ async fn cloudwatch_insert_out_of_range_timestamp() {
 
     let mut add_event = |offset: Duration| {
         let line = input_lines.next().unwrap();
-        let mut event = LogEvent::from(line.clone());
+        let mut event = OtelLog::from(line.clone());
         event.insert(
             log_schema().timestamp_key_target_path().unwrap(),
             now + offset,
@@ -483,7 +483,7 @@ async fn cloudwatch_insert_log_event_partitioned() {
         .into_iter()
         .enumerate()
         .map(|(i, e)| {
-            let mut event = LogEvent::from(e);
+            let mut event = OtelLog::from(e);
             let stream = (i % 2).to_string();
             event.insert("key", stream);
             Event::Log(event)

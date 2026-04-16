@@ -7,7 +7,7 @@ use std::{
 };
 
 use futures::{Stream, task::noop_waker};
-use vector::event::{Event, LogEvent};
+use vector::event::{Event, OtelLog};
 
 // == Streams ==
 
@@ -38,7 +38,7 @@ impl FixedLogStream {
         let mut events = Vec::with_capacity(total.get());
         let mut cycle = 0;
         for _ in 0..total.get() {
-            events.push(Event::Log(LogEvent::from(format!("event{cycle}"))));
+            events.push(Event::Log(OtelLog::from(format!("event{cycle}"))));
             cycle = (cycle + 1) % cycle_size;
         }
         Self::new_from_vec(events)

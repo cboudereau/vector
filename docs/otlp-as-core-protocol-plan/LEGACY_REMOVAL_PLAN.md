@@ -259,12 +259,15 @@ sessions. Recommended order:
 **F.6 — Scope `Event::from(LogEvent)` bridge** — **DONE** (`059f908`)
 - Production code: all `Event::from(LogEvent)` calls replaced with
   direct `Event::Log(OtelLog::...)` construction.
-- Bridge impl kept unconditional (not `#[cfg(test)]`) because 150+
-  downstream test files depend on it and the `#[cfg(test)]` attribute
-  on vector-core doesn't propagate to the vector crate's tests.
-- Bridge carries doc comment marking it for eventual `#[cfg(test)]`
-  gating once test sites are migrated.
-- `log_event!` macro uses `OtelLog::new` directly.
+- Bridge impl kept for test convenience (~150 test files use it).
+  No feature flag needed — when tests are migrated to use
+  `OtelLog::from_bytes/from_value_map` directly, both the bridge
+  AND LogEvent type can be deleted together.
+- `log_event!` macro already uses `OtelLog::new` directly.
+- Zero production LogEvent imports remain outside vector-core/src/event/.
+- Remaining work: migrate ~150 test files from `LogEvent::from(...)` to
+  `OtelLog::from_bytes(...)` / `OtelLog::from_value_map(...)`, then
+  delete `log_event.rs` (1217 lines) + the bridge.
 
 **F.6 original plan (for reference):**
 - 248 test callers. Highest volume.

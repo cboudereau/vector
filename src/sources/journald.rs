@@ -1254,7 +1254,7 @@ mod tests {
     use super::*;
     use crate::{
         config::ComponentKey,
-        event::{Event, EventStatus, LogEvent},
+        event::{Event, EventStatus, OtelLog},
         test_util::components::assert_source_compliance,
     };
 
@@ -1841,7 +1841,7 @@ mod tests {
         }"#;
 
         let json: serde_json::Value = serde_json::from_str(record).unwrap();
-        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from(vrl::value::Value::from(json))));
+        let mut event = Event::Log(OtelLog::from(vrl::value::Value::from(json)));
 
         event.as_mut_log().insert("timestamp", chrono::Utc::now());
 

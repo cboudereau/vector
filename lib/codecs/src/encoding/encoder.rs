@@ -270,7 +270,7 @@ mod tests {
     use bytes::BufMut;
     use futures::{SinkExt, StreamExt};
     use tokio_util::codec::FramedWrite;
-    use vector_core::event::LogEvent;
+    use vector_core::event::OtelLog;
 
     use super::*;
     use crate::encoding::BoxedFramingError;
@@ -338,9 +338,9 @@ mod tests {
                 .into(),
         );
         let source = futures::stream::iter(vec![
-            Event::Log(OtelLog::from_log_event(LogEvent::from("foo"))),
-            Event::Log(OtelLog::from_log_event(LogEvent::from("bar"))),
-            Event::Log(OtelLog::from_log_event(LogEvent::from("baz"))),
+            Event::Log(OtelLog::from("foo")),
+            Event::Log(OtelLog::from("bar")),
+            Event::Log(OtelLog::from("baz")),
         ])
         .map(Ok);
         let sink = Vec::new();
@@ -359,9 +359,9 @@ mod tests {
                 .into(),
         );
         let source = futures::stream::iter(vec![
-            Event::Log(OtelLog::from_log_event(LogEvent::from("bar"))),
-            Event::Log(OtelLog::from_log_event(LogEvent::from("baz"))),
-            Event::Log(OtelLog::from_log_event(LogEvent::from("bat"))),
+            Event::Log(OtelLog::from("bar")),
+            Event::Log(OtelLog::from("baz")),
+            Event::Log(OtelLog::from("bat")),
         ])
         .map(Ok);
         let sink = Vec::from("(foo)");
@@ -380,9 +380,9 @@ mod tests {
                 .into(),
         );
         let source = futures::stream::iter(vec![
-            Event::Log(OtelLog::from_log_event(LogEvent::from("foo"))),
-            Event::Log(OtelLog::from_log_event(LogEvent::from("bar"))),
-            Event::Log(OtelLog::from_log_event(LogEvent::from("baz"))),
+            Event::Log(OtelLog::from("foo")),
+            Event::Log(OtelLog::from("bar")),
+            Event::Log(OtelLog::from("baz")),
         ])
         .map(Ok);
         let sink = Vec::new();
@@ -402,9 +402,9 @@ mod tests {
                 .into(),
         );
         let source = futures::stream::iter(vec![
-            Event::Log(OtelLog::from_log_event(LogEvent::from("bar"))),
-            Event::Log(OtelLog::from_log_event(LogEvent::from("baz"))),
-            Event::Log(OtelLog::from_log_event(LogEvent::from("bat"))),
+            Event::Log(OtelLog::from("bar")),
+            Event::Log(OtelLog::from("baz")),
+            Event::Log(OtelLog::from("bat")),
         ])
         .map(Ok);
         let sink = Vec::from("(foo)");
@@ -424,9 +424,9 @@ mod tests {
                 .into(),
         );
         let source = futures::stream::iter(vec![
-            Event::Log(OtelLog::from_log_event(LogEvent::from("bar"))),
-            Event::Log(OtelLog::from_log_event(LogEvent::from("baz"))),
-            Event::Log(OtelLog::from_log_event(LogEvent::from("bat"))),
+            Event::Log(OtelLog::from("bar")),
+            Event::Log(OtelLog::from("baz")),
+            Event::Log(OtelLog::from("bat")),
         ])
         .map(Ok);
         let sink: Vec<u8> = Vec::new();

@@ -463,7 +463,7 @@ mod tests {
         enrichment_tables::memory::{
             config::MemorySourceConfig, internal_events::InternalMetricsConfig,
         },
-        event::{Event, LogEvent, OtelLog},
+        event::{Event, OtelLog},
         test_util::components::{
             SINK_TAGS, SOURCE_TAGS, run_and_assert_sink_compliance,
             run_and_assert_source_compliance,
@@ -786,10 +786,10 @@ mod tests {
 
     #[tokio::test]
     async fn sink_spec_compliance() {
-        let event = Event::Log(OtelLog::from_log_event(LogEvent::from(ObjectMap::from([(
+        let event = Event::Log(OtelLog::from(ObjectMap::from([(
             "test_key".into(),
             Value::from(5),
-        )]))));
+        )])));
 
         let memory = Memory::new(Default::default());
 
@@ -803,10 +803,10 @@ mod tests {
 
     #[tokio::test]
     async fn flush_metrics_without_interval() {
-        let event = Event::Log(OtelLog::from_log_event(LogEvent::from(ObjectMap::from([(
+        let event = Event::Log(OtelLog::from(ObjectMap::from([(
             "test_key".into(),
             Value::from(5),
-        )]))));
+        )])));
 
         let memory = Memory::new(Default::default());
 
@@ -872,10 +872,10 @@ mod tests {
 
     #[tokio::test]
     async fn flush_metrics_with_interval() {
-        let event = Event::Log(OtelLog::from_log_event(LogEvent::from(ObjectMap::from([(
+        let event = Event::Log(OtelLog::from(ObjectMap::from([(
             "test_key".into(),
             Value::from(5),
-        )]))));
+        )])));
 
         let memory = Memory::new(build_memory_config(|c| {
             c.flush_interval = Some(1);
@@ -950,10 +950,10 @@ mod tests {
 
     #[tokio::test]
     async fn flush_metrics_with_key() {
-        let event = Event::Log(OtelLog::from_log_event(LogEvent::from(ObjectMap::from([(
+        let event = Event::Log(OtelLog::from(ObjectMap::from([(
             "test_key".into(),
             Value::from(5),
-        )]))));
+        )])));
 
         let memory = Memory::new(build_memory_config(|c| {
             c.internal_metrics = InternalMetricsConfig {
@@ -982,10 +982,10 @@ mod tests {
 
     #[tokio::test]
     async fn flush_metrics_without_key() {
-        let event = Event::Log(OtelLog::from_log_event(LogEvent::from(ObjectMap::from([(
+        let event = Event::Log(OtelLog::from(ObjectMap::from([(
             "test_key".into(),
             Value::from(5),
-        )]))));
+        )])));
 
         let memory = Memory::new(Default::default());
 

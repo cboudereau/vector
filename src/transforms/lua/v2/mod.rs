@@ -470,7 +470,7 @@ mod tests {
     use super::*;
     use crate::{
         event::{
-            Event, LogEvent, OtelLog, Value,
+            Event, OtelLog, Value,
             metric::{Metric, MetricKind, MetricValue}, OtelMetric,
         },
         test_util,
@@ -547,7 +547,7 @@ mod tests {
             ),
             |tx, out| async move {
                 let line2 = random_string(9);
-                tx.send(Event::Log(OtelLog::from_log_event(LogEvent::from(line2.as_str()))))
+                tx.send(Event::Log(OtelLog::from(line2.as_str())))
                     .await
                     .unwrap();
                 drop(tx);
@@ -576,7 +576,7 @@ mod tests {
             """
             "#,
             |tx, out| async move {
-                let event = Event::Log(OtelLog::from_log_event(LogEvent::from("program me")));
+                let event = Event::Log(OtelLog::from("program me"));
                 tx.send(event).await.unwrap();
 
                 assert_eq!(
@@ -601,7 +601,7 @@ mod tests {
             """
             "#,
             |tx, out| async move {
-                let event = Event::Log(OtelLog::from_log_event(LogEvent::from("Hello, my name is Bob.")));
+                let event = Event::Log(OtelLog::from("Hello, my name is Bob."));
                 tx.send(event).await.unwrap();
 
                 assert_eq!(next_event(&out, "in").await.as_log().get("name").unwrap(), Value::from("Bob"));
@@ -622,7 +622,7 @@ mod tests {
             """
             "#,
             |tx, out| async move {
-                let mut event = LogEvent::default();
+                let mut event = OtelLog::default();
                 event.insert("name", "Bob");
 
                 tx.send(event.into()).await.unwrap();
@@ -644,7 +644,7 @@ mod tests {
             """
             "#,
             |tx, _out| async move {
-                let event = LogEvent::default().into();
+                let event = OtelLog::default().into();
                 tx.send(event).await.unwrap();
 
                 // "run_transform" will assert that the output stream is empty
@@ -665,7 +665,7 @@ mod tests {
             """
             "#,
             |tx, out| async move {
-                let mut event = LogEvent::default();
+                let mut event = OtelLog::default();
                 event.insert("host", "127.0.0.1");
                 tx.send(event.into()).await.unwrap();
 
@@ -692,7 +692,7 @@ mod tests {
             """
             "#,
             |tx, out| async move {
-                let event = LogEvent::default();
+                let event = OtelLog::default();
                 tx.send(event.into()).await.unwrap();
 
                 assert_eq!(
@@ -716,7 +716,7 @@ mod tests {
             """
             "#,
             |tx, out| async move {
-                let event = LogEvent::default();
+                let event = OtelLog::default();
                 tx.send(event.into()).await.unwrap();
 
                 assert_eq!(
@@ -740,7 +740,7 @@ mod tests {
             """
             "#,
             |tx, out| async move {
-                let event = LogEvent::default();
+                let event = OtelLog::default();
                 tx.send(event.into()).await.unwrap();
 
                 assert_eq!(
@@ -764,7 +764,7 @@ mod tests {
             """
             "#,
             |tx, out| async move {
-                let event = LogEvent::default();
+                let event = OtelLog::default();
                 tx.send(event.into()).await.unwrap();
 
                 assert_eq!(
@@ -788,7 +788,7 @@ mod tests {
             """
             "#,
             |tx, out| async move {
-                let event = LogEvent::default();
+                let event = OtelLog::default();
                 tx.send(event.into()).await.unwrap();
 
                 assert_eq!(next_event(&out, "in").await.as_log().get("junk"), None);
@@ -811,7 +811,7 @@ mod tests {
         .unwrap();
 
         let err = transform
-            .process_single(LogEvent::default().into())
+            .process_single(OtelLog::default().into())
             .unwrap_err();
         let err = format_error(&err);
         assert!(
@@ -834,7 +834,7 @@ mod tests {
             """
             "#,
             |tx, out| async move {
-                let event = LogEvent::default();
+                let event = OtelLog::default();
                 tx.send(event.into()).await.unwrap();
 
                 assert_eq!(next_event(&out, "in").await.as_log().get("result"), None);
@@ -856,7 +856,7 @@ mod tests {
         .unwrap();
 
         let err = transform
-            .process_single(LogEvent::default().into())
+            .process_single(OtelLog::default().into())
             .unwrap_err();
         let err = format_error(&err);
         assert!(err.contains("this is an error"), "{}", err);
@@ -917,7 +917,7 @@ mod tests {
                 dir.path().as_os_str() // This seems a bit weird, but recall we also support windows.
             ),
             |tx, out| async move {
-                let event = LogEvent::default();
+                let event = OtelLog::default();
                 tx.send(event.into()).await.unwrap();
 
                 assert_eq!(
@@ -943,7 +943,7 @@ mod tests {
             """
             "#,
             |tx, out| async move {
-                let mut event = LogEvent::default();
+                let mut event = OtelLog::default();
                 event.insert("name", "Bob");
                 event.insert("friend", "Alice");
                 tx.send(event.into()).await.unwrap();
@@ -1006,7 +1006,7 @@ mod tests {
             "#,
             |tx, out| async move {
                 let n: usize = 10;
-                let events = (0..n).map(|i| Event::Log(OtelLog::from_log_event(LogEvent::from(format!("program me {i}")))));
+                let events = (0..n).map(|i| Event::Log(OtelLog::from(format!("program me {i}"))));
                 for event in events {
                     tx.send(event).await.unwrap();
                     assert!(out.lock().await.recv().await.is_some());

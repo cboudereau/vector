@@ -501,7 +501,7 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{event::LogEvent, log_event};
+    use crate::{event::OtelLog, log_event};
 
     /// Returns the following: Datadog Search Syntax source (to be parsed), an `Event` that
     /// should pass when matched against the compiled source, and an `Event` that should fail.
@@ -862,12 +862,12 @@ mod test {
             (
                 "@a.b:x",
                 log_event!["a" => serde_json::json!({"b": "x"})],
-                Event::Log(OtelLog::from_log_event(LogEvent::from(Value::from(serde_json::json!({"a.b": "x"}))))),
+                Event::Log(OtelLog::from(Value::from(serde_json::json!({"a.b": "x"})))),
             ),
             // Attribute with dot in name (flattened key) - requires escaped quotes.
             (
                 r#"@\"a.b\":x"#,
-                Event::Log(OtelLog::from_log_event(LogEvent::from(Value::from(serde_json::json!({"a.b": "x"}))))),
+                Event::Log(OtelLog::from(Value::from(serde_json::json!({"a.b": "x"})))),
                 log_event!["a" => serde_json::json!({"b": "x"})],
             ),
             // Wildcard prefix.

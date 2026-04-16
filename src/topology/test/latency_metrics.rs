@@ -7,7 +7,7 @@ use vector_lib::metrics::Controller;
 
 use crate::{
     config::Config,
-    event::{Event, LogEvent, OtelLog, Metric, MetricValue},
+    event::{Event, OtelLog, Metric, MetricValue},
     test_util::{
         mock::{
             basic_source,
@@ -70,7 +70,7 @@ async fn run_latency_topology() -> LatencyTestRun {
     let (topology, _) = start_topology(config.build().unwrap(), false).await;
 
     for idx in 0..EVENT_COUNT {
-        let event = Event::Log(OtelLog::from_log_event(LogEvent::from(format!("payload-{idx}"))));
+        let event = Event::Log(OtelLog::from(format!("payload-{idx}")));
         source_tx.send_event(event).await.unwrap();
     }
 

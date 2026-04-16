@@ -59,7 +59,7 @@ impl DeviceSettings {
 #[derive(Debug, Snafu)]
 pub enum CefSerializerError {
     #[snafu(display(
-        r#"LogEvent field "{}" with the value "{}" exceed {} characters limit: actual {}"#,
+        r#"OtelLog field "{}" with the value "{}" exceed {} characters limit: actual {}"#,
         field_name,
         field,
         max_length,
@@ -72,14 +72,14 @@ pub enum CefSerializerError {
         actual_length: usize,
     },
     #[snafu(display(
-        r#"LogEvent CEF severity must be a number from 0 to {}: actual {}"#,
+        r#"OtelLog CEF severity must be a number from 0 to {}: actual {}"#,
         max_value,
         actual_value
     ))]
     SeverityMaxValue { max_value: u8, actual_value: u8 },
-    #[snafu(display(r#"LogEvent CEF severity must be a number: {}"#, error))]
+    #[snafu(display(r#"OtelLog CEF severity must be a number: {}"#, error))]
     SeverityNumberType { error: ParseIntError },
-    #[snafu(display(r#"LogEvent extension keys can only contain ascii alphabetical characters: invalid key "{}""#, key))]
+    #[snafu(display(r#"OtelLog extension keys can only contain ascii alphabetical characters: invalid key "{}""#, key))]
     ExtensionNonASCIIKey { key: String },
 }
 
@@ -390,7 +390,7 @@ mod tests {
     use chrono::DateTime;
     use ordered_float::NotNan;
     use vector_common::btreemap;
-    use vector_core::event::{Event, LogEvent, Value};
+    use vector_core::event::{Event, OtelLog, Value};
 
     use super::*;
 
@@ -408,7 +408,7 @@ mod tests {
         let err = config.build().unwrap_err();
         assert_eq!(
             err.to_string(),
-            "LogEvent extension keys can only contain ascii alphabetical characters: invalid key \"foo.test\""
+            "OtelLog extension keys can only contain ascii alphabetical characters: invalid key \"foo.test\""
         );
     }
 
@@ -427,7 +427,7 @@ mod tests {
         let err = config.build().unwrap_err();
         assert_eq!(
             err.to_string(),
-            "LogEvent field \"device_vendor\" with the value \"RepeatRepeatRepeatRepeatRepeatRepeatRepeatRepeatRepeatRepeatRepeat\" exceed 63 characters limit: actual 66"
+            "OtelLog field \"device_vendor\" with the value \"RepeatRepeatRepeatRepeatRepeatRepeatRepeatRepeatRepeatRepeatRepeat\" exceed 63 characters limit: actual 66"
         );
     }
 
@@ -470,7 +470,7 @@ mod tests {
     #[test]
     #[ignore = "Timestamp round-trip through OtelLog changes format (Z vs +00:00)"]
     fn serialize_extensions() {
-        let event = Event::Log(OtelLog::from_log_event(LogEvent::from(btreemap! {
+        let event = Event::Log(OtelLog::from(btreemap! {
             "cef" => Value::from(btreemap! {
                 "severity" => Value::from(1),
                 "name" => Value::from("Event name"),
@@ -484,7 +484,7 @@ mod tests {
             "quote" => Value::from("the \"quote\" should be escaped"),
             "bool" => Value::from(true),
             "other" => Value::from("data"),
-        })));
+        }));
 
         let extensions = HashMap::from([
             (

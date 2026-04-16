@@ -311,7 +311,7 @@ mod tests {
     use chrono::DateTime;
     use ordered_float::NotNan;
     use vector_common::btreemap;
-    use vector_core::event::{LogEvent, ObjectMap, Value};
+    use vector_core::event::{OtelLog, ObjectMap, Value};
 
     use super::*;
 
@@ -327,7 +327,7 @@ mod tests {
             tree.insert(field_name.into(), field_value);
         }
 
-        let event = Event::Log(OtelLog::from_log_event(LogEvent::from(tree)));
+        let event = Event::Log(OtelLog::from(tree));
         (fields, event)
     }
 
@@ -342,7 +342,7 @@ mod tests {
     #[test]
     #[ignore = "Timestamp round-trip through OtelLog changes format (Z vs +00:00)"]
     fn serialize_fields() {
-        let event = Event::Log(OtelLog::from_log_event(LogEvent::from(btreemap! {
+        let event = Event::Log(OtelLog::from(btreemap! {
             "foo" => Value::from("bar"),
             "int" => Value::from(123),
             "comma" => Value::from("abc,bcd"),
@@ -352,7 +352,7 @@ mod tests {
             "quote" => Value::from("the \"quote\" should be escaped"),
             "bool" => Value::from(true),
             "other" => Value::from("data"),
-        })));
+        }));
         let fields = vec![
             "foo".into(),
             "int".into(),
@@ -383,13 +383,13 @@ mod tests {
 
     #[test]
     fn serialize_order() {
-        let event = Event::Log(OtelLog::from_log_event(LogEvent::from(btreemap! {
+        let event = Event::Log(OtelLog::from(btreemap! {
             "field1" => Value::from("value1"),
             "field2" => Value::from("value2"),
             "field3" => Value::from("value3"),
             "field4" => Value::from("value4"),
             "field5" => Value::from("value5"),
-        })));
+        }));
         let fields = vec![
             "field1".into(),
             "field5".into(),
@@ -415,12 +415,12 @@ mod tests {
 
     #[test]
     fn correct_quoting() {
-        let event = Event::Log(OtelLog::from_log_event(LogEvent::from(btreemap! {
+        let event = Event::Log(OtelLog::from(btreemap! {
             "field1" => Value::from("hello world"),
             "field2" => Value::from(1),
             "field3" => Value::from("foo\"bar"),
             "field4" => Value::from("baz,bas"),
-        })));
+        }));
         let fields = vec![
             "field1".into(),
             "field2".into(),

@@ -84,7 +84,7 @@ impl Encoder<Event> for TextSerializer {
 mod tests {
     use bytes::{Bytes, BytesMut};
     use vector_core::{
-        event::{LogEvent, Metric, MetricKind, MetricValue, OtelMetric},
+        event::{OtelLog, Metric, MetricKind, MetricValue, OtelMetric},
         metric_tags,
     };
 
@@ -94,7 +94,7 @@ mod tests {
     fn serialize_log() {
         let buffer = serialize(
             TextSerializerConfig::default(),
-            Event::Log(OtelLog::from_log_event(LogEvent::from_str_legacy("foo"))),
+            Event::Log(OtelLog::from_str_legacy("foo")),
         );
         assert_eq!(buffer, Bytes::from("foo"));
     }

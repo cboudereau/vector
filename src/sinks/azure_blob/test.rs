@@ -13,7 +13,7 @@ use vector_lib::{
 use super::{config::AzureBlobSinkConfig, request_builder::AzureBlobRequestOptions};
 use crate::{
     codecs::{Encoder, EncodingConfigWithFraming},
-    event::{Event, LogEvent, OtelLog},
+    event::{Event, OtelLog},
     sinks::util::{
         Compression,
         request_builder::{EncodeResult, RequestBuilder},
@@ -42,7 +42,7 @@ fn generate_config() {
 
 #[test]
 fn azure_blob_build_request_without_compression() {
-    let log = Event::Log(OtelLog::from_log_event(LogEvent::from("test message")));
+    let log = Event::Log(OtelLog::from("test message"));
     let compression = Compression::None;
     let container_name = String::from("logs");
     let sink_config = AzureBlobSinkConfig {
@@ -90,7 +90,7 @@ fn azure_blob_build_request_without_compression() {
 
 #[test]
 fn azure_blob_build_request_with_compression() {
-    let log = Event::Log(OtelLog::from_log_event(LogEvent::from("test message")));
+    let log = Event::Log(OtelLog::from("test message"));
     let compression = Compression::gzip_default();
     let container_name = String::from("logs");
     let sink_config = AzureBlobSinkConfig {
@@ -138,7 +138,7 @@ fn azure_blob_build_request_with_compression() {
 
 #[test]
 fn azure_blob_build_request_with_time_format() {
-    let log = Event::Log(OtelLog::from_log_event(LogEvent::from("test message")));
+    let log = Event::Log(OtelLog::from("test message"));
     let compression = Compression::None;
     let container_name = String::from("logs");
     let sink_config = AzureBlobSinkConfig {
@@ -189,7 +189,7 @@ fn azure_blob_build_request_with_time_format() {
 
 #[test]
 fn azure_blob_build_request_with_uuid() {
-    let log = Event::Log(OtelLog::from_log_event(LogEvent::from("test message")));
+    let log = Event::Log(OtelLog::from("test message"));
     let compression = Compression::None;
     let container_name = String::from("logs");
     let sink_config = AzureBlobSinkConfig {

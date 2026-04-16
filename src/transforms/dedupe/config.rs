@@ -93,7 +93,7 @@ mod tests {
 
     use crate::{
         config::schema::Definition,
-        event::{Event, LogEvent, OtelLog, ObjectMap, Value},
+        event::{Event, OtelLog, ObjectMap, Value},
         test_util::components::assert_transform_compliance,
         transforms::{
             dedupe::{
@@ -177,17 +177,17 @@ mod tests {
             let (topology, mut out) =
                 create_topology(ReceiverStream::new(rx), transform_config).await;
 
-            let mut event1 = Event::Log(OtelLog::from_log_event(LogEvent::from("message")));
+            let mut event1 = Event::Log(OtelLog::from("message"));
             event1.as_mut_log().insert(first_path, "some value");
             event1.as_mut_log().insert(second_path, "another value");
 
             // Test that unmatched field isn't considered
-            let mut event2 = Event::Log(OtelLog::from_log_event(LogEvent::from("message")));
+            let mut event2 = Event::Log(OtelLog::from("message"));
             event2.as_mut_log().insert(first_path, "some value2");
             event2.as_mut_log().insert(second_path, "another value");
 
             // Test that matched field is considered
-            let mut event3 = Event::Log(OtelLog::from_log_event(LogEvent::from("message")));
+            let mut event3 = Event::Log(OtelLog::from("message"));
             event3.as_mut_log().insert(first_path, "some value");
             event3.as_mut_log().insert(second_path, "another value2");
 
@@ -235,10 +235,10 @@ mod tests {
             let (topology, mut out) =
                 create_topology(ReceiverStream::new(rx), transform_config).await;
 
-            let mut event1 = Event::Log(OtelLog::from_log_event(LogEvent::from("message")));
+            let mut event1 = Event::Log(OtelLog::from("message"));
             event1.as_mut_log().insert("matched1", "some value");
 
-            let mut event2 = Event::Log(OtelLog::from_log_event(LogEvent::from("message")));
+            let mut event2 = Event::Log(OtelLog::from("message"));
             event2.as_mut_log().insert("matched2", "some value");
 
             // First event should always be passed through as-is.
@@ -285,12 +285,12 @@ mod tests {
             let (topology, mut out) =
                 create_topology(ReceiverStream::new(rx), transform_config).await;
 
-            let mut event1 = Event::Log(OtelLog::from_log_event(LogEvent::from("message")));
+            let mut event1 = Event::Log(OtelLog::from("message"));
             event1.as_mut_log().insert("matched1", "value1");
             event1.as_mut_log().insert("matched2", "value2");
 
             // Add fields in opposite order
-            let mut event2 = Event::Log(OtelLog::from_log_event(LogEvent::from("message")));
+            let mut event2 = Event::Log(OtelLog::from("message"));
             event2.as_mut_log().insert("matched2", "value2");
             event2.as_mut_log().insert("matched1", "value1");
 
@@ -333,10 +333,10 @@ mod tests {
             let (topology, mut out) =
                 create_topology(ReceiverStream::new(rx), transform_config).await;
 
-            let mut event1 = Event::Log(OtelLog::from_log_event(LogEvent::from("message")));
+            let mut event1 = Event::Log(OtelLog::from("message"));
             event1.as_mut_log().insert("matched", "some value");
 
-            let mut event2 = Event::Log(OtelLog::from_log_event(LogEvent::from("message")));
+            let mut event2 = Event::Log(OtelLog::from("message"));
             event2.as_mut_log().insert("matched", "some value2");
 
             // First event should always be passed through as-is.
@@ -403,7 +403,7 @@ mod tests {
             let (topology, mut out) =
                 create_topology(ReceiverStream::new(rx), transform_config).await;
 
-            let mut event1 = Event::Log(OtelLog::from_log_event(LogEvent::from("message")));
+            let mut event1 = Event::Log(OtelLog::from("message"));
             event1.as_mut_log().insert("matched", "some value");
 
             // First event should always be passed through as-is.
@@ -453,10 +453,10 @@ mod tests {
             let (topology, mut out) =
                 create_topology(ReceiverStream::new(rx), transform_config).await;
 
-            let mut event1 = Event::Log(OtelLog::from_log_event(LogEvent::from("message")));
+            let mut event1 = Event::Log(OtelLog::from("message"));
             event1.as_mut_log().insert("matched", "123");
 
-            let mut event2 = Event::Log(OtelLog::from_log_event(LogEvent::from("message")));
+            let mut event2 = Event::Log(OtelLog::from("message"));
             event2.as_mut_log().insert("matched", 123);
 
             // First event should always be passed through as-is.
@@ -504,12 +504,12 @@ mod tests {
 
             let mut map1 = ObjectMap::new();
             map1.insert("key".into(), "123".into());
-            let mut event1 = Event::Log(OtelLog::from_log_event(LogEvent::from("message")));
+            let mut event1 = Event::Log(OtelLog::from("message"));
             event1.as_mut_log().insert("matched", map1);
 
             let mut map2 = ObjectMap::new();
             map2.insert("key".into(), 123.into());
-            let mut event2 = Event::Log(OtelLog::from_log_event(LogEvent::from("message")));
+            let mut event2 = Event::Log(OtelLog::from("message"));
             event2.as_mut_log().insert("matched", map2);
 
             // First event should always be passed through as-is.
@@ -553,10 +553,10 @@ mod tests {
             let (topology, mut out) =
                 create_topology(ReceiverStream::new(rx), transform_config).await;
 
-            let mut event1 = Event::Log(OtelLog::from_log_event(LogEvent::from("message")));
+            let mut event1 = Event::Log(OtelLog::from("message"));
             event1.as_mut_log().insert("matched", Value::Null);
 
-            let mut event2 = Event::Log(OtelLog::from_log_event(LogEvent::from("message")));
+            let mut event2 = Event::Log(OtelLog::from("message"));
 
             // First event should always be passed through as-is.
             tx.send(event1.clone()).await.unwrap();

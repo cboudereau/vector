@@ -656,7 +656,7 @@ mod tests {
     use crate::{
         config::{ConfigBuilder, build_unit_tests},
         event::{
-            LogEvent, OtelLog, Metric, OtelMetric, Value,
+            OtelLog, Metric, OtelMetric, Value,
             metric::{MetricKind, MetricValue},
         },
         metrics::Controller,
@@ -756,7 +756,7 @@ mod tests {
         assert!(tform.runner().runtime.is_empty());
 
         let event1 = {
-            let mut event1 = LogEvent::from("event1");
+            let mut event1 = OtelLog::from("event1");
             event1.insert("sentinel", "bar");
             Event::from(event1)
         };
@@ -766,7 +766,7 @@ mod tests {
         assert!(tform.runner().runtime.is_empty());
 
         let event2 = {
-            let event2 = LogEvent::from("event2");
+            let event2 = OtelLog::from("event2");
             Event::from(event2)
         };
         let result2 = transform_one(&mut tform, event2).unwrap();
@@ -788,7 +788,7 @@ mod tests {
                 .value_mut()
                 .insert(&owned_value_path!("vector"), BTreeMap::new());
 
-            let mut event = LogEvent::new_with_metadata(metadata);
+            let mut event = OtelLog::new_with_metadata(metadata);
             event.insert("copy_from", "buz");
             Event::from(event)
         };
@@ -821,7 +821,7 @@ mod tests {
     #[test]
     fn check_remap_adds() {
         let event = {
-            let mut event = LogEvent::from("augment me");
+            let mut event = OtelLog::from("augment me");
             event.insert("copy_from", "buz");
             Event::from(event)
         };
@@ -851,7 +851,7 @@ mod tests {
     #[test]
     fn check_remap_emits_multiple() {
         let event = {
-            let mut event = LogEvent::from("augment me");
+            let mut event = OtelLog::from("augment me");
             event.insert(
                 "events",
                 vec![btreemap!("body" => "foo"), btreemap!("body" => "bar")],
@@ -886,7 +886,7 @@ mod tests {
     #[test]
     fn check_remap_error() {
         let event = {
-            let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("augment me")));
+            let mut event = Event::Log(OtelLog::from("augment me"));
             event.as_mut_log().insert("bar", "is a string");
             event
         };
@@ -914,7 +914,7 @@ mod tests {
     #[test]
     fn check_remap_error_drop() {
         let event = {
-            let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("augment me")));
+            let mut event = Event::Log(OtelLog::from("augment me"));
             event.as_mut_log().insert("bar", "is a string");
             event
         };
@@ -938,7 +938,7 @@ mod tests {
     #[test]
     fn check_remap_error_infallible() {
         let event = {
-            let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("augment me")));
+            let mut event = Event::Log(OtelLog::from("augment me"));
             event.as_mut_log().insert("bar", "is a string");
             event
         };
@@ -965,7 +965,7 @@ mod tests {
     #[test]
     fn check_remap_abort() {
         let event = {
-            let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("augment me")));
+            let mut event = Event::Log(OtelLog::from("augment me"));
             event.as_mut_log().insert("bar", "is a string");
             event
         };
@@ -993,7 +993,7 @@ mod tests {
     #[test]
     fn check_remap_abort_drop() {
         let event = {
-            let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("augment me")));
+            let mut event = Event::Log(OtelLog::from("augment me"));
             event.as_mut_log().insert("bar", "is a string");
             event
         };
@@ -1602,7 +1602,7 @@ mod tests {
             let (tx, rx) = mpsc::channel(1);
             let (topology, mut out) = create_topology(ReceiverStream::new(rx), config).await;
 
-            let log = LogEvent::from("hello world");
+            let log = OtelLog::from("hello world");
             tx.send(log.into()).await.unwrap();
 
             drop(tx);
@@ -1918,7 +1918,7 @@ mod tests {
     #[ignore = "VRL/OtelLog integration needs deeper adaptation"]
     fn check_remap_array_vector_namespace() {
         let event = {
-            let mut event = LogEvent::from("input");
+            let mut event = OtelLog::from("input");
             // mark the event as a "Vector" namespaced log
             event
                 .metadata_mut()

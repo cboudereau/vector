@@ -10,7 +10,7 @@ use crate::{
     transforms::{FunctionTransform, OutputBuffer},
 };
 
-/// For OtelLog events, convert to a temporary LogEvent for parsing,
+/// For OtelLog events, convert to a temporary OtelLog for parsing,
 /// then transfer the parsed fields back as OtelLog attributes.
 fn transform_otel_event(parser: &mut ParserState, output: &mut OutputBuffer, mut event: Event) {
     if let Event::Log(ref otel_log) = event {
@@ -133,7 +133,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        event::{Event, LogEvent, OtelLog},
+        event::{Event, OtelLog},
         test_util::trace_init,
     };
 
@@ -156,7 +156,7 @@ mod tests {
         trace_init();
         test_util::test_parser(
             || Parser::new(LogNamespace::Vector),
-            |bytes| Event::Log(OtelLog::from_log_event(LogEvent::from(value!(bytes)))),
+            |bytes| Event::Log(OtelLog::from(value!(bytes))),
             valid_cases(LogNamespace::Vector),
         );
     }
@@ -166,7 +166,7 @@ mod tests {
         trace_init();
         test_util::test_parser(
             || Parser::new(LogNamespace::Legacy),
-            |bytes| Event::Log(OtelLog::from_log_event(LogEvent::from(bytes))),
+            |bytes| Event::Log(OtelLog::from(bytes)),
             valid_cases(LogNamespace::Legacy),
         );
     }
@@ -179,7 +179,7 @@ mod tests {
 
         for bytes in cases {
             let mut parser = Parser::new(LogNamespace::Legacy);
-            let input = LogEvent::from(bytes);
+            let input = OtelLog::from(bytes);
             let mut output = OutputBuffer::default();
             parser.transform(&mut output, input.into());
 
@@ -193,12 +193,12 @@ mod tests {
 
         let cases = vec![
             // No `message` field.
-            (LogEvent::default(), LogNamespace::Legacy),
+            (OtelLog::default(), LogNamespace::Legacy),
             // Non-bytes `message` field.
-            (LogEvent::from(value!(123)), LogNamespace::Vector),
+            (OtelLog::from(value!(123)), LogNamespace::Vector),
             (
                 {
-                    let mut input = LogEvent::default();
+                    let mut input = OtelLog::default();
                     input.insert(event_path!("body"), 123);
                     input
                 },

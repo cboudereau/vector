@@ -397,7 +397,7 @@ mod tests {
     use futures_util::stream;
     use http::{StatusCode, request::Parts};
     use serde_json::json;
-    use vector_lib::event::{BatchNotifier, BatchStatus, Event, LogEvent, OtelLog};
+    use vector_lib::event::{BatchNotifier, BatchStatus, Event, OtelLog};
 
     use super::*;
     use crate::{
@@ -428,16 +428,16 @@ mod tests {
         .unwrap();
         let mut encoder = config.build_encoder();
 
-        let mut event1 = Event::Log(OtelLog::from_log_event(LogEvent::from("hello world")));
+        let mut event1 = Event::Log(OtelLog::from("hello world"));
         event1.as_mut_log().insert("app", "notvector");
         event1.as_mut_log().insert("magic", "vector");
 
-        let mut event2 = Event::Log(OtelLog::from_log_event(LogEvent::from("hello world")));
+        let mut event2 = Event::Log(OtelLog::from("hello world"));
         event2.as_mut_log().insert("file", "log.txt");
 
-        let event3 = Event::Log(OtelLog::from_log_event(LogEvent::from("hello world")));
+        let event3 = Event::Log(OtelLog::from("hello world"));
 
-        let mut event4 = Event::Log(OtelLog::from_log_event(LogEvent::from("hello world")));
+        let mut event4 = Event::Log(OtelLog::from("hello world"));
         event4.as_mut_log().insert("env", "staging");
 
         let event1_out = encoder.encode_event(event1).unwrap().into_parts().0;
@@ -501,7 +501,7 @@ mod tests {
         // Create 10 events where the first one contains custom
         // fields that are not just `message`.
         for (i, line) in lines.iter().enumerate() {
-            let mut event = LogEvent::from(line.as_str()).with_batch_notifier(&batch);
+            let mut event = OtelLog::from(line.as_str()).with_batch_notifier(&batch);
             let p = i % 2;
             event.insert("hostname", hosts[p]);
 

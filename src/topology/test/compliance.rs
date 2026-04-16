@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tokio::sync::oneshot::{Receiver, channel};
 use vector_lib::{
     config::{ComponentKey, OutputId},
-    event::{Event, EventArray, EventContainer, LogEvent, OtelLog},
+    event::{Event, EventArray, EventContainer, OtelLog},
 };
 
 use crate::{
@@ -62,7 +62,7 @@ async fn create_topology(
 #[tokio::test]
 async fn test_function_transform_single_event() {
     assert_transform_compliance(async {
-        let mut original_event = Event::Log(OtelLog::from_log_event(LogEvent::from("function transform being tested")));
+        let mut original_event = Event::Log(OtelLog::from("function transform being tested"));
 
         let (topology, rx) = create_topology(original_event.clone(), TransformType::Function).await;
         topology.stop().await;
@@ -82,7 +82,7 @@ async fn test_function_transform_single_event() {
 #[tokio::test]
 async fn test_sync_transform_single_event() {
     assert_transform_compliance(async {
-        let mut original_event = Event::Log(OtelLog::from_log_event(LogEvent::from("function transform being tested")));
+        let mut original_event = Event::Log(OtelLog::from("function transform being tested"));
 
         let (topology, rx) =
             create_topology(original_event.clone(), TransformType::Synchronous).await;
@@ -103,7 +103,7 @@ async fn test_sync_transform_single_event() {
 #[tokio::test]
 async fn test_task_transform_single_event() {
     assert_transform_compliance(async {
-        let mut original_event = Event::Log(OtelLog::from_log_event(LogEvent::from("function transform being tested")));
+        let mut original_event = Event::Log(OtelLog::from("function transform being tested"));
 
         let (topology, rx) = create_topology(original_event.clone(), TransformType::Task).await;
         topology.stop().await;

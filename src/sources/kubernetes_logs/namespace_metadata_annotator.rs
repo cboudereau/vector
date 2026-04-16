@@ -125,7 +125,7 @@ mod tests {
     use vector_lib::lookup::{event_path, metadata_path};
 
     use super::*;
-    use crate::event::LogEvent;
+    use crate::event::OtelLog;
 
     #[test]
     fn test_annotate_from_metadata() {
@@ -133,7 +133,7 @@ mod tests {
             (
                 FieldsSpec::default(),
                 ObjectMeta::default(),
-                LogEvent::default(),
+                OtelLog::default(),
                 LogNamespace::Legacy,
             ),
             (
@@ -152,7 +152,7 @@ mod tests {
                     ..ObjectMeta::default()
                 },
                 {
-                    let mut log = LogEvent::default();
+                    let mut log = OtelLog::default();
                     log.insert(
                         metadata_path!("kubernetes_logs", "namespace_labels", "sandbox0-label0"),
                         "val0",
@@ -181,7 +181,7 @@ mod tests {
                     ..ObjectMeta::default()
                 },
                 {
-                    let mut log = LogEvent::default();
+                    let mut log = OtelLog::default();
                     log.insert(
                         event_path!("kubernetes", "namespace_labels", "sandbox0-label0"),
                         "val0",
@@ -212,7 +212,7 @@ mod tests {
                     ..ObjectMeta::default()
                 },
                 {
-                    let mut log = LogEvent::default();
+                    let mut log = OtelLog::default();
                     log.insert(event_path!("ns_labels", "sandbox0-label0"), "val0");
                     log.insert(event_path!("ns_labels", "sandbox0-label1"), "val1");
                     log
@@ -239,7 +239,7 @@ mod tests {
                     ..ObjectMeta::default()
                 },
                 {
-                    let mut log = LogEvent::default();
+                    let mut log = OtelLog::default();
                     log.insert(
                         metadata_path!("kubernetes_logs", "namespace_labels", "nested0.label0"),
                         "val0",
@@ -283,7 +283,7 @@ mod tests {
                     ..ObjectMeta::default()
                 },
                 {
-                    let mut log = LogEvent::default();
+                    let mut log = OtelLog::default();
                     log.insert(
                         event_path!("kubernetes", "namespace_labels", "nested0.label0"),
                         "val0",
@@ -307,9 +307,9 @@ mod tests {
         ];
 
         for (fields_spec, metadata, expected, log_namespace) in cases.into_iter() {
-            let mut log = OtelLog::from_log_event(LogEvent::default());
+            let mut log = OtelLog::default();
             annotate_from_metadata(&mut log, &fields_spec, &metadata, log_namespace);
-            let expected = OtelLog::from_log_event(expected);
+            let expected = expected;
             assert_eq!(log, expected);
         }
     }

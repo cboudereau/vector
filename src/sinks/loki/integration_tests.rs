@@ -6,7 +6,7 @@ use futures::stream;
 use vector_lib::{
     config::{LogNamespace, Tags, Telemetry, init_telemetry},
     encode_logfmt,
-    event::{BatchNotifier, BatchStatus, Event, LogEvent},
+    event::{BatchNotifier, BatchStatus, Event, OtelLog},
     lookup::{PathPrefix, owned_value_path},
 };
 use vrl::value::{Kind, kind::Collection};
@@ -97,7 +97,7 @@ fn line_generator(index: usize) -> String {
 }
 
 fn event_generator(index: usize) -> Event {
-    Event::Log(OtelLog::from_log_event(LogEvent::from(line_generator(index))))
+    Event::Log(OtelLog::from(line_generator(index)))
 }
 
 /// A generator that creates a timestamp in the given field.
@@ -108,7 +108,7 @@ fn namespaced_timestamp_generator(
     timestamp: chrono::DateTime<Utc>,
 ) -> impl Fn(usize) -> Event {
     move |index: usize| {
-        let mut log = LogEvent::default();
+        let mut log = OtelLog::default();
         log.insert("message", line_generator(index));
         log.insert(timestamp_field.as_str(), Value::from(timestamp));
 
@@ -453,7 +453,7 @@ async fn many_tenants() {
     let mut events = lines
         .clone()
         .into_iter()
-        .map(|e| Event::Log(OtelLog::from_log_event(LogEvent::from(e))))
+        .map(|e| Event::Log(OtelLog::from(e)))
         .collect::<Vec<_>>();
 
     for (i, event) in events.iter_mut().enumerate() {
@@ -489,7 +489,7 @@ async fn out_of_order_drop() {
     let mut events = lines
         .clone()
         .into_iter()
-        .map(|e| Event::Log(OtelLog::from_log_event(LogEvent::from(e))))
+        .map(|e| Event::Log(OtelLog::from(e)))
         .collect::<Vec<_>>();
 
     let base = Utc::now() - Duration::seconds(20);
@@ -519,7 +519,7 @@ async fn out_of_order_accept() {
     let mut events = lines
         .clone()
         .into_iter()
-        .map(|e| Event::Log(OtelLog::from_log_event(LogEvent::from(e))))
+        .map(|e| Event::Log(OtelLog::from(e)))
         .collect::<Vec<_>>();
 
     let base = Utc::now() - Duration::seconds(20);
@@ -551,7 +551,7 @@ async fn out_of_order_rewrite() {
     let mut events = lines
         .clone()
         .into_iter()
-        .map(|e| Event::Log(OtelLog::from_log_event(LogEvent::from(e))))
+        .map(|e| Event::Log(OtelLog::from(e)))
         .collect::<Vec<_>>();
 
     let base = Utc::now() - Duration::seconds(20);
@@ -593,7 +593,7 @@ async fn out_of_order_per_partition() {
     let mut events = big_lines
         .into_iter()
         .chain(small_lines)
-        .map(|e| Event::Log(OtelLog::from_log_event(LogEvent::from(e))))
+        .map(|e| Event::Log(OtelLog::from(e)))
         .collect::<Vec<_>>();
 
     let base = Utc::now() - Duration::seconds(30);

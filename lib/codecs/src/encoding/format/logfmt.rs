@@ -52,16 +52,16 @@ impl Encoder<Event> for LogfmtSerializer {
 #[cfg(test)]
 mod tests {
     use bytes::BytesMut;
-    use vector_core::event::{LogEvent, Value};
+    use vector_core::event::{OtelLog, Value};
     use vrl::btreemap;
 
     use super::*;
 
     #[test]
     fn serialize_logfmt() {
-        let event = Event::Log(OtelLog::from_log_event(LogEvent::from(btreemap! {
+        let event = Event::Log(OtelLog::from(btreemap! {
             "foo" => Value::from("bar")
-        })));
+        }));
         let mut serializer = LogfmtSerializer;
         let mut bytes = BytesMut::new();
 

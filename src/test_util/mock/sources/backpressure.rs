@@ -8,7 +8,7 @@ use futures_util::FutureExt;
 use vector_lib::{
     config::{DataType, LogNamespace, SourceOutput},
     configurable::configurable_component,
-    event::{Event, LogEvent, OtelLog},
+    event::{Event, OtelLog},
     schema::Definition,
     source::Source,
 };
@@ -42,7 +42,7 @@ impl SourceConfig for BackpressureSourceConfig {
             for i in 0.. {
                 let _result = cx
                     .out
-                    .send_event(Event::Log(OtelLog::from_log_event(LogEvent::from(format!("event-{i}")))))
+                    .send_event(Event::Log(OtelLog::from(format!("event-{i}"))))
                     .await;
                 counter.fetch_add(1, Ordering::AcqRel);
 

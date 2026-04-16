@@ -394,7 +394,7 @@ mod tests {
     use http::{StatusCode, request::Parts};
     use indoc::indoc;
     use vector_lib::{
-        event::{BatchNotifier, BatchStatus, Event, LogEvent, OtelLog},
+        event::{BatchNotifier, BatchStatus, Event, OtelLog},
         lookup::owned_value_path,
     };
 
@@ -446,7 +446,7 @@ mod tests {
 
     #[test]
     fn test_encode_event_apply_rules() {
-        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello")));
+        let mut event = Event::Log(OtelLog::from("hello"));
         event.as_mut_log().insert("host", "aws.cloud.eur");
         event.as_mut_log().insert("timestamp", ts());
 
@@ -487,7 +487,7 @@ mod tests {
 
     #[test]
     fn test_encode_event_v1() {
-        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello")));
+        let mut event = Event::Log(OtelLog::from("hello"));
         event.as_mut_log().insert("host", "aws.cloud.eur");
         event.as_mut_log().insert("source_type", "file");
 
@@ -532,7 +532,7 @@ mod tests {
 
     #[test]
     fn test_encode_event() {
-        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello")));
+        let mut event = Event::Log(OtelLog::from("hello"));
         event.as_mut_log().insert("host", "aws.cloud.eur");
         event.as_mut_log().insert("source_type", "file");
 
@@ -577,7 +577,7 @@ mod tests {
 
     #[test]
     fn test_encode_event_without_tags() {
-        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello")));
+        let mut event = Event::Log(OtelLog::from("hello"));
 
         event.as_mut_log().insert("value", 100);
         event.as_mut_log().insert("timestamp", ts());
@@ -615,7 +615,7 @@ mod tests {
 
     #[test]
     fn test_encode_nested_fields() {
-        let mut event = LogEvent::default();
+        let mut event = OtelLog::default();
 
         event.insert("a", 1);
         event.insert("nested.field", "2");
@@ -656,7 +656,7 @@ mod tests {
 
     #[test]
     fn test_add_tag() {
-        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello")));
+        let mut event = Event::Log(OtelLog::from("hello"));
         event.as_mut_log().insert("source_type", "file");
 
         event.as_mut_log().insert("as_a_tag", 10);
@@ -781,7 +781,7 @@ mod tests {
 
         // Create 5 events with custom field
         for (i, line) in lines.iter().enumerate() {
-            let mut event = LogEvent::from(line.to_string()).with_batch_notifier(&batch);
+            let mut event = OtelLog::from(line.to_string()).with_batch_notifier(&batch);
             event.insert(format!("key{i}").as_str(), format!("value{i}"));
 
             let timestamp = Utc
@@ -873,7 +873,7 @@ mod integration_tests {
     use vector_lib::{
         codecs::BytesDeserializerConfig,
         config::{LegacyKey, LogNamespace},
-        event::{BatchNotifier, BatchStatus, Event, LogEvent},
+        event::{BatchNotifier, BatchStatus, Event, OtelLog},
         lookup::{owned_value_path, path},
     };
     use vrl::value;
@@ -927,16 +927,16 @@ mod integration_tests {
 
         let (batch, mut receiver) = BatchNotifier::new_with_receiver();
 
-        let mut event1 = LogEvent::from("message_1").with_batch_notifier(&batch);
+        let mut event1 = OtelLog::from("message_1").with_batch_notifier(&batch);
         event1.insert("host", "aws.cloud.eur");
         event1.insert("source_type", "file");
 
-        let mut event2 = LogEvent::from("message_2").with_batch_notifier(&batch);
+        let mut event2 = OtelLog::from("message_2").with_batch_notifier(&batch);
         event2.insert("host", "aws.cloud.eur");
         event2.insert("source_type", "file");
 
         let mut namespaced_log =
-            LogEvent::from(value!("namespaced message")).with_batch_notifier(&batch);
+            OtelLog::from(value!("namespaced message")).with_batch_notifier(&batch);
         LogNamespace::Vector.insert_source_metadata(
             "file",
             &mut namespaced_log,

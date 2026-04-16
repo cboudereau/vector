@@ -1350,7 +1350,7 @@ mod tests {
         codecs::{DecodingConfig, EncodingConfig},
         components::validation::prelude::*,
         config::{SinkConfig, SinkContext, SourceConfig, SourceContext, log_schema},
-        event::{Event, LogEvent, OtelLog},
+        event::{Event, OtelLog},
         sinks::{
             Healthcheck, VectorSink,
             splunk_hec::logs::config::HecLogsSinkConfig,
@@ -1470,7 +1470,7 @@ mod tests {
             sink.run_events(
                 messages
                     .into_iter()
-                    .map(|s| Event::Log(OtelLog::from_log_event(LogEvent::from(s.into())))),
+                    .map(|s| Event::Log(OtelLog::from(s.into()))),
             )
             .await
             .unwrap();
@@ -1691,7 +1691,7 @@ mod tests {
         )
         .await;
 
-        let mut log = LogEvent::default();
+        let mut log = OtelLog::default();
         log.insert("greeting", "hello");
         log.insert("name", "bob");
         sink.run_events(vec![log.into()]).await.unwrap();
@@ -1716,7 +1716,7 @@ mod tests {
         )
         .await;
 
-        let mut log = LogEvent::default();
+        let mut log = OtelLog::default();
         // Test with a field that would be considered an invalid path if it were to
         // be treated as a path and not a simple field name.
         log.insert(event_path!("(greeting | thing"), "hello");
@@ -1738,7 +1738,7 @@ mod tests {
         )
         .await;
 
-        let mut event = LogEvent::default();
+        let mut event = OtelLog::default();
         event.insert("line", "hello");
         sink.run_events(vec![event.into()]).await.unwrap();
 

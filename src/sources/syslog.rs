@@ -471,7 +471,7 @@ mod test {
     use super::*;
     use crate::{
         config::log_schema,
-        event::{Event, LogEvent, OtelLog},
+        event::{Event, OtelLog},
         test_util::{
             CountReceiver,
             addr::next_addr,
@@ -812,7 +812,7 @@ mod test {
             msg
         );
 
-        let mut expected = Event::Log(OtelLog::from_log_event(LogEvent::from(msg)));
+        let mut expected = Event::Log(OtelLog::from(msg));
 
         {
             let expected = expected.as_mut_log();
@@ -863,7 +863,7 @@ mod test {
             r"[incorrect x]", msg
         );
 
-        let mut expected = Event::Log(OtelLog::from_log_event(LogEvent::from(msg)));
+        let mut expected = Event::Log(OtelLog::from(msg));
         {
             let expected = expected.as_mut_log();
             expected.insert(
@@ -1000,7 +1000,7 @@ mod test {
         )
         .unwrap();
 
-        let mut expected = Event::Log(OtelLog::from_log_event(LogEvent::from(msg)));
+        let mut expected = Event::Log(OtelLog::from(msg));
         {
             let value = event.as_log().get("timestamp").unwrap();
             let year = value.as_timestamp().unwrap().naive_local().year();
@@ -1049,7 +1049,7 @@ mod test {
         )
         .unwrap();
 
-        let mut expected = Event::Log(OtelLog::from_log_event(LogEvent::from(msg)));
+        let mut expected = Event::Log(OtelLog::from(msg));
         {
             let value = event.as_log().get("timestamp").unwrap();
             let year = value.as_timestamp().unwrap().naive_local().year();
@@ -1090,7 +1090,7 @@ mod test {
             r#"<190>2019-02-13T21:53:30.605850+00:00 74794bfb6795 liblogging-stdlog:  [origin software="rsyslogd" swVersion="8.24.0" x-pid="9043" x-info="http://www.rsyslog.com"] {msg}"#
         );
 
-        let mut expected = Event::Log(OtelLog::from_log_event(LogEvent::from(msg)));
+        let mut expected = Event::Log(OtelLog::from(msg));
         {
             let expected = expected.as_mut_log();
             expected.insert(

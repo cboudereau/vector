@@ -7,7 +7,7 @@ use vrl::owned_value_path;
 use crate::{
     conditions::{Condition, ConditionalConfig, VrlConfig},
     config::log_schema,
-    event::{Event, EventMetadata, LogEvent, OtelLog, OtelSpan, Value},
+    event::{Event, EventMetadata, OtelLog, OtelSpan, Value},
     template::Template,
     test_util::{components::assert_transform_compliance, random_lines},
     transforms::{
@@ -34,7 +34,7 @@ async fn emits_internal_events() {
         let (tx, rx) = mpsc::channel(1);
         let (topology, mut out) = create_topology(ReceiverStream::new(rx), config).await;
 
-        let log = LogEvent::from("hello world");
+        let log = OtelLog::from("hello world");
         tx.send(log.into()).await.unwrap();
 
         _ = out.recv().await;
@@ -136,7 +136,7 @@ fn hash_consistently_samples_the_same_events() {
 #[test]
 fn always_passes_events_matching_pass_list() {
     for key_field in &[None, log_schema().message_key().map(ToString::to_string)] {
-        let event = Event::Log(OtelLog::from_log_event(LogEvent::from("i am important")));
+        let event = Event::Log(OtelLog::from("i am important"));
         let mut sampler = Sample::new(
             "sample".to_string(),
             SampleMode::new_rate(0),
@@ -161,7 +161,7 @@ fn always_passes_events_matching_pass_list() {
 #[test]
 fn handles_group_by() {
     for group_by in &[None, Some(Template::try_from("{{ other_field }}").unwrap())] {
-        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("nananana")));
+        let mut event = Event::Log(OtelLog::from("nananana"));
         let log = event.as_mut_log();
         log.insert("other_field", "foo");
         let mut sampler = Sample::new(
@@ -188,7 +188,7 @@ fn handles_group_by() {
 #[test]
 fn handles_key_field() {
     for key_field in &[None, Some("other_field".into())] {
-        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("nananana")));
+        let mut event = Event::Log(OtelLog::from("nananana"));
         let log = event.as_mut_log();
         log.insert("other_field", "foo");
         let mut sampler = Sample::new(
@@ -271,7 +271,7 @@ fn sampler_adds_sampling_rate_to_event() {
             Some(condition_contains(&message_key, "na")),
             default_sample_rate_key(),
         );
-        let event = Event::Log(OtelLog::from_log_event(LogEvent::from("nananana")));
+        let event = Event::Log(OtelLog::from("nananana"));
         let passing = transform_one(&mut sampler, event).unwrap();
         assert!(passing.as_log().get("sample_rate").is_none());
     }
@@ -340,6 +340,6 @@ fn condition_contains(key: &str, needle: &str) -> Condition {
 fn random_events(n: usize) -> Vec<Event> {
     random_lines(10)
         .take(n)
-        .map(|e| Event::Log(OtelLog::from_log_event(LogEvent::from(e))))
+        .map(|e| Event::Log(OtelLog::from(e)))
         .collect()
 }

@@ -7,7 +7,7 @@ use tokio::time::{Duration, sleep};
 use vector_lib::{
     codecs::{JsonSerializerConfig, TextSerializerConfig},
     config::{Tags, Telemetry, init_telemetry},
-    event::{BatchNotifier, BatchStatus, Event, LogEvent},
+    event::{BatchNotifier, BatchStatus, Event, OtelLog},
     lookup,
     lookup::lookup_v2::{ConfigValuePath, OptionalTargetPath},
 };
@@ -157,7 +157,7 @@ async fn splunk_insert_message() {
 
     let message = random_string(100);
     let (batch, mut receiver) = BatchNotifier::new_with_receiver();
-    let event = LogEvent::from(message.clone()).with_batch_notifier(&batch);
+    let event = OtelLog::from(message.clone()).with_batch_notifier(&batch);
     drop(batch);
     run_and_assert_sink_compliance(sink, stream::once(ready(event)), &HTTP_SINK_TAGS).await;
     assert_eq!(receiver.try_recv(), Ok(BatchStatus::Delivered));
@@ -179,7 +179,7 @@ async fn splunk_insert_message_data_volume() {
 
     let message = random_string(100);
     let (batch, mut receiver) = BatchNotifier::new_with_receiver();
-    let event = LogEvent::from(message.clone()).with_batch_notifier(&batch);
+    let event = OtelLog::from(message.clone()).with_batch_notifier(&batch);
     drop(batch);
     run_and_assert_data_volume_sink_compliance(
         sink,
@@ -208,7 +208,7 @@ async fn splunk_insert_raw_message() {
 
     let message = random_string(100);
     let (batch, mut receiver) = BatchNotifier::new_with_receiver();
-    let event = LogEvent::from(message.clone()).with_batch_notifier(&batch);
+    let event = OtelLog::from(message.clone()).with_batch_notifier(&batch);
     drop(batch);
     run_and_assert_sink_compliance(sink, stream::once(ready(event)), &HTTP_SINK_TAGS).await;
     assert_eq!(receiver.try_recv(), Ok(BatchStatus::Delivered));
@@ -235,7 +235,7 @@ async fn splunk_insert_raw_message_data_volume() {
 
     let message = random_string(100);
     let (batch, mut receiver) = BatchNotifier::new_with_receiver();
-    let event = LogEvent::from(message.clone()).with_batch_notifier(&batch);
+    let event = OtelLog::from(message.clone()).with_batch_notifier(&batch);
     drop(batch);
     run_and_assert_data_volume_sink_compliance(
         sink,
@@ -262,7 +262,7 @@ async fn splunk_insert_broken_token() {
 
     let message = random_string(100);
     let (batch, mut receiver) = BatchNotifier::new_with_receiver();
-    let event = LogEvent::from(message.clone()).with_batch_notifier(&batch);
+    let event = OtelLog::from(message.clone()).with_batch_notifier(&batch);
     drop(batch);
     sink.run_events(iter::once(event.into())).await.unwrap();
     assert_eq!(receiver.try_recv(), Ok(BatchStatus::Rejected));
@@ -278,7 +278,7 @@ async fn splunk_insert_source() {
     let (sink, _) = config.build(cx).await.unwrap();
 
     let message = random_string(100);
-    let event = Event::Log(OtelLog::from_log_event(LogEvent::from(message.clone())));
+    let event = Event::Log(OtelLog::from(message.clone()));
     run_and_assert_sink_compliance(sink, stream::once(ready(event)), &HTTP_SINK_TAGS).await;
 
     let entry = find_entry(message.as_str()).await;
@@ -295,7 +295,7 @@ async fn splunk_insert_index() {
     let (sink, _) = config.build(cx).await.unwrap();
 
     let message = random_string(100);
-    let event = LogEvent::from(message.clone());
+    let event = OtelLog::from(message.clone());
     run_and_assert_sink_compliance(sink, stream::once(ready(event)), &HTTP_SINK_TAGS).await;
 
     let entry = find_entry(message.as_str()).await;
@@ -314,7 +314,7 @@ async fn splunk_index_is_interpolated() {
     let (sink, _) = config.build(cx).await.unwrap();
 
     let message = random_string(100);
-    let mut event = LogEvent::from(message.clone());
+    let mut event = OtelLog::from(message.clone());
     event.insert("index_name", "custom_index");
     run_and_assert_sink_compliance(sink, stream::once(ready(event)), &HTTP_SINK_TAGS).await;
 
@@ -346,7 +346,7 @@ async fn splunk_custom_fields() {
     let (sink, _) = config.build(cx).await.unwrap();
 
     let message = random_string(100);
-    let mut event = LogEvent::from(message.clone());
+    let mut event = OtelLog::from(message.clone());
     event.insert("asdf", "hello");
     run_and_assert_sink_compliance(sink, stream::once(ready(event)), &HTTP_SINK_TAGS).await;
 
@@ -366,7 +366,7 @@ async fn splunk_hostname() {
     let (sink, _) = config.build(cx).await.unwrap();
 
     let message = random_string(100);
-    let mut event = LogEvent::from(message.clone());
+    let mut event = OtelLog::from(message.clone());
     event.insert("asdf", "hello");
     event.insert("host", "example.com:1234");
     run_and_assert_sink_compliance(sink, stream::once(ready(event)), &HTTP_SINK_TAGS).await;
@@ -391,7 +391,7 @@ async fn splunk_sourcetype() {
     let (sink, _) = config.build(cx).await.unwrap();
 
     let message = random_string(100);
-    let mut event = LogEvent::from(message.clone());
+    let mut event = OtelLog::from(message.clone());
     event.insert("asdf", "hello");
     run_and_assert_sink_compliance(sink, stream::once(ready(event)), &HTTP_SINK_TAGS).await;
 
@@ -416,7 +416,7 @@ async fn splunk_configure_hostname() {
     let (sink, _) = config.build(cx).await.unwrap();
 
     let message = random_string(100);
-    let mut event = LogEvent::from(message.clone());
+    let mut event = OtelLog::from(message.clone());
     event.insert("asdf", "hello");
     event.insert("host", "example.com:1234");
     event.insert("roast", "beef.example.com:1234");
@@ -504,7 +504,7 @@ async fn splunk_auto_extracted_timestamp() {
         // is within that limit.
         let date = Utc::now().with_nanosecond(0).unwrap() - chrono::Duration::days(1999);
         let message = format!("this message is on {}", date.format("%Y-%m-%d %H:%M:%S"));
-        let mut event = LogEvent::from(message.as_str());
+        let mut event = OtelLog::from(message.as_str());
 
         event.insert(
             "timestamp",
@@ -559,7 +559,7 @@ async fn splunk_non_auto_extracted_timestamp() {
         let (sink, _) = config.build(cx).await.unwrap();
         let date = Utc::now().with_nanosecond(0).unwrap() - chrono::Duration::days(1999);
         let message = format!("this message is on {}", date.format("%Y-%m-%d %H:%M:%S"));
-        let mut event = LogEvent::from(message.as_str());
+        let mut event = OtelLog::from(message.as_str());
 
         // With auto_extract_timestamp switched off the timestamp comes from the event timestamp.
         event.insert(

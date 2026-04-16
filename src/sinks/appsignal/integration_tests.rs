@@ -4,7 +4,7 @@ use http::header::AUTHORIZATION;
 use hyper::StatusCode;
 use indoc::indoc;
 use vector_lib::event::{
-    BatchNotifier, BatchStatus, Event, LogEvent, OtelLog, Metric, MetricKind, MetricValue,
+    BatchNotifier, BatchStatus, Event, OtelLog, Metric, MetricKind, MetricValue,
 };
 
 use crate::{
@@ -172,7 +172,7 @@ async fn metrics_shape() {
 #[tokio::test]
 async fn logs_shape() {
     let events: Vec<_> = (0..5)
-        .map(|index| Event::Log(OtelLog::from_log_event(LogEvent::from(format!("Log message {index}")))))
+        .map(|index| Event::Log(OtelLog::from(format!("Log message {index}"))))
         .collect();
     let api_key = push_api_key();
     let (expected, rx) = start_test(events).await;

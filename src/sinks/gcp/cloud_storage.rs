@@ -477,7 +477,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        event::{LogEvent, OtelLog},
+        event::{OtelLog},
         test_util::{
             components::{SINK_TAGS, run_and_assert_sink_compliance},
             http::{always_200_response, spawn_blackhole_http_server},
@@ -510,7 +510,7 @@ mod tests {
             )
             .expect("failed to build sink");
 
-        let event = Event::Log(OtelLog::from_log_event(LogEvent::from("simple message")));
+        let event = Event::Log(OtelLog::from("simple message"));
         run_and_assert_sink_compliance(sink, stream::once(ready(event)), &SINK_TAGS).await;
     }
 
@@ -519,7 +519,7 @@ mod tests {
         crate::test_util::trace_init();
 
         let message = "hello world".to_string();
-        let mut event = LogEvent::from(message);
+        let mut event = OtelLog::from(message);
         event.insert("key", "value");
 
         let sink_config = GcsSinkConfig {
@@ -555,7 +555,7 @@ mod tests {
                     .into(),
             )
         };
-        let log = LogEvent::default().into();
+        let log = OtelLog::default().into();
         let key = sink_config
             .key_partitioner()
             .unwrap()

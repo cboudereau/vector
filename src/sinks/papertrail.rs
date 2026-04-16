@@ -191,7 +191,7 @@ mod tests {
     use tokio_util::codec::Encoder as _;
     use vector_lib::{
         codecs::JsonSerializerConfig,
-        event::{Event, LogEvent, OtelLog},
+        event::{Event, OtelLog},
     };
 
     use super::*;
@@ -220,13 +220,13 @@ mod tests {
         let context = SinkContext::default();
         let (sink, _healthcheck) = config.build(context).await.unwrap();
 
-        let event = Event::Log(OtelLog::from_log_event(LogEvent::from("simple message")));
+        let event = Event::Log(OtelLog::from("simple message"));
         run_and_assert_sink_compliance(sink, stream::once(ready(event)), &SINK_TAGS).await;
     }
 
     #[test]
     fn encode_event_apply_rules() {
-        let mut evt = Event::Log(OtelLog::from_log_event(LogEvent::from("vector")));
+        let mut evt = Event::Log(OtelLog::from("vector"));
         evt.as_mut_log().insert("magic", "key");
         evt.as_mut_log().insert("process", "foo");
 

@@ -976,7 +976,7 @@ mod tests {
     use crate::{
         config::log_schema,
         event::{
-            Event, LogEvent, OtelMetric,
+            Event, OtelLog, OtelMetric,
             metric::{Metric, MetricKind, MetricValue, StatisticKind},
         },
         test_util::components::assert_transform_compliance,
@@ -1009,7 +1009,7 @@ mod tests {
     }
 
     fn create_event(key: &str, value: impl Into<Value> + std::fmt::Debug) -> Event {
-        let mut log = Event::Log(OtelLog::from_log_event(LogEvent::from("i am a log")));
+        let mut log = Event::Log(OtelLog::from("i am a log"));
         log.as_mut_log().insert(key, value);
         log.as_mut_log()
             .insert(log_schema().timestamp_key_target_path().unwrap(), ts());
@@ -1537,7 +1537,7 @@ mod tests {
             "#,
         );
 
-        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("i am a log")));
+        let mut event = Event::Log(OtelLog::from("i am a log"));
         event
             .as_mut_log()
             .insert(log_schema().timestamp_key_target_path().unwrap(), ts());
@@ -1595,7 +1595,7 @@ mod tests {
             "#,
         );
 
-        let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("i am a log")));
+        let mut event = Event::Log(OtelLog::from("i am a log"));
         event
             .as_mut_log()
             .insert(log_schema().timestamp_key_target_path().unwrap(), ts());
@@ -1772,7 +1772,7 @@ mod tests {
         let mut metadata = EventMetadata::default();
         set_test_source_metadata(&mut metadata);
 
-        Event::Log(OtelLog::from_log_event(LogEvent::from_parts(log_value, metadata.clone())))
+        Event::Log(OtelLog::from_value_map(log_value, metadata.clone()))
     }
 
     #[tokio::test]

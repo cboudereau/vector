@@ -595,7 +595,7 @@ mod tests {
     use vector_lib::lookup::{event_path, metadata_path};
 
     use super::*;
-    use crate::event::LogEvent;
+    use crate::event::OtelLog;
 
     #[test]
     fn test_annotate_from_metadata() {
@@ -603,7 +603,7 @@ mod tests {
             (
                 FieldsSpec::default(),
                 ObjectMeta::default(),
-                LogEvent::default(),
+                OtelLog::default(),
                 LogNamespace::Legacy,
             ),
             (
@@ -631,7 +631,7 @@ mod tests {
                     ..ObjectMeta::default()
                 },
                 {
-                    let mut log = LogEvent::default();
+                    let mut log = OtelLog::default();
                     log.insert(
                         metadata_path!("kubernetes_logs", "pod_name"),
                         "sandbox0-name",
@@ -694,7 +694,7 @@ mod tests {
                     ..ObjectMeta::default()
                 },
                 {
-                    let mut log = LogEvent::default();
+                    let mut log = OtelLog::default();
                     log.insert(event_path!("kubernetes", "pod_name"), "sandbox0-name");
                     log.insert(event_path!("kubernetes", "pod_namespace"), "sandbox0-ns");
                     log.insert(event_path!("kubernetes", "pod_uid"), "sandbox0-uid");
@@ -751,7 +751,7 @@ mod tests {
                     ..ObjectMeta::default()
                 },
                 {
-                    let mut log = LogEvent::default();
+                    let mut log = OtelLog::default();
                     log.insert(event_path!("name"), "sandbox0-name");
                     log.insert(event_path!("ns"), "sandbox0-ns");
                     log.insert(event_path!("uid"), "sandbox0-uid");
@@ -781,7 +781,7 @@ mod tests {
                     ..ObjectMeta::default()
                 },
                 {
-                    let mut log = LogEvent::default();
+                    let mut log = OtelLog::default();
                     log.insert(
                         metadata_path!("kubernetes_logs", "pod_name"),
                         "sandbox0-name",
@@ -830,7 +830,7 @@ mod tests {
                     ..ObjectMeta::default()
                 },
                 {
-                    let mut log = LogEvent::default();
+                    let mut log = OtelLog::default();
                     log.insert(event_path!("kubernetes", "pod_name"), "sandbox0-name");
                     log.insert(event_path!("kubernetes", "pod_namespace"), "sandbox0-ns");
                     log.insert(event_path!("kubernetes", "pod_uid"), "sandbox0-uid");
@@ -857,9 +857,9 @@ mod tests {
         ];
 
         for (fields_spec, metadata, expected, log_namespace) in cases.into_iter() {
-            let mut log = OtelLog::from_log_event(LogEvent::default());
+            let mut log = OtelLog::default();
             annotate_from_metadata(&mut log, &fields_spec, &metadata, log_namespace);
-            let expected = OtelLog::from_log_event(expected);
+            let expected = expected;
             assert_eq!(log, expected);
         }
     }
@@ -889,7 +889,7 @@ mod tests {
                 FieldsSpec::default(),
                 s_path,
                 {
-                    let mut log = LogEvent::default();
+                    let mut log = OtelLog::default();
                     log.insert(
                         event_path!("kubernetes", "container_name"),
                         "sandbox0-container0-name",
@@ -906,7 +906,7 @@ mod tests {
                 },
                 s_path,
                 {
-                    let mut log = LogEvent::default();
+                    let mut log = OtelLog::default();
                     log.insert(event_path!("container_name"), "sandbox0-container0-name");
                     log
                 },
@@ -915,10 +915,10 @@ mod tests {
         ];
 
         for (fields_spec, file, expected, log_namespace) in cases.into_iter() {
-            let mut log = OtelLog::from_log_event(LogEvent::default());
+            let mut log = OtelLog::default();
             let file_info = parse_log_file_path(file).unwrap();
             annotate_from_file_info(&mut log, &fields_spec, &file_info, log_namespace);
-            let expected = OtelLog::from_log_event(expected);
+            let expected = expected;
             assert_eq!(log, expected);
         }
     }
@@ -929,7 +929,7 @@ mod tests {
             (
                 FieldsSpec::default(),
                 PodSpec::default(),
-                LogEvent::default(),
+                OtelLog::default(),
                 LogNamespace::Legacy,
             ),
             (
@@ -939,7 +939,7 @@ mod tests {
                     ..Default::default()
                 },
                 {
-                    let mut log = LogEvent::default();
+                    let mut log = OtelLog::default();
                     log.insert(
                         event_path!("kubernetes", "pod_node_name"),
                         "sandbox0-node-name",
@@ -958,7 +958,7 @@ mod tests {
                     ..Default::default()
                 },
                 {
-                    let mut log = LogEvent::default();
+                    let mut log = OtelLog::default();
                     log.insert(event_path!("node_name"), "sandbox0-node-name");
                     log
                 },
@@ -967,9 +967,9 @@ mod tests {
         ];
 
         for (fields_spec, pod_spec, expected, log_namespace) in cases.into_iter() {
-            let mut log = OtelLog::from_log_event(LogEvent::default());
+            let mut log = OtelLog::default();
             annotate_from_pod_spec(&mut log, &fields_spec, &pod_spec, log_namespace);
-            let expected = OtelLog::from_log_event(expected);
+            let expected = expected;
             assert_eq!(log, expected);
         }
     }
@@ -980,7 +980,7 @@ mod tests {
             (
                 FieldsSpec::default(),
                 PodStatus::default(),
-                LogEvent::default(),
+                OtelLog::default(),
                 LogNamespace::Legacy,
             ),
             (
@@ -990,7 +990,7 @@ mod tests {
                     ..Default::default()
                 },
                 {
-                    let mut log = LogEvent::default();
+                    let mut log = OtelLog::default();
                     log.insert(event_path!("kubernetes", "pod_ip"), "192.168.1.2");
                     log
                 },
@@ -1005,7 +1005,7 @@ mod tests {
                     ..Default::default()
                 },
                 {
-                    let mut log = LogEvent::default();
+                    let mut log = OtelLog::default();
                     let ips_vec = vec!["192.168.1.2"];
                     log.insert(event_path!("kubernetes", "pod_ips"), ips_vec);
                     log
@@ -1039,7 +1039,7 @@ mod tests {
                     ..Default::default()
                 },
                 {
-                    let mut log = LogEvent::default();
+                    let mut log = OtelLog::default();
                     log.insert(event_path!("kubernetes", "custom_pod_ip"), "192.168.1.2");
                     let ips_vec = vec!["192.168.1.2", "192.168.1.3"];
                     log.insert(event_path!("kubernetes", "custom_pod_ips"), ips_vec);
@@ -1065,7 +1065,7 @@ mod tests {
                     ..Default::default()
                 },
                 {
-                    let mut log = LogEvent::default();
+                    let mut log = OtelLog::default();
                     log.insert(event_path!("kubernetes", "pod_ip"), "192.168.1.2");
                     let ips_vec = vec!["192.168.1.2", "192.168.1.3"];
                     log.insert(event_path!("kubernetes", "pod_ips"), ips_vec);
@@ -1076,9 +1076,9 @@ mod tests {
         ];
 
         for (fields_spec, pod_status, expected, log_namespace) in cases.into_iter() {
-            let mut log = OtelLog::from_log_event(LogEvent::default());
+            let mut log = OtelLog::default();
             annotate_from_pod_status(&mut log, &fields_spec, &pod_status, log_namespace);
-            let expected = OtelLog::from_log_event(expected);
+            let expected = expected;
             assert_eq!(log, expected);
         }
     }
@@ -1090,7 +1090,7 @@ mod tests {
                 FieldsSpec::default(),
                 ContainerStatus::default(),
                 {
-                    let mut log = LogEvent::default();
+                    let mut log = OtelLog::default();
                     log.insert(event_path!("kubernetes", "container_image_id"), "");
                     log
                 },
@@ -1106,7 +1106,7 @@ mod tests {
                     ..ContainerStatus::default()
                 },
                 {
-                    let mut log = LogEvent::default();
+                    let mut log = OtelLog::default();
                     log.insert(
                         event_path!("kubernetes", "container_id"),
                         "container_id_foo",
@@ -1121,14 +1121,14 @@ mod tests {
             ),
         ];
         for (fields_spec, container_status, expected, log_namespace) in cases.into_iter() {
-            let mut log = OtelLog::from_log_event(LogEvent::default());
+            let mut log = OtelLog::default();
             annotate_from_container_status(
                 &mut log,
                 &fields_spec,
                 &container_status,
                 log_namespace,
             );
-            let expected = OtelLog::from_log_event(expected);
+            let expected = expected;
             assert_eq!(log, expected);
         }
     }
@@ -1139,7 +1139,7 @@ mod tests {
             (
                 FieldsSpec::default(),
                 Container::default(),
-                LogEvent::default(),
+                OtelLog::default(),
                 LogNamespace::Legacy,
             ),
             (
@@ -1149,7 +1149,7 @@ mod tests {
                     ..Default::default()
                 },
                 {
-                    let mut log = LogEvent::default();
+                    let mut log = OtelLog::default();
                     log.insert(
                         event_path!("kubernetes", "container_image"),
                         "sandbox0-container-image",
@@ -1169,7 +1169,7 @@ mod tests {
                     ..Default::default()
                 },
                 {
-                    let mut log = LogEvent::default();
+                    let mut log = OtelLog::default();
                     log.insert(event_path!("container_image"), "sandbox0-container-image");
                     log
                 },
@@ -1178,9 +1178,9 @@ mod tests {
         ];
 
         for (fields_spec, container, expected, log_namespace) in cases.into_iter() {
-            let mut log = OtelLog::from_log_event(LogEvent::default());
+            let mut log = OtelLog::default();
             annotate_from_container(&mut log, &fields_spec, &container, log_namespace);
-            let expected = OtelLog::from_log_event(expected);
+            let expected = expected;
             assert_eq!(log, expected);
         }
     }

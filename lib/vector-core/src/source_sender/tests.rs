@@ -7,7 +7,7 @@ use vrl::event_path;
 use super::*;
 use crate::{
     config::{DataType, SourceOutput},
-    event::{Event, LogEvent, Metric, MetricKind, MetricValue, OtelMetric, OtelSpan},
+    event::{Event, OtelLog, Metric, MetricKind, MetricValue, OtelMetric, OtelSpan},
     metrics::{self, Controller},
 };
 
@@ -15,7 +15,7 @@ use crate::{
 #[ignore = "Lag time computation disabled for OTel event types"]
 async fn emits_lag_time_for_log() {
     emit_and_test(|timestamp| {
-        let mut log = LogEvent::from("Log message");
+        let mut log = OtelLog::from("Log message");
         log.insert("timestamp", timestamp);
         Event::Log(OtelLog::from_log_event(log))
     })
@@ -251,7 +251,7 @@ async fn per_signal_backpressure_isolation() {
 
     // With the metrics channel full, logs and traces must still be sendable
     // without blocking.  We give each a 200 ms budget.
-    let log_future = sender.send_batch_named("logs", vec![Event::Log(OtelLog::from_log_event(LogEvent::from("hello")))]);
+    let log_future = sender.send_batch_named("logs", vec![Event::Log(OtelLog::from("hello"))]);
     timeout(StdDuration::from_millis(200), log_future)
         .await
         .expect("log send must not block when metric channel is full")
@@ -310,7 +310,7 @@ async fn emits_buffer_utilization_histogram_on_send_and_receive() {
     metrics::init_test();
     let (mut sender, mut recv) = SourceSender::new_test_sender_with_options(BUFFER_SIZE, None);
 
-    let event = Event::Log(OtelLog::from_log_event(LogEvent::from("test event")));
+    let event = Event::Log(OtelLog::from("test event"));
     sender
         .send_event(event.clone())
         .await

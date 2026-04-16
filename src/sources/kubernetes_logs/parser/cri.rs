@@ -158,7 +158,7 @@ pub mod tests {
     use vrl::value;
 
     use super::{super::test_util, *};
-    use crate::{event::{LogEvent, OtelLog}, test_util::trace_init};
+    use crate::{event::{OtelLog}, test_util::trace_init};
 
     fn make_long_string(base: &str, len: usize) -> String {
         base.chars().cycle().take(len).collect()
@@ -256,7 +256,7 @@ pub mod tests {
         trace_init();
         test_util::test_parser(
             || Cri::new(LogNamespace::Vector),
-            |bytes| Event::Log(OtelLog::from_log_event(LogEvent::from(value!(bytes)))),
+            |bytes| Event::Log(OtelLog::from(value!(bytes))),
             valid_cases(LogNamespace::Vector),
         );
     }
@@ -266,7 +266,7 @@ pub mod tests {
         trace_init();
         test_util::test_parser(
             || Cri::new(LogNamespace::Legacy),
-            |bytes| Event::Log(OtelLog::from_log_event(LogEvent::from(bytes))),
+            |bytes| Event::Log(OtelLog::from(bytes)),
             valid_cases(LogNamespace::Legacy),
         );
     }

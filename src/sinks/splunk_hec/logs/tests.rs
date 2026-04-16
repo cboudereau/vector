@@ -6,7 +6,7 @@ use serde::{Deserialize, de};
 use vector_lib::{
     codecs::{JsonSerializerConfig, TextSerializerConfig},
     config::{LegacyKey, LogNamespace, log_schema},
-    event::{Event, EventMetadata, LogEvent, OtelLog, Value},
+    event::{Event, EventMetadata, OtelLog, Value},
     lookup::lookup_v2::OptionalTargetPath,
     schema::{Definition, meaning},
 };
@@ -69,7 +69,7 @@ fn get_processed_event_timestamp(
     timestamp_key: Option<OptionalTargetPath>,
     auto_extract_timestamp: bool,
 ) -> HecProcessedEvent {
-    let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello world")));
+    let mut event = Event::Log(OtelLog::from("hello world"));
     event
         .as_mut_log()
         .insert("event_sourcetype", "test_sourcetype");
@@ -136,7 +136,7 @@ fn get_processed_event() -> HecProcessedEvent {
 }
 
 fn get_event_with_token(msg: &str, token: &str) -> Event {
-    let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from(msg)));
+    let mut event = Event::Log(OtelLog::from(msg));
     event.metadata_mut().set_splunk_hec_token(Arc::from(token));
     event
 }
@@ -246,7 +246,7 @@ async fn splunk_passthrough_token() {
     let events = vec![
         get_event_with_token("message-1", "passthrough-token-1"),
         get_event_with_token("message-2", "passthrough-token-2"),
-        Event::Log(OtelLog::from_log_event(LogEvent::from("default token will be used"))),
+        Event::Log(OtelLog::from("default token will be used")),
     ];
 
     sink.run_events(events).await.unwrap();
@@ -343,7 +343,7 @@ fn splunk_encode_log_event_semantic_meanings() {
             ),
     ));
 
-    let mut log = LogEvent::new_with_metadata(metadata);
+    let mut log = OtelLog::new_with_metadata(metadata);
     log.insert(event_path!("message"), "the_message");
 
     // insert an arbitrary metadata field such that the log becomes Vector namespaced

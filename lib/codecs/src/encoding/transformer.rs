@@ -272,7 +272,7 @@ mod tests {
     use lookup::path::parse_target_path;
     use vector_core::{
         config::{LogNamespace, log_schema},
-        event::LogEvent,
+        event::OtelLog,
         schema,
     };
     use vrl::{btreemap, value::Kind};
@@ -306,7 +306,7 @@ mod tests {
     fn deserialize_and_transform_except() {
         let transformer: Transformer =
             toml::from_str(r#"except_fields = ["a.b.c", "b", "c[0].y", "d.z", "e"]"#).unwrap();
-        let mut log = LogEvent::default();
+        let mut log = OtelLog::default();
         {
             log.insert("a", 1);
             log.insert("a.b", 1);
@@ -338,7 +338,7 @@ mod tests {
     fn deserialize_and_transform_only() {
         let transformer: Transformer =
             toml::from_str(r#"only_fields = ["a.b.c", "b", "c[0].y", "\"g.z\""]"#).unwrap();
-        let mut log = LogEvent::default();
+        let mut log = OtelLog::default();
         {
             log.insert("a", 1);
             log.insert("a.b", 1);
@@ -378,7 +378,7 @@ mod tests {
     #[test]
     #[ignore = "Timestamp round-trip through OtelLog loses type info"]
     fn deserialize_and_transform_timestamp() {
-        let mut base = Event::Log(OtelLog::from_log_event(LogEvent::from("Demo")));
+        let mut base = Event::Log(OtelLog::from("Demo"));
         {
             let base_log = base.as_log();
             let timestamp = base_log
@@ -450,7 +450,7 @@ mod tests {
     #[test]
     fn only_fields_with_service() {
         let transformer: Transformer = toml::from_str(r#"only_fields = ["body"]"#).unwrap();
-        let mut log = LogEvent::default();
+        let mut log = OtelLog::default();
         {
             log.insert("body", 1);
             log.insert("thing.service", "carrot");
@@ -491,7 +491,7 @@ mod tests {
     fn except_fields_with_service() {
         let transformer: Transformer =
             toml::from_str(r#"except_fields = ["thing.service"]"#).unwrap();
-        let mut log = LogEvent::default();
+        let mut log = OtelLog::default();
         {
             log.insert("body", 1);
             log.insert("thing.service", "carrot");

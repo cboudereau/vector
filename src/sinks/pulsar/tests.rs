@@ -3,7 +3,7 @@ use vector_lib::{configurable::component::GenerateConfig, lookup::lookup_v2::Opt
 use vrl::value::{ObjectMap, Value};
 
 use crate::{
-    event::{Event, LogEvent, OtelLog},
+    event::{Event, OtelLog},
     sinks::pulsar::config::PulsarSinkConfig,
 };
 
@@ -20,7 +20,7 @@ fn pulsar_get_headers() {
     property_values.insert("a-key".into(), Value::Bytes(Bytes::from("a-value")));
     property_values.insert("b-key".into(), Value::Bytes(Bytes::from("b-value")));
 
-    let mut event = Event::Log(OtelLog::from_log_event(LogEvent::from("hello")));
+    let mut event = Event::Log(OtelLog::from("hello"));
     event
         .as_mut_log()
         .insert(properties_key.path.as_ref().unwrap(), property_values);

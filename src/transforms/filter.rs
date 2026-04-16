@@ -111,7 +111,7 @@ mod test {
     use crate::{
         conditions::ConditionConfig,
         config::schema::Definition,
-        event::{Event, LogEvent, OtelLog},
+        event::{Event, OtelLog},
         test_util::components::assert_transform_compliance,
         transforms::test::create_topology,
     };
@@ -143,7 +143,7 @@ mod test {
             let (topology, mut out) =
                 create_topology(ReceiverStream::new(rx), transform_config).await;
 
-            let mut log = Event::Log(OtelLog::from_log_event(LogEvent::from("message")));
+            let mut log = Event::Log(OtelLog::from("message"));
             tx.send(log.clone()).await.unwrap();
 
             set_expected_metadata(&mut log);

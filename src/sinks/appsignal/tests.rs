@@ -2,7 +2,7 @@ use futures::{future::ready, stream};
 use serde::Deserialize;
 use vector_lib::{
     configurable::component::GenerateConfig,
-    event::{Event, LogEvent, OtelLog},
+    event::{Event, OtelLog},
 };
 
 use super::config::AppsignalConfig;
@@ -28,6 +28,6 @@ async fn component_spec_compliance() {
     let context = SinkContext::default();
     let (sink, _healthcheck) = config.build(context).await.unwrap();
 
-    let event = Event::Log(OtelLog::from_log_event(LogEvent::from("simple message")));
+    let event = Event::Log(OtelLog::from("simple message"));
     run_and_assert_sink_compliance(sink, stream::once(ready(event)), &HTTP_SINK_TAGS).await;
 }

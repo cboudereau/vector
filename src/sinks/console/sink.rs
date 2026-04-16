@@ -74,13 +74,13 @@ mod test {
 
     use super::*;
     use crate::{
-        event::{Event, LogEvent, OtelLog},
+        event::{Event, OtelLog},
         test_util::components::{SINK_TAGS, run_and_assert_sink_compliance},
     };
 
     #[tokio::test]
     async fn component_spec_compliance() {
-        let event = Event::Log(OtelLog::from_log_event(LogEvent::from("foo")));
+        let event = Event::Log(OtelLog::from("foo"));
 
         let encoder = Encoder::<Framer>::new(
             NewlineDelimitedEncoder::default().into(),

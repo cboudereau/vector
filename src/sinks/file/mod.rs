@@ -531,7 +531,7 @@ mod tests {
     use similar_asserts::assert_eq;
     use vector_lib::{
         codecs::JsonSerializerConfig,
-        event::{EventMetadata, LogEvent, OtelLog, OtelSpan},
+        event::{EventMetadata, OtelLog, OtelSpan},
         sink::VectorSink,
     };
     use vrl::value::Value;
@@ -755,7 +755,7 @@ mod tests {
 
         // send initial payload
         for line in input.clone() {
-            tx.send(Event::Log(OtelLog::from_log_event(LogEvent::from(line)))).await.unwrap();
+            tx.send(Event::Log(OtelLog::from(line))).await.unwrap();
         }
 
         // wait for file to go idle and be closed
@@ -763,7 +763,7 @@ mod tests {
 
         // trigger another write
         let last_line = "i should go at the end";
-        tx.send(LogEvent::from(last_line).into()).await.unwrap();
+        tx.send(OtelLog::from(last_line).into()).await.unwrap();
         input.push(String::from(last_line));
 
         // wait for another flush
@@ -892,7 +892,7 @@ mod tests {
     async fn run_assert_log_sink(config: &FileSinkConfig, events: Vec<String>) {
         run_assert_sink(
             config,
-            events.into_iter().map(LogEvent::from).map(Event::from),
+            events.into_iter().map(OtelLog::from).map(Event::from),
         )
         .await;
     }

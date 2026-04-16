@@ -1822,6 +1822,103 @@ impl OtelMetric {
         Self::new(proto)
     }
 
+    /// Convenience constructor for an aggregated histogram metric.
+    pub fn new_histogram(
+        name: impl Into<String>,
+        kind: super::MetricKind,
+        buckets: &[super::metric::Bucket],
+        count: u64,
+        sum: f64,
+    ) -> Self {
+        use opentelemetry_proto::tonic::metrics::v1::{
+            self as otel_metrics, metric::Data, Histogram, HistogramDataPoint,
+        };
+        let temporality = match kind {
+            super::MetricKind::Incremental => otel_metrics::AggregationTemporality::Delta as i32,
+            super::MetricKind::Absolute => otel_metrics::AggregationTemporality::Cumulative as i32,
+        };
+        let n = buckets.len();
+        let mut explicit_bounds = Vec::with_capacity(n);
+        let mut bucket_counts = Vec::with_capacity(n);
+        for b in buckets.iter() {
+            bucket_counts.push(b.count);
+            explicit_bounds.push(b.upper_limit);
+        }
+        let proto = OtelMetricProto {
+            name: name.into(),
+            data: Some(Data::Histogram(Histogram {
+                data_points: vec![HistogramDataPoint {
+                    count,
+                    sum: Some(sum),
+                    bucket_counts,
+                    explicit_bounds,
+                    ..Default::default()
+                }],
+                aggregation_temporality: temporality,
+            })),
+            ..Default::default()
+        };
+        Self::new(proto)
+    }
+
+    /// Convenience constructor for an aggregated summary metric.
+    pub fn new_summary(
+        name: impl Into<String>,
+        quantiles: &[super::metric::Quantile],
+        count: u64,
+        sum: f64,
+    ) -> Self {
+        use opentelemetry_proto::tonic::metrics::v1::{
+            metric::Data, Summary, SummaryDataPoint,
+            summary_data_point::ValueAtQuantile,
+        };
+        let proto = OtelMetricProto {
+            name: name.into(),
+            data: Some(Data::Summary(Summary {
+                data_points: vec![SummaryDataPoint {
+                    count,
+                    sum,
+                    quantile_values: quantiles
+                        .iter()
+                        .map(|q| ValueAtQuantile {
+                            quantile: q.quantile,
+                            value: q.value,
+                        })
+                        .collect(),
+                    ..Default::default()
+                }],
+            })),
+            ..Default::default()
+        };
+        Self::new(proto)
+    }
+
+    /// Convenience constructor for a set metric.
+    /// OTel has no native Set type; represented as a Gauge whose value
+    /// is the cardinality (number of unique values).
+    pub fn new_set(name: impl Into<String>, cardinality: usize) -> Self {
+        Self::new_gauge(name, cardinality as f64)
+    }
+
+    /// Convenience constructor for a distribution metric.
+    /// OTel has no direct distribution equivalent; represented as a Gauge
+    /// with value 0 and an attribute `"vector.metric_type" = "distribution"`.
+    /// Use `from_legacy_metric` for lossless round-trips.
+    pub fn new_distribution(name: impl Into<String>, kind: super::MetricKind) -> Self {
+        let mut m = Self::new_gauge(name, 0.0);
+        if kind == super::MetricKind::Incremental {
+            m.set_data_point_attribute(
+                "vector.metric_kind".to_string(),
+                string_value("incremental"),
+            );
+        }
+        m.set_data_point_attribute(
+            "vector.metric_type".to_string(),
+            string_value("distribution"),
+        );
+        m
+    }
+
     /// Convert a legacy Vector `Metric` into an `OtelMetric`.
     ///
     /// Maps MetricValue variants to OTel metric data types:
@@ -3556,6 +3653,58 @@ mod tests {
 
         assert_eq!(direct.name(), via_legacy.name());
         assert_eq!(direct.kind(), via_legacy.kind());
+        assert_eq!(direct.value(), via_legacy.value());
+    }
+
+    #[test]
+    fn new_histogram_matches_from_legacy_metric() {
+        use crate::event::{Metric, MetricKind, MetricValue};
+
+        let buckets = crate::buckets![1.0 => 10, 5.0 => 20, 10.0 => 5];
+        let direct = OtelMetric::new_histogram(
+            "request_duration",
+            MetricKind::Absolute,
+            &buckets,
+            35,
+            8.0,
+        );
+        let via_legacy = OtelMetric::from_legacy_metric(Metric::new(
+            "request_duration",
+            MetricKind::Absolute,
+            MetricValue::AggregatedHistogram {
+                buckets,
+                count: 35,
+                sum: 8.0,
+            },
+        ));
+
+        assert_eq!(direct.name(), via_legacy.name());
+        assert_eq!(direct.kind(), via_legacy.kind());
+        assert_eq!(direct.value(), via_legacy.value());
+    }
+
+    #[test]
+    fn new_summary_matches_from_legacy_metric() {
+        use crate::event::{Metric, MetricKind, MetricValue};
+
+        let quantiles = crate::quantiles![0.5 => 100.0, 0.99 => 200.0];
+        let direct = OtelMetric::new_summary(
+            "request_latency",
+            &quantiles,
+            50,
+            4200.0,
+        );
+        let via_legacy = OtelMetric::from_legacy_metric(Metric::new(
+            "request_latency",
+            MetricKind::Absolute,
+            MetricValue::AggregatedSummary {
+                quantiles,
+                count: 50,
+                sum: 4200.0,
+            },
+        ));
+
+        assert_eq!(direct.name(), via_legacy.name());
         assert_eq!(direct.value(), via_legacy.value());
     }
 

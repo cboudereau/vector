@@ -265,9 +265,13 @@ sessions. Recommended order:
   AND LogEvent type can be deleted together.
 - `log_event!` macro already uses `OtelLog::new` directly.
 - Zero production LogEvent imports remain outside vector-core/src/event/.
-- Remaining work: migrate ~150 test files from `LogEvent::from(...)` to
-  `OtelLog::from_bytes(...)` / `OtelLog::from_value_map(...)`, then
-  delete `log_event.rs` (1217 lines) + the bridge.
+- Remaining work to fully delete LogEvent: migrate ~555 test call sites
+  from `LogEvent::from/default/from_parts/from_str_legacy/merge/etc.`
+  to OtelLog equivalents, then delete `log_event.rs` (1217 lines) +
+  the bridge. This is a multi-session campaign (~2-3 sessions of
+  mechanical test rewrites).
+- The migration is **functionally complete for production paths** —
+  LogEvent is now purely test infrastructure.
 
 **F.6 original plan (for reference):**
 - 248 test callers. Highest volume.

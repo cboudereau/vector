@@ -15,7 +15,7 @@ use vector_lib::{
     codecs::decoding::{DeserializerConfig, FramingConfig},
     config::{LegacyKey, LogNamespace, SourceAcknowledgementsConfig, log_schema},
     configurable::configurable_component,
-    event::{Event, LogEvent},
+    event::{Event, OtelLog},
     finalizer::UnorderedFinalizer,
     internal_event::{CountByteSize, EventsReceived, InternalEventHandle as _},
     lookup::{lookup_v2::OptionalValuePath, metadata_path, owned_value_path, path},
@@ -250,7 +250,7 @@ struct Keys<'a> {
 /// Populates the decoded event with extra metadata.
 #[allow(dead_code)]
 fn populate_log_event(
-    log: &mut LogEvent,
+    log: &mut OtelLog,
     timestamp: Option<chrono::DateTime<Utc>>,
     keys: &Keys<'_>,
     log_namespace: LogNamespace,

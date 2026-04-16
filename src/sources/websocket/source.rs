@@ -11,7 +11,7 @@ use tokio_util::codec::FramedRead;
 use vector_lib::{
     EstimatedJsonEncodedSizeOf,
     config::LogNamespace,
-    event::{Event, LogEvent},
+    event::{Event, OtelLog},
     internal_event::{CountByteSize, EventsReceived, InternalEventHandle as _},
 };
 
@@ -259,7 +259,7 @@ impl WebSocketSource {
 
     #[allow(dead_code)]
     #[allow(dead_code)]
-    fn add_metadata(&self, event: &mut LogEvent, now: DateTime<Utc>) {
+    fn add_metadata(&self, event: &mut OtelLog, now: DateTime<Utc>) {
         self.params
             .log_namespace
             .insert_standard_vector_source_metadata(event, WebSocketConfig::NAME, now);

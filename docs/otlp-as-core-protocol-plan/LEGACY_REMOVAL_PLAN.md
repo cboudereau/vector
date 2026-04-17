@@ -597,6 +597,27 @@ The `Metric` struct bundles `MetricSeries + MetricData + EventMetadata`.
 - `OtelMetric::from_legacy_metric(Metric)` bridge
 - All `Metric::new()` call sites (sources, transforms, tests)
 
+### Progress (2026-04-17)
+
+**G.1 — DELETE TraceEvent** — **DONE** (`1236e8e`)
+- Deleted trace.rs (191 lines), proto.rs From<TraceEvent> impls,
+  buffer_codec.rs dead code, re-export + mod declaration.
+
+**G.2 — Remove proto backward compat** — **DONE** (`9363568`)
+- Removed old metric value decoders (Distribution1, AggHist1/2, AggSumm1/2, Sketch)
+- Removed Log `fields` fallback, deprecated metadata fallback, dual tag encoding
+- Gated zip_* helpers behind #[cfg(feature = "lua")]
+
+**G.3 — Migrate away from Metric struct** — **IN PROGRESS**
+- Production callers: **ALL MIGRATED** to `from_metric_parts` or direct OtelMetric constructors
+  - host_metrics, internal_metrics, nginx, mongodb, postgresql, static_metrics
+  - aggregate, log_to_metric transforms
+  - prometheus parser (counter/gauge/histogram/summary)
+  - statsd, apache, aws_ecs, eventstoredb sources
+- Remaining `from_legacy_metric` callers: **ALL TEST CODE** (~106 sites in test modules)
+- Metric struct deletion: blocked on test migration (~450 Metric::new sites) +
+  MetricSet normalizer internal usage
+
 ### Execution order
 
 G.1 → G.2 → G.3 (each leaves the codebase green)

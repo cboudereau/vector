@@ -25,10 +25,7 @@ use crate::{
         common::v1::{AnyValue, InstrumentationScope, KeyValue, any_value},
         logs::v1::{LogRecord, ResourceLogs, ScopeLogs},
         resource::v1::Resource,
-        trace::v1::{
-            ResourceSpans, ScopeSpans, Span, Status as SpanStatus,
-            span::{Event as SpanEvent, Link},
-        },
+        trace::v1::{ResourceSpans, ScopeSpans, Span},
     },
 };
 
@@ -219,73 +216,6 @@ fn batch_to_event_array(batch: OtlpBufferBatch) -> EventArray {
 // ---------------------------------------------------------------------------
 // Shared metadata readers
 // ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// Span sub-object converters (Value → proto)
-// ---------------------------------------------------------------------------
-
-fn value_to_span_event(v: &Value) -> Option<SpanEvent> {
-    let obj = v.as_object()?;
-    Some(SpanEvent {
-        time_unix_nano: obj
-            .get("time_unix_nano")
-            .and_then(|v| v.as_timestamp())
-            .and_then(|ts| ts.timestamp_nanos_opt())
-            .unwrap_or(0) as u64,
-        name: obj
-            .get("name")
-            .and_then(|v| v.as_str().map(|s| s.to_string()))
-            .unwrap_or_default(),
-        attributes: obj
-            .get("attributes")
-            .and_then(|v| value_to_kv_list(v))
-            .unwrap_or_default(),
-        dropped_attributes_count: obj
-            .get("dropped_attributes_count")
-            .and_then(|v| v.as_integer())
-            .unwrap_or(0) as u32,
-    })
-}
-
-fn value_to_span_link(v: &Value) -> Option<Link> {
-    let obj = v.as_object()?;
-    Some(Link {
-        trace_id: obj
-            .get("trace_id")
-            .and_then(|v| hex_value_to_bytes(v, 16))
-            .unwrap_or_default(),
-        span_id: obj
-            .get("span_id")
-            .and_then(|v| hex_value_to_bytes(v, 8))
-            .unwrap_or_default(),
-        trace_state: obj
-            .get("trace_state")
-            .and_then(|v| v.as_str().map(|s| s.to_string()))
-            .unwrap_or_default(),
-        attributes: obj
-            .get("attributes")
-            .and_then(|v| value_to_kv_list(v))
-            .unwrap_or_default(),
-        dropped_attributes_count: obj
-            .get("dropped_attributes_count")
-            .and_then(|v| v.as_integer())
-            .unwrap_or(0) as u32,
-    })
-}
-
-fn value_to_span_status(v: &Value) -> Option<SpanStatus> {
-    let obj = v.as_object()?;
-    Some(SpanStatus {
-        message: obj
-            .get("body")
-            .and_then(|v| v.as_str().map(|s| s.to_string()))
-            .unwrap_or_default(),
-        code: obj
-            .get("code")
-            .and_then(|v| v.as_integer())
-            .unwrap_or(0) as i32,
-    })
-}
 
 // ---------------------------------------------------------------------------
 // Value helpers

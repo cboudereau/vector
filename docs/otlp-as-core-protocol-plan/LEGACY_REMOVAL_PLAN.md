@@ -542,7 +542,7 @@ Delete all backward buffer compatibility code and bridge functions.
 | Counter | Value | Note |
 |---------|-------|------|
 | `Metric::new` sites | 336 | All test/sink/lib — zero production sources |
-| `from_legacy_metric` sites | 68 | Down from 146 — otel_event tests, prom exporter, statsd tests |
+| `from_legacy_metric` sites | **0** | **ZERO callers** — only fn definition + doc comments remain |
 | `from_metric_parts` sites | 91 | New callers replacing from_legacy_metric |
 
 ### Complete task list — full migration to OTel-native types
@@ -576,11 +576,11 @@ Status key: **DONE** / **PARTIAL** / **OPEN** / **BLOCKED**
 | T4 | Prometheus collector: `encode_metric(&Metric)` → tuples | **OPEN** | | ~50 lines, blocked on T3 |
 | T5 | Prometheus exporter: Metric aggregation logic | **OPEN** | | Coupled to T3 |
 | T6 | Split iterator: `AggregatedSummarySplitter` | **OPEN** | | ~70 lines, blocked on T3 |
-| T7 | Sink/transform test migration (~118 `from_legacy_metric`) | **PARTIAL** | `4a56724` | 69/137 sites migrated across 12 files (log_to_metric, remap, prometheus, gcp, codecs, splunk, greptimedb, humio, metric_to_log, lua, aws_ec2). **68 remaining**: otel_event tests (19), prom exporter (9), statsd parser tests (14), others (26) |
+| T7 | Sink/transform test migration (137 `from_legacy_metric`) | **DONE** | `4a56724`..`656da3c` | ALL 137 sites migrated to `from_metric_parts`. Zero callers remain. |
 | T8 | VRL metrics → OtelMetric | **DONE** | `4a56724` | MetricsStorage stores `Vec<OtelMetric>`, added `tag_matches()`, 29 test sites wrapped |
 | T9 | Lua bindings (`lua/metric.rs`, 17 sites) | **OPEN** | | `LuaMetric` holds Metric, ~80 lines IntoLua/FromLua, ~200 test lines |
 | T10 | Delete proto encode `From<super::Metric>` | **OPEN** | | Trivial — delete dead code after T1-T9 |
-| T11 | OtelMetric parity tests (15 sites in `otel_event.rs`) | **OPEN** | | Rewrite tests to verify `from_metric_parts` directly |
+| T11 | OtelMetric parity tests (15 sites in `otel_event.rs`) | **DONE** | `656da3c` | 13 call sites migrated, 5 test functions renamed |
 | T12 | Metric struct internal tests (30 sites in `metric/mod.rs`) | **OPEN** | | Rewrite to test `MetricData` methods directly |
 | T13 | **DELETE Metric struct + `from_legacy_metric`** | **OPEN** | | ~400 lines struct + ~250 lines bridge. Blocked on T1-T12 |
 | T14 | `Arbitrary` property tests bypass `from_legacy_metric` | **DONE** | `ac88015` | `array.rs` and `test/common.rs` use `into_parts` + `from_metric_parts` |

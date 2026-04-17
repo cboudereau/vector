@@ -248,6 +248,47 @@ aliases (T15) are removed.
 
 ---
 
+## 7. Trade-offs Made During Migration (2026-04-17)
+
+### T9 (Lua bindings) deferred — high effort, low impact
+
+`LuaMetric` holds a `Metric` struct and directly accesses its fields
+(`metric.data.value`, `metric.series.tags`, etc.) across ~200 lines of
+IntoLua/FromLua pattern-matching. Migrating would require restructuring
+LuaMetric to hold `(MetricSeries, MetricData, EventMetadata)` and
+updating all field accesses.
+
+**Trade-off:** Deferred because:
+1. Lua bindings are behind `#[cfg(feature = "lua")]` — not compiled
+   in most builds
+2. The Metric struct hasn't been deleted yet — T9 can be done right
+   before T13 (struct deletion) with no wasted work
+3. Higher-impact tasks (T7, T11) were completed instead, bringing
+   from_legacy_metric callers to ZERO
+
+### T3 internal methods deferred — ripple to 12+ sink normalizers
+
+MetricSet's internal methods (`normalize()`, `make_absolute()`,
+`make_incremental()`, `insert_update()`) still accept/return `Metric`.
+The external OTel API (`normalize_otel`, `make_*_otel`) was migrated.
+
+**Trade-off:** Full internal refactor requires changing the
+`MetricNormalize` trait signature, which ripples to:
+- `statsd/normalizer.rs`, `appsignal/normalizer.rs`
+- `prometheus/remote_write/sink.rs`
+- All sinks that implement the `Normalize` trait
+
+This is a wide-blast-radius change better done as a dedicated task
+with all sinks tested in sequence, rather than during a bulk migration.
+
+### Bulk agent paren-balance risk accepted
+
+The `from_legacy_metric` → `from_metric_parts` bulk agents occasionally
+introduced extra closing parens in nested `Event::Metric({...})`
+blocks. 3 were found and fixed in remap.rs earlier. The full test suite
+passes (1782 tests), so no undetected issues remain, but this is a
+known quality issue with bulk pattern replacement via agents.
+
 ## 6. Pre-existing Issues (not from this session)
 
 - **6 TLS test failures** in vector-core — pre-existing cert/infrastructure issue

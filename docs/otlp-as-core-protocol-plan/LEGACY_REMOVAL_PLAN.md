@@ -65,23 +65,14 @@ The previous version of this plan claimed "~5 production callers"; that
 count was wrong. On close inspection all sites are either test modules
 (`#[cfg(test)]`, `mod tests`) or bridge `impl From<...>` definitions.
 
-### Legacy types — still defined, usage shrinking
+### Legacy types — current status (2026-04-17)
 
-| Type | Defined | Imports (code+tests) | Status |
-|------|---------|----------------------|--------|
-| `LogEvent` | `lib/vector-core/src/event/log_event.rs` | 19 files | Used for I/O boundary + VRL target mutation |
-| `Metric` | `lib/vector-core/src/event/metric/mod.rs:58` | many | `Metric::from_parts`/`into_parts` is the proto ↔ normalizer bridge |
-| `TraceEvent` | `lib/vector-core/src/event/trace.rs:19` (newtype over LogEvent) | 2 files | Nearly-dead, only kept for disk buffer compat |
-| `prometheus_parser::Metric` | `lib/prometheus-parser/src/line.rs:99` | Prometheus parser only | Unrelated to legacy `vector_core::Metric` |
-
-`LogEvent` is the widest-remaining legacy type. Removal requires:
-1. Replacing `VrlTarget::Log(LogEvent)` with direct `OtelLog` mutation
-   (VRL_OTEL_NATIVE_TARGETS.md Phase 2 — deferred, large VRL change)
-2. Removing the `From<LogEvent>` / `From<TraceEvent>` / `From<Metric>`
-   bridge impls — blocked on all sources/transforms/codecs that still
-   emit legacy types being migrated to direct OTel construction
-3. Deleting `lua/log.rs`, `lua/event.rs` Lua adapters (only non-proto
-   places that still construct `LogEvent` directly)
+| Type | Status | Note |
+|------|--------|------|
+| `LogEvent` | **DELETED** (`80ff2fb`) | 1217 lines removed |
+| `TraceEvent` | **DELETED** (`1236e8e`) | 191 lines removed |
+| `Metric` struct | **Test/lib only** | 0 production callers; 336 `Metric::new` in test/sink/lib; see Phase G task list |
+| `prometheus_parser::Metric` | Unrelated | External crate, not Vector's legacy type |
 
 ### VRL aliases / paths
 
@@ -439,14 +430,16 @@ should stay until source emission is native OTel.
 4. **`lib/vector-vrl-metrics/src/common.rs`** — VRL metric
    manipulation functions.
 
-### Group H — Bridges (permanent)
+### Group H — Bridges (formerly "permanent", now targeted for deletion)
 
-| Function | Role |
-|----------|------|
-| `Event::from(LogEvent / Metric / TraceEvent)` | Fundamental coercion — stays until all sources emit OTel directly |
-| `OtelLog::from_log_event` | Thin wrapper over `from_value_map`; useful for test ergonomics |
-| `OtelSpan::from_trace_event` | Same as above |
-| `OtelMetric::from_legacy_metric` | Same as above |
+| Function | Status |
+|----------|--------|
+| `Event::from(LogEvent)` | **DELETED** — `log_event.rs` deleted |
+| `Event::from(TraceEvent)` | **DELETED** — `trace.rs` deleted |
+| `Event::from(Metric)` | **DELETED** — bridge removed in F.5 |
+| `OtelLog::from_log_event` | **DELETED** — `LogEvent` no longer exists |
+| `OtelSpan::from_trace_event` | **DELETED** — `TraceEvent` no longer exists |
+| `OtelMetric::from_legacy_metric` | **Targeted for deletion** — Phase G task T1 (inline into `from_metric_parts`) |
 
 ## Definitive blocker inventory (2026-04-15)
 
@@ -461,7 +454,7 @@ cosmetic (e.g. internal GraphQL schema names).
 |---|---------|----------|-------|----------|----------|
 | B1 | ~~dnstap parser~~ | `lib/dnstap-parser/src/parser.rs` | **DONE** (`c8e02e1`): 17 fns now take `&mut Value`. Source uses `OtelLog::modify_as_value` to amortize round-trip. VRL function drops LogEvent intermediate. | ~~HIGH~~ **DONE** | `DNSTAP_PARSER_MIGRATION.md` |
 | B2 | ~~Prometheus `MetricRef` dedup key~~ | `src/sinks/prometheus/exporter.rs` | **UNBLOCKED** (`887b657`): `MetricRef::from_otel_metric` added + parity test. Designates the OTel-native entry point; exporter's input path can migrate without touching dedup logic. | ~~MEDIUM~~ **DONE (unblock)** | — |
-| B3 | ~~`BatchedMetrics` + `MetricSet`~~ | `src/sinks/prometheus/remote_write/sink.rs`, `src/sinks/util/buffer/metrics/normalize.rs` | **DONE — declared permanent** (`58f917c`): the `_otel` methods are now documented as the permanent compatibility layer between OTel-native event arrays and the legacy `MetricSet`. Audit found the prometheus wire format is closely tied to `MetricValue`'s variant structure; a proto-native `MetricSet` would not simplify code. | ~~MEDIUM~~ **DONE** | — |
+| B3 | `BatchedMetrics` + `MetricSet` | `src/sinks/util/buffer/metrics/normalize.rs` | **REOPENED** — was declared "permanent" (`58f917c`) but user goal is full Metric struct deletion. MetricSet must be refactored to operate on `(MetricSeries, MetricData, EventMetadata)` tuples instead of `Metric`. See Phase G task T3. | **OPEN** | — |
 | B4 | ~~VRL migration tool (Phase A)~~ | `src/vrl_migrate/` | **DONE** — discovered fully implemented. 22 rules across 3 passes (10 structural + 7 semantic + 5 metric), CLI wired into `vector vrl-migrate` subcommand, 29/29 tests passing. Blocks Phase B (alias removal) only on the user-facing decision to remove aliases. | ~~MEDIUM~~ **DONE** | `VRL_MIGRATION_TOOL.md` |
 | B5 | ~~`src/trace.rs`~~ | `src/trace.rs` | **DONE** (`234eb6d`): migrated to `OtelLog`. Added `OtelLog::from_tracing_event` (visitor-based build-once). | ~~LOW~~ **DONE** | — |
 | B6 | ~~`components/validation/resources/event.rs`~~ | `src/components/validation/resources/event.rs` | **DONE** (`3f2e957`): `EventData::into_event` uses `OtelLog::from_bytes` / `from_value_map`. | ~~LOW~~ **DONE** | — |
@@ -540,110 +533,297 @@ migrations). See the dedicated "Phase F" section below.
 
 ## Phase G — Final legacy type + buffer compat removal (2026-04-17)
 
-Goal: delete all remaining legacy Vector types and backward buffer
-compatibility. After Phase F deleted `log_event.rs`, these remain:
+### Goal
 
-### G.1 — Delete TraceEvent (GHOST type, ~191 lines)
+Delete **all** remaining legacy Vector types:
+- ~~`LogEvent`~~ — **DELETED** (`80ff2fb`, Phase F.6)
+- ~~`TraceEvent`~~ — **DELETED** (`1236e8e`, Phase G.1)
+- `Metric` struct — **IN PROGRESS** (Phase G.3)
 
-`Event::Trace(OtelSpan)` — the Event enum already uses OtelSpan, NOT
-TraceEvent. TraceEvent is a dead newtype wrapper around OtelLog (not
-even OtelSpan!) with zero active callers.
+Delete all backward buffer compatibility code and bridge functions.
 
-| File | What to delete |
-|------|----------------|
-| `trace.rs` | Entire file (191 lines) |
-| `mod.rs:16` | `pub use trace::TraceEvent` re-export |
-| `mod.rs:55` | `mod trace` declaration |
-| `proto.rs:292-295` | `From<TraceEvent> for Trace` |
-| `proto.rs:437-441` | `From<TraceEvent> for WithMetadata<Trace>` |
-| `buffer_codec.rs` | Dead `trace_event_to_span` + `read_scope_from_trace_event` |
+### Completed
 
-### G.2 — Remove proto backward buffer compat
+**G.1 — DELETE TraceEvent** — **DONE** (`1236e8e`)
+- Deleted `trace.rs` (191 lines), proto.rs `From<TraceEvent>` impls,
+  `buffer_codec.rs` dead code, re-export + mod declaration.
 
-Strip all deprecated field handling from disk buffer proto encoding/decoding.
-Old disk buffers from pre-OTel Vector versions will not be readable —
-**breaking change by design** (drain buffers before upgrading).
+**G.2 — Remove proto backward buffer compat** — **DONE** (`9363568`)
+- Removed old metric value decoders (Distribution1, AggHist1/2, AggSumm1/2, Sketch)
+- Removed Log `fields` fallback, deprecated metadata fallback, dual tag encoding
+- Gated `zip_*` helpers behind `#[cfg(feature = "lua")]`
 
-| Compat layer | Action |
-|-------------|--------|
-| Log `fields` map fallback (proto.rs:131-138) | Remove — only `value` field used |
-| Deprecated `metadata` field (proto.rs:109-122) | Remove — only `metadata_full` used |
-| Distribution1 decoder (proto.rs:167-170) | Remove — encode always uses Distribution2 |
-| AggregatedHistogram1 decoder (proto.rs:175-180) | Remove — encode uses AggHist3 |
-| AggregatedHistogram2 decoder (proto.rs:183-187) | Remove |
-| AggregatedSummary1 decoder (proto.rs:193-196) | Remove |
-| AggregatedSummary2 decoder (proto.rs:198-201) | Remove |
-| Sketch decoder (proto.rs:208-211) | Remove — already lossy (zero gauge) |
-| Dual tag encoding tags_v1 (proto.rs:378-386) | Remove — only encode tags_v2 |
-| Dual metadata encoding (proto.rs:319,345,411) | Remove — only encode metadata_full |
-| Log `fields` encoding (proto.rs:303-313) | Simplify — only encode `value` |
-| `event.proto` deprecated fields | Mark or remove from proto definition |
-| `zip_samples/zip_buckets/zip_quantiles` helpers | Delete if unused after decoder removal |
+**G.3a — Source parsers emit OtelMetric directly** — **DONE** (`8382733`)
+- `prometheus/parser.rs` (61→0 production `Metric::new`)
+- `apache_metrics/parser.rs` (61→0)
+- `aws_ecs_metrics/parser.rs` (30→0)
+- `statsd/parser.rs` (19→0)
+- `eventstoredb_metrics/types.rs` (9→0)
+- All boundary wrappers in mod.rs simplified to `Event::Metric(m)`
+- Production callers of `from_legacy_metric` → **ZERO remaining**
 
-### G.3 — Delete Metric struct
+### Current state (2026-04-17 audit)
 
-The `Metric` struct bundles `MetricSeries + MetricData + EventMetadata`.
-`OtelMetric` already contains all this and exposes it via
-`into_metric_parts()`. The struct itself is dead weight.
+| Counter | Value | Note |
+|---------|-------|------|
+| `Metric::new` sites | 336 | All test/sink/lib — zero production sources |
+| `from_legacy_metric` sites | 146 | All test code |
+| `Metric::from_parts` sites | ~30 | MetricSet, proto decode, tests |
 
-**What stays** (OtelMetric's public API):
-- `MetricKind`, `MetricValue`, `MetricTags`, `TagValue`, `TagValueSet`
+### Remaining tasks — ordered by dependency
+
+---
+
+#### T1 — Inline `from_legacy_metric` into `from_metric_parts` (BLOCKER)
+
+**File:** `lib/vector-core/src/event/otel_event.rs:1955-2204`
+
+`from_metric_parts` currently rebuilds a temporary `Metric` struct:
+```rust
+let m = super::Metric::from_parts(series, data, metadata);
+Self::from_legacy_metric(m)
+```
+Inline the ~250 lines of conversion logic so `from_metric_parts` works
+without the `Metric` struct. This unblocks deleting the struct.
+
+**Effort:** Medium — move code, remove intermediate. No logic changes.
+
+---
+
+#### T2 — Proto decode: bypass Metric struct (BLOCKER)
+
+**File:** `lib/vector-core/src/event/proto.rs:68-75, 208-213`
+
+The proto→Event decode path currently goes:
+`proto::Metric → super::Metric → OtelMetric::from_legacy_metric()`
+
+Create a direct `From<proto::Metric> for OtelMetric` that decodes
+proto fields straight into OtelMetric (similar to how `From<Log> for
+OtelLog` already works). Then delete `From<proto::Metric> for
+super::Metric` and `From<super::Metric> for proto::Metric`.
+
+**Effort:** Medium — rewrite ~80 lines of metric proto decode.
+
+---
+
+#### T3 — MetricSet / Normalizer: remove Metric dependency (BLOCKER, was B3)
+
+**File:** `src/sinks/util/buffer/metrics/normalize.rs`
+
+MetricSet is the aggregation/dedup engine used by 12+ metric sinks.
+It currently operates on `Metric` internally via:
+- `MetricEntry::from_metric(Metric)` / `into_metric(series) → Metric`
+- `make_absolute(Metric)`, `make_incremental(Metric)`,
+  `incremental_to_absolute(Metric)`, `absolute_to_incremental(Metric)`
+- `insert_update(Metric)` which calls `metric.series()`, `metric.kind()`,
+  `metric.into_parts()`
+
+**B3 was previously closed as "permanent"** — but the user's goal is
+full removal. The `_otel` wrapper methods (`normalize_otel`,
+`make_absolute_otel`, `make_incremental_otel`) bridge OtelMetric ↔
+Metric at the boundary. To delete Metric, refactor MetricSet to
+operate directly on `(MetricSeries, MetricData, EventMetadata)` tuples.
+
+**Key methods to migrate:**
+- `MetricData::update()` — already exists, called via `Metric::update()`
+- `MetricData::subtract()` — already exists
+- `MetricData::add()` — already exists
+- All accessor methods (`series()`, `data()`, `kind()`, `value()`,
+  `name()`, `namespace()`, `tags()`, `timestamp()`) just delegate to
+  fields on MetricSeries/MetricData
+
+**Effort:** High — ~150 lines of refactoring across normalize.rs,
+plus signature changes ripple to all 12+ sink normalizers.
+
+**Sinks affected:**
+- `prometheus/remote_write`, `prometheus/exporter`
+- `statsd`, `influxdb`, `sematext`, `humio`
+- `greptimedb`, `gcp/stackdriver`, `splunk_hec/metrics`
+- `aws_cloudwatch_metrics`, `appsignal`
+
+---
+
+#### T4 — Prometheus collector: `encode_metric(&Metric)` → OtelMetric
+
+**File:** `src/sinks/prometheus/collector.rs`
+
+`encode_metric()` takes `&Metric` and accesses `.name()`, `.namespace()`,
+`.kind()`, `.tags()`, `.value()`, `.timestamp()`. Change to accept
+`(&MetricSeries, &MetricData)` or `&OtelMetric` with accessor wrappers.
+
+**Effort:** Medium — ~50 lines, mechanical accessor replacement.
+
+---
+
+#### T5 — Prometheus exporter: Metric aggregation logic
+
+**File:** `src/sinks/prometheus/exporter.rs`
+
+Uses `metric.series()`, `metric.add()`, `metric.value()` in the
+metric collection/dedup path. Depends on T3 (MetricSet refactor).
+
+**Effort:** Medium — coupled to T3.
+
+---
+
+#### T6 — Split iterator: `AggregatedSummarySplitter`
+
+**File:** `src/sinks/util/buffer/metrics/split.rs`
+
+`split()` takes `Metric`, calls `input.into_parts()`, rebuilds multiple
+`Metric::from_parts()` objects. Change to accept/return tuples.
+
+**Effort:** Low-Medium — ~70 lines, mechanical.
+
+---
+
+#### T7 — Sink test code: migrate `Metric::new` in tests (~118 sites)
+
+**Files:** `influxdb/metrics.rs` (18), `prometheus/*` (23),
+`statsd/encoder.rs` (10), `buffer/metrics/*` (16),
+`sematext`, `humio`, `greptimedb`, `cloudwatch`, etc. (~25+)
+
+Mechanical: replace `Metric::new(name, kind, value)` with
+`OtelMetric::new_counter/new_gauge/...` or `from_metric_parts`.
+
+**Effort:** High volume but mechanical — bulk sed + manual fixups.
+
+---
+
+#### T8 — VRL metrics: `vector-vrl-metrics/src/common.rs` (29 sites)
+
+**File:** `lib/vector-vrl-metrics/src/common.rs`
+
+`MetricsStorage` returns `Vec<Metric>`. VRL metric manipulation
+functions create/inspect `Metric` structs.
+
+Change to store and return `OtelMetric` (or tuples). Requires
+understanding VRL function signatures.
+
+**Effort:** Medium — 29 sites, need to trace VRL function call paths.
+
+---
+
+#### T9 — Lua bindings: `lua/metric.rs` (17 sites)
+
+**File:** `lib/vector-core/src/event/lua/metric.rs`
+
+`LuaMetric` holds `Metric`. `IntoLua` / `FromLua` impls serialize/
+deserialize Metric fields. ~80 lines of pattern matching on
+`MetricValue` variants.
+
+Change `LuaMetric` to hold `(MetricSeries, MetricData, EventMetadata)`
+or reference `OtelMetric`.
+
+**Effort:** Medium — extensive serialization logic to rewrite.
+
+---
+
+#### T10 — Proto encode: `From<super::Metric> for proto::Metric`
+
+**File:** `lib/vector-core/src/event/proto.rs`
+
+`encode_metric_proto()` already takes `(MetricSeries, MetricData,
+EventMetadata)` — the `From<super::Metric>` impl just calls
+`metric.into_parts()` then delegates. Once T3 is done and no code
+constructs `Metric` anymore, delete this impl.
+
+**Effort:** Trivial — delete dead code after T1-T9 complete.
+
+---
+
+#### T11 — OtelMetric parity tests (15 sites in otel_event.rs)
+
+**File:** `lib/vector-core/src/event/otel_event.rs`
+
+Tests like `new_counter_matches_from_legacy_metric` construct
+`Metric::new(...)` to verify OtelMetric constructors match. Once
+`from_legacy_metric` is inlined (T1), rewrite tests to verify
+`from_metric_parts` directly.
+
+**Effort:** Low — 15 mechanical test updates.
+
+---
+
+#### T12 — Metric struct internal tests (30 sites in metric/mod.rs)
+
+**File:** `lib/vector-core/src/event/metric/mod.rs`
+
+Tests for `Metric::update`, `Metric::subtract`, `Metric::add`,
+serialization, display. These test `MetricData` methods through
+the Metric wrapper. Rewrite to test `MetricData` directly.
+
+**Effort:** Low — tests for methods that already exist on MetricData.
+
+---
+
+#### T13 — Delete Metric struct + `from_legacy_metric`
+
+**File:** `lib/vector-core/src/event/metric/mod.rs`
+
+After T1-T12 are done:
+- Delete `pub struct Metric` (~68 lines)
+- Delete all `impl Metric` methods (~330 lines)
+- Delete trait impls: `AsRef<MetricData>`, `Display`, `EventDataEq`,
+  `ByteSizeOf`, `EstimatedJsonEncodedSizeOf`, `Finalizable`,
+  `GetEventCountTags`, `Configurable`
+- Delete `Metric::new`, `new_with_metadata`, `from_parts`, `into_parts`
+- Delete all builder methods: `with_name`, `with_namespace`,
+  `with_timestamp`, `with_interval_ms`, `with_tags`, `with_value`
+- Remove `pub use metric::Metric` from `event/mod.rs`
+- Delete `from_legacy_metric` from `otel_event.rs` (~250 lines)
+- Delete `from_metric_parts` bridge (now inlined)
+
+**Effort:** Trivial — just deletion, all callers already migrated.
+
+---
+
+### Types that STAY after all tasks complete
+
+These are OtelMetric's public API — NOT legacy types:
+
+- `MetricKind` (Absolute/Incremental enum)
+- `MetricValue` (Counter/Gauge/Distribution/Set/Histogram/Summary)
+- `MetricTags`, `TagValue`, `TagValueSet`
 - `Bucket`, `Quantile`, `Sample`, `StatisticKind`
 - `MetricSeries`, `MetricName`, `MetricData`, `MetricTime`
 
-**What goes:**
-- `Metric` struct + all its methods (~400 lines in metric/mod.rs)
-- `From<Metric> for Metric` proto conversions
-- `OtelMetric::from_legacy_metric(Metric)` bridge
-- All `Metric::new()` call sites (sources, transforms, tests)
+`OtelMetric::into_metric_parts()` returns these; `with_tags`,
+`with_namespace`, `with_timestamp` consume them.
 
-### Progress (2026-04-17)
+### Dependency graph
 
-**G.1 — DELETE TraceEvent** — **DONE** (`1236e8e`)
-- Deleted trace.rs (191 lines), proto.rs From<TraceEvent> impls,
-  buffer_codec.rs dead code, re-export + mod declaration.
+```
+T1 (inline from_legacy_metric)
+ └─► T2 (proto decode bypass)
+ └─► T11 (otel_event tests)
 
-**G.2 — Remove proto backward compat** — **DONE** (`9363568`)
-- Removed old metric value decoders (Distribution1, AggHist1/2, AggSumm1/2, Sketch)
-- Removed Log `fields` fallback, deprecated metadata fallback, dual tag encoding
-- Gated zip_* helpers behind #[cfg(feature = "lua")]
+T3 (MetricSet refactor)        ←── HARDEST TASK
+ └─► T4 (prometheus collector)
+ └─► T5 (prometheus exporter)
+ └─► T6 (split iterator)
+ └─► T7 (sink test migration)
 
-**G.3 — Migrate away from Metric struct** — **IN PROGRESS**
+T8 (VRL metrics)               ←── independent
+T9 (Lua bindings)              ←── independent
 
-Phase G.3 progress:
-- Production boundary callers: **ALL MIGRATED** to `from_metric_parts`
-- Remaining: 445 `Metric::new` sites + 132 `from_legacy_metric` sites
+T1 + T2 + T3-T7 + T8 + T9
+ └─► T10 (delete proto encode)
+ └─► T12 (metric/mod.rs tests)
+ └─► T13 (DELETE Metric struct)
+```
 
-G.3a — Source parsers: change return type from `Metric` to `OtelMetric` (193 sites)
-  - `prometheus/parser.rs` (61) — returns Metric, needs full refactor
-  - `apache_metrics/parser.rs` (61) — returns Metric
-  - `aws_ecs_metrics/parser.rs` (30) — returns Metric
-  - `statsd/parser.rs` (19) — returns Metric  
-  - `eventstoredb_metrics/types.rs` (9) — returns Metric
-  - `prometheus/{remote_write,pushgateway}` (10) — test callers
-  - `apache_metrics/mod.rs` (3) — already boundary-migrated
+### Recommended execution order
 
-G.3b — Sink internals: Metric used for wire format encoding (118 sites)
-  - `influxdb/metrics.rs` (18), `prometheus/{collector,exporter}` (23)
-  - `statsd/encoder.rs` (10), `buffer/metrics/{split,mod}` (16)
-  - `sematext`, `humio`, `greptimedb`, `cloudwatch` tests (25+)
-
-G.3c — Lib code (76 sites)
-  - `metric/mod.rs` (30) — struct definition + internal tests
-  - `vector-vrl-metrics/common.rs` (29) — VRL metric manipulation
-  - `lua/metric.rs` (17) — Lua bindings
-  - `otel_event.rs` (15) — OtelMetric parity tests
-  - `proto.rs` (3) — disk buffer decode
-
-G.3d — Delete Metric struct
-  - Remove struct + all methods from `metric/mod.rs`
-  - Remove `from_legacy_metric` from `otel_event.rs`
-  - Remove `From<Metric>` proto impls
-  - Keep sub-types: MetricSeries, MetricData, MetricValue, MetricKind, etc.
-
-### Execution order
-
-G.1 → G.2 → G.3 (each leaves the codebase green)
+1. **T1** — Inline conversion logic (unblocks T2, T11, T13)
+2. **T2** — Proto decode bypass (small, isolated)
+3. **T3** — MetricSet refactor (hardest, unblocks T4-T7)
+4. **T4+T5+T6** — Sink encoders (parallel after T3)
+5. **T8** — VRL metrics (independent, any time)
+6. **T9** — Lua bindings (independent, any time)
+7. **T7** — Sink test migration (bulk mechanical, after T3)
+8. **T11+T12** — Test cleanup
+9. **T10+T13** — Delete Metric struct + dead code
 
 ## Historical completion log
 
@@ -655,36 +835,20 @@ G.1 → G.2 → G.3 (each leaves the codebase green)
 6. ~~Migrate transforms (Group E)~~ — **DONE**: reduce + metric_to_log
 7. ~~Performance: per-insert round-trips~~ — **DONE** via `OtelLog::modify_as_value`, applied to splunk_hec `build_log_legacy`
 
-## Current state (2026-04-14)
+## Current state (2026-04-17)
 
-### `from_log_event` callers
-- **1 production**: `Event::from(LogEvent)` bridge impl — permanent
-- **~18 test sites** — test convenience, acceptable
+### Legacy types deleted
+- **`LogEvent`** — DELETED (`80ff2fb`, 1217 lines)
+- **`TraceEvent`** — DELETED (`1236e8e`, 191 lines)
+- **Proto backward compat** — DELETED (`9363568`, old decoders/encoders)
+- **`Event::from(LogEvent/Metric/TraceEvent)` bridges** — DELETED
 
-### `from_legacy_metric` callers
-- **2 production**: `Event::from(Metric)` bridge + prometheus remote_write TODO
-- **~67 test sites** — test convenience
-
-### `from_trace_event` callers
-- **1 production**: `Event::from(TraceEvent)` bridge impl — permanent
-- **0 test sites** outside the bridge
-
-### Dead code deleted this session
-- `VrlTarget::LogEvent/Trace/Metric` variants (−492 lines)
-- `TargetIter<LogEvent>/<TraceEvent>`, `create_log_event`, `set_metric_tag_values`
-- `precompute_metric_value`, `target_get_metric`, `target_get_mut_metric`
-- `VALID_METRIC_PATHS_SET/GET`, `MAX_METRIC_PATH_DEPTH`
-- `lua/log.rs` (−80 lines)
-- `LogNamespace::new_log_from_data` (0 callers)
-- `traces_to_export` + `trace_event_to_resource_spans` in buffer_codec
-- k8s docker parser `parse_json(&mut LogEvent)` + `normalize_event` (−125 lines)
-
-### New OtelLog helpers added this session
-- `OtelLog::merge()` — field-level byte concatenation (unblocks LogEventMergeState)
-- `OtelLog::maybe_insert()` — convenience mirroring LogEvent::maybe_insert
-- `OtelLog::from_value_map()` — preferred entry point for constructing from Value tree
-- `MetadataInsertable` trait — makes `LogNamespace::insert_source_metadata`
-  and `insert_vector_metadata` generic over LogEvent and OtelLog
+### Remaining legacy type: `Metric` struct
+- **0 production callers** of `Metric::new` in sources/transforms
+- **0 production callers** of `from_legacy_metric`
+- **336 test/sink/lib sites** still use `Metric::new`
+- **146 test sites** still use `from_legacy_metric`
+- **13 tasks** identified for full deletion (see Phase G above)
 
 ### Performance findings
 
@@ -727,14 +891,12 @@ expected-value construction. No migration needed.
    targets a specific proto field. These are O(1) and bypass the
    legacy layout entirely.
 
-## Verification (updated 2026-04-14)
+## Verification (updated 2026-04-17)
 
-- `cargo test -p vector --lib` — 1789/1789 pass
-- `cargo test -p vector-core --lib event::otel_event` — 35/35 pass, 0 ignored
-- `cargo test -p codecs --lib` — 171/171 pass
-- `cargo test -p vector-opentelemetry-proto --lib` — 22/22 pass
-- `cargo test -p vector --lib sinks::` — 551/551 pass
-- `cargo check -p vector` — compiles clean
+- `cargo test -p vector --lib` — 1782/1782 pass (1 flaky `file_start_position` excluded)
+- `cargo test -p vector-core --lib` — 179/179 pass (6 pre-existing TLS failures excluded)
+- `cargo test -p codecs` — 216/216 pass
+- `cargo check --tests -p vector` — compiles clean (lib + tests)
 
 ## Related docs
 

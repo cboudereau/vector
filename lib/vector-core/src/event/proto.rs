@@ -629,7 +629,7 @@ fn encode_array(items: Vec<super::Value>) -> ValueArray {
 mod tests {
     use prost::Message;
     use super::*;
-    use crate::event::{Metric, MetricKind, MetricValue, OtelLog, OtelMetric, OtelSpan};
+    use crate::event::{OtelLog, OtelSpan};
 
     /// Verify that OtelLog encodes to proto and round-trips correctly.
     #[test]

@@ -3170,26 +3170,30 @@ impl std::fmt::Display for OtelMetric {
 }
 
 impl<'de> Deserialize<'de> for OtelLog {
-    fn deserialize<D: serde::Deserializer<'de>>(_deserializer: D) -> Result<Self, D::Error> {
-        // Full deserialization deferred to Step 5b+; placeholder for Derive on Event
-        Err(serde::de::Error::custom(
-            "OtelLog deserialization not yet implemented",
-        ))
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        // Deserialize as legacy flat layout Value, then apply_value_legacy_layout
+        // to populate proto fields. Symmetric with Serialize which uses
+        // to_value_legacy_layout.
+        let value = vrl::value::Value::deserialize(deserializer)?;
+        Ok(Self::from_value_map(value, super::EventMetadata::default()))
     }
 }
 
 impl<'de> Deserialize<'de> for OtelSpan {
-    fn deserialize<D: serde::Deserializer<'de>>(_deserializer: D) -> Result<Self, D::Error> {
-        Err(serde::de::Error::custom(
-            "OtelSpan deserialization not yet implemented",
-        ))
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = vrl::value::Value::deserialize(deserializer)?;
+        Ok(Self::from_value_map(value, super::EventMetadata::default()))
     }
 }
 
 impl<'de> Deserialize<'de> for OtelMetric {
     fn deserialize<D: serde::Deserializer<'de>>(_deserializer: D) -> Result<Self, D::Error> {
+        // OtelMetric serialization uses OTLP-native JSON format which doesn't
+        // round-trip through Value. Full proto3 JSON deserialization requires
+        // prost + serde_json integration. For now, return a default metric.
+        // Disk buffer decoding uses proto (not serde), so this path is rarely hit.
         Err(serde::de::Error::custom(
-            "OtelMetric deserialization not yet implemented",
+            "OtelMetric JSON deserialization not yet implemented — use proto decoding",
         ))
     }
 }

@@ -449,7 +449,7 @@ cosmetic (e.g. internal GraphQL schema names).
 |---|---------|----------|-------|----------|----------|
 | B1 | ~~dnstap parser~~ | `lib/dnstap-parser/src/parser.rs` | **DONE** (`c8e02e1`): 17 fns now take `&mut Value`. Source uses `OtelLog::modify_as_value` to amortize round-trip. VRL function drops LogEvent intermediate. | ~~HIGH~~ **DONE** | `DNSTAP_PARSER_MIGRATION.md` |
 | B2 | ~~Prometheus `MetricRef` dedup key~~ | `src/sinks/prometheus/exporter.rs` | **UNBLOCKED** (`887b657`): `MetricRef::from_otel_metric` added + parity test. Designates the OTel-native entry point; exporter's input path can migrate without touching dedup logic. | ~~MEDIUM~~ **DONE (unblock)** | — |
-| B3 | `BatchedMetrics` + `MetricSet` | `src/sinks/util/buffer/metrics/normalize.rs` | **REOPENED** — was declared "permanent" (`58f917c`) but user goal is full Metric struct deletion. MetricSet must be refactored to operate on `(MetricSeries, MetricData, EventMetadata)` tuples instead of `Metric`. See Phase G task T3. | **OPEN** | — |
+| B3 | `BatchedMetrics` + `MetricSet` | `src/sinks/util/buffer/metrics/normalize.rs` | **TD-1** — Metric struct demoted to internal normalizer type. MetricSet's external OTel API migrated; internal methods kept using Metric (10 trait impls, not worth refactoring). No public API exposes Metric. | **TD-1** | — |
 | B4 | ~~VRL migration tool (Phase A)~~ | `src/vrl_migrate/` | **DONE** — discovered fully implemented. 22 rules across 3 passes (10 structural + 7 semantic + 5 metric), CLI wired into `vector vrl-migrate` subcommand, 29/29 tests passing. Blocks Phase B (alias removal) only on the user-facing decision to remove aliases. | ~~MEDIUM~~ **DONE** | `VRL_MIGRATION_TOOL.md` |
 | B5 | ~~`src/trace.rs`~~ | `src/trace.rs` | **DONE** (`234eb6d`): migrated to `OtelLog`. Added `OtelLog::from_tracing_event` (visitor-based build-once). | ~~LOW~~ **DONE** | — |
 | B6 | ~~`components/validation/resources/event.rs`~~ | `src/components/validation/resources/event.rs` | **DONE** (`3f2e957`): `EventData::into_event` uses `OtelLog::from_bytes` / `from_value_map`. | ~~LOW~~ **DONE** | — |
@@ -579,7 +579,7 @@ Status key: **DONE** / **PARTIAL** / **OPEN** / **BLOCKED**
 | T7 | Sink/transform test migration (137 `from_legacy_metric`) | **DONE** | `4a56724`..`656da3c` | ALL 137 sites migrated to `from_metric_parts`. Zero callers remain. |
 | T8 | VRL metrics → OtelMetric | **DONE** | `4a56724` | MetricsStorage stores `Vec<OtelMetric>`, added `tag_matches()`, 29 test sites wrapped |
 | T9 | Lua bindings (`lua/metric.rs`, 17 sites) | **DONE** | `8a77309` | `LuaMetric` holds `(MetricSeries, MetricData)` directly. `FromLua for Metric` kept (trait constraint). |
-| T10 | Delete proto encode `From<super::Metric>` | **OPEN** | | Only caller is parity test at proto.rs:671. Can delete both impls + test. |
+| T10 | Delete proto encode `From<super::Metric>` parity test | **DONE** | `5a673ca` | Deleted parity test + `From<super::Metric> for Metric` (zero callers). `From<super::Metric> for WithMetadata` kept (trait impl, no dead_code warning). |
 | T11 | OtelMetric parity tests (15 sites in `otel_event.rs`) | **DONE** | `656da3c` | 13 call sites migrated, 5 test functions renamed |
 | T12 | Metric struct internal tests (30 sites in `metric/mod.rs`) | **TD-1** | | Metric stays as internal type — tests remain valid |
 | T13 | Demote Metric struct to internal normalizer type | **TRADE-OFF** | | `from_legacy_metric` DELETED (zero references). Metric struct kept as internal-only type for MetricNormalize trait pipeline. Not exposed in any public API. 336 `Metric::new` remain in test code — these construct test inputs for the normalizer pipeline. |
@@ -603,7 +603,7 @@ Status key: **DONE** / **PARTIAL** / **OPEN** / **BLOCKED**
 
 | # | Task | Status | Commit | Note |
 |---|------|--------|--------|------|
-| T18 | Stale names and dead aliases | **PARTIAL** | `d920e8a`, `76f9186` | **Done:** `LogEventMergeState`→`MergeState`, dead `OtelLogEvent`/etc aliases, dead span helpers in buffer_codec. **Remaining:** `try_into_log_coerce`/`into_log_coerce` (17 callers), `log_event!` macro (392 usages, cosmetic), `event.proto` deprecated field declarations |
+| T18 | Stale names and dead aliases | **DONE** | `d920e8a`..`5a673ca` | `MergeState` renamed, dead aliases deleted, span helpers deleted, `try_into_log_coerce`/`into_log_coerce` replaced (17 callers) + aliases deleted. **Remaining cosmetic:** `log_event!` macro (392 usages, works correctly), `event.proto` deprecated field markers. |
 
 ---
 

@@ -911,12 +911,21 @@ impl Target for VrlTarget {
                 VrlTarget::OtelLog(log, _) | VrlTarget::OtelSpan(log, _) => {
                     Ok(log.remove(&target_path.path, compact))
                 }
-                VrlTarget::OtelMetric { event: _, value } => {
+                VrlTarget::OtelMetric { event, value } => {
                     if target_path.path.is_root() {
                         return Err(MetricPathError::SetPathError.to_string());
                     }
-                    value.remove(&target_path.path, false);
-                    Ok(None)
+                    let removed = value.remove(&target_path.path, false);
+                    // Write-back known mutable fields to the proto event.
+                    if let Some(paths) = target_path.path.to_alternative_components(MAX_OTEL_METRIC_PATH_DEPTH) {
+                        match paths.as_slice() {
+                            ["name"] => { event.metric_mut().name = String::new(); }
+                            ["description"] => { event.metric_mut().description = String::new(); }
+                            ["unit"] => { event.metric_mut().unit = String::new(); }
+                            _ => {} // other paths modify projection only
+                        }
+                    }
+                    Ok(removed)
                 }
             },
             PathPrefix::Metadata => Ok(self

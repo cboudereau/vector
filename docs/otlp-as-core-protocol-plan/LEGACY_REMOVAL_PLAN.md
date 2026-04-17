@@ -596,8 +596,8 @@ Status key: **DONE** / **PARTIAL** / **OPEN** / **BLOCKED**
 
 | # | Task | Status | Commit | Note |
 |---|------|--------|--------|------|
-| T17 | Implement real `Deserialize` for OTel types | **OPEN** | | Currently stub impls that always fail. Needs architectural decision on canonical JSON format |
-| T19 | Fix VrlTarget::OtelMetric remove (no-op on proto) | **OPEN** | | `target_remove` modifies VRL projection but never writes back to proto event |
+| T17 | Implement real `Deserialize` for OTel types | **PARTIAL** | `7040e7b` | OtelLog + OtelSpan: deserialize via Value→from_value_map (symmetric with Serialize). OtelMetric: still stubs (needs proto3 JSON adapter — TD-4). |
+| T19 | Fix VrlTarget::OtelMetric remove (write-back) | **PARTIAL** | `7040e7b` | Now writes back name/description/unit + returns removed value. Other field paths still modify projection only (full write-back needs TD-5 design). |
 
 #### Workstream 5: Cleanup
 

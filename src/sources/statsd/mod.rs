@@ -26,7 +26,7 @@ use crate::{
     SourceSender,
     codecs::Decoder,
     config::{GenerateConfig, Resource, SourceConfig, SourceContext, SourceOutput},
-    event::{Event, OtelMetric},
+    event::Event,
     internal_events::{
         EventsReceived, SocketBindError, SocketBytesReceived, SocketMode, SocketReceiveError,
         StreamClosedError,
@@ -308,8 +308,7 @@ impl decoding::format::Deserializer for StatsdDeserializer {
             Err(error) => Err(Box::new(error)),
             Ok(s) => match self.parser.parse(s) {
                 Ok(metric) => {
-                    let (series, data, metadata) = metric.into_parts();
-                    let event = Event::Metric(OtelMetric::from_metric_parts(series, data, metadata));
+                    let event = Event::Metric(metric);
                     if let Some(er) = &self.events_received {
                         let byte_size = event.estimated_json_encoded_size_of();
                         er.emit(CountByteSize(1, byte_size));

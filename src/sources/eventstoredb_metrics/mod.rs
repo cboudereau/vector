@@ -16,7 +16,7 @@ use vector_lib::{
 use self::types::Stats;
 use crate::{
     config::{SourceConfig, SourceContext, SourceOutput},
-    event::{Event, OtelMetric},
+    event::Event,
     http::HttpClient,
     internal_events::{
         EventStoreDbMetricsHttpError, EventStoreDbStatsParsingError, EventsReceived,
@@ -142,7 +142,7 @@ fn eventstoredb(
 
                                 events_received.emit(CountByteSize(count, byte_size));
 
-                                let events: Vec<Event> = metrics.into_iter().map(|m| { let (s, d, md) = m.into_parts(); Event::Metric(OtelMetric::from_metric_parts(s, d, md)) }).collect();
+                                let events: Vec<Event> = metrics.into_iter().map(|m| Event::Metric(m)).collect();
                                 if (cx.out.send_batch(events).await).is_err() {
                                     emit!(StreamClosedError { count });
                                     break;

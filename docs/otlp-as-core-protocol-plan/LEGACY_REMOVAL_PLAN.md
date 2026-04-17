@@ -609,14 +609,37 @@ The `Metric` struct bundles `MetricSeries + MetricData + EventMetadata`.
 - Gated zip_* helpers behind #[cfg(feature = "lua")]
 
 **G.3 — Migrate away from Metric struct** — **IN PROGRESS**
-- Production callers: **ALL MIGRATED** to `from_metric_parts` or direct OtelMetric constructors
-  - host_metrics, internal_metrics, nginx, mongodb, postgresql, static_metrics
-  - aggregate, log_to_metric transforms
-  - prometheus parser (counter/gauge/histogram/summary)
-  - statsd, apache, aws_ecs, eventstoredb sources
-- Remaining `from_legacy_metric` callers: **ALL TEST CODE** (~106 sites in test modules)
-- Metric struct deletion: blocked on test migration (~450 Metric::new sites) +
-  MetricSet normalizer internal usage
+
+Phase G.3 progress:
+- Production boundary callers: **ALL MIGRATED** to `from_metric_parts`
+- Remaining: 445 `Metric::new` sites + 132 `from_legacy_metric` sites
+
+G.3a — Source parsers: change return type from `Metric` to `OtelMetric` (193 sites)
+  - `prometheus/parser.rs` (61) — returns Metric, needs full refactor
+  - `apache_metrics/parser.rs` (61) — returns Metric
+  - `aws_ecs_metrics/parser.rs` (30) — returns Metric
+  - `statsd/parser.rs` (19) — returns Metric  
+  - `eventstoredb_metrics/types.rs` (9) — returns Metric
+  - `prometheus/{remote_write,pushgateway}` (10) — test callers
+  - `apache_metrics/mod.rs` (3) — already boundary-migrated
+
+G.3b — Sink internals: Metric used for wire format encoding (118 sites)
+  - `influxdb/metrics.rs` (18), `prometheus/{collector,exporter}` (23)
+  - `statsd/encoder.rs` (10), `buffer/metrics/{split,mod}` (16)
+  - `sematext`, `humio`, `greptimedb`, `cloudwatch` tests (25+)
+
+G.3c — Lib code (76 sites)
+  - `metric/mod.rs` (30) — struct definition + internal tests
+  - `vector-vrl-metrics/common.rs` (29) — VRL metric manipulation
+  - `lua/metric.rs` (17) — Lua bindings
+  - `otel_event.rs` (15) — OtelMetric parity tests
+  - `proto.rs` (3) — disk buffer decode
+
+G.3d — Delete Metric struct
+  - Remove struct + all methods from `metric/mod.rs`
+  - Remove `from_legacy_metric` from `otel_event.rs`
+  - Remove `From<Metric>` proto impls
+  - Keep sub-types: MetricSeries, MetricData, MetricValue, MetricKind, etc.
 
 ### Execution order
 

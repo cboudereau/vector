@@ -12,7 +12,7 @@ use vector_lib::{EstimatedJsonEncodedSizeOf, configurable::configurable_componen
 use crate::{
     SourceSender,
     config::{GenerateConfig, ProxyConfig, SourceConfig, SourceContext, SourceOutput},
-    event::{Event, OtelMetric, metric::{Metric, MetricKind, MetricValue}},
+    event::{Event, OtelMetric},
     http::HttpClient,
     internal_events::{
         ApacheMetricsEventsReceived, ApacheMetricsParseError, EndpointBytesReceived,
@@ -194,10 +194,9 @@ fn apache_metrics(
                                     Utc::now(),
                                     Some(&tags),
                                 )
-                                .chain(vec![Ok(Metric::new(
+                                .chain(vec![Ok(OtelMetric::new_gauge(
                                     "up",
-                                    MetricKind::Absolute,
-                                    MetricValue::Gauge { value: 1.0 },
+                                    1.0,
                                 )
                                 .with_namespace(namespace.clone())
                                 .with_tags(Some(tags.clone()))
@@ -229,10 +228,9 @@ fn apache_metrics(
                                     url: sanitized_url.to_owned(),
                                 });
                                 Some(stream::iter(vec![
-                                    Metric::new(
+                                    OtelMetric::new_gauge(
                                         "up",
-                                        MetricKind::Absolute,
-                                        MetricValue::Gauge { value: 1.0 },
+                                        1.0,
                                     )
                                     .with_namespace(namespace.clone())
                                     .with_tags(Some(tags.clone()))
@@ -245,10 +243,9 @@ fn apache_metrics(
                                     url: sanitized_url.to_owned(),
                                 });
                                 Some(stream::iter(vec![
-                                    Metric::new(
+                                    OtelMetric::new_gauge(
                                         "up",
-                                        MetricKind::Absolute,
-                                        MetricValue::Gauge { value: 0.0 },
+                                        0.0,
                                     )
                                     .with_namespace(namespace.clone())
                                     .with_tags(Some(tags.clone()))
@@ -260,7 +257,7 @@ fn apache_metrics(
                     .flatten()
             })
             .flatten()
-            .map(|m| { let (s, d, md) = m.into_parts(); Event::Metric(OtelMetric::from_metric_parts(s, d, md)) })
+            .map(|m| Event::Metric(m))
             .boxed();
 
         match out.send_event_stream(&mut stream).await {
@@ -290,6 +287,7 @@ mod test {
     use crate::{
         Error,
         config::SourceConfig,
+        event::metric::MetricValue,
         test_util::{
             addr::next_addr,
             collect_ready,

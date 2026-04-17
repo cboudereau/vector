@@ -6,7 +6,7 @@ use serde::{
     de::{self, Error, MapAccess, Unexpected, Visitor},
 };
 
-use crate::event::{Metric, MetricKind, MetricTags, MetricValue};
+use crate::event::{MetricKind, MetricTags, OtelMetric};
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -16,7 +16,7 @@ pub struct Stats {
 }
 
 impl Stats {
-    pub fn metrics(&self, namespace: Option<String>) -> Vec<Metric> {
+    pub fn metrics(&self, namespace: Option<String>) -> Vec<OtelMetric> {
         let mut result = Vec::new();
         let mut tags = MetricTags::default();
         let now = chrono::Utc::now();
@@ -25,25 +25,17 @@ impl Stats {
         tags.replace("id".to_string(), self.proc.id.to_string());
 
         result.push(
-            Metric::new(
-                "process_memory_used_bytes",
-                MetricKind::Absolute,
-                MetricValue::Gauge {
-                    value: self.proc.mem as f64,
-                },
-            )
-            .with_namespace(Some(namespace.clone()))
-            .with_tags(Some(tags.clone()))
-            .with_timestamp(Some(now)),
+            OtelMetric::new_gauge("process_memory_used_bytes", self.proc.mem as f64)
+                .with_namespace(Some(namespace.clone()))
+                .with_tags(Some(tags.clone()))
+                .with_timestamp(Some(now)),
         );
 
         result.push(
-            Metric::new(
+            OtelMetric::new_counter(
                 "disk_read_bytes_total",
                 MetricKind::Absolute,
-                MetricValue::Counter {
-                    value: self.proc.disk_io.read_bytes as f64,
-                },
+                self.proc.disk_io.read_bytes as f64,
             )
             .with_namespace(Some(namespace.clone()))
             .with_tags(Some(tags.clone()))
@@ -51,12 +43,10 @@ impl Stats {
         );
 
         result.push(
-            Metric::new(
+            OtelMetric::new_counter(
                 "disk_written_bytes_total",
                 MetricKind::Absolute,
-                MetricValue::Counter {
-                    value: self.proc.disk_io.written_bytes as f64,
-                },
+                self.proc.disk_io.written_bytes as f64,
             )
             .with_namespace(Some(namespace.clone()))
             .with_tags(Some(tags.clone()))
@@ -64,12 +54,10 @@ impl Stats {
         );
 
         result.push(
-            Metric::new(
+            OtelMetric::new_counter(
                 "disk_read_ops_total",
                 MetricKind::Absolute,
-                MetricValue::Counter {
-                    value: self.proc.disk_io.read_ops as f64,
-                },
+                self.proc.disk_io.read_ops as f64,
             )
             .with_namespace(Some(namespace.clone()))
             .with_tags(Some(tags.clone()))
@@ -77,12 +65,10 @@ impl Stats {
         );
 
         result.push(
-            Metric::new(
+            OtelMetric::new_counter(
                 "disk_write_ops_total",
                 MetricKind::Absolute,
-                MetricValue::Counter {
-                    value: self.proc.disk_io.write_ops as f64,
-                },
+                self.proc.disk_io.write_ops as f64,
             )
             .with_namespace(Some(namespace.clone()))
             .with_tags(Some(tags.clone()))
@@ -90,58 +76,34 @@ impl Stats {
         );
 
         result.push(
-            Metric::new(
-                "memory_free_bytes",
-                MetricKind::Absolute,
-                MetricValue::Gauge {
-                    value: self.sys.free_mem as f64,
-                },
-            )
-            .with_namespace(Some(namespace.clone()))
-            .with_tags(Some(tags.clone()))
-            .with_timestamp(Some(now)),
+            OtelMetric::new_gauge("memory_free_bytes", self.sys.free_mem as f64)
+                .with_namespace(Some(namespace.clone()))
+                .with_tags(Some(tags.clone()))
+                .with_timestamp(Some(now)),
         );
 
         if let Some(drive) = self.sys.drive.as_ref() {
             tags.replace("path".to_string(), drive.path.clone());
 
             result.push(
-                Metric::new(
-                    "disk_total_bytes",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge {
-                        value: drive.stats.total_bytes as f64,
-                    },
-                )
-                .with_namespace(Some(namespace.clone()))
-                .with_tags(Some(tags.clone()))
-                .with_timestamp(Some(now)),
+                OtelMetric::new_gauge("disk_total_bytes", drive.stats.total_bytes as f64)
+                    .with_namespace(Some(namespace.clone()))
+                    .with_tags(Some(tags.clone()))
+                    .with_timestamp(Some(now)),
             );
 
             result.push(
-                Metric::new(
-                    "disk_free_bytes",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge {
-                        value: drive.stats.available_bytes as f64,
-                    },
-                )
-                .with_namespace(Some(namespace.clone()))
-                .with_tags(Some(tags.clone()))
-                .with_timestamp(Some(now)),
+                OtelMetric::new_gauge("disk_free_bytes", drive.stats.available_bytes as f64)
+                    .with_namespace(Some(namespace.clone()))
+                    .with_tags(Some(tags.clone()))
+                    .with_timestamp(Some(now)),
             );
 
             result.push(
-                Metric::new(
-                    "disk_used_bytes",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge {
-                        value: drive.stats.used_bytes as f64,
-                    },
-                )
-                .with_namespace(Some(namespace))
-                .with_tags(Some(tags))
-                .with_timestamp(Some(now)),
+                OtelMetric::new_gauge("disk_used_bytes", drive.stats.used_bytes as f64)
+                    .with_namespace(Some(namespace))
+                    .with_tags(Some(tags))
+                    .with_timestamp(Some(now)),
             );
         }
 

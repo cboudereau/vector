@@ -3,7 +3,8 @@ use std::collections::BTreeMap;
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
-use crate::event::metric::{Metric, MetricKind, MetricTags, MetricValue};
+use crate::event::OtelMetric;
+use crate::event::metric::{MetricKind, MetricTags};
 
 #[derive(Deserialize)]
 struct BlockIoStat {
@@ -124,15 +125,11 @@ fn counter(
     timestamp: DateTime<Utc>,
     value: f64,
     tags: MetricTags,
-) -> Metric {
-    Metric::new(
-        format!("{prefix}_{name}"),
-        MetricKind::Absolute,
-        MetricValue::Counter { value },
-    )
-    .with_namespace(namespace)
-    .with_tags(Some(tags))
-    .with_timestamp(Some(timestamp))
+) -> OtelMetric {
+    OtelMetric::new_counter(format!("{prefix}_{name}"), MetricKind::Absolute, value)
+        .with_namespace(namespace)
+        .with_tags(Some(tags))
+        .with_timestamp(Some(timestamp))
 }
 
 fn gauge(
@@ -142,15 +139,11 @@ fn gauge(
     timestamp: DateTime<Utc>,
     value: f64,
     tags: MetricTags,
-) -> Metric {
-    Metric::new(
-        format!("{prefix}_{name}"),
-        MetricKind::Absolute,
-        MetricValue::Gauge { value },
-    )
-    .with_namespace(namespace)
-    .with_tags(Some(tags))
-    .with_timestamp(Some(timestamp))
+) -> OtelMetric {
+    OtelMetric::new_gauge(format!("{prefix}_{name}"), value)
+        .with_namespace(namespace)
+        .with_tags(Some(tags))
+        .with_timestamp(Some(timestamp))
 }
 
 fn blkio_tags(item: &BlockIoStat, tags: &MetricTags) -> MetricTags {
@@ -166,7 +159,7 @@ fn blkio_metrics(
     timestamp: DateTime<Utc>,
     namespace: &Option<String>,
     tags: &MetricTags,
-) -> Vec<Metric> {
+) -> Vec<OtelMetric> {
     let mut metrics = vec![];
 
     metrics.extend(blkio.io_merged_recursive.iter().flatten().map(|s| {
@@ -259,7 +252,7 @@ fn cpu_metrics(
     namespace: &Option<String>,
     tags: &MetricTags,
     usage: &str,
-) -> Vec<Metric> {
+) -> Vec<OtelMetric> {
     // Eight expected metrics not including online_cpus
     let size = 8 + cpu.online_cpus.unwrap_or(0);
     let mut metrics = Vec::with_capacity(size);
@@ -368,7 +361,7 @@ fn memory_metrics(
     timestamp: DateTime<Utc>,
     namespace: &Option<String>,
     tags: &MetricTags,
-) -> Vec<Metric> {
+) -> Vec<OtelMetric> {
     let mut metrics = Vec::with_capacity(35);
 
     metrics.extend(
@@ -477,7 +470,7 @@ fn network_metrics(
     timestamp: DateTime<Utc>,
     namespace: &Option<String>,
     tags: &MetricTags,
-) -> Vec<Metric> {
+) -> Vec<OtelMetric> {
     let mut tags = tags.clone();
     tags.replace("device".into(), interface.to_string());
 
@@ -518,7 +511,7 @@ enum StatsPayload {
 pub(super) fn parse(
     bytes: &[u8],
     namespace: Option<String>,
-) -> Result<Vec<Metric>, serde_json::Error> {
+) -> Result<Vec<OtelMetric>, serde_json::Error> {
     let mut metrics = Vec::new();
     let parsed = serde_json::from_slice::<BTreeMap<String, StatsPayload>>(bytes)?;
 
@@ -576,7 +569,8 @@ mod test {
     use vector_lib::{assert_event_data_eq, metric_tags};
 
     use super::parse;
-    use crate::event::metric::{Metric, MetricKind, MetricValue};
+    use crate::event::OtelMetric;
+    use crate::event::metric::MetricKind;
 
     fn ts() -> DateTime<Utc> {
         Utc.with_ymd_and_hms(2018, 11, 14, 8, 9, 10)
@@ -628,10 +622,10 @@ mod test {
         assert_event_data_eq!(
             parse(json.as_bytes(), Some(namespace())).unwrap(),
             vec![
-                Metric::new(
+                OtelMetric::new_counter(
                     "blkio_recursive_io_service_bytes_total",
                     MetricKind::Absolute,
-                    MetricValue::Counter { value: 0.0 },
+                    0.0,
                 )
                 .with_namespace(Some(namespace()))
                 .with_tags(Some(metric_tags!(
@@ -641,10 +635,10 @@ mod test {
                     "container_name" => "vector2",
                 )))
                 .with_timestamp(Some(ts())),
-                Metric::new(
+                OtelMetric::new_counter(
                     "blkio_recursive_io_service_bytes_total",
                     MetricKind::Absolute,
-                    MetricValue::Counter { value: 520192.0 },
+                    520192.0,
                 )
                 .with_namespace(Some(namespace()))
                 .with_tags(Some(metric_tags!(
@@ -694,10 +688,9 @@ mod test {
         assert_event_data_eq!(
             parse(json.as_bytes(), Some(namespace())).unwrap(),
             vec![
-                Metric::new(
+                OtelMetric::new_gauge(
                     "cpu_online_cpus",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 2.0 },
+                    2.0,
                 )
                 .with_namespace(Some(namespace()))
                 .with_tags(Some(metric_tags!(
@@ -705,12 +698,10 @@ mod test {
                     "container_name" => "vector2"
                 )))
                 .with_timestamp(Some(ts())),
-                Metric::new(
+                OtelMetric::new_counter(
                     "cpu_usage_system_jiffies_total",
                     MetricKind::Absolute,
-                    MetricValue::Counter {
-                        value: 2007130000000.0
-                    },
+                    2007130000000.0,
                 )
                 .with_namespace(Some(namespace()))
                 .with_tags(Some(metric_tags!(
@@ -718,10 +709,10 @@ mod test {
                     "container_name" => "vector2",
                 )))
                 .with_timestamp(Some(ts())),
-                Metric::new(
+                OtelMetric::new_counter(
                     "cpu_usage_usermode_jiffies_total",
                     MetricKind::Absolute,
-                    MetricValue::Counter { value: 510000000.0 },
+                    510000000.0,
                 )
                 .with_namespace(Some(namespace()))
                 .with_tags(Some(metric_tags!(
@@ -729,10 +720,10 @@ mod test {
                     "container_name" => "vector2",
                 )))
                 .with_timestamp(Some(ts())),
-                Metric::new(
+                OtelMetric::new_counter(
                     "cpu_usage_kernelmode_jiffies_total",
                     MetricKind::Absolute,
-                    MetricValue::Counter { value: 190000000.0 },
+                    190000000.0,
                 )
                 .with_namespace(Some(namespace()))
                 .with_tags(Some(metric_tags!(
@@ -740,12 +731,10 @@ mod test {
                     "container_name" => "vector2",
                 )))
                 .with_timestamp(Some(ts())),
-                Metric::new(
+                OtelMetric::new_counter(
                     "cpu_usage_total_jiffies_total",
                     MetricKind::Absolute,
-                    MetricValue::Counter {
-                        value: 2324920942.0
-                    },
+                    2324920942.0,
                 )
                 .with_namespace(Some(namespace()))
                 .with_tags(Some(metric_tags!(
@@ -753,10 +742,10 @@ mod test {
                     "container_name" => "vector2",
                 )))
                 .with_timestamp(Some(ts())),
-                Metric::new(
+                OtelMetric::new_counter(
                     "cpu_throttling_periods_total",
                     MetricKind::Absolute,
-                    MetricValue::Counter { value: 0.0 },
+                    0.0,
                 )
                 .with_namespace(Some(namespace()))
                 .with_tags(Some(metric_tags!(
@@ -764,10 +753,10 @@ mod test {
                     "container_name" => "vector2",
                 )))
                 .with_timestamp(Some(ts())),
-                Metric::new(
+                OtelMetric::new_counter(
                     "cpu_throttled_periods_total",
                     MetricKind::Absolute,
-                    MetricValue::Counter { value: 0.0 },
+                    0.0,
                 )
                 .with_namespace(Some(namespace()))
                 .with_tags(Some(metric_tags!(
@@ -775,10 +764,10 @@ mod test {
                     "container_name" => "vector2",
                 )))
                 .with_timestamp(Some(ts())),
-                Metric::new(
+                OtelMetric::new_counter(
                     "cpu_throttled_time_seconds_total",
                     MetricKind::Absolute,
-                    MetricValue::Counter { value: 0.0 },
+                    0.0,
                 )
                 .with_namespace(Some(namespace()))
                 .with_tags(Some(metric_tags!(
@@ -786,12 +775,10 @@ mod test {
                     "container_name" => "vector2",
                 )))
                 .with_timestamp(Some(ts())),
-                Metric::new(
+                OtelMetric::new_counter(
                     "cpu_usage_percpu_jiffies_total",
                     MetricKind::Absolute,
-                    MetricValue::Counter {
-                        value: 1095931487.0
-                    },
+                    1095931487.0,
                 )
                 .with_namespace(Some(namespace()))
                 .with_tags(Some(metric_tags!(
@@ -800,12 +787,10 @@ mod test {
                     "container_name" => "vector2",
                 )))
                 .with_timestamp(Some(ts())),
-                Metric::new(
+                OtelMetric::new_counter(
                     "cpu_usage_percpu_jiffies_total",
                     MetricKind::Absolute,
-                    MetricValue::Counter {
-                        value: 1228989455.0
-                    },
+                    1228989455.0,
                 )
                 .with_namespace(Some(namespace()))
                 .with_tags(Some(metric_tags!(
@@ -852,10 +837,9 @@ mod test {
         assert_event_data_eq!(
             parse(json.as_bytes(), Some(namespace())).unwrap(),
             vec![
-                Metric::new(
+                OtelMetric::new_gauge(
                     "precpu_online_cpus",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 2.0 },
+                    2.0,
                 )
                 .with_namespace(Some(namespace()))
                 .with_tags(Some(metric_tags!(
@@ -863,12 +847,10 @@ mod test {
                     "container_name" => "vector2"
                 )))
                 .with_timestamp(Some(ts())),
-                Metric::new(
+                OtelMetric::new_counter(
                     "precpu_usage_system_jiffies_total",
                     MetricKind::Absolute,
-                    MetricValue::Counter {
-                        value: 2007130000000.0
-                    },
+                    2007130000000.0,
                 )
                 .with_namespace(Some(namespace()))
                 .with_tags(Some(metric_tags!(
@@ -876,10 +858,10 @@ mod test {
                     "container_name" => "vector2",
                 )))
                 .with_timestamp(Some(ts())),
-                Metric::new(
+                OtelMetric::new_counter(
                     "precpu_usage_usermode_jiffies_total",
                     MetricKind::Absolute,
-                    MetricValue::Counter { value: 510000000.0 },
+                    510000000.0,
                 )
                 .with_namespace(Some(namespace()))
                 .with_tags(Some(metric_tags!(
@@ -887,10 +869,10 @@ mod test {
                     "container_name" => "vector2",
                 )))
                 .with_timestamp(Some(ts())),
-                Metric::new(
+                OtelMetric::new_counter(
                     "precpu_usage_kernelmode_jiffies_total",
                     MetricKind::Absolute,
-                    MetricValue::Counter { value: 190000000.0 },
+                    190000000.0,
                 )
                 .with_namespace(Some(namespace()))
                 .with_tags(Some(metric_tags!(
@@ -898,12 +880,10 @@ mod test {
                     "container_name" => "vector2",
                 )))
                 .with_timestamp(Some(ts())),
-                Metric::new(
+                OtelMetric::new_counter(
                     "precpu_usage_total_jiffies_total",
                     MetricKind::Absolute,
-                    MetricValue::Counter {
-                        value: 2324920942.0
-                    },
+                    2324920942.0,
                 )
                 .with_namespace(Some(namespace()))
                 .with_tags(Some(metric_tags!(
@@ -911,10 +891,10 @@ mod test {
                     "container_name" => "vector2",
                 )))
                 .with_timestamp(Some(ts())),
-                Metric::new(
+                OtelMetric::new_counter(
                     "precpu_throttling_periods_total",
                     MetricKind::Absolute,
-                    MetricValue::Counter { value: 0.0 },
+                    0.0,
                 )
                 .with_namespace(Some(namespace()))
                 .with_tags(Some(metric_tags!(
@@ -922,10 +902,10 @@ mod test {
                     "container_name" => "vector2",
                 )))
                 .with_timestamp(Some(ts())),
-                Metric::new(
+                OtelMetric::new_counter(
                     "precpu_throttled_periods_total",
                     MetricKind::Absolute,
-                    MetricValue::Counter { value: 0.0 },
+                    0.0,
                 )
                 .with_namespace(Some(namespace()))
                 .with_tags(Some(metric_tags!(
@@ -933,10 +913,10 @@ mod test {
                     "container_name" => "vector2",
                 )))
                 .with_timestamp(Some(ts())),
-                Metric::new(
+                OtelMetric::new_counter(
                     "precpu_throttled_time_seconds_total",
                     MetricKind::Absolute,
-                    MetricValue::Counter { value: 0.0 },
+                    0.0,
                 )
                 .with_namespace(Some(namespace()))
                 .with_tags(Some(metric_tags!(
@@ -944,12 +924,10 @@ mod test {
                     "container_name" => "vector2",
                 )))
                 .with_timestamp(Some(ts())),
-                Metric::new(
+                OtelMetric::new_counter(
                     "precpu_usage_percpu_jiffies_total",
                     MetricKind::Absolute,
-                    MetricValue::Counter {
-                        value: 1095931487.0
-                    },
+                    1095931487.0,
                 )
                 .with_namespace(Some(namespace()))
                 .with_tags(Some(metric_tags!(
@@ -958,12 +936,10 @@ mod test {
                     "container_name" => "vector2",
                 )))
                 .with_timestamp(Some(ts())),
-                Metric::new(
+                OtelMetric::new_counter(
                     "precpu_usage_percpu_jiffies_total",
                     MetricKind::Absolute,
-                    MetricValue::Counter {
-                        value: 1228989455.0
-                    },
+                    1228989455.0,
                 )
                 .with_namespace(Some(namespace()))
                 .with_tags(Some(metric_tags!(
@@ -1033,10 +1009,9 @@ mod test {
                 .iter()
                 .find(|m| m.name() == "memory_used_bytes")
                 .unwrap(),
-            &Metric::new(
+            &OtelMetric::new_gauge(
                 "memory_used_bytes",
-                MetricKind::Absolute,
-                MetricValue::Gauge { value: 40120320.0 },
+                40120320.0,
             )
             .with_namespace(Some(namespace()))
             .with_tags(Some(metric_tags!(
@@ -1051,10 +1026,9 @@ mod test {
                 .iter()
                 .find(|m| m.name() == "memory_max_used_bytes")
                 .unwrap(),
-            &Metric::new(
+            &OtelMetric::new_gauge(
                 "memory_max_used_bytes",
-                MetricKind::Absolute,
-                MetricValue::Gauge { value: 47177728.0 },
+                47177728.0,
             )
             .with_namespace(Some(namespace()))
             .with_tags(Some(metric_tags!(
@@ -1069,10 +1043,9 @@ mod test {
                 .iter()
                 .find(|m| m.name() == "memory_active_anonymous_bytes")
                 .unwrap(),
-            &Metric::new(
+            &OtelMetric::new_gauge(
                 "memory_active_anonymous_bytes",
-                MetricKind::Absolute,
-                MetricValue::Gauge { value: 34885632.0 },
+                34885632.0,
             )
             .with_namespace(Some(namespace()))
             .with_tags(Some(metric_tags!(
@@ -1087,10 +1060,10 @@ mod test {
                 .iter()
                 .find(|m| m.name() == "memory_total_page_faults_total")
                 .unwrap(),
-            &Metric::new(
+            &OtelMetric::new_counter(
                 "memory_total_page_faults_total",
                 MetricKind::Absolute,
-                MetricValue::Counter { value: 31131.0 },
+                31131.0,
             )
             .with_namespace(Some(namespace()))
             .with_tags(Some(metric_tags!(
@@ -1131,10 +1104,10 @@ mod test {
                 .iter()
                 .find(|m| m.name() == "network_receive_bytes_total")
                 .unwrap(),
-            &Metric::new(
+            &OtelMetric::new_counter(
                 "network_receive_bytes_total",
                 MetricKind::Absolute,
-                MetricValue::Counter { value: 329932716.0 },
+                329932716.0,
             )
             .with_namespace(Some(namespace()))
             .with_tags(Some(metric_tags!(
@@ -1150,10 +1123,10 @@ mod test {
                 .iter()
                 .find(|m| m.name() == "network_transmit_bytes_total")
                 .unwrap(),
-            &Metric::new(
+            &OtelMetric::new_counter(
                 "network_transmit_bytes_total",
                 MetricKind::Absolute,
-                MetricValue::Counter { value: 2001229.0 },
+                2001229.0,
             )
             .with_namespace(Some(namespace()))
             .with_tags(Some(metric_tags!(

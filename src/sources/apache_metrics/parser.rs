@@ -2,7 +2,8 @@ use std::{collections::HashMap, error, fmt, iter, num, sync::LazyLock};
 
 use chrono::{DateTime, Utc};
 
-use crate::event::metric::{Metric, MetricKind, MetricTags, MetricValue};
+use crate::event::metric::{MetricKind, MetricTags};
+use crate::event::OtelMetric;
 
 static SCOREBOARD: LazyLock<HashMap<char, &'static str>> = LazyLock::new(|| {
     vec![
@@ -112,7 +113,7 @@ pub fn parse(
     namespace: Option<&str>,
     now: DateTime<Utc>,
     tags: Option<&MetricTags>,
-) -> impl Iterator<Item = Result<Metric, ParseError>> + use<> {
+) -> impl Iterator<Item = Result<OtelMetric, ParseError>> + use<> {
     // We use a HashMap rather than a Vector as mod_status has
     // BusyWorkers/IdleWorkers repeated
     // https://bz.apache.org/bugzilla/show_bug.cgi?id=63300
@@ -148,62 +149,53 @@ fn line_to_metrics<'a>(
     namespace: Option<&'a str>,
     now: DateTime<Utc>,
     tags: Option<&'a MetricTags>,
-) -> Option<Result<Box<dyn Iterator<Item = Metric> + 'a>, ParseError>> {
+) -> Option<Result<Box<dyn Iterator<Item = OtelMetric> + 'a>, ParseError>> {
     StatusFieldStatistic::from_key_value(key, value).map(move |result| {
         result.map(move |statistic| match statistic {
             StatusFieldStatistic::ServerUptimeSeconds(value) => Box::new(iter::once(
-                Metric::new(
+                OtelMetric::new_counter(
                     "uptime_seconds_total",
                     MetricKind::Absolute,
-                    MetricValue::Counter {
-                        value: value as f64,
-                    },
+                    value as f64,
                 )
                 .with_namespace(namespace.map(str::to_string))
                 .with_tags(tags.cloned())
                 .with_timestamp(Some(now)),
             )),
             StatusFieldStatistic::TotalAccesses(value) => Box::new(iter::once(
-                Metric::new(
+                OtelMetric::new_counter(
                     "access_total",
                     MetricKind::Absolute,
-                    MetricValue::Counter {
-                        value: value as f64,
-                    },
+                    value as f64,
                 )
                 .with_namespace(namespace.map(str::to_string))
                 .with_tags(tags.cloned())
                 .with_timestamp(Some(now)),
             )),
             StatusFieldStatistic::TotalKBytes(value) => Box::new(iter::once(
-                Metric::new(
+                OtelMetric::new_counter(
                     "sent_bytes_total",
                     MetricKind::Absolute,
-                    MetricValue::Counter {
-                        value: (value * 1024) as f64,
-                    },
+                    (value * 1024) as f64,
                 )
                 .with_namespace(namespace.map(str::to_string))
                 .with_tags(tags.cloned())
                 .with_timestamp(Some(now)),
             )),
             StatusFieldStatistic::TotalDuration(value) => Box::new(iter::once(
-                Metric::new(
+                OtelMetric::new_counter(
                     "duration_seconds_total",
                     MetricKind::Absolute,
-                    MetricValue::Counter {
-                        value: value as f64,
-                    },
+                    value as f64,
                 )
                 .with_namespace(namespace.map(str::to_string))
                 .with_tags(tags.cloned())
                 .with_timestamp(Some(now)),
             )),
             StatusFieldStatistic::CpuUser(value) => Box::new(iter::once(
-                Metric::new(
+                OtelMetric::new_gauge(
                     "cpu_seconds_total",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value },
+                    value,
                 )
                 .with_namespace(namespace.map(str::to_string))
                 .with_tags({
@@ -213,12 +205,11 @@ fn line_to_metrics<'a>(
                 })
                 .with_timestamp(Some(now)),
             ))
-                as Box<dyn Iterator<Item = Metric>>,
+                as Box<dyn Iterator<Item = OtelMetric>>,
             StatusFieldStatistic::CpuSystem(value) => Box::new(iter::once(
-                Metric::new(
+                OtelMetric::new_gauge(
                     "cpu_seconds_total",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value },
+                    value,
                 )
                 .with_namespace(namespace.map(str::to_string))
                 .with_tags({
@@ -228,12 +219,11 @@ fn line_to_metrics<'a>(
                 })
                 .with_timestamp(Some(now)),
             ))
-                as Box<dyn Iterator<Item = Metric>>,
+                as Box<dyn Iterator<Item = OtelMetric>>,
             StatusFieldStatistic::CpuChildrenUser(value) => Box::new(iter::once(
-                Metric::new(
+                OtelMetric::new_gauge(
                     "cpu_seconds_total",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value },
+                    value,
                 )
                 .with_namespace(namespace.map(str::to_string))
                 .with_tags({
@@ -243,12 +233,11 @@ fn line_to_metrics<'a>(
                 })
                 .with_timestamp(Some(now)),
             ))
-                as Box<dyn Iterator<Item = Metric>>,
+                as Box<dyn Iterator<Item = OtelMetric>>,
             StatusFieldStatistic::CpuChildrenSystem(value) => Box::new(iter::once(
-                Metric::new(
+                OtelMetric::new_gauge(
                     "cpu_seconds_total",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value },
+                    value,
                 )
                 .with_namespace(namespace.map(str::to_string))
                 .with_tags({
@@ -258,25 +247,21 @@ fn line_to_metrics<'a>(
                 })
                 .with_timestamp(Some(now)),
             ))
-                as Box<dyn Iterator<Item = Metric>>,
+                as Box<dyn Iterator<Item = OtelMetric>>,
             StatusFieldStatistic::CpuLoad(value) => Box::new(iter::once(
-                Metric::new(
+                OtelMetric::new_gauge(
                     "cpu_load",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value },
+                    value,
                 )
                 .with_namespace(namespace.map(str::to_string))
                 .with_tags(tags.cloned())
                 .with_timestamp(Some(now)),
             ))
-                as Box<dyn Iterator<Item = Metric>>,
+                as Box<dyn Iterator<Item = OtelMetric>>,
             StatusFieldStatistic::IdleWorkers(value) => Box::new(iter::once(
-                Metric::new(
+                OtelMetric::new_gauge(
                     "workers",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge {
-                        value: value as f64,
-                    },
+                    value as f64,
                 )
                 .with_namespace(namespace.map(str::to_string))
                 .with_tags({
@@ -286,14 +271,11 @@ fn line_to_metrics<'a>(
                 })
                 .with_timestamp(Some(now)),
             ))
-                as Box<dyn Iterator<Item = Metric>>,
+                as Box<dyn Iterator<Item = OtelMetric>>,
             StatusFieldStatistic::BusyWorkers(value) => Box::new(iter::once(
-                Metric::new(
+                OtelMetric::new_gauge(
                     "workers",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge {
-                        value: value as f64,
-                    },
+                    value as f64,
                 )
                 .with_namespace(namespace.map(str::to_string))
                 .with_tags({
@@ -304,12 +286,9 @@ fn line_to_metrics<'a>(
                 .with_timestamp(Some(now)),
             )),
             StatusFieldStatistic::ConnsTotal(value) => Box::new(iter::once(
-                Metric::new(
+                OtelMetric::new_gauge(
                     "connections",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge {
-                        value: value as f64,
-                    },
+                    value as f64,
                 )
                 .with_namespace(namespace.map(str::to_string))
                 .with_tags({
@@ -320,12 +299,9 @@ fn line_to_metrics<'a>(
                 .with_timestamp(Some(now)),
             )),
             StatusFieldStatistic::ConnsAsyncWriting(value) => Box::new(iter::once(
-                Metric::new(
+                OtelMetric::new_gauge(
                     "connections",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge {
-                        value: value as f64,
-                    },
+                    value as f64,
                 )
                 .with_namespace(namespace.map(str::to_string))
                 .with_tags({
@@ -336,12 +312,9 @@ fn line_to_metrics<'a>(
                 .with_timestamp(Some(now)),
             )),
             StatusFieldStatistic::ConnsAsyncClosing(value) => Box::new(iter::once(
-                Metric::new(
+                OtelMetric::new_gauge(
                     "connections",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge {
-                        value: value as f64,
-                    },
+                    value as f64,
                 )
                 .with_namespace(namespace.map(str::to_string))
                 .with_tags({
@@ -352,12 +325,9 @@ fn line_to_metrics<'a>(
                 .with_timestamp(Some(now)),
             )),
             StatusFieldStatistic::ConnsAsyncKeepAlive(value) => Box::new(iter::once(
-                Metric::new(
+                OtelMetric::new_gauge(
                     "connections",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge {
-                        value: value as f64,
-                    },
+                    value as f64,
                 )
                 .with_namespace(namespace.map(str::to_string))
                 .with_tags({
@@ -381,7 +351,7 @@ fn line_to_metrics<'a>(
                         name,
                         scores.get(c).copied().unwrap_or_default(),
                     )
-                })) as Box<dyn Iterator<Item = Metric>>
+                })) as Box<dyn Iterator<Item = OtelMetric>>
             }
         })
     })
@@ -403,13 +373,10 @@ fn score_to_metric(
     tags: Option<&MetricTags>,
     state: &str,
     count: u32,
-) -> Metric {
-    Metric::new(
+) -> OtelMetric {
+    OtelMetric::new_gauge(
         "scoreboard",
-        MetricKind::Absolute,
-        MetricValue::Gauge {
-            value: count.into(),
-        },
+        f64::from(count),
     )
     .with_namespace(namespace.map(str::to_string))
     .with_tags({
@@ -481,7 +448,8 @@ mod test {
     use vector_lib::{assert_event_data_eq, metric_tags};
 
     use super::*;
-    use crate::event::metric::{Metric, MetricKind, MetricValue};
+    use crate::event::metric::MetricKind;
+    use crate::event::OtelMetric;
 
     // Test ExtendedStatus: Off
     // https://httpd.apache.org/docs/2.4/mod/core.html#extendedstatus
@@ -519,145 +487,128 @@ Scoreboard: ____S_____I______R____I_______KK___D__C__G_L____________W___________
         assert_event_data_eq!(
             metrics,
             vec![
-                Metric::new(
+                OtelMetric::new_gauge(
                     "connections",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 0.0 },
+                    0.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("state" => "closing")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "connections",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 0.0 },
+                    0.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("state" => "keepalive")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "connections",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 1.0 },
+                    1.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("state" => "total")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "connections",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 0.0 },
+                    0.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("state" => "writing")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "scoreboard",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 1.0 },
+                    1.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("state" => "closing")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "scoreboard",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 1.0 },
+                    1.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("state" => "dnslookup")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "scoreboard",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 1.0 },
+                    1.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("state" => "finishing")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "scoreboard",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 2.0 },
+                    2.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("state" => "idle_cleanup")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "scoreboard",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 2.0 },
+                    2.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("state" => "keepalive")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "scoreboard",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 1.0 },
+                    1.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("state" => "logging")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "scoreboard",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 325.0 },
+                    325.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("state" => "open")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "scoreboard",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 1.0 },
+                    1.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("state" => "reading")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "scoreboard",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 1.0 },
+                    1.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("state" => "sending")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "scoreboard",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 1.0 },
+                    1.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("state" => "starting")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "scoreboard",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 64.0 },
+                    64.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("state" => "waiting")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_counter(
                     "uptime_seconds_total",
                     MetricKind::Absolute,
-                    MetricValue::Counter { value: 12.0 },
+                    12.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "workers",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 1.0 },
+                    1.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("state" => "busy")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "workers",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 74.0 },
+                    74.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("state" => "idle")))
@@ -716,205 +667,183 @@ Scoreboard: ____S_____I______R____I_______KK___D__C__G_L____________W___________
         assert_event_data_eq!(
             metrics,
             vec![
-                Metric::new(
+                OtelMetric::new_counter(
                     "access_total",
                     MetricKind::Absolute,
-                    MetricValue::Counter { value: 30.0 },
+                    30.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "connections",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 0.0 },
+                    0.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("state" => "closing")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "connections",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 0.0 },
+                    0.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("state" => "keepalive")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "connections",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 1.0 },
+                    1.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("state" => "total")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "connections",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 0.0 },
+                    0.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("state" => "writing")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "cpu_load",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 0.846154 },
+                    0.846154,
                 )
                 .with_namespace(Some("apache"))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "cpu_seconds_total",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 0.0 },
+                    0.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("type" => "children_system")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "cpu_seconds_total",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 0.0 },
+                    0.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("type" => "children_user")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "cpu_seconds_total",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 0.02 },
+                    0.02,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("type" => "system")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "cpu_seconds_total",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 0.2 },
+                    0.2,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("type" => "user")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_counter(
                     "duration_seconds_total",
                     MetricKind::Absolute,
-                    MetricValue::Counter { value: 11.0 },
+                    11.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "scoreboard",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 1.0 },
+                    1.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("state" => "closing")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "scoreboard",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 1.0 },
+                    1.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("state" => "dnslookup")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "scoreboard",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 1.0 },
+                    1.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("state" => "finishing")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "scoreboard",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 2.0 },
+                    2.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("state" => "idle_cleanup")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "scoreboard",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 2.0 },
+                    2.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("state" => "keepalive")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "scoreboard",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 1.0 },
+                    1.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("state" => "logging")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "scoreboard",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 325.0 },
+                    325.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("state" => "open")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "scoreboard",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 1.0 },
+                    1.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("state" => "reading")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "scoreboard",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 1.0 },
+                    1.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("state" => "sending")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "scoreboard",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 1.0 },
+                    1.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("state" => "starting")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "scoreboard",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 64.0 },
+                    64.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("state" => "waiting")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_counter(
                     "sent_bytes_total",
                     MetricKind::Absolute,
-                    MetricValue::Counter { value: 222208.0 },
+                    222208.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_counter(
                     "uptime_seconds_total",
                     MetricKind::Absolute,
-                    MetricValue::Counter { value: 26.0 },
+                    26.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "workers",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 1.0 },
+                    1.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("state" => "busy")))
                 .with_timestamp(Some(now)),
-                Metric::new(
+                OtelMetric::new_gauge(
                     "workers",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 74.0 },
+                    74.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("state" => "idle")))
@@ -936,10 +865,9 @@ ConnsTotal: 1
         assert_event_data_eq!(
             metrics,
             vec![
-                Metric::new(
+                OtelMetric::new_gauge(
                     "connections",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 1.0 },
+                    1.0,
                 )
                 .with_namespace(Some("apache"))
                 .with_tags(Some(metric_tags!("state" => "total")))
@@ -949,7 +877,7 @@ ConnsTotal: 1
         assert_eq!(errors.len(), 1);
     }
 
-    fn parse_sort(payload: &str) -> (DateTime<Utc>, Vec<Metric>, Vec<ParseError>) {
+    fn parse_sort(payload: &str) -> (DateTime<Utc>, Vec<OtelMetric>, Vec<ParseError>) {
         let now: DateTime<Utc> = Utc::now();
         let (mut metrics, errors) = parse(payload, Some("apache"), now, None).fold(
             (vec![], vec![]),
@@ -962,7 +890,7 @@ ConnsTotal: 1
             },
         );
 
-        metrics.sort_by_key(|metric| metric.series().to_string());
+        metrics.sort_by_key(|metric| format!("{}_{}{:?}", metric.namespace().unwrap_or(""), metric.name(), metric.tags()));
 
         (now, metrics, errors)
     }

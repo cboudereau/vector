@@ -9,7 +9,7 @@ use vector_lib::prometheus::parser::{
 
 use crate::event::{
     Event, OtelMetric,
-    metric::{Bucket, Metric, MetricKind, MetricTags, MetricValue, Quantile},
+    metric::{Bucket, MetricKind, MetricTags, Quantile},
 };
 
 fn utc_timestamp(timestamp: Option<i64>, default: DateTime<Utc>) -> DateTime<Utc> {
@@ -78,17 +78,10 @@ fn reparse_groups(
 
                     let tags = combine_tags(key.labels, tag_overrides.clone());
 
-                    let counter = Metric::new(
-                        group.name.clone(),
-                        metric_kind,
-                        MetricValue::Counter {
-                            value: metric.value,
-                        },
-                    )
-                    .with_timestamp(Some(utc_timestamp(key.timestamp, start)))
-                    .with_tags(tags.as_option());
-
-                    { let (s, d, md) = counter.into_parts(); result.push(Event::Metric(OtelMetric::from_metric_parts(s, d, md))); }
+                    let counter = OtelMetric::new_counter(group.name.clone(), metric_kind, metric.value)
+                        .with_timestamp(Some(utc_timestamp(key.timestamp, start)))
+                        .with_tags(tags.as_option());
+                    result.push(Event::Metric(counter));
                 }
             }
             GroupKind::Gauge(metrics) | GroupKind::Untyped(metrics) => {
@@ -99,18 +92,10 @@ fn reparse_groups(
 
                     let tags = combine_tags(key.labels, tag_overrides.clone());
 
-                    let gauge = Metric::new(
-                        group.name.clone(),
-                        // Gauges are always absolute: aggregating them makes no sense
-                        MetricKind::Absolute,
-                        MetricValue::Gauge {
-                            value: metric.value,
-                        },
-                    )
-                    .with_timestamp(Some(utc_timestamp(key.timestamp, start)))
-                    .with_tags(tags.as_option());
-
-                    { let (s, d, md) = gauge.into_parts(); result.push(Event::Metric(OtelMetric::from_metric_parts(s, d, md))); }
+                    let gauge = OtelMetric::new_gauge(group.name.clone(), metric.value)
+                        .with_timestamp(Some(utc_timestamp(key.timestamp, start)))
+                        .with_tags(tags.as_option());
+                    result.push(Event::Metric(gauge));
                 }
             }
             GroupKind::Histogram(metrics) => {
@@ -137,25 +122,23 @@ fn reparse_groups(
                         buckets.pop();
                     }
 
-                    let hist = Metric::new(
+                    let otel_buckets: Vec<Bucket> = buckets
+                        .into_iter()
+                        .map(|b| Bucket {
+                            upper_limit: b.bucket,
+                            count: b.count,
+                        })
+                        .collect();
+                    let hist = OtelMetric::new_histogram(
                         group.name.clone(),
                         metric_kind,
-                        MetricValue::AggregatedHistogram {
-                            buckets: buckets
-                                .into_iter()
-                                .map(|b| Bucket {
-                                    upper_limit: b.bucket,
-                                    count: b.count,
-                                })
-                                .collect(),
-                            count: metric.count,
-                            sum: metric.sum,
-                        },
+                        &otel_buckets,
+                        metric.count,
+                        metric.sum,
                     )
                     .with_timestamp(Some(utc_timestamp(key.timestamp, start)))
                     .with_tags(tags.as_option());
-                    let (s, d, md) = hist.into_parts();
-                    result.push(Event::Metric(OtelMetric::from_metric_parts(s, d, md)));
+                    result.push(Event::Metric(hist));
                 }
             }
             GroupKind::Summary(metrics) => {
@@ -172,27 +155,23 @@ fn reparse_groups(
 
                     let tags = combine_tags(key.labels, tag_overrides.clone());
 
-                    let summ = Metric::new(
+                    let otel_quantiles: Vec<Quantile> = metric
+                        .quantiles
+                        .into_iter()
+                        .map(|q| Quantile {
+                            quantile: q.quantile,
+                            value: q.value,
+                        })
+                        .collect();
+                    let summ = OtelMetric::new_summary(
                         group.name.clone(),
-                        // Summaries are always absolute: aggregating them makes no sense
-                        MetricKind::Absolute,
-                        MetricValue::AggregatedSummary {
-                            quantiles: metric
-                                .quantiles
-                                .into_iter()
-                                .map(|q| Quantile {
-                                    quantile: q.quantile,
-                                    value: q.value,
-                                })
-                                .collect(),
-                            count: metric.count,
-                            sum: metric.sum,
-                        },
+                        &otel_quantiles,
+                        metric.count,
+                        metric.sum,
                     )
                     .with_timestamp(Some(utc_timestamp(key.timestamp, start)))
                     .with_tags(tags.as_option());
-                    let (s, d, md) = summ.into_parts();
-                    result.push(Event::Metric(OtelMetric::from_metric_parts(s, d, md)));
+                    result.push(Event::Metric(summ));
                 }
             }
         }

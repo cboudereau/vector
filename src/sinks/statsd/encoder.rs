@@ -183,9 +183,11 @@ mod tests {
         let s = std::str::from_utf8(metric).unwrap().trim();
         s.split('\n')
             .map(|packet| {
-                statsd_parser
+                let otel = statsd_parser
                     .parse(packet)
-                    .expect("should not fail to parse statsd packet")
+                    .expect("should not fail to parse statsd packet");
+                let (s, d, md) = otel.into_metric_parts();
+                Metric::from_parts(s, d, md)
             })
             .collect()
     }

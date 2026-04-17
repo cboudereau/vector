@@ -5,13 +5,14 @@ use mlua::prelude::*;
 use super::{
     super::{
         Metric, MetricKind, MetricValue, StatisticKind,
-        metric::{self, MetricTags, TagValue, TagValueSet},
+        metric::{self, MetricData, MetricName, MetricSeries, MetricTags, MetricTime, TagValue, TagValueSet},
     },
     util::{table_to_timestamp, timestamp_to_table},
 };
 
 pub struct LuaMetric {
-    pub metric: Metric,
+    pub series: MetricSeries,
+    pub data: MetricData,
     pub multi_value_tags: bool,
 }
 
@@ -128,17 +129,17 @@ impl IntoLua for LuaMetric {
     fn into_lua(self, lua: &Lua) -> LuaResult<LuaValue> {
         let tbl = lua.create_table()?;
 
-        tbl.raw_set("name", self.metric.name())?;
-        if let Some(namespace) = self.metric.namespace() {
-            tbl.raw_set("namespace", namespace)?;
+        tbl.raw_set("name", self.series.name.name.as_str())?;
+        if let Some(ref namespace) = self.series.name.namespace {
+            tbl.raw_set("namespace", namespace.as_str())?;
         }
-        if let Some(ts) = self.metric.data.time.timestamp {
+        if let Some(ts) = self.data.time.timestamp {
             tbl.raw_set("timestamp", timestamp_to_table(lua, ts)?)?;
         }
-        if let Some(i) = self.metric.data.time.interval_ms {
+        if let Some(i) = self.data.time.interval_ms {
             tbl.raw_set("interval_ms", i.get())?;
         }
-        if let Some(tags) = self.metric.series.tags {
+        if let Some(tags) = self.series.tags {
             tbl.raw_set(
                 "tags",
                 LuaMetricTags {
@@ -147,9 +148,9 @@ impl IntoLua for LuaMetric {
                 },
             )?;
         }
-        tbl.raw_set("kind", self.metric.data.kind)?;
+        tbl.raw_set("kind", self.data.kind)?;
 
-        match self.metric.data.value {
+        match self.data.value {
             MetricValue::Counter { value } => {
                 let counter = lua.create_table()?;
                 counter.raw_set("value", value)?;
@@ -282,11 +283,24 @@ impl FromLua for Metric {
             });
         };
 
-        Ok(Metric::new(name, kind, value)
-            .with_namespace(namespace)
-            .with_tags(tags)
-            .with_timestamp(timestamp)
-            .with_interval_ms(interval_ms.and_then(std::num::NonZeroU32::new)))
+        Ok(Metric::from_parts(
+            MetricSeries {
+                name: MetricName {
+                    name,
+                    namespace,
+                },
+                tags,
+            },
+            MetricData {
+                time: MetricTime {
+                    timestamp,
+                    interval_ms: interval_ms.and_then(std::num::NonZeroU32::new),
+                },
+                kind,
+                value,
+            },
+            super::super::EventMetadata::default(),
+        ))
     }
 }
 
@@ -299,11 +313,13 @@ mod test {
 
     fn assert_metric(metric: Metric, multi_value_tags: bool, assertions: Vec<&'static str>) {
         let lua = Lua::new();
+        let (series, data, _metadata) = metric.into_parts();
         lua.globals()
             .set(
                 "metric",
                 LuaMetric {
-                    metric,
+                    series,
+                    data,
                     multi_value_tags,
                 },
             )

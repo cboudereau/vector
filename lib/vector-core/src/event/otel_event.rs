@@ -1925,7 +1925,7 @@ impl OtelMetric {
     /// Convenience constructor for a distribution metric.
     /// OTel has no direct distribution equivalent; represented as a Gauge
     /// with value 0 and an attribute `"vector.metric_type" = "distribution"`.
-    /// Use `from_legacy_metric` for lossless round-trips.
+    /// Use `from_metric_parts` for lossless round-trips.
     pub fn new_distribution(name: impl Into<String>, kind: super::MetricKind) -> Self {
         let mut m = Self::new_gauge(name, 0.0);
         if kind == super::MetricKind::Incremental {
@@ -2207,13 +2207,6 @@ impl OtelMetric {
         }
     }
 
-    /// Bridge from the legacy Metric struct. Delegates to `from_metric_parts`.
-    /// Will be deleted when the Metric struct is removed.
-    pub fn from_legacy_metric(m: super::Metric) -> Self {
-        let (series, data, metadata) = m.into_parts();
-        Self::from_metric_parts(series, data, metadata)
-    }
-
     pub fn from_parts(
         metric: OtelMetricProto,
         resource: Option<Resource>,
@@ -2472,7 +2465,7 @@ impl OtelMetric {
     ///
     /// Preserves multi-value tags: each key becomes a single `KeyValue` whose
     /// value is a `StringValue` (single) or an `ArrayValue` of strings/nulls
-    /// (multi). Mirrors the tag encoding used by `from_legacy_metric`.
+    /// (multi). Mirrors the tag encoding used by `from_metric_parts`.
     pub fn with_tags(mut self, tags: Option<super::metric::MetricTags>) -> Self {
         use opentelemetry_proto::tonic::common::v1::{ArrayValue, any_value};
         let Some(tags) = tags else { return self };
@@ -3662,7 +3655,7 @@ mod tests {
         assert_eq!(otel.tag_value("env"), Some("prod".to_string()));
 
         // Resource attribute lookup (prefixed with "resource.")
-        // from_legacy_metric stores namespace in resource as "metric.namespace"
+        // from_metric_parts stores namespace in resource as "metric.namespace"
         // but other resource attrs are prefixed with "resource." in tags
         assert!(otel.tag_value("nonexistent").is_none());
 

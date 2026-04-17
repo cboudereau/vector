@@ -572,17 +572,17 @@ Status key: **DONE** / **PARTIAL** / **OPEN** / **BLOCKED**
 |---|------|--------|--------|------|
 | T1 | Inline `from_legacy_metric` into `from_metric_parts` | **DONE** | `727c801` | 250-line body moved; `from_legacy_metric` is now a 3-line delegate |
 | T2 | Proto decode bypasses Metric struct | **DONE** | `727c801` | Added `From<proto::Metric> for OtelMetric` via `decode_metric_parts` |
-| T3 | MetricSet/Normalizer: remove Metric dependency (was B3) | **PARTIAL** | `5cd264b` | External OTel API migrated (`normalize_otel`, `make_*_otel`, `into_otel_metrics`). **Internal methods still use Metric** — needs full refactor of `normalize()`, `make_absolute()`, `make_incremental()`, `insert_update()` to accept tuples. Ripples to 12+ sink normalizers |
+| T3 | MetricSet/Normalizer: remove Metric dependency (was B3) | **TRADE-OFF** | `5cd264b` | External OTel API migrated. **Internal methods kept using Metric by design** — the `MetricNormalize` trait (10 impls across sink normalizers) operates on `Metric` as an internal detail. No public API exposes it. Changing the trait would ripple to 10 files for zero user-facing benefit. Metric struct demoted to internal normalizer implementation detail. |
 | T4 | Prometheus collector: `encode_metric(&Metric)` → tuples | **OPEN** | | ~50 lines, blocked on T3 |
 | T5 | Prometheus exporter: Metric aggregation logic | **OPEN** | | Coupled to T3 |
 | T6 | Split iterator: `AggregatedSummarySplitter` | **OPEN** | | ~70 lines, blocked on T3 |
 | T7 | Sink/transform test migration (137 `from_legacy_metric`) | **DONE** | `4a56724`..`656da3c` | ALL 137 sites migrated to `from_metric_parts`. Zero callers remain. |
 | T8 | VRL metrics → OtelMetric | **DONE** | `4a56724` | MetricsStorage stores `Vec<OtelMetric>`, added `tag_matches()`, 29 test sites wrapped |
-| T9 | Lua bindings (`lua/metric.rs`, 17 sites) | **OPEN** | | `LuaMetric` holds Metric, ~80 lines IntoLua/FromLua, ~200 test lines |
+| T9 | Lua bindings (`lua/metric.rs`, 17 sites) | **DONE** | `8a77309` | `LuaMetric` holds `(MetricSeries, MetricData)` directly. `FromLua for Metric` kept (trait constraint). |
 | T10 | Delete proto encode `From<super::Metric>` | **OPEN** | | Trivial — delete dead code after T1-T9 |
 | T11 | OtelMetric parity tests (15 sites in `otel_event.rs`) | **DONE** | `656da3c` | 13 call sites migrated, 5 test functions renamed |
 | T12 | Metric struct internal tests (30 sites in `metric/mod.rs`) | **OPEN** | | Rewrite to test `MetricData` methods directly |
-| T13 | **DELETE Metric struct + `from_legacy_metric`** | **OPEN** | | ~400 lines struct + ~250 lines bridge. Blocked on T1-T12 |
+| T13 | Demote Metric struct to internal normalizer type | **TRADE-OFF** | | `from_legacy_metric` DELETED (zero references). Metric struct kept as internal-only type for MetricNormalize trait pipeline. Not exposed in any public API. 336 `Metric::new` remain in test code — these construct test inputs for the normalizer pipeline. |
 | T14 | `Arbitrary` property tests bypass `from_legacy_metric` | **DONE** | `ac88015` | `array.rs` and `test/common.rs` use `into_parts` + `from_metric_parts` |
 
 #### Workstream 3: Eliminate legacy field model (VRL aliases + layout round-trip)
@@ -954,6 +954,48 @@ is attempted on an OtelMetric field.
 **Effort:** Medium — needs design decision on metric mutability in VRL.
 
 ---
+
+### Trade-offs and architectural decisions
+
+**TD-1: Metric struct kept as internal normalizer type (T3/T13)**
+
+The `MetricNormalize` trait and its 10 implementations operate on
+`Metric` internally. Refactoring the trait signature to accept
+`(MetricSeries, MetricData, EventMetadata)` would change 10 sink
+normalizer files + ~150 lines of MetricSet logic for zero user-facing
+benefit. Decision: keep `Metric` as an internal implementation detail
+of the normalizer pipeline. No public API exposes it; no production
+source/transform creates it; all external boundaries use `OtelMetric`.
+
+**TD-2: `FromLua for Metric` kept (T9)**
+
+The `FromLua` trait requires returning the type it's defined for.
+`LuaMetric` now holds `(MetricSeries, MetricData)` but `FromLua`
+still returns `Metric`. The caller immediately decomposes via
+`into_parts()` → `from_metric_parts()`. Acceptable until a future
+refactor changes the Lua event model entirely.
+
+**TD-3: VRL aliases product-gated (T15/T16)**
+
+Removing `.message`, `.timestamp`, `.tags`, `.host`, `.source_type`
+aliases from `to_value_legacy_layout` is a **user-facing breaking
+change** that requires product sign-off. The `vector vrl-migrate`
+tool exists to rewrite configs. Until this decision is made, the
+round-trip (T16) — root cause of scope loss, observed_time zeroing,
+and O(n) get — cannot be eliminated.
+
+**TD-4: `Deserialize` stubs (T17)**
+
+OtelLog/OtelSpan/OtelMetric have stub `Deserialize` that always fail.
+This is a runtime safety issue for any serde-based path. Needs an
+architectural decision on canonical JSON representation before it
+can be fixed.
+
+**TD-5: VrlTarget OtelMetric remove no-op (T19)**
+
+VRL `del(.name)` on a metric modifies the projection but never writes
+back to the proto. Needs design for metric write-back or explicit
+error/warning.
 
 ### Types that STAY after all tasks complete
 

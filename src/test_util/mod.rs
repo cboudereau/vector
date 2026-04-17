@@ -38,7 +38,7 @@ use tokio_util::codec::{Encoder, FramedRead, FramedWrite, LinesCodec};
 use vector_lib::{
     buffers::topology::channel::LimitedReceiver,
     event::{
-        BatchNotifier, BatchStatusReceiver, Event, EventArray, LogEvent, Metric, MetricKind,
+        BatchNotifier, BatchStatusReceiver, Event, EventArray, Metric, MetricKind,
         MetricTags, MetricValue, OtelLog, OtelMetric,
     },
 };
@@ -247,7 +247,7 @@ pub fn generate_lines_with_stream<Gen: FnMut(usize) -> String>(
 ) -> (Vec<String>, impl Stream<Item = EventArray>) {
     let lines = (0..count).map(generator).collect::<Vec<_>>();
     let stream = map_batch_stream(
-        stream::iter(lines.clone()).map(|s| Event::Log(OtelLog::from_log_event(LogEvent::from_str_legacy(s)))),
+        stream::iter(lines.clone()).map(|s| Event::Log(OtelLog::from_str_legacy(s))),
         batch,
     );
     (lines, stream)
@@ -336,7 +336,7 @@ pub fn random_events_with_stream(
     batch: Option<BatchNotifier>,
 ) -> (Vec<Event>, impl Stream<Item = EventArray>) {
     let events = (0..count)
-        .map(|_| Event::Log(OtelLog::from_log_event(LogEvent::from_str_legacy(random_string(len)))))
+        .map(|_| Event::Log(OtelLog::from_str_legacy(random_string(len))))
         .collect::<Vec<_>>();
     let stream = map_batch_stream(
         stream::iter(events.clone()),
@@ -352,10 +352,10 @@ pub fn random_updated_events_with_stream<F>(
     update_fn: F,
 ) -> (Vec<Event>, impl Stream<Item = EventArray>)
 where
-    F: Fn((usize, LogEvent)) -> LogEvent,
+    F: Fn((usize, OtelLog)) -> OtelLog,
 {
     let events = (0..count)
-        .map(|_| LogEvent::from_str_legacy(random_string(len)))
+        .map(|_| OtelLog::from_str_legacy(random_string(len)))
         .enumerate()
         .map(update_fn)
         .map(|log| Event::from(log))

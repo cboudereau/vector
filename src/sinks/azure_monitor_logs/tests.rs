@@ -11,7 +11,7 @@ use super::{
     sink::JsonEncoding,
 };
 use crate::{
-    event::{LogEvent, OtelLog},
+    event::OtelLog,
     sinks::{prelude::*, util::encoding::Encoder},
     test_util::{
         components::{SINK_TAGS, run_and_assert_sink_compliance},
@@ -41,7 +41,7 @@ async fn component_spec_compliance() {
         .await
         .unwrap();
 
-    let event = Event::Log(OtelLog::from_log_event(LogEvent::from("simple message")));
+    let event = Event::Log(OtelLog::from_str_legacy("simple message"));
     run_and_assert_sink_compliance(sink, stream::once(ready(event)), &SINK_TAGS).await;
 }
 
@@ -130,7 +130,7 @@ fn fails_config_missing_fields() {
         .expect_err("Config parsing failed to error with missing customer_id");
 }
 
-fn insert_timestamp_kv(log: &mut LogEvent) -> (String, String) {
+fn insert_timestamp_kv(log: &mut OtelLog) -> (String, String) {
     let now = chrono::Utc::now();
 
     let timestamp_value = now.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
@@ -172,10 +172,12 @@ async fn correct_request() {
         )
         .unwrap();
 
-    let mut log1 = [("body", "hello")].iter().copied().collect::<LogEvent>();
+    let mut log1 = OtelLog::default();
+    log1.insert("body", "hello");
     let (timestamp_key1, timestamp_value1) = insert_timestamp_kv(&mut log1);
 
-    let mut log2 = [("body", "world")].iter().copied().collect::<LogEvent>();
+    let mut log2 = OtelLog::default();
+    log2.insert("body", "world");
     let (timestamp_key2, timestamp_value2) = insert_timestamp_kv(&mut log2);
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(1);
@@ -256,10 +258,8 @@ async fn correct_request() {
 
 #[test]
 fn encode_valid() {
-    let mut log = [("body", "hello world")]
-        .iter()
-        .copied()
-        .collect::<LogEvent>();
+    let mut log = OtelLog::default();
+    log.insert("body", "hello world");
     let (timestamp_key, timestamp_value) = insert_timestamp_kv(&mut log);
 
     let event = Event::from(log);

@@ -5,7 +5,7 @@ use vector_lib::transform::TransformOutputsBuf;
 
 use crate::{
     config::{ConfigBuilder, DataType, TransformOutput, build_unit_tests},
-    event::{Event, LogEvent, OtelLog},
+    event::{Event, OtelLog},
     test_util::components::{COMPONENT_MULTIPLE_OUTPUTS_TESTS, init_test},
     transforms::{
         SyncTransform,
@@ -50,9 +50,9 @@ fn exclusive_routes() {
 
     let (output_names, mut outputs) = get_outputs_buf();
     for service in ["a", "b", "c"] {
-        let event = Event::Log(OtelLog::from_log_event(LogEvent::from(btreemap! {
-            "service" => service
-        })));
+        let mut log = OtelLog::default();
+        log.insert("service", service);
+        let event = Event::Log(log);
         transform.transform(event.clone(), &mut outputs);
         for name in output_names.clone() {
             let mut events: Vec<_> = outputs.drain_named(name).collect();

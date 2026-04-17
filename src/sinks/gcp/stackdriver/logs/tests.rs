@@ -17,7 +17,7 @@ use super::{
 };
 use crate::{
     config::{GenerateConfig, SinkConfig, SinkContext},
-    event::{LogEvent, OtelLog, Value},
+    event::{OtelLog, Value},
     gcp::GcpAuthenticator,
     sinks::{
         gcp::stackdriver::logs::{
@@ -61,7 +61,7 @@ async fn component_spec_compliance() {
     let context = SinkContext::default();
     let (sink, _healthcheck) = config.build(context).await.unwrap();
 
-    let event = Event::Log(OtelLog::from_log_event(LogEvent::from("simple message")));
+    let event = Event::Log(OtelLog::from_str_legacy("simple message"));
     run_and_assert_sink_compliance(sink, stream::once(ready(event)), &HTTP_SINK_TAGS).await;
 }
 
@@ -103,15 +103,11 @@ fn encode_valid() {
         Some(ConfigValuePath::try_from("anumber".to_owned()).unwrap()),
     );
 
-    let mut log = [
-        ("body", "hello world"),
-        ("anumber", "100"),
-        ("node_id", "10.10.10.1"),
-        ("log_id", "testlogs"),
-    ]
-    .iter()
-    .copied()
-    .collect::<LogEvent>();
+    let mut log = OtelLog::default();
+    log.insert("body", "hello world");
+    log.insert("anumber", "100");
+    log.insert("node_id", "10.10.10.1");
+    log.insert("log_id", "testlogs");
     log.insert(
         event_path!("logging.googleapis.com/labels"),
         value!({user_label_1: "user_value_1"}),
@@ -161,7 +157,7 @@ fn encode_inserts_timestamp() {
         Some(ConfigValuePath::try_from("anumber".to_owned()).unwrap()),
     );
 
-    let mut log = LogEvent::default();
+    let mut log = OtelLog::default();
     log.insert("body", Value::Bytes("hello world".into()));
     log.insert("anumber", Value::Bytes("100".into()));
     log.insert(
@@ -241,8 +237,10 @@ async fn correct_request() {
         None,
     );
 
-    let log1 = [("body", "hello")].iter().copied().collect::<LogEvent>();
-    let log2 = [("body", "world")].iter().copied().collect::<LogEvent>();
+    let mut log1 = OtelLog::default();
+    log1.insert("body", "hello");
+    let mut log2 = OtelLog::default();
+    log2.insert("body", "world");
 
     let events = vec![Event::from(log1), Event::from(log2)];
 

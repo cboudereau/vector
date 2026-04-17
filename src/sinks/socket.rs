@@ -234,7 +234,7 @@ mod test {
 
     use crate::{
         config::SinkContext,
-        event::{Event, LogEvent, OtelLog},
+        event::{Event, OtelLog},
         test_util::{
             CountReceiver,
             addr::{next_addr, next_addr_v6},
@@ -288,7 +288,7 @@ mod test {
         assert_sink_compliance(&SINK_TAGS, async move {
             let (sink, _healthcheck) = config.build(context).await.unwrap();
 
-            let event = Event::Log(OtelLog::from_log_event(LogEvent::from("raw log line")));
+            let event = Event::Log(OtelLog::from_str_legacy("raw log line"));
             sink.run(stream::once(ready(event.into()))).await
         })
         .await

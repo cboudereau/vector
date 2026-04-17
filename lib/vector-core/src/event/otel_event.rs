@@ -722,7 +722,7 @@ impl OtelLog {
     }
 
     /// Get a field value by path.
-    /// Builds a Value tree matching the legacy layout, without intermediate conversion.
+    /// Falls back to legacy layout for complex paths.
     pub fn get<'a>(&self, path: impl lookup::lookup_v2::TargetPath<'a>) -> Option<Value> {
         match path.prefix() {
             lookup::PathPrefix::Event => {
@@ -736,7 +736,7 @@ impl OtelLog {
     }
 
     /// Insert a field value by path.
-    /// Builds a Value, inserts, writes back — without intermediate conversion.
+    /// Uses legacy round-trip. TODO(T16): fast-path for known proto fields.
     pub fn insert<'a>(
         &mut self,
         path: impl lookup::lookup_v2::TargetPath<'a>,

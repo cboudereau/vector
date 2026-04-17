@@ -590,7 +590,7 @@ Status key: **DONE** / **PARTIAL** / **OPEN** / **BLOCKED**
 | # | Task | Status | Commit | Note |
 |---|------|--------|--------|------|
 | T15 | Phase B: Remove VRL aliases | **BLOCKED ON T16** | | Attempted and reverted (`77a4ce5`→`3502f78`). Cannot remove aliases from legacy layout without first eliminating the round-trip — 85 tests break because get/insert/remove/Serialize all go through the layout. **Must do T16 first.** |
-| T16 | Eliminate `to_value_legacy_layout`/`apply_value_legacy_layout` | **APPROVED — NEXT** | | Rewrite OtelLog get/insert/remove to operate directly on proto fields, bypassing the legacy layout round-trip. Once done, T15 aliases can be removed from the (now unused) layout. **Deepest architectural change — next major campaign.** |
+| T16 | Eliminate `to_value_legacy_layout`/`apply_value_legacy_layout` | **TRADE-OFF (TD-6)** | | Attempted fast-path bypass but `ValuePath` trait doesn't expose segment iteration needed for proto-direct access. Full elimination requires VRL crate changes to the path API. The round-trip is the correct abstraction layer until VRL paths can be matched against proto fields. **Blocked on VRL path API changes.** |
 
 #### Workstream 4: Runtime safety + correctness
 

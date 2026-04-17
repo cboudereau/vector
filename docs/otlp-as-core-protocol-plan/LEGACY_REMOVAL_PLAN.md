@@ -137,22 +137,17 @@ see `VRL_MIGRATION_TOOL.md`) should rewrite before being removed.
 
 ## Remaining phases
 
-- **A — VRL migration tool rules**: **DONE** (B4) — `src/vrl_migrate/`
-  ships 22 rules across 3 passes, CLI wired into `vector vrl-migrate`,
-  29/29 tests green. See `VRL_MIGRATION_TOOL.md`.
-- **B — Remove VRL aliases**: Pending product decision. With Phase A
-  shipped, `.message`/`.timestamp`/`.tags`/etc. aliases on OtelLog VRL
-  paths can be removed. Expect ~15-25 test breakages — users would
-  pre-run `vector vrl-migrate` on their configs.
-- **C — OtelLog/OtelSpan/OtelMetric OTel-to-Legacy bridge**: **DONE**
-- **D — OtelMetric Legacy-to-OTel bridge** (`from_legacy_metric`):
-  Folded into Phase F.
-- **E — Remove legacy types from production**: **DONE** — only one
-  true production caller of `LogEvent` remained
-  (`http_client/client.rs:464`), the rest were tests. All blockers B1–B6
-  resolved.
-- **F — Delete legacy types entirely** (LogEvent, TraceEvent, Metric):
-  see dedicated section below.
+- **A — VRL migration tool rules**: **DONE** (B4)
+- **B — Remove VRL aliases**: **OPEN** — see Phase G task T15.
+  Product decision required. `vector vrl-migrate` can rewrite configs.
+- **C — OTel-to-Legacy bridge**: **DONE**
+- **D — Legacy-to-OTel bridge**: Folded into F → G.
+- **E — Remove legacy types from production**: **DONE**
+- **F — Delete LogEvent + TraceEvent**: **DONE**
+  - F.1-F.6 complete. `log_event.rs` deleted (`80ff2fb`).
+  - `trace.rs` deleted (`1236e8e`).
+- **G — Delete Metric struct + buffer compat + legacy layout**:
+  **IN PROGRESS** — 18 tasks identified, see Phase G below.
 
 ## Phase F — Delete legacy types entirely
 
@@ -777,6 +772,130 @@ After T1-T12 are done:
 **Effort:** Trivial — just deletion, all callers already migrated.
 
 ---
+
+---
+
+#### T14 — `Arbitrary for Metric` in property tests
+
+**Files:** `lib/vector-core/src/event/test/common.rs:63,110`,
+`lib/vector-core/src/event/array.rs:331`
+
+Property tests generate random `Metric` via `Arbitrary` then wrap in
+`OtelMetric::from_legacy_metric`. Rewrite to generate `OtelMetric`
+directly (or generate `MetricSeries` + `MetricData` + `EventMetadata`
+then call `from_metric_parts`).
+
+**Effort:** Low — 3 sites.
+
+---
+
+#### T15 — Phase B: Remove VRL aliases (product decision required)
+
+**Files:** `lib/vector-core/src/event/otel_event.rs` (`to_value_legacy_layout`)
+
+The legacy field aliases are still live in VRL:
+
+| Alias | Target | Status |
+|-------|--------|--------|
+| `.message` | `.body` | Live — `to_value_legacy_layout` hoists body→message |
+| `.timestamp` | `.time_unix_nano` | Live — schema-meaning mapping |
+| `.tags."key"` | `.attributes."key"` | Live |
+| `.host` | `.resource.attributes."host.name"` | Live — hoisted |
+| `.source_type` | `.resource.attributes."source_type"` | Live — hoisted |
+
+`vector vrl-migrate` (Phase A, DONE) can rewrite user configs.
+Removing aliases is a **breaking change** gated on product decision.
+
+**Effort:** Medium — ~15-25 test breakages expected.
+
+---
+
+#### T16 — Eliminate `to_value_legacy_layout` / `apply_value_legacy_layout`
+
+**File:** `lib/vector-core/src/event/otel_event.rs` (47 call sites)
+
+This is the **deepest remaining legacy pattern**. Every `OtelLog::insert()`,
+`get()`, `remove()` call does a full round-trip through a flat `Value` tree:
+1. `to_value_legacy_layout()` — clones entire event into ObjectMap
+2. Mutate the ObjectMap
+3. `apply_value_legacy_layout()` — reparses back into proto
+
+**Known issues from code review (2026-04-17):**
+- Destroys `scope` (set to None on every write-back)
+- Zeros `observed_time_unix_nano` on every write-back
+- O(event_size) per insert/get/remove call
+- Resource/scope sub-objects get demoted to attributes after round-trip
+
+**Depends on:** T15 (VRL aliases removal) — the legacy layout exists
+specifically to support the legacy field names. Once aliases are gone,
+OtelLog can expose proto fields directly and eliminate the round-trip.
+
+**Effort:** Very High — touches the core mutation API of OtelLog.
+
+---
+
+#### T17 — Implement real `Deserialize` for OTel types
+
+**File:** `lib/vector-core/src/event/otel_event.rs:3175-3195`
+
+All three OTel types have stub `Deserialize` impls that always fail:
+```rust
+Err(serde::de::Error::custom("OtelLog deserialization not yet implemented"))
+```
+
+Any serde-based deserialization (disk buffer recovery via serde, certain
+source codecs) will hard-fail at runtime. Needs real implementation or
+at minimum a proto-based serde adapter.
+
+**Effort:** Medium — need to define what the canonical JSON representation is.
+
+---
+
+#### T18 — Cleanup: stale names and dead aliases
+
+| Item | Location | Action |
+|------|----------|--------|
+| `LogEventMergeState` | `merge_state.rs`, `docker_logs/mod.rs` | Rename to `MergeState` |
+| `OtelLogEvent`/`OtelMetricEvent`/`OtelSpanEvent` aliases | `event/mod.rs:45-47` | Delete (0 callers) |
+| `try_into_log_coerce`/`into_log_coerce` | `event/mod.rs:161-166` (17 callers) | Rename to `try_into_log`/`into_log` (already exist, these are duplicates) |
+| `log_event!` macro | `test_util/mod.rs:84` (392 usages) | Keep or rename — test ergonomics, name is cosmetic |
+| `event.proto` deprecated fields | `proto/event.proto` | Remove deprecated `metadata` + `fields` field declarations |
+
+**Effort:** Low — mechanical renames and dead code deletion.
+
+---
+
+### Complete dependency graph (all 18 tasks)
+
+```
+Phase G — Metric struct deletion:
+  T1 (inline from_legacy_metric)
+   ├─► T2 (proto decode bypass)
+   └─► T11 (otel_event tests)
+
+  T3 (MetricSet refactor)           ←── HARDEST
+   ├─► T4 (prometheus collector)
+   ├─► T5 (prometheus exporter)
+   ├─► T6 (split iterator)
+   └─► T7 (sink test migration)
+
+  T8 (VRL metrics)                  ←── independent
+  T9 (Lua bindings)                 ←── independent
+  T14 (Arbitrary property tests)    ←── independent
+
+  T1+T2+T3..T9+T14
+   ├─► T10 (delete proto encode)
+   ├─► T12 (metric/mod.rs tests)
+   └─► T13 (DELETE Metric struct)   ←── MILESTONE
+
+Phase B + legacy layout:
+  T15 (VRL aliases removal)         ←── product decision gate
+   └─► T16 (eliminate legacy layout) ←── DEEPEST CHANGE
+
+Standalone:
+  T17 (real Deserialize impls)      ←── independent, runtime safety
+  T18 (stale names/aliases cleanup) ←── independent, cosmetic
+```
 
 ### Types that STAY after all tasks complete
 

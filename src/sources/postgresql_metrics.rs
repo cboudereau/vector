@@ -36,7 +36,7 @@ use vector_lib::{
 
 use crate::{
     config::{SourceConfig, SourceContext, SourceOutput},
-    event::{Event, OtelMetric, metric::{Metric, MetricKind, MetricTags, MetricValue}},
+    event::{Event, OtelMetric, metric::{MetricKind, MetricTags, MetricValue}},
     internal_events::{
         CollectionCompleted, EndpointBytesReceived, EventsReceived, PostgresqlMetricsCollectError,
         StreamClosedError,
@@ -226,10 +226,10 @@ impl SourceConfig for PostgresqlMetricsConfig {
                     end: Instant::now()
                 });
 
-                let metrics: Vec<Metric> = metrics.into_iter().flatten().collect();
+                let metrics: Vec<OtelMetric> = metrics.into_iter().flatten().collect();
                 let count = metrics.len();
 
-                let events: Vec<Event> = metrics.into_iter().map(|m| Event::Metric(OtelMetric::from_legacy_metric(m))).collect();
+                let events: Vec<Event> = metrics.into_iter().map(|m| Event::Metric(m)).collect();
                 if (cx.out.send_batch(events).await).is_err() {
                     emit!(StreamClosedError { count });
                     return Err(());
@@ -538,7 +538,7 @@ impl PostgresqlMetrics {
         })
     }
 
-    async fn collect(&mut self) -> Box<dyn Iterator<Item = Metric> + Send> {
+    async fn collect(&mut self) -> Box<dyn Iterator<Item = OtelMetric> + Send> {
         match self.collect_metrics().await {
             Ok(metrics) => Box::new(
                 iter::once(self.create_metric("up", gauge!(1.0), tags!(self.tags))).chain(metrics),
@@ -557,7 +557,7 @@ impl PostgresqlMetrics {
         }
     }
 
-    async fn collect_metrics(&mut self) -> Result<impl Iterator<Item = Metric> + use<>, String> {
+    async fn collect_metrics(&mut self) -> Result<impl Iterator<Item = OtelMetric> + use<>, String> {
         let (client, client_version) = self
             .client
             .take()
@@ -601,7 +601,7 @@ impl PostgresqlMetrics {
         &self,
         client: &Client,
         client_version: usize,
-    ) -> Result<(Vec<Metric>, usize), CollectError> {
+    ) -> Result<(Vec<OtelMetric>, usize), CollectError> {
         let rows = self
             .datname_filter
             .pg_stat_database(client)
@@ -742,7 +742,7 @@ impl PostgresqlMetrics {
     async fn collect_pg_stat_database_conflicts(
         &self,
         client: &Client,
-    ) -> Result<(Vec<Metric>, usize), CollectError> {
+    ) -> Result<(Vec<OtelMetric>, usize), CollectError> {
         let rows = self
             .datname_filter
             .pg_stat_database_conflicts(client)
@@ -788,7 +788,7 @@ impl PostgresqlMetrics {
     async fn collect_pg_stat_bgwriter(
         &self,
         client: &Client,
-    ) -> Result<(Vec<Metric>, usize), CollectError> {
+    ) -> Result<(Vec<OtelMetric>, usize), CollectError> {
         let row = self
             .datname_filter
             .pg_stat_bgwriter(client)
@@ -862,8 +862,13 @@ impl PostgresqlMetrics {
         ))
     }
 
-    fn create_metric(&self, name: &str, value: MetricValue, tags: MetricTags) -> Metric {
-        Metric::new(name, MetricKind::Absolute, value)
+    fn create_metric(&self, name: &str, value: MetricValue, tags: MetricTags) -> OtelMetric {
+        let metric = match value {
+            MetricValue::Counter { value: v } => OtelMetric::new_counter(name, MetricKind::Absolute, v),
+            MetricValue::Gauge { value: v } => OtelMetric::new_gauge(name, v),
+            _ => unreachable!("postgresql_metrics only produces counters and gauges"),
+        };
+        metric
             .with_namespace(self.namespace.clone())
             .with_tags(Some(tags))
             .with_timestamp(Some(Utc::now()))

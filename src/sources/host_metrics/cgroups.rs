@@ -465,7 +465,7 @@ mod tests {
     use rand::{Rng, rngs::ThreadRng};
     use similar_asserts::assert_eq;
     use tempfile::TempDir;
-    use vector_lib::event::Metric;
+    use crate::event::OtelMetric;
 
     use super::{
         super::{
@@ -707,7 +707,7 @@ mod tests {
         }
     }
 
-    fn all_tags(metrics: &[Metric], tag: &str) -> Vec<String> {
+    fn all_tags(metrics: &[OtelMetric], tag: &str) -> Vec<String> {
         metrics
             .iter()
             .map(|metric| {

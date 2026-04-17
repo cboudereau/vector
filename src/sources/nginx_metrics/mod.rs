@@ -17,7 +17,7 @@ use vector_lib::{EstimatedJsonEncodedSizeOf, configurable::configurable_componen
 
 use crate::{
     config::{SourceConfig, SourceContext, SourceOutput},
-    event::{Event, OtelMetric, metric::{Metric, MetricKind, MetricTags, MetricValue}},
+    event::{Event, OtelMetric, metric::{MetricKind, MetricTags, MetricValue}},
     http::{Auth, HttpClient},
     internal_events::{
         CollectionCompleted, EndpointBytesReceived, NginxMetricsEventsReceived,
@@ -132,10 +132,10 @@ impl SourceConfig for NginxMetricsConfig {
                     end: Instant::now()
                 });
 
-                let metrics: Vec<Metric> = metrics.into_iter().flatten().collect();
+                let metrics: Vec<OtelMetric> = metrics.into_iter().flatten().collect();
                 let count = metrics.len();
 
-                let events: Vec<Event> = metrics.into_iter().map(|m| Event::Metric(OtelMetric::from_legacy_metric(m))).collect();
+                let events: Vec<Event> = metrics.into_iter().map(|m| Event::Metric(m)).collect();
                 if (cx.out.send_batch(events).await).is_err() {
                     emit!(StreamClosedError { count });
                     return Err(());
@@ -193,7 +193,7 @@ impl NginxMetrics {
         })
     }
 
-    async fn collect(&self) -> Vec<Metric> {
+    async fn collect(&self) -> Vec<OtelMetric> {
         let (up_value, mut metrics) = match self.collect_metrics().await {
             Ok(metrics) => (1.0, metrics),
             Err(()) => (0.0, vec![]),
@@ -212,7 +212,7 @@ impl NginxMetrics {
         metrics
     }
 
-    async fn collect_metrics(&self) -> Result<Vec<Metric>, ()> {
+    async fn collect_metrics(&self) -> Result<Vec<OtelMetric>, ()> {
         let response = self.get_nginx_response().await.map_err(|error| {
             emit!(NginxMetricsRequestError {
                 error,
@@ -261,8 +261,13 @@ impl NginxMetrics {
         }
     }
 
-    fn create_metric(&self, name: &str, value: MetricValue) -> Metric {
-        Metric::new(name, MetricKind::Absolute, value)
+    fn create_metric(&self, name: &str, value: MetricValue) -> OtelMetric {
+        let metric = match value {
+            MetricValue::Counter { value: v } => OtelMetric::new_counter(name, MetricKind::Absolute, v),
+            MetricValue::Gauge { value: v } => OtelMetric::new_gauge(name, v),
+            _ => unreachable!("nginx_metrics only produces counters and gauges"),
+        };
+        metric
             .with_namespace(self.namespace.clone())
             .with_tags(Some(self.tags.clone()))
             .with_timestamp(Some(Utc::now()))

@@ -25,7 +25,7 @@ use vector_lib::{
 use crate::{
     SourceSender,
     config::{SourceConfig, SourceContext, SourceOutput},
-    event::{Event, OtelMetric, metric::{Metric, MetricKind, MetricTags, MetricValue}},
+    event::{Event, OtelMetric, metric::{MetricKind, MetricTags}},
     internal_events::{EventsReceived, HostMetricsScrapeDetailError, StreamClosedError},
     shutdown::ShutdownSignal,
 };
@@ -333,7 +333,7 @@ impl HostMetricsConfig {
             bytes_received.emit(ByteSize(0));
             let metrics = generator.capture_metrics().await;
             let count = metrics.len();
-            let events: Vec<Event> = metrics.into_iter().map(|m| Event::Metric(OtelMetric::from_legacy_metric(m))).collect();
+            let events: Vec<Event> = metrics.into_iter().map(|m| Event::Metric(m)).collect();
             if (out.send_batch(events).await).is_err() {
                 emit!(StreamClosedError { count });
                 return Err(());
@@ -385,7 +385,7 @@ impl HostMetrics {
         MetricsBuffer::new(self.config.namespace.clone())
     }
 
-    async fn capture_metrics(&mut self) -> Vec<Metric> {
+    async fn capture_metrics(&mut self) -> Vec<OtelMetric> {
         let mut buffer = self.buffer();
 
         #[cfg(target_os = "linux")]
@@ -486,7 +486,7 @@ impl HostMetrics {
 
 #[derive(Default)]
 pub struct MetricsBuffer {
-    pub metrics: Vec<Metric>,
+    pub metrics: Vec<OtelMetric>,
     name: &'static str,
     host: Option<String>,
     timestamp: DateTime<Utc>,
@@ -514,7 +514,7 @@ impl MetricsBuffer {
 
     fn counter(&mut self, name: &str, value: f64, tags: MetricTags) {
         self.metrics.push(
-            Metric::new(name, MetricKind::Absolute, MetricValue::Counter { value })
+            OtelMetric::new_counter(name, MetricKind::Absolute, value)
                 .with_namespace(self.namespace.clone())
                 .with_tags(Some(self.tags(tags)))
                 .with_timestamp(Some(self.timestamp)),
@@ -523,7 +523,7 @@ impl MetricsBuffer {
 
     fn gauge(&mut self, name: &str, value: f64, tags: MetricTags) {
         self.metrics.push(
-            Metric::new(name, MetricKind::Absolute, MetricValue::Gauge { value })
+            OtelMetric::new_gauge(name, value)
                 .with_namespace(self.namespace.clone())
                 .with_tags(Some(self.tags(tags)))
                 .with_timestamp(Some(self.timestamp)),
@@ -679,6 +679,8 @@ mod tests {
     use std::{collections::HashSet, future::Future, time::Duration};
 
     use super::*;
+    use crate::event::OtelMetric;
+    use crate::event::metric::MetricValue;
     use crate::test_util::components::{SOURCE_TAGS, run_and_assert_source_compliance};
 
     #[test]
@@ -854,19 +856,19 @@ mod tests {
         assert!(all_gauges(&metrics));
     }
 
-    pub(super) fn all_counters(metrics: &[Metric]) -> bool {
+    pub(super) fn all_counters(metrics: &[OtelMetric]) -> bool {
         !metrics
             .iter()
-            .any(|metric| !matches!(metric.value(), &MetricValue::Counter { .. }))
+            .any(|metric| !matches!(metric.value(), MetricValue::Counter { .. }))
     }
 
-    pub(super) fn all_gauges(metrics: &[Metric]) -> bool {
+    pub(super) fn all_gauges(metrics: &[OtelMetric]) -> bool {
         !metrics
             .iter()
-            .any(|metric| !matches!(metric.value(), &MetricValue::Gauge { .. }))
+            .any(|metric| !matches!(metric.value(), MetricValue::Gauge { .. }))
     }
 
-    fn all_tags_match(metrics: &[Metric], tag: &str, matches: impl Fn(&str) -> bool) -> bool {
+    fn all_tags_match(metrics: &[OtelMetric], tag: &str, matches: impl Fn(&str) -> bool) -> bool {
         !metrics.iter().any(|metric| {
             metric
                 .tags()
@@ -877,14 +879,14 @@ mod tests {
         })
     }
 
-    pub(super) fn count_name(metrics: &[Metric], name: &str) -> usize {
+    pub(super) fn count_name(metrics: &[OtelMetric], name: &str) -> usize {
         metrics
             .iter()
             .filter(|metric| metric.name() == name)
             .count()
     }
 
-    pub(super) fn count_tag(metrics: &[Metric], tag: &str) -> usize {
+    pub(super) fn count_tag(metrics: &[OtelMetric], tag: &str) -> usize {
         metrics
             .iter()
             .filter(|metric| {
@@ -896,7 +898,7 @@ mod tests {
             .count()
     }
 
-    fn collect_tag_values(metrics: &[Metric], tag: &str) -> HashSet<String> {
+    fn collect_tag_values(metrics: &[OtelMetric], tag: &str) -> HashSet<String> {
         metrics
             .iter()
             .filter_map(|metric| metric.tags().unwrap().get(tag).map(ToOwned::to_owned))
@@ -907,7 +909,7 @@ mod tests {
     pub(super) async fn assert_filtered_metrics<Get, Fut>(tag: &str, get_metrics: Get)
     where
         Get: Fn(FilterList) -> Fut,
-        Fut: Future<Output = Vec<Metric>>,
+        Fut: Future<Output = Vec<OtelMetric>>,
     {
         let all_metrics = get_metrics(FilterList::default()).await;
 

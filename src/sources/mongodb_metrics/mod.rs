@@ -21,7 +21,7 @@ use vector_lib::{
 
 use crate::{
     config::{SourceConfig, SourceContext, SourceOutput},
-    event::{Event, OtelMetric, metric::{Metric, MetricKind, MetricTags, MetricValue}},
+    event::{Event, OtelMetric, metric::{MetricKind, MetricTags, MetricValue}},
     internal_events::{
         CollectionCompleted, EndpointBytesReceived, MongoDbMetricsBsonParseError,
         MongoDbMetricsEventsReceived, MongoDbMetricsRequestError, StreamClosedError,
@@ -145,10 +145,10 @@ impl SourceConfig for MongoDbMetricsConfig {
                     end: Instant::now()
                 });
 
-                let metrics: Vec<Metric> = metrics.into_iter().flatten().collect();
+                let metrics: Vec<OtelMetric> = metrics.into_iter().flatten().collect();
                 let count = metrics.len();
 
-                let events: Vec<Event> = metrics.into_iter().map(|m| Event::Metric(OtelMetric::from_legacy_metric(m))).collect();
+                let events: Vec<Event> = metrics.into_iter().map(|m| Event::Metric(m)).collect();
                 if (cx.out.send_batch(events).await).is_err() {
                     emit!(StreamClosedError { count });
                     return Err(());
@@ -235,14 +235,19 @@ impl MongoDbMetrics {
         Ok(())
     }
 
-    fn create_metric(&self, name: &str, value: MetricValue, tags: MetricTags) -> Metric {
-        Metric::new(name, MetricKind::Absolute, value)
+    fn create_metric(&self, name: &str, value: MetricValue, tags: MetricTags) -> OtelMetric {
+        let metric = match value {
+            MetricValue::Counter { value: v } => OtelMetric::new_counter(name, MetricKind::Absolute, v),
+            MetricValue::Gauge { value: v } => OtelMetric::new_gauge(name, v),
+            _ => unreachable!("mongodb_metrics only produces counters and gauges"),
+        };
+        metric
             .with_namespace(self.namespace.clone())
             .with_tags(Some(tags))
             .with_timestamp(Some(Utc::now()))
     }
 
-    async fn collect(&self) -> Vec<Metric> {
+    async fn collect(&self) -> Vec<OtelMetric> {
         // `up` metric is `1` if collection is successful, otherwise `0`.
         let (up_value, mut metrics) = match self.collect_server_status().await {
             Ok(metrics) => (1.0, metrics),
@@ -275,7 +280,7 @@ impl MongoDbMetrics {
 
     /// Collect metrics from `serverStatus` command.
     /// <https://docs.mongodb.com/manual/reference/command/serverStatus/>
-    async fn collect_server_status(&self) -> Result<Vec<Metric>, CollectError> {
+    async fn collect_server_status(&self) -> Result<Vec<OtelMetric>, CollectError> {
         self.print_version().await?;
 
         let mut metrics = vec![];

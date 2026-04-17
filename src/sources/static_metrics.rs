@@ -16,7 +16,7 @@ use crate::{
     SourceSender,
     config::{SourceConfig, SourceContext, SourceOutput},
     event::{
-        Event, EventMetadata, Metric, MetricKind, OtelMetric,
+        Event, EventMetadata, MetricKind, OtelMetric,
         metric::{MetricData, MetricName, MetricSeries, MetricTime, MetricValue},
     },
     internal_events::{EventsReceived, StreamClosedError},
@@ -140,7 +140,7 @@ impl StaticMetrics {
             IntervalStream::new(time::interval(self.interval)).take_until(self.shutdown);
 
         // Prepare metrics, since they are static and won't change
-        let metrics: Vec<Metric> = self
+        let metrics: Vec<OtelMetric> = self
             .metrics
             .into_iter()
             .map(
@@ -150,7 +150,7 @@ impl StaticMetrics {
                      kind,
                      tags,
                  }| {
-                    Metric::from_parts(
+                    OtelMetric::from_metric_parts(
                         MetricSeries {
                             name: MetricName {
                                 name,
@@ -185,7 +185,7 @@ impl StaticMetrics {
                 .into_iter()
                 .map(|metric| metric.with_timestamp(Some(Utc::now())));
 
-            let events: Vec<Event> = batch.map(|m| Event::Metric(OtelMetric::from_legacy_metric(m))).collect();
+            let events: Vec<Event> = batch.map(|m| Event::Metric(m)).collect();
             if (self.out.send_batch(events).await).is_err() {
                 emit!(StreamClosedError { count });
                 return Err(());

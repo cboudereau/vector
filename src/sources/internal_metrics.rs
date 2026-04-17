@@ -165,25 +165,28 @@ impl InternalMetrics<'_> {
             bytes_received.emit(ByteSize(byte_size));
             events_received.emit(CountByteSize(count, json_size));
 
-            let batch = metrics.into_iter().map(|mut metric| {
+            let batch = metrics.into_iter().map(|metric| {
+                let (series, data, metadata) = metric.into_parts();
+                let mut otel = OtelMetric::from_metric_parts(series, data, metadata);
+
                 // A metric starts out with a default "vector" namespace, but will be overridden
                 // if an explicit namespace is provided to this source.
                 if self.namespace != "vector" {
-                    metric = metric.with_namespace(Some(self.namespace.clone()));
+                    otel = otel.with_namespace(Some(self.namespace.clone()));
                 }
 
                 if let Some(host_key) = &self.host_key.path
                     && let Ok(hostname) = &hostname
                 {
-                    metric.replace_tag(host_key.to_string(), hostname.to_owned());
+                    otel.replace_tag(host_key.to_string(), hostname.to_owned());
                 }
                 if let Some(pid_key) = &self.pid_key {
-                    metric.replace_tag(pid_key.to_owned(), pid.clone());
+                    otel.replace_tag(pid_key.to_owned(), pid.clone());
                 }
-                metric
+                otel
             });
 
-            let events: Vec<Event> = batch.map(|m| Event::Metric(OtelMetric::from_legacy_metric(m))).collect();
+            let events: Vec<Event> = batch.map(|m| Event::Metric(m)).collect();
             if (self.out.send_batch(events).await).is_err() {
                 emit!(StreamClosedError { count });
                 return Err(());

@@ -10,7 +10,7 @@ use vector_lib::{
     configurable::configurable_component,
     event::{
         MetricValue,
-        metric::{Metric, MetricData, MetricKind, MetricSeries},
+        metric::{MetricData, MetricKind, MetricSeries},
     },
 };
 
@@ -253,15 +253,17 @@ impl Aggregate {
     fn flush_into(&mut self, output: &mut Vec<Event>) {
         let map = std::mem::take(&mut self.map);
         for (series, entry) in map.clone().into_iter() {
-            let mut metric = Metric::from_parts(series, entry.0, entry.1);
+            let (mut data, metadata) = entry;
             if matches!(self.mode, AggregationMode::Diff)
-                && let Some(prev_entry) = self.prev_map.get(metric.series())
-                && metric.data().kind == prev_entry.0.kind
-                && !metric.subtract(&prev_entry.0)
+                && let Some(prev_entry) = self.prev_map.get(&series)
+                && data.kind == prev_entry.0.kind
+                && !data.subtract(&prev_entry.0)
             {
                 emit!(AggregateUpdateFailed);
             }
-            output.push(Event::Metric(OtelMetric::from_legacy_metric(metric)));
+            output.push(Event::Metric(OtelMetric::from_metric_parts(
+                series, data, metadata,
+            )));
         }
 
         let multi_map = std::mem::take(&mut self.multi_map);
@@ -291,8 +293,9 @@ impl Aggregate {
             let final_mean = final_sum.clone();
             match self.mode {
                 AggregationMode::Mean => {
-                    let metric = Metric::from_parts(series, final_mean, final_metadata);
-                    output.push(Event::Metric(OtelMetric::from_legacy_metric(metric)));
+                    output.push(Event::Metric(OtelMetric::from_metric_parts(
+                        series, final_mean, final_metadata,
+                    )));
                 }
                 AggregationMode::Stdev => {
                     let variance = entries
@@ -311,8 +314,9 @@ impl Aggregate {
                     if let MetricValue::Gauge { value } = final_stdev.value_mut() {
                         *value = variance.sqrt()
                     }
-                    let metric = Metric::from_parts(series, final_stdev, final_metadata);
-                    output.push(Event::Metric(OtelMetric::from_legacy_metric(metric)));
+                    output.push(Event::Metric(OtelMetric::from_metric_parts(
+                        series, final_stdev, final_metadata,
+                    )));
                 }
                 _ => (),
             }

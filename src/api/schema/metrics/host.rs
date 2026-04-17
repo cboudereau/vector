@@ -2,11 +2,11 @@ use async_graphql::Object;
 use cfg_if::cfg_if;
 
 use crate::{
-    event::{Metric, MetricValue},
+    event::{MetricValue, OtelMetric},
     sources::host_metrics,
 };
 
-pub struct MemoryMetrics(Vec<Metric>);
+pub struct MemoryMetrics(Vec<OtelMetric>);
 
 #[Object]
 /// Host memory metrics
@@ -90,7 +90,7 @@ impl MemoryMetrics {
     }
 }
 
-pub struct SwapMetrics(Vec<Metric>);
+pub struct SwapMetrics(Vec<OtelMetric>);
 
 #[Object]
 impl SwapMetrics {
@@ -131,7 +131,7 @@ impl SwapMetrics {
     }
 }
 
-pub struct CpuMetrics(Vec<Metric>);
+pub struct CpuMetrics(Vec<OtelMetric>);
 
 #[Object]
 impl CpuMetrics {
@@ -141,7 +141,7 @@ impl CpuMetrics {
     }
 }
 
-pub struct LoadAverageMetrics(Vec<Metric>);
+pub struct LoadAverageMetrics(Vec<OtelMetric>);
 
 #[Object]
 impl LoadAverageMetrics {
@@ -161,7 +161,7 @@ impl LoadAverageMetrics {
     }
 }
 
-pub struct NetworkMetrics(Vec<Metric>);
+pub struct NetworkMetrics(Vec<OtelMetric>);
 
 #[Object]
 impl NetworkMetrics {
@@ -215,7 +215,7 @@ impl NetworkMetrics {
     }
 }
 
-pub struct FileSystemMetrics(Vec<Metric>);
+pub struct FileSystemMetrics(Vec<OtelMetric>);
 
 #[Object]
 impl FileSystemMetrics {
@@ -235,7 +235,7 @@ impl FileSystemMetrics {
     }
 }
 
-pub struct DiskMetrics(Vec<Metric>);
+pub struct DiskMetrics(Vec<OtelMetric>);
 
 #[Object]
 impl DiskMetrics {
@@ -262,7 +262,7 @@ impl DiskMetrics {
 
 cfg_if! {
     if #[cfg(target_os = "linux")] {
-        pub struct TCPMetrics(Vec<Metric>);
+        pub struct TCPMetrics(Vec<OtelMetric>);
 
         #[Object]
         impl TCPMetrics {
@@ -359,14 +359,14 @@ impl HostMetrics {
     }
 }
 
-/// Filters a [`Vec<Metric>`] by name, returning the inner `value` or 0.00 if not found
-fn filter_host_metric(metrics: &[Metric], name: &str) -> f64 {
+/// Filters a [`Vec<OtelMetric>`] by name, returning the inner `value` or 0.00 if not found
+fn filter_host_metric(metrics: &[OtelMetric], name: &str) -> f64 {
     metrics
         .iter()
         .find(|m| matches!(m.namespace(), Some(n) if n == "host") && m.name() == name)
         .map(|m| match m.value() {
-            MetricValue::Gauge { value } => *value,
-            MetricValue::Counter { value } => *value,
+            MetricValue::Gauge { value } => value,
+            MetricValue::Counter { value } => value,
             _ => 0.00,
         })
         .unwrap_or_else(|| 0.00)

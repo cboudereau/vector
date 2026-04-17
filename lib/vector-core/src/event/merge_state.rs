@@ -6,12 +6,12 @@ use super::OtelLog;
 /// events that contributed to the current merge event for instance, or the
 /// event size) to support circuit breaker logic.
 #[derive(Debug)]
-pub struct LogEventMergeState {
+pub struct MergeState {
     /// Intermediate event we merge into.
     intermediate_merged_event: OtelLog,
 }
 
-impl LogEventMergeState {
+impl MergeState {
     /// Initialize the algorithm with a first (partial) event.
     pub fn new(first_partial_event: OtelLog) -> Self {
         Self {
@@ -48,7 +48,7 @@ mod test {
     fn log_event_merge_state_example() {
         let fields = vec!["body".to_string()];
 
-        let mut state = LogEventMergeState::new(otel_log_with_message("hel"));
+        let mut state = MergeState::new(otel_log_with_message("hel"));
         state.merge_in_next_event(otel_log_with_message("lo "), &fields);
         let merged_event = state.merge_in_final_event(otel_log_with_message("world"), &fields);
 

@@ -41,10 +41,6 @@ pub mod otlp;
 pub use otel_event::{OtelLog, OtelMetric, OtelSpan, json_to_any_value, string_value, int_value, vrl_value_to_any_value};
 pub use opentelemetry_proto::tonic::common::v1::any_value::Value as OtelValueKind;
 
-/// Backward-compat aliases.
-pub type OtelLogEvent = OtelLog;
-pub type OtelMetricEvent = OtelMetric;
-pub type OtelSpanEvent = OtelSpan;
 pub use otlp::{OtlpCodec, register_otlp_codec};
 pub use ser::{
     BufferFormat, BUFFER_FORMAT, EventEncodableMetadata, EventEncodableMetadataFlags,

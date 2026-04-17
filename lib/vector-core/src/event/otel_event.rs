@@ -758,6 +758,32 @@ impl OtelLog {
                             "span_id" if !self.record.span_id.is_empty() => {
                                 return Some(hex_encode(&self.record.span_id));
                             }
+                            "timestamp" => {
+                                // Fast-path only for explicit time_unix_nano.
+                                // The observed_time fallback + overflow attribute
+                                // logic is complex — fall through to legacy layout.
+                                if self.record.time_unix_nano != 0 {
+                                    let nanos = self.record.time_unix_nano;
+                                    let secs = (nanos / 1_000_000_000) as i64;
+                                    let nsecs = (nanos % 1_000_000_000) as u32;
+                                    if let Some(ts) = chrono::DateTime::from_timestamp(secs, nsecs) {
+                                        return Some(Value::Timestamp(ts));
+                                    }
+                                }
+                                // Fall through to legacy layout for complex cases
+                            }
+                            "source_type" => {
+                                if let Some(v) = self.get_source_type() {
+                                    return Some(v);
+                                }
+                                // Fall through — may be in record attributes
+                            }
+                            "host" => {
+                                if let Some(v) = self.get_host() {
+                                    return Some(v);
+                                }
+                                // Fall through
+                            }
                             _ => {} // fall through to legacy layout
                         }
                     }

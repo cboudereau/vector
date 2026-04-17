@@ -590,7 +590,7 @@ Status key: **DONE** / **PARTIAL** / **OPEN** / **BLOCKED**
 | # | Task | Status | Commit | Note |
 |---|------|--------|--------|------|
 | T15 | Phase B: Remove VRL aliases | **BLOCKED ON T16** | | Attempted and reverted (`77a4ce5`→`3502f78`). Cannot remove aliases from legacy layout without first eliminating the round-trip — 85 tests break because get/insert/remove/Serialize all go through the layout. **Must do T16 first.** |
-| T16 | Eliminate `to_value_legacy_layout`/`apply_value_legacy_layout` | **TRADE-OFF (TD-6)** | | Attempted fast-path bypass but `ValuePath` trait doesn't expose segment iteration needed for proto-direct access. Full elimination requires VRL crate changes to the path API. The round-trip is the correct abstraction layer until VRL paths can be matched against proto fields. **Blocked on VRL path API changes.** |
+| T16 | Eliminate `to_value_legacy_layout`/`apply_value_legacy_layout` | **IN PROGRESS** | `63f76f1` | **TD-6 was wrong** — `ValuePath::segment_iter()` IS available. Fast-path get/insert implemented for body, severity_text, severity_number, trace_id, span_id. Complex/nested paths still use round-trip. **Remaining:** extend fast-path to cover timestamp, source_type, host, attributes; add fast-path remove; eventually make all paths proto-direct. |
 
 #### Workstream 4: Runtime safety + correctness
 

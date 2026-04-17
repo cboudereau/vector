@@ -390,7 +390,7 @@ mod tests {
     use chrono::DateTime;
     use ordered_float::NotNan;
     use vector_common::btreemap;
-    use vector_core::event::{Event, OtelLog, Value};
+    use vector_core::event::{Event, OtelLog, ObjectMap, Value};
 
     use super::*;
 
@@ -484,7 +484,7 @@ mod tests {
             "quote" => Value::from("the \"quote\" should be escaped"),
             "bool" => Value::from(true),
             "other" => Value::from("data"),
-        }));
+        } as ObjectMap));
 
         let extensions = HashMap::from([
             (

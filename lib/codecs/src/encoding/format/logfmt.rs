@@ -54,6 +54,7 @@ mod tests {
     use bytes::BytesMut;
     use vector_core::event::{OtelLog, Value};
     use vrl::btreemap;
+    use vrl::value::ObjectMap;
 
     use super::*;
 
@@ -61,7 +62,7 @@ mod tests {
     fn serialize_logfmt() {
         let event = Event::Log(OtelLog::from(btreemap! {
             "foo" => Value::from("bar")
-        }));
+        } as ObjectMap));
         let mut serializer = LogfmtSerializer;
         let mut bytes = BytesMut::new();
 

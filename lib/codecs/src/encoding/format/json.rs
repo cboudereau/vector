@@ -121,7 +121,7 @@ mod tests {
     use bytes::{Bytes, BytesMut};
     use chrono::{TimeZone, Timelike, Utc};
     use vector_core::{
-        event::{OtelLog, Metric, MetricKind, MetricValue, OtelMetric, StatisticKind, Value},
+        event::{OtelLog, Metric, MetricKind, MetricValue, ObjectMap, OtelMetric, StatisticKind, Value},
         metric_tags,
     };
     use vrl::btreemap;
@@ -134,7 +134,7 @@ mod tests {
             "x" => Value::from("23"),
             "z" => Value::from(25),
             "a" => Value::from("0"),
-        }));
+        } as ObjectMap));
         let bytes = serialize(JsonSerializerConfig::default(), event);
 
         assert_eq!(bytes, r#"{"a":"0","x":"23","z":25}"#);
@@ -209,7 +209,7 @@ mod tests {
     fn serialize_equals_to_json_value() {
         let event = Event::Log(OtelLog::from(btreemap! {
             "foo" => Value::from("bar")
-        }));
+        } as ObjectMap));
         let mut serializer = JsonSerializerConfig::default().build();
         let mut bytes = BytesMut::new();
 
@@ -278,7 +278,7 @@ mod tests {
         use bytes::{Bytes, BytesMut};
         use chrono::{TimeZone, Timelike, Utc};
         use vector_core::{
-            event::{OtelLog, Metric, MetricKind, MetricValue, OtelMetric, StatisticKind, Value},
+            event::{OtelLog, Metric, MetricKind, MetricValue, ObjectMap, OtelMetric, StatisticKind, Value},
             metric_tags,
         };
         use vrl::btreemap;
@@ -295,7 +295,7 @@ mod tests {
         #[test]
         fn serialize_json_log() {
             let event = Event::Log(OtelLog::from(
-                btreemap! {"x" => Value::from("23"),"z" => Value::from(25),"a" => Value::from("0"),},
+                btreemap! {"x" => Value::from("23"),"z" => Value::from(25),"a" => Value::from("0"),} as ObjectMap,
             ));
             let bytes = serialize(get_pretty_json_config(), event);
             assert_eq!(
@@ -426,7 +426,7 @@ mod tests {
         #[test]
         #[ignore = "Metric round-trip through OtelMetric is lossy for Set/Histogram types"]
         fn serialize_equals_to_json_value() {
-            let event = Event::Log(OtelLog::from(btreemap! {"foo" => Value::from("bar")}));
+            let event = Event::Log(OtelLog::from(btreemap! {"foo" => Value::from("bar")} as ObjectMap));
             let mut serializer = get_pretty_json_config().build();
             let mut bytes = BytesMut::new();
             serializer.encode(event.clone(), &mut bytes).unwrap();

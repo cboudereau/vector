@@ -762,7 +762,7 @@ impl OtelLog {
     }
 
     /// Remove at `path`. If `prune` is true, empty parent objects along
-    /// the path are also removed. Empty parent objects along the path are also removed.
+    /// the path are also removed.
     pub fn remove_prune<'a>(
         &mut self,
         path: impl lookup::lookup_v2::TargetPath<'a>,

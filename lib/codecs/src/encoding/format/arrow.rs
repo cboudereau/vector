@@ -438,7 +438,7 @@ mod tests {
         for (key, value) in fields {
             log.insert(key, value.into());
         }
-        Event::Log(OtelLog::from_log_event(log))
+        Event::Log(log)
     }
 
     /// Assert a primitive value at a specific column and row
@@ -514,7 +514,7 @@ mod tests {
             log.insert("named_struct_field", Value::Object(named_tuple_value));
             log.insert("map_field", Value::Object(map_value));
 
-            let events = vec![Event::Log(OtelLog::from_log_event(log))];
+            let events = vec![Event::Log(log)];
 
             // Build schema with all supported types
             let struct_fields = arrow::datatypes::Fields::from(vec![
@@ -734,7 +734,7 @@ mod tests {
             log.insert("ts_micro", now);
             log.insert("ts_nano", now);
 
-            let events = vec![Event::Log(OtelLog::from_log_event(log))];
+            let events = vec![Event::Log(log)];
 
             let schema = SchemaRef::new(Schema::new(vec![
                 Field::new(

@@ -543,7 +543,7 @@ mod tests {
         )
         .unwrap();
         let log = create_simple_log();
-        let output = run_encode(config, Event::Log(OtelLog::from_log_event(log)));
+        let output = run_encode(config, Event::Log(log));
         let expected =
             "<14>1 2025-08-28T18:30:00.123456Z test-host.com vector - - - original message";
         assert_eq!(output, expected);
@@ -563,7 +563,7 @@ mod tests {
         )
         .unwrap();
         let log = create_test_log();
-        let output = run_encode(config, Event::Log(OtelLog::from_log_event(log)));
+        let output = run_encode(config, Event::Log(log));
         let expected = "<26>1 2025-08-28T18:30:00.123456Z test-host.com my-app 12345 req-abc-789 [metrics retries=\"3\"] original message";
         assert_eq!(output, expected);
     }
@@ -582,7 +582,7 @@ mod tests {
         )
         .unwrap();
         let log = create_test_log();
-        let output = run_encode(config, Event::Log(OtelLog::from_log_event(log)));
+        let output = run_encode(config, Event::Log(log));
         let expected = "<26>Aug 28 18:30:00 test-host.com my-app[12345]: [metrics retries=\"3\"] original message";
         assert_eq!(output, expected);
     }
@@ -646,7 +646,7 @@ mod tests {
             "A\nB\tC, Привіт D, E\u{0007}F", //newline, tab, unicode
         );
 
-        let output = run_encode(config, Event::Log(OtelLog::from_log_event(log)));
+        let output = run_encode(config, Event::Log(log));
         let expected_message = "A B C,        D, E F";
         assert!(output.ends_with(expected_message));
     }
@@ -700,7 +700,7 @@ mod tests {
         );
         log.insert(event_path!("proc_id"), "1234567890");
 
-        let output = run_encode(config, Event::Log(OtelLog::from_log_event(log)));
+        let output = run_encode(config, Event::Log(log));
         let expected_tag = "this-is-a-very-very-long-applic:";
         assert!(output.contains(expected_tag));
     }
@@ -719,7 +719,7 @@ mod tests {
         .unwrap();
 
         let log = create_simple_log();
-        let output = run_encode(config, Event::Log(OtelLog::from_log_event(log)));
+        let output = run_encode(config, Event::Log(log));
 
         let expected =
             "<14>1 2025-08-28T18:30:00.123456Z test-host.com vector - - - original message";
@@ -743,7 +743,7 @@ mod tests {
         log.insert(event_path!("fac"), "");
         log.insert(event_path!("sev"), "invalid_severity_name");
 
-        let output = run_encode(config, Event::Log(OtelLog::from_log_event(log)));
+        let output = run_encode(config, Event::Log(log));
 
         let expected_pri = "<14>";
         assert!(output.starts_with(expected_pri));
@@ -769,7 +769,7 @@ mod tests {
         log.insert(event_path!("body"), "");
         log.insert(event_path!("structured_data"), value!({}));
 
-        let output = run_encode(config, Event::Log(OtelLog::from_log_event(log)));
+        let output = run_encode(config, Event::Log(log));
         let expected = "<14>1 2025-08-28T18:30:00.123456Z test-host.com vector - - -";
         assert_eq!(output, expected);
     }
@@ -812,7 +812,7 @@ mod tests {
         .unwrap();
         let log = OtelLog::from("");
 
-        let output = run_encode(config, Event::Log(OtelLog::from_log_event(log)));
+        let output = run_encode(config, Event::Log(log));
         let expected_suffix = "vector - - -";
         assert!(output.starts_with("<14>1"));
         assert!(output.ends_with(expected_suffix));
@@ -842,7 +842,7 @@ mod tests {
             [LogNamespace::Vector],
         );
         let schema = schema.with_meaning(parse_target_path("syslog.service").unwrap(), "service");
-        let mut event = Event::Log(OtelLog::from_log_event(log));
+        let mut event = Event::Log(log);
         event
             .metadata_mut()
             .set_schema_definition(&Arc::new(schema));

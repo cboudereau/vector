@@ -84,6 +84,7 @@ mod tests {
     use indoc::indoc;
     use vector_core::event::{OtelLog, Value};
     use vrl::btreemap;
+    use vrl::value::ObjectMap;
 
     use super::*;
 
@@ -91,7 +92,7 @@ mod tests {
     fn serialize_avro() {
         let event = Event::Log(OtelLog::from(btreemap! {
             "foo" => Value::from("bar")
-        }));
+        } as ObjectMap));
         let schema = indoc! {r#"
             {
                 "type": "record",

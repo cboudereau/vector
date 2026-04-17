@@ -589,7 +589,7 @@ Status key: **DONE** / **PARTIAL** / **OPEN** / **BLOCKED**
 
 | # | Task | Status | Commit | Note |
 |---|------|--------|--------|------|
-| T15 | Phase B: Remove VRL aliases (`.message`→`.body`, etc.) | **APPROVED** | | User approved breaking change. ~339 `.message` + ~255 `.timestamp` references to update. `vector vrl-migrate` tool exists. **Next major campaign.** |
+| T15 | Phase B: Remove VRL aliases | **IN PROGRESS** | `77a4ce5` | **Done:** resource hoisting removed (`.source_type`, `.host` no longer hoisted to top-level). `time_unix_nano` + `observed_time_unix_nano` added as OTel-native fields. **Remaining:** remove `"timestamp"` alias (keep only `time_unix_nano`), update write-back path, fix ~594 test references. |
 | T16 | Eliminate `to_value_legacy_layout`/`apply_value_legacy_layout` | **APPROVED** | | After T15. Rewrite OtelLog insert/get/remove to operate on proto directly. Fixes scope loss, observed_time, O(n) get. **Deepest architectural change.** |
 
 #### Workstream 4: Runtime safety + correctness

@@ -922,7 +922,12 @@ impl Target for VrlTarget {
                             ["name"] => { event.metric_mut().name = String::new(); }
                             ["description"] => { event.metric_mut().description = String::new(); }
                             ["unit"] => { event.metric_mut().unit = String::new(); }
-                            _ => {} // other paths modify projection only
+                            ["resource"] => { *event.resource_mut() = Default::default(); }
+                            ["scope"] => { event.set_scope(Default::default()); } // sets Some(empty)
+                            ["attributes", attr_key] => {
+                                event.remove_data_point_attribute(attr_key);
+                            }
+                            _ => {} // data point sub-paths: projection only
                         }
                     }
                     Ok(removed)

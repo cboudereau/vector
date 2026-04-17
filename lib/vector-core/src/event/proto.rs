@@ -359,11 +359,6 @@ impl From<super::OtelMetric> for WithMetadata<Metric> {
     }
 }
 
-impl From<super::Metric> for Metric {
-    fn from(metric: super::Metric) -> Self {
-        WithMetadata::<Self>::from(metric).data
-    }
-}
 
 impl From<super::MetricValue> for MetricValue {
     fn from(value: super::MetricValue) -> Self {
@@ -652,33 +647,6 @@ mod tests {
         assert_eq!(
             round_tripped.get(vrl::event_path!("key")).and_then(|v| v.as_str().map(|s| s.into_owned())),
             Some("value".to_string()),
-        );
-    }
-
-    /// Verify that From<OtelMetric> and From<Metric> produce identical proto
-    /// bytes for the same logical metric.
-    #[test]
-    fn otel_metric_proto_matches_legacy_metric_proto() {
-        let metric = Metric::new(
-            "test_counter",
-            MetricKind::Incremental,
-            MetricValue::Counter { value: 42.0 },
-        )
-        .with_namespace(Some("ns"))
-        .with_tags(Some(crate::metric_tags!("env" => "prod")));
-
-        // Path A: Metric -> proto
-        let via_legacy = WithMetadata::<super::Metric>::from(metric.clone());
-
-        // Path B: Metric -> OtelMetric -> proto
-        let (s, d, md) = metric.into_parts();
-        let otel = OtelMetric::from_metric_parts(s, d, md);
-        let via_otel = WithMetadata::<super::Metric>::from(otel);
-
-        assert_eq!(
-            via_legacy.data.encode_to_vec(),
-            via_otel.data.encode_to_vec(),
-            "OtelMetric proto encoding must match legacy Metric proto encoding"
         );
     }
 

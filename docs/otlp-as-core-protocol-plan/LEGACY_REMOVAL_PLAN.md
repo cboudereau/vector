@@ -573,15 +573,15 @@ Status key: **DONE** / **PARTIAL** / **OPEN** / **BLOCKED**
 | T1 | Inline `from_legacy_metric` into `from_metric_parts` | **DONE** | `727c801` | 250-line body moved; `from_legacy_metric` is now a 3-line delegate |
 | T2 | Proto decode bypasses Metric struct | **DONE** | `727c801` | Added `From<proto::Metric> for OtelMetric` via `decode_metric_parts` |
 | T3 | MetricSet/Normalizer: remove Metric dependency (was B3) | **TRADE-OFF** | `5cd264b` | External OTel API migrated. **Internal methods kept using Metric by design** — the `MetricNormalize` trait (10 impls across sink normalizers) operates on `Metric` as an internal detail. No public API exposes it. Changing the trait would ripple to 10 files for zero user-facing benefit. Metric struct demoted to internal normalizer implementation detail. |
-| T4 | Prometheus collector: `encode_metric(&Metric)` → tuples | **OPEN** | | ~50 lines, blocked on T3 |
-| T5 | Prometheus exporter: Metric aggregation logic | **OPEN** | | Coupled to T3 |
-| T6 | Split iterator: `AggregatedSummarySplitter` | **OPEN** | | ~70 lines, blocked on T3 |
+| T4 | Prometheus collector: `encode_metric(&Metric)` | **TD-1** | | Part of normalizer pipeline — Metric stays as internal type |
+| T5 | Prometheus exporter: Metric aggregation logic | **TD-1** | | Part of normalizer pipeline — Metric stays as internal type |
+| T6 | Split iterator: `AggregatedSummarySplitter` | **TD-1** | | Part of normalizer pipeline — Metric stays as internal type |
 | T7 | Sink/transform test migration (137 `from_legacy_metric`) | **DONE** | `4a56724`..`656da3c` | ALL 137 sites migrated to `from_metric_parts`. Zero callers remain. |
 | T8 | VRL metrics → OtelMetric | **DONE** | `4a56724` | MetricsStorage stores `Vec<OtelMetric>`, added `tag_matches()`, 29 test sites wrapped |
 | T9 | Lua bindings (`lua/metric.rs`, 17 sites) | **DONE** | `8a77309` | `LuaMetric` holds `(MetricSeries, MetricData)` directly. `FromLua for Metric` kept (trait constraint). |
-| T10 | Delete proto encode `From<super::Metric>` | **OPEN** | | Trivial — delete dead code after T1-T9 |
+| T10 | Delete proto encode `From<super::Metric>` | **OPEN** | | Only caller is parity test at proto.rs:671. Can delete both impls + test. |
 | T11 | OtelMetric parity tests (15 sites in `otel_event.rs`) | **DONE** | `656da3c` | 13 call sites migrated, 5 test functions renamed |
-| T12 | Metric struct internal tests (30 sites in `metric/mod.rs`) | **OPEN** | | Rewrite to test `MetricData` methods directly |
+| T12 | Metric struct internal tests (30 sites in `metric/mod.rs`) | **TD-1** | | Metric stays as internal type — tests remain valid |
 | T13 | Demote Metric struct to internal normalizer type | **TRADE-OFF** | | `from_legacy_metric` DELETED (zero references). Metric struct kept as internal-only type for MetricNormalize trait pipeline. Not exposed in any public API. 336 `Metric::new` remain in test code — these construct test inputs for the normalizer pipeline. |
 | T14 | `Arbitrary` property tests bypass `from_legacy_metric` | **DONE** | `ac88015` | `array.rs` and `test/common.rs` use `into_parts` + `from_metric_parts` |
 

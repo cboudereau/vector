@@ -46,7 +46,7 @@ where
 
         input
             .filter_map(|event| {
-                let log = event.into_log_coerce();
+                let log = event.into_log();
                 let processed = process_log(log, self.partition_key_field.as_ref());
 
                 future::ready(processed)

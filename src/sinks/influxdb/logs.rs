@@ -252,7 +252,7 @@ struct InfluxDbLogsEncoder {
 
 impl HttpEventEncoder<BytesMut> for InfluxDbLogsEncoder {
     fn encode_event(&mut self, event: Event) -> Option<BytesMut> {
-        let mut log = event.into_log_coerce();
+        let mut log = event.into_log();
         // If the event isn't an object (`. = "foo"`), inserting or renaming will result in losing
         // the original value that was assigned to the root. To avoid this we intentionally rename
         // the path that points to "body" such that it has a dedicated key.

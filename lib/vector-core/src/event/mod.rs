@@ -153,16 +153,6 @@ impl Event {
         }
     }
 
-    /// Backward-compat alias for `try_into_log`.
-    pub fn try_into_log_coerce(self) -> Option<OtelLog> {
-        self.try_into_log()
-    }
-
-    /// Backward-compat alias for `into_log`.
-    pub fn into_log_coerce(self) -> OtelLog {
-        self.into_log()
-    }
-
     /// Return self as an `OtelLog` if possible.
     pub fn maybe_as_log(&self) -> Option<&OtelLog> {
         match self {

@@ -290,7 +290,7 @@ impl Encoder<Event> for CefSerializer {
     type Error = vector_common::Error;
 
     fn encode(&mut self, event: Event, buffer: &mut BytesMut) -> Result<(), Self::Error> {
-        let log = event.into_log_coerce();
+        let log = event.into_log();
 
         let severity: u8 = match get_log_event_value(&log, &self.severity).parse() {
             Err(err) => {

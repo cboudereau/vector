@@ -276,7 +276,7 @@ impl Reduce {
             None => (false, event),
         };
 
-        let otel_log = event.into_log_coerce();
+        let otel_log = event.into_log();
         let discriminant = Discriminant::from_otel_log(&otel_log, &self.group_by);
 
         if let Some(max_events) = self.max_events {

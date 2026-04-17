@@ -252,7 +252,7 @@ fn user_or_namespaced_path(
 }
 
 pub fn process_log(event: Event, data: &HecLogData) -> HecProcessedEvent {
-    let mut log = event.into_log_coerce();
+    let mut log = event.into_log();
 
     let sourcetype = data
         .sourcetype

@@ -166,7 +166,7 @@ impl TryFrom<Vec<Event>> for EventsApiModel {
         let events_array: Vec<ObjectMap> = buf_events
             .into_iter()
             .filter_map(|event| {
-                let Some(log) = event.try_into_log_coerce() else {
+                let Some(log) = event.try_into_log() else {
                     num_non_log_events += 1;
                     return None;
                 };
@@ -285,7 +285,7 @@ impl TryFrom<Vec<Event>> for LogsApiModel {
         let logs_array: Vec<LogMessage> = buf_events
             .into_iter()
             .filter_map(|event| {
-                let Some(mut otel_log) = event.try_into_log_coerce() else {
+                let Some(mut otel_log) = event.try_into_log() else {
                     num_non_log_events += 1;
                     return None;
                 };

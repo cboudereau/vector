@@ -147,7 +147,7 @@ fn merge_partial_events_with_custom_expiration(
 
     map_with_expiration(
         state,
-        stream.map(|e| e.into_log_coerce()),
+        stream.map(|e| e.into_log()),
         Duration::from_secs(1),
         move |state: &mut PartialEventMergeState,
               otel_log: OtelLog,

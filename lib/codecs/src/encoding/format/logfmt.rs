@@ -40,7 +40,7 @@ impl Encoder<Event> for LogfmtSerializer {
     type Error = vector_common::Error;
 
     fn encode(&mut self, event: Event, buffer: &mut BytesMut) -> Result<(), Self::Error> {
-        let log = event.into_log_coerce();
+        let log = event.into_log();
         let val = log.value();
         let string = encode_logfmt::encode_value(&val)?;
         buffer.extend_from_slice(string.as_bytes());

@@ -582,21 +582,21 @@ Status key: **DONE** / **PARTIAL** / **OPEN** / **BLOCKED**
 | T10 | Delete proto encode `From<super::Metric>` parity test | **DONE** | `5a673ca` | Deleted parity test + `From<super::Metric> for Metric` (zero callers). `From<super::Metric> for WithMetadata` kept (trait impl, no dead_code warning). |
 | T11 | OtelMetric parity tests (15 sites in `otel_event.rs`) | **DONE** | `656da3c` | 13 call sites migrated, 5 test functions renamed |
 | T12 | Metric struct internal tests (30 sites in `metric/mod.rs`) | **TD-1** | | Metric stays as internal type — tests remain valid |
-| T13 | Demote Metric struct to internal normalizer type | **TRADE-OFF** | | `from_legacy_metric` DELETED (zero references). Metric struct kept as internal-only type for MetricNormalize trait pipeline. Not exposed in any public API. 336 `Metric::new` remain in test code — these construct test inputs for the normalizer pipeline. |
+| T13 | Delete Metric struct — refactor MetricNormalize trait | **APPROVED** | | User approved full deletion. Requires refactoring `MetricNormalize` trait (10 impls) + MetricSet internals to use `(MetricSeries, MetricData, EventMetadata)` tuples. ~336 `Metric::new` test sites. **Next major campaign after T15/T16.** |
 | T14 | `Arbitrary` property tests bypass `from_legacy_metric` | **DONE** | `ac88015` | `array.rs` and `test/common.rs` use `into_parts` + `from_metric_parts` |
 
 #### Workstream 3: Eliminate legacy field model (VRL aliases + layout round-trip)
 
 | # | Task | Status | Commit | Note |
 |---|------|--------|--------|------|
-| T15 | Phase B: Remove VRL aliases (`.message`→`.body`, etc.) | **BLOCKED** | | Product decision required. `vector vrl-migrate` tool exists. |
-| T16 | Eliminate `to_value_legacy_layout`/`apply_value_legacy_layout` | **BLOCKED** | | Blocked on T15. Root cause of: scope loss, `observed_time` zeroing, O(n) get, resource/scope asymmetry |
+| T15 | Phase B: Remove VRL aliases (`.message`→`.body`, etc.) | **APPROVED** | | User approved breaking change. ~339 `.message` + ~255 `.timestamp` references to update. `vector vrl-migrate` tool exists. **Next major campaign.** |
+| T16 | Eliminate `to_value_legacy_layout`/`apply_value_legacy_layout` | **APPROVED** | | After T15. Rewrite OtelLog insert/get/remove to operate on proto directly. Fixes scope loss, observed_time, O(n) get. **Deepest architectural change.** |
 
 #### Workstream 4: Runtime safety + correctness
 
 | # | Task | Status | Commit | Note |
 |---|------|--------|--------|------|
-| T17 | Implement real `Deserialize` for OTel types | **DONE** (log+span) / **TD-4** (metric) | `7040e7b` | OtelLog + OtelSpan: deserialize via Value→from_value_map. OtelMetric: stub kept — no production caller, complex OTLP JSON, disk buffers use proto not serde. |
+| T17 | Implement real `Deserialize` for OTel types | **DONE** | `7040e7b`, `acf50cc` | OtelLog/OtelSpan: Value→from_value_map. OtelMetric: OTLP JSON→proto via otel_json parse helpers. All 3 types have working Deserialize. |
 | T19 | Fix VrlTarget::OtelMetric remove (write-back) | **DONE** | `7040e7b`+ | Write-back for name, description, unit, resource, scope, attributes — same paths as target_insert. Returns removed value. |
 
 #### Workstream 5: Cleanup

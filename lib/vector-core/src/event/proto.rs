@@ -103,48 +103,20 @@ impl From<Trace> for Event {
     }
 }
 
-/// Decode proto metadata into `EventMetadata`, supporting both the current
-/// `metadata_full` field and the deprecated `metadata` field for
-/// backwards-compatible disk buffer reads.
-fn decode_proto_metadata(
-    metadata_full: Option<Metadata>,
-    metadata: Option<Value>,
-) -> EventMetadata {
-    #[allow(deprecated)]
-    metadata_full
-        .map(Into::into)
-        .or_else(|| {
-            metadata
-                .and_then(decode_value)
-                .map(EventMetadata::default_with_value)
-        })
-        .unwrap_or_default()
-}
-
 impl From<Log> for super::OtelLog {
     fn from(log: Log) -> Self {
-        #[allow(deprecated)]
-        let metadata = decode_proto_metadata(log.metadata_full, log.metadata);
-        let value = if let Some(v) = log.value {
-            decode_value(v).unwrap_or(VrlValue::Null)
-        } else {
-            // Backwards compat: only `value` should be set; fall back to
-            // decoding the flat `fields` map produced by older disk buffers.
-            let fields = log
-                .fields
-                .into_iter()
-                .filter_map(|(k, v)| decode_value(v).map(|value| (k.into(), value)))
-                .collect::<ObjectMap>();
-            VrlValue::Object(fields)
-        };
+        let metadata = log.metadata_full.map(Into::into).unwrap_or_default();
+        let value = log
+            .value
+            .and_then(decode_value)
+            .unwrap_or(VrlValue::Null);
         super::OtelLog::from_value_map(value, metadata)
     }
 }
 
 impl From<Trace> for super::OtelSpan {
     fn from(trace: Trace) -> Self {
-        #[allow(deprecated)]
-        let metadata = decode_proto_metadata(trace.metadata_full, trace.metadata);
+        let metadata = trace.metadata_full.map(Into::into).unwrap_or_default();
         let fields = trace
             .fields
             .into_iter()
@@ -164,52 +136,23 @@ impl From<MetricValue> for super::MetricValue {
             MetricValue::Set(set) => Self::Set {
                 values: set.values.into_iter().collect(),
             },
-            MetricValue::Distribution1(dist) => Self::Distribution {
-                statistic: dist.statistic().into(),
-                samples: super::metric::zip_samples(dist.values, dist.sample_rates),
-            },
             MetricValue::Distribution2(dist) => Self::Distribution {
                 statistic: dist.statistic().into(),
                 samples: dist.samples.into_iter().map(Into::into).collect(),
-            },
-            MetricValue::AggregatedHistogram1(hist) => Self::AggregatedHistogram {
-                buckets: super::metric::zip_buckets(
-                    hist.buckets,
-                    hist.counts.iter().map(|h| u64::from(*h)),
-                ),
-                count: u64::from(hist.count),
-                sum: hist.sum,
-            },
-            MetricValue::AggregatedHistogram2(hist) => Self::AggregatedHistogram {
-                buckets: hist.buckets.into_iter().map(Into::into).collect(),
-                count: u64::from(hist.count),
-                sum: hist.sum,
             },
             MetricValue::AggregatedHistogram3(hist) => Self::AggregatedHistogram {
                 buckets: hist.buckets.into_iter().map(Into::into).collect(),
                 count: hist.count,
                 sum: hist.sum,
             },
-            MetricValue::AggregatedSummary1(summary) => Self::AggregatedSummary {
-                quantiles: super::metric::zip_quantiles(summary.quantiles, summary.values),
-                count: u64::from(summary.count),
-                sum: summary.sum,
-            },
-            MetricValue::AggregatedSummary2(summary) => Self::AggregatedSummary {
-                quantiles: summary.quantiles.into_iter().map(Into::into).collect(),
-                count: u64::from(summary.count),
-                sum: summary.sum,
-            },
             MetricValue::AggregatedSummary3(summary) => Self::AggregatedSummary {
                 quantiles: summary.quantiles.into_iter().map(Into::into).collect(),
                 count: summary.count,
                 sum: summary.sum,
             },
-            MetricValue::Sketch(_sketch) => {
-                // Sketch variant removed from core in Step 3 of OTLP migration.
-                // Old protobuf messages with sketch data decode to a zero gauge.
-                Self::Gauge { value: 0.0 }
-            }
+            // Old proto variants are no longer supported.
+            // Buffers must be drained before upgrading to this version.
+            _ => Self::Gauge { value: 0.0 },
         }
     }
 }
@@ -232,7 +175,7 @@ impl From<Metric> for super::Metric {
                 .expect("invalid timestamp")
         });
 
-        let mut tags = MetricTags(
+        let tags = MetricTags(
             metric
                 .tags_v2
                 .into_iter()
@@ -248,25 +191,11 @@ impl From<Metric> for super::Metric {
                 })
                 .collect(),
         );
-        // The current Vector encoding includes copies of the "single" values of tags in `tags_v2`
-        // above. This `extend` will re-add those values, forcing them to become the last added in
-        // the value set.
-        tags.extend(metric.tags_v1);
         let tags = (!tags.is_empty()).then_some(tags);
 
         let value = super::MetricValue::from(metric.value.unwrap());
 
-        #[allow(deprecated)]
-        let metadata = metric
-            .metadata_full
-            .map(Into::into)
-            .or_else(|| {
-                metric
-                    .metadata
-                    .and_then(decode_value)
-                    .map(EventMetadata::default_with_value)
-            })
-            .unwrap_or_default();
+        let metadata = metric.metadata_full.map(Into::into).unwrap_or_default();
 
         Self::new_with_metadata(name, kind, value, metadata)
             .with_namespace(namespace)
@@ -289,28 +218,13 @@ impl From<EventWrapper> for super::Event {
 }
 
 
-/// Encode a Value + EventMetadata into a proto Log with metadata.
-///
-/// Due to backwards compatibility, "fields" must not be empty (decodes as
-/// empty array). A dummy value is placed when the root is not an object.
+/// Encode a Value + EventMetadata into a proto Log.
 fn encode_log_proto(value: VrlValue, metadata: super::EventMetadata) -> WithMetadata<Log> {
-    let (fields, value) = if let VrlValue::Object(fields) = value {
-        let fields = fields
-            .into_iter()
-            .map(|(k, v)| (k.into(), encode_value(v)))
-            .collect::<BTreeMap<_, _>>();
-        (fields, None)
-    } else {
-        let mut dummy_fields = BTreeMap::new();
-        dummy_fields.insert(".".to_owned(), encode_value(VrlValue::Null));
-        (dummy_fields, Some(encode_value(value)))
-    };
-
     #[allow(deprecated)]
     let data = Log {
-        fields,
-        value,
-        metadata: Some(encode_value(metadata.value().clone())),
+        fields: BTreeMap::new(),
+        value: Some(encode_value(value)),
+        metadata: None,
         metadata_full: Some(metadata.clone().into()),
     };
 
@@ -326,7 +240,7 @@ impl From<super::OtelLog> for WithMetadata<Log> {
     }
 }
 
-/// Encode an ObjectMap + EventMetadata into a proto Trace with metadata.
+/// Encode an ObjectMap + EventMetadata into a proto Trace.
 fn encode_trace_proto(fields: ObjectMap, metadata: super::EventMetadata) -> WithMetadata<Trace> {
     let fields = fields
         .into_iter()
@@ -336,7 +250,7 @@ fn encode_trace_proto(fields: ObjectMap, metadata: super::EventMetadata) -> With
     #[allow(deprecated)]
     let data = Trace {
         fields,
-        metadata: Some(encode_value(metadata.value().clone())),
+        metadata: None,
         metadata_full: Some(metadata.clone().into()),
     };
 
@@ -369,15 +283,6 @@ fn encode_metric_proto(
 
     let metric = MetricValue::from(data.value);
 
-    let tags_v1 = tags
-        .0
-        .iter()
-        .filter_map(|(tag, values)| {
-            values
-                .as_single()
-                .map(|value| (tag.clone(), value.to_string()))
-        })
-        .collect();
     let tags_v2 = tags
         .0
         .into_iter()
@@ -397,12 +302,12 @@ fn encode_metric_proto(
         name,
         namespace,
         timestamp,
-        tags_v1,
+        tags_v1: BTreeMap::new(),
         tags_v2,
         kind,
         interval_ms,
         value: Some(metric),
-        metadata: Some(encode_value(metadata.value().clone())),
+        metadata: None,
         metadata_full: Some(metadata.clone().into()),
     };
 

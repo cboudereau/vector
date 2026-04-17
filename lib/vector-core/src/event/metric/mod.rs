@@ -567,6 +567,7 @@ macro_rules! quantiles {
     }
 }
 
+#[cfg(feature = "lua")]
 #[inline]
 pub(crate) fn zip_samples(
     values: impl IntoIterator<Item = f64>,
@@ -579,6 +580,7 @@ pub(crate) fn zip_samples(
         .collect()
 }
 
+#[cfg(feature = "lua")]
 #[inline]
 pub(crate) fn zip_buckets(
     limits: impl IntoIterator<Item = f64>,
@@ -591,6 +593,7 @@ pub(crate) fn zip_buckets(
         .collect()
 }
 
+#[cfg(feature = "lua")]
 #[inline]
 pub(crate) fn zip_quantiles(
     quantiles: impl IntoIterator<Item = f64>,

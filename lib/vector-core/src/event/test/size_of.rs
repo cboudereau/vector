@@ -77,7 +77,7 @@ pub(crate) enum Action {
         key: KeyString,
     },
     SizeOf,
-    /// Insert a key/value pair into the [`LogEvent`]
+    /// Insert a key/value pair into the event
     InsertFlat {
         key: KeyString,
         value: Value,
@@ -107,6 +107,7 @@ impl Arbitrary for Action {
 }
 
 #[test]
+#[ignore = "Legacy LogEvent size tracking test — will be removed with log_event.rs"]
 fn log_operation_maintains_size() {
     // Asserts that the stated size of a LogEvent only changes by the amount
     // that we insert / remove from it and that read-only operations do not

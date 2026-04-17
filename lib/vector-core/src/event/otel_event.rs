@@ -20,7 +20,7 @@ use vector_common::{
 use vrl::value::{ObjectMap, Value};
 
 use super::{
-    BatchNotifier, EstimatedJsonEncodedSizeOf, EventFinalizer, EventMetadata, LogEvent,
+    BatchNotifier, EstimatedJsonEncodedSizeOf, EventFinalizer, EventMetadata,
 };
 
 /// Convert a JSON value to an OTel `AnyValue`.
@@ -390,15 +390,6 @@ impl OtelLog {
         }
     }
 
-    /// Convert a legacy `LogEvent` into an `OtelLog`.
-    ///
-    /// Thin wrapper over `from_value_map`/`apply_value_legacy_layout` — see
-    /// that method for the full field-routing contract.
-    pub fn from_log_event(log: LogEvent) -> Self {
-        let (value, metadata) = log.into_parts();
-        Self::from_value_map(value, metadata)
-    }
-
     /// Create an `OtelLog` from raw bytes, setting `record.body` to a string value.
     pub fn from_bytes(bytes: bytes::Bytes) -> Self {
         let body_value = match std::str::from_utf8(&bytes) {
@@ -448,8 +439,8 @@ impl OtelLog {
     }
 
     /// Build an `OtelLog` from a `tracing::Event` — the same semantics as
-    /// `LogEvent::from(&tracing::Event)` but without the intermediate
-    /// `LogEvent`. Accumulates fields via the `tracing::field::Visit`
+    /// Converts a `tracing::Event` directly into an `OtelLog`.
+    /// Accumulates fields via the `tracing::field::Visit`
     /// trait into a single `ObjectMap`, then converts to `OtelLog` once
     /// to amortize the legacy-layout round-trip.
     pub fn from_tracing_event(event: &tracing::Event<'_>) -> Self {
@@ -729,7 +720,7 @@ impl OtelLog {
     }
 
     /// Get a field value by path.
-    /// Builds a Value tree matching the legacy layout, without constructing LogEvent.
+    /// Builds a Value tree matching the legacy layout, without intermediate conversion.
     pub fn get<'a>(&self, path: impl lookup::lookup_v2::TargetPath<'a>) -> Option<Value> {
         match path.prefix() {
             lookup::PathPrefix::Event => {
@@ -743,7 +734,7 @@ impl OtelLog {
     }
 
     /// Insert a field value by path.
-    /// Builds a Value, inserts, writes back — without constructing LogEvent.
+    /// Builds a Value, inserts, writes back — without intermediate conversion.
     pub fn insert<'a>(
         &mut self,
         path: impl lookup::lookup_v2::TargetPath<'a>,
@@ -771,7 +762,7 @@ impl OtelLog {
     }
 
     /// Remove at `path`. If `prune` is true, empty parent objects along
-    /// the path are also removed. Same semantics as `LogEvent::remove_prune`.
+    /// the path are also removed. Empty parent objects along the path are also removed.
     pub fn remove_prune<'a>(
         &mut self,
         path: impl lookup::lookup_v2::TargetPath<'a>,
@@ -821,7 +812,7 @@ impl OtelLog {
     }
 
     /// Insert at `path` only if `path` is Some. Convenience wrapper around
-    /// `insert` mirroring `LogEvent::maybe_insert`.
+    /// `insert` that only inserts when the path is `Some`.
     pub fn maybe_insert<'a>(
         &mut self,
         path: Option<impl lookup::lookup_v2::TargetPath<'a>>,
@@ -833,7 +824,7 @@ impl OtelLog {
     }
 
     /// Merge fields from `incoming` into this log, concatenating byte
-    /// values for specified fields. Same semantics as `LogEvent::merge`.
+    /// values for specified fields. Merges by concatenating string values for specified fields.
     pub fn merge(&mut self, mut incoming: OtelLog, fields: &[impl AsRef<str>]) {
         for field in fields {
             let field_path = vrl::event_path!(field.as_ref());
@@ -853,7 +844,7 @@ impl OtelLog {
         self.metadata.merge(incoming.metadata);
     }
 
-    /// Build a Value tree with the legacy layout — no LogEvent constructed.
+    /// Build a Value tree with the legacy layout — no intermediate conversion.
     /// This ensures callers see the same field names and types.
     pub fn to_value_legacy_layout(&self) -> Value {
         let mut map = ObjectMap::new();
@@ -931,7 +922,7 @@ impl OtelLog {
     }
 
     /// Construct an OtelLog from a legacy-layout Value + metadata.
-    /// Routes fields exactly like from_log_event: body, timestamp, source_type/host
+    /// Routes fields into OTel structure: body, timestamp, source_type/host
     /// → resource attrs, everything else → record.attributes. Clears scope.
     pub fn from_value_map(value: Value, metadata: EventMetadata) -> Self {
         let mut out = Self {
@@ -1075,10 +1066,10 @@ impl OtelLog {
         self.scope = None;
     }
 
-    /// Get the timestamp from the event (LogEvent-compatible bridge).
+    /// Get the timestamp from the event.
     ///
     /// In Vector namespace, delegates to the schema-meaning-aware
-    /// `LogEvent::get_timestamp` so that semantic meanings are respected.
+    /// Respects semantic meanings for timestamp resolution.
     /// String values are parsed as RFC 3339 timestamps (since OTLP
     /// `AnyValue` has no native timestamp type).
     /// In Legacy namespace, prefers `time_unix_nano` (event time), falls
@@ -1123,7 +1114,7 @@ impl OtelLog {
         ts
     }
 
-    /// Check if a field exists (LogEvent-compatible bridge).
+    /// Check if a field exists.
     pub fn contains<'a>(&self, path: impl lookup::lookup_v2::TargetPath<'a>) -> bool {
         self.get(path).is_some()
     }
@@ -1164,7 +1155,7 @@ impl OtelLog {
     }
 
     /// Iterate all event fields (flattened, dotted keys). Owned values.
-    /// Equivalent of `LogEvent::all_event_fields()` but returns owned values
+    /// Iterator over all event fields, returning owned values
     /// since OtelLog builds the field tree dynamically from proto.
     pub fn all_event_fields(&self) -> Option<Vec<(vrl::value::KeyString, Value)>> {
         let fields = self.convert_to_fields();
@@ -1544,7 +1535,7 @@ impl OtelSpan {
     // Field access methods (same pattern as OtelLog — see comment above)
     // -----------------------------------------------------------------------
 
-    /// Build a Value tree with the legacy layout — no LogEvent constructed.
+    /// Build a Value tree with the legacy layout — no intermediate conversion.
     pub fn to_value_legacy_layout(&self) -> Value {
         let mut map = ObjectMap::new();
 
@@ -3574,10 +3565,10 @@ mod tests {
 
     #[test]
     fn from_metric_for_event_produces_otel_metric() {
-        use crate::event::{Event, Metric, MetricKind, MetricValue};
+        use crate::event::{Event, Metric, MetricKind, MetricValue, OtelMetric};
 
         let m = Metric::new("test", MetricKind::Absolute, MetricValue::Gauge { value: 1.0 });
-        let event: Event = m.into();
+        let event: Event = Event::Metric(OtelMetric::from_legacy_metric(m));
         assert!(matches!(event, Event::Metric(_)), "expected Event::Metric, got {event:?}");
 
         let metric = event.try_into_otel_metric().expect("should convert back");
@@ -3590,7 +3581,7 @@ mod tests {
         use crate::config::LogNamespace;
 
         // Create an OtelLog and insert a field at a custom path
-        let mut event = OtelLog::from_log_event(LogEvent::from("test body"));
+        let mut event = OtelLog::from("test body");
         event.insert(
             &vrl::path::parse_target_path("@timestamp").unwrap(),
             Value::Bytes("2001-02-03T04:05:06Z".into()),
@@ -3790,19 +3781,13 @@ mod tests {
     }
 
     #[test]
-    fn from_tracing_event_matches_log_event() {
-        // Parity check: OtelLog::from_tracing_event must produce the same
-        // field shape as LogEvent::from(&tracing::Event) for src/trace.rs
-        // to be a drop-in replacement. Covers standard metadata (kind,
-        // level, module_path, target) plus the timestamp field.
-        use crate::event::LogEvent;
+    fn from_tracing_event_produces_expected_fields() {
+        // Verify OtelLog::from_tracing_event produces the expected field shape
+        // (standard metadata: kind, level, module_path, target, plus timestamp).
         use tracing::info;
         use tracing_subscriber::{Layer, layer::Context, prelude::*, registry::LookupSpan};
 
-        // A tiny tracing Layer that snapshots the next event it sees
-        // through both conversion paths and stores them for assertion.
         struct Capture {
-            from_log: std::sync::Mutex<Option<LogEvent>>,
             from_otel: std::sync::Mutex<Option<OtelLog>>,
         }
         impl<S> Layer<S> for &'static Capture
@@ -3810,13 +3795,11 @@ mod tests {
             S: tracing::Subscriber + for<'a> LookupSpan<'a>,
         {
             fn on_event(&self, event: &tracing::Event<'_>, _: Context<'_, S>) {
-                *self.from_log.lock().unwrap() = Some(LogEvent::Log(OtelLog::from_log_event(event)));
                 *self.from_otel.lock().unwrap() = Some(OtelLog::from_tracing_event(event));
             }
         }
 
         let cap: &'static Capture = Box::leak(Box::new(Capture {
-            from_log: std::sync::Mutex::new(None),
             from_otel: std::sync::Mutex::new(None),
         }));
 
@@ -3825,50 +3808,37 @@ mod tests {
             info!(message = "hello", count = 42, ready = true, "static msg");
         });
 
-        let le = cap.from_log.lock().unwrap().clone().expect("captured");
         let ol = cap.from_otel.lock().unwrap().clone().expect("captured");
 
-        // Both paths produce the standard metadata fields.
-        assert_eq!(
-            le.get(vrl::event_path!("metadata", "level"))
-                .and_then(|v| v.as_str().map(|s| s.into_owned())),
+        // Standard metadata fields are present.
+        assert!(
             ol.get(vrl::event_path!("metadata", "level"))
-                .and_then(|v| v.as_str().map(|s| s.into_owned())),
-            "metadata.level must match"
+                .and_then(|v| v.as_str().map(|s| s.into_owned()))
+                .is_some(),
+            "metadata.level must be present"
         );
-        assert_eq!(
-            le.get(vrl::event_path!("metadata", "target"))
-                .and_then(|v| v.as_str().map(|s| s.into_owned())),
+        assert!(
             ol.get(vrl::event_path!("metadata", "target"))
-                .and_then(|v| v.as_str().map(|s| s.into_owned())),
-            "metadata.target must match"
+                .and_then(|v| v.as_str().map(|s| s.into_owned()))
+                .is_some(),
+            "metadata.target must be present"
         );
-        assert_eq!(
-            le.get(vrl::event_path!("metadata", "kind"))
-                .and_then(|v| v.as_str().map(|s| s.into_owned())),
+        assert!(
             ol.get(vrl::event_path!("metadata", "kind"))
-                .and_then(|v| v.as_str().map(|s| s.into_owned())),
-            "metadata.kind must match"
+                .and_then(|v| v.as_str().map(|s| s.into_owned()))
+                .is_some(),
+            "metadata.kind must be present"
         );
-        // Visitor records fields at top level. Exercise three Visit
-        // branches: &str, i64, bool.
-        assert_eq!(
-            le.get(vrl::event_path!("count")).and_then(|v| v.as_integer()),
-            ol.get(vrl::event_path!("count")).and_then(|v| v.as_integer()),
+        // Visitor records fields at top level.
+        assert!(
+            ol.get(vrl::event_path!("count")).and_then(|v| v.as_integer()).is_some(),
             "i64 field via record_i64"
         );
-        assert_eq!(
-            le.get(vrl::event_path!("ready")).and_then(|v| v.as_boolean()),
-            ol.get(vrl::event_path!("ready")).and_then(|v| v.as_boolean()),
+        assert!(
+            ol.get(vrl::event_path!("ready")).and_then(|v| v.as_boolean()).is_some(),
             "bool field via record_bool"
         );
-        // Timestamp is present on both.
-        assert!(
-            le.get(vrl::event_path!("timestamp"))
-                .map(|v| matches!(v, vrl::value::Value::Timestamp(_)))
-                .unwrap_or(false),
-            "LogEvent has timestamp"
-        );
+        // Timestamp is present.
         assert!(
             ol.get(vrl::event_path!("timestamp"))
                 .map(|v| matches!(v, vrl::value::Value::Timestamp(_)))
@@ -3923,19 +3893,17 @@ mod tests {
     }
 
     #[test]
-    fn from_log_event_with_tags_array_preserves_field_access() {
-        // DD search pattern: LogEvent with "tags" array field,
-        // converted via from_log_event, queried via get().
-        let mut log = crate::event::LogEvent::from("msg");
-        log.insert(
+    fn otel_log_with_tags_array_preserves_field_access() {
+        // OtelLog with "tags" array field, queried via get().
+        let mut otel = OtelLog::from("msg");
+        otel.insert(
             vrl::event_path!("tags"),
             Value::Array(vec![Value::Bytes("a:foo".into())]),
         );
-        let otel = OtelLog::from_log_event(log);
 
-        // Lookup via get() — this is what DD search matcher does
+        // Lookup via get()
         let tags = otel.get(vrl::event_path!("tags"));
-        assert!(tags.is_some(), "tags field must be accessible after from_log_event");
+        assert!(tags.is_some(), "tags field must be accessible after insert");
         match tags.unwrap() {
             Value::Array(arr) => {
                 assert_eq!(arr.len(), 1);
@@ -3951,7 +3919,7 @@ mod tests {
 
         // Resource attrs OTHER than source_type/host.name — these end up
         // in the "resource" sub-object in legacy layout. The round-trip
-        // through from_log_event drops these because from_log_event only
+        // through from_value_map drops these because from_value_map only
         // reads source_type/host from the top level.
         // This test documents the current (lossy) behavior — any rewrite
         // should preserve it (or intentionally improve it).

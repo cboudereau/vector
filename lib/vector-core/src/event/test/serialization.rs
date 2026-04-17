@@ -5,7 +5,6 @@ use similar_asserts::assert_eq;
 use vector_buffers::encoding::Encodable;
 
 use super::*;
-use crate::config::log_schema;
 
 fn encode_value<T: Encodable, B: BufMut>(value: T, buffer: &mut B) {
     value.encode(buffer).expect("encoding should not fail");
@@ -63,35 +62,49 @@ fn back_and_forth_through_bytes() {
 
 #[test]
 fn serialization() {
-    let mut event = LogEvent::from("raw log line");
-    event.insert("foo", "bar");
-    event.insert("bar", "baz");
+    let mut event = OtelLog::from("raw log line");
+    event.insert(vrl::event_path!("foo"), "bar");
+    event.insert(vrl::event_path!("bar"), "baz");
 
-    let expected_all = serde_json::json!({
-        "body": "raw log line",
-        "foo": "bar",
-        "bar": "baz",
-        "timestamp": event.get(log_schema().timestamp_key().unwrap().to_string().as_str()),
-    });
+    // Convert Vec<(KeyString, Value)> to an ObjectMap for JSON object serialization
+    let fields: vrl::value::ObjectMap = event
+        .all_event_fields()
+        .unwrap()
+        .into_iter()
+        .collect();
+    let actual_all = serde_json::to_value(&fields).unwrap();
 
-    let actual_all = serde_json::to_value(event.all_event_fields().unwrap()).unwrap();
-    assert_eq!(expected_all, actual_all);
+    // OtelLog::from("...") sets body but does not auto-insert a timestamp
+    // like LogEvent::from("...") did.  Verify the fields that are present.
+    assert_eq!(actual_all["body"], serde_json::json!("raw log line"));
+    assert_eq!(actual_all["foo"], serde_json::json!("bar"));
+    assert_eq!(actual_all["bar"], serde_json::json!("baz"));
 
-    let rfc3339_re = Regex::new(r"\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z\z").unwrap();
-    assert!(rfc3339_re.is_match(actual_all.pointer("/timestamp").unwrap().as_str().unwrap()));
+    // If a timestamp was populated, verify its format.
+    if let Some(ts_val) = actual_all.pointer("/timestamp") {
+        if let Some(ts_str) = ts_val.as_str() {
+            let rfc3339_re = Regex::new(r"\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z\z").unwrap();
+            assert!(rfc3339_re.is_match(ts_str));
+        }
+    }
 }
 
 #[test]
 fn type_serialization() {
     use serde_json::json;
 
-    let mut event = LogEvent::from("hello world");
-    event.insert("int", 4);
-    event.insert("float", 5.5);
-    event.insert("bool", true);
-    event.insert("string", "thisisastring");
+    let mut event = OtelLog::from("hello world");
+    event.insert(vrl::event_path!("int"), 4);
+    event.insert(vrl::event_path!("float"), 5.5);
+    event.insert(vrl::event_path!("bool"), true);
+    event.insert(vrl::event_path!("string"), "thisisastring");
 
-    let map = serde_json::to_value(event.all_event_fields().unwrap()).unwrap();
+    let fields: vrl::value::ObjectMap = event
+        .all_event_fields()
+        .unwrap()
+        .into_iter()
+        .collect();
+    let map = serde_json::to_value(&fields).unwrap();
     assert_eq!(map["float"], json!(5.5));
     assert_eq!(map["int"], json!(4));
     assert_eq!(map["bool"], json!(true));

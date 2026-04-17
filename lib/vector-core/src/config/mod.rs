@@ -618,7 +618,7 @@ mod test {
     use vrl::value::Kind;
 
     use super::*;
-    use crate::event::LogEvent;
+    use crate::event::{Event, OtelLog};
 
     #[test]
     fn test_insert_standard_vector_source_metadata() {
@@ -629,7 +629,7 @@ mod test {
         init_log_schema(schema, false);
 
         let namespace = LogNamespace::Legacy;
-        let mut event = LogEvent::from("log");
+        let mut event = OtelLog::from("log");
         namespace.insert_standard_vector_source_metadata(&mut event, "source", Utc::now());
 
         assert!(event.get(event_path!("a", "b", "c", "d")).is_some());
@@ -643,16 +643,14 @@ mod test {
             .with_event_field(&owned_value_path!("nork"), Kind::integer(), None);
         let output = SourceOutput::new_maybe_logs(DataType::Log, definition);
 
-        let valid_event = LogEvent::from(Value::from(btreemap! {
+        let valid_event: Event = Event::Log(OtelLog::from(Value::from(btreemap! {
             "zork" => "norknoog",
             "nork" => 32
-        }))
-        .into();
+        })));
 
-        let invalid_event = LogEvent::from(Value::from(btreemap! {
+        let invalid_event: Event = Event::Log(OtelLog::from(Value::from(btreemap! {
             "nork" => 32
-        }))
-        .into();
+        })));
 
         // Get a definition with schema enabled.
         let new_definition = output.schema_definition(true).unwrap();
@@ -690,7 +688,7 @@ mod test {
 
         let output = SourceOutput::new_maybe_logs(DataType::Log, definition);
 
-        let mut valid_event = LogEvent::from(Value::from(btreemap! {
+        let mut valid_event = OtelLog::from(Value::from(btreemap! {
             "nork" => 32
         }));
 
@@ -699,9 +697,9 @@ mod test {
             .value_mut()
             .insert(path!("vector").concat("zork"), 32);
 
-        let valid_event = valid_event.into();
+        let valid_event: Event = Event::Log(valid_event);
 
-        let mut invalid_event = LogEvent::from(Value::from(btreemap! {
+        let mut invalid_event = OtelLog::from(Value::from(btreemap! {
             "nork" => 32
         }));
 
@@ -710,7 +708,7 @@ mod test {
             .value_mut()
             .insert(path!("vector").concat("zork"), "noog");
 
-        let invalid_event = invalid_event.into();
+        let invalid_event: Event = Event::Log(invalid_event);
 
         // Get a definition with schema enabled.
         let new_definition = output.schema_definition(true).unwrap();

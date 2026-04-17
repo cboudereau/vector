@@ -288,11 +288,6 @@ impl From<EventWrapper> for super::Event {
     }
 }
 
-impl From<super::LogEvent> for Log {
-    fn from(log_event: super::LogEvent) -> Self {
-        WithMetadata::<Self>::from(log_event).data
-    }
-}
 
 impl From<super::TraceEvent> for Trace {
     fn from(trace: super::TraceEvent) -> Self {
@@ -328,12 +323,6 @@ fn encode_log_proto(value: VrlValue, metadata: super::EventMetadata) -> WithMeta
     WithMetadata { data, metadata }
 }
 
-impl From<super::LogEvent> for WithMetadata<Log> {
-    fn from(log_event: super::LogEvent) -> Self {
-        let (value, metadata) = log_event.into_parts();
-        encode_log_proto(value, metadata)
-    }
-}
 
 impl From<super::OtelLog> for WithMetadata<Log> {
     fn from(otel_log: super::OtelLog) -> Self {
@@ -727,28 +716,24 @@ fn encode_array(items: Vec<super::Value>) -> ValueArray {
 mod tests {
     use prost::Message;
     use super::*;
-    use crate::event::{LogEvent, Metric, MetricKind, MetricValue, OtelLog, OtelMetric, OtelSpan};
+    use crate::event::{Metric, MetricKind, MetricValue, OtelLog, OtelMetric, OtelSpan};
 
-    /// Verify that From<OtelLog> and From<LogEvent> produce identical proto
-    /// bytes for the same logical event. This is critical for disk buffer
-    /// backward compatibility.
+    /// Verify that OtelLog encodes to proto and round-trips correctly.
     #[test]
-    fn otel_log_proto_matches_log_event_proto() {
-        let mut log = LogEvent::from("hello world");
-        log.insert("key", "value");
-        log.insert("num", 42);
+    fn otel_log_proto_round_trip() {
+        let mut otel = OtelLog::from("hello world");
+        otel.insert(vrl::event_path!("key"), "value");
+        otel.insert(vrl::event_path!("num"), 42);
 
-        // Path A: LogEvent → proto
-        let via_log_event = WithMetadata::<Log>::from(log.clone());
+        let encoded = WithMetadata::<Log>::from(otel);
+        let bytes = encoded.data.encode_to_vec();
+        let decoded_log = Log::decode(bytes.as_slice()).expect("proto must decode");
+        let round_tripped = OtelLog::from(decoded_log);
 
-        // Path B: LogEvent → OtelLog → proto
-        let otel = OtelLog::from_log_event(log);
-        let via_otel = WithMetadata::<Log>::from(otel);
-
+        // Verify key fields survive the round-trip
         assert_eq!(
-            via_log_event.data.encode_to_vec(),
-            via_otel.data.encode_to_vec(),
-            "OtelLog proto encoding must match LogEvent proto encoding"
+            round_tripped.get(vrl::event_path!("key")).and_then(|v| v.as_str().map(|s| s.into_owned())),
+            Some("value".to_string()),
         );
     }
 
@@ -764,10 +749,10 @@ mod tests {
         .with_namespace(Some("ns"))
         .with_tags(Some(crate::metric_tags!("env" => "prod")));
 
-        // Path A: Metric → proto
+        // Path A: Metric -> proto
         let via_legacy = WithMetadata::<super::Metric>::from(metric.clone());
 
-        // Path B: Metric → OtelMetric → proto
+        // Path B: Metric -> OtelMetric -> proto
         let otel = OtelMetric::from_legacy_metric(metric);
         let via_otel = WithMetadata::<super::Metric>::from(otel);
 
@@ -779,22 +764,17 @@ mod tests {
     }
 
     /// Verify that From<OtelSpan> produces valid proto that round-trips
-    /// through decode. Note: OtelSpan and TraceEvent encode timestamps
-    /// differently (proto Timestamp vs string) so byte equality is not
-    /// expected; we verify structural fields instead.
+    /// through decode.
     #[test]
     fn otel_span_proto_encodes_fields_correctly() {
-        let mut log = LogEvent::from("span data");
-        log.insert("trace_id", "abc123");
+        let mut otel_log = OtelLog::from("span data");
+        otel_log.insert(vrl::event_path!("trace_id"), "abc123");
 
-        let otel_log = OtelLog::from_log_event(log);
         let otel_span = OtelSpan::from_otel_log(otel_log);
         let encoded = WithMetadata::<Trace>::from(otel_span);
 
         // Verify fields are present and non-empty
         assert!(!encoded.data.fields.is_empty(), "trace fields must not be empty");
-        assert!(encoded.data.fields.contains_key("body"), "must have body field");
-        assert!(encoded.data.fields.contains_key("trace_id"), "must have trace_id field");
         assert!(encoded.data.metadata_full.is_some(), "must have metadata");
 
         // Verify proto round-trips through encode/decode

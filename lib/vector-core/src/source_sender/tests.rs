@@ -16,8 +16,8 @@ use crate::{
 async fn emits_lag_time_for_log() {
     emit_and_test(|timestamp| {
         let mut log = OtelLog::from("Log message");
-        log.insert("timestamp", timestamp);
-        Event::Log(OtelLog::from_log_event(log))
+        log.insert(vrl::event_path!("timestamp"), timestamp);
+        Event::Log(log)
     })
     .await;
 }
@@ -26,14 +26,14 @@ async fn emits_lag_time_for_log() {
 #[ignore = "Lag time computation disabled for OTel event types"]
 async fn emits_lag_time_for_metric() {
     emit_and_test(|timestamp| {
-        Event::from(
+        Event::Metric(OtelMetric::from_legacy_metric(
             Metric::new(
                 "name",
                 MetricKind::Absolute,
                 MetricValue::Gauge { value: 123.4 },
             )
             .with_timestamp(Some(timestamp)),
-        )
+        ))
     })
     .await;
 }

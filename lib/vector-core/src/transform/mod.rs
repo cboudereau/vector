@@ -212,7 +212,7 @@ impl<T: TaskTransform<Event> + Send + 'static> TaskTransform<EventArray> for Wra
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::event::{LogEvent, Metric, MetricKind, MetricValue};
+    use crate::event::{Event, OtelLog, OtelMetric, Metric, MetricKind, MetricValue};
 
     #[test]
     fn buffers_output() {
@@ -221,29 +221,28 @@ mod test {
         assert_eq!(buf.0.len(), 0);
 
         // Push adds a new element
-        buf.push(LogEvent::default().into());
+        buf.push(Event::Log(OtelLog::default()));
         assert_eq!(buf.len(), 1);
         assert_eq!(buf.0.len(), 1);
 
         // Push of the same type adds to the existing element
-        buf.push(LogEvent::default().into());
+        buf.push(Event::Log(OtelLog::default()));
         assert_eq!(buf.len(), 2);
         assert_eq!(buf.0.len(), 1);
 
         // Push of a different type adds a new element
         buf.push(
-            Metric::new(
+            Event::Metric(OtelMetric::from_legacy_metric(Metric::new(
                 "name",
                 MetricKind::Absolute,
                 MetricValue::Counter { value: 1.0 },
-            )
-            .into(),
+            ))),
         );
         assert_eq!(buf.len(), 3);
         assert_eq!(buf.0.len(), 2);
 
         // And pushing again adds a new element
-        buf.push(LogEvent::default().into());
+        buf.push(Event::Log(OtelLog::default()));
         assert_eq!(buf.len(), 4);
         assert_eq!(buf.0.len(), 3);
     }

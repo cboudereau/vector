@@ -5,7 +5,7 @@ use quickcheck::{Arbitrary, Gen, empty_shrinker};
 use vrl::value::{ObjectMap, Value};
 
 use super::super::{
-    Event, EventMetadata, LogEvent, Metric, MetricKind, MetricValue, OtelMetric, OtelSpan, StatisticKind,
+    Event, EventMetadata, LogEvent, Metric, MetricKind, MetricValue, OtelLog, OtelMetric, OtelSpan, StatisticKind,
     metric::{
         Bucket, MetricData, MetricName, MetricSeries, MetricTags, MetricTime,
         Quantile, Sample,
@@ -58,7 +58,7 @@ impl Arbitrary for Event {
         // Quickcheck can't derive Arbitrary for enums, see
         // https://github.com/BurntSushi/quickcheck/issues/98
         if choice.is_multiple_of(2) {
-            Event::Log(OtelLog::from_log_event(LogEvent::arbitrary(g)))
+            Event::Log(OtelLog::arbitrary(g))
         } else {
             Event::Metric(OtelMetric::from_legacy_metric(Metric::arbitrary(g)))
         }
@@ -66,6 +66,25 @@ impl Arbitrary for Event {
 
     fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
         empty_shrinker()
+    }
+}
+
+impl Arbitrary for OtelLog {
+    fn arbitrary(g: &mut Gen) -> Self {
+        let mut generator = Gen::new(MAX_MAP_SIZE);
+        let map: ObjectMap = ObjectMap::arbitrary(&mut generator);
+        let metadata: EventMetadata = EventMetadata::arbitrary(g);
+        OtelLog::from_value_map(Value::Object(map), metadata)
+    }
+
+    fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
+        let map = self.as_map().unwrap_or_default();
+        let metadata = self.metadata().clone();
+
+        Box::new(
+            map.shrink()
+                .map(move |x| OtelLog::from_value_map(Value::Object(x), metadata.clone())),
+        )
     }
 }
 
@@ -90,9 +109,10 @@ impl Arbitrary for LogEvent {
 
 impl Arbitrary for OtelSpan {
     fn arbitrary(g: &mut Gen) -> Self {
-        let log = LogEvent::arbitrary(g);
-        let (value, metadata) = log.into_parts();
-        OtelSpan::from_value_map(value, metadata)
+        let mut generator = Gen::new(MAX_MAP_SIZE);
+        let map: ObjectMap = ObjectMap::arbitrary(&mut generator);
+        let metadata: EventMetadata = EventMetadata::arbitrary(g);
+        OtelSpan::from_value_map(Value::Object(map), metadata)
     }
 
     fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {

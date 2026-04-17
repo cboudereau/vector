@@ -616,7 +616,7 @@ mod tests {
     use vrl::value::Value;
 
     use super::*;
-    use crate::event::{Event, EventMetadata, LogEvent};
+    use crate::event::{Event, EventMetadata, OtelLog};
 
     #[test]
     fn test_definition_validity() {
@@ -636,7 +636,7 @@ mod tests {
             TestCase {
                 title: "match",
                 definition: Definition::new(Kind::any(), Kind::any(), [LogNamespace::Legacy]),
-                event: Event::from(LogEvent::from(BTreeMap::new())),
+                event: Event::Log(OtelLog::from(Value::Object(BTreeMap::new()))),
                 valid: true,
             },
             TestCase {
@@ -646,7 +646,7 @@ mod tests {
                     Kind::any(),
                     [LogNamespace::Legacy],
                 ),
-                event: Event::from(LogEvent::from(BTreeMap::from([("foo".into(), 4.into())]))),
+                event: Event::Log(OtelLog::from(Value::Object(BTreeMap::from([("foo".into(), 4.into())])))),
                 valid: false,
             },
             TestCase {
@@ -656,7 +656,7 @@ mod tests {
                     Kind::object(Collection::empty()),
                     [LogNamespace::Legacy],
                 ),
-                event: Event::from(LogEvent::from_parts(
+                event: Event::Log(OtelLog::from_value_map(
                     Value::Object(BTreeMap::new()),
                     EventMetadata::default_with_value(
                         BTreeMap::from([("foo".into(), 4.into())]).into(),
@@ -667,7 +667,7 @@ mod tests {
             TestCase {
                 title: "wrong log namespace",
                 definition: Definition::new(Kind::any(), Kind::any(), []),
-                event: Event::from(LogEvent::from(BTreeMap::new())),
+                event: Event::Log(OtelLog::from(Value::Object(BTreeMap::new()))),
                 valid: false,
             },
             TestCase {
@@ -677,10 +677,10 @@ mod tests {
                     Kind::any(),
                     [LogNamespace::Legacy],
                 ),
-                event: Event::from(LogEvent::from(BTreeMap::from([(
+                event: Event::Log(OtelLog::from(Value::Object(BTreeMap::from([(
                     "foo".into(),
                     Value::Null,
-                )]))),
+                )])))),
                 valid: false,
             },
         ] {

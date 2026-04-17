@@ -39,10 +39,9 @@ impl LogEventMergeState {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::event::LogEvent;
 
     fn otel_log_with_message(message: &str) -> OtelLog {
-        OtelLog::from_log_event(LogEvent::from(message))
+        OtelLog::from(message)
     }
 
     #[test]

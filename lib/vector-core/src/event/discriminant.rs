@@ -3,7 +3,7 @@ use std::{
     hash::{Hash, Hasher},
 };
 
-use super::{LogEvent, ObjectMap, Value};
+use super::{ObjectMap, Value};
 
 // TODO: if we had `Value` implement `Eq` and `Hash`, the implementation here
 // would be much easier. The issue is with `f64` type. We should consider using
@@ -22,22 +22,6 @@ pub struct Discriminant {
 }
 
 impl Discriminant {
-    /// Create a new Discriminant from the `LogEvent` and an ordered slice of
-    /// fields to include into a discriminant value.
-    pub fn from_log_event(event: &LogEvent, discriminant_fields: &[impl AsRef<str>]) -> Self {
-        let values: Vec<Option<Value>> = discriminant_fields
-            .iter()
-            .map(|discriminant_field| {
-                event
-                    .parse_path_and_get_value(discriminant_field.as_ref())
-                    .ok()
-                    .flatten()
-                    .cloned()
-            })
-            .collect();
-        Self { values }
-    }
-
     pub fn from_otel_log(event: &super::OtelLog, discriminant_fields: &[impl AsRef<str>]) -> Self {
         let values: Vec<Option<Value>> = discriminant_fields
             .iter()
@@ -195,7 +179,7 @@ mod tests {
     use std::collections::{HashMap, hash_map::DefaultHasher};
 
     use super::*;
-    use crate::event::LogEvent;
+    use crate::event::OtelLog;
 
     fn hash<H: Hash>(hash: H) -> u64 {
         let mut hasher = DefaultHasher::new();
@@ -205,16 +189,16 @@ mod tests {
 
     #[test]
     fn equal() {
-        let mut event_1 = LogEvent::default();
-        event_1.insert("hostname", "localhost");
-        event_1.insert("irrelevant", "not even used");
+        let mut event_1 = OtelLog::default();
+        event_1.insert(vrl::event_path!("hostname"), "localhost");
+        event_1.insert(vrl::event_path!("irrelevant"), "not even used");
         let mut event_2 = event_1.clone();
-        event_2.insert("irrelevant", "does not matter if it's different");
+        event_2.insert(vrl::event_path!("irrelevant"), "does not matter if it's different");
 
         let discriminant_fields = vec!["hostname".to_string(), "container_id".to_string()];
 
-        let discriminant_1 = Discriminant::from_log_event(&event_1, &discriminant_fields);
-        let discriminant_2 = Discriminant::from_log_event(&event_2, &discriminant_fields);
+        let discriminant_1 = Discriminant::from_otel_log(&event_1, &discriminant_fields);
+        let discriminant_2 = Discriminant::from_otel_log(&event_2, &discriminant_fields);
 
         assert_eq!(discriminant_1, discriminant_2);
         assert_eq!(hash(discriminant_1), hash(discriminant_2));
@@ -222,16 +206,16 @@ mod tests {
 
     #[test]
     fn not_equal() {
-        let mut event_1 = LogEvent::default();
-        event_1.insert("hostname", "localhost");
-        event_1.insert("container_id", "abc");
+        let mut event_1 = OtelLog::default();
+        event_1.insert(vrl::event_path!("hostname"), "localhost");
+        event_1.insert(vrl::event_path!("container_id"), "abc");
         let mut event_2 = event_1.clone();
-        event_2.insert("container_id", "def");
+        event_2.insert(vrl::event_path!("container_id"), "def");
 
         let discriminant_fields = vec!["hostname".to_string(), "container_id".to_string()];
 
-        let discriminant_1 = Discriminant::from_log_event(&event_1, &discriminant_fields);
-        let discriminant_2 = Discriminant::from_log_event(&event_2, &discriminant_fields);
+        let discriminant_1 = Discriminant::from_otel_log(&event_1, &discriminant_fields);
+        let discriminant_2 = Discriminant::from_otel_log(&event_2, &discriminant_fields);
 
         assert_ne!(discriminant_1, discriminant_2);
         assert_ne!(hash(discriminant_1), hash(discriminant_2));
@@ -239,17 +223,17 @@ mod tests {
 
     #[test]
     fn field_order() {
-        let mut event_1 = LogEvent::default();
-        event_1.insert("a", "a");
-        event_1.insert("b", "b");
-        let mut event_2 = LogEvent::default();
-        event_2.insert("b", "b");
-        event_2.insert("a", "a");
+        let mut event_1 = OtelLog::default();
+        event_1.insert(vrl::event_path!("a"), "a");
+        event_1.insert(vrl::event_path!("b"), "b");
+        let mut event_2 = OtelLog::default();
+        event_2.insert(vrl::event_path!("b"), "b");
+        event_2.insert(vrl::event_path!("a"), "a");
 
         let discriminant_fields = vec!["a".to_string(), "b".to_string()];
 
-        let discriminant_1 = Discriminant::from_log_event(&event_1, &discriminant_fields);
-        let discriminant_2 = Discriminant::from_log_event(&event_2, &discriminant_fields);
+        let discriminant_1 = Discriminant::from_otel_log(&event_1, &discriminant_fields);
+        let discriminant_2 = Discriminant::from_otel_log(&event_2, &discriminant_fields);
 
         assert_eq!(discriminant_1, discriminant_2);
         assert_eq!(hash(discriminant_1), hash(discriminant_2));
@@ -257,17 +241,17 @@ mod tests {
 
     #[test]
     fn map_values_key_order() {
-        let mut event_1 = LogEvent::default();
-        event_1.insert("nested.a", "a");
-        event_1.insert("nested.b", "b");
-        let mut event_2 = LogEvent::default();
-        event_2.insert("nested.b", "b");
-        event_2.insert("nested.a", "a");
+        let mut event_1 = OtelLog::default();
+        event_1.insert(vrl::event_path!("nested", "a"), "a");
+        event_1.insert(vrl::event_path!("nested", "b"), "b");
+        let mut event_2 = OtelLog::default();
+        event_2.insert(vrl::event_path!("nested", "b"), "b");
+        event_2.insert(vrl::event_path!("nested", "a"), "a");
 
         let discriminant_fields = vec!["nested".to_string()];
 
-        let discriminant_1 = Discriminant::from_log_event(&event_1, &discriminant_fields);
-        let discriminant_2 = Discriminant::from_log_event(&event_2, &discriminant_fields);
+        let discriminant_1 = Discriminant::from_otel_log(&event_1, &discriminant_fields);
+        let discriminant_2 = Discriminant::from_otel_log(&event_2, &discriminant_fields);
 
         assert_eq!(discriminant_1, discriminant_2);
         assert_eq!(hash(discriminant_1), hash(discriminant_2));
@@ -275,17 +259,17 @@ mod tests {
 
     #[test]
     fn array_values_insertion_order() {
-        let mut event_1 = LogEvent::default();
-        event_1.insert("array[0]", "a");
-        event_1.insert("array[1]", "b");
-        let mut event_2 = LogEvent::default();
-        event_2.insert("array[1]", "b");
-        event_2.insert("array[0]", "a");
+        let mut event_1 = OtelLog::default();
+        event_1.insert(vrl::event_path!("array", 0), "a");
+        event_1.insert(vrl::event_path!("array", 1), "b");
+        let mut event_2 = OtelLog::default();
+        event_2.insert(vrl::event_path!("array", 1), "b");
+        event_2.insert(vrl::event_path!("array", 0), "a");
 
         let discriminant_fields = vec!["array".to_string()];
 
-        let discriminant_1 = Discriminant::from_log_event(&event_1, &discriminant_fields);
-        let discriminant_2 = Discriminant::from_log_event(&event_2, &discriminant_fields);
+        let discriminant_1 = Discriminant::from_otel_log(&event_1, &discriminant_fields);
+        let discriminant_2 = Discriminant::from_otel_log(&event_2, &discriminant_fields);
 
         assert_eq!(discriminant_1, discriminant_2);
         assert_eq!(hash(discriminant_1), hash(discriminant_2));
@@ -293,14 +277,14 @@ mod tests {
 
     #[test]
     fn map_values_matter_1() {
-        let mut event_1 = LogEvent::default();
-        event_1.insert("nested.a", "a"); // `nested` is a `Value::Map`
-        let event_2 = LogEvent::default(); // empty event
+        let mut event_1 = OtelLog::default();
+        event_1.insert(vrl::event_path!("nested", "a"), "a"); // `nested` is a `Value::Map`
+        let event_2 = OtelLog::default(); // empty event
 
         let discriminant_fields = vec!["nested".to_string()];
 
-        let discriminant_1 = Discriminant::from_log_event(&event_1, &discriminant_fields);
-        let discriminant_2 = Discriminant::from_log_event(&event_2, &discriminant_fields);
+        let discriminant_1 = Discriminant::from_otel_log(&event_1, &discriminant_fields);
+        let discriminant_2 = Discriminant::from_otel_log(&event_2, &discriminant_fields);
 
         assert_ne!(discriminant_1, discriminant_2);
         assert_ne!(hash(discriminant_1), hash(discriminant_2));
@@ -308,15 +292,15 @@ mod tests {
 
     #[test]
     fn map_values_matter_2() {
-        let mut event_1 = LogEvent::default();
-        event_1.insert("nested.a", "a"); // `nested` is a `Value::Map`
-        let mut event_2 = LogEvent::default();
-        event_2.insert("nested", "x"); // `nested` is a `Value::String`
+        let mut event_1 = OtelLog::default();
+        event_1.insert(vrl::event_path!("nested", "a"), "a"); // `nested` is a `Value::Map`
+        let mut event_2 = OtelLog::default();
+        event_2.insert(vrl::event_path!("nested"), "x"); // `nested` is a `Value::String`
 
         let discriminant_fields = vec!["nested".to_string()];
 
-        let discriminant_1 = Discriminant::from_log_event(&event_1, &discriminant_fields);
-        let discriminant_2 = Discriminant::from_log_event(&event_2, &discriminant_fields);
+        let discriminant_1 = Discriminant::from_otel_log(&event_1, &discriminant_fields);
+        let discriminant_2 = Discriminant::from_otel_log(&event_2, &discriminant_fields);
 
         assert_ne!(discriminant_1, discriminant_2);
         assert_ne!(hash(discriminant_1), hash(discriminant_2));
@@ -328,90 +312,90 @@ mod tests {
         let mut map: HashMap<Discriminant, usize> = HashMap::new();
 
         let event_stream_1 = {
-            let mut event = LogEvent::default();
-            event.insert("hostname", "a.test");
-            event.insert("container_id", "abc");
+            let mut event = OtelLog::default();
+            event.insert(vrl::event_path!("hostname"), "a.test");
+            event.insert(vrl::event_path!("container_id"), "abc");
             event
         };
 
         let event_stream_2 = {
-            let mut event = LogEvent::default();
-            event.insert("hostname", "b.test");
-            event.insert("container_id", "def");
+            let mut event = OtelLog::default();
+            event.insert(vrl::event_path!("hostname"), "b.test");
+            event.insert(vrl::event_path!("container_id"), "def");
             event
         };
 
         let event_stream_3 = {
             // no `hostname` or `container_id`
-            LogEvent::default()
+            OtelLog::default()
         };
 
         let discriminant_fields = vec!["hostname".to_string(), "container_id".to_string()];
 
-        let mut process_event = |event| {
-            let discriminant = Discriminant::from_log_event(&event, &discriminant_fields);
+        let mut process_event = |event: &OtelLog| {
+            let discriminant = Discriminant::from_otel_log(event, &discriminant_fields);
             *map.entry(discriminant).and_modify(|e| *e += 1).or_insert(0)
         };
 
         {
             let mut event = event_stream_1.clone();
-            event.insert("body", "a");
-            assert_eq!(process_event(event), 0);
+            event.insert(vrl::event_path!("body"), "a");
+            assert_eq!(process_event(&event), 0);
         }
 
         {
             let mut event = event_stream_1.clone();
-            event.insert("body", "b");
-            event.insert("irrelevant", "c");
-            assert_eq!(process_event(event), 1);
+            event.insert(vrl::event_path!("body"), "b");
+            event.insert(vrl::event_path!("irrelevant"), "c");
+            assert_eq!(process_event(&event), 1);
         }
 
         {
             let mut event = event_stream_2.clone();
-            event.insert("body", "d");
-            assert_eq!(process_event(event), 0);
+            event.insert(vrl::event_path!("body"), "d");
+            assert_eq!(process_event(&event), 0);
         }
 
         {
             let mut event = event_stream_2.clone();
-            event.insert("body", "e");
-            event.insert("irrelevant", "d");
-            assert_eq!(process_event(event), 1);
+            event.insert(vrl::event_path!("body"), "e");
+            event.insert(vrl::event_path!("irrelevant"), "d");
+            assert_eq!(process_event(&event), 1);
         }
 
         {
             let mut event = event_stream_3.clone();
-            event.insert("body", "f");
-            assert_eq!(process_event(event), 0);
+            event.insert(vrl::event_path!("body"), "f");
+            assert_eq!(process_event(&event), 0);
         }
 
         {
             let mut event = event_stream_3.clone();
-            event.insert("body", "g");
-            event.insert("irrelevant", "d");
-            assert_eq!(process_event(event), 1);
+            event.insert(vrl::event_path!("body"), "g");
+            event.insert(vrl::event_path!("irrelevant"), "d");
+            assert_eq!(process_event(&event), 1);
         }
 
         // Now assert the amount of events processed per discriminant.
-        assert_eq!(process_event(event_stream_1), 2);
-        assert_eq!(process_event(event_stream_2), 2);
-        assert_eq!(process_event(event_stream_3), 2);
+        assert_eq!(process_event(&event_stream_1), 2);
+        assert_eq!(process_event(&event_stream_2), 2);
+        assert_eq!(process_event(&event_stream_3), 2);
     }
 
     #[test]
     fn test_display() {
-        let mut event = LogEvent::default();
-        event.insert("hostname", "localhost");
-        event.insert("container_id", 1);
+        let mut event = OtelLog::default();
+        event.insert(vrl::event_path!("hostname"), "localhost");
+        event.insert(vrl::event_path!("container_id"), 1);
 
-        let discriminant = Discriminant::from_log_event(
+        let discriminant = Discriminant::from_otel_log(
             &event,
             &["hostname".to_string(), "container_id".to_string()],
         );
         assert_eq!(format!("{discriminant}"), "\"localhost\"-1");
 
         let discriminant =
-            Discriminant::from_log_event(&event, &["hostname".to_string(), "service".to_string()]);
+            Discriminant::from_otel_log(&event, &["hostname".to_string(), "service".to_string()]);
         assert_eq!(format!("{discriminant}"), "\"localhost\"-none");
     }
 }

@@ -376,14 +376,15 @@ impl Event {
         log_namespace: LogNamespace,
     ) -> crate::Result<Self> {
         match log_namespace {
-            LogNamespace::Vector => Ok(Event::Log(OtelLog::from_log_event(LogEvent::from(Value::from(value))))),
+            LogNamespace::Vector => Ok(Event::Log(OtelLog::from(Value::from(value)))),
             LogNamespace::Legacy => match value {
-                serde_json::Value::Object(fields) => Ok(Event::Log(OtelLog::from_log_event(LogEvent::from(
-                    fields
+                serde_json::Value::Object(fields) => {
+                    let map: ObjectMap = fields
                         .into_iter()
                         .map(|(k, v)| (k.into(), v.into()))
-                        .collect::<ObjectMap>(),
-                )))),
+                        .collect();
+                    Ok(Event::Log(OtelLog::from(map)))
+                }
                 _ => Err(crate::Error::from(
                     "Attempted to convert non-Object JSON into an Event.",
                 )),
@@ -516,21 +517,6 @@ impl From<OtelSpan> for Event {
     }
 }
 
-/// Convenience bridge: allows `Event::from(LogEvent::from(...))`.
-///
-/// In production code, prefer `Event::Log(OtelLog::new(...))` or
-/// `Event::Log(OtelLog::from_value_map(...))` for new event construction.
-/// This impl exists for backward compatibility with test code and legacy
-/// codecs that construct LogEvent as an intermediate.
-///
-/// Phase F of the OTLP migration plans to gate this behind `#[cfg(test)]`
-/// once all ~150 downstream test sites are migrated. See
-/// `LEGACY_REMOVAL_PLAN.md`.
-impl From<LogEvent> for Event {
-    fn from(log: LogEvent) -> Self {
-        Event::Log(OtelLog::from_log_event(log))
-    }
-}
 
 pub trait MaybeAsLogMut {
     fn maybe_as_log_mut(&mut self) -> Option<&mut OtelLog>;

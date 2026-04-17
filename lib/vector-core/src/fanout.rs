@@ -913,9 +913,7 @@ mod tests {
     }
 
     fn make_event_array(count: usize) -> EventArray {
-        let logs: Vec<OtelLog> = make_events_inner(count)
-            .map(OtelLog::from_log_event)
-            .collect();
+        let logs: Vec<OtelLog> = make_events_inner(count).collect();
         EventArray::Logs(logs)
     }
 }

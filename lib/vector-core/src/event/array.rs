@@ -16,7 +16,7 @@ use vector_common::{
 
 use super::{
     EstimatedJsonEncodedSizeOf, Event, EventDataEq, EventFinalizer, EventMetadata, EventMutRef,
-    EventRef, LogEvent, Metric, OtelLog, OtelMetric, OtelSpan,
+    EventRef, Metric, OtelLog, OtelMetric, OtelSpan,
 };
 
 /// The type alias for an array of `OtelLog` elements.
@@ -207,11 +207,6 @@ impl From<OtelSpan> for EventArray {
     }
 }
 
-impl From<LogEvent> for EventArray {
-    fn from(log: LogEvent) -> Self {
-        Event::Log(OtelLog::from_log_event(log)).into()
-    }
-}
 
 impl From<Metric> for EventArray {
     fn from(metric: Metric) -> Self {
@@ -327,7 +322,7 @@ impl Arbitrary for EventArray {
         if choice.is_multiple_of(2) {
             let mut logs = Vec::new();
             for _ in 0..len {
-                logs.push(OtelLog::from_log_event(LogEvent::arbitrary(g)));
+                logs.push(OtelLog::arbitrary(g));
             }
             EventArray::Logs(logs)
         } else {

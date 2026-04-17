@@ -269,23 +269,23 @@ async fn send_request(config: &str, events: Vec<Event>) -> Vec<(HeaderMap, proto
 }
 
 pub(super) fn create_event(name: String, value: f64) -> Event {
-    Event::Metric(OtelMetric::from_legacy_metric(
-        Metric::new(name, MetricKind::Absolute, MetricValue::Gauge { value })
-            .with_tags(Some(metric_tags!(
-                "region" => "us-west-1",
-                "production" => "true",
-            )))
-            .with_timestamp(Some(chrono::Utc::now())),
-    ))
+    let m = Metric::new(name, MetricKind::Absolute, MetricValue::Gauge { value })
+        .with_tags(Some(metric_tags!(
+            "region" => "us-west-1",
+            "production" => "true",
+        )))
+        .with_timestamp(Some(chrono::Utc::now()));
+    let (s, d, md) = m.into_parts();
+    Event::Metric(OtelMetric::from_metric_parts(s, d, md))
 }
 
 fn create_inc_event(name: String, value: f64) -> Event {
-    Event::Metric(OtelMetric::from_legacy_metric(
-        Metric::new(
-            name,
-            MetricKind::Incremental,
-            MetricValue::Counter { value },
-        )
-        .with_timestamp(Some(chrono::Utc::now())),
-    ))
+    let m = Metric::new(
+        name,
+        MetricKind::Incremental,
+        MetricValue::Counter { value },
+    )
+    .with_timestamp(Some(chrono::Utc::now()));
+    let (s, d, md) = m.into_parts();
+    Event::Metric(OtelMetric::from_metric_parts(s, d, md))
 }

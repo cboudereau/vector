@@ -104,13 +104,17 @@ mod tests {
     fn serialize_metric() {
         let buffer = serialize(
             TextSerializerConfig::default(),
-            Event::Metric(OtelMetric::from_legacy_metric(Metric::new(
-                "users",
-                MetricKind::Incremental,
-                MetricValue::Set {
-                    values: vec!["bob".into()].into_iter().collect(),
-                },
-            ))),
+            {
+                let m = Metric::new(
+                    "users",
+                    MetricKind::Incremental,
+                    MetricValue::Set {
+                        values: vec!["bob".into()].into_iter().collect(),
+                    },
+                );
+                let (s, d, md) = m.into_parts();
+                Event::Metric(OtelMetric::from_metric_parts(s, d, md))
+            },
         );
         assert_eq!(buffer, Bytes::from("users{} + bob"));
     }
@@ -142,18 +146,18 @@ mod tests {
     }
 
     fn metric2() -> Event {
-        Event::Metric(OtelMetric::from_legacy_metric(
-            Metric::new(
-                "counter",
-                MetricKind::Incremental,
-                MetricValue::Counter { value: 1.0 },
-            )
-            .with_tags(Some(metric_tags! (
-                "a" => "first",
-                "a" => None,
-                "a" => "second",
-            ))),
-        ))
+        let m = Metric::new(
+            "counter",
+            MetricKind::Incremental,
+            MetricValue::Counter { value: 1.0 },
+        )
+        .with_tags(Some(metric_tags! (
+            "a" => "first",
+            "a" => None,
+            "a" => "second",
+        )));
+        let (s, d, md) = m.into_parts();
+        Event::Metric(OtelMetric::from_metric_parts(s, d, md))
     }
 
     #[test]

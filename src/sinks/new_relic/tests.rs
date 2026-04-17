@@ -266,7 +266,8 @@ fn generates_metric_api_model_with_timestamp() {
         MetricValue::Counter { value: 100.0 },
     )
     .with_timestamp(Some(stamp));
-    let event = Event::Metric(OtelMetric::from_legacy_metric(m));
+    let (s, d, md) = m.into_parts();
+    let event = Event::Metric(OtelMetric::from_metric_parts(s, d, md));
     let model =
         MetricsApiModel::try_from(vec![event]).expect("Failed mapping metrics into API model");
 
@@ -293,7 +294,8 @@ fn generates_metric_api_model_incremental_counter() {
     )
     .with_timestamp(Some(stamp))
     .with_interval_ms(NonZeroU32::new(1000));
-    let event = Event::Metric(OtelMetric::from_legacy_metric(m));
+    let (s, d, md) = m.into_parts();
+    let event = Event::Metric(OtelMetric::from_metric_parts(s, d, md));
     let model =
         MetricsApiModel::try_from(vec![event]).expect("Failed mapping metrics into API model");
 

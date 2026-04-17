@@ -232,19 +232,23 @@ mod tests {
     fn encodes_histogram_without_error() {
         use vector_core::event::{Metric, MetricKind, MetricValue};
         let mut ser = make_serializer();
-        let metric = OtelMetric::from_legacy_metric(Metric::new(
-            "request_latency",
-            MetricKind::Absolute,
-            MetricValue::AggregatedHistogram {
-                buckets: vec![
-                    Bucket { upper_limit: 0.1, count: 10 },
-                    Bucket { upper_limit: 1.0, count: 25 },
-                    Bucket { upper_limit: f64::INFINITY, count: 5 },
-                ],
-                count: 40,
-                sum: 12.5,
-            },
-        ));
+        let metric = {
+            let m = Metric::new(
+                "request_latency",
+                MetricKind::Absolute,
+                MetricValue::AggregatedHistogram {
+                    buckets: vec![
+                        Bucket { upper_limit: 0.1, count: 10 },
+                        Bucket { upper_limit: 1.0, count: 25 },
+                        Bucket { upper_limit: f64::INFINITY, count: 5 },
+                    ],
+                    count: 40,
+                    sum: 12.5,
+                },
+            );
+            let (s, d, md) = m.into_parts();
+            OtelMetric::from_metric_parts(s, d, md)
+        };
         let mut buf = BytesMut::new();
         ser.encode(Event::Metric(metric), &mut buf)
             .expect("histogram encode must succeed");

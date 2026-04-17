@@ -210,7 +210,8 @@ impl From<OtelSpan> for EventArray {
 
 impl From<Metric> for EventArray {
     fn from(metric: Metric) -> Self {
-        Event::Metric(OtelMetric::from_legacy_metric(metric)).into()
+        let (s, d, md) = metric.into_parts();
+        Event::Metric(OtelMetric::from_metric_parts(s, d, md)).into()
     }
 }
 

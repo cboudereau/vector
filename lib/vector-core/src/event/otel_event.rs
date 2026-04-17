@@ -3526,7 +3526,8 @@ mod tests {
             .with_namespace(Some("http"))
             .with_timestamp(Some(Utc::now()));
 
-        let otel = OtelMetric::from_legacy_metric(m);
+        let (s, d, md) = m.into_parts();
+        let otel = OtelMetric::from_metric_parts(s, d, md);
         assert_eq!(otel.name(), "requests_total");
         assert_eq!(otel.namespace(), Some("http"));
         assert_eq!(otel.kind(), MetricKind::Incremental);
@@ -3541,7 +3542,8 @@ mod tests {
         use crate::event::{Metric, MetricKind, MetricValue};
 
         let m = Metric::new("temperature", MetricKind::Absolute, MetricValue::Gauge { value: 98.6 });
-        let otel = OtelMetric::from_legacy_metric(m);
+        let (s, d, md) = m.into_parts();
+        let otel = OtelMetric::from_metric_parts(s, d, md);
 
         assert_eq!(otel.name(), "temperature");
         assert_eq!(otel.kind(), MetricKind::Absolute);
@@ -3566,7 +3568,8 @@ mod tests {
             MetricKind::Absolute,
             MetricValue::AggregatedHistogram { buckets, count: 35, sum: 150.0 },
         );
-        let otel = OtelMetric::from_legacy_metric(m);
+        let (s, d, md) = m.into_parts();
+        let otel = OtelMetric::from_metric_parts(s, d, md);
 
         assert_eq!(otel.name(), "latency");
         match otel.value() {
@@ -3586,7 +3589,8 @@ mod tests {
         use crate::event::{Event, Metric, MetricKind, MetricValue, OtelMetric};
 
         let m = Metric::new("test", MetricKind::Absolute, MetricValue::Gauge { value: 1.0 });
-        let event: Event = Event::Metric(OtelMetric::from_legacy_metric(m));
+        let (s, d, md) = m.into_parts();
+        let event: Event = Event::Metric(OtelMetric::from_metric_parts(s, d, md));
         assert!(matches!(event, Event::Metric(_)), "expected Event::Metric, got {event:?}");
 
         let metric = event.try_into_otel_metric().expect("should convert back");
@@ -3651,7 +3655,8 @@ mod tests {
                 .collect(),
         ));
 
-        let otel = OtelMetric::from_legacy_metric(m);
+        let (s, d, md) = m.into_parts();
+        let otel = OtelMetric::from_metric_parts(s, d, md);
 
         // Data point attribute lookup
         assert_eq!(otel.tag_value("env"), Some("prod".to_string()));
@@ -3700,30 +3705,39 @@ mod tests {
             .collect(),
         ));
 
-        let otel = OtelMetric::from_legacy_metric(m);
+        let (s, d, md) = m.into_parts();
+        let otel = OtelMetric::from_metric_parts(s, d, md);
         let tags = otel.tags().expect("should have tags");
         assert_eq!(tags.get("env"), Some("prod"));
         assert_eq!(tags.get("region"), Some("us-east"));
 
         // Empty metric has no tags
-        let empty = OtelMetric::from_legacy_metric(Metric::new(
-            "empty",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 0.0 },
-        ));
+        let empty = {
+            let m = Metric::new(
+                "empty",
+                MetricKind::Absolute,
+                MetricValue::Gauge { value: 0.0 },
+            );
+            let (s, d, md) = m.into_parts();
+            OtelMetric::from_metric_parts(s, d, md)
+        };
         assert!(empty.tags().is_none());
     }
 
     #[test]
-    fn new_counter_matches_from_legacy_metric() {
+    fn new_counter_matches_from_metric_parts() {
         use crate::event::{Metric, MetricKind, MetricValue};
 
         let direct = OtelMetric::new_counter("requests", MetricKind::Incremental, 42.0);
-        let via_legacy = OtelMetric::from_legacy_metric(Metric::new(
-            "requests",
-            MetricKind::Incremental,
-            MetricValue::Counter { value: 42.0 },
-        ));
+        let via_legacy = {
+            let m = Metric::new(
+                "requests",
+                MetricKind::Incremental,
+                MetricValue::Counter { value: 42.0 },
+            );
+            let (s, d, md) = m.into_parts();
+            OtelMetric::from_metric_parts(s, d, md)
+        };
 
         assert_eq!(direct.name(), via_legacy.name());
         assert_eq!(direct.kind(), via_legacy.kind());
@@ -3731,15 +3745,19 @@ mod tests {
     }
 
     #[test]
-    fn new_gauge_matches_from_legacy_metric() {
+    fn new_gauge_matches_from_metric_parts() {
         use crate::event::{Metric, MetricKind, MetricValue};
 
         let direct = OtelMetric::new_gauge("temperature", 98.6);
-        let via_legacy = OtelMetric::from_legacy_metric(Metric::new(
-            "temperature",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 98.6 },
-        ));
+        let via_legacy = {
+            let m = Metric::new(
+                "temperature",
+                MetricKind::Absolute,
+                MetricValue::Gauge { value: 98.6 },
+            );
+            let (s, d, md) = m.into_parts();
+            OtelMetric::from_metric_parts(s, d, md)
+        };
 
         assert_eq!(direct.name(), via_legacy.name());
         assert_eq!(direct.kind(), via_legacy.kind());
@@ -3747,7 +3765,7 @@ mod tests {
     }
 
     #[test]
-    fn new_histogram_matches_from_legacy_metric() {
+    fn new_histogram_matches_from_metric_parts() {
         use crate::event::{Metric, MetricKind, MetricValue};
 
         let buckets = crate::buckets![1.0 => 10, 5.0 => 20, 10.0 => 5];
@@ -3758,15 +3776,19 @@ mod tests {
             35,
             8.0,
         );
-        let via_legacy = OtelMetric::from_legacy_metric(Metric::new(
-            "request_duration",
-            MetricKind::Absolute,
-            MetricValue::AggregatedHistogram {
-                buckets,
-                count: 35,
-                sum: 8.0,
-            },
-        ));
+        let via_legacy = {
+            let m = Metric::new(
+                "request_duration",
+                MetricKind::Absolute,
+                MetricValue::AggregatedHistogram {
+                    buckets,
+                    count: 35,
+                    sum: 8.0,
+                },
+            );
+            let (s, d, md) = m.into_parts();
+            OtelMetric::from_metric_parts(s, d, md)
+        };
 
         assert_eq!(direct.name(), via_legacy.name());
         assert_eq!(direct.kind(), via_legacy.kind());
@@ -3774,7 +3796,7 @@ mod tests {
     }
 
     #[test]
-    fn new_summary_matches_from_legacy_metric() {
+    fn new_summary_matches_from_metric_parts() {
         use crate::event::{Metric, MetricKind, MetricValue};
 
         let quantiles = crate::quantiles![0.5 => 100.0, 0.99 => 200.0];
@@ -3784,15 +3806,19 @@ mod tests {
             50,
             4200.0,
         );
-        let via_legacy = OtelMetric::from_legacy_metric(Metric::new(
-            "request_latency",
-            MetricKind::Absolute,
-            MetricValue::AggregatedSummary {
-                quantiles,
-                count: 50,
-                sum: 4200.0,
-            },
-        ));
+        let via_legacy = {
+            let m = Metric::new(
+                "request_latency",
+                MetricKind::Absolute,
+                MetricValue::AggregatedSummary {
+                    quantiles,
+                    count: 50,
+                    sum: 4200.0,
+                },
+            );
+            let (s, d, md) = m.into_parts();
+            OtelMetric::from_metric_parts(s, d, md)
+        };
 
         assert_eq!(direct.name(), via_legacy.name());
         assert_eq!(direct.value(), via_legacy.value());
@@ -4081,7 +4107,7 @@ mod tests {
     }
 
     #[test]
-    fn with_namespace_tags_timestamp_matches_from_legacy_metric() {
+    fn with_namespace_tags_timestamp_matches_from_metric_parts() {
         use crate::event::{Metric, MetricKind, MetricValue};
         use chrono::{TimeZone, Utc};
 
@@ -4095,16 +4121,18 @@ mod tests {
             .with_tags(Some(tags.clone()))
             .with_timestamp(Some(ts));
 
-        let via_legacy = OtelMetric::from_legacy_metric(
-            Metric::new(
+        let via_legacy = {
+            let m = Metric::new(
                 "requests",
                 MetricKind::Incremental,
                 MetricValue::Counter { value: 42.0 },
             )
             .with_namespace(Some("http"))
             .with_tags(Some(tags))
-            .with_timestamp(Some(ts)),
-        );
+            .with_timestamp(Some(ts));
+            let (s, d, md) = m.into_parts();
+            OtelMetric::from_metric_parts(s, d, md)
+        };
 
         assert_eq!(direct.name(), via_legacy.name());
         assert_eq!(direct.namespace(), via_legacy.namespace());
@@ -4135,14 +4163,16 @@ mod tests {
         let direct = OtelMetric::new_counter("requests", MetricKind::Incremental, 1.0)
             .with_tags(Some(tags.clone()));
 
-        let via_legacy = OtelMetric::from_legacy_metric(
-            Metric::new(
+        let via_legacy = {
+            let m = Metric::new(
                 "requests",
                 MetricKind::Incremental,
                 MetricValue::Counter { value: 1.0 },
             )
-            .with_tags(Some(tags)),
-        );
+            .with_tags(Some(tags));
+            let (s, d, md) = m.into_parts();
+            OtelMetric::from_metric_parts(s, d, md)
+        };
 
         // The key "env" must encode as an ArrayValue in both paths.
         let find_env = |m: &OtelMetric| -> any_value::Value {

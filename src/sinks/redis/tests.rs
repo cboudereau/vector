@@ -87,7 +87,7 @@ fn redis_metric_encode_event() {
     );
 
     let result = encode_event(
-        Event::Metric(OtelMetric::from_legacy_metric(metric)),
+        { let (s, d, md) = metric.into_parts(); Event::Metric(OtelMetric::from_metric_parts(s, d, md)) },
         "metrics.counter".to_string(),
         None,
         &Default::default(),

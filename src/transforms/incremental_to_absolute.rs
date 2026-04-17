@@ -111,7 +111,11 @@ mod tests {
     };
 
     fn make_metric(name: &'static str, kind: MetricKind, value: MetricValue) -> Event {
-        let mut event = Event::Metric(OtelMetric::from_legacy_metric(Metric::new(name, kind, value)))
+        let mut event = {
+            let m = Metric::new(name, kind, value);
+            let (s, d, md) = m.into_parts();
+            Event::Metric(OtelMetric::from_metric_parts(s, d, md))
+        }
             .with_source_id(Arc::new(ComponentKey::from("in")))
             .with_upstream_id(Arc::new(OutputId::from("transform")));
 

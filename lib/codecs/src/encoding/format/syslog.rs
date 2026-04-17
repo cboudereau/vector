@@ -784,14 +784,18 @@ mod tests {
         )
         .unwrap();
 
-        let metric_event = Event::Metric(OtelMetric::from_legacy_metric(vector_core::event::Metric::new(
-            "metric1",
-            MetricKind::Incremental,
-            MetricValue::Distribution {
-                samples: vector_core::samples![10.0 => 1],
-                statistic: StatisticKind::Histogram,
-            },
-        )));
+        let metric_event = {
+            let m = vector_core::event::Metric::new(
+                "metric1",
+                MetricKind::Incremental,
+                MetricValue::Distribution {
+                    samples: vector_core::samples![10.0 => 1],
+                    statistic: StatisticKind::Histogram,
+                },
+            );
+            let (s, d, md) = m.into_parts();
+            Event::Metric(OtelMetric::from_metric_parts(s, d, md))
+        };
 
         let mut serializer = SyslogSerializer::new(&config);
         let mut buffer = BytesMut::new();

@@ -310,8 +310,8 @@ pub fn random_metrics_with_stream_timestamp(
     let events: Vec<_> = (0..count)
         .map(|index| {
             let ts = timestamp + (timestamp_offset * index as u32);
-            Event::Metric(OtelMetric::from_legacy_metric(
-                Metric::new(
+            {
+                let m = Metric::new(
                     format!("counter_{}", rng().random::<u32>()),
                     MetricKind::Incremental,
                     MetricValue::Counter {
@@ -319,8 +319,10 @@ pub fn random_metrics_with_stream_timestamp(
                     },
                 )
                 .with_timestamp(Some(ts))
-                .with_tags(tags.clone()),
-            ))
+                .with_tags(tags.clone());
+                let (s, d, md) = m.into_parts();
+                Event::Metric(OtelMetric::from_metric_parts(s, d, md))
+            }
             // this ensures we get Origin Metadata, with an undefined service but that's ok.
             .with_source_type("a_source_like_none_other")
         })

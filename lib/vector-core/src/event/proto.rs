@@ -671,7 +671,8 @@ mod tests {
         let via_legacy = WithMetadata::<super::Metric>::from(metric.clone());
 
         // Path B: Metric -> OtelMetric -> proto
-        let otel = OtelMetric::from_legacy_metric(metric);
+        let (s, d, md) = metric.into_parts();
+        let otel = OtelMetric::from_metric_parts(s, d, md);
         let via_otel = WithMetadata::<super::Metric>::from(otel);
 
         assert_eq!(

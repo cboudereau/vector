@@ -219,15 +219,17 @@ mod test {
             //     Ok(()),
             // ),
             (
-                Event::Metric(OtelMetric::from_legacy_metric(
-                    Metric::new(
+                {
+                    let m = Metric::new(
                         "zork",
                         MetricKind::Incremental,
                         MetricValue::Counter { value: 1.0 },
                     )
                     .with_namespace(Some("zerk"))
-                    .with_tags(Some(metric_tags!("host" => "zoobub"))),
-                )),
+                    .with_tags(Some(metric_tags!("host" => "zoobub")));
+                    let (s, d, md) = m.into_parts();
+                    Event::Metric(OtelMetric::from_metric_parts(s, d, md))
+                },
                 r#".name == "zork""#,
                 Ok(()),
                 Ok(()),

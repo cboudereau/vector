@@ -29,15 +29,17 @@ fn generate_config() {
 fn make_metric_with_name(tags: MetricTags, name: &str) -> Event {
     let event_metadata = EventMetadata::default().with_source_type("unit_test_stream");
 
-    Event::Metric(OtelMetric::from_legacy_metric(
-        Metric::new_with_metadata(
+    {
+        let m = Metric::new_with_metadata(
             name,
             metric::MetricKind::Incremental,
             metric::MetricValue::Counter { value: 1.0 },
             event_metadata,
         )
-        .with_tags(Some(tags)),
-    ))
+        .with_tags(Some(tags));
+        let (s, d, md) = m.into_parts();
+        Event::Metric(OtelMetric::from_metric_parts(s, d, md))
+    }
 }
 
 fn make_metric(tags: MetricTags) -> Event {

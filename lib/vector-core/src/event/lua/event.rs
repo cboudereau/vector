@@ -66,7 +66,10 @@ impl FromLua for Event {
             }
             (LuaValue::Nil, LuaValue::Table(metric)) => {
                 let metric = Metric::from_lua(LuaValue::Table(metric), lua)?;
-                Ok(Event::Metric(super::super::OtelMetric::from_legacy_metric(metric)))
+                Ok(Event::Metric({
+                    let (s, d, md) = metric.into_parts();
+                    super::super::OtelMetric::from_metric_parts(s, d, md)
+                }))
             }
             _ => Err(LuaError::FromLuaConversionError {
                 from: value.type_name(),

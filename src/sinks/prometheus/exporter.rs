@@ -685,7 +685,7 @@ mod tests {
         .with_tags(Some(metric_tags!("env" => "prod")));
 
         let via_metric = MetricRef::from_metric(&counter);
-        let via_otel = MetricRef::from_otel_metric(&OtelMetric::from_legacy_metric(counter));
+        let via_otel = MetricRef::from_otel_metric(&{ let (s, d, md) = counter.into_parts(); OtelMetric::from_metric_parts(s, d, md) });
 
         assert_eq!(via_metric, via_otel);
 
@@ -700,7 +700,7 @@ mod tests {
             },
         );
         let h_via_metric = MetricRef::from_metric(&histogram);
-        let h_via_otel = MetricRef::from_otel_metric(&OtelMetric::from_legacy_metric(histogram));
+        let h_via_otel = MetricRef::from_otel_metric(&{ let (s, d, md) = histogram.into_parts(); OtelMetric::from_metric_parts(s, d, md) });
         assert_eq!(h_via_metric, h_via_otel);
     }
 
@@ -1175,10 +1175,12 @@ mod tests {
         tags: Option<MetricTags>,
     ) -> (String, Event) {
         let name = name.unwrap_or_else(|| format!("vector_set_{}", random_string(16)));
-        let event = Event::Metric(OtelMetric::from_legacy_metric(
-            Metric::new(name.clone(), MetricKind::Incremental, value)
-                .with_tags(tags),
-        ));
+        let event = Event::Metric({
+            let m = Metric::new(name.clone(), MetricKind::Incremental, value)
+                .with_tags(tags);
+            let (s, d, md) = m.into_parts();
+            OtelMetric::from_metric_parts(s, d, md)
+        });
         (name, event)
     }
 
@@ -1203,9 +1205,9 @@ mod tests {
         let m2 = m1.clone().with_tags(Some(metric_tags!("tag1" => "value2")));
 
         let events = vec![
-            Event::Metric(OtelMetric::from_legacy_metric(m1.clone().with_value(MetricValue::Counter { value: 32. }))),
-            Event::Metric(OtelMetric::from_legacy_metric(m2.clone().with_value(MetricValue::Counter { value: 33. }))),
-            Event::Metric(OtelMetric::from_legacy_metric(m1.clone().with_value(MetricValue::Counter { value: 40. }))),
+            Event::Metric({ let m = m1.clone().with_value(MetricValue::Counter { value: 32. }); let (s, d, md) = m.into_parts(); OtelMetric::from_metric_parts(s, d, md) }),
+            Event::Metric({ let m = m2.clone().with_value(MetricValue::Counter { value: 33. }); let (s, d, md) = m.into_parts(); OtelMetric::from_metric_parts(s, d, md) }),
+            Event::Metric({ let m = m1.clone().with_value(MetricValue::Counter { value: 40. }); let (s, d, md) = m.into_parts(); OtelMetric::from_metric_parts(s, d, md) }),
         ];
 
         let metrics_handle = Arc::clone(&sink.metrics);
@@ -1320,7 +1322,7 @@ mod tests {
         let events = metrics
             .iter()
             .cloned()
-            .map(|m| Event::Metric(OtelMetric::from_legacy_metric(m)))
+            .map(|m| { let (s, d, md) = m.into_parts(); Event::Metric(OtelMetric::from_metric_parts(s, d, md)) })
             .collect::<Vec<_>>();
 
         let sink = VectorSink::from_event_streamsink(sink);
@@ -1436,7 +1438,7 @@ mod tests {
         let events = metrics
             .iter()
             .cloned()
-            .map(|m| Event::Metric(OtelMetric::from_legacy_metric(m)))
+            .map(|m| { let (s, d, md) = m.into_parts(); Event::Metric(OtelMetric::from_metric_parts(s, d, md)) })
             .collect::<Vec<_>>();
 
         let sink = VectorSink::from_event_streamsink(sink);
@@ -1505,7 +1507,7 @@ mod tests {
         let events = metrics
             .iter()
             .cloned()
-            .map(|m| Event::Metric(OtelMetric::from_legacy_metric(m)))
+            .map(|m| { let (s, d, md) = m.into_parts(); Event::Metric(OtelMetric::from_metric_parts(s, d, md)) })
             .collect::<Vec<_>>();
 
         let sink = VectorSink::from_event_streamsink(sink);

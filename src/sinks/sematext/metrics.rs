@@ -443,8 +443,8 @@ mod tests {
 
         let mut events = Vec::new();
         for (i, (namespace, metric, val)) in metrics.iter().enumerate() {
-            let event = Event::Metric(OtelMetric::from_legacy_metric(
-                Metric::new(
+            let event = {
+                let m = Metric::new(
                     *metric,
                     MetricKind::Incremental,
                     MetricValue::Counter { value: *val },
@@ -453,8 +453,10 @@ mod tests {
                 .with_tags(Some(metric_tags!("os.host" => "somehost")))
                     .with_timestamp(Some(Utc.with_ymd_and_hms(2020, 8, 18, 21, 0, 0).single()
                                          .and_then(|t| t.with_nanosecond(i as u32))
-                                         .expect("invalid timestamp"))),
-            ));
+                                         .expect("invalid timestamp")));
+                let (s, d, md) = m.into_parts();
+                Event::Metric(OtelMetric::from_metric_parts(s, d, md))
+            };
             events.push(event);
         }
 

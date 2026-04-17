@@ -653,7 +653,7 @@ fn build_input_event(input: &TestInput) -> Result<Event, String> {
         }
         "metric" => {
             if let Some(metric) = &input.metric {
-                Ok(Event::Metric(OtelMetric::from_legacy_metric(metric.clone())))
+                Ok({ let (s, d, md) = metric.clone().into_parts(); Event::Metric(OtelMetric::from_metric_parts(s, d, md)) })
             } else {
                 Err("input type 'metric' requires the field 'metric'".to_string())
             }

@@ -235,11 +235,11 @@ fn make_remote_write_event(
 ) -> Option<RemoteWriteMetric> {
     // The prometheus sink internals use legacy `Metric` (see the
     // BatchedMetrics doc comment) but Template::render_string requires
-    // OtelMetric. Convert here at the boundary — `from_legacy_metric` is
+    // OtelMetric. Convert here at the boundary — `from_metric_parts` is
     // a cheap proto-tuple move on a clone of the metric.
     let tenant_id = tenant_id.and_then(|template| {
         template
-            .render_string(&OtelMetric::from_legacy_metric(metric.clone()))
+            .render_string(&{ let (s, d, md) = metric.clone().into_parts(); OtelMetric::from_metric_parts(s, d, md) })
             .map_err(|error| {
                 emit!(TemplateRenderingError {
                     error,

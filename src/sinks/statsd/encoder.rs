@@ -166,7 +166,7 @@ mod tests {
     fn encode_metric(metric: &Metric) -> bytes::BytesMut {
         use tokio_util::codec::Encoder;
 
-        let otel = OtelMetric::from_legacy_metric(metric.clone());
+        let otel = { let (s, d, md) = metric.clone().into_parts(); OtelMetric::from_metric_parts(s, d, md) };
         let mut encoder = super::StatsdEncoder {
             default_namespace: None,
         };

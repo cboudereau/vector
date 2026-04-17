@@ -48,17 +48,19 @@ async fn test_send_to_statsd() {
     };
 
     let events = vec![
-        Event::Metric(OtelMetric::from_legacy_metric(
-            Metric::new(
+        {
+            let m = Metric::new(
                 "counter",
                 MetricKind::Incremental,
                 MetricValue::Counter { value: 1.5 },
             )
             .with_namespace(Some("vector"))
-            .with_tags(Some(tags())),
-        )),
-        Event::Metric(OtelMetric::from_legacy_metric(
-            Metric::new(
+            .with_tags(Some(tags()));
+            let (s, d, md) = m.into_parts();
+            Event::Metric(OtelMetric::from_metric_parts(s, d, md))
+        },
+        {
+            let m = Metric::new(
                 "histogram",
                 MetricKind::Incremental,
                 MetricValue::Distribution {
@@ -66,8 +68,10 @@ async fn test_send_to_statsd() {
                     statistic: StatisticKind::Histogram,
                 },
             )
-            .with_namespace(Some("vector")),
-        )),
+            .with_namespace(Some("vector"));
+            let (s, d, md) = m.into_parts();
+            Event::Metric(OtelMetric::from_metric_parts(s, d, md))
+        },
     ];
     let (tx, rx) = mpsc::channel(1);
 

@@ -232,11 +232,11 @@ mod test {
 
         // Push of a different type adds a new element
         buf.push(
-            Event::Metric(OtelMetric::from_legacy_metric(Metric::new(
-                "name",
-                MetricKind::Absolute,
-                MetricValue::Counter { value: 1.0 },
-            ))),
+            Event::Metric({
+                let m = Metric::new("name", MetricKind::Absolute, MetricValue::Counter { value: 1.0 });
+                let (s, d, md) = m.into_parts();
+                OtelMetric::from_metric_parts(s, d, md)
+            }),
         );
         assert_eq!(buf.len(), 3);
         assert_eq!(buf.0.len(), 2);

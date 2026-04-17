@@ -57,14 +57,14 @@ macro_rules! metric_tags {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Metric {
     #[serde(flatten)]
-    pub(super) series: MetricSeries,
+    pub series: MetricSeries,
 
     #[serde(flatten)]
-    pub(super) data: MetricData,
+    pub data: MetricData,
 
     /// Internal event metadata.
     #[serde(skip, default = "EventMetadata::default")]
-    metadata: EventMetadata,
+    pub metadata: EventMetadata,
 }
 
 impl Metric {

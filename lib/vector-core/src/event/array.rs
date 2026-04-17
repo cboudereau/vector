@@ -328,7 +328,9 @@ impl Arbitrary for EventArray {
         } else {
             let mut metrics = Vec::new();
             for _ in 0..len {
-                metrics.push(OtelMetric::from_legacy_metric(Metric::arbitrary(g)));
+                let m = Metric::arbitrary(g);
+                let (s, d, md) = m.into_parts();
+                metrics.push(OtelMetric::from_metric_parts(s, d, md));
             }
             EventArray::Metrics(metrics)
         }

@@ -219,8 +219,14 @@ fn hoist_resource_fields(resource: &Option<Resource>, map: &mut ObjectMap) {
                 Value::Integer(resource.dropped_attributes_count as i64),
             );
         }
-        // OTel-native: resource attributes stay in the resource sub-object.
-        // No longer hoisting source_type or host.name to top-level.
+        // Legacy compat: hoist source_type and host.name to top-level.
+        // TODO(T15/T16): remove when legacy layout round-trip is eliminated.
+        if let Some(v) = res_map.remove("source_type") {
+            map.entry("source_type".into()).or_insert(v);
+        }
+        if let Some(v) = res_map.remove("host.name") {
+            map.entry("host".into()).or_insert(v);
+        }
         if !res_map.is_empty() {
             map.insert("resource".into(), Value::Object(res_map));
         }
@@ -877,14 +883,8 @@ impl OtelLog {
             map.insert("severity_number".into(), Value::Integer(self.record.severity_number as i64));
         }
 
-        // Timestamps — OTel-native: emit as integer nanoseconds, not legacy Timestamp
-        if self.record.time_unix_nano != 0 {
-            map.insert("time_unix_nano".into(), Value::Integer(self.record.time_unix_nano as i64));
-        }
-        if self.record.observed_time_unix_nano != 0 {
-            map.insert("observed_time_unix_nano".into(), Value::Integer(self.record.observed_time_unix_nano as i64));
-        }
-        // Legacy "timestamp" alias — keep for backward compat during migration
+        // Timestamp
+        // TODO(T15/T16): emit as time_unix_nano integer when legacy layout is removed.
         if let Some(overflow) = attribute_value(&self.record.attributes, "vector.timestamp_overflow") {
             if let Some(OtelValueKind::StringValue(s)) = &overflow.value {
                 if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
@@ -897,6 +897,15 @@ impl OtelLog {
             let nsecs = (nanos % 1_000_000_000) as u32;
             if let Some(ts) = chrono::DateTime::from_timestamp(secs, nsecs) {
                 map.insert("timestamp".into(), Value::Timestamp(ts));
+            }
+        } else if self.record.observed_time_unix_nano != 0 {
+            if !map.contains_key("timestamp") {
+                let nanos = self.record.observed_time_unix_nano;
+                let secs = (nanos / 1_000_000_000) as i64;
+                let nsecs = (nanos % 1_000_000_000) as u32;
+                if let Some(ts) = chrono::DateTime::from_timestamp(secs, nsecs) {
+                    map.insert("timestamp".into(), Value::Timestamp(ts));
+                }
             }
         }
 
@@ -1009,6 +1018,7 @@ impl OtelLog {
         // Route well-known log_schema fields (source_type, host) back to resource attrs
         // — matches `to_value_legacy_layout`'s resource hoisting so round-trips
         // are lossless.
+        // TODO(T15/T16): remove when legacy layout round-trip is eliminated.
         let mut resource_attrs: Vec<KeyValue> = Vec::new();
         if let Some(v) = map.remove("source_type") {
             resource_attrs.push(KeyValue {
@@ -3956,9 +3966,9 @@ mod tests {
             dropped_attributes_count: 0,
         });
         event.insert(vrl::event_path!("another"), "x");
-        // source_type is now in the resource sub-object (OTel-native, no hoisting)
+        // source_type should survive the round-trip (hoisted to top-level)
         assert_eq!(
-            event.get(vrl::event_path!("resource", "source_type")).and_then(|v| v.as_str().map(|s| s.into_owned())),
+            event.get(vrl::event_path!("source_type")).and_then(|v| v.as_str().map(|s| s.into_owned())),
             Some("syslog".to_string())
         );
     }
@@ -4030,9 +4040,9 @@ mod tests {
             dropped_attributes_count: 0,
         });
         event.insert(vrl::event_path!("attr"), "val");
-        // OTel-native: host.name stays in resource sub-object (no hoisting)
+        // host.name → top-level "host" in value layout
         assert_eq!(
-            event.get(vrl::event_path!("resource", "host.name")).and_then(|v| v.as_str().map(|s| s.into_owned())),
+            event.get(vrl::event_path!("host")).and_then(|v| v.as_str().map(|s| s.into_owned())),
             Some("srv01".to_string())
         );
     }

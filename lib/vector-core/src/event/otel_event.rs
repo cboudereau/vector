@@ -1949,27 +1949,17 @@ impl OtelMetric {
     /// - AggregatedHistogram → Histogram (explicit bounds)
     /// - AggregatedSummary → Summary
     /// - Distribution/Set → Gauge (lossy fallback)
-    /// Construct an OtelMetric from legacy metric parts (MetricSeries, MetricData, EventMetadata).
-    /// This is the migration entry point — callers should construct parts directly
-    /// instead of going through the legacy Metric struct.
+    /// Construct an OtelMetric directly from metric parts without the legacy Metric struct.
     pub fn from_metric_parts(
         series: super::metric::MetricSeries,
         data: super::metric::MetricData,
         metadata: super::EventMetadata,
     ) -> Self {
-        // Rebuild a legacy Metric temporarily to reuse from_legacy_metric conversion.
-        // TODO: inline the conversion logic here once the legacy Metric struct is deleted.
-        let m = super::Metric::from_parts(series, data, metadata);
-        Self::from_legacy_metric(m)
-    }
-
-    pub fn from_legacy_metric(m: super::Metric) -> Self {
         use opentelemetry_proto::tonic::metrics::v1::{
             self as otel_metrics, metric, number_data_point::Value as NDPValue,
         };
         use super::{MetricKind, MetricValue};
 
-        let (series, data, metadata) = m.into_parts();
         let metric_data = data.value;
         let time_nanos = data
             .time
@@ -2215,6 +2205,13 @@ impl OtelMetric {
             scope: None,
             metadata,
         }
+    }
+
+    /// Bridge from the legacy Metric struct. Delegates to `from_metric_parts`.
+    /// Will be deleted when the Metric struct is removed.
+    pub fn from_legacy_metric(m: super::Metric) -> Self {
+        let (series, data, metadata) = m.into_parts();
+        Self::from_metric_parts(series, data, metadata)
     }
 
     pub fn from_parts(

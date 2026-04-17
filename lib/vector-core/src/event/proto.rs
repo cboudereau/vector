@@ -69,10 +69,7 @@ impl From<EventArray> for array::EventArray {
                 metrics
                     .metrics
                     .into_iter()
-                    .map(|proto| {
-                        let legacy: super::Metric = proto.into();
-                        super::OtelMetric::from_legacy_metric(legacy)
-                    })
+                    .map(super::OtelMetric::from)
                     .collect(),
             ),
             event_array::Events::Traces(traces) => array::EventArray::Traces(
@@ -160,51 +157,79 @@ impl From<MetricValue> for super::MetricValue {
     }
 }
 
+/// Decode a proto Metric directly into its component parts.
+fn decode_metric_parts(
+    metric: Metric,
+) -> (
+    super::metric::MetricSeries,
+    super::metric::MetricData,
+    super::EventMetadata,
+) {
+    let kind = match metric.kind() {
+        metric::Kind::Incremental => super::MetricKind::Incremental,
+        metric::Kind::Absolute => super::MetricKind::Absolute,
+    };
+
+    let name = metric.name;
+    let namespace = (!metric.namespace.is_empty()).then_some(metric.namespace);
+
+    let timestamp = metric.timestamp.map(|ts| {
+        chrono::Utc
+            .timestamp_opt(ts.seconds, ts.nanos as u32)
+            .single()
+            .expect("invalid timestamp")
+    });
+
+    let tags = MetricTags(
+        metric
+            .tags_v2
+            .into_iter()
+            .map(|(tag, values)| {
+                (
+                    tag,
+                    values
+                        .values
+                        .into_iter()
+                        .map(|value| super::metric::TagValue::from(value.value))
+                        .collect(),
+                )
+            })
+            .collect(),
+    );
+    let tags = (!tags.is_empty()).then_some(tags);
+
+    let value = super::MetricValue::from(metric.value.unwrap());
+    let metadata = metric.metadata_full.map(Into::into).unwrap_or_default();
+
+    let series = super::metric::MetricSeries {
+        name: super::metric::MetricName {
+            name,
+            namespace,
+        },
+        tags,
+    };
+    let data = super::metric::MetricData {
+        time: super::metric::MetricTime {
+            timestamp,
+            interval_ms: std::num::NonZeroU32::new(metric.interval_ms),
+        },
+        kind,
+        value,
+    };
+    (series, data, metadata)
+}
+
 impl From<Metric> for super::Metric {
     fn from(metric: Metric) -> Self {
-        let kind = match metric.kind() {
-            metric::Kind::Incremental => super::MetricKind::Incremental,
-            metric::Kind::Absolute => super::MetricKind::Absolute,
-        };
+        let (series, data, metadata) = decode_metric_parts(metric);
+        Self::from_parts(series, data, metadata)
+    }
+}
 
-        let name = metric.name;
-
-        let namespace = (!metric.namespace.is_empty()).then_some(metric.namespace);
-
-        let timestamp = metric.timestamp.map(|ts| {
-            chrono::Utc
-                .timestamp_opt(ts.seconds, ts.nanos as u32)
-                .single()
-                .expect("invalid timestamp")
-        });
-
-        let tags = MetricTags(
-            metric
-                .tags_v2
-                .into_iter()
-                .map(|(tag, values)| {
-                    (
-                        tag,
-                        values
-                            .values
-                            .into_iter()
-                            .map(|value| super::metric::TagValue::from(value.value))
-                            .collect(),
-                    )
-                })
-                .collect(),
-        );
-        let tags = (!tags.is_empty()).then_some(tags);
-
-        let value = super::MetricValue::from(metric.value.unwrap());
-
-        let metadata = metric.metadata_full.map(Into::into).unwrap_or_default();
-
-        Self::new_with_metadata(name, kind, value, metadata)
-            .with_namespace(namespace)
-            .with_tags(tags)
-            .with_timestamp(timestamp)
-            .with_interval_ms(std::num::NonZeroU32::new(metric.interval_ms))
+impl From<Metric> for super::OtelMetric {
+    fn from(metric: Metric) -> Self {
+        let (series, data, metadata) = decode_metric_parts(metric);
+        Self::from_metric_parts(series, data, metadata)
     }
 }
 
@@ -212,9 +237,7 @@ impl From<EventWrapper> for super::Event {
     fn from(proto: EventWrapper) -> Self {
         match proto.event.unwrap() {
             Event::Log(proto) => super::Event::Log(proto.into()),
-            Event::Metric(proto) => {
-                super::Event::Metric(super::OtelMetric::from_legacy_metric(proto.into()))
-            }
+            Event::Metric(proto) => super::Event::Metric(proto.into()),
             Event::Trace(proto) => super::Event::Trace(proto.into()),
         }
     }

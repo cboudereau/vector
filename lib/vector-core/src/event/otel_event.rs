@@ -722,10 +722,46 @@ impl OtelLog {
     }
 
     /// Get a field value by path.
-    /// Falls back to legacy layout for complex paths.
+    /// Fast path for well-known single-segment proto fields; falls back to legacy layout.
     pub fn get<'a>(&self, path: impl lookup::lookup_v2::TargetPath<'a>) -> Option<Value> {
+        use lookup::lookup_v2::ValuePath;
+        use lookup::path::BorrowedSegment;
+
         match path.prefix() {
             lookup::PathPrefix::Event => {
+                // Fast path: check if single-segment path matches a proto field
+                let vp = path.value_path();
+                let mut iter = vp.segment_iter();
+                if let Some(BorrowedSegment::Field(ref field)) = iter.next() {
+                    if iter.next().is_none() {
+                        // Single-segment path — check proto fields directly
+                        match field.as_ref() {
+                            "body" => {
+                                // Only fast-path non-KvList bodies — KvList bodies
+                                // are expanded to top-level in the legacy layout.
+                                if let Some(body) = self.body() {
+                                    if !matches!(body.value, Some(OtelValueKind::KvlistValue(_))) {
+                                        return Some(any_value_to_vrl(body));
+                                    }
+                                }
+                                // Fall through to legacy layout
+                            }
+                            "severity_text" if !self.record.severity_text.is_empty() => {
+                                return Some(Value::Bytes(self.record.severity_text.clone().into()));
+                            }
+                            "severity_number" if self.record.severity_number != 0 => {
+                                return Some(Value::Integer(self.record.severity_number as i64));
+                            }
+                            "trace_id" if !self.record.trace_id.is_empty() => {
+                                return Some(hex_encode(&self.record.trace_id));
+                            }
+                            "span_id" if !self.record.span_id.is_empty() => {
+                                return Some(hex_encode(&self.record.span_id));
+                            }
+                            _ => {} // fall through to legacy layout
+                        }
+                    }
+                }
                 let value = self.to_value_legacy_layout();
                 value.get(path.value_path()).cloned()
             }
@@ -736,14 +772,48 @@ impl OtelLog {
     }
 
     /// Insert a field value by path.
-    /// Uses legacy round-trip. TODO(T16): fast-path for known proto fields.
+    /// Fast path for well-known single-segment proto fields; falls back to legacy round-trip.
     pub fn insert<'a>(
         &mut self,
         path: impl lookup::lookup_v2::TargetPath<'a>,
         value: impl Into<Value>,
     ) -> Option<Value> {
+        use lookup::lookup_v2::ValuePath;
+        use lookup::path::BorrowedSegment;
+
         match path.prefix() {
             lookup::PathPrefix::Event => {
+                let value = value.into();
+                let vp = path.value_path();
+                let mut iter = vp.segment_iter();
+                if let Some(BorrowedSegment::Field(ref field)) = iter.next() {
+                    if iter.next().is_none() {
+                        match field.as_ref() {
+                            "body" => {
+                                let old = self.body().map(any_value_to_vrl);
+                                self.record_mut().body = Some(vrl_value_to_any_value(&value));
+                                return old;
+                            }
+                            "severity_text" => {
+                                let old = if self.record.severity_text.is_empty() { None }
+                                    else { Some(Value::Bytes(self.record.severity_text.clone().into())) };
+                                self.record_mut().severity_text = value.as_str()
+                                    .map(|s| s.to_string())
+                                    .unwrap_or_else(|| value.to_string_lossy().into_owned());
+                                return old;
+                            }
+                            "severity_number" => {
+                                let old = if self.record.severity_number == 0 { None }
+                                    else { Some(Value::Integer(self.record.severity_number as i64)) };
+                                if let Some(n) = value.as_integer() {
+                                    self.record_mut().severity_number = n as i32;
+                                }
+                                return old;
+                            }
+                            _ => {} // fall through to legacy round-trip
+                        }
+                    }
+                }
                 let mut val = self.to_value_legacy_layout();
                 let old = val.insert(path.value_path(), value);
                 self.apply_value_legacy_layout(val);

@@ -557,13 +557,16 @@ Delete all backward buffer compatibility code and bridge functions.
 - All boundary wrappers in mod.rs simplified to `Event::Metric(m)`
 - Production callers of `from_legacy_metric` → **ZERO remaining**
 
-### Current state (2026-04-17 audit)
+### Current state (2026-04-17 end-of-session)
 
 | Counter | Value | Note |
 |---------|-------|------|
 | `Metric::new` sites | 336 | All test/sink/lib — zero production sources |
-| `from_legacy_metric` sites | 146 | All test code |
-| `Metric::from_parts` sites | ~30 | MetricSet, proto decode, tests |
+| `from_legacy_metric` sites | 68 | Down from 146 — otel_event tests, prom exporter, statsd tests |
+| `from_metric_parts` sites | 91 | New callers replacing from_legacy_metric |
+
+**Tasks completed this session:** T1, T2, T3 (partial), T7 (partial),
+T8, T14, T18 (partial)
 
 ### Remaining tasks — ordered by dependency
 

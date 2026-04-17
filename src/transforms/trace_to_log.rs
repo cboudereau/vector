@@ -11,7 +11,7 @@ use crate::{
 
 /// Configuration for the `trace_to_log` transform.
 ///
-/// This is a naive implementation that simply converts a `TraceEvent` to a `OtelLog`.
+/// This is a naive implementation that simply converts an `OtelSpan` to an `OtelLog`.
 /// The conversion preserves all trace attributes (span IDs, trace IDs, etc.) as log fields without modification.
 /// This will need to be updated when Vector's trace data model is finalized to properly handle trace-specific semantics and field mappings.
 #[configurable_component(transform("trace_to_log", "Convert trace events to log events."))]

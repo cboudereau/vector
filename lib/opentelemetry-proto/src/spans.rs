@@ -274,12 +274,12 @@ mod tests {
         assert_eq!(
             trace.get(event_path!(SCOPE_KEY, SCOPE_NAME_KEY)),
             Some(vrl::value::Value::from("my-library")),
-            "scope.name must be stored on the TraceEvent"
+            "scope.name must be stored on the OtelSpan"
         );
         assert_eq!(
             trace.get(event_path!(SCOPE_KEY, SCOPE_VERSION_KEY)),
             Some(vrl::value::Value::from("1.2.3")),
-            "scope.version must be stored on the TraceEvent"
+            "scope.version must be stored on the OtelSpan"
         );
         let attrs = trace
             .get(event_path!(SCOPE_KEY, ATTRIBUTES_KEY))

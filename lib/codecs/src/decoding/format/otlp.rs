@@ -94,7 +94,7 @@ impl OtlpDeserializerConfig {
 /// - `ExportMetricsServiceRequest` → Log events with `resourceMetrics` field
 /// - `ExportTraceServiceRequest` → Trace events with `resourceSpans` field
 ///
-/// Note: This deserializer stores OTLP data as legacy `OtelLog`/`TraceEvent` types
+/// Note: This deserializer stores OTLP data as `OtelLog`/`OtelSpan`/`OtelMetric` types
 /// with raw OTLP JSON fields. It is retained for backward compatibility with external
 /// codecs usage but is no longer used by the `opentelemetry` source, which now emits
 /// OTel-native events directly.

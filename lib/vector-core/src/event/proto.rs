@@ -289,12 +289,6 @@ impl From<EventWrapper> for super::Event {
 }
 
 
-impl From<super::TraceEvent> for Trace {
-    fn from(trace: super::TraceEvent) -> Self {
-        WithMetadata::<Self>::from(trace).data
-    }
-}
-
 /// Encode a Value + EventMetadata into a proto Log with metadata.
 ///
 /// Due to backwards compatibility, "fields" must not be empty (decodes as
@@ -431,13 +425,6 @@ impl From<super::OtelMetric> for WithMetadata<Metric> {
     fn from(otel_metric: super::OtelMetric) -> Self {
         let (series, data, metadata) = otel_metric.into_metric_parts();
         encode_metric_proto(series, data, metadata)
-    }
-}
-
-impl From<super::TraceEvent> for WithMetadata<Trace> {
-    fn from(trace: super::TraceEvent) -> Self {
-        let (fields, metadata) = trace.into_parts();
-        encode_trace_proto(fields, metadata)
     }
 }
 

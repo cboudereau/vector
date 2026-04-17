@@ -538,6 +538,69 @@ migrations). See the dedicated "Phase F" section below.
 4. **B4 audit** — 1h discovery before committing to implementation
 5. **B1 dnstap** — biggest remaining, needs design doc first
 
+## Phase G — Final legacy type + buffer compat removal (2026-04-17)
+
+Goal: delete all remaining legacy Vector types and backward buffer
+compatibility. After Phase F deleted `log_event.rs`, these remain:
+
+### G.1 — Delete TraceEvent (GHOST type, ~191 lines)
+
+`Event::Trace(OtelSpan)` — the Event enum already uses OtelSpan, NOT
+TraceEvent. TraceEvent is a dead newtype wrapper around OtelLog (not
+even OtelSpan!) with zero active callers.
+
+| File | What to delete |
+|------|----------------|
+| `trace.rs` | Entire file (191 lines) |
+| `mod.rs:16` | `pub use trace::TraceEvent` re-export |
+| `mod.rs:55` | `mod trace` declaration |
+| `proto.rs:292-295` | `From<TraceEvent> for Trace` |
+| `proto.rs:437-441` | `From<TraceEvent> for WithMetadata<Trace>` |
+| `buffer_codec.rs` | Dead `trace_event_to_span` + `read_scope_from_trace_event` |
+
+### G.2 — Remove proto backward buffer compat
+
+Strip all deprecated field handling from disk buffer proto encoding/decoding.
+Old disk buffers from pre-OTel Vector versions will not be readable —
+**breaking change by design** (drain buffers before upgrading).
+
+| Compat layer | Action |
+|-------------|--------|
+| Log `fields` map fallback (proto.rs:131-138) | Remove — only `value` field used |
+| Deprecated `metadata` field (proto.rs:109-122) | Remove — only `metadata_full` used |
+| Distribution1 decoder (proto.rs:167-170) | Remove — encode always uses Distribution2 |
+| AggregatedHistogram1 decoder (proto.rs:175-180) | Remove — encode uses AggHist3 |
+| AggregatedHistogram2 decoder (proto.rs:183-187) | Remove |
+| AggregatedSummary1 decoder (proto.rs:193-196) | Remove |
+| AggregatedSummary2 decoder (proto.rs:198-201) | Remove |
+| Sketch decoder (proto.rs:208-211) | Remove — already lossy (zero gauge) |
+| Dual tag encoding tags_v1 (proto.rs:378-386) | Remove — only encode tags_v2 |
+| Dual metadata encoding (proto.rs:319,345,411) | Remove — only encode metadata_full |
+| Log `fields` encoding (proto.rs:303-313) | Simplify — only encode `value` |
+| `event.proto` deprecated fields | Mark or remove from proto definition |
+| `zip_samples/zip_buckets/zip_quantiles` helpers | Delete if unused after decoder removal |
+
+### G.3 — Delete Metric struct
+
+The `Metric` struct bundles `MetricSeries + MetricData + EventMetadata`.
+`OtelMetric` already contains all this and exposes it via
+`into_metric_parts()`. The struct itself is dead weight.
+
+**What stays** (OtelMetric's public API):
+- `MetricKind`, `MetricValue`, `MetricTags`, `TagValue`, `TagValueSet`
+- `Bucket`, `Quantile`, `Sample`, `StatisticKind`
+- `MetricSeries`, `MetricName`, `MetricData`, `MetricTime`
+
+**What goes:**
+- `Metric` struct + all its methods (~400 lines in metric/mod.rs)
+- `From<Metric> for Metric` proto conversions
+- `OtelMetric::from_legacy_metric(Metric)` bridge
+- All `Metric::new()` call sites (sources, transforms, tests)
+
+### Execution order
+
+G.1 → G.2 → G.3 (each leaves the codebase green)
+
 ## Historical completion log
 
 1. ~~Delete dead `VrlTarget` legacy variants~~ — **DONE** (`2e1b80e`, −492 lines)

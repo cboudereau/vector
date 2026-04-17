@@ -13,7 +13,6 @@ pub use metadata::{EventMetadata, WithMetadata};
 pub use metric::{Metric, MetricKind, MetricTags, MetricValue, StatisticKind};
 pub use r#ref::{EventMutRef, EventRef};
 use serde::{Deserialize, Serialize};
-pub use trace::TraceEvent;
 use vector_buffers::EventCount;
 use vector_common::{
     EventDataEq, byte_size_of::ByteSizeOf, config::ComponentKey, finalization,
@@ -52,7 +51,6 @@ pub use ser::{
 };
 #[cfg(test)]
 mod test;
-mod trace;
 pub mod util;
 #[cfg(feature = "vrl")]
 mod vrl_target;

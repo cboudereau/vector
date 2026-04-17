@@ -537,26 +537,6 @@ Delete **all** remaining legacy Vector types:
 
 Delete all backward buffer compatibility code and bridge functions.
 
-### Completed
-
-**G.1 — DELETE TraceEvent** — **DONE** (`1236e8e`)
-- Deleted `trace.rs` (191 lines), proto.rs `From<TraceEvent>` impls,
-  `buffer_codec.rs` dead code, re-export + mod declaration.
-
-**G.2 — Remove proto backward buffer compat** — **DONE** (`9363568`)
-- Removed old metric value decoders (Distribution1, AggHist1/2, AggSumm1/2, Sketch)
-- Removed Log `fields` fallback, deprecated metadata fallback, dual tag encoding
-- Gated `zip_*` helpers behind `#[cfg(feature = "lua")]`
-
-**G.3a — Source parsers emit OtelMetric directly** — **DONE** (`8382733`)
-- `prometheus/parser.rs` (61→0 production `Metric::new`)
-- `apache_metrics/parser.rs` (61→0)
-- `aws_ecs_metrics/parser.rs` (30→0)
-- `statsd/parser.rs` (19→0)
-- `eventstoredb_metrics/types.rs` (9→0)
-- All boundary wrappers in mod.rs simplified to `Event::Metric(m)`
-- Production callers of `from_legacy_metric` → **ZERO remaining**
-
 ### Current state (2026-04-17 end-of-session)
 
 | Counter | Value | Note |
@@ -565,10 +545,65 @@ Delete all backward buffer compatibility code and bridge functions.
 | `from_legacy_metric` sites | 68 | Down from 146 — otel_event tests, prom exporter, statsd tests |
 | `from_metric_parts` sites | 91 | New callers replacing from_legacy_metric |
 
-**Tasks completed this session:** T1, T2, T3 (partial), T7 (partial),
-T8, T14, T18 (partial)
+### Complete task list — full migration to OTel-native types
 
-### Remaining tasks — ordered by dependency
+Status key: **DONE** / **PARTIAL** / **OPEN** / **BLOCKED**
+
+---
+
+#### Workstream 0: Delete legacy types (LogEvent, TraceEvent)
+
+| # | Task | Status | Commit | Note |
+|---|------|--------|--------|------|
+| F.6 | Delete `log_event.rs` (1217 lines) | **DONE** | `80ff2fb` | LogEvent type fully removed |
+| G.1 | Delete `TraceEvent` type (191 lines) | **DONE** | `1236e8e` | trace.rs, proto.rs impls, buffer_codec dead code |
+| G.2 | Remove proto backward buffer compat | **DONE** | `9363568` | Old decoders, dual encoding, deprecated fields |
+
+#### Workstream 1: Source/transform production code → OtelMetric
+
+| # | Task | Status | Commit | Note |
+|---|------|--------|--------|------|
+| G.3-boundary | Migrate 14 production boundary callers | **DONE** | `a696cd1`..`00f420b` | host_metrics, internal_metrics, nginx, mongodb, postgresql, static_metrics, aggregate, log_to_metric, statsd, apache, aws_ecs, eventstoredb |
+| G.3a | Source parsers return OtelMetric directly | **DONE** | `8382733` | prometheus (61), apache (61), aws_ecs (30), statsd (19), eventstoredb (9) — 180 Metric::new eliminated |
+
+#### Workstream 2: Delete Metric struct (T1-T14)
+
+| # | Task | Status | Commit | Note |
+|---|------|--------|--------|------|
+| T1 | Inline `from_legacy_metric` into `from_metric_parts` | **DONE** | `727c801` | 250-line body moved; `from_legacy_metric` is now a 3-line delegate |
+| T2 | Proto decode bypasses Metric struct | **DONE** | `727c801` | Added `From<proto::Metric> for OtelMetric` via `decode_metric_parts` |
+| T3 | MetricSet/Normalizer: remove Metric dependency (was B3) | **PARTIAL** | `5cd264b` | External OTel API migrated (`normalize_otel`, `make_*_otel`, `into_otel_metrics`). **Internal methods still use Metric** — needs full refactor of `normalize()`, `make_absolute()`, `make_incremental()`, `insert_update()` to accept tuples. Ripples to 12+ sink normalizers |
+| T4 | Prometheus collector: `encode_metric(&Metric)` → tuples | **OPEN** | | ~50 lines, blocked on T3 |
+| T5 | Prometheus exporter: Metric aggregation logic | **OPEN** | | Coupled to T3 |
+| T6 | Split iterator: `AggregatedSummarySplitter` | **OPEN** | | ~70 lines, blocked on T3 |
+| T7 | Sink/transform test migration (~118 `from_legacy_metric`) | **PARTIAL** | `4a56724` | 69/137 sites migrated across 12 files (log_to_metric, remap, prometheus, gcp, codecs, splunk, greptimedb, humio, metric_to_log, lua, aws_ec2). **68 remaining**: otel_event tests (19), prom exporter (9), statsd parser tests (14), others (26) |
+| T8 | VRL metrics → OtelMetric | **DONE** | `4a56724` | MetricsStorage stores `Vec<OtelMetric>`, added `tag_matches()`, 29 test sites wrapped |
+| T9 | Lua bindings (`lua/metric.rs`, 17 sites) | **OPEN** | | `LuaMetric` holds Metric, ~80 lines IntoLua/FromLua, ~200 test lines |
+| T10 | Delete proto encode `From<super::Metric>` | **OPEN** | | Trivial — delete dead code after T1-T9 |
+| T11 | OtelMetric parity tests (15 sites in `otel_event.rs`) | **OPEN** | | Rewrite tests to verify `from_metric_parts` directly |
+| T12 | Metric struct internal tests (30 sites in `metric/mod.rs`) | **OPEN** | | Rewrite to test `MetricData` methods directly |
+| T13 | **DELETE Metric struct + `from_legacy_metric`** | **OPEN** | | ~400 lines struct + ~250 lines bridge. Blocked on T1-T12 |
+| T14 | `Arbitrary` property tests bypass `from_legacy_metric` | **DONE** | `ac88015` | `array.rs` and `test/common.rs` use `into_parts` + `from_metric_parts` |
+
+#### Workstream 3: Eliminate legacy field model (VRL aliases + layout round-trip)
+
+| # | Task | Status | Commit | Note |
+|---|------|--------|--------|------|
+| T15 | Phase B: Remove VRL aliases (`.message`→`.body`, etc.) | **BLOCKED** | | Product decision required. `vector vrl-migrate` tool exists. |
+| T16 | Eliminate `to_value_legacy_layout`/`apply_value_legacy_layout` | **BLOCKED** | | Blocked on T15. Root cause of: scope loss, `observed_time` zeroing, O(n) get, resource/scope asymmetry |
+
+#### Workstream 4: Runtime safety + correctness
+
+| # | Task | Status | Commit | Note |
+|---|------|--------|--------|------|
+| T17 | Implement real `Deserialize` for OTel types | **OPEN** | | Currently stub impls that always fail. Needs architectural decision on canonical JSON format |
+| T19 | Fix VrlTarget::OtelMetric remove (no-op on proto) | **OPEN** | | `target_remove` modifies VRL projection but never writes back to proto event |
+
+#### Workstream 5: Cleanup
+
+| # | Task | Status | Commit | Note |
+|---|------|--------|--------|------|
+| T18 | Stale names and dead aliases | **PARTIAL** | `d920e8a`, `76f9186` | **Done:** `LogEventMergeState`→`MergeState`, dead `OtelLogEvent`/etc aliases, dead span helpers in buffer_codec. **Remaining:** `try_into_log_coerce`/`into_log_coerce` (17 callers), `log_event!` macro (392 usages, cosmetic), `event.proto` deprecated field declarations |
 
 ---
 

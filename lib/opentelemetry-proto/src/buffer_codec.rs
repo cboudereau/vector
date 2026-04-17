@@ -487,7 +487,7 @@ pub fn value_to_kv_list(v: &Value) -> Option<Vec<KeyValue>> {
 #[cfg(test)]
 mod tests {
     use vector_core::event::{
-        BufferFormat, EventArray, LogEvent, Metric, MetricKind, MetricValue, BUFFER_FORMAT,
+        BufferFormat, EventArray, Metric, MetricKind, MetricValue, OtelLog, BUFFER_FORMAT,
     };
     use vrl::value::Value;
 
@@ -501,7 +501,7 @@ mod tests {
     #[test]
     fn round_trip_log() {
         setup();
-        let log = LogEvent::from(Value::from("hello otlp"));
+        let log = OtelLog::from(Value::from("hello otlp"));
         let array = EventArray::from(log);
 
         let codec = VectorOtlpCodec;
@@ -567,7 +567,7 @@ mod tests {
 
         setup();
 
-        let log = LogEvent::from(Value::from("vector-era record"));
+        let log = OtelLog::from(Value::from("vector-era record"));
         let array = EventArray::from(log);
 
         // Phase 1: write a record in Vector mode.
@@ -602,7 +602,7 @@ mod tests {
             "Migrate mode metadata must include both V1 compat and OtlpEncoding flags"
         );
 
-        let log2 = LogEvent::from(Value::from("migrate-era record"));
+        let log2 = OtelLog::from(Value::from("migrate-era record"));
         let array2 = EventArray::from(log2);
         let mut otlp_buf = Vec::new();
         array2.encode(&mut otlp_buf).expect("Migrate encode failed");

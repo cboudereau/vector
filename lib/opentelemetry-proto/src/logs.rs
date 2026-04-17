@@ -3,7 +3,7 @@ use chrono::{DateTime, TimeZone, Utc};
 use prost::Message;
 use vector_core::{
     config::{LegacyKey, LogNamespace, log_schema},
-    event::{Event, EventMetadata, LogEvent, OtelLog},
+    event::{Event, EventMetadata, OtelLog},
 };
 use vrl::{core::Value, path};
 
@@ -252,13 +252,13 @@ impl ResourceLog {
         let mut log = match log_namespace {
             LogNamespace::Vector => {
                 if let Some(v) = self.log_record.body.and_then(|av| av.value) {
-                    LogEvent::from(<PBValue as Into<Value>>::into(v))
+                    OtelLog::from(<PBValue as Into<Value>>::into(v))
                 } else {
-                    LogEvent::from(Value::Null)
+                    OtelLog::from(Value::Null)
                 }
             }
             LogNamespace::Legacy => {
-                let mut log = LogEvent::default();
+                let mut log = OtelLog::default();
                 if let Some(v) = self.log_record.body.and_then(|av| av.value) {
                     log.maybe_insert(log_schema().message_key_target_path(), v);
                 }
@@ -427,6 +427,6 @@ impl ResourceLog {
                 .insert(path!("vector", "ingest_timestamp"), now);
         }
 
-        Event::Log(OtelLog::from_log_event(log))
+        log.into()
     }
 }

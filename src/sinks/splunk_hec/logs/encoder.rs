@@ -10,7 +10,7 @@ use vector_lib::{
 
 use super::sink::HecProcessedEvent;
 use crate::{
-    event::{Event, LogEvent},
+    event::{Event, OtelLog},
     internal_events::SplunkEventEncodeError,
     sinks::{splunk_hec::common::EndpointTarget, util::encoding::Encoder},
 };
@@ -27,7 +27,7 @@ pub enum HecEvent<'a> {
 pub struct HecData<'a> {
     #[serde(flatten)]
     pub event: HecEvent<'a>,
-    pub fields: LogEvent,
+    pub fields: OtelLog,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub time: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -41,7 +41,7 @@ pub struct HecData<'a> {
 }
 
 impl<'a> HecData<'a> {
-    pub const fn new(event: HecEvent<'a>, fields: LogEvent, time: Option<f64>) -> Self {
+    pub const fn new(event: HecEvent<'a>, fields: OtelLog, time: Option<f64>) -> Self {
         Self {
             event,
             fields,

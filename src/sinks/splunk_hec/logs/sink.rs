@@ -5,11 +5,11 @@ use vector_lib::{
     lookup::{OwnedValuePath, PathPrefix, event_path, lookup_v2::OptionalTargetPath},
     schema::meaning,
 };
-use vrl::path::OwnedTargetPath;
+use vrl::{path::OwnedTargetPath, value::{KeyString, ObjectMap}};
 
 use super::request_builder::HecLogsRequestBuilder;
 use crate::{
-    event::{LogEvent, OtelLog},
+    event::OtelLog,
     internal_events::{SplunkEventTimestampInvalidType, SplunkEventTimestampMissing},
     sinks::{
         prelude::*,
@@ -214,7 +214,7 @@ pub struct HecLogsProcessedEventMetadata {
     pub index: Option<String>,
     pub host: Option<Value>,
     pub timestamp: Option<f64>,
-    pub fields: LogEvent,
+    pub fields: OtelLog,
     pub endpoint_target: EndpointTarget,
 }
 
@@ -310,14 +310,15 @@ pub fn process_log(event: Event, data: &HecLogData) -> HecProcessedEvent {
         None
     };
 
-    let fields = data
-        .indexed_fields
-        .iter()
-        .filter_map(|field| {
-            log.get((PathPrefix::Event, field))
-                .map(|value| (field.to_string(), value))
-        })
-        .collect::<LogEvent>();
+    let fields = OtelLog::from(
+        data.indexed_fields
+            .iter()
+            .filter_map(|field| {
+                log.get((PathPrefix::Event, field))
+                    .map(|value| (KeyString::from(field.to_string()), value))
+            })
+            .collect::<ObjectMap>(),
+    );
 
     let metadata = HecLogsProcessedEventMetadata {
         sourcetype,

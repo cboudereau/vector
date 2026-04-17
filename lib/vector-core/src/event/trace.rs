@@ -11,12 +11,12 @@ use vrl::path::PathParseError;
 
 use super::{
     BatchNotifier, EstimatedJsonEncodedSizeOf, EventFinalizer, EventFinalizers, EventMetadata,
-    Finalizable, LogEvent, ObjectMap, Value,
+    Finalizable, OtelLog, ObjectMap, Value,
 };
 
-/// Traces are a newtype of `LogEvent`
+/// Traces are a newtype of `OtelLog`
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
-pub struct TraceEvent(LogEvent);
+pub struct TraceEvent(OtelLog);
 
 impl TraceEvent {
     /// Convert a `TraceEvent` into a tuple of its components
@@ -24,20 +24,20 @@ impl TraceEvent {
     ///
     /// Panics if the fields of the `TraceEvent` are not a `Value::Map`.
     pub fn into_parts(self) -> (ObjectMap, EventMetadata) {
-        let (value, metadata) = self.0.into_parts();
-        let map = value.into_object().expect("inner value must be a map");
+        let map = self.0.as_map().unwrap_or_default();
+        let metadata = self.0.into_parts().3;
         (map, metadata)
     }
 
     pub fn from_parts(fields: ObjectMap, metadata: EventMetadata) -> Self {
-        Self(LogEvent::from_map(fields, metadata))
+        Self(OtelLog::from_map(fields, metadata))
     }
 
-    pub fn value(&self) -> &Value {
+    pub fn value(&self) -> Value {
         self.0.value()
     }
 
-    pub fn value_mut(&mut self) -> &mut Value {
+    pub fn value_mut(&mut self) -> Value {
         self.0.value_mut()
     }
 
@@ -63,31 +63,30 @@ impl TraceEvent {
         Self(self.0.with_batch_notifier_option(batch))
     }
 
-    /// Convert a `TraceEvent` into an `ObjectMap` of it's fields
-    /// # Panics
-    ///
-    /// Panics if the fields of the `TraceEvent` are not a `Value::Map`.
-    pub fn as_map(&self) -> &ObjectMap {
-        self.0.as_map().expect("inner value must be a map")
+    /// Convert a `TraceEvent` into an `ObjectMap` of its fields
+    pub fn as_map(&self) -> ObjectMap {
+        self.0.as_map().unwrap_or_default()
     }
 
-    /// Parse the specified `path` and if there are no parsing errors, attempt to get a reference to a value.
+    /// Parse the specified `path` and if there are no parsing errors, attempt to get a value.
     /// # Errors
     /// Will return an error if path parsing failed.
     pub fn parse_path_and_get_value(
         &self,
         path: impl AsRef<str>,
-    ) -> Result<Option<&Value>, PathParseError> {
-        self.0.parse_path_and_get_value(path)
+    ) -> Result<Option<Value>, PathParseError> {
+        self.0.parse_path_and_get_value(path.as_ref())
     }
 
     #[allow(clippy::needless_pass_by_value)] // TargetPath is always a reference
-    pub fn get<'a>(&self, key: impl TargetPath<'a>) -> Option<&Value> {
+    pub fn get<'a>(&self, key: impl TargetPath<'a>) -> Option<Value> {
         self.0.get(key)
     }
 
-    pub fn get_mut<'a>(&mut self, key: impl TargetPath<'a>) -> Option<&mut Value> {
-        self.0.get_mut(key)
+    pub fn get_mut<'a>(&mut self, _key: impl TargetPath<'a>) -> Option<&mut Value> {
+        // OtelLog does not support returning mutable references to values.
+        // This method is retained for API compatibility but always returns None.
+        None
     }
 
     pub fn contains<'a>(&self, key: impl TargetPath<'a>) -> bool {
@@ -120,18 +119,17 @@ impl TraceEvent {
 
 impl From<Value> for TraceEvent {
     fn from(value: Value) -> Self {
-        let log_event = LogEvent::from(value);
-        Self(log_event)
+        Self(OtelLog::from(value))
     }
 }
 
-impl From<LogEvent> for TraceEvent {
-    fn from(log: LogEvent) -> Self {
+impl From<OtelLog> for TraceEvent {
+    fn from(log: OtelLog) -> Self {
         Self(log)
     }
 }
 
-impl From<TraceEvent> for LogEvent {
+impl From<TraceEvent> for OtelLog {
     fn from(trace: TraceEvent) -> Self {
         trace.0
     }
@@ -139,7 +137,7 @@ impl From<TraceEvent> for LogEvent {
 
 impl From<ObjectMap> for TraceEvent {
     fn from(map: ObjectMap) -> Self {
-        Self(map.into())
+        Self(OtelLog::from(map))
     }
 }
 
@@ -173,14 +171,14 @@ impl Finalizable for TraceEvent {
     }
 }
 
-impl AsRef<LogEvent> for TraceEvent {
-    fn as_ref(&self) -> &LogEvent {
+impl AsRef<OtelLog> for TraceEvent {
+    fn as_ref(&self) -> &OtelLog {
         &self.0
     }
 }
 
-impl AsMut<LogEvent> for TraceEvent {
-    fn as_mut(&mut self) -> &mut LogEvent {
+impl AsMut<OtelLog> for TraceEvent {
+    fn as_mut(&mut self) -> &mut OtelLog {
         &mut self.0
     }
 }

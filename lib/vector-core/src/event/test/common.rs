@@ -5,7 +5,7 @@ use quickcheck::{Arbitrary, Gen, empty_shrinker};
 use vrl::value::{ObjectMap, Value};
 
 use super::super::{
-    Event, EventMetadata, LogEvent, Metric, MetricKind, MetricValue, OtelLog, OtelMetric, OtelSpan, StatisticKind,
+    Event, EventMetadata, Metric, MetricKind, MetricValue, OtelLog, OtelMetric, OtelSpan, StatisticKind,
     metric::{
         Bucket, MetricData, MetricName, MetricSeries, MetricTags, MetricTime,
         Quantile, Sample,
@@ -84,25 +84,6 @@ impl Arbitrary for OtelLog {
         Box::new(
             map.shrink()
                 .map(move |x| OtelLog::from_value_map(Value::Object(x), metadata.clone())),
-        )
-    }
-}
-
-impl Arbitrary for LogEvent {
-    fn arbitrary(g: &mut Gen) -> Self {
-        let mut generator = Gen::new(MAX_MAP_SIZE);
-        let map: ObjectMap = ObjectMap::arbitrary(&mut generator);
-        let metadata: EventMetadata = EventMetadata::arbitrary(g);
-        LogEvent::from_map(map, metadata)
-    }
-
-    fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
-        let (value, metadata) = self.clone().into_parts();
-
-        Box::new(
-            value
-                .shrink()
-                .map(move |x| LogEvent::from_parts(x, metadata.clone())),
         )
     }
 }

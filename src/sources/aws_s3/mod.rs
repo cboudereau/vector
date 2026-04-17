@@ -947,13 +947,13 @@ mod integration_tests {
 
                 let log = event.as_log();
                 if log_namespace {
-                    assert_eq!(log.value(), &Value::from(message));
+                    assert_eq!(log.value(), Value::from(message));
                 } else {
-                    assert_eq!(log["message"], message.into());
+                    assert_eq!(log.get(vrl::event_path!("message")).unwrap(), Value::from(message));
                 }
-                assert_eq!(namespace.get_source_metadata(AwsS3Config::NAME, log, path!("bucket"), path!("bucket")).unwrap(), &bucket.clone().into());
-                assert_eq!(namespace.get_source_metadata(AwsS3Config::NAME, log, path!("object"), path!("object")).unwrap(), &key.clone().into());
-                assert_eq!(namespace.get_source_metadata(AwsS3Config::NAME, log, path!("region"), path!("region")).unwrap(), &"us-east-1".into());
+                assert_eq!(namespace.get_source_metadata(AwsS3Config::NAME, log, path!("bucket"), path!("bucket")).unwrap(), Value::from(bucket.clone()));
+                assert_eq!(namespace.get_source_metadata(AwsS3Config::NAME, log, path!("object"), path!("object")).unwrap(), Value::from(key.clone()));
+                assert_eq!(namespace.get_source_metadata(AwsS3Config::NAME, log, path!("region"), path!("region")).unwrap(), Value::from("us-east-1"));
             }
 
             // Unfortunately we need a fairly large sleep here to ensure that the source has actually managed to delete the SQS message.

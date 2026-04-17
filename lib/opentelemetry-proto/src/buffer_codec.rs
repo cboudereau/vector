@@ -187,17 +187,17 @@ fn otel_spans_to_export(otel_spans: &OtelSpanArray) -> ExportTraceServiceRequest
 fn trace_event_to_span(trace: &vector_core::event::TraceEvent) -> Span {
     let trace_id = trace
         .get(event_path!(spans::TRACE_ID_KEY))
-        .and_then(|v| hex_value_to_bytes(v, 16))
+        .and_then(|v| hex_value_to_bytes(&v, 16))
         .unwrap_or_default();
 
     let span_id = trace
         .get(event_path!(spans::SPAN_ID_KEY))
-        .and_then(|v| hex_value_to_bytes(v, 8))
+        .and_then(|v| hex_value_to_bytes(&v, 8))
         .unwrap_or_default();
 
     let parent_span_id = trace
         .get(event_path!("parent_span_id"))
-        .and_then(|v| hex_value_to_bytes(v, 8))
+        .and_then(|v| hex_value_to_bytes(&v, 8))
         .unwrap_or_default();
 
     let trace_state = trace
@@ -217,19 +217,17 @@ fn trace_event_to_span(trace: &vector_core::event::TraceEvent) -> Span {
 
     let start_nanos = trace
         .get(event_path!("start_time_unix_nano"))
-        .and_then(|v| v.as_timestamp())
-        .and_then(|ts| ts.timestamp_nanos_opt())
-        .unwrap_or(0) as u64;
+        .and_then(|v| v.as_timestamp().map(|ts| ts.timestamp_nanos_opt().unwrap_or(0) as u64))
+        .unwrap_or(0);
 
     let end_nanos = trace
         .get(event_path!("end_time_unix_nano"))
-        .and_then(|v| v.as_timestamp())
-        .and_then(|ts| ts.timestamp_nanos_opt())
-        .unwrap_or(0) as u64;
+        .and_then(|v| v.as_timestamp().map(|ts| ts.timestamp_nanos_opt().unwrap_or(0) as u64))
+        .unwrap_or(0);
 
     let attributes = trace
         .get(event_path!(spans::ATTRIBUTES_KEY))
-        .and_then(|v| value_to_kv_list(v))
+        .and_then(|v| value_to_kv_list(&v))
         .unwrap_or_default();
 
     let dropped_attributes_count = trace
@@ -237,10 +235,9 @@ fn trace_event_to_span(trace: &vector_core::event::TraceEvent) -> Span {
         .and_then(|v| v.as_integer())
         .unwrap_or(0) as u32;
 
-    let events = trace
+    let events: Vec<SpanEvent> = trace
         .get(event_path!("events"))
-        .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(value_to_span_event).collect())
+        .and_then(|v| v.as_array().map(|arr| arr.iter().filter_map(value_to_span_event).collect()))
         .unwrap_or_default();
 
     let dropped_events_count = trace
@@ -248,10 +245,9 @@ fn trace_event_to_span(trace: &vector_core::event::TraceEvent) -> Span {
         .and_then(|v| v.as_integer())
         .unwrap_or(0) as u32;
 
-    let links = trace
+    let links: Vec<Link> = trace
         .get(event_path!("links"))
-        .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(value_to_span_link).collect())
+        .and_then(|v| v.as_array().map(|arr| arr.iter().filter_map(value_to_span_link).collect()))
         .unwrap_or_default();
 
     let dropped_links_count = trace
@@ -261,7 +257,7 @@ fn trace_event_to_span(trace: &vector_core::event::TraceEvent) -> Span {
 
     let status = trace
         .get(event_path!("status"))
-        .and_then(value_to_span_status);
+        .and_then(|v| value_to_span_status(&v));
 
     Span {
         trace_id,
@@ -340,7 +336,7 @@ fn read_scope_from_trace_event(
         .unwrap_or_default();
     let attributes = trace
         .get(event_path!(spans::SCOPE_KEY, spans::ATTRIBUTES_KEY))
-        .and_then(|v| value_to_kv_list(v))
+        .and_then(|v| value_to_kv_list(&v))
         .unwrap_or_default();
 
     if name.is_empty() && version.is_empty() && attributes.is_empty() {

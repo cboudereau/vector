@@ -22,37 +22,23 @@ use vector_config::configurable_component;
 use vrl::value::Value;
 
 use crate::{
-    event::{EventMetadata, LogEvent, OtelLog},
+    event::{EventMetadata, OtelLog},
     schema,
 };
 
 /// Trait for event types that support the metadata insertion patterns used
 /// by `LogNamespace::insert_source_metadata` / `insert_vector_metadata`.
 ///
-/// Both `LogEvent` and `OtelLog` implement this so that sources can switch
-/// to producing `OtelLog` directly without changing the insertion API.
+/// Trait for event types that support the metadata insertion patterns used
+/// by `LogNamespace::insert_source_metadata` / `insert_vector_metadata`.
+///
+/// `OtelLog` implements this so that sources can produce `OtelLog` directly
+/// without changing the insertion API.
 pub trait MetadataInsertable {
     fn insert_by_path<'a>(&mut self, path: impl ValuePath<'a>, value: impl Into<Value>);
     fn try_insert_by_path<'a>(&mut self, path: impl ValuePath<'a>, value: impl Into<Value>);
     fn maybe_insert_by_path<'a>(&mut self, path: Option<impl ValuePath<'a>>, value: impl Into<Value>);
     fn event_metadata_mut(&mut self) -> &mut EventMetadata;
-}
-
-impl MetadataInsertable for LogEvent {
-    fn insert_by_path<'a>(&mut self, path: impl ValuePath<'a>, value: impl Into<Value>) {
-        self.insert((PathPrefix::Event, path), value);
-    }
-    fn try_insert_by_path<'a>(&mut self, path: impl ValuePath<'a>, value: impl Into<Value>) {
-        self.try_insert((PathPrefix::Event, path), value);
-    }
-    fn maybe_insert_by_path<'a>(&mut self, path: Option<impl ValuePath<'a>>, value: impl Into<Value>) {
-        if let Some(path) = path {
-            self.insert((PathPrefix::Event, path), value);
-        }
-    }
-    fn event_metadata_mut(&mut self) -> &mut EventMetadata {
-        self.metadata_mut()
-    }
 }
 
 impl MetadataInsertable for OtelLog {
@@ -519,18 +505,19 @@ impl LogNamespace {
     /// Vector: This is retrieved from the "event metadata", nested under the source name.
     ///
     /// Legacy: This is retrieved from the event.
-    pub fn get_source_metadata<'a, 'b>(
+    pub fn get_source_metadata<'a>(
         &self,
         source_name: &'a str,
-        log: &'b LogEvent,
+        log: &OtelLog,
         legacy_key: impl ValuePath<'a>,
         metadata_key: impl ValuePath<'a>,
-    ) -> Option<&'b Value> {
+    ) -> Option<Value> {
         match self {
             LogNamespace::Vector => log
                 .metadata()
                 .value()
-                .get(path!(source_name).concat(metadata_key)),
+                .get(path!(source_name).concat(metadata_key))
+                .cloned(),
             LogNamespace::Legacy => log.get((PathPrefix::Event, legacy_key)),
         }
     }
@@ -588,17 +575,18 @@ impl LogNamespace {
     /// Vector: This is retrieved from the "event metadata", nested under the name "vector".
     ///
     /// Legacy: This is retrieved from the event.
-    pub fn get_vector_metadata<'a, 'b>(
+    pub fn get_vector_metadata<'a>(
         &self,
-        log: &'b LogEvent,
+        log: &OtelLog,
         legacy_key: impl ValuePath<'a>,
         metadata_key: impl ValuePath<'a>,
-    ) -> Option<&'b Value> {
+    ) -> Option<Value> {
         match self {
             LogNamespace::Vector => log
                 .metadata()
                 .value()
-                .get(path!("vector").concat(metadata_key)),
+                .get(path!("vector").concat(metadata_key))
+                .cloned(),
             LogNamespace::Legacy => log.get((PathPrefix::Event, legacy_key)),
         }
     }

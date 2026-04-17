@@ -9,7 +9,6 @@ pub use finalization::{
     BatchNotifier, BatchStatus, BatchStatusReceiver, EventFinalizer, EventFinalizers, EventStatus,
     Finalizable,
 };
-pub use log_event::LogEvent;
 pub use metadata::{EventMetadata, WithMetadata};
 pub use metric::{Metric, MetricKind, MetricTags, MetricValue, StatisticKind};
 pub use r#ref::{EventMutRef, EventRef};
@@ -29,7 +28,6 @@ use crate::config::{LogNamespace, OutputId};
 pub mod array;
 pub mod discriminant;
 mod estimated_json_encoded_size_of;
-mod log_event;
 #[cfg(feature = "lua")]
 pub mod lua;
 pub mod merge_state;

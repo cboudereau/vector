@@ -211,7 +211,7 @@ async fn aws_ecs_metrics(
                                     endpoint: uri.path(),
                                 });
 
-                                let events: Vec<Event> = metrics.into_iter().map(|m| Event::Metric(OtelMetric::from_legacy_metric(m))).collect();
+                                let events: Vec<Event> = metrics.into_iter().map(|m| { let (s, d, md) = m.into_parts(); Event::Metric(OtelMetric::from_metric_parts(s, d, md)) }).collect();
                                 if (out.send_batch(events).await).is_err() {
                                     emit!(StreamClosedError { count });
                                     return Err(());

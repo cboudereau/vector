@@ -867,7 +867,8 @@ impl FunctionTransform for LogToMetric {
         if self.all_metrics {
             match to_metrics(&event) {
                 Ok(metric) => {
-                    output.push(Event::Metric(OtelMetric::from_legacy_metric(metric)));
+                    let (series, data, metadata) = metric.into_parts();
+                    output.push(Event::Metric(OtelMetric::from_metric_parts(series, data, metadata)));
                 }
                 Err(err) => {
                     match err {
@@ -907,7 +908,8 @@ impl FunctionTransform for LogToMetric {
             for config in self.metrics.iter() {
                 match to_metric_with_config(config, &event) {
                     Ok(metric) => {
-                        buffer.push(Event::Metric(OtelMetric::from_legacy_metric(metric)));
+                        let (series, data, metadata) = metric.into_parts();
+                        buffer.push(Event::Metric(OtelMetric::from_metric_parts(series, data, metadata)));
                     }
                     Err(err) => {
                         match err {

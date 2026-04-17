@@ -260,7 +260,7 @@ fn apache_metrics(
                     .flatten()
             })
             .flatten()
-            .map(|m| Event::Metric(OtelMetric::from_legacy_metric(m)))
+            .map(|m| { let (s, d, md) = m.into_parts(); Event::Metric(OtelMetric::from_metric_parts(s, d, md)) })
             .boxed();
 
         match out.send_event_stream(&mut stream).await {

@@ -265,13 +265,15 @@ sessions. Recommended order:
   AND LogEvent type can be deleted together.
 - `log_event!` macro already uses `OtelLog::new` directly.
 - Zero production LogEvent imports remain outside vector-core/src/event/.
-- Remaining work to fully delete LogEvent: migrate ~555 test call sites
-  from `LogEvent::from/default/from_parts/from_str_legacy/merge/etc.`
-  to OtelLog equivalents, then delete `log_event.rs` (1217 lines) +
-  the bridge. This is a multi-session campaign (~2-3 sessions of
-  mechanical test rewrites).
-- The migration is **functionally complete for production paths** —
-  LogEvent is now purely test infrastructure.
+- **LogEvent migration COMPLETE** — 555 → 4 sites remaining.
+  All test code migrated from LogEvent:: to OtelLog:: constructors.
+  4 intentional holdouts:
+  - `splunk_hec/logs/{encoder,sink}.rs` — LogEvent as HecData struct
+    field type (requires HEC protocol change to remove)
+  - `opentelemetry-proto/{logs,buffer_codec}.rs` — legacy disk buffer
+    decode path (remove when old buffer format is sunset)
+- `log_event.rs` (1217 lines) can be deleted once these 4 holdouts
+  are addressed + the `From<LogEvent> for Event` bridge is removed.
 
 **F.6 original plan (for reference):**
 - 248 test callers. Highest volume.

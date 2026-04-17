@@ -1949,6 +1949,20 @@ impl OtelMetric {
     /// - AggregatedHistogram → Histogram (explicit bounds)
     /// - AggregatedSummary → Summary
     /// - Distribution/Set → Gauge (lossy fallback)
+    /// Construct an OtelMetric from legacy metric parts (MetricSeries, MetricData, EventMetadata).
+    /// This is the migration entry point — callers should construct parts directly
+    /// instead of going through the legacy Metric struct.
+    pub fn from_metric_parts(
+        series: super::metric::MetricSeries,
+        data: super::metric::MetricData,
+        metadata: super::EventMetadata,
+    ) -> Self {
+        // Rebuild a legacy Metric temporarily to reuse from_legacy_metric conversion.
+        // TODO: inline the conversion logic here once the legacy Metric struct is deleted.
+        let m = super::Metric::from_parts(series, data, metadata);
+        Self::from_legacy_metric(m)
+    }
+
     pub fn from_legacy_metric(m: super::Metric) -> Self {
         use opentelemetry_proto::tonic::metrics::v1::{
             self as otel_metrics, metric, number_data_point::Value as NDPValue,

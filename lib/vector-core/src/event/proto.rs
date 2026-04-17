@@ -69,7 +69,10 @@ impl From<EventArray> for array::EventArray {
                 metrics
                     .metrics
                     .into_iter()
-                    .map(|proto| super::OtelMetric::from_legacy_metric(proto.into()))
+                    .map(|proto| {
+                        let legacy: super::Metric = proto.into();
+                        super::OtelMetric::from_legacy_metric(legacy)
+                    })
                     .collect(),
             ),
             event_array::Events::Traces(traces) => array::EventArray::Traces(

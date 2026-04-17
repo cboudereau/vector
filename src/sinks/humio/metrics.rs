@@ -295,8 +295,8 @@ mod tests {
 
         // Make our test metrics.
         let metrics = vec![
-            Event::Metric(OtelMetric::from_legacy_metric(
-                Metric::new(
+            Event::Metric({
+                let m = Metric::new(
                     "metric1",
                     MetricKind::Incremental,
                     MetricValue::Counter { value: 42.0 },
@@ -306,10 +306,12 @@ mod tests {
                     Utc.with_ymd_and_hms(2020, 8, 18, 21, 0, 1)
                         .single()
                         .expect("invalid timestamp"),
-                )),
-            )),
-            Event::Metric(OtelMetric::from_legacy_metric(
-                Metric::new(
+                ));
+                let (s, d, md) = m.into_parts();
+                OtelMetric::from_metric_parts(s, d, md)
+            }),
+            Event::Metric({
+                let m = Metric::new(
                     "metric2",
                     MetricKind::Absolute,
                     MetricValue::Distribution {
@@ -322,8 +324,10 @@ mod tests {
                     Utc.with_ymd_and_hms(2020, 8, 18, 21, 0, 2)
                         .single()
                         .expect("invalid timestamp"),
-                )),
-            )),
+                ));
+                let (s, d, md) = m.into_parts();
+                OtelMetric::from_metric_parts(s, d, md)
+            }),
         ];
 
         let len = metrics.len();
@@ -360,8 +364,8 @@ mod tests {
         tokio::spawn(server);
 
         // Make our test metrics.
-        let metrics = vec![Event::Metric(OtelMetric::from_legacy_metric(
-            Metric::new(
+        let metrics = vec![Event::Metric({
+            let m = Metric::new(
                 "metric1",
                 MetricKind::Incremental,
                 MetricValue::Counter { value: 42.0 },
@@ -374,8 +378,10 @@ mod tests {
                 Utc.with_ymd_and_hms(2020, 8, 18, 21, 0, 1)
                     .single()
                     .expect("invalid timestamp"),
-            )),
-        ))];
+            ));
+            let (s, d, md) = m.into_parts();
+            OtelMetric::from_metric_parts(s, d, md)
+        })];
 
         let len = metrics.len();
         run_and_assert_sink_compliance(sink, stream::iter(metrics), &HTTP_SINK_TAGS).await;

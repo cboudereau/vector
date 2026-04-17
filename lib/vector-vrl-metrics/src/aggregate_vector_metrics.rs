@@ -54,7 +54,7 @@ fn aggregate_metrics(
 
     let metric_values = metrics.into_iter().filter_map(|m| match m.value() {
         vector_core::event::MetricValue::Counter { value }
-        | vector_core::event::MetricValue::Gauge { value } => NotNan::new(*value).ok(),
+        | vector_core::event::MetricValue::Gauge { value } => NotNan::new(value).ok(),
         _ => None,
     });
 

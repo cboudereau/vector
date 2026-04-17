@@ -395,7 +395,7 @@ mod tests {
             let (tx, rx) = mpsc::channel(1);
             let (topology, mut out) = create_topology(ReceiverStream::new(rx), config).await;
 
-            tx.send(Event::Metric(OtelMetric::from_legacy_metric(metric))).await.unwrap();
+            tx.send(Event::Metric({ let (s, d, md) = metric.into_parts(); OtelMetric::from_metric_parts(s, d, md) })).await.unwrap();
 
             let result = out.recv().await;
 
@@ -742,7 +742,7 @@ mod tests {
             ..Default::default()
         }
         .build_transform(&TransformContext::default())
-        .transform(&mut output, Event::Metric(OtelMetric::from_legacy_metric(counter)));
+        .transform(&mut output, Event::Metric({ let (s, d, md) = counter.into_parts(); OtelMetric::from_metric_parts(s, d, md) }));
 
         assert_eq!(output.len(), 1);
         output.into_events().next().unwrap().into_log().get("tags").unwrap()

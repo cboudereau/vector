@@ -67,7 +67,8 @@ fn get_processed_event(
     default_namespace: Option<&str>,
 ) -> HecProcessedEvent {
     let event_byte_size = metric.size_of();
-    let otel = OtelMetric::from_legacy_metric(metric);
+    let (s, d, md) = metric.into_parts();
+    let otel = OtelMetric::from_metric_parts(s, d, md);
 
     process_metric(
         otel,
@@ -82,7 +83,7 @@ fn get_processed_event(
 }
 
 fn get_event_with_token(token: &str) -> Event {
-    let mut event = Event::Metric(OtelMetric::from_legacy_metric(get_counter()));
+    let mut event = Event::Metric({ let (s, d, md) = get_counter().into_parts(); OtelMetric::from_metric_parts(s, d, md) });
     event.metadata_mut().set_splunk_hec_token(Arc::from(token));
     event
 }
@@ -136,7 +137,7 @@ fn test_process_metric_unsupported_type_returns_none() {
     let default_namespace = None;
     assert!(
         process_metric(
-            OtelMetric::from_legacy_metric(metric),
+            { let (s, d, md) = metric.into_parts(); OtelMetric::from_metric_parts(s, d, md) },
             event_byte_size,
             sourcetype,
             source,
@@ -348,7 +349,7 @@ async fn splunk_passthrough_token() {
     let events = vec![
         get_event_with_token("passthrough-token-1"),
         get_event_with_token("passthrough-token-2"),
-        Event::Metric(OtelMetric::from_legacy_metric(get_counter())),
+        Event::Metric({ let (s, d, md) = get_counter().into_parts(); OtelMetric::from_metric_parts(s, d, md) }),
     ];
 
     sink.run_events(events).await.unwrap();

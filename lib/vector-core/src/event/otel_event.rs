@@ -2603,6 +2603,13 @@ impl OtelMetric {
         None
     }
 
+    /// Check whether a tag with the given name matches the given value.
+    pub fn tag_matches(&self, name: &str, value: &str) -> bool {
+        self.tag_value(name)
+            .filter(|v| v == value)
+            .is_some()
+    }
+
     /// Extract (MetricKind, MetricValue, timestamp, data-point attributes) from proto.
     ///
     /// Single source of truth for metric data interpretation — used by `value()`,

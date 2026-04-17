@@ -329,7 +329,7 @@ mod tests {
             use_new_naming: false,
         };
 
-        let insert = metric_to_insert_request(OtelMetric::from_legacy_metric(metric), &options);
+        let insert = metric_to_insert_request({ let (s, d, md) = metric.into_parts(); OtelMetric::from_metric_parts(s, d, md) }, &options);
         let rows = insert.rows.expect("Empty insert request");
         assert_eq!(rows.rows[0].values.len(), 2);
 
@@ -350,7 +350,7 @@ mod tests {
             use_new_naming: false,
         };
 
-        let insert = metric_to_insert_request(OtelMetric::from_legacy_metric(metric), &options);
+        let insert = metric_to_insert_request({ let (s, d, md) = metric.into_parts(); OtelMetric::from_metric_parts(s, d, md) }, &options);
         let rows = insert.rows.expect("Empty insert request");
         assert_eq!(
             rows.rows[0].values.len(),
@@ -386,7 +386,7 @@ mod tests {
             use_new_naming: false,
         };
 
-        let insert = metric_to_insert_request(OtelMetric::from_legacy_metric(metric), &options);
+        let insert = metric_to_insert_request({ let (s, d, md) = metric.into_parts(); OtelMetric::from_metric_parts(s, d, md) }, &options);
         let rows = insert.rows.expect("Empty insert request");
         assert_eq!(
             rows.rows[0].values.len(),
@@ -417,7 +417,7 @@ mod tests {
             use_new_naming: false,
         };
 
-        let insert = metric_to_insert_request(OtelMetric::from_legacy_metric(metric), &options);
+        let insert = metric_to_insert_request({ let (s, d, md) = metric.into_parts(); OtelMetric::from_metric_parts(s, d, md) }, &options);
         let rows = insert.rows.expect("Empty insert request");
         assert_eq!(
             rows.rows[0].values.len(),

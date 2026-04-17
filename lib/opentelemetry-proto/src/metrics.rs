@@ -298,11 +298,13 @@ impl SumMetric {
             MetricValue::Gauge { value }
         };
 
-        Event::Metric(OtelMetric::from_legacy_metric(
-            MetricEvent::new(metric_name, kind, metric_value)
+        Event::Metric({
+            let m = MetricEvent::new(metric_name, kind, metric_value)
                 .with_tags(Some(attributes))
-                .with_timestamp(timestamp),
-        ))
+                .with_timestamp(timestamp);
+            let (s, d, md) = m.into_parts();
+            OtelMetric::from_metric_parts(s, d, md)
+        })
     }
 }
 
@@ -312,15 +314,17 @@ impl GaugeMetric {
         let value = self.point.value.to_f64().unwrap_or(0.0);
         let attributes = build_metric_tags(self.resource, self.scope, &self.point.attributes);
 
-        Event::Metric(OtelMetric::from_legacy_metric(
-            MetricEvent::new(
+        Event::Metric({
+            let m = MetricEvent::new(
                 metric_name,
                 MetricKind::Absolute,
                 MetricValue::Gauge { value },
             )
             .with_timestamp(timestamp)
-            .with_tags(Some(attributes)),
-        ))
+            .with_tags(Some(attributes));
+            let (s, d, md) = m.into_parts();
+            OtelMetric::from_metric_parts(s, d, md)
+        })
     }
 }
 
@@ -354,8 +358,8 @@ impl HistogramMetric {
             MetricKind::Absolute
         };
 
-        Event::Metric(OtelMetric::from_legacy_metric(
-            MetricEvent::new(
+        Event::Metric({
+            let m = MetricEvent::new(
                 metric_name,
                 kind,
                 MetricValue::AggregatedHistogram {
@@ -365,8 +369,10 @@ impl HistogramMetric {
                 },
             )
             .with_timestamp(timestamp)
-            .with_tags(Some(attributes)),
-        ))
+            .with_tags(Some(attributes));
+            let (s, d, md) = m.into_parts();
+            OtelMetric::from_metric_parts(s, d, md)
+        })
     }
 }
 
@@ -411,8 +417,8 @@ impl ExpHistogramMetric {
             MetricKind::Absolute
         };
 
-        Event::Metric(OtelMetric::from_legacy_metric(
-            MetricEvent::new(
+        Event::Metric({
+            let m = MetricEvent::new(
                 metric_name,
                 kind,
                 MetricValue::AggregatedHistogram {
@@ -422,8 +428,10 @@ impl ExpHistogramMetric {
                 },
             )
             .with_timestamp(timestamp)
-            .with_tags(Some(attributes)),
-        ))
+            .with_tags(Some(attributes));
+            let (s, d, md) = m.into_parts();
+            OtelMetric::from_metric_parts(s, d, md)
+        })
     }
 }
 
@@ -442,8 +450,8 @@ impl SummaryMetric {
             })
             .collect();
 
-        Event::Metric(OtelMetric::from_legacy_metric(
-            MetricEvent::new(
+        Event::Metric({
+            let m = MetricEvent::new(
                 metric_name,
                 MetricKind::Absolute,
                 MetricValue::AggregatedSummary {
@@ -453,8 +461,10 @@ impl SummaryMetric {
                 },
             )
             .with_timestamp(timestamp)
-            .with_tags(Some(attributes)),
-        ))
+            .with_tags(Some(attributes));
+            let (s, d, md) = m.into_parts();
+            OtelMetric::from_metric_parts(s, d, md)
+        })
     }
 }
 

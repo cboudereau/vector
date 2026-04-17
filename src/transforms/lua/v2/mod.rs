@@ -982,11 +982,11 @@ mod tests {
                 metadata.set_upstream_id(Arc::new(OutputId::from("transform")));
                 metadata.set_source_id(Arc::new(ComponentKey::from("in")));
 
-                tx.send(Event::Metric(OtelMetric::from_legacy_metric(metric))).await.unwrap();
+                tx.send(Event::Metric({ let (s, d, md) = metric.into_parts(); OtelMetric::from_metric_parts(s, d, md) })).await.unwrap();
 
                 assert_eq!(
                     next_event(&out, "in").await.into_otel_metric(),
-                    OtelMetric::from_legacy_metric(expected),
+                    { let (s, d, md) = expected.into_parts(); OtelMetric::from_metric_parts(s, d, md) },
                 );
             },
         )

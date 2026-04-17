@@ -1038,8 +1038,8 @@ mod tests {
         let result = transform_one(&mut tform, metric).unwrap();
         assert_eq!(
             result,
-            Event::Metric(OtelMetric::from_legacy_metric(
-                Metric::new_with_metadata(
+            Event::Metric({
+                let m = Metric::new_with_metadata(
                     "zork",
                     MetricKind::Incremental,
                     MetricValue::Counter { value: 1.0 },
@@ -1048,8 +1048,10 @@ mod tests {
                 .with_namespace(Some("zerk"))
                 .with_tags(Some(metric_tags! {
                     "host" => "zoobub",
-                }))
-            ))
+                }));
+                let (s, d, md) = m.into_parts();
+                OtelMetric::from_metric_parts(s, d, md)
+            })
         );
     }
 
@@ -1149,7 +1151,8 @@ mod tests {
                 MetricValue::Counter { value: 1.0 },
             );
             metric.replace_tag("hello".into(), "world".into());
-            Event::Metric(OtelMetric::from_legacy_metric(metric))
+            let (s, d, md) = metric.into_parts();
+            Event::Metric(OtelMetric::from_metric_parts(s, d, md))
         };
 
         let abort_metric = {
@@ -1159,7 +1162,8 @@ mod tests {
                 MetricValue::Counter { value: 1.0 },
             );
             metric.replace_tag("hello".into(), "goodbye".into());
-            Event::Metric(OtelMetric::from_legacy_metric(metric))
+            let (s, d, md) = metric.into_parts();
+            Event::Metric(OtelMetric::from_metric_parts(s, d, md))
         };
 
         let error_metric = {
@@ -1169,7 +1173,8 @@ mod tests {
                 MetricValue::Counter { value: 1.0 },
             );
             metric.replace_tag("not_hello".into(), "oops".into());
-            Event::Metric(OtelMetric::from_legacy_metric(metric))
+            let (s, d, md) = metric.into_parts();
+            Event::Metric(OtelMetric::from_metric_parts(s, d, md))
         };
 
         let conf = RemapConfig {
@@ -1262,8 +1267,8 @@ mod tests {
         let output = transform_one_fallible(&mut tform, happy_metric).unwrap();
         similar_asserts::assert_eq!(
             output,
-            Event::Metric(OtelMetric::from_legacy_metric(
-                Metric::new_with_metadata(
+            Event::Metric({
+                let m = Metric::new_with_metadata(
                     "counter",
                     MetricKind::Absolute,
                     MetricValue::Counter { value: 1.0 },
@@ -1273,15 +1278,17 @@ mod tests {
                 .with_tags(Some(metric_tags! {
                     "hello" => "world",
                     "foo" => "bar",
-                }))
-            ))
+                }));
+                let (s, d, md) = m.into_parts();
+                OtelMetric::from_metric_parts(s, d, md)
+            })
         );
 
         let output = transform_one_fallible(&mut tform, abort_metric).unwrap_err();
         similar_asserts::assert_eq!(
             output,
-            Event::Metric(OtelMetric::from_legacy_metric(
-                Metric::new_with_metadata(
+            Event::Metric({
+                let m = Metric::new_with_metadata(
                     "counter",
                     MetricKind::Absolute,
                     MetricValue::Counter { value: 1.0 },
@@ -1294,15 +1301,17 @@ mod tests {
                     "metadata.dropped.component_id" => "remapper",
                     "metadata.dropped.component_type" => "remap",
                     "metadata.dropped.component_kind" => "transform",
-                }))
-            ))
+                }));
+                let (s, d, md) = m.into_parts();
+                OtelMetric::from_metric_parts(s, d, md)
+            })
         );
 
         let output = transform_one_fallible(&mut tform, error_metric).unwrap_err();
         similar_asserts::assert_eq!(
             output,
-            Event::Metric(OtelMetric::from_legacy_metric(
-                Metric::new_with_metadata(
+            Event::Metric({
+                let m = Metric::new_with_metadata(
                     "counter",
                     MetricKind::Absolute,
                     MetricValue::Counter { value: 1.0 },
@@ -1315,8 +1324,10 @@ mod tests {
                     "metadata.dropped.component_id" => "remapper",
                     "metadata.dropped.component_type" => "remap",
                     "metadata.dropped.component_kind" => "transform",
-                }))
-            ))
+                }));
+                let (s, d, md) = m.into_parts();
+                OtelMetric::from_metric_parts(s, d, md)
+            })
         );
     }
 

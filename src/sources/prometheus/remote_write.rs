@@ -288,24 +288,28 @@ mod test {
     fn make_events() -> Vec<Event> {
         let timestamp = || Utc::now().trunc_subsecs(3);
         vec![
-            Event::Metric(OtelMetric::from_legacy_metric(
-                Metric::new(
+            Event::Metric({
+                let m = Metric::new(
                     "counter_1",
                     MetricKind::Absolute,
                     MetricValue::Counter { value: 42.0 },
                 )
-                .with_timestamp(Some(timestamp())),
-            )),
-            Event::Metric(OtelMetric::from_legacy_metric(
-                Metric::new(
+                .with_timestamp(Some(timestamp()));
+                let (s, d, md) = m.into_parts();
+                OtelMetric::from_metric_parts(s, d, md)
+            }),
+            Event::Metric({
+                let m = Metric::new(
                     "gauge_2",
                     MetricKind::Absolute,
                     MetricValue::Gauge { value: 41.0 },
                 )
-                .with_timestamp(Some(timestamp())),
-            )),
-            Event::Metric(OtelMetric::from_legacy_metric(
-                Metric::new(
+                .with_timestamp(Some(timestamp()));
+                let (s, d, md) = m.into_parts();
+                OtelMetric::from_metric_parts(s, d, md)
+            }),
+            Event::Metric({
+                let m = Metric::new(
                     "histogram_3",
                     MetricKind::Absolute,
                     MetricValue::AggregatedHistogram {
@@ -314,10 +318,12 @@ mod test {
                         sum: 156.2,
                     },
                 )
-                .with_timestamp(Some(timestamp())),
-            )),
-            Event::Metric(OtelMetric::from_legacy_metric(
-                Metric::new(
+                .with_timestamp(Some(timestamp()));
+                let (s, d, md) = m.into_parts();
+                OtelMetric::from_metric_parts(s, d, md)
+            }),
+            Event::Metric({
+                let m = Metric::new(
                     "summary_4",
                     MetricKind::Absolute,
                     MetricValue::AggregatedSummary {
@@ -326,8 +332,10 @@ mod test {
                         sum: 8.6,
                     },
                 )
-                .with_timestamp(Some(timestamp())),
-            )),
+                .with_timestamp(Some(timestamp()));
+                let (s, d, md) = m.into_parts();
+                OtelMetric::from_metric_parts(s, d, md)
+            }),
         ]
     }
 
@@ -469,8 +477,8 @@ mod test {
         let timestamp = Utc::now().trunc_subsecs(3);
 
         let events = vec![
-            Event::Metric(OtelMetric::from_legacy_metric(
-                Metric::new(
+            Event::Metric({
+                let m = Metric::new(
                     "gauge_2",
                     MetricKind::Absolute,
                     MetricValue::Gauge { value: 41.0 },
@@ -479,13 +487,15 @@ mod test {
                 .with_tags(Some(metric_tags! {
                     "code" => "200".to_string(),
                     "code" => "success".to_string(),
-                })),
-            )),
+                }));
+                let (s, d, md) = m.into_parts();
+                OtelMetric::from_metric_parts(s, d, md)
+            }),
         ];
 
         let expected = vec![
-            Event::Metric(OtelMetric::from_legacy_metric(
-                Metric::new(
+            Event::Metric({
+                let m = Metric::new(
                     "gauge_2",
                     MetricKind::Absolute,
                     MetricValue::Gauge { value: 41.0 },
@@ -493,8 +503,10 @@ mod test {
                 .with_timestamp(Some(timestamp))
                 .with_tags(Some(metric_tags! {
                     "code" => "success".to_string(),
-                })),
-            )),
+                }));
+                let (s, d, md) = m.into_parts();
+                OtelMetric::from_metric_parts(s, d, md)
+            }),
         ];
 
         let output = test_util::spawn_collect_ready(

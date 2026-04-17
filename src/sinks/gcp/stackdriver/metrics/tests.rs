@@ -39,11 +39,15 @@ async fn component_spec_compliance() {
     let context = SinkContext::default();
     let (sink, _healthcheck) = config.build(context).await.unwrap();
 
-    let event = Event::Metric(OtelMetric::from_legacy_metric(Metric::new(
-        "gauge-test",
-        MetricKind::Absolute,
-        MetricValue::Gauge { value: 1_f64 },
-    )));
+    let event = Event::Metric({
+        let m = Metric::new(
+            "gauge-test",
+            MetricKind::Absolute,
+            MetricValue::Gauge { value: 1_f64 },
+        );
+        let (s, d, md) = m.into_parts();
+        OtelMetric::from_metric_parts(s, d, md)
+    });
     run_and_assert_sink_compliance(sink, stream::once(ready(event)), &SINK_TAGS).await;
 }
 
@@ -66,14 +70,16 @@ async fn sends_metric() {
     let (sink, _healthcheck) = config.build(context).await.unwrap();
     let timestamp = Utc::now();
 
-    let event = Event::Metric(OtelMetric::from_legacy_metric(
-        Metric::new(
+    let event = Event::Metric({
+        let m = Metric::new(
             "gauge-test",
             MetricKind::Absolute,
             MetricValue::Gauge { value: 1_f64 },
         )
-        .with_timestamp(Some(timestamp)),
-    ));
+        .with_timestamp(Some(timestamp));
+        let (s, d, md) = m.into_parts();
+        OtelMetric::from_metric_parts(s, d, md)
+    });
     run_and_assert_sink_compliance(sink, stream::once(ready(event)), &SINK_TAGS).await;
 
     drop(trigger);
@@ -130,22 +136,26 @@ async fn sends_multiple_metrics() {
     let timestamp2 = Utc::now();
 
     let event = vec![
-        Event::Metric(OtelMetric::from_legacy_metric(
-            Metric::new(
+        Event::Metric({
+            let m = Metric::new(
                 "gauge1",
                 MetricKind::Absolute,
                 MetricValue::Gauge { value: 1_f64 },
             )
-            .with_timestamp(Some(timestamp1)),
-        )),
-        Event::Metric(OtelMetric::from_legacy_metric(
-            Metric::new(
+            .with_timestamp(Some(timestamp1));
+            let (s, d, md) = m.into_parts();
+            OtelMetric::from_metric_parts(s, d, md)
+        }),
+        Event::Metric({
+            let m = Metric::new(
                 "gauge2",
                 MetricKind::Absolute,
                 MetricValue::Gauge { value: 5_f64 },
             )
-            .with_timestamp(Some(timestamp2)),
-        )),
+            .with_timestamp(Some(timestamp2));
+            let (s, d, md) = m.into_parts();
+            OtelMetric::from_metric_parts(s, d, md)
+        }),
     ];
     run_and_assert_sink_compliance(sink, stream::iter(event), &SINK_TAGS).await;
 
@@ -217,22 +227,26 @@ async fn does_not_aggregate_metrics() {
     let timestamp2 = Utc::now();
 
     let event = vec![
-        Event::Metric(OtelMetric::from_legacy_metric(
-            Metric::new(
+        Event::Metric({
+            let m = Metric::new(
                 "gauge",
                 MetricKind::Absolute,
                 MetricValue::Gauge { value: 1_f64 },
             )
-            .with_timestamp(Some(timestamp1)),
-        )),
-        Event::Metric(OtelMetric::from_legacy_metric(
-            Metric::new(
+            .with_timestamp(Some(timestamp1));
+            let (s, d, md) = m.into_parts();
+            OtelMetric::from_metric_parts(s, d, md)
+        }),
+        Event::Metric({
+            let m = Metric::new(
                 "gauge",
                 MetricKind::Absolute,
                 MetricValue::Gauge { value: 5_f64 },
             )
-            .with_timestamp(Some(timestamp2)),
-        )),
+            .with_timestamp(Some(timestamp2));
+            let (s, d, md) = m.into_parts();
+            OtelMetric::from_metric_parts(s, d, md)
+        }),
     ];
     run_and_assert_sink_compliance(sink, stream::iter(event), &SINK_TAGS).await;
 

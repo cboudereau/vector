@@ -1004,7 +1004,7 @@ mod integration_tests {
             for (k, v) in expected_metric_fields().iter() {
                 expected_metric.replace_tag(k.to_string(), v.to_string());
             }
-            let expected_otel = OtelMetric::from_legacy_metric(expected_metric);
+            let expected_otel = { let (s, d, md) = expected_metric.into_parts(); OtelMetric::from_metric_parts(s, d, md) };
 
             tx.send(metric.into()).await.unwrap();
 
@@ -1094,7 +1094,7 @@ mod integration_tests {
             );
             expected_metric
                 .replace_tag(format!("{}[{}]", TAGS_KEY, "Test"), "test-tag".to_string());
-            let expected_otel = OtelMetric::from_legacy_metric(expected_metric);
+            let expected_otel = { let (s, d, md) = expected_metric.into_parts(); OtelMetric::from_metric_parts(s, d, md) };
 
             tx.send(metric.into()).await.unwrap();
 

@@ -900,6 +900,26 @@ Standalone:
   T18 (stale names/aliases cleanup) ←── independent, cosmetic
 ```
 
+---
+
+#### T19 — Fix VrlTarget::OtelMetric remove (no-op on proto)
+
+**File:** `lib/vector-core/src/event/vrl_target.rs:914-920`
+
+`target_remove` on an OtelMetric modifies the VRL projection `value`
+but never writes back to the underlying proto `event`. A VRL program
+doing `del(.name)` on a metric appears to succeed but the actual
+event is unchanged. Also always returns `None` instead of the removed
+value.
+
+Design a write-back mechanism similar to `apply_value_legacy_layout`
+for OtelMetric, or at minimum return an error/warning when mutation
+is attempted on an OtelMetric field.
+
+**Effort:** Medium — needs design decision on metric mutability in VRL.
+
+---
+
 ### Types that STAY after all tasks complete
 
 These are OtelMetric's public API — NOT legacy types:

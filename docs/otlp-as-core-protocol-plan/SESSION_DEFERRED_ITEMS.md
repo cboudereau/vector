@@ -248,7 +248,22 @@ aliases (T15) are removed.
 
 ---
 
-## 7. Trade-offs Made During Migration (2026-04-17)
+## 7. Execution Order Lesson Learned
+
+**T15 before T16 is wrong.** Attempted to remove VRL aliases (T15)
+from `to_value_legacy_layout` but it broke 85 tests because the
+entire legacy API (get/insert/remove/Serialize/EventDataEq) depends
+on the round-trip. The correct order is:
+
+1. **T16** — Rewrite OtelLog get/insert/remove to operate on proto
+   directly (bypass the legacy layout)
+2. **T15** — Remove aliases from the now-unused legacy layout
+3. **T13** — Delete Metric struct
+
+This was attempted, caught by tests (85 failures), and reverted
+cleanly (`77a4ce5`→`3502f78`).
+
+## 8. Trade-offs Made During Migration (2026-04-17)
 
 ### T9 (Lua bindings) deferred — high effort, low impact
 

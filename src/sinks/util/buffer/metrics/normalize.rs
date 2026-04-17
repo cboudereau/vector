@@ -193,12 +193,16 @@ impl<N: MetricNormalize> MetricNormalizer<N> {
     /// `into_metric_parts` is cheap (moves the proto tuple), so the
     /// per-event cost of this conversion is negligible.
     pub fn normalize_otel(&mut self, otel: OtelMetric) -> Option<Event> {
-        self.normalize_otel_to_metric(otel).map(|m| Event::Metric(OtelMetric::from_legacy_metric(m)))
+        let (series, data, metadata) = otel.into_metric_parts();
+        self.normalize(Metric::from_parts(series, data, metadata))
+            .map(|m| {
+                let (s, d, md) = m.into_parts();
+                Event::Metric(OtelMetric::from_metric_parts(s, d, md))
+            })
     }
 
     /// OtelMetric variant of `normalize` — returns legacy Metric directly.
     /// For sinks that still need Metric for their buffer/encoder pipeline.
-    /// See `normalize_otel` for the architectural rationale.
     pub fn normalize_otel_to_metric(&mut self, otel: OtelMetric) -> Option<Metric> {
         let (series, data, metadata) = otel.into_metric_parts();
         self.normalize(Metric::from_parts(series, data, metadata))
@@ -254,11 +258,21 @@ impl MetricEntry {
         }
     }
 
+    /// Creates a new MetricEntry from metric parts.
+    pub fn from_parts(series: MetricSeries, data: MetricData, metadata: EventMetadata, timestamp: Option<Instant>) -> (MetricSeries, Self) {
+        let entry = Self::new(data, metadata, timestamp);
+        (series, entry)
+    }
+
     /// Creates a new MetricEntry from a Metric.
     pub fn from_metric(metric: Metric, timestamp: Option<Instant>) -> (MetricSeries, Self) {
         let (series, data, metadata) = metric.into_parts();
-        let entry = Self::new(data, metadata, timestamp);
-        (series, entry)
+        Self::from_parts(series, data, metadata, timestamp)
+    }
+
+    /// Converts this entry back into metric parts.
+    pub fn into_metric_parts(self, series: MetricSeries) -> (MetricSeries, MetricData, EventMetadata) {
+        (series, self.data, self.metadata)
     }
 
     /// Converts this entry back to a Metric with the given series.
@@ -587,6 +601,17 @@ impl MetricSet {
         metrics
     }
 
+    /// Returns all stored metrics as OtelMetric, bypassing the legacy Metric struct.
+    pub fn into_otel_metrics(mut self) -> Vec<OtelMetric> {
+        self.cleanup_expired(Instant::now());
+        let mut metrics = Vec::new();
+        while let Some((series, entry)) = self.inner.pop_lru() {
+            let (s, d, md) = entry.into_metric_parts(series);
+            metrics.push(OtelMetric::from_metric_parts(s, d, md));
+        }
+        metrics
+    }
+
     /// Either pass the metric through as-is if absolute, or convert it
     /// to absolute if incremental.
     pub fn make_absolute(&mut self, metric: Metric) -> Option<Metric> {
@@ -614,7 +639,10 @@ impl MetricSet {
     /// for the architectural rationale.
     pub fn make_absolute_otel(&mut self, otel: OtelMetric) -> Option<Event> {
         let (series, data, metadata) = otel.into_metric_parts();
-        self.make_absolute(Metric::from_parts(series, data, metadata)).map(|m| Event::Metric(OtelMetric::from_legacy_metric(m)))
+        self.make_absolute(Metric::from_parts(series, data, metadata)).map(|m| {
+            let (s, d, md) = m.into_parts();
+            Event::Metric(OtelMetric::from_metric_parts(s, d, md))
+        })
     }
 
     /// OtelMetric variant of `make_incremental` — accepts OtelMetric, returns Event.
@@ -624,7 +652,10 @@ impl MetricSet {
     /// for the architectural rationale.
     pub fn make_incremental_otel(&mut self, otel: OtelMetric) -> Option<Event> {
         let (series, data, metadata) = otel.into_metric_parts();
-        self.make_incremental(Metric::from_parts(series, data, metadata)).map(|m| Event::Metric(OtelMetric::from_legacy_metric(m)))
+        self.make_incremental(Metric::from_parts(series, data, metadata)).map(|m| {
+            let (s, d, md) = m.into_parts();
+            Event::Metric(OtelMetric::from_metric_parts(s, d, md))
+        })
     }
 
     /// Convert the incremental metric into an absolute one, using the

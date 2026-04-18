@@ -8,7 +8,7 @@ use vector_lib::{metric_tags, prometheus::parser::proto};
 use super::*;
 use crate::{
     config::SinkContext,
-    event::{MetricKind, MetricValue, OtelMetric},
+    event::{Metric, MetricKind, MetricValue, OtelMetric},
     sinks::{prometheus::remote_write::config::RemoteWriteConfig, util::test::build_test_server},
     test_util::{
         self,

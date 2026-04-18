@@ -6,7 +6,7 @@ use std::{
 
 use futures_util::{Stream, StreamExt, stream::Fuse};
 use pin_project::pin_project;
-use vector_lib::event::Metric;
+use vector_lib::event::OtelMetric;
 
 use crate::sinks::util::buffer::metrics::{
     DefaultNormalizerSettings, MetricNormalize, MetricNormalizer, NormalizerConfig,
@@ -50,10 +50,10 @@ where
 
 impl<St, N> Stream for Normalizer<St, N>
 where
-    St: Stream<Item = Metric>,
+    St: Stream<Item = OtelMetric>,
     N: MetricNormalize,
 {
-    type Item = Metric;
+    type Item = OtelMetric;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut this = self.project();

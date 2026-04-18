@@ -21,7 +21,7 @@ pub type IncrementalMetricState = MetricState<IncrementalMetricNormalizer>;
 pub struct AbsoluteMetricNormalizer;
 
 impl MetricNormalize for AbsoluteMetricNormalizer {
-    fn normalize(&mut self, state: &mut MetricSet, metric: Metric) -> Option<Metric> {
+    fn normalize(&mut self, state: &mut MetricSet, metric: OtelMetric) -> Option<OtelMetric> {
         state.make_absolute(metric)
     }
 }
@@ -30,7 +30,7 @@ impl MetricNormalize for AbsoluteMetricNormalizer {
 pub struct IncrementalMetricNormalizer;
 
 impl MetricNormalize for IncrementalMetricNormalizer {
-    fn normalize(&mut self, state: &mut MetricSet, metric: Metric) -> Option<Metric> {
+    fn normalize(&mut self, state: &mut MetricSet, metric: OtelMetric) -> Option<OtelMetric> {
         state.make_incremental(metric)
     }
 }
@@ -43,15 +43,16 @@ pub struct MetricState<N> {
 
 impl<N: MetricNormalize> MetricState<N> {
     pub fn merge(&mut self, metric: Metric) {
-        if let Some(output) = self.normalizer.normalize(&mut self.intermediate, metric) {
-            let (series, data, metadata) = output.into_parts();
-            self.latest.insert(series, (data, metadata));
-        }
+        let (series, data, metadata) = metric.into_parts();
+        let otel = OtelMetric::from_metric_parts(series, data, metadata);
+        self.merge_otel(otel)
     }
 
     pub fn merge_otel(&mut self, otel: OtelMetric) {
-        let (series, data, metadata) = otel.into_metric_parts();
-        self.merge(Metric::from_parts(series, data, metadata))
+        if let Some(output) = self.normalizer.normalize(&mut self.intermediate, otel) {
+            let (series, data, metadata) = output.into_metric_parts();
+            self.latest.insert(series, (data, metadata));
+        }
     }
 
     pub fn finish(self) -> SplitMetrics {
@@ -61,9 +62,9 @@ impl<N: MetricNormalize> MetricState<N> {
         // updated/seen more than once, we will never have gotten it back from the `apply_state`
         // call, so we're adding all items in the normalizer state that aren't already present
         // in the latest map.
-        for metric in self.intermediate.into_metrics() {
-            if !latest.contains_key(metric.series()) {
-                let (series, data, metadata) = metric.into_parts();
+        for otel in self.intermediate.into_metrics() {
+            let (series, data, metadata) = otel.into_metric_parts();
+            if !latest.contains_key(&series) {
                 latest.insert(series, (data, metadata));
             }
         }
@@ -371,7 +372,12 @@ pub fn assert_normalize<N: MetricNormalize>(
     let mut metric_set = MetricSet::default();
 
     for (input, expected) in inputs.into_iter().zip(expected_outputs) {
-        let result = normalizer.normalize(&mut metric_set, input);
+        let (series, data, metadata) = input.into_parts();
+        let otel_input = OtelMetric::from_metric_parts(series, data, metadata);
+        let result = normalizer.normalize(&mut metric_set, otel_input).map(|otel| {
+            let (s, d, md) = otel.into_metric_parts();
+            Metric::from_parts(s, d, md)
+        });
         assert_eq!(result, expected);
     }
 }

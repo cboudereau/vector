@@ -1,4 +1,4 @@
-use vector_lib::event::metric::{Metric, MetricValue, Sample};
+use vector_lib::event::{OtelMetric, metric::{Metric, MetricValue, Sample}};
 
 use crate::sinks::util::{
     Merged, SinkBatchSettings,
@@ -61,7 +61,10 @@ impl Batch for MetricsBuffer {
                         ..Default::default()
                     })
                 })
-                .insert_update(item);
+                .insert_update({
+                    let (s, d, md) = item.into_parts();
+                    OtelMetric::from_metric_parts(s, d, md)
+                });
             PushResult::Ok(self.num_items() >= self.max_events)
         }
     }
@@ -75,11 +78,18 @@ impl Batch for MetricsBuffer {
     }
 
     fn finish(self) -> Self::Output {
-        // Collect all of our metrics together, finalize them, and hand them back.
-        let mut finalized = self
+        // Collect all metrics, convert OtelMetric→Metric, finalize, and hand back.
+        let otel_metrics = self
             .metrics
             .map(MetricSet::into_metrics)
             .unwrap_or_default();
+        let mut finalized: Vec<Metric> = otel_metrics
+            .into_iter()
+            .map(|otel| {
+                let (s, d, md) = otel.into_metric_parts();
+                Metric::from_parts(s, d, md)
+            })
+            .collect();
         finalized.iter_mut().for_each(finalize_metric);
         finalized
     }
@@ -224,8 +234,11 @@ mod tests {
         let mut result = vec![];
 
         for metric in metrics {
-            if let Some(event) = normalizer.normalize(metric) {
-                match buffer.push(event) {
+            let (s, d, md) = metric.into_parts();
+            let otel = OtelMetric::from_metric_parts(s, d, md);
+            if let Some(normalized) = normalizer.normalize(otel) {
+                let (s, d, md) = normalized.into_metric_parts();
+                match buffer.push(Metric::from_parts(s, d, md)) {
                     PushResult::Overflow(_) => panic!("overflowed too early"),
                     PushResult::Ok(true) => {
                         let batch =

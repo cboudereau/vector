@@ -5,7 +5,7 @@
 //!
 //! [remote_write]: https://prometheus.io/docs/concepts/remote_write_spec/
 
-use vector_lib::event::Metric;
+use vector_lib::event::OtelMetric;
 
 use crate::sinks::{
     prelude::*,
@@ -42,7 +42,7 @@ struct PartitionKey {
 pub struct PrometheusMetricNormalize;
 
 impl MetricNormalize for PrometheusMetricNormalize {
-    fn normalize(&mut self, state: &mut MetricSet, metric: Metric) -> Option<Metric> {
+    fn normalize(&mut self, state: &mut MetricSet, metric: OtelMetric) -> Option<OtelMetric> {
         state.make_absolute(metric)
     }
 }

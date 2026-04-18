@@ -10,7 +10,7 @@ use vector_config_macros::configurable_component;
 use vector_lib::{
     ByteSizeOf,
     event::{
-        Event, EventMetadata, Metric, MetricKind, OtelMetric,
+        Event, EventMetadata, MetricKind, OtelMetric,
         metric::{MetricData, MetricSeries},
     },
 };
@@ -130,7 +130,7 @@ pub trait MetricNormalize {
     ///
     /// However, a metric may simply not be supported by a normalization implementation, and so `None` may or may not be
     /// a common return value. This behavior is, thus, implementation defined.
-    fn normalize(&mut self, state: &mut MetricSet, metric: Metric) -> Option<Metric>;
+    fn normalize(&mut self, state: &mut MetricSet, metric: OtelMetric) -> Option<OtelMetric>;
 }
 
 /// A self-contained metric normalizer.
@@ -169,43 +169,13 @@ impl<N: MetricNormalize> MetricNormalizer<N> {
     /// Normalizes the metric against the internal normalization state.
     ///
     /// For more information about normalization, see the documentation for [`MetricNormalize::normalize`].
-    pub fn normalize(&mut self, metric: Metric) -> Option<Metric> {
+    pub fn normalize(&mut self, metric: OtelMetric) -> Option<OtelMetric> {
         self.normalizer.normalize(&mut self.state, metric)
     }
 
-    /// OtelMetric variant of `normalize` — accepts OtelMetric, returns Event.
-    ///
-    /// **Permanent compatibility layer** between OTel-native event arrays
-    /// (which sources/transforms produce and consume) and the legacy
-    /// `MetricSet` aggregator that several metric sinks (statsd, influxdb,
-    /// prometheus, sematext, gcp/stackdriver, splunk_hec, greptimedb,
-    /// new_relic, cloudwatch) use internally.
-    ///
-    /// A native-OtelMetric `MetricSet` was considered but rejected (see
-    /// `LEGACY_REMOVAL_PLAN.md` blocker B3): the prometheus wire format
-    /// in particular is closely tied to legacy `Metric`'s
-    /// discriminant-based identity (counter vs gauge vs histogram, with
-    /// histogram bucket bounds and summary quantiles being part of the
-    /// dedup key). A proto-native equivalent would not simplify the
-    /// existing aggregator and would lose direct access to the
-    /// `MetricValue` enum that the sinks' encoders pattern-match against.
-    ///
-    /// `into_metric_parts` is cheap (moves the proto tuple), so the
-    /// per-event cost of this conversion is negligible.
+    /// Normalize and wrap as Event.
     pub fn normalize_otel(&mut self, otel: OtelMetric) -> Option<Event> {
-        let (series, data, metadata) = otel.into_metric_parts();
-        self.normalize(Metric::from_parts(series, data, metadata))
-            .map(|m| {
-                let (s, d, md) = m.into_parts();
-                Event::Metric(OtelMetric::from_metric_parts(s, d, md))
-            })
-    }
-
-    /// OtelMetric variant of `normalize` — returns legacy Metric directly.
-    /// For sinks that still need Metric for their buffer/encoder pipeline.
-    pub fn normalize_otel_to_metric(&mut self, otel: OtelMetric) -> Option<Metric> {
-        let (series, data, metadata) = otel.into_metric_parts();
-        self.normalize(Metric::from_parts(series, data, metadata))
+        self.normalize(otel).map(Event::Metric)
     }
 }
 
@@ -264,9 +234,9 @@ impl MetricEntry {
         (series, entry)
     }
 
-    /// Creates a new MetricEntry from a Metric.
-    pub fn from_metric(metric: Metric, timestamp: Option<Instant>) -> (MetricSeries, Self) {
-        let (series, data, metadata) = metric.into_parts();
+    /// Creates a new MetricEntry from an OtelMetric.
+    pub fn from_otel(metric: OtelMetric, timestamp: Option<Instant>) -> (MetricSeries, Self) {
+        let (series, data, metadata) = metric.into_metric_parts();
         Self::from_parts(series, data, metadata, timestamp)
     }
 
@@ -275,9 +245,9 @@ impl MetricEntry {
         (series, self.data, self.metadata)
     }
 
-    /// Converts this entry back to a Metric with the given series.
-    pub fn into_metric(self, series: MetricSeries) -> Metric {
-        Metric::from_parts(series, self.data, self.metadata)
+    /// Converts this entry back to an OtelMetric with the given series.
+    pub fn into_otel(self, series: MetricSeries) -> OtelMetric {
+        OtelMetric::from_metric_parts(series, self.data, self.metadata)
     }
 
     /// Updates this entry's timestamp.
@@ -590,33 +560,22 @@ impl MetricSet {
         self.enforce_capacity_policy();
     }
 
-    /// Consumes this MetricSet and returns a vector of Metric.
-    pub fn into_metrics(mut self) -> Vec<Metric> {
+    /// Consumes this MetricSet and returns a vector of OtelMetric.
+    pub fn into_metrics(mut self) -> Vec<OtelMetric> {
         // Clean up expired entries first (using current time)
         self.cleanup_expired(Instant::now());
         let mut metrics = Vec::new();
         while let Some((series, entry)) = self.inner.pop_lru() {
-            metrics.push(entry.into_metric(series));
-        }
-        metrics
-    }
-
-    /// Returns all stored metrics as OtelMetric, bypassing the legacy Metric struct.
-    pub fn into_otel_metrics(mut self) -> Vec<OtelMetric> {
-        self.cleanup_expired(Instant::now());
-        let mut metrics = Vec::new();
-        while let Some((series, entry)) = self.inner.pop_lru() {
-            let (s, d, md) = entry.into_metric_parts(series);
-            metrics.push(OtelMetric::from_metric_parts(s, d, md));
+            metrics.push(entry.into_otel(series));
         }
         metrics
     }
 
     /// Either pass the metric through as-is if absolute, or convert it
     /// to absolute if incremental.
-    pub fn make_absolute(&mut self, metric: Metric) -> Option<Metric> {
+    pub fn make_absolute(&mut self, metric: OtelMetric) -> Option<OtelMetric> {
         self.maybe_cleanup();
-        match metric.data.kind {
+        match metric.kind() {
             MetricKind::Absolute => Some(metric),
             MetricKind::Incremental => Some(self.incremental_to_absolute(metric)),
         }
@@ -624,66 +583,44 @@ impl MetricSet {
 
     /// Either convert the metric to incremental if absolute, or
     /// aggregate it with any previous value if already incremental.
-    pub fn make_incremental(&mut self, metric: Metric) -> Option<Metric> {
+    pub fn make_incremental(&mut self, metric: OtelMetric) -> Option<OtelMetric> {
         self.maybe_cleanup();
-        match metric.data.kind {
+        match metric.kind() {
             MetricKind::Absolute => self.absolute_to_incremental(metric),
             MetricKind::Incremental => Some(metric),
         }
     }
 
-    /// OtelMetric variant of `make_absolute` — accepts OtelMetric, returns Event.
-    ///
-    /// Permanent compatibility layer between OTel-native event arrays and
-    /// the legacy `MetricSet` aggregator. See `MetricNormalizer::normalize_otel`
-    /// for the architectural rationale.
-    pub fn make_absolute_otel(&mut self, otel: OtelMetric) -> Option<Event> {
-        let (series, data, metadata) = otel.into_metric_parts();
-        self.make_absolute(Metric::from_parts(series, data, metadata)).map(|m| {
-            let (s, d, md) = m.into_parts();
-            Event::Metric(OtelMetric::from_metric_parts(s, d, md))
-        })
-    }
-
-    /// OtelMetric variant of `make_incremental` — accepts OtelMetric, returns Event.
-    ///
-    /// Permanent compatibility layer between OTel-native event arrays and
-    /// the legacy `MetricSet` aggregator. See `MetricNormalizer::normalize_otel`
-    /// for the architectural rationale.
-    pub fn make_incremental_otel(&mut self, otel: OtelMetric) -> Option<Event> {
-        let (series, data, metadata) = otel.into_metric_parts();
-        self.make_incremental(Metric::from_parts(series, data, metadata)).map(|m| {
-            let (s, d, md) = m.into_parts();
-            Event::Metric(OtelMetric::from_metric_parts(s, d, md))
-        })
-    }
-
     /// Convert the incremental metric into an absolute one, using the
     /// state buffer to keep track of the value throughout the entire
     /// application uptime.
-    fn incremental_to_absolute(&mut self, mut metric: Metric) -> Metric {
+    fn incremental_to_absolute(&mut self, metric: OtelMetric) -> OtelMetric {
         let timestamp = self.create_timestamp();
+        let (series, mut data, metadata) = metric.into_metric_parts();
         // We always call insert() to track memory usage
-        match self.inner.get_mut(&metric.series) {
+        match self.inner.get_mut(&series) {
             Some(existing) => {
                 let mut new_value = existing.data.value.clone();
-                if new_value.add(&metric.data.value) {
+                if new_value.add(&data.value) {
                     // Update the stored value
-                    metric = metric.with_value(new_value);
+                    data.value = new_value;
                 }
                 // Insert the updated stored value, or as store a new reference value (if the Metric changed type)
-                self.insert(metric.clone(), timestamp);
+                let entry = MetricEntry::new(data.clone(), metadata.clone(), timestamp);
+                self.insert_with_tracking(series.clone(), entry);
             }
             None => {
-                self.insert(metric.clone(), timestamp);
+                let entry = MetricEntry::new(data.clone(), metadata.clone(), timestamp);
+                self.insert_with_tracking(series.clone(), entry);
             }
         }
-        metric.into_absolute()
+        let data = data.into_absolute();
+        OtelMetric::from_metric_parts(series, data, metadata)
     }
 
     /// Convert the absolute metric into an incremental by calculating
     /// the increment from the last saved absolute state.
-    fn absolute_to_incremental(&mut self, mut metric: Metric) -> Option<Metric> {
+    fn absolute_to_incremental(&mut self, metric: OtelMetric) -> Option<OtelMetric> {
         // NOTE: Crucially, like I did, you may wonder: why do we not always return a metric? Could
         // this lead to issues where a metric isn't seen again and we, in effect, never emit it?
         //
@@ -704,61 +641,53 @@ impl MetricSet {
         // again, but this is a behavior we have to observe for sinks that can only handle
         // incremental updates.
         let timestamp = self.create_timestamp();
+        let (series, mut data, metadata) = metric.into_metric_parts();
         // We always call insert() to track memory usage
-        match self.inner.get_mut(&metric.series) {
+        match self.inner.get_mut(&series) {
             Some(reference) => {
-                let new_value = metric.data.value.clone();
+                let new_value = data.value.clone();
                 // Create a copy of the reference so we can insert and
                 // replace the existing entry, tracking memory usage
                 let mut new_reference = reference.clone();
                 // From the stored reference value, emit an increment
-                if metric.subtract(&reference.data) {
+                if data.subtract(&reference.data) {
                     new_reference.data.value = new_value;
                     new_reference.timestamp = timestamp;
-                    self.insert_with_tracking(metric.series.clone(), new_reference);
-                    Some(metric.into_incremental())
+                    self.insert_with_tracking(series.clone(), new_reference);
+                    let data = data.into_incremental();
+                    Some(OtelMetric::from_metric_parts(series, data, metadata))
                 } else {
                     // Metric changed type, store this and emit nothing
-                    self.insert(metric, timestamp);
+                    self.insert(OtelMetric::from_metric_parts(series, data, metadata), timestamp);
                     None
                 }
             }
             None => {
                 // No reference so store this and emit nothing
-                self.insert(metric, timestamp);
+                self.insert(OtelMetric::from_metric_parts(series, data, metadata), timestamp);
                 None
             }
         }
     }
 
-    fn insert(&mut self, metric: Metric, timestamp: Option<Instant>) {
-        let (series, entry) = MetricEntry::from_metric(metric, timestamp);
+    fn insert(&mut self, metric: OtelMetric, timestamp: Option<Instant>) {
+        let (series, entry) = MetricEntry::from_otel(metric, timestamp);
         self.insert_with_tracking(series, entry);
     }
 
-    /// OtelMetric variant of `insert_update`.
-    ///
-    /// Permanent compatibility layer between OTel-native event arrays and
-    /// the legacy `MetricSet` aggregator. See `MetricNormalizer::normalize_otel`
-    /// for the architectural rationale.
-    pub fn insert_update_otel(&mut self, otel: OtelMetric) {
-        let (series, data, metadata) = otel.into_metric_parts();
-        self.insert_update(Metric::from_parts(series, data, metadata));
-    }
-
-    pub fn insert_update(&mut self, metric: Metric) {
+    pub fn insert_update(&mut self, metric: OtelMetric) {
         self.maybe_cleanup();
         let timestamp = self.create_timestamp();
-        let update = match metric.data.kind {
-            MetricKind::Absolute => Some(metric),
+        let (series, data, metadata) = metric.into_metric_parts();
+        let update = match data.kind {
+            MetricKind::Absolute => Some((series, data, metadata)),
             MetricKind::Incremental => {
                 // Incremental metrics update existing entries, if present
-                match self.inner.get_mut(&metric.series) {
+                match self.inner.get_mut(&series) {
                     Some(existing) => {
                         // Create a copy of the reference so we can insert and
                         // replace the existing entry, tracking memory usage
                         let mut new_existing = existing.clone();
-                        let (series, data, metadata) = metric.into_parts();
                         if new_existing.data.update(&data) {
                             new_existing.metadata.merge(metadata);
                             new_existing.update_timestamp(timestamp);
@@ -766,15 +695,15 @@ impl MetricSet {
                             None
                         } else {
                             warn!(message = "Metric changed type, dropping old value.", %series);
-                            Some(Metric::from_parts(series, data, metadata))
+                            Some((series, data, metadata))
                         }
                     }
-                    None => Some(metric),
+                    None => Some((series, data, metadata)),
                 }
             }
         };
-        if let Some(metric) = update {
-            self.insert(metric, timestamp);
+        if let Some((series, data, metadata)) = update {
+            self.insert(OtelMetric::from_metric_parts(series, data, metadata), timestamp);
         }
     }
 

@@ -3,7 +3,7 @@ use std::future::ready;
 use async_trait::async_trait;
 use futures::StreamExt;
 use futures_util::stream::BoxStream;
-use vector_lib::event::{Metric, MetricValue};
+use vector_lib::event::{MetricValue, OtelMetric};
 
 use crate::sinks::{
     greptimedb::metrics::{
@@ -20,10 +20,10 @@ use crate::sinks::{
 pub struct GreptimeDBMetricNormalize;
 
 impl MetricNormalize for GreptimeDBMetricNormalize {
-    fn normalize(&mut self, state: &mut MetricSet, metric: Metric) -> Option<Metric> {
-        match (metric.data.kind, &metric.data.value) {
-            (_, MetricValue::Counter { .. }) => state.make_absolute(metric),
-            (_, MetricValue::Gauge { .. }) => state.make_absolute(metric),
+    fn normalize(&mut self, state: &mut MetricSet, metric: OtelMetric) -> Option<OtelMetric> {
+        match metric.value() {
+            MetricValue::Counter { .. } => state.make_absolute(metric),
+            MetricValue::Gauge { .. } => state.make_absolute(metric),
             // All others are left as-is
             _ => Some(metric),
         }

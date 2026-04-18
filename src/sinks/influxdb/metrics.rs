@@ -12,7 +12,7 @@ use vector_lib::{
 use crate::{
     config::{AcknowledgementsConfig, Input, SinkConfig, SinkContext},
     event::{
-        Event, KeyString,
+        Event, KeyString, OtelMetric,
         metric::{Metric, MetricValue, Sample, StatisticKind},
     },
     http::HttpClient,
@@ -179,7 +179,8 @@ impl InfluxDbSvc {
 
                     event
                         .try_into_otel_metric()
-                        .and_then(|m| normalizer.normalize_otel_to_metric(m))
+                        .and_then(|m| normalizer.normalize(m))
+                        .map(|otel| { let (s, d, md) = otel.into_metric_parts(); Metric::from_parts(s, d, md) })
                         .map(|metric| Ok(EncodedEvent::new(metric, byte_size, json_size)))
                 })
             })
@@ -256,13 +257,13 @@ fn merge_tags(event: &Metric, tags: Option<&HashMap<String, String>>) -> Option<
 pub struct InfluxMetricNormalize;
 
 impl MetricNormalize for InfluxMetricNormalize {
-    fn normalize(&mut self, state: &mut MetricSet, metric: Metric) -> Option<Metric> {
-        match (metric.data.kind, &metric.data.value) {
+    fn normalize(&mut self, state: &mut MetricSet, metric: OtelMetric) -> Option<OtelMetric> {
+        match metric.value() {
             // Counters are disaggregated. We take the previous value from the state
             // and emit the difference between previous and current as a Counter
-            (_, MetricValue::Counter { .. }) => state.make_incremental(metric),
+            MetricValue::Counter { .. } => state.make_incremental(metric),
             // Convert incremental gauges into absolute ones
-            (_, MetricValue::Gauge { .. }) => state.make_absolute(metric),
+            MetricValue::Gauge { .. } => state.make_absolute(metric),
             // All others are left as-is
             _ => Some(metric),
         }

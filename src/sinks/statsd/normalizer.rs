@@ -1,4 +1,4 @@
-use vector_lib::event::{Metric, MetricValue};
+use vector_lib::event::{MetricValue, OtelMetric};
 
 use crate::sinks::util::buffer::metrics::{MetricNormalize, MetricSet};
 
@@ -6,10 +6,10 @@ use crate::sinks::util::buffer::metrics::{MetricNormalize, MetricSet};
 pub(crate) struct StatsdNormalizer;
 
 impl MetricNormalize for StatsdNormalizer {
-    fn normalize(&mut self, state: &mut MetricSet, metric: Metric) -> Option<Metric> {
+    fn normalize(&mut self, state: &mut MetricSet, metric: OtelMetric) -> Option<OtelMetric> {
         // We primarily care about making sure that metrics are incremental, but for gauges, we can
         // handle both incremental and absolute versions during encoding.
-        match &metric.data.value {
+        match metric.value() {
             // Pass through gauges as-is.
             MetricValue::Gauge { .. } => Some(metric),
             // Otherwise, ensure that it's incremental.

@@ -28,7 +28,7 @@ use crate::{
     },
     config::{AcknowledgementsConfig, Input, ProxyConfig, SinkConfig, SinkContext},
     event::{
-        Event,
+        Event, OtelMetric,
         metric::{Metric, MetricTags, MetricValue},
     },
     sinks::util::{
@@ -201,8 +201,8 @@ impl CloudWatchMetricsSinkConfig {
 struct AwsCloudwatchMetricNormalize;
 
 impl MetricNormalize for AwsCloudwatchMetricNormalize {
-    fn normalize(&mut self, state: &mut MetricSet, metric: Metric) -> Option<Metric> {
-        match &metric.data.value {
+    fn normalize(&mut self, state: &mut MetricSet, metric: OtelMetric) -> Option<OtelMetric> {
+        match metric.value() {
             MetricValue::Gauge { .. } => state.make_absolute(metric),
             _ => state.make_incremental(metric),
         }
@@ -259,7 +259,7 @@ impl CloudWatchMetricsSvc {
                 stream::iter({
                     let byte_size = event.allocated_bytes();
                     let json_byte_size = event.estimated_json_encoded_size_of();
-                    event.try_into_otel_metric().and_then(|m| normalizer.normalize_otel_to_metric(m)).map(|mut metric| {
+                    event.try_into_otel_metric().and_then(|m| normalizer.normalize(m)).map(|otel| { let (s, d, md) = otel.into_metric_parts(); Metric::from_parts(s, d, md) }).map(|mut metric| {
                         let namespace = metric
                             .take_namespace()
                             .unwrap_or_else(|| default_namespace.clone());

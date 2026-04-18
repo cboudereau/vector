@@ -80,14 +80,24 @@ pub(super) enum BatchedMetrics {
 impl BatchedMetrics {
     pub(super) fn into_metrics(self) -> Vec<Metric> {
         match self {
-            BatchedMetrics::Aggregated(metrics) => metrics.into_metrics(),
+            BatchedMetrics::Aggregated(metrics) => metrics
+                .into_metrics()
+                .into_iter()
+                .map(|otel| {
+                    let (s, d, md) = otel.into_metric_parts();
+                    Metric::from_parts(s, d, md)
+                })
+                .collect(),
             BatchedMetrics::Unaggregated(metrics) => metrics,
         }
     }
 
     pub(super) fn insert_update(&mut self, metric: Metric) {
         match self {
-            BatchedMetrics::Aggregated(metrics) => metrics.insert_update(metric),
+            BatchedMetrics::Aggregated(metrics) => {
+                let (s, d, md) = metric.into_parts();
+                metrics.insert_update(OtelMetric::from_metric_parts(s, d, md));
+            }
             BatchedMetrics::Unaggregated(metrics) => metrics.push(metric),
         }
     }
@@ -187,14 +197,13 @@ where
 
         input
             .filter_map(|event| {
-                future::ready(event.try_into_otel_metric().map(|otel| {
-                    let (series, data, metadata) = otel.into_metric_parts();
-                    Metric::from_parts(series, data, metadata)
-                }))
+                future::ready(event.try_into_otel_metric())
             })
             .normalized_with_ttl::<PrometheusMetricNormalize>(expire_metrics_secs)
-            .filter_map(move |event| {
-                future::ready(make_remote_write_event(tenant_id.as_ref(), event))
+            .filter_map(move |otel| {
+                let (s, d, md) = otel.into_metric_parts();
+                let metric = Metric::from_parts(s, d, md);
+                future::ready(make_remote_write_event(tenant_id.as_ref(), metric))
             })
             .batched_partitioned(PrometheusTenantIdPartitioner, || {
                 batch_settings

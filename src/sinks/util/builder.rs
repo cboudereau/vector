@@ -16,7 +16,7 @@ use tower::Service;
 use tracing::Span;
 use vector_lib::{
     ByteSizeOf,
-    event::{Finalizable, Metric},
+    event::{Finalizable, OtelMetric},
     partition::Partitioner,
     stream::{
         ConcurrentMap, Driver, DriverResponse, ExpirationQueue, PartitionedBatcher,
@@ -201,7 +201,7 @@ pub trait SinkBuilderExt: Stream {
     /// series, or emitting absolute metrics based on incremental updates.
     fn normalized<N>(self, normalizer: N) -> Normalizer<Self, N>
     where
-        Self: Stream<Item = Metric> + Unpin + Sized,
+        Self: Stream<Item = OtelMetric> + Unpin + Sized,
         N: MetricNormalize,
     {
         Normalizer::new(self, normalizer)
@@ -215,7 +215,7 @@ pub trait SinkBuilderExt: Stream {
     /// series, or emitting absolute metrics based on incremental updates.
     fn normalized_with_default<N>(self) -> Normalizer<Self, N>
     where
-        Self: Stream<Item = Metric> + Unpin + Sized,
+        Self: Stream<Item = OtelMetric> + Unpin + Sized,
         N: MetricNormalize + Default,
     {
         Normalizer::new(self, N::default())
@@ -224,7 +224,7 @@ pub trait SinkBuilderExt: Stream {
     /// Normalizes a stream of [`Metric`] events with a normalizer and an optional TTL.
     fn normalized_with_ttl<N>(self, maybe_ttl_secs: Option<f64>) -> Normalizer<Self, N>
     where
-        Self: Stream<Item = Metric> + Unpin + Sized,
+        Self: Stream<Item = OtelMetric> + Unpin + Sized,
         N: MetricNormalize + Default,
     {
         match maybe_ttl_secs {

@@ -16,7 +16,7 @@ use crate::{
     Result,
     config::{AcknowledgementsConfig, GenerateConfig, Input, SinkConfig, SinkContext},
     event::{
-        Event, KeyString,
+        Event, KeyString, OtelMetric,
         metric::{Metric, MetricValue},
     },
     http::HttpClient,
@@ -189,7 +189,8 @@ impl SematextMetricsService {
                     let json_byte_size = event.estimated_json_encoded_size_of();
                     event
                         .try_into_otel_metric()
-                        .and_then(|m| normalizer.normalize_otel_to_metric(m))
+                        .and_then(|m| normalizer.normalize(m))
+                        .map(|otel| { let (s, d, md) = otel.into_metric_parts(); Metric::from_parts(s, d, md) })
                         .map(|item| Ok(EncodedEvent::new(item, byte_size, json_byte_size)))
                 })
             })
@@ -228,12 +229,15 @@ impl Service<Vec<Metric>> for SematextMetricsService {
 struct SematextMetricNormalize;
 
 impl MetricNormalize for SematextMetricNormalize {
-    fn normalize(&mut self, state: &mut MetricSet, metric: Metric) -> Option<Metric> {
-        match &metric.data.value {
+    fn normalize(&mut self, state: &mut MetricSet, metric: OtelMetric) -> Option<OtelMetric> {
+        match metric.value() {
             MetricValue::Gauge { .. } => state.make_absolute(metric),
             MetricValue::Counter { .. } => state.make_incremental(metric),
             _ => {
-                emit!(SematextMetricsInvalidMetricError { metric: &metric });
+                // Convert to Metric temporarily for error reporting
+                let (series, data, metadata) = metric.into_metric_parts();
+                let legacy = Metric::from_parts(series, data, metadata);
+                emit!(SematextMetricsInvalidMetricError { metric: &legacy });
                 None
             }
         }

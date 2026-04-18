@@ -3,7 +3,7 @@ mod generic;
 use async_graphql::Interface;
 
 use super::{ReceivedEventsTotal, SentBytesTotal, SentEventsTotal};
-use crate::event::Metric;
+use crate::event::OtelMetric;
 
 #[derive(Debug, Clone, Interface)]
 #[graphql(
@@ -19,7 +19,7 @@ pub trait IntoSinkMetrics {
     fn into_sink_metrics(self, component_type: &str) -> SinkMetrics;
 }
 
-impl IntoSinkMetrics for Vec<Metric> {
+impl IntoSinkMetrics for Vec<OtelMetric> {
     fn into_sink_metrics(self, _component_type: &str) -> SinkMetrics {
         SinkMetrics::GenericSinkMetrics(generic::GenericSinkMetrics::new(self))
     }

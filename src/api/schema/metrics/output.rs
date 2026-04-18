@@ -2,16 +2,16 @@ use async_graphql::Object;
 use vector_lib::config::ComponentKey;
 
 use super::{SentEventsTotal, by_component_key, sum_metrics};
-use crate::event::Metric;
+use crate::event::OtelMetric;
 
 #[derive(Debug, Clone)]
 pub struct Output {
     output_id: String,
-    sent_events_total: Option<Metric>,
+    sent_events_total: Option<OtelMetric>,
 }
 
 impl Output {
-    pub const fn new(output_id: String, sent_events_total: Option<Metric>) -> Self {
+    pub const fn new(output_id: String, sent_events_total: Option<OtelMetric>) -> Self {
         Self {
             output_id,
             sent_events_total,
@@ -79,7 +79,7 @@ pub fn outputs_by_component_key(component_key: &ComponentKey, outputs: &[String]
         .collect::<Vec<_>>()
 }
 
-pub fn filter_output_metric(metrics: &[Metric], output_name: &str) -> Option<Metric> {
+pub fn filter_output_metric(metrics: &[OtelMetric], output_name: &str) -> Option<OtelMetric> {
     sum_metrics(
         metrics
             .iter()

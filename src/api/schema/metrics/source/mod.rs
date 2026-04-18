@@ -4,7 +4,7 @@ mod generic;
 use async_graphql::Interface;
 
 use super::{ReceivedBytesTotal, ReceivedEventsTotal, SentEventsTotal};
-use crate::event::Metric;
+use crate::event::OtelMetric;
 
 #[derive(Debug, Clone, Interface)]
 #[graphql(
@@ -21,7 +21,7 @@ pub trait IntoSourceMetrics {
     fn into_source_metrics(self, component_type: &str) -> SourceMetrics;
 }
 
-impl IntoSourceMetrics for Vec<Metric> {
+impl IntoSourceMetrics for Vec<OtelMetric> {
     fn into_source_metrics(self, component_type: &str) -> SourceMetrics {
         match component_type {
             "file" => SourceMetrics::FileSourceMetrics(file::FileSourceMetrics::new(self)),

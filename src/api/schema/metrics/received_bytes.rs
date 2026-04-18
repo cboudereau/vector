@@ -3,13 +3,13 @@ use chrono::{DateTime, Utc};
 
 use crate::{
     config::ComponentKey,
-    event::{Metric, MetricValue},
+    event::{MetricValue, OtelMetric},
 };
 
-pub struct ReceivedBytesTotal(Metric);
+pub struct ReceivedBytesTotal(OtelMetric);
 
 impl ReceivedBytesTotal {
-    pub const fn new(m: Metric) -> Self {
+    pub const fn new(m: OtelMetric) -> Self {
         Self(m)
     }
 
@@ -19,7 +19,7 @@ impl ReceivedBytesTotal {
 
     pub fn get_received_bytes_total(&self) -> f64 {
         match self.0.value() {
-            MetricValue::Counter { value } => *value,
+            MetricValue::Counter { value } => value,
             _ => 0.00,
         }
     }
@@ -38,22 +38,22 @@ impl ReceivedBytesTotal {
     }
 }
 
-impl From<Metric> for ReceivedBytesTotal {
-    fn from(m: Metric) -> Self {
+impl From<OtelMetric> for ReceivedBytesTotal {
+    fn from(m: OtelMetric) -> Self {
         Self(m)
     }
 }
 
 pub struct ComponentReceivedBytesTotal {
     component_key: ComponentKey,
-    metric: Metric,
+    metric: OtelMetric,
 }
 
 impl ComponentReceivedBytesTotal {
     /// Returns a new `ComponentReceivedBytesTotal`.
     ///
     /// Expects that the metric contains a tag for the component ID the metric is referenced to.
-    pub fn new(metric: Metric) -> Self {
+    pub fn new(metric: OtelMetric) -> Self {
         let component_key = metric.tag_value("component_id").expect(
             "Returned a metric without a `component_id`, which shouldn't happen. Please report.",
         );

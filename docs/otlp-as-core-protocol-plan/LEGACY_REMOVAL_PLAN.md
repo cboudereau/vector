@@ -592,7 +592,7 @@ the struct**:
 | T6 | Split iterator: `Metric` → `OtelMetric` | **DONE** | `3856582` |
 | T12 | Test code: `Metric::new` → `OtelMetric` constructors | **IN PROGRESS** | `43ede6e` | 326→171 migrated. Remaining 171 use `otel()` wrapper or test helpers. |
 | T20 | `capture_metrics()` → return `Vec<OtelMetric>` | **DONE** | `acc456c` | Internal metrics now OtelMetric natively. 48 callers updated. |
-| T13 | Demote `Metric` struct to legacy sink codec type | **DONE** | `1b188d6` | `from_metric_kv` eliminated. No core pipeline uses Metric. Remaining uses: `MetricsBuffer` (deprecated), GraphQL API (`capture_metrics_as_legacy`), proto encode, 4 sink boundary conversions. 171 `Metric::new` in test code as convenience builders. The struct is now a **legacy sink codec type** — used only at sink boundaries, not in the core event pipeline. |
+| T13 | Eliminate Metric from all production code | **IN PROGRESS** | `1b188d6`+ | `from_metric_kv` eliminated. Core pipeline clean. Now migrating: GraphQL API (16 files) → OtelMetric, sink boundaries (12 files) → OtelMetric. Once done, Metric struct is test-only. |
 | T21 | Delete `normalize_otel` / `make_*_otel` wrappers | **DONE** | `3856582` — deleted as dead code |
 | T22 | Delete `MetricEntry::from_metric` / `into_metric` | **DONE** | `3856582` — replaced with `from_otel` / `into_otel` |
 

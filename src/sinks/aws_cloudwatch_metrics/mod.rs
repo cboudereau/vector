@@ -214,7 +214,7 @@ struct CloudWatchMetricsRetryLogic;
 
 impl RetryLogic for CloudWatchMetricsRetryLogic {
     type Error = SdkError<PutMetricDataError>;
-    type Request = PartitionInnerBuffer<Vec<Metric>, String>;
+    type Request = PartitionInnerBuffer<Vec<OtelMetric>, String>;
     type Response = ();
 
     fn is_retriable_error(&self, error: &Self::Error) -> bool {
@@ -259,12 +259,13 @@ impl CloudWatchMetricsSvc {
                 stream::iter({
                     let byte_size = event.allocated_bytes();
                     let json_byte_size = event.estimated_json_encoded_size_of();
-                    event.try_into_otel_metric().and_then(|m| normalizer.normalize(m)).map(|otel| { let (s, d, md) = otel.into_metric_parts(); Metric::from_parts(s, d, md) }).map(|mut metric| {
-                        let namespace = metric
-                            .take_namespace()
+                    event.try_into_otel_metric().and_then(|m| normalizer.normalize(m)).map(|otel| {
+                        let namespace = otel
+                            .namespace()
+                            .map(|s| s.to_owned())
                             .unwrap_or_else(|| default_namespace.clone());
                         Ok(EncodedEvent::new(
-                            PartitionInnerBuffer::new(metric, namespace),
+                            PartitionInnerBuffer::new(otel, namespace),
                             byte_size,
                             json_byte_size,
                         ))
@@ -276,11 +277,14 @@ impl CloudWatchMetricsSvc {
         Ok(VectorSink::from_event_sink(sink))
     }
 
-    fn encode_events(&mut self, events: Vec<Metric>) -> Vec<MetricDatum> {
+    fn encode_events(&mut self, events: Vec<OtelMetric>) -> Vec<MetricDatum> {
         let resolutions = &self.storage_resolution;
         events
             .into_iter()
-            .filter_map(|event| {
+            .filter_map(|otel| {
+                // Convert to legacy Metric internally for field access during encoding
+                let (series, data, metadata) = otel.into_metric_parts();
+                let event = Metric::from_parts(series, data, metadata);
                 let metric_name = event.series.name.name.to_string();
                 let timestamp = event
                     .data.time.timestamp
@@ -336,7 +340,7 @@ impl CloudWatchMetricsSvc {
     }
 }
 
-impl Service<PartitionInnerBuffer<Vec<Metric>, String>> for CloudWatchMetricsSvc {
+impl Service<PartitionInnerBuffer<Vec<OtelMetric>, String>> for CloudWatchMetricsSvc {
     type Response = ();
     type Error = SdkError<PutMetricDataError>;
     type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
@@ -347,7 +351,7 @@ impl Service<PartitionInnerBuffer<Vec<Metric>, String>> for CloudWatchMetricsSvc
     }
 
     // Emission of internal events for errors and dropped events is handled upstream by the caller.
-    fn call(&mut self, items: PartitionInnerBuffer<Vec<Metric>, String>) -> Self::Future {
+    fn call(&mut self, items: PartitionInnerBuffer<Vec<OtelMetric>, String>) -> Self::Future {
         let (items, namespace) = items.into_parts();
         let metric_data = self.encode_events(items);
         if metric_data.is_empty() {

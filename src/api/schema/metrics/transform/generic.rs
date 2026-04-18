@@ -2,14 +2,14 @@ use async_graphql::Object;
 
 use crate::{
     api::schema::metrics::{self, MetricsFilter},
-    event::Metric,
+    event::OtelMetric,
 };
 
 #[derive(Debug, Clone)]
-pub struct GenericTransformMetrics(Vec<Metric>);
+pub struct GenericTransformMetrics(Vec<OtelMetric>);
 
 impl GenericTransformMetrics {
-    pub const fn new(metrics: Vec<Metric>) -> Self {
+    pub const fn new(metrics: Vec<OtelMetric>) -> Self {
         Self(metrics)
     }
 }

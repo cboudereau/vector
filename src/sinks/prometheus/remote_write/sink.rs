@@ -13,7 +13,7 @@ use super::{
 use crate::sinks::{prelude::*, util::buffer::metrics::MetricSet};
 
 pub(super) struct RemoteWriteMetric {
-    pub(super) metric: Metric,
+    pub(super) metric: OtelMetric,
     tenant_id: Option<String>,
 }
 
@@ -66,15 +66,12 @@ impl Partitioner for PrometheusTenantIdPartitioner {
 /// Holds metrics in either aggregated (deduped via `MetricSet`) or
 /// unaggregated form for the prometheus remote_write batcher.
 ///
-/// Uses legacy `Metric` rather than `OtelMetric` because the prometheus
-/// wire format is closely tied to `MetricValue`'s variant structure
-/// (counter/gauge/histogram with bucket bounds, summary with quantiles).
-/// The `_otel` wrappers on `MetricNormalizer` / `MetricSet` are the
-/// permanent boundary between the OTel-native event arrays carried by
-/// the rest of Vector's pipeline and this sink-internal legacy type.
+/// Now uses `OtelMetric` at the boundary — conversion to legacy `Metric`
+/// happens inside the encoding functions where `MetricValue`'s variant
+/// structure is needed for the prometheus wire format.
 pub(super) enum BatchedMetrics {
     Aggregated(MetricSet),
-    Unaggregated(Vec<Metric>),
+    Unaggregated(Vec<OtelMetric>),
 }
 
 impl BatchedMetrics {
@@ -88,15 +85,20 @@ impl BatchedMetrics {
                     Metric::from_parts(s, d, md)
                 })
                 .collect(),
-            BatchedMetrics::Unaggregated(metrics) => metrics,
+            BatchedMetrics::Unaggregated(metrics) => metrics
+                .into_iter()
+                .map(|otel| {
+                    let (s, d, md) = otel.into_metric_parts();
+                    Metric::from_parts(s, d, md)
+                })
+                .collect(),
         }
     }
 
-    pub(super) fn insert_update(&mut self, metric: Metric) {
+    pub(super) fn insert_update(&mut self, metric: OtelMetric) {
         match self {
             BatchedMetrics::Aggregated(metrics) => {
-                let (s, d, md) = metric.into_parts();
-                metrics.insert_update(OtelMetric::from_metric_parts(s, d, md));
+                metrics.insert_update(metric);
             }
             BatchedMetrics::Unaggregated(metrics) => metrics.push(metric),
         }
@@ -201,9 +203,7 @@ where
             })
             .normalized_with_ttl::<PrometheusMetricNormalize>(expire_metrics_secs)
             .filter_map(move |otel| {
-                let (s, d, md) = otel.into_metric_parts();
-                let metric = Metric::from_parts(s, d, md);
-                future::ready(make_remote_write_event(tenant_id.as_ref(), metric))
+                future::ready(make_remote_write_event(tenant_id.as_ref(), otel))
             })
             .batched_partitioned(PrometheusTenantIdPartitioner, || {
                 batch_settings
@@ -240,15 +240,11 @@ where
 
 fn make_remote_write_event(
     tenant_id: Option<&Template>,
-    metric: Metric,
+    metric: OtelMetric,
 ) -> Option<RemoteWriteMetric> {
-    // The prometheus sink internals use legacy `Metric` (see the
-    // BatchedMetrics doc comment) but Template::render_string requires
-    // OtelMetric. Convert here at the boundary — `from_metric_parts` is
-    // a cheap proto-tuple move on a clone of the metric.
     let tenant_id = tenant_id.and_then(|template| {
         template
-            .render_string(&{ let (s, d, md) = metric.clone().into_parts(); OtelMetric::from_metric_parts(s, d, md) })
+            .render_string(&metric)
             .map_err(|error| {
                 emit!(TemplateRenderingError {
                     error,

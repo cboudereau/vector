@@ -40,8 +40,8 @@ impl MetricsBuffer {
 }
 
 impl Batch for MetricsBuffer {
-    type Input = Metric;
-    type Output = Vec<Metric>;
+    type Input = OtelMetric;
+    type Output = Vec<OtelMetric>;
 
     fn get_settings_defaults<D: SinkBatchSettings + Clone>(
         config: BatchConfig<D, Merged>,
@@ -61,10 +61,7 @@ impl Batch for MetricsBuffer {
                         ..Default::default()
                     })
                 })
-                .insert_update({
-                    let (s, d, md) = item.into_parts();
-                    OtelMetric::from_metric_parts(s, d, md)
-                });
+                .insert_update(item);
             PushResult::Ok(self.num_items() >= self.max_events)
         }
     }
@@ -78,20 +75,22 @@ impl Batch for MetricsBuffer {
     }
 
     fn finish(self) -> Self::Output {
-        // Collect all metrics, convert OtelMetric→Metric, finalize, and hand back.
+        // Collect all OtelMetrics, finalize distributions via Metric round-trip, and hand back.
         let otel_metrics = self
             .metrics
             .map(MetricSet::into_metrics)
             .unwrap_or_default();
-        let mut finalized: Vec<Metric> = otel_metrics
+        otel_metrics
             .into_iter()
             .map(|otel| {
+                // Finalize: compress distribution samples via legacy Metric path
                 let (s, d, md) = otel.into_metric_parts();
-                Metric::from_parts(s, d, md)
+                let mut metric = Metric::from_parts(s, d, md);
+                finalize_metric(&mut metric);
+                let (s, d, md) = metric.into_parts();
+                OtelMetric::from_metric_parts(s, d, md)
             })
-            .collect();
-        finalized.iter_mut().for_each(finalize_metric);
-        finalized
+            .collect()
     }
 
     fn num_items(&self) -> usize {
@@ -257,13 +256,17 @@ mod tests {
             let (s, d, md) = metric.into_parts();
             let otel = OtelMetric::from_metric_parts(s, d, md);
             if let Some(normalized) = normalizer.normalize(otel) {
-                let (s, d, md) = normalized.into_metric_parts();
-                match buffer.push(Metric::from_parts(s, d, md)) {
+                match buffer.push(normalized) {
                     PushResult::Overflow(_) => panic!("overflowed too early"),
                     PushResult::Ok(true) => {
                         let batch =
                             std::mem::replace(&mut buffer, MetricsBuffer::new(batch_settings.size));
-                        result.push(batch.finish());
+                        // Convert back to Vec<Metric> for test assertions
+                        let finished: Vec<Metric> = batch.finish().into_iter().map(|otel| {
+                            let (s, d, md) = otel.into_metric_parts();
+                            Metric::from_parts(s, d, md)
+                        }).collect();
+                        result.push(finished);
                     }
                     PushResult::Ok(false) => (),
                 }
@@ -271,7 +274,11 @@ mod tests {
         }
 
         if !buffer.is_empty() {
-            result.push(buffer.finish())
+            let finished: Vec<Metric> = buffer.finish().into_iter().map(|otel| {
+                let (s, d, md) = otel.into_metric_parts();
+                Metric::from_parts(s, d, md)
+            }).collect();
+            result.push(finished)
         }
 
         // Sort each batch to provide a predictable result ordering

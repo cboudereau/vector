@@ -180,7 +180,6 @@ impl InfluxDbSvc {
                     event
                         .try_into_otel_metric()
                         .and_then(|m| normalizer.normalize(m))
-                        .map(|otel| { let (s, d, md) = otel.into_metric_parts(); Metric::from_parts(s, d, md) })
                         .map(|metric| Ok(EncodedEvent::new(metric, byte_size, json_size)))
                 })
             })
@@ -191,7 +190,7 @@ impl InfluxDbSvc {
     }
 }
 
-impl Service<Vec<Metric>> for InfluxDbSvc {
+impl Service<Vec<OtelMetric>> for InfluxDbSvc {
     type Response = http::Response<Bytes>;
     type Error = crate::Error;
     type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
@@ -202,7 +201,7 @@ impl Service<Vec<Metric>> for InfluxDbSvc {
     }
 
     // Emission of Error internal event is handled upstream by the caller
-    fn call(&mut self, items: Vec<Metric>) -> Self::Future {
+    fn call(&mut self, items: Vec<OtelMetric>) -> Self::Future {
         let input = encode_events(
             self.protocol_version,
             items,
@@ -236,8 +235,8 @@ fn create_build_request(
     }
 }
 
-fn merge_tags(event: &Metric, tags: Option<&HashMap<String, String>>) -> Option<MetricTags> {
-    match (event.series.tags.as_ref().cloned(), tags) {
+fn merge_tags(event_tags: Option<&MetricTags>, config_tags: Option<&HashMap<String, String>>) -> Option<MetricTags> {
+    match (event_tags.cloned(), config_tags) {
         (Some(mut event_tags), Some(config_tags)) => {
             event_tags.extend(config_tags.iter().map(|(k, v)| (k.clone(), v.clone())));
             Some(event_tags)
@@ -272,7 +271,7 @@ impl MetricNormalize for InfluxMetricNormalize {
 
 fn encode_events(
     protocol_version: ProtocolVersion,
-    events: Vec<Metric>,
+    events: Vec<OtelMetric>,
     default_namespace: Option<&str>,
     tags: Option<&HashMap<String, String>>,
     quantiles: &[f64],
@@ -280,10 +279,13 @@ fn encode_events(
     let mut output = BytesMut::new();
     let count = events.len();
 
-    for event in events.into_iter() {
+    for otel in events.into_iter() {
+        // Convert to legacy Metric internally for field access during encoding
+        let (series, data, _metadata) = otel.into_metric_parts();
+        let event = Metric::from_parts(series, data, _metadata);
         let fullname = encode_namespace(event.series.name.namespace.as_deref().or(default_namespace), '.', event.series.name.name.as_str());
         let ts = encode_timestamp(event.data.time.timestamp);
-        let tags = merge_tags(&event, tags);
+        let tags = merge_tags(event.series.tags.as_ref(), tags);
         let (metric_type, fields) = get_type_and_fields(&event.data.value, quantiles);
 
         let mut unwrapped_tags = tags.unwrap_or_default();
@@ -409,10 +411,9 @@ mod tests {
         sinks::influxdb::test_util::{assert_fields, split_line_protocol, tags, ts},
     };
 
-    /// Test helper: build a Metric via OtelMetric round-trip.
-    fn metric_from_otel(otel: OtelMetric) -> Metric {
-        let (s, d, md) = otel.into_metric_parts();
-        Metric::from_parts(s, d, md)
+    /// Test helper: pass through OtelMetric (previously round-tripped via Metric).
+    fn metric_from_otel(otel: OtelMetric) -> OtelMetric {
+        otel
     }
 
     /// Test helper: convert legacy Metric to OtelMetric (for complex value types).

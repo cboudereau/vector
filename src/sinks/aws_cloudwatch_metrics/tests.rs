@@ -43,35 +43,23 @@ async fn svc() -> CloudWatchMetricsSvc {
 
 #[tokio::test]
 async fn encode_events_basic_counter() {
-    let events = vec![
-        {
-            let otel = OtelMetric::new_counter("exception_total", MetricKind::Incremental, 1.0);
-            let (s, d, md) = otel.into_metric_parts();
-            Metric::from_parts(s, d, md)
-        },
-        {
-            let otel = OtelMetric::new_counter("bytes_out", MetricKind::Incremental, 2.5);
-            let (s, d, md) = otel.into_metric_parts();
-            Metric::from_parts(s, d, md)
-        }
-        .with_timestamp(Some(
-            Utc.with_ymd_and_hms(2018, 11, 14, 8, 9, 10)
-                .single()
-                .and_then(|t| t.with_nanosecond(123456789))
-                .expect("invalid timestamp"),
-        )),
-        {
-            let otel = OtelMetric::new_counter("healthcheck", MetricKind::Incremental, 1.0);
-            let (s, d, md) = otel.into_metric_parts();
-            Metric::from_parts(s, d, md)
-        }
-        .with_tags(Some(metric_tags!("region" => "local")))
-        .with_timestamp(Some(
-            Utc.with_ymd_and_hms(2018, 11, 14, 8, 9, 10)
-                .single()
-                .and_then(|t| t.with_nanosecond(123456789))
-                .expect("invalid timestamp"),
-        )),
+    let events: Vec<OtelMetric> = vec![
+        OtelMetric::new_counter("exception_total", MetricKind::Incremental, 1.0),
+        OtelMetric::new_counter("bytes_out", MetricKind::Incremental, 2.5)
+            .with_timestamp(Some(
+                Utc.with_ymd_and_hms(2018, 11, 14, 8, 9, 10)
+                    .single()
+                    .and_then(|t| t.with_nanosecond(123456789))
+                    .expect("invalid timestamp"),
+            )),
+        OtelMetric::new_counter("healthcheck", MetricKind::Incremental, 1.0)
+            .with_tags(Some(metric_tags!("region" => "local")))
+            .with_timestamp(Some(
+                Utc.with_ymd_and_hms(2018, 11, 14, 8, 9, 10)
+                    .single()
+                    .and_then(|t| t.with_nanosecond(123456789))
+                    .expect("invalid timestamp"),
+            )),
     ];
 
     assert_eq!(
@@ -99,11 +87,9 @@ async fn encode_events_basic_counter() {
 
 #[tokio::test]
 async fn encode_events_absolute_gauge() {
-    let events = vec![{
-        let otel = OtelMetric::new_gauge("temperature", 10.0);
-        let (s, d, md) = otel.into_metric_parts();
-        Metric::from_parts(s, d, md)
-    }];
+    let events: Vec<OtelMetric> = vec![
+        OtelMetric::new_gauge("temperature", 10.0),
+    ];
 
     assert_eq!(
         svc().await.encode_events(events),
@@ -118,7 +104,7 @@ async fn encode_events_absolute_gauge() {
 
 #[tokio::test]
 async fn encode_events_distribution() {
-    let events = vec![{
+    let events: Vec<OtelMetric> = vec![{
         let m = Metric::new(
             "latency",
             MetricKind::Incremental,
@@ -128,9 +114,7 @@ async fn encode_events_distribution() {
             },
         );
         let (s, d, md) = m.into_parts();
-        let otel = OtelMetric::from_metric_parts(s, d, md);
-        let (s, d, md) = otel.into_metric_parts();
-        Metric::from_parts(s, d, md)
+        OtelMetric::from_metric_parts(s, d, md)
     }];
 
     assert_eq!(
@@ -147,7 +131,7 @@ async fn encode_events_distribution() {
 
 #[tokio::test]
 async fn encode_events_set() {
-    let events = vec![{
+    let events: Vec<OtelMetric> = vec![{
         let m = Metric::new(
             "users",
             MetricKind::Incremental,
@@ -156,9 +140,7 @@ async fn encode_events_set() {
             },
         );
         let (s, d, md) = m.into_parts();
-        let otel = OtelMetric::from_metric_parts(s, d, md);
-        let (s, d, md) = otel.into_metric_parts();
-        Metric::from_parts(s, d, md)
+        OtelMetric::from_metric_parts(s, d, md)
     }];
 
     assert_eq!(

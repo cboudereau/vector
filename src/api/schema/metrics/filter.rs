@@ -10,7 +10,7 @@ use super::{
 };
 use crate::{
     config::ComponentKey,
-    event::{Metric, MetricValue},
+    event::{MetricValue, OtelMetric},
     metrics::Controller,
 };
 
@@ -18,39 +18,42 @@ fn get_controller() -> &'static Controller {
     Controller::get().expect("Metrics system not initialized. Please report.")
 }
 
-/// Capture internal metrics, converting OtelMetric → Metric for the GraphQL API layer.
-fn capture_metrics_as_legacy() -> Vec<Metric> {
-    get_controller()
-        .capture_metrics()
-        .into_iter()
-        .map(|otel| {
-            let (s, d, md) = otel.into_metric_parts();
-            Metric::from_parts(s, d, md)
-        })
-        .collect()
+/// Capture internal metrics as `Vec<OtelMetric>` for the GraphQL API layer.
+fn capture_metrics() -> Vec<OtelMetric> {
+    get_controller().capture_metrics()
 }
 
-/// Sums an iterable of `&Metric`, by folding metric values. Convenience function typically
+/// Sums an iterable of `&OtelMetric`, by folding metric values. Convenience function typically
 /// used to get aggregate metrics.
-pub fn sum_metrics<'a, I: IntoIterator<Item = &'a Metric>>(metrics: I) -> Option<Metric> {
+pub fn sum_metrics<'a, I: IntoIterator<Item = &'a OtelMetric>>(metrics: I) -> Option<OtelMetric> {
     let mut iter = metrics.into_iter();
-    let m = iter.next()?;
+    let first = iter.next()?;
 
-    Some(iter.fold(
-        m.clone(),
-        |mut m1, m2| {
-            if m1.update(m2) { m1 } else { m2.clone() }
-        },
-    ))
+    // Decompose into parts so we can use MetricData::update
+    let (s, mut d, md) = first.clone().into_metric_parts();
+
+    for m in iter {
+        let (_, d2, _) = m.clone().into_metric_parts();
+        let _ = d.update(&d2);
+    }
+
+    Some(OtelMetric::from_metric_parts(s, d, md))
 }
 
-/// Sums an iterable of `Metric`, by folding metric values. Convenience function typically
+/// Sums an iterable of `OtelMetric`, by folding metric values. Convenience function typically
 /// used to get aggregate metrics.
-fn sum_metrics_owned<I: IntoIterator<Item = Metric>>(metrics: I) -> Option<Metric> {
+fn sum_metrics_owned<I: IntoIterator<Item = OtelMetric>>(metrics: I) -> Option<OtelMetric> {
     let mut iter = metrics.into_iter();
-    let m = iter.next()?;
+    let first = iter.next()?;
 
-    Some(iter.fold(m, |mut m1, m2| if m1.update(&m2) { m1 } else { m2 }))
+    let (s, mut d, md) = first.into_metric_parts();
+
+    for m in iter {
+        let (_, d2, _) = m.into_metric_parts();
+        let _ = d.update(&d2);
+    }
+
+    Some(OtelMetric::from_metric_parts(s, d, md))
 }
 
 pub trait MetricsFilter<'a> {
@@ -60,7 +63,7 @@ pub trait MetricsFilter<'a> {
     fn sent_events_total(&self) -> Option<SentEventsTotal>;
 }
 
-impl MetricsFilter<'_> for Vec<Metric> {
+impl MetricsFilter<'_> for Vec<OtelMetric> {
     fn received_bytes_total(&self) -> Option<ReceivedBytesTotal> {
         let sum = sum_metrics(
             self.iter()
@@ -98,7 +101,7 @@ impl MetricsFilter<'_> for Vec<Metric> {
     }
 }
 
-impl<'a> MetricsFilter<'a> for Vec<&'a Metric> {
+impl<'a> MetricsFilter<'a> for Vec<&'a OtelMetric> {
     fn received_bytes_total(&self) -> Option<ReceivedBytesTotal> {
         let sum = sum_metrics(
             self.iter()
@@ -140,34 +143,34 @@ impl<'a> MetricsFilter<'a> for Vec<&'a Metric> {
     }
 }
 
-/// Returns a stream of `Metric`s, collected at the provided millisecond interval.
-pub fn get_metrics(interval: i32) -> impl Stream<Item = Metric> {
+/// Returns a stream of `OtelMetric`s, collected at the provided millisecond interval.
+pub fn get_metrics(interval: i32) -> impl Stream<Item = OtelMetric> {
     let mut interval = tokio::time::interval(Duration::from_millis(interval as u64));
 
     stream! {
         loop {
             interval.tick().await;
-            for m in capture_metrics_as_legacy() {
+            for m in capture_metrics() {
                 yield m;
             }
         }
     }
 }
 
-pub fn get_all_metrics(interval: i32) -> impl Stream<Item = Vec<Metric>> {
+pub fn get_all_metrics(interval: i32) -> impl Stream<Item = Vec<OtelMetric>> {
     let mut interval = tokio::time::interval(Duration::from_millis(interval as u64));
 
     stream! {
         loop {
             interval.tick().await;
-            yield capture_metrics_as_legacy()
+            yield capture_metrics()
         }
     }
 }
 
-/// Return [`Vec<Metric>`] based on a component id tag.
-pub fn by_component_key(component_key: &ComponentKey) -> Vec<Metric> {
-    capture_metrics_as_legacy()
+/// Return [`Vec<OtelMetric>`] based on a component id tag.
+pub fn by_component_key(component_key: &ComponentKey) -> Vec<OtelMetric> {
+    capture_metrics()
         .into_iter()
         .filter_map(|m| {
             m.tag_matches("component_id", component_key.id())
@@ -176,9 +179,9 @@ pub fn by_component_key(component_key: &ComponentKey) -> Vec<Metric> {
         .collect()
 }
 
-type MetricFilterFn = dyn Fn(&Metric) -> bool + Send + Sync;
+type MetricFilterFn = dyn Fn(&OtelMetric) -> bool + Send + Sync;
 
-/// Returns a stream of `Vec<Metric>`, where `metric_name` matches the name of the metric
+/// Returns a stream of `Vec<OtelMetric>`, where `metric_name` matches the name of the metric
 /// (e.g. "component_sent_events_total"), and the value is derived from `MetricValue::Counter`. Uses a
 /// local cache to match against the `component_id` of a metric, to return results only when
 /// the value of a current iteration is greater than the previous. This is useful for the client
@@ -186,7 +189,7 @@ type MetricFilterFn = dyn Fn(&Metric) -> bool + Send + Sync;
 pub fn component_counter_metrics(
     interval: i32,
     filter_fn: &'static MetricFilterFn,
-) -> impl Stream<Item = Vec<Metric>> {
+) -> impl Stream<Item = Vec<OtelMetric>> {
     let mut cache = BTreeMap::new();
 
     component_to_filtered_metrics(interval, filter_fn).map(move |map| {
@@ -195,7 +198,7 @@ pub fn component_counter_metrics(
                 let m = sum_metrics_owned(metrics)?;
                 match m.value() {
                     MetricValue::Counter { value }
-                        if cache.insert(id, *value).unwrap_or(0.00) < *value =>
+                        if cache.insert(id, value).unwrap_or(0.00) < value =>
                     {
                         Some(m)
                     }
@@ -206,7 +209,7 @@ pub fn component_counter_metrics(
     })
 }
 
-/// Returns a stream of `Vec<Metric>`, where `metric_name` matches the name of the metric
+/// Returns a stream of `Vec<OtelMetric>`, where `metric_name` matches the name of the metric
 /// (e.g. "component_sent_events_total"), and the value is derived from `MetricValue::Gauge`. Uses a
 /// local cache to match against the `component_id` of a metric, to return results only when
 /// the value of a current iteration is greater than the previous. This is useful for the client
@@ -214,7 +217,7 @@ pub fn component_counter_metrics(
 pub fn component_gauge_metrics(
     interval: i32,
     filter_fn: &'static MetricFilterFn,
-) -> impl Stream<Item = Vec<Metric>> {
+) -> impl Stream<Item = Vec<OtelMetric>> {
     let mut cache = BTreeMap::new();
 
     component_to_filtered_metrics(interval, filter_fn).map(move |map| {
@@ -223,7 +226,7 @@ pub fn component_gauge_metrics(
                 let m = sum_metrics_owned(metrics)?;
                 match m.value() {
                     MetricValue::Gauge { value }
-                        if cache.insert(id, *value).unwrap_or(0.00) < *value =>
+                        if cache.insert(id, value).unwrap_or(0.00) < value =>
                     {
                         Some(m)
                     }
@@ -239,15 +242,15 @@ pub fn component_gauge_metrics(
 pub fn counter_throughput(
     interval: i32,
     filter_fn: &'static MetricFilterFn,
-) -> impl Stream<Item = (Metric, f64)> {
+) -> impl Stream<Item = (OtelMetric, f64)> {
     let mut last = 0.00;
 
     get_metrics(interval)
         .filter(filter_fn)
         .filter_map(move |m| match m.value() {
-            MetricValue::Counter { value } if *value > last => {
+            MetricValue::Counter { value } if value > last => {
                 let throughput = value - last;
-                last = *value;
+                last = value;
                 Some((m, throughput))
             }
             _ => None,
@@ -261,7 +264,7 @@ pub fn counter_throughput(
 pub fn component_counter_throughputs(
     interval: i32,
     filter_fn: &'static MetricFilterFn,
-) -> impl Stream<Item = Vec<(Metric, f64)>> {
+) -> impl Stream<Item = Vec<(OtelMetric, f64)>> {
     let mut cache = BTreeMap::new();
 
     component_to_filtered_metrics(interval, filter_fn)
@@ -271,7 +274,7 @@ pub fn component_counter_throughputs(
                     let m = sum_metrics_owned(metrics)?;
                     match m.value() {
                         MetricValue::Counter { value } => {
-                            let last = cache.insert(id, *value).unwrap_or(0.00);
+                            let last = cache.insert(id, value).unwrap_or(0.00);
                             let throughput = value - last;
                             Some((m, throughput))
                         }
@@ -284,12 +287,12 @@ pub fn component_counter_throughputs(
         .skip(1)
 }
 
-/// Returns a stream of `Vec<(Metric, Vec<Metric>)>`, where `Metric` is the
-/// total `component_sent_events_total` metric for a component and `Vec<Metric>`
+/// Returns a stream of `Vec<(OtelMetric, Vec<OtelMetric>)>`, where `OtelMetric` is the
+/// total `component_sent_events_total` metric for a component and `Vec<OtelMetric>`
 /// is the `component_sent_events_total` metric split by output
 pub fn component_sent_events_totals_metrics_with_outputs(
     interval: i32,
-) -> impl Stream<Item = Vec<(Metric, Vec<Metric>)>> {
+) -> impl Stream<Item = Vec<(OtelMetric, Vec<OtelMetric>)>> {
     let mut cache = BTreeMap::new();
 
     component_to_filtered_metrics(interval, &|m| m.name() == "component_sent_events_total").map(
@@ -308,9 +311,9 @@ pub fn component_sent_events_totals_metrics_with_outputs(
                             match m.value() {
                                 MetricValue::Counter { value }
                                     if cache
-                                        .insert(format!("{id}.{output}"), *value)
+                                        .insert(format!("{id}.{output}"), value)
                                         .unwrap_or(0.00)
-                                        < *value =>
+                                        < value =>
                                 {
                                     Some(m)
                                 }
@@ -322,7 +325,7 @@ pub fn component_sent_events_totals_metrics_with_outputs(
                     let sum = sum_metrics_owned(metrics)?;
                     match sum.value() {
                         MetricValue::Counter { value }
-                            if cache.insert(id, *value).unwrap_or(0.00) < *value =>
+                            if cache.insert(id, value).unwrap_or(0.00) < value =>
                         {
                             Some((sum, metric_by_outputs))
                         }
@@ -378,14 +381,14 @@ pub fn component_sent_events_total_throughputs_with_outputs(
 fn component_to_filtered_metrics(
     interval: i32,
     filter_fn: &'static MetricFilterFn,
-) -> impl Stream<Item = BTreeMap<String, Vec<Metric>>> {
+) -> impl Stream<Item = BTreeMap<String, Vec<OtelMetric>>> {
     get_all_metrics(interval).map(move |m| {
         m.into_iter()
             .filter(filter_fn)
             .filter_map(|m| m.tag_value("component_id").map(|id| (id, m)))
             .fold(
                 BTreeMap::new(),
-                |mut map: BTreeMap<String, Vec<Metric>>, (id, m)| {
+                |mut map: BTreeMap<String, Vec<OtelMetric>>, (id, m)| {
                     map.entry(id).or_default().push(m);
                     map
                 },
@@ -394,10 +397,10 @@ fn component_to_filtered_metrics(
 }
 
 /// Returns throughput based on a metric and provided `cache` of previous values
-fn throughput(metric: &Metric, id: String, cache: &mut BTreeMap<String, f64>) -> Option<f64> {
+fn throughput(metric: &OtelMetric, id: String, cache: &mut BTreeMap<String, f64>) -> Option<f64> {
     match metric.value() {
         MetricValue::Counter { value } => {
-            let last = cache.insert(id, *value).unwrap_or(0.00);
+            let last = cache.insert(id, value).unwrap_or(0.00);
             let throughput = value - last;
             Some(throughput)
         }

@@ -8,20 +8,20 @@ use crate::{
         metrics::{self, MetricsFilter},
         relay, sort,
     },
-    event::Metric,
+    event::OtelMetric,
     filter_check,
 };
 
 #[derive(Clone)]
 pub struct FileSourceMetricFile<'a> {
     name: String,
-    metrics: Vec<&'a Metric>,
+    metrics: Vec<&'a OtelMetric>,
 }
 
 impl<'a> FileSourceMetricFile<'a> {
-    /// Returns a new FileSourceMetricFile from a (name, Vec<&Metric>) tuple
+    /// Returns a new FileSourceMetricFile from a (name, Vec<&OtelMetric>) tuple
     #[allow(clippy::missing_const_for_fn)] // const cannot run destructor
-    fn from_tuple((name, metrics): (String, Vec<&'a Metric>)) -> Self {
+    fn from_tuple((name, metrics): (String, Vec<&'a OtelMetric>)) -> Self {
         Self { name, metrics }
     }
 
@@ -54,10 +54,10 @@ impl FileSourceMetricFile<'_> {
 }
 
 #[derive(Debug, Clone)]
-pub struct FileSourceMetrics(Vec<Metric>);
+pub struct FileSourceMetrics(Vec<OtelMetric>);
 
 impl FileSourceMetrics {
-    pub const fn new(metrics: Vec<Metric>) -> Self {
+    pub const fn new(metrics: Vec<OtelMetric>) -> Self {
         Self(metrics)
     }
 
@@ -67,7 +67,7 @@ impl FileSourceMetrics {
             .filter_map(|m| m.tag_value("file").map(|file| (file, m)))
             .fold(
                 BTreeMap::new(),
-                |mut map: BTreeMap<String, Vec<&Metric>>, (file, m)| {
+                |mut map: BTreeMap<String, Vec<&OtelMetric>>, (file, m)| {
                     map.entry(file).or_default().push(m);
                     map
                 },
@@ -197,13 +197,13 @@ mod tests {
     use super::*;
     use crate::{
         api::schema::sort::SortField,
-        event::{MetricKind, OtelMetric},
+        event::MetricKind,
     };
 
     struct FileSourceMetricTest {
         name: &'static str,
-        events_metric: Metric,
-        bytes_metric: Metric,
+        events_metric: OtelMetric,
+        bytes_metric: OtelMetric,
     }
 
     impl FileSourceMetricTest {
@@ -223,10 +223,8 @@ mod tests {
         }
     }
 
-    fn metric(name: &str, value: f64) -> Metric {
-        let otel = OtelMetric::new_counter(name, MetricKind::Incremental, value);
-        let (s, d, md) = otel.into_metric_parts();
-        Metric::from_parts(s, d, md)
+    fn metric(name: &str, value: f64) -> OtelMetric {
+        OtelMetric::new_counter(name, MetricKind::Incremental, value)
     }
 
     fn by_name(name: &'static str) -> FileSourceMetricTest {

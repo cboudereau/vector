@@ -1,12 +1,12 @@
 use async_graphql::Object;
 use chrono::{DateTime, Utc};
 
-use crate::event::{Metric, MetricValue};
+use crate::event::{MetricValue, OtelMetric};
 
-pub struct Uptime(Metric);
+pub struct Uptime(OtelMetric);
 
 impl Uptime {
-    pub const fn new(m: Metric) -> Self {
+    pub const fn new(m: OtelMetric) -> Self {
         Self(m)
     }
 }
@@ -21,14 +21,14 @@ impl Uptime {
     /// Number of seconds the Vector instance has been alive
     pub async fn seconds(&self) -> f64 {
         match self.0.value() {
-            MetricValue::Gauge { value } => *value,
+            MetricValue::Gauge { value } => value,
             _ => 0.00,
         }
     }
 }
 
-impl From<Metric> for Uptime {
-    fn from(m: Metric) -> Self {
+impl From<OtelMetric> for Uptime {
+    fn from(m: OtelMetric) -> Self {
         Self(m)
     }
 }

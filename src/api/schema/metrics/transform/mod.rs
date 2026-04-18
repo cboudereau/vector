@@ -3,7 +3,7 @@ mod generic;
 use async_graphql::Interface;
 
 use super::{ReceivedEventsTotal, SentEventsTotal};
-use crate::event::Metric;
+use crate::event::OtelMetric;
 
 #[derive(Debug, Clone, Interface)]
 #[graphql(
@@ -18,7 +18,7 @@ pub trait IntoTransformMetrics {
     fn into_transform_metrics(self, component_type: &str) -> TransformMetrics;
 }
 
-impl IntoTransformMetrics for Vec<Metric> {
+impl IntoTransformMetrics for Vec<OtelMetric> {
     fn into_transform_metrics(self, _component_type: &str) -> TransformMetrics {
         TransformMetrics::GenericTransformMetrics(generic::GenericTransformMetrics::new(self))
     }

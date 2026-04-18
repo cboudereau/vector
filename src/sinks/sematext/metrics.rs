@@ -190,7 +190,6 @@ impl SematextMetricsService {
                     event
                         .try_into_otel_metric()
                         .and_then(|m| normalizer.normalize(m))
-                        .map(|otel| { let (s, d, md) = otel.into_metric_parts(); Metric::from_parts(s, d, md) })
                         .map(|item| Ok(EncodedEvent::new(item, byte_size, json_byte_size)))
                 })
             })
@@ -201,7 +200,7 @@ impl SematextMetricsService {
     }
 }
 
-impl Service<Vec<Metric>> for SematextMetricsService {
+impl Service<Vec<OtelMetric>> for SematextMetricsService {
     type Response = http::Response<bytes::Bytes>;
     type Error = crate::Error;
     type Future = BoxFuture<'static, std::result::Result<Self::Response, Self::Error>>;
@@ -213,7 +212,7 @@ impl Service<Vec<Metric>> for SematextMetricsService {
         self.inner.poll_ready(cx)
     }
 
-    fn call(&mut self, items: Vec<Metric>) -> Self::Future {
+    fn call(&mut self, items: Vec<OtelMetric>) -> Self::Future {
         let input = encode_events(
             self.config.token.inner(),
             &self.config.default_namespace,
@@ -260,12 +259,15 @@ fn create_build_request(
 fn encode_events(
     token: &str,
     default_namespace: &str,
-    metrics: Vec<Metric>,
+    metrics: Vec<OtelMetric>,
 ) -> EncodedEvent<Bytes> {
     let mut output = BytesMut::new();
     let byte_size = metrics.size_of();
     let json_byte_size = metrics.estimated_json_encoded_size_of();
-    for metric in metrics.into_iter() {
+    for otel in metrics.into_iter() {
+        // Convert to legacy Metric internally for field access during encoding
+        let (series, data, _metadata) = otel.into_metric_parts();
+        let metric = Metric::from_parts(series, data, _metadata);
         let (series, data, _metadata) = metric.into_parts();
         let namespace = series
             .name
@@ -335,17 +337,13 @@ mod tests {
     #[test]
     fn test_encode_counter_event() {
         let events = vec![
-            {
-                let otel = OtelMetric::new_counter("pool.used", MetricKind::Incremental, 42.0);
-                let (s, d, md) = otel.into_metric_parts();
-                Metric::from_parts(s, d, md)
-            }
-            .with_namespace(Some("jvm"))
-            .with_timestamp(Some(
-                Utc.with_ymd_and_hms(2020, 8, 18, 21, 0, 0)
-                    .single()
-                    .expect("invalid timestamp"),
-            )),
+            OtelMetric::new_counter("pool.used", MetricKind::Incremental, 42.0)
+                .with_namespace(Some("jvm"))
+                .with_timestamp(Some(
+                    Utc.with_ymd_and_hms(2020, 8, 18, 21, 0, 0)
+                        .single()
+                        .expect("invalid timestamp"),
+                )),
         ];
 
         assert_eq!(
@@ -357,16 +355,12 @@ mod tests {
     #[test]
     fn test_encode_counter_event_no_namespace() {
         let events = vec![
-            {
-                let otel = OtelMetric::new_counter("used", MetricKind::Incremental, 42.0);
-                let (s, d, md) = otel.into_metric_parts();
-                Metric::from_parts(s, d, md)
-            }
-            .with_timestamp(Some(
-                Utc.with_ymd_and_hms(2020, 8, 18, 21, 0, 0)
-                    .single()
-                    .expect("invalid timestamp"),
-            )),
+            OtelMetric::new_counter("used", MetricKind::Incremental, 42.0)
+                .with_timestamp(Some(
+                    Utc.with_ymd_and_hms(2020, 8, 18, 21, 0, 0)
+                        .single()
+                        .expect("invalid timestamp"),
+                )),
         ];
 
         assert_eq!(
@@ -378,29 +372,21 @@ mod tests {
     #[test]
     fn test_encode_counter_multiple_events() {
         let events = vec![
-            {
-                let otel = OtelMetric::new_counter("pool.used", MetricKind::Incremental, 42.0);
-                let (s, d, md) = otel.into_metric_parts();
-                Metric::from_parts(s, d, md)
-            }
-            .with_namespace(Some("jvm"))
-            .with_timestamp(Some(
-                Utc.with_ymd_and_hms(2020, 8, 18, 21, 0, 0)
-                    .single()
-                    .expect("invalid timestamp"),
-            )),
-            {
-                let otel = OtelMetric::new_counter("pool.committed", MetricKind::Incremental, 18874368.0);
-                let (s, d, md) = otel.into_metric_parts();
-                Metric::from_parts(s, d, md)
-            }
-            .with_namespace(Some("jvm"))
-            .with_timestamp(Some(
-                Utc.with_ymd_and_hms(2020, 8, 18, 21, 0, 0)
-                    .single()
-                    .and_then(|t| t.with_nanosecond(1))
-                    .expect("invalid timestamp"),
-            )),
+            OtelMetric::new_counter("pool.used", MetricKind::Incremental, 42.0)
+                .with_namespace(Some("jvm"))
+                .with_timestamp(Some(
+                    Utc.with_ymd_and_hms(2020, 8, 18, 21, 0, 0)
+                        .single()
+                        .expect("invalid timestamp"),
+                )),
+            OtelMetric::new_counter("pool.committed", MetricKind::Incremental, 18874368.0)
+                .with_namespace(Some("jvm"))
+                .with_timestamp(Some(
+                    Utc.with_ymd_and_hms(2020, 8, 18, 21, 0, 0)
+                        .single()
+                        .and_then(|t| t.with_nanosecond(1))
+                        .expect("invalid timestamp"),
+                )),
         ];
 
         assert_eq!(
@@ -447,18 +433,14 @@ mod tests {
 
         let mut events = Vec::new();
         for (i, (namespace, metric, val)) in metrics.iter().enumerate() {
-            let event = {
-                let otel = OtelMetric::new_counter(*metric, MetricKind::Incremental, *val);
-                let (s, d, md) = otel.into_metric_parts();
-                let m = Metric::from_parts(s, d, md)
+            let event = Event::Metric(
+                OtelMetric::new_counter(*metric, MetricKind::Incremental, *val)
                     .with_namespace(Some(*namespace))
                     .with_tags(Some(metric_tags!("os.host" => "somehost")))
                     .with_timestamp(Some(Utc.with_ymd_and_hms(2020, 8, 18, 21, 0, 0).single()
                                          .and_then(|t| t.with_nanosecond(i as u32))
-                                         .expect("invalid timestamp")));
-                let (s, d, md) = m.into_parts();
-                Event::Metric(OtelMetric::from_metric_parts(s, d, md))
-            };
+                                         .expect("invalid timestamp"))),
+            );
             events.push(event);
         }
 

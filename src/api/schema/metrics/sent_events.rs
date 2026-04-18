@@ -4,13 +4,13 @@ use chrono::{DateTime, Utc};
 use super::{Output, OutputThroughput};
 use crate::{
     config::ComponentKey,
-    event::{Metric, MetricValue},
+    event::{MetricValue, OtelMetric},
 };
 
-pub struct SentEventsTotal(Metric);
+pub struct SentEventsTotal(OtelMetric);
 
 impl SentEventsTotal {
-    pub const fn new(m: Metric) -> Self {
+    pub const fn new(m: OtelMetric) -> Self {
         Self(m)
     }
 
@@ -20,7 +20,7 @@ impl SentEventsTotal {
 
     pub fn get_sent_events_total(&self) -> f64 {
         match self.0.value() {
-            MetricValue::Counter { value } => *value,
+            MetricValue::Counter { value } => value,
             _ => 0.00,
         }
     }
@@ -39,8 +39,8 @@ impl SentEventsTotal {
     }
 }
 
-impl From<Metric> for SentEventsTotal {
-    fn from(m: Metric) -> Self {
+impl From<OtelMetric> for SentEventsTotal {
+    fn from(m: OtelMetric) -> Self {
         Self(m)
     }
 }
@@ -48,13 +48,13 @@ impl From<Metric> for SentEventsTotal {
 pub struct ComponentSentEventsTotal {
     component_key: ComponentKey,
     outputs: Vec<Output>,
-    metric: Metric,
+    metric: OtelMetric,
 }
 
 impl ComponentSentEventsTotal {
     /// Returns a new `ComponentSentEventsTotal` struct, which is a GraphQL type. The
     /// component id is hoisted for clear field resolution in the resulting payload.
-    pub fn new(metric: Metric, metric_by_outputs: Vec<Metric>) -> Self {
+    pub fn new(metric: OtelMetric, metric_by_outputs: Vec<OtelMetric>) -> Self {
         let component_key = metric.tag_value("component_id").expect(
             "Returned a metric without a `component_id`, which shouldn't happen. Please report.",
         );

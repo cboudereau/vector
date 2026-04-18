@@ -270,7 +270,7 @@ impl MetricRef {
     /// Creates a `MetricRef` based on the given `Metric`.
     pub fn from_metric(metric: &Metric) -> Self {
         // Either the buckets for an aggregated histogram, or the quantiles for an aggregated summary.
-        let bounds = match metric.value() {
+        let bounds = match &metric.data.value {
             MetricValue::AggregatedHistogram { buckets, .. } => {
                 Some(buckets.iter().map(|b| b.upper_limit).collect())
             }
@@ -281,8 +281,8 @@ impl MetricRef {
         };
 
         Self {
-            series: metric.series().clone(),
-            value: discriminant(metric.value()),
+            series: metric.series.clone(),
+            value: discriminant(&metric.data.value),
             bounds,
         }
     }
@@ -522,7 +522,7 @@ impl PrometheusExporter {
     }
 
     fn normalize(&mut self, metric: Metric) -> Option<Metric> {
-        let new_metric = match metric.value() {
+        let new_metric = match &metric.data.value {
             MetricValue::Distribution { .. } => {
                 // Convert the distribution as-is, and then absolute-ify it.
                 let (series, data, metadata) = metric.into_parts();
@@ -541,15 +541,15 @@ impl PrometheusExporter {
             _ => metric,
         };
 
-        match new_metric.kind() {
+        match new_metric.data.kind {
             MetricKind::Absolute => Some(new_metric),
             MetricKind::Incremental => {
                 let metrics = self.metrics.read().expect(LOCK_FAILED);
                 let metric_ref = MetricRef::from_metric(&new_metric);
 
                 if let Some(existing) = metrics.get(&metric_ref) {
-                    let mut current = existing.0.value().clone();
-                    if current.add(new_metric.value()) {
+                    let mut current = existing.0.data.value.clone();
+                    if current.add(&new_metric.data.value) {
                         // If we were able to add to the existing value (i.e. they were compatible),
                         // return the result as an absolute metric.
                         return Some(new_metric.with_value(current).into_absolute());
@@ -1222,13 +1222,13 @@ mod tests {
             .get(&MetricRef::from_metric(&m1))
             .expect("m1 should exist");
         let expected_m1_value = MetricValue::Counter { value: 40. };
-        assert_eq!(expected_m1.0.value(), &expected_m1_value);
+        assert_eq!(&expected_m1.0.data.value, &expected_m1_value);
 
         let expected_m2 = metrics_after
             .get(&MetricRef::from_metric(&m2))
             .expect("m2 should exist");
         let expected_m2_value = MetricValue::Counter { value: 33. };
-        assert_eq!(expected_m2.0.value(), &expected_m2_value);
+        assert_eq!(&expected_m2.0.data.value, &expected_m2_value);
     }
 
     #[tokio::test]
@@ -1337,12 +1337,12 @@ mod tests {
         let actual_summary = metrics_after
             .get(&MetricRef::from_metric(&expected_summary))
             .expect("summary metric should exist");
-        assert_eq!(actual_summary.0.value(), expected_summary.value());
+        assert_eq!(&actual_summary.0.data.value, &expected_summary.data.value);
 
         let actual_histogram = metrics_after
             .get(&MetricRef::from_metric(&expected_histogram))
             .expect("histogram metric should exist");
-        assert_eq!(actual_histogram.0.value(), expected_histogram.value());
+        assert_eq!(&actual_histogram.0.data.value, &expected_histogram.data.value);
     }
 
     #[tokio::test]
@@ -1453,12 +1453,12 @@ mod tests {
         let actual_summary = metrics_after
             .get(&MetricRef::from_metric(&expected_summary))
             .expect("summary metric should exist");
-        assert_eq!(actual_summary.0.value(), expected_summary.value());
+        assert_eq!(&actual_summary.0.data.value, &expected_summary.data.value);
 
         let actual_histogram = metrics_after
             .get(&MetricRef::from_metric(&expected_histogram))
             .expect("histogram metric should exist");
-        assert_eq!(actual_histogram.0.value(), expected_histogram.value());
+        assert_eq!(&actual_histogram.0.data.value, &expected_histogram.data.value);
     }
 
     #[tokio::test]

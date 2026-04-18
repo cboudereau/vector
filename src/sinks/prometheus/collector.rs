@@ -38,15 +38,15 @@ pub(super) trait MetricCollector {
         quantiles: &[f64],
         metric: &Metric,
     ) {
-        let name = encode_namespace(metric.namespace().or(default_namespace), '_', metric.name());
+        let name = encode_namespace(metric.series.name.namespace.as_deref().or(default_namespace), '_', metric.series.name.name.as_str());
         let name = &name;
-        let timestamp = metric.timestamp().map(|t| t.timestamp_millis());
+        let timestamp = metric.data.time.timestamp.map(|t| t.timestamp_millis());
 
-        if metric.kind() == MetricKind::Absolute {
-            let tags = metric.tags();
-            self.emit_metadata(metric.name(), name, metric.value());
+        if metric.data.kind == MetricKind::Absolute {
+            let tags = metric.series.tags.as_ref();
+            self.emit_metadata(metric.series.name.name.as_str(), name, &metric.data.value);
 
-            match metric.value() {
+            match &metric.data.value {
                 MetricValue::Counter { value } => {
                     self.emit_value(timestamp, name, "", *value, tags, None);
                 }

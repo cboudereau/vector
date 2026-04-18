@@ -616,7 +616,7 @@ impl MetricSet {
     /// to absolute if incremental.
     pub fn make_absolute(&mut self, metric: Metric) -> Option<Metric> {
         self.maybe_cleanup();
-        match metric.kind() {
+        match metric.data.kind {
             MetricKind::Absolute => Some(metric),
             MetricKind::Incremental => Some(self.incremental_to_absolute(metric)),
         }
@@ -626,7 +626,7 @@ impl MetricSet {
     /// aggregate it with any previous value if already incremental.
     pub fn make_incremental(&mut self, metric: Metric) -> Option<Metric> {
         self.maybe_cleanup();
-        match metric.kind() {
+        match metric.data.kind {
             MetricKind::Absolute => self.absolute_to_incremental(metric),
             MetricKind::Incremental => Some(metric),
         }
@@ -664,10 +664,10 @@ impl MetricSet {
     fn incremental_to_absolute(&mut self, mut metric: Metric) -> Metric {
         let timestamp = self.create_timestamp();
         // We always call insert() to track memory usage
-        match self.inner.get_mut(metric.series()) {
+        match self.inner.get_mut(&metric.series) {
             Some(existing) => {
-                let mut new_value = existing.data.value().clone();
-                if new_value.add(metric.value()) {
+                let mut new_value = existing.data.value.clone();
+                if new_value.add(&metric.data.value) {
                     // Update the stored value
                     metric = metric.with_value(new_value);
                 }
@@ -705,9 +705,9 @@ impl MetricSet {
         // incremental updates.
         let timestamp = self.create_timestamp();
         // We always call insert() to track memory usage
-        match self.inner.get_mut(metric.series()) {
+        match self.inner.get_mut(&metric.series) {
             Some(reference) => {
-                let new_value = metric.value().clone();
+                let new_value = metric.data.value.clone();
                 // Create a copy of the reference so we can insert and
                 // replace the existing entry, tracking memory usage
                 let mut new_reference = reference.clone();
@@ -715,7 +715,7 @@ impl MetricSet {
                 if metric.subtract(&reference.data) {
                     new_reference.data.value = new_value;
                     new_reference.timestamp = timestamp;
-                    self.insert_with_tracking(metric.series().clone(), new_reference);
+                    self.insert_with_tracking(metric.series.clone(), new_reference);
                     Some(metric.into_incremental())
                 } else {
                     // Metric changed type, store this and emit nothing
@@ -749,11 +749,11 @@ impl MetricSet {
     pub fn insert_update(&mut self, metric: Metric) {
         self.maybe_cleanup();
         let timestamp = self.create_timestamp();
-        let update = match metric.kind() {
+        let update = match metric.data.kind {
             MetricKind::Absolute => Some(metric),
             MetricKind::Incremental => {
                 // Incremental metrics update existing entries, if present
-                match self.inner.get_mut(metric.series()) {
+                match self.inner.get_mut(&metric.series) {
                     Some(existing) => {
                         // Create a copy of the reference so we can insert and
                         // replace the existing entry, tracking memory usage

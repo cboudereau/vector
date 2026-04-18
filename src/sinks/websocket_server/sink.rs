@@ -903,9 +903,9 @@ mod tests {
         let captured_metrics = Controller::get().unwrap().capture_metrics();
         let mut found_metrics = false;
         for metric in captured_metrics {
-            let metric_name = metric.name();
+            let metric_name = metric.series.name.name.as_str();
             if METRICS_WITH_EXTRA_TAGS.contains(&metric_name) {
-                let Some(tags) = metric.tags() else {
+                let Some(tags) = metric.series.tags.as_ref() else {
                     panic!("Expected metric {metric_name} to have tags!");
                 };
                 for (key, value) in expected {

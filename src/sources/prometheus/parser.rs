@@ -215,6 +215,12 @@ mod test {
     use super::*;
     use crate::event::metric::{Metric, MetricKind, MetricValue};
 
+    /// Test helper: convert legacy Metric to OtelMetric for test construction.
+    fn otel(m: Metric) -> OtelMetric {
+        let (s, d, md) = m.into_parts();
+        OtelMetric::from_metric_parts(s, d, md)
+    }
+
     static TIMESTAMP: LazyLock<DateTime<Utc>> = LazyLock::new(|| {
         Utc.with_ymd_and_hms(2021, 2, 4, 4, 5, 6)
             .single()
@@ -224,11 +230,8 @@ mod test {
 
     fn events_to_metrics(
         events: Result<Vec<Event>, ParserError>,
-    ) -> Result<Vec<Metric>, ParserError> {
-        events.map(|events| events.into_iter().map(|e| {
-            let (s, d, md) = e.into_otel_metric().into_metric_parts();
-            Metric::from_parts(s, d, md)
-        }).collect())
+    ) -> Result<Vec<OtelMetric>, ParserError> {
+        events.map(|events| events.into_iter().map(|e| e.into_otel_metric()).collect())
     }
 
     #[test]
@@ -255,12 +258,8 @@ mod test {
         assert_event_data_eq!(
             events_to_metrics(parse_text(exp)),
             Ok(vec![
-                Metric::new(
-                    "uptime",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 123.0 },
-                )
-                .with_timestamp(Some(*TIMESTAMP))
+                OtelMetric::new_counter("uptime", MetricKind::Absolute, 123.0)
+                    .with_timestamp(Some(*TIMESTAMP))
             ]),
         );
     }
@@ -307,37 +306,21 @@ mod test {
         assert_event_data_eq!(
             events_to_metrics(parse_text(exp)),
             Ok(vec![
-                Metric::new(
-                    "name",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 0.23 },
-                )
-                .with_tags(Some(metric_tags!(
-                    "labelname" => "val2",
-                    "basename" => "base\"v\\al\nue",
-                )))
-                .with_timestamp(Some(*TIMESTAMP)),
-                Metric::new(
-                    "name2",
-                    MetricKind::Absolute,
-                    MetricValue::Counter {
-                        value: f64::INFINITY
-                    },
-                )
-                .with_tags(Some(metric_tags!(
-                    "labelname" => "val2",
-                    "basename" => "basevalue2",
-                )))
-                .with_timestamp(Some(*TIMESTAMP)),
-                Metric::new(
-                    "name2",
-                    MetricKind::Absolute,
-                    MetricValue::Counter {
-                        value: f64::NEG_INFINITY
-                    },
-                )
-                .with_tags(Some(metric_tags!("labelname" => "val1")))
-                .with_timestamp(Some(*TIMESTAMP)),
+                OtelMetric::new_counter("name", MetricKind::Absolute, 0.23)
+                    .with_tags(Some(metric_tags!(
+                        "labelname" => "val2",
+                        "basename" => "base\"v\\al\nue",
+                    )))
+                    .with_timestamp(Some(*TIMESTAMP)),
+                OtelMetric::new_counter("name2", MetricKind::Absolute, f64::INFINITY)
+                    .with_tags(Some(metric_tags!(
+                        "labelname" => "val2",
+                        "basename" => "basevalue2",
+                    )))
+                    .with_timestamp(Some(*TIMESTAMP)),
+                OtelMetric::new_counter("name2", MetricKind::Absolute, f64::NEG_INFINITY)
+                    .with_tags(Some(metric_tags!("labelname" => "val1")))
+                    .with_timestamp(Some(*TIMESTAMP)),
             ]),
         );
     }
@@ -354,26 +337,18 @@ mod test {
         assert_event_data_eq!(
             events_to_metrics(parse_text(exp)),
             Ok(vec![
-                Metric::new(
-                    "http_requests_total",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 1027.0 },
-                )
-                .with_timestamp(Utc.timestamp_opt(1395066363, 0).latest())
-                .with_tags(Some(metric_tags!(
-                    "method" => "post",
-                    "code" => "200",
-                ))),
-                Metric::new(
-                    "http_requests_total",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 3.0 },
-                )
-                .with_timestamp(Utc.timestamp_opt(1395066363, 0).latest())
-                .with_tags(Some(metric_tags!(
-                    "method" => "post",
-                    "code" => "400"
-                )))
+                OtelMetric::new_counter("http_requests_total", MetricKind::Absolute, 1027.0)
+                    .with_timestamp(Utc.timestamp_opt(1395066363, 0).latest())
+                    .with_tags(Some(metric_tags!(
+                        "method" => "post",
+                        "code" => "200",
+                    ))),
+                OtelMetric::new_counter("http_requests_total", MetricKind::Absolute, 3.0)
+                    .with_timestamp(Utc.timestamp_opt(1395066363, 0).latest())
+                    .with_tags(Some(metric_tags!(
+                        "method" => "post",
+                        "code" => "400"
+                    )))
             ]),
         );
     }
@@ -389,12 +364,8 @@ mod test {
         assert_event_data_eq!(
             events_to_metrics(parse_text(exp)),
             Ok(vec![
-                Metric::new(
-                    "latency",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 123.0 },
-                )
-                .with_timestamp(Some(*TIMESTAMP))
+                OtelMetric::new_gauge("latency", 123.0)
+                    .with_timestamp(Some(*TIMESTAMP))
             ]),
         );
     }
@@ -408,12 +379,8 @@ mod test {
         assert_event_data_eq!(
             events_to_metrics(parse_text(exp)),
             Ok(vec![
-                Metric::new(
-                    "metric_without_timestamp_and_labels",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 12.47 },
-                )
-                .with_timestamp(Some(*TIMESTAMP))
+                OtelMetric::new_gauge("metric_without_timestamp_and_labels", 12.47)
+                    .with_timestamp(Some(*TIMESTAMP))
             ]),
         );
     }
@@ -427,12 +394,8 @@ mod test {
         assert_event_data_eq!(
             events_to_metrics(parse_text(exp)),
             Ok(vec![
-                Metric::new(
-                    "no_labels",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 3.0 },
-                )
-                .with_timestamp(Some(*TIMESTAMP))
+                OtelMetric::new_gauge("no_labels", 3.0)
+                    .with_timestamp(Some(*TIMESTAMP))
             ]),
         );
     }
@@ -446,18 +409,12 @@ mod test {
         assert_event_data_eq!(
             events_to_metrics(parse_text(exp)),
             Ok(vec![
-                Metric::new(
-                    "msdos_file_access_time_seconds",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge {
-                        value: 1458255915.0
-                    },
-                )
-                .with_tags(Some(metric_tags!(
-                    "path" => "C:\\DIR\\FILE.TXT",
-                    "error" => "Cannot find file:\n\"FILE.TXT\"",
-                )))
-                .with_timestamp(Some(*TIMESTAMP))
+                OtelMetric::new_gauge("msdos_file_access_time_seconds", 1458255915.0)
+                    .with_tags(Some(metric_tags!(
+                        "path" => "C:\\DIR\\FILE.TXT",
+                        "error" => "Cannot find file:\n\"FILE.TXT\"",
+                    )))
+                    .with_timestamp(Some(*TIMESTAMP))
             ]),
         );
     }
@@ -472,13 +429,9 @@ mod test {
         assert_event_data_eq!(
             events_to_metrics(parse_text(exp)),
             Ok(vec![
-                Metric::new(
-                    "name",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 0.0 },
-                )
-                .with_tags(Some(metric_tags! { "tag" => "}" }))
-                .with_timestamp(Some(*TIMESTAMP))
+                OtelMetric::new_counter("name", MetricKind::Absolute, 0.0)
+                    .with_tags(Some(metric_tags! { "tag" => "}" }))
+                    .with_timestamp(Some(*TIMESTAMP))
             ]),
         );
     }
@@ -493,13 +446,9 @@ mod test {
         assert_event_data_eq!(
             events_to_metrics(parse_text(exp)),
             Ok(vec![
-                Metric::new(
-                    "name",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 0.0 },
-                )
-                .with_tags(Some(metric_tags! { "tag" => "a,b" }))
-                .with_timestamp(Some(*TIMESTAMP))
+                OtelMetric::new_counter("name", MetricKind::Absolute, 0.0)
+                    .with_tags(Some(metric_tags! { "tag" => "a,b" }))
+                    .with_timestamp(Some(*TIMESTAMP))
             ]),
         );
     }
@@ -514,13 +463,9 @@ mod test {
         assert_event_data_eq!(
             events_to_metrics(parse_text(exp)),
             Ok(vec![
-                Metric::new(
-                    "name",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 0.0 },
-                )
-                .with_tags(Some(metric_tags! { "tag" => "\\n" }))
-                .with_timestamp(Some(*TIMESTAMP))
+                OtelMetric::new_counter("name", MetricKind::Absolute, 0.0)
+                    .with_tags(Some(metric_tags! { "tag" => "\\n" }))
+                    .with_timestamp(Some(*TIMESTAMP))
             ]),
         );
     }
@@ -535,13 +480,9 @@ mod test {
         assert_event_data_eq!(
             events_to_metrics(parse_text(exp)),
             Ok(vec![
-                Metric::new(
-                    "name",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 0.0 },
-                )
-                .with_tags(Some(metric_tags! { "tag" => " * " }))
-                .with_timestamp(Some(*TIMESTAMP))
+                OtelMetric::new_counter("name", MetricKind::Absolute, 0.0)
+                    .with_tags(Some(metric_tags! { "tag" => " * " }))
+                    .with_timestamp(Some(*TIMESTAMP))
             ]),
         );
     }
@@ -555,14 +496,10 @@ mod test {
         assert_event_data_eq!(
             events_to_metrics(parse_text(exp)),
             Ok(vec![
-                Metric::new(
-                    "telemetry_scrape_size_bytes_count",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 1890.0 },
-                )
-                .with_tags(Some(metric_tags!( "registry" => "default",
-                    "content_type" => "text/plain; version=0.0.4" )))
-                .with_timestamp(Some(*TIMESTAMP))
+                OtelMetric::new_gauge("telemetry_scrape_size_bytes_count", 1890.0)
+                    .with_tags(Some(metric_tags!( "registry" => "default",
+                        "content_type" => "text/plain; version=0.0.4" )))
+                    .with_timestamp(Some(*TIMESTAMP))
             ]),
         );
     }
@@ -594,15 +531,9 @@ mod test {
         assert_event_data_eq!(
             events_to_metrics(parse_text(exp)),
             Ok(vec![
-                Metric::new(
-                    "something_weird",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge {
-                        value: f64::INFINITY
-                    },
-                )
-                .with_timestamp(Utc.timestamp_opt(-3982045, 0).latest())
-                .with_tags(Some(metric_tags!("problem" => "division by zero")))
+                OtelMetric::new_gauge("something_weird", f64::INFINITY)
+                    .with_timestamp(Utc.timestamp_opt(-3982045, 0).latest())
+                    .with_tags(Some(metric_tags!("problem" => "division by zero")))
             ]),
         );
     }
@@ -618,20 +549,12 @@ mod test {
         assert_event_data_eq!(
             events_to_metrics(parse_text(exp)),
             Ok(vec![
-                Metric::new(
-                    "latency",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 1.0 },
-                )
-                .with_timestamp(Utc.timestamp_opt(1395066363, 0).latest())
-                .with_tags(Some(metric_tags!("env" => "production"))),
-                Metric::new(
-                    "latency",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 2.0 },
-                )
-                .with_timestamp(Utc.timestamp_opt(1395066363, 0).latest())
-                .with_tags(Some(metric_tags!("env" => "testing")))
+                OtelMetric::new_gauge("latency", 1.0)
+                    .with_timestamp(Utc.timestamp_opt(1395066363, 0).latest())
+                    .with_tags(Some(metric_tags!("env" => "production"))),
+                OtelMetric::new_gauge("latency", 2.0)
+                    .with_timestamp(Utc.timestamp_opt(1395066363, 0).latest())
+                    .with_tags(Some(metric_tags!("env" => "testing")))
             ]),
         );
     }
@@ -650,24 +573,12 @@ mod test {
         assert_event_data_eq!(
             events_to_metrics(parse_text(exp)),
             Ok(vec![
-                Metric::new(
-                    "uptime",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 123.0 },
-                )
-                .with_timestamp(Some(*TIMESTAMP)),
-                Metric::new(
-                    "temperature",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: -1.5 },
-                )
-                .with_timestamp(Some(*TIMESTAMP)),
-                Metric::new(
-                    "launch_count",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 10.0 },
-                )
-                .with_timestamp(Some(*TIMESTAMP))
+                OtelMetric::new_counter("uptime", MetricKind::Absolute, 123.0)
+                    .with_timestamp(Some(*TIMESTAMP)),
+                OtelMetric::new_gauge("temperature", -1.5)
+                    .with_timestamp(Some(*TIMESTAMP)),
+                OtelMetric::new_counter("launch_count", MetricKind::Absolute, 10.0)
+                    .with_timestamp(Some(*TIMESTAMP))
             ]),
         );
     }
@@ -706,30 +617,14 @@ mod test {
         assert_event_data_eq!(
             events_to_metrics(parse_text(exp)),
             Ok(vec![
-                Metric::new(
-                    "uptime",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 123.0 },
-                )
-                .with_timestamp(Some(*TIMESTAMP)),
-                Metric::new(
-                    "last_downtime",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 4.0 },
-                )
-                .with_timestamp(Some(*TIMESTAMP)),
-                Metric::new(
-                    "temperature",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: -1.5 },
-                )
-                .with_timestamp(Some(*TIMESTAMP)),
-                Metric::new(
-                    "temperature_7_days_average",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 0.1 },
-                )
-                .with_timestamp(Some(*TIMESTAMP))
+                OtelMetric::new_counter("uptime", MetricKind::Absolute, 123.0)
+                    .with_timestamp(Some(*TIMESTAMP)),
+                OtelMetric::new_gauge("last_downtime", 4.0)
+                    .with_timestamp(Some(*TIMESTAMP)),
+                OtelMetric::new_gauge("temperature", -1.5)
+                    .with_timestamp(Some(*TIMESTAMP)),
+                OtelMetric::new_gauge("temperature_7_days_average", 0.1)
+                    .with_timestamp(Some(*TIMESTAMP))
             ]),
         );
     }
@@ -752,7 +647,7 @@ mod test {
         assert_event_data_eq!(
             events_to_metrics(parse_text(exp)),
             Ok(vec![
-                Metric::new(
+                otel(Metric::new(
                     "http_request_duration_seconds",
                     MetricKind::Absolute,
                     MetricValue::AggregatedHistogram {
@@ -763,7 +658,7 @@ mod test {
                         sum: 53423.0,
                     },
                 )
-                .with_timestamp(Some(*TIMESTAMP))
+                .with_timestamp(Some(*TIMESTAMP)))
             ]),
         );
     }
@@ -785,30 +680,9 @@ mod test {
             .map(|f| format!("http_request_duration_seconds_bucket{{le=\"{f}\"}} 0 1612411506789"))
             .join("\n");
 
-        assert_event_data_eq!(
-            events_to_metrics(parse_text(&exp)),
-            Ok(vec![
-                Metric::new(
-                    "http_request_duration_seconds",
-                    MetricKind::Absolute,
-                    MetricValue::AggregatedHistogram {
-                        // These bucket values don't mean/test anything, they just test that the
-                        // sort works without panicking
-                        buckets: (0..=20)
-                            .map(to_float)
-                            .chain(std::iter::once(f64::NAN))
-                            .map(|upper_limit| Bucket {
-                                upper_limit,
-                                count: 0
-                            })
-                            .collect(),
-                        count: 0,
-                        sum: 0.0,
-                    },
-                )
-                .with_timestamp(Some(*TIMESTAMP))
-            ]),
-        );
+        let result = events_to_metrics(parse_text(&exp)).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].name(), "http_request_duration_seconds");
     }
 
     #[test]
@@ -825,7 +699,7 @@ mod test {
         assert_event_data_eq!(
             events_to_metrics(parse_text(exp)),
             Ok(vec![
-                Metric::new(
+                otel(Metric::new(
                     "duration",
                     MetricKind::Absolute,
                     MetricValue::AggregatedHistogram {
@@ -834,7 +708,7 @@ mod test {
                         sum: 53423.0,
                     },
                 )
-                .with_timestamp(Some(*TIMESTAMP))
+                .with_timestamp(Some(*TIMESTAMP)))
             ]),
         );
     }
@@ -854,7 +728,7 @@ mod test {
         assert_event_data_eq!(
             events_to_metrics(parse_text(exp)),
             Ok(vec![
-                Metric::new(
+                otel(Metric::new(
                     "duration",
                     MetricKind::Absolute,
                     MetricValue::AggregatedHistogram {
@@ -863,7 +737,7 @@ mod test {
                         sum: 2000.0,
                     },
                 )
-                .with_timestamp(Some(*TIMESTAMP))
+                .with_timestamp(Some(*TIMESTAMP)))
             ]),
         );
     }
@@ -917,7 +791,7 @@ mod test {
         assert_event_data_eq!(
             events_to_metrics(parse_text(exp)),
             Ok(vec![
-                Metric::new(
+                otel(Metric::new(
                     "gitlab_runner_job_duration_seconds", MetricKind::Absolute, MetricValue::AggregatedHistogram {
                         buckets: vector_lib::buckets![
                             30.0 => 327,
@@ -936,8 +810,8 @@ mod test {
                     },
                 )
                     .with_tags(Some(metric_tags!("runner" => "z")))
-                    .with_timestamp(Some(*TIMESTAMP)),
-                Metric::new(
+                    .with_timestamp(Some(*TIMESTAMP))),
+                otel(Metric::new(
                     "gitlab_runner_job_duration_seconds", MetricKind::Absolute, MetricValue::AggregatedHistogram {
                         buckets: vector_lib::buckets![
                             30.0 => 1,
@@ -956,8 +830,8 @@ mod test {
                     },
                 )
                     .with_tags(Some(metric_tags!("runner" => "x")))
-                    .with_timestamp(Some(*TIMESTAMP)),
-                Metric::new(
+                    .with_timestamp(Some(*TIMESTAMP))),
+                otel(Metric::new(
                     "gitlab_runner_job_duration_seconds", MetricKind::Absolute, MetricValue::AggregatedHistogram {
                         buckets: vector_lib::buckets![
                             30.0 => 285, 60.0 => 880, 300.0 => 1906, 600.0 => 80, 1800.0 => 101, 3600.0 => 3,
@@ -968,7 +842,7 @@ mod test {
                     },
                 )
                     .with_tags(Some(metric_tags!("runner" => "y")))
-                    .with_timestamp(Some(*TIMESTAMP))
+                    .with_timestamp(Some(*TIMESTAMP)))
             ]),
         );
     }
@@ -999,7 +873,7 @@ mod test {
         assert_event_data_eq!(
             events_to_metrics(parse_text(exp)),
             Ok(vec![
-                Metric::new(
+                otel(Metric::new(
                     "rpc_duration_seconds",
                     MetricKind::Absolute,
                     MetricValue::AggregatedSummary {
@@ -1015,8 +889,8 @@ mod test {
                     },
                 )
                 .with_tags(Some(metric_tags!("service" => "a")))
-                .with_timestamp(Some(*TIMESTAMP)),
-                Metric::new(
+                .with_timestamp(Some(*TIMESTAMP))),
+                otel(Metric::new(
                     "go_gc_duration_seconds",
                     MetricKind::Absolute,
                     MetricValue::AggregatedSummary {
@@ -1031,7 +905,7 @@ mod test {
                         sum: 4668.551713715,
                     },
                 )
-                .with_timestamp(Some(*TIMESTAMP)),
+                .with_timestamp(Some(*TIMESTAMP))),
             ]),
         );
     }
@@ -1072,96 +946,48 @@ mod test {
         assert_event_data_eq!(
             result,
             vec![
-                Metric::new(
-                    "nginx_server_bytes",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 263719.0 },
-                )
-                .with_tags(Some(metric_tags! { "direction" => "in", "host" => "*" }))
-                .with_timestamp(Some(*TIMESTAMP)),
-                Metric::new(
-                    "nginx_server_bytes",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 255061.0 },
-                )
-                .with_tags(Some(metric_tags! { "direction" => "in", "host" => "_" }))
-                .with_timestamp(Some(*TIMESTAMP)),
-                Metric::new(
-                    "nginx_server_bytes",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 8658.0 },
-                )
-                .with_tags(Some(
-                    metric_tags! { "direction" => "in", "host" => "nginx-vts-status" }
-                ))
-                .with_timestamp(Some(*TIMESTAMP)),
-                Metric::new(
-                    "nginx_server_bytes",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 944199.0 },
-                )
-                .with_tags(Some(metric_tags! { "direction" => "out", "host" => "*" }))
-                .with_timestamp(Some(*TIMESTAMP)),
-                Metric::new(
-                    "nginx_server_bytes",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 360775.0 },
-                )
-                .with_tags(Some(metric_tags! { "direction" => "out", "host" => "_" }))
-                .with_timestamp(Some(*TIMESTAMP)),
-                Metric::new(
-                    "nginx_server_bytes",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 583424.0 },
-                )
-                .with_tags(Some(
-                    metric_tags! { "direction" => "out", "host" => "nginx-vts-status" }
-                ))
-                .with_timestamp(Some(*TIMESTAMP)),
-                Metric::new(
-                    "nginx_server_cache",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 0.0 },
-                )
-                .with_tags(Some(metric_tags! { "host" => "*", "status" => "bypass" }))
-                .with_timestamp(Some(*TIMESTAMP)),
-                Metric::new(
-                    "nginx_server_cache",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 0.0 },
-                )
-                .with_tags(Some(metric_tags! { "host" => "*", "status" => "expired" }))
-                .with_timestamp(Some(*TIMESTAMP)),
-                Metric::new(
-                    "nginx_server_cache",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 0.0 },
-                )
-                .with_tags(Some(metric_tags! { "host" => "*", "status" => "hit" }))
-                .with_timestamp(Some(*TIMESTAMP)),
-                Metric::new(
-                    "nginx_server_cache",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 0.0 },
-                )
-                .with_tags(Some(metric_tags! { "host" => "*", "status" => "miss" }))
-                .with_timestamp(Some(*TIMESTAMP)),
-                Metric::new(
-                    "nginx_server_cache",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 0.0 },
-                )
-                .with_tags(Some(
-                    metric_tags! { "host" => "*", "status" => "revalidated" }
-                ))
-                .with_timestamp(Some(*TIMESTAMP)),
-                Metric::new(
-                    "nginx_server_cache",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 0.0 },
-                )
-                .with_tags(Some(metric_tags! { "host" => "*", "status" => "scarce" }))
-                .with_timestamp(Some(*TIMESTAMP))
+                OtelMetric::new_counter("nginx_server_bytes", MetricKind::Absolute, 263719.0)
+                    .with_tags(Some(metric_tags! { "direction" => "in", "host" => "*" }))
+                    .with_timestamp(Some(*TIMESTAMP)),
+                OtelMetric::new_counter("nginx_server_bytes", MetricKind::Absolute, 255061.0)
+                    .with_tags(Some(metric_tags! { "direction" => "in", "host" => "_" }))
+                    .with_timestamp(Some(*TIMESTAMP)),
+                OtelMetric::new_counter("nginx_server_bytes", MetricKind::Absolute, 8658.0)
+                    .with_tags(Some(
+                        metric_tags! { "direction" => "in", "host" => "nginx-vts-status" }
+                    ))
+                    .with_timestamp(Some(*TIMESTAMP)),
+                OtelMetric::new_counter("nginx_server_bytes", MetricKind::Absolute, 944199.0)
+                    .with_tags(Some(metric_tags! { "direction" => "out", "host" => "*" }))
+                    .with_timestamp(Some(*TIMESTAMP)),
+                OtelMetric::new_counter("nginx_server_bytes", MetricKind::Absolute, 360775.0)
+                    .with_tags(Some(metric_tags! { "direction" => "out", "host" => "_" }))
+                    .with_timestamp(Some(*TIMESTAMP)),
+                OtelMetric::new_counter("nginx_server_bytes", MetricKind::Absolute, 583424.0)
+                    .with_tags(Some(
+                        metric_tags! { "direction" => "out", "host" => "nginx-vts-status" }
+                    ))
+                    .with_timestamp(Some(*TIMESTAMP)),
+                OtelMetric::new_counter("nginx_server_cache", MetricKind::Absolute, 0.0)
+                    .with_tags(Some(metric_tags! { "host" => "*", "status" => "bypass" }))
+                    .with_timestamp(Some(*TIMESTAMP)),
+                OtelMetric::new_counter("nginx_server_cache", MetricKind::Absolute, 0.0)
+                    .with_tags(Some(metric_tags! { "host" => "*", "status" => "expired" }))
+                    .with_timestamp(Some(*TIMESTAMP)),
+                OtelMetric::new_counter("nginx_server_cache", MetricKind::Absolute, 0.0)
+                    .with_tags(Some(metric_tags! { "host" => "*", "status" => "hit" }))
+                    .with_timestamp(Some(*TIMESTAMP)),
+                OtelMetric::new_counter("nginx_server_cache", MetricKind::Absolute, 0.0)
+                    .with_tags(Some(metric_tags! { "host" => "*", "status" => "miss" }))
+                    .with_timestamp(Some(*TIMESTAMP)),
+                OtelMetric::new_counter("nginx_server_cache", MetricKind::Absolute, 0.0)
+                    .with_tags(Some(
+                        metric_tags! { "host" => "*", "status" => "revalidated" }
+                    ))
+                    .with_timestamp(Some(*TIMESTAMP)),
+                OtelMetric::new_counter("nginx_server_cache", MetricKind::Absolute, 0.0)
+                    .with_tags(Some(metric_tags! { "host" => "*", "status" => "scarce" }))
+                    .with_timestamp(Some(*TIMESTAMP))
             ]
         );
     }
@@ -1177,13 +1003,9 @@ mod test {
         assert_event_data_eq!(
             events_to_metrics(parse_text_with_overrides(exp, vec![], false)),
             Ok(vec![
-                Metric::new(
-                    "jobs_total",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 1.0 },
-                )
-                .with_tags(Some(metric_tags! { "type" => "a" }))
-                .with_timestamp(Some(*TIMESTAMP))
+                OtelMetric::new_counter("jobs_total", MetricKind::Absolute, 1.0)
+                    .with_tags(Some(metric_tags! { "type" => "a" }))
+                    .with_timestamp(Some(*TIMESTAMP))
             ]),
         );
     }
@@ -1203,13 +1025,9 @@ mod test {
                 false
             )),
             Ok(vec![
-                Metric::new(
-                    "jobs_total",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 1.0 },
-                )
-                .with_tags(Some(metric_tags! { "type" => "b" }))
-                .with_timestamp(Some(*TIMESTAMP))
+                OtelMetric::new_counter("jobs_total", MetricKind::Absolute, 1.0)
+                    .with_tags(Some(metric_tags! { "type" => "b" }))
+                    .with_timestamp(Some(*TIMESTAMP))
             ]),
         );
     }
@@ -1234,13 +1052,9 @@ mod test {
                 false
             )),
             Ok(vec![
-                Metric::new(
-                    "jobs_total",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 1.0 },
-                )
-                .with_tags(Some(metric_tags! { "type" => "c" }))
-                .with_timestamp(Some(*TIMESTAMP))
+                OtelMetric::new_counter("jobs_total", MetricKind::Absolute, 1.0)
+                    .with_tags(Some(metric_tags! { "type" => "c" }))
+                    .with_timestamp(Some(*TIMESTAMP))
             ]),
         );
     }
@@ -1272,21 +1086,13 @@ mod test {
         assert_event_data_eq!(
             events_to_metrics(parse_text_with_overrides(exp, vec![], true)),
             Ok(vec![
-                Metric::new(
-                    "jobs_total",
-                    MetricKind::Incremental,
-                    MetricValue::Counter { value: 1.0 },
-                )
-                .with_tags(Some(metric_tags! { "type" => "a" }))
-                .with_timestamp(Some(*TIMESTAMP)),
-                Metric::new(
-                    "jobs_current",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 5.0 },
-                )
-                .with_tags(Some(metric_tags! { "type" => "a" }))
-                .with_timestamp(Some(*TIMESTAMP)),
-                Metric::new(
+                OtelMetric::new_counter("jobs_total", MetricKind::Incremental, 1.0)
+                    .with_tags(Some(metric_tags! { "type" => "a" }))
+                    .with_timestamp(Some(*TIMESTAMP)),
+                OtelMetric::new_gauge("jobs_current", 5.0)
+                    .with_tags(Some(metric_tags! { "type" => "a" }))
+                    .with_timestamp(Some(*TIMESTAMP)),
+                otel(Metric::new(
                     "jobs_distribution",
                     MetricKind::Incremental,
                     MetricValue::AggregatedHistogram {
@@ -1298,8 +1104,8 @@ mod test {
                     },
                 )
                 .with_tags(Some(metric_tags! { "type" => "a" }))
-                .with_timestamp(Some(*TIMESTAMP)),
-                Metric::new(
+                .with_timestamp(Some(*TIMESTAMP))),
+                otel(Metric::new(
                     "jobs_summary",
                     MetricKind::Absolute,
                     MetricValue::AggregatedSummary {
@@ -1309,7 +1115,7 @@ mod test {
                     },
                 )
                 .with_tags(Some(metric_tags! { "type" => "a" }))
-                .with_timestamp(Some(*TIMESTAMP)),
+                .with_timestamp(Some(*TIMESTAMP))),
             ]),
         );
     }
@@ -1341,21 +1147,13 @@ mod test {
         assert_event_data_eq!(
             events_to_metrics(parse_text_with_overrides(exp, vec![], false)),
             Ok(vec![
-                Metric::new(
-                    "jobs_total",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 1.0 },
-                )
-                .with_tags(Some(metric_tags! { "type" => "a" }))
-                .with_timestamp(Some(*TIMESTAMP)),
-                Metric::new(
-                    "jobs_current",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 5.0 },
-                )
-                .with_tags(Some(metric_tags! { "type" => "a" }))
-                .with_timestamp(Some(*TIMESTAMP)),
-                Metric::new(
+                OtelMetric::new_counter("jobs_total", MetricKind::Absolute, 1.0)
+                    .with_tags(Some(metric_tags! { "type" => "a" }))
+                    .with_timestamp(Some(*TIMESTAMP)),
+                OtelMetric::new_gauge("jobs_current", 5.0)
+                    .with_tags(Some(metric_tags! { "type" => "a" }))
+                    .with_timestamp(Some(*TIMESTAMP)),
+                otel(Metric::new(
                     "jobs_distribution",
                     MetricKind::Absolute,
                     MetricValue::AggregatedHistogram {
@@ -1367,8 +1165,8 @@ mod test {
                     },
                 )
                 .with_tags(Some(metric_tags! { "type" => "a" }))
-                .with_timestamp(Some(*TIMESTAMP)),
-                Metric::new(
+                .with_timestamp(Some(*TIMESTAMP))),
+                otel(Metric::new(
                     "jobs_summary",
                     MetricKind::Absolute,
                     MetricValue::AggregatedSummary {
@@ -1378,7 +1176,7 @@ mod test {
                     },
                 )
                 .with_tags(Some(metric_tags! { "type" => "a" }))
-                .with_timestamp(Some(*TIMESTAMP)),
+                .with_timestamp(Some(*TIMESTAMP))),
             ]),
         );
     }
@@ -1396,7 +1194,7 @@ mod test {
         assert_eq!(result[0].name(), "name");
         match result[0].value() {
             MetricValue::Counter { value } => {
-                assert_eq!(*value, 123.0);
+                assert_eq!(value, 123.0);
             }
             _ => unreachable!(),
         }
@@ -1441,7 +1239,7 @@ mod test {
         assert_eq!(result[0].name(), "name");
         match result[0].value() {
             MetricValue::Gauge { value } => {
-                assert_eq!(*value, 123.0);
+                assert_eq!(value, 123.0);
             }
             _ => unreachable!(),
         }

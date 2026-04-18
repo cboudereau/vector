@@ -296,17 +296,15 @@ mod tests {
         // Make our test metrics.
         let metrics = vec![
             Event::Metric({
-                let m = Metric::new(
-                    "metric1",
-                    MetricKind::Incremental,
-                    MetricValue::Counter { value: 42.0 },
-                )
-                .with_tags(Some(metric_tags!("os.host" => "somehost")))
-                .with_timestamp(Some(
-                    Utc.with_ymd_and_hms(2020, 8, 18, 21, 0, 1)
-                        .single()
-                        .expect("invalid timestamp"),
-                ));
+                let otel = OtelMetric::new_counter("metric1", MetricKind::Incremental, 42.0);
+                let (s, d, md) = otel.into_metric_parts();
+                let m = Metric::from_parts(s, d, md)
+                    .with_tags(Some(metric_tags!("os.host" => "somehost")))
+                    .with_timestamp(Some(
+                        Utc.with_ymd_and_hms(2020, 8, 18, 21, 0, 1)
+                            .single()
+                            .expect("invalid timestamp"),
+                    ));
                 let (s, d, md) = m.into_parts();
                 OtelMetric::from_metric_parts(s, d, md)
             }),
@@ -365,20 +363,18 @@ mod tests {
 
         // Make our test metrics.
         let metrics = vec![Event::Metric({
-            let m = Metric::new(
-                "metric1",
-                MetricKind::Incremental,
-                MetricValue::Counter { value: 42.0 },
-            )
-            .with_tags(Some(metric_tags!(
-                "code" => "200",
-                "code" => "success"
-            )))
-            .with_timestamp(Some(
-                Utc.with_ymd_and_hms(2020, 8, 18, 21, 0, 1)
-                    .single()
-                    .expect("invalid timestamp"),
-            ));
+            let otel = OtelMetric::new_counter("metric1", MetricKind::Incremental, 42.0);
+            let (s, d, md) = otel.into_metric_parts();
+            let m = Metric::from_parts(s, d, md)
+                .with_tags(Some(metric_tags!(
+                    "code" => "200",
+                    "code" => "success"
+                )))
+                .with_timestamp(Some(
+                    Utc.with_ymd_and_hms(2020, 8, 18, 21, 0, 1)
+                        .single()
+                        .expect("invalid timestamp"),
+                ));
             let (s, d, md) = m.into_parts();
             OtelMetric::from_metric_parts(s, d, md)
         })];

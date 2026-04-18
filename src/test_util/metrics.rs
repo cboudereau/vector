@@ -307,13 +307,17 @@ where
     S: IntoIterator<Item = V>,
     V: Display,
 {
-    Metric::new(
+    let m = Metric::new(
         "set",
         kind,
         MetricValue::Set {
             values: values.into_iter().map(|i| i.to_string()).collect(),
         },
-    )
+    );
+    let (s, d, md) = m.into_parts();
+    let otel = OtelMetric::from_metric_parts(s, d, md);
+    let (s, d, md) = otel.into_metric_parts();
+    Metric::from_parts(s, d, md)
 }
 
 pub fn get_distribution<S, V>(samples: S, kind: MetricKind) -> Metric
@@ -321,7 +325,7 @@ where
     S: IntoIterator<Item = V>,
     V: Into<f64>,
 {
-    Metric::new(
+    let m = Metric::new(
         "distribution",
         kind,
         MetricValue::Distribution {
@@ -334,7 +338,11 @@ where
                 .collect(),
             statistic: StatisticKind::Histogram,
         },
-    )
+    );
+    let (s, d, md) = m.into_parts();
+    let otel = OtelMetric::from_metric_parts(s, d, md);
+    let (s, d, md) = otel.into_metric_parts();
+    Metric::from_parts(s, d, md)
 }
 
 pub fn get_aggregated_histogram<S, V>(samples: S, kind: MetricKind) -> Metric
@@ -345,7 +353,7 @@ where
     let samples = samples.into_iter().map(Into::into).collect::<Vec<_>>();
     let (buckets, sum, count) = buckets_from_samples(&samples);
 
-    Metric::new(
+    let m = Metric::new(
         "agg_histogram",
         kind,
         MetricValue::AggregatedHistogram {
@@ -353,15 +361,25 @@ where
             count,
             sum,
         },
-    )
+    );
+    let (s, d, md) = m.into_parts();
+    let otel = OtelMetric::from_metric_parts(s, d, md);
+    let (s, d, md) = otel.into_metric_parts();
+    Metric::from_parts(s, d, md)
 }
 
 pub fn get_counter(value: f64, kind: MetricKind) -> Metric {
-    Metric::new("counter", kind, MetricValue::Counter { value })
+    let otel = OtelMetric::new_counter("counter", kind, value);
+    let (s, d, md) = otel.into_metric_parts();
+    Metric::from_parts(s, d, md)
 }
 
 pub fn get_gauge(value: f64, kind: MetricKind) -> Metric {
-    Metric::new("gauge", kind, MetricValue::Gauge { value })
+    let m = Metric::new("gauge", kind, MetricValue::Gauge { value });
+    let (s, d, md) = m.into_parts();
+    let otel = OtelMetric::from_metric_parts(s, d, md);
+    let (s, d, md) = otel.into_metric_parts();
+    Metric::from_parts(s, d, md)
 }
 
 pub fn assert_normalize<N: MetricNormalize>(

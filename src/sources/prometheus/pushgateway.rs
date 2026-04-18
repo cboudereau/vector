@@ -249,7 +249,7 @@ fn decode_label_pair(k: &str, v: &str) -> Result<(String, String), ErrorMessage>
 mod test {
     use chrono::{TimeZone, Timelike, Utc};
     use vector_lib::{
-        event::{EventStatus, Metric, MetricKind, MetricValue},
+        event::{EventStatus, Metric, MetricKind, MetricValue, OtelMetric},
         tls::MaybeTlsSettings,
     };
 
@@ -425,48 +425,60 @@ mod test {
                 .expect("invalid timestamp");
 
             let expected = vec![
-                Metric::new(
-                    "jobs_total",
-                    MetricKind::Incremental,
-                    MetricValue::Counter { value: 1.0 },
-                )
+                {
+                    let otel = OtelMetric::new_counter("jobs_total", MetricKind::Incremental, 1.0);
+                    let (s, d, md) = otel.into_metric_parts();
+                    Metric::from_parts(s, d, md)
+                }
                 .with_tags(Some(
                     metric_tags! { "job" => "async_worker", "type" => "a" },
                 ))
                 .with_timestamp(Some(timestamp)),
-                Metric::new(
-                    "jobs_current",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 5.0 },
-                )
+                {
+                    let otel = OtelMetric::new_gauge("jobs_current", 5.0);
+                    let (s, d, md) = otel.into_metric_parts();
+                    Metric::from_parts(s, d, md)
+                }
                 .with_tags(Some(
                     metric_tags! { "job" => "async_worker", "type" => "a" },
                 ))
                 .with_timestamp(Some(timestamp)),
-                Metric::new(
-                    "jobs_distribution",
-                    MetricKind::Incremental,
-                    MetricValue::AggregatedHistogram {
-                        buckets: vector_lib::buckets![
-                            1.0 => 0, 2.5 => 0, 5.0 => 0, 10.0 => 1
-                        ],
-                        count: 1,
-                        sum: 8.0,
-                    },
-                )
+                {
+                    let m = Metric::new(
+                        "jobs_distribution",
+                        MetricKind::Incremental,
+                        MetricValue::AggregatedHistogram {
+                            buckets: vector_lib::buckets![
+                                1.0 => 0, 2.5 => 0, 5.0 => 0, 10.0 => 1
+                            ],
+                            count: 1,
+                            sum: 8.0,
+                        },
+                    );
+                    let (s, d, md) = m.into_parts();
+                    let otel = OtelMetric::from_metric_parts(s, d, md);
+                    let (s, d, md) = otel.into_metric_parts();
+                    Metric::from_parts(s, d, md)
+                }
                 .with_tags(Some(
                     metric_tags! { "job" => "async_worker", "type" => "a" },
                 ))
                 .with_timestamp(Some(timestamp)),
-                Metric::new(
-                    "jobs_summary",
-                    MetricKind::Absolute,
-                    MetricValue::AggregatedSummary {
-                        quantiles: vector_lib::quantiles![],
-                        count: 1,
-                        sum: 8.0,
-                    },
-                )
+                {
+                    let m = Metric::new(
+                        "jobs_summary",
+                        MetricKind::Absolute,
+                        MetricValue::AggregatedSummary {
+                            quantiles: vector_lib::quantiles![],
+                            count: 1,
+                            sum: 8.0,
+                        },
+                    );
+                    let (s, d, md) = m.into_parts();
+                    let otel = OtelMetric::from_metric_parts(s, d, md);
+                    let (s, d, md) = otel.into_metric_parts();
+                    Metric::from_parts(s, d, md)
+                }
                 .with_tags(Some(
                     metric_tags! { "job" => "async_worker", "type" => "a" },
                 ))

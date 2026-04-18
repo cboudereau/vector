@@ -1,7 +1,7 @@
 use chrono::Utc;
 use futures::{future::ready, stream};
 use serde::Deserialize;
-use vector_lib::event::{Metric, MetricKind, MetricValue, OtelMetric};
+use vector_lib::event::{Metric, OtelMetric};
 
 use super::config::StackdriverConfig;
 use crate::{
@@ -39,15 +39,7 @@ async fn component_spec_compliance() {
     let context = SinkContext::default();
     let (sink, _healthcheck) = config.build(context).await.unwrap();
 
-    let event = Event::Metric({
-        let m = Metric::new(
-            "gauge-test",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 1_f64 },
-        );
-        let (s, d, md) = m.into_parts();
-        OtelMetric::from_metric_parts(s, d, md)
-    });
+    let event = Event::Metric(OtelMetric::new_gauge("gauge-test", 1_f64));
     run_and_assert_sink_compliance(sink, stream::once(ready(event)), &SINK_TAGS).await;
 }
 
@@ -71,12 +63,10 @@ async fn sends_metric() {
     let timestamp = Utc::now();
 
     let event = Event::Metric({
-        let m = Metric::new(
-            "gauge-test",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 1_f64 },
-        )
-        .with_timestamp(Some(timestamp));
+        let otel = OtelMetric::new_gauge("gauge-test", 1_f64);
+        let (s, d, md) = otel.into_metric_parts();
+        let m = Metric::from_parts(s, d, md)
+            .with_timestamp(Some(timestamp));
         let (s, d, md) = m.into_parts();
         OtelMetric::from_metric_parts(s, d, md)
     });
@@ -137,22 +127,18 @@ async fn sends_multiple_metrics() {
 
     let event = vec![
         Event::Metric({
-            let m = Metric::new(
-                "gauge1",
-                MetricKind::Absolute,
-                MetricValue::Gauge { value: 1_f64 },
-            )
-            .with_timestamp(Some(timestamp1));
+            let otel = OtelMetric::new_gauge("gauge1", 1_f64);
+            let (s, d, md) = otel.into_metric_parts();
+            let m = Metric::from_parts(s, d, md)
+                .with_timestamp(Some(timestamp1));
             let (s, d, md) = m.into_parts();
             OtelMetric::from_metric_parts(s, d, md)
         }),
         Event::Metric({
-            let m = Metric::new(
-                "gauge2",
-                MetricKind::Absolute,
-                MetricValue::Gauge { value: 5_f64 },
-            )
-            .with_timestamp(Some(timestamp2));
+            let otel = OtelMetric::new_gauge("gauge2", 5_f64);
+            let (s, d, md) = otel.into_metric_parts();
+            let m = Metric::from_parts(s, d, md)
+                .with_timestamp(Some(timestamp2));
             let (s, d, md) = m.into_parts();
             OtelMetric::from_metric_parts(s, d, md)
         }),
@@ -228,22 +214,18 @@ async fn does_not_aggregate_metrics() {
 
     let event = vec![
         Event::Metric({
-            let m = Metric::new(
-                "gauge",
-                MetricKind::Absolute,
-                MetricValue::Gauge { value: 1_f64 },
-            )
-            .with_timestamp(Some(timestamp1));
+            let otel = OtelMetric::new_gauge("gauge", 1_f64);
+            let (s, d, md) = otel.into_metric_parts();
+            let m = Metric::from_parts(s, d, md)
+                .with_timestamp(Some(timestamp1));
             let (s, d, md) = m.into_parts();
             OtelMetric::from_metric_parts(s, d, md)
         }),
         Event::Metric({
-            let m = Metric::new(
-                "gauge",
-                MetricKind::Absolute,
-                MetricValue::Gauge { value: 5_f64 },
-            )
-            .with_timestamp(Some(timestamp2));
+            let otel = OtelMetric::new_gauge("gauge", 5_f64);
+            let (s, d, md) = otel.into_metric_parts();
+            let m = Metric::from_parts(s, d, md)
+                .with_timestamp(Some(timestamp2));
             let (s, d, md) = m.into_parts();
             OtelMetric::from_metric_parts(s, d, md)
         }),

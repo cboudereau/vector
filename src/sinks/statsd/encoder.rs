@@ -239,12 +239,12 @@ mod tests {
     #[cfg(feature = "sources-statsd")]
     #[test]
     fn test_encode_counter() {
-        let input = Metric::new(
-            "counter",
-            MetricKind::Incremental,
-            MetricValue::Counter { value: 1.5 },
-        )
-        .with_tags(Some(tags()));
+        let input = {
+            let otel = OtelMetric::new_counter("counter", MetricKind::Incremental, 1.5)
+                .with_tags(Some(tags()));
+            let (s, d, md) = otel.into_metric_parts();
+            Metric::from_parts(s, d, md)
+        };
 
         let frame = encode_metric(&input);
         let mut output = parse_encoded_metrics(&frame);
@@ -254,11 +254,11 @@ mod tests {
     #[cfg(feature = "sources-statsd")]
     #[test]
     fn test_encode_absolute_counter() {
-        let input = Metric::new(
-            "counter",
-            MetricKind::Absolute,
-            MetricValue::Counter { value: 1.5 },
-        );
+        let input = {
+            let otel = OtelMetric::new_counter("counter", MetricKind::Absolute, 1.5);
+            let (s, d, md) = otel.into_metric_parts();
+            Metric::from_parts(s, d, md)
+        };
 
         let frame = encode_metric(&input);
         // The statsd parser will parse the counter as Incremental,
@@ -269,12 +269,18 @@ mod tests {
     #[cfg(feature = "sources-statsd")]
     #[test]
     fn test_encode_gauge() {
-        let input = Metric::new(
-            "gauge",
-            MetricKind::Incremental,
-            MetricValue::Gauge { value: -1.5 },
-        )
-        .with_tags(Some(tags()));
+        let input = {
+            let m = Metric::new(
+                "gauge",
+                MetricKind::Incremental,
+                MetricValue::Gauge { value: -1.5 },
+            )
+            .with_tags(Some(tags()));
+            let (s, d, md) = m.into_parts();
+            let otel = OtelMetric::from_metric_parts(s, d, md);
+            let (s, d, md) = otel.into_metric_parts();
+            Metric::from_parts(s, d, md)
+        };
 
         let frame = encode_metric(&input);
         let mut output = parse_encoded_metrics(&frame);
@@ -284,12 +290,12 @@ mod tests {
     #[cfg(feature = "sources-statsd")]
     #[test]
     fn test_encode_absolute_gauge() {
-        let input = Metric::new(
-            "gauge",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 1.5 },
-        )
-        .with_tags(Some(tags()));
+        let input = {
+            let otel = OtelMetric::new_gauge("gauge", 1.5)
+                .with_tags(Some(tags()));
+            let (s, d, md) = otel.into_metric_parts();
+            Metric::from_parts(s, d, md)
+        };
 
         let frame = encode_metric(&input);
         let mut output = parse_encoded_metrics(&frame);
@@ -299,25 +305,37 @@ mod tests {
     #[cfg(feature = "sources-statsd")]
     #[test]
     fn test_encode_distribution() {
-        let input = Metric::new(
-            "distribution",
-            MetricKind::Incremental,
-            MetricValue::Distribution {
-                samples: vector_lib::samples![1.5 => 1, 1.5 => 1],
-                statistic: StatisticKind::Histogram,
-            },
-        )
-        .with_tags(Some(tags()));
+        let input = {
+            let m = Metric::new(
+                "distribution",
+                MetricKind::Incremental,
+                MetricValue::Distribution {
+                    samples: vector_lib::samples![1.5 => 1, 1.5 => 1],
+                    statistic: StatisticKind::Histogram,
+                },
+            )
+            .with_tags(Some(tags()));
+            let (s, d, md) = m.into_parts();
+            let otel = OtelMetric::from_metric_parts(s, d, md);
+            let (s, d, md) = otel.into_metric_parts();
+            Metric::from_parts(s, d, md)
+        };
 
-        let expected = Metric::new(
-            "distribution",
-            MetricKind::Incremental,
-            MetricValue::Distribution {
-                samples: vector_lib::samples![1.5 => 2],
-                statistic: StatisticKind::Histogram,
-            },
-        )
-        .with_tags(Some(tags()));
+        let expected = {
+            let m = Metric::new(
+                "distribution",
+                MetricKind::Incremental,
+                MetricValue::Distribution {
+                    samples: vector_lib::samples![1.5 => 2],
+                    statistic: StatisticKind::Histogram,
+                },
+            )
+            .with_tags(Some(tags()));
+            let (s, d, md) = m.into_parts();
+            let otel = OtelMetric::from_metric_parts(s, d, md);
+            let (s, d, md) = otel.into_metric_parts();
+            Metric::from_parts(s, d, md)
+        };
 
         let frame = encode_metric(&input);
         let mut output = parse_encoded_metrics(&frame);
@@ -327,34 +345,52 @@ mod tests {
     #[cfg(feature = "sources-statsd")]
     #[test]
     fn test_encode_distribution_aggregated() {
-        let input = Metric::new(
-            "distribution",
-            MetricKind::Incremental,
-            MetricValue::Distribution {
-                samples: vector_lib::samples![2.5 => 1, 1.5 => 1, 1.5 => 1],
-                statistic: StatisticKind::Histogram,
-            },
-        )
-        .with_tags(Some(tags()));
+        let input = {
+            let m = Metric::new(
+                "distribution",
+                MetricKind::Incremental,
+                MetricValue::Distribution {
+                    samples: vector_lib::samples![2.5 => 1, 1.5 => 1, 1.5 => 1],
+                    statistic: StatisticKind::Histogram,
+                },
+            )
+            .with_tags(Some(tags()));
+            let (s, d, md) = m.into_parts();
+            let otel = OtelMetric::from_metric_parts(s, d, md);
+            let (s, d, md) = otel.into_metric_parts();
+            Metric::from_parts(s, d, md)
+        };
 
-        let expected1 = Metric::new(
-            "distribution",
-            MetricKind::Incremental,
-            MetricValue::Distribution {
-                samples: vector_lib::samples![1.5 => 2],
-                statistic: StatisticKind::Histogram,
-            },
-        )
-        .with_tags(Some(tags()));
-        let expected2 = Metric::new(
-            "distribution",
-            MetricKind::Incremental,
-            MetricValue::Distribution {
-                samples: vector_lib::samples![2.5 => 1],
-                statistic: StatisticKind::Histogram,
-            },
-        )
-        .with_tags(Some(tags()));
+        let expected1 = {
+            let m = Metric::new(
+                "distribution",
+                MetricKind::Incremental,
+                MetricValue::Distribution {
+                    samples: vector_lib::samples![1.5 => 2],
+                    statistic: StatisticKind::Histogram,
+                },
+            )
+            .with_tags(Some(tags()));
+            let (s, d, md) = m.into_parts();
+            let otel = OtelMetric::from_metric_parts(s, d, md);
+            let (s, d, md) = otel.into_metric_parts();
+            Metric::from_parts(s, d, md)
+        };
+        let expected2 = {
+            let m = Metric::new(
+                "distribution",
+                MetricKind::Incremental,
+                MetricValue::Distribution {
+                    samples: vector_lib::samples![2.5 => 1],
+                    statistic: StatisticKind::Histogram,
+                },
+            )
+            .with_tags(Some(tags()));
+            let (s, d, md) = m.into_parts();
+            let otel = OtelMetric::from_metric_parts(s, d, md);
+            let (s, d, md) = otel.into_metric_parts();
+            Metric::from_parts(s, d, md)
+        };
 
         let frame = encode_metric(&input);
         let mut output = parse_encoded_metrics(&frame);
@@ -365,14 +401,20 @@ mod tests {
     #[cfg(feature = "sources-statsd")]
     #[test]
     fn test_encode_set() {
-        let input = Metric::new(
-            "set",
-            MetricKind::Incremental,
-            MetricValue::Set {
-                values: vec!["abc".to_owned()].into_iter().collect(),
-            },
-        )
-        .with_tags(Some(tags()));
+        let input = {
+            let m = Metric::new(
+                "set",
+                MetricKind::Incremental,
+                MetricValue::Set {
+                    values: vec!["abc".to_owned()].into_iter().collect(),
+                },
+            )
+            .with_tags(Some(tags()));
+            let (s, d, md) = m.into_parts();
+            let otel = OtelMetric::from_metric_parts(s, d, md);
+            let (s, d, md) = otel.into_metric_parts();
+            Metric::from_parts(s, d, md)
+        };
 
         let frame = encode_metric(&input);
         let mut output = parse_encoded_metrics(&frame);

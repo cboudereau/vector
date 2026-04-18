@@ -29,11 +29,11 @@ fn get_counter() -> Metric {
         .unwrap()
         .with_timezone(&Utc);
 
-    Metric::new(
-        "example-counter",
-        MetricKind::Absolute,
-        MetricValue::Counter { value: 26.8 },
-    )
+    {
+        let otel = OtelMetric::new_counter("example-counter", MetricKind::Absolute, 26.8);
+        let (s, d, md) = otel.into_metric_parts();
+        Metric::from_parts(s, d, md)
+    }
     .with_timestamp(Some(timestamp))
     .with_tags(Some(metric_tags! {
         "template_index".to_string() => "index_value".to_string(),
@@ -50,11 +50,11 @@ fn get_gauge(namespace: Option<String>) -> Metric {
         .unwrap()
         .with_timezone(&Utc);
 
-    Metric::new(
-        "example-gauge",
-        MetricKind::Absolute,
-        MetricValue::Gauge { value: 26.8 },
-    )
+    {
+        let otel = OtelMetric::new_gauge("example-gauge", 26.8);
+        let (s, d, md) = otel.into_metric_parts();
+        Metric::from_parts(s, d, md)
+    }
     .with_timestamp(Some(timestamp))
     .with_namespace(namespace)
 }
@@ -124,11 +124,17 @@ fn test_process_metric_unsupported_type_returns_none() {
     let mut values = BTreeSet::new();
     values.insert(String::from("value1"));
 
-    let metric = Metric::new(
-        "example-set",
-        MetricKind::Absolute,
-        MetricValue::Set { values },
-    );
+    let metric = {
+        let m = Metric::new(
+            "example-set",
+            MetricKind::Absolute,
+            MetricValue::Set { values },
+        );
+        let (s, d, md) = m.into_parts();
+        let otel = OtelMetric::from_metric_parts(s, d, md);
+        let (s, d, md) = otel.into_metric_parts();
+        Metric::from_parts(s, d, md)
+    };
 
     let event_byte_size = metric.size_of();
     let sourcetype = None;

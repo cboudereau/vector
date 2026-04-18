@@ -1,7 +1,7 @@
 use chrono::{DateTime, Duration, Utc};
 use futures::stream;
 use vector_lib::{
-    event::{Event, Metric, MetricKind, MetricValue},
+    event::{Event, Metric, MetricKind, MetricValue, OtelMetric},
     metric_tags,
 };
 
@@ -133,17 +133,17 @@ fn query_client() -> reqwest::Client {
 }
 
 fn create_event(name: &str, i: i32, base_time: DateTime<Utc>) -> Event {
-    Event::Metric(
-        Metric::new(
-            name.to_owned(),
-            MetricKind::Incremental,
-            MetricValue::Counter { value: i as f64 },
-        )
-        .with_namespace(Some("ns"))
-        .with_tags(Some(metric_tags!(
-            "region" => "us-west-1",
-            "production" => "true",
-        )))
-        .with_timestamp(Some(base_time + Duration::seconds(i as i64))),
-    )
+    Event::Metric({
+        let otel = OtelMetric::new_counter(name.to_owned(), MetricKind::Incremental, i as f64);
+        let (s, d, md) = otel.into_metric_parts();
+        let m = Metric::from_parts(s, d, md)
+            .with_namespace(Some("ns"))
+            .with_tags(Some(metric_tags!(
+                "region" => "us-west-1",
+                "production" => "true",
+            )))
+            .with_timestamp(Some(base_time + Duration::seconds(i as i64)));
+        let (s, d, md) = m.into_parts();
+        OtelMetric::from_metric_parts(s, d, md)
+    })
 }

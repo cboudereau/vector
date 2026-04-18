@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{Connection, FromRow, PgConnection};
 use vector_lib::event::{
     BatchNotifier, BatchStatus, BatchStatusReceiver, Event, OtelLog, Metric, MetricKind,
-    MetricValue,
+    MetricValue, OtelMetric,
 };
 use vrl::event_path;
 
@@ -57,11 +57,11 @@ fn create_events(count: usize) -> (Vec<Event>, BatchStatusReceiver) {
 }
 
 fn create_metric(name: &str) -> Metric {
-    Metric::new(
-        name,
-        MetricKind::Absolute,
-        MetricValue::Counter { value: 1.0 },
-    )
+    {
+        let otel = OtelMetric::new_counter(name, MetricKind::Absolute, 1.0);
+        let (s, d, md) = otel.into_metric_parts();
+        Metric::from_parts(s, d, md)
+    }
     .with_namespace(Some("vector"))
     .with_tags(Some(metric_tags!("some_tag" => "some_value")))
     .with_timestamp(Some(timestamp()))

@@ -969,11 +969,11 @@ mod tests {
             """
             "#,
             |tx, out| async move {
-                let metric = Metric::new(
-                    "example counter",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 1.0 },
-                );
+                let metric = {
+                    let otel = OtelMetric::new_counter("example counter", MetricKind::Absolute, 1.0);
+                    let (s, d, md) = otel.into_metric_parts();
+                    Metric::from_parts(s, d, md)
+                };
 
                 let mut expected = metric
                     .clone()

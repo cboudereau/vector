@@ -4,7 +4,7 @@ use http::header::AUTHORIZATION;
 use hyper::StatusCode;
 use indoc::indoc;
 use vector_lib::event::{
-    BatchNotifier, BatchStatus, Event, OtelLog, Metric, MetricKind, MetricValue,
+    BatchNotifier, BatchStatus, Event, OtelLog, Metric, MetricKind, MetricValue, OtelMetric,
 };
 
 use crate::{
@@ -81,13 +81,7 @@ async fn metrics_real_endpoint() {
         let (batch, receiver) = BatchNotifier::new_with_receiver();
         let events: Vec<_> = (0..10)
             .map(|index| {
-                Event::Metric(Metric::new(
-                    "counter",
-                    MetricKind::Absolute,
-                    MetricValue::Counter {
-                        value: index as f64,
-                    },
-                ))
+                Event::Metric(OtelMetric::new_counter("counter", MetricKind::Absolute, index as f64))
             })
             .collect();
         let stream = map_event_batch_stream(stream::iter(events.clone()), Some(batch));
@@ -103,19 +97,15 @@ async fn metrics_shape() {
     let events: Vec<_> = (0..5)
         .flat_map(|index| {
             vec![
-                Event::Metric(Metric::new(
+                Event::Metric(OtelMetric::new_counter(
                     format!("counter_{index}"),
                     MetricKind::Absolute,
-                    MetricValue::Counter {
-                        value: index as f64,
-                    },
+                    index as f64,
                 )),
-                Event::Metric(Metric::new(
+                Event::Metric(OtelMetric::new_counter(
                     format!("counter_{index}"),
                     MetricKind::Absolute,
-                    MetricValue::Counter {
-                        value: (index + index) as f64,
-                    },
+                    (index + index) as f64,
                 )),
             ]
         })
@@ -244,16 +234,8 @@ async fn error_scenario_real_endpoint() {
         let (sink, _) = config.build(cx).await.unwrap();
         let (batch, receiver) = BatchNotifier::new_with_receiver();
         let events = vec![
-            Event::Metric(Metric::new(
-                "counter",
-                MetricKind::Absolute,
-                MetricValue::Counter { value: 1.0 },
-            )),
-            Event::Metric(Metric::new(
-                "counter",
-                MetricKind::Absolute,
-                MetricValue::Counter { value: 2.0 },
-            )),
+            Event::Metric(OtelMetric::new_counter("counter", MetricKind::Absolute, 1.0)),
+            Event::Metric(OtelMetric::new_counter("counter", MetricKind::Absolute, 2.0)),
         ];
         let stream = map_event_batch_stream(stream::iter(events.clone()), Some(batch));
 

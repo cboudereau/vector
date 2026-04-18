@@ -262,20 +262,14 @@ mod tests {
     }
 
     fn metric2() -> Event {
-        Event::Metric({
-            let m = Metric::new(
-                "counter",
-                MetricKind::Incremental,
-                MetricValue::Counter { value: 1.0 },
-            )
-            .with_tags(Some(metric_tags! (
-                "a" => "first",
-                "a" => None,
-                "a" => "second",
-            )));
-            let (s, d, md) = m.into_parts();
-            OtelMetric::from_metric_parts(s, d, md)
-        })
+        Event::Metric(
+            OtelMetric::new_counter("counter", MetricKind::Incremental, 1.0)
+                .with_tags(Some(metric_tags! (
+                    "a" => "first",
+                    "a" => None,
+                    "a" => "second",
+                )))
+        )
     }
 
     fn serialize(config: JsonSerializerConfig, input: Event) -> Bytes {
@@ -513,18 +507,12 @@ mod tests {
             );
         }
         fn metric2() -> Event {
-            Event::Metric({
-                let m = Metric::new(
-                    "counter",
-                    MetricKind::Incremental,
-                    MetricValue::Counter { value: 1.0 },
-                )
-                .with_tags(Some(
-                    metric_tags! ("a" => "first","a" => None,"a" => "second",),
-                ));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
-            })
+            Event::Metric(
+                OtelMetric::new_counter("counter", MetricKind::Incremental, 1.0)
+                    .with_tags(Some(
+                        metric_tags! ("a" => "first","a" => None,"a" => "second",),
+                    ))
+            )
         }
         fn serialize(config: JsonSerializerConfig, input: Event) -> Bytes {
             let mut buffer = BytesMut::new();

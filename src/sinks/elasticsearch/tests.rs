@@ -6,7 +6,7 @@ use vector_lib::lookup::PathPrefix;
 use crate::{
     codecs::Transformer,
     config::ProxyConfig,
-    event::{OtelLog, Metric, MetricKind, MetricValue, ObjectMap, Value},
+    event::{OtelLog, Metric, OtelMetric, ObjectMap, Value},
     sinks::{
         elasticsearch::{
             BulkAction, BulkConfig, DataStreamConfig, ElasticsearchApiVersion,
@@ -345,11 +345,11 @@ async fn handle_metrics() {
     };
     let es = ElasticsearchCommon::parse_single(&config).await.unwrap();
 
-    let metric = Metric::new(
-        "cpu",
-        MetricKind::Absolute,
-        MetricValue::Gauge { value: 42.0 },
-    );
+    let metric = {
+        let otel = OtelMetric::new_gauge("cpu", 42.0);
+        let (s, d, md) = otel.into_metric_parts();
+        Metric::from_parts(s, d, md)
+    };
     let log = es.metric_to_log.transform_one(metric).unwrap();
 
     let mut encoded = vec![];

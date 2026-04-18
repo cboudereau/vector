@@ -860,11 +860,9 @@ mod integration_tests {
     }
 
     fn make_metric() -> Metric {
-        Metric::new(
-            "event",
-            metric::MetricKind::Incremental,
-            metric::MetricValue::Counter { value: 1.0 },
-        )
+        let otel = OtelMetric::new_counter("event", metric::MetricKind::Incremental, 1.0);
+        let (s, d, md) = otel.into_metric_parts();
+        Metric::from_parts(s, d, md)
     }
 
     #[test]

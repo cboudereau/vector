@@ -5,6 +5,7 @@ use vector_lib::metric_tags;
 
 use super::*;
 use crate::event::metric::{Metric, MetricKind, MetricValue, StatisticKind};
+use crate::event::OtelMetric;
 
 fn timestamp(time: &str) -> DateTime {
     DateTime::from_millis(
@@ -43,27 +44,27 @@ async fn svc() -> CloudWatchMetricsSvc {
 #[tokio::test]
 async fn encode_events_basic_counter() {
     let events = vec![
-        Metric::new(
-            "exception_total",
-            MetricKind::Incremental,
-            MetricValue::Counter { value: 1.0 },
-        ),
-        Metric::new(
-            "bytes_out",
-            MetricKind::Incremental,
-            MetricValue::Counter { value: 2.5 },
-        )
+        {
+            let otel = OtelMetric::new_counter("exception_total", MetricKind::Incremental, 1.0);
+            let (s, d, md) = otel.into_metric_parts();
+            Metric::from_parts(s, d, md)
+        },
+        {
+            let otel = OtelMetric::new_counter("bytes_out", MetricKind::Incremental, 2.5);
+            let (s, d, md) = otel.into_metric_parts();
+            Metric::from_parts(s, d, md)
+        }
         .with_timestamp(Some(
             Utc.with_ymd_and_hms(2018, 11, 14, 8, 9, 10)
                 .single()
                 .and_then(|t| t.with_nanosecond(123456789))
                 .expect("invalid timestamp"),
         )),
-        Metric::new(
-            "healthcheck",
-            MetricKind::Incremental,
-            MetricValue::Counter { value: 1.0 },
-        )
+        {
+            let otel = OtelMetric::new_counter("healthcheck", MetricKind::Incremental, 1.0);
+            let (s, d, md) = otel.into_metric_parts();
+            Metric::from_parts(s, d, md)
+        }
         .with_tags(Some(metric_tags!("region" => "local")))
         .with_timestamp(Some(
             Utc.with_ymd_and_hms(2018, 11, 14, 8, 9, 10)
@@ -98,11 +99,11 @@ async fn encode_events_basic_counter() {
 
 #[tokio::test]
 async fn encode_events_absolute_gauge() {
-    let events = vec![Metric::new(
-        "temperature",
-        MetricKind::Absolute,
-        MetricValue::Gauge { value: 10.0 },
-    )];
+    let events = vec![{
+        let otel = OtelMetric::new_gauge("temperature", 10.0);
+        let (s, d, md) = otel.into_metric_parts();
+        Metric::from_parts(s, d, md)
+    }];
 
     assert_eq!(
         svc().await.encode_events(events),
@@ -117,14 +118,20 @@ async fn encode_events_absolute_gauge() {
 
 #[tokio::test]
 async fn encode_events_distribution() {
-    let events = vec![Metric::new(
-        "latency",
-        MetricKind::Incremental,
-        MetricValue::Distribution {
-            samples: vector_lib::samples![11.0 => 100, 12.0 => 50],
-            statistic: StatisticKind::Histogram,
-        },
-    )];
+    let events = vec![{
+        let m = Metric::new(
+            "latency",
+            MetricKind::Incremental,
+            MetricValue::Distribution {
+                samples: vector_lib::samples![11.0 => 100, 12.0 => 50],
+                statistic: StatisticKind::Histogram,
+            },
+        );
+        let (s, d, md) = m.into_parts();
+        let otel = OtelMetric::from_metric_parts(s, d, md);
+        let (s, d, md) = otel.into_metric_parts();
+        Metric::from_parts(s, d, md)
+    }];
 
     assert_eq!(
         svc().await.encode_events(events),
@@ -140,13 +147,19 @@ async fn encode_events_distribution() {
 
 #[tokio::test]
 async fn encode_events_set() {
-    let events = vec![Metric::new(
-        "users",
-        MetricKind::Incremental,
-        MetricValue::Set {
-            values: vec!["alice".into(), "bob".into()].into_iter().collect(),
-        },
-    )];
+    let events = vec![{
+        let m = Metric::new(
+            "users",
+            MetricKind::Incremental,
+            MetricValue::Set {
+                values: vec!["alice".into(), "bob".into()].into_iter().collect(),
+            },
+        );
+        let (s, d, md) = m.into_parts();
+        let otel = OtelMetric::from_metric_parts(s, d, md);
+        let (s, d, md) = otel.into_metric_parts();
+        Metric::from_parts(s, d, md)
+    }];
 
     assert_eq!(
         svc().await.encode_events(events),

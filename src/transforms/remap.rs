@@ -1145,33 +1145,27 @@ mod tests {
             Event::from_json_value(serde_json::json!({"hello": 42}), LogNamespace::Legacy).unwrap();
 
         let happy_metric = {
-            let mut metric = Metric::new(
-                "counter",
-                MetricKind::Absolute,
-                MetricValue::Counter { value: 1.0 },
-            );
+            let otel = OtelMetric::new_counter("counter", MetricKind::Absolute, 1.0);
+            let (s, d, md) = otel.into_metric_parts();
+            let mut metric = Metric::from_parts(s, d, md);
             metric.replace_tag("hello".into(), "world".into());
             let (s, d, md) = metric.into_parts();
             Event::Metric(OtelMetric::from_metric_parts(s, d, md))
         };
 
         let abort_metric = {
-            let mut metric = Metric::new(
-                "counter",
-                MetricKind::Absolute,
-                MetricValue::Counter { value: 1.0 },
-            );
+            let otel = OtelMetric::new_counter("counter", MetricKind::Absolute, 1.0);
+            let (s, d, md) = otel.into_metric_parts();
+            let mut metric = Metric::from_parts(s, d, md);
             metric.replace_tag("hello".into(), "goodbye".into());
             let (s, d, md) = metric.into_parts();
             Event::Metric(OtelMetric::from_metric_parts(s, d, md))
         };
 
         let error_metric = {
-            let mut metric = Metric::new(
-                "counter",
-                MetricKind::Absolute,
-                MetricValue::Counter { value: 1.0 },
-            );
+            let otel = OtelMetric::new_counter("counter", MetricKind::Absolute, 1.0);
+            let (s, d, md) = otel.into_metric_parts();
+            let mut metric = Metric::from_parts(s, d, md);
             metric.replace_tag("not_hello".into(), "oops".into());
             let (s, d, md) = metric.into_parts();
             Event::Metric(OtelMetric::from_metric_parts(s, d, md))

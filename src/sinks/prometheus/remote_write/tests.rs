@@ -8,7 +8,7 @@ use vector_lib::{metric_tags, prometheus::parser::proto};
 use super::*;
 use crate::{
     config::SinkContext,
-    event::{Metric, MetricKind, MetricValue, OtelMetric},
+    event::{Metric, MetricKind, OtelMetric},
     sinks::{prometheus::remote_write::config::RemoteWriteConfig, util::test::build_test_server},
     test_util::{
         self,
@@ -269,7 +269,9 @@ async fn send_request(config: &str, events: Vec<Event>) -> Vec<(HeaderMap, proto
 }
 
 pub(super) fn create_event(name: String, value: f64) -> Event {
-    let m = Metric::new(name, MetricKind::Absolute, MetricValue::Gauge { value })
+    let otel = OtelMetric::new_gauge(name, value);
+    let (s, d, md) = otel.into_metric_parts();
+    let m = Metric::from_parts(s, d, md)
         .with_tags(Some(metric_tags!(
             "region" => "us-west-1",
             "production" => "true",
@@ -280,12 +282,10 @@ pub(super) fn create_event(name: String, value: f64) -> Event {
 }
 
 fn create_inc_event(name: String, value: f64) -> Event {
-    let m = Metric::new(
-        name,
-        MetricKind::Incremental,
-        MetricValue::Counter { value },
-    )
-    .with_timestamp(Some(chrono::Utc::now()));
+    let otel = OtelMetric::new_counter(name, MetricKind::Incremental, value);
+    let (s, d, md) = otel.into_metric_parts();
+    let m = Metric::from_parts(s, d, md)
+        .with_timestamp(Some(chrono::Utc::now()));
     let (s, d, md) = m.into_parts();
     Event::Metric(OtelMetric::from_metric_parts(s, d, md))
 }

@@ -1021,7 +1021,7 @@ mod test {
     use similar_asserts::assert_eq;
     use vrl::{btreemap, value::kind::Index};
 
-    use super::{super::{Metric, MetricValue}, *};
+    use super::{super::{Metric, MetricValue, OtelMetric}, *};
     use crate::metric_tags;
 
     #[test]
@@ -1441,19 +1441,23 @@ mod test {
 
     #[test]
     fn metric_all_fields() {
-        let metric = Metric::new(
-            "zub",
-            MetricKind::Absolute,
-            MetricValue::Counter { value: 1.23 },
-        )
-        .with_namespace(Some("zoob"))
-        .with_tags(Some(metric_tags!("tig" => "tog")))
-        .with_timestamp(Some(
-            Utc.with_ymd_and_hms(2020, 12, 10, 12, 0, 0)
-                .single()
-                .expect("invalid timestamp"),
-        ))
-        .with_interval_ms(Some(NonZero::<u32>::new(507).unwrap()));
+        let metric = {
+            let m = Metric::new(
+                "zub",
+                MetricKind::Absolute,
+                MetricValue::Counter { value: 1.23 },
+            )
+            .with_namespace(Some("zoob"))
+            .with_tags(Some(metric_tags!("tig" => "tog")))
+            .with_timestamp(Some(
+                Utc.with_ymd_and_hms(2020, 12, 10, 12, 0, 0)
+                    .single()
+                    .expect("invalid timestamp"),
+            ))
+            .with_interval_ms(Some(NonZero::<u32>::new(507).unwrap()));
+            let (s, d, md) = m.into_parts();
+            OtelMetric::from_metric_parts(s, d, md)
+        };
 
         let info = ProgramInfo {
             fallible: false,
@@ -1499,12 +1503,8 @@ mod test {
             delete: bool,
         }
 
-        let metric = Metric::new(
-            "name",
-            MetricKind::Absolute,
-            MetricValue::Counter { value: 1.23 },
-        )
-        .with_tags(Some(metric_tags!("tig" => "tog")));
+        let metric = OtelMetric::new_counter("name", MetricKind::Absolute, 1.23)
+            .with_tags(Some(metric_tags!("tig" => "tog")));
 
         let cases = vec![
             Case {
@@ -1594,12 +1594,8 @@ mod test {
 
     #[test]
     fn metric_set_tags() {
-        let metric = Metric::new(
-            "name",
-            MetricKind::Absolute,
-            MetricValue::Counter { value: 1.23 },
-        )
-        .with_tags(Some(metric_tags!("tig" => "tog")));
+        let metric = OtelMetric::new_counter("name", MetricKind::Absolute, 1.23)
+            .with_tags(Some(metric_tags!("tig" => "tog")));
 
         let info = ProgramInfo {
             fallible: false,
@@ -1628,11 +1624,7 @@ mod test {
 
     #[test]
     fn metric_invalid_paths() {
-        let metric = Metric::new(
-            "name",
-            MetricKind::Absolute,
-            MetricValue::Counter { value: 1.23 },
-        );
+        let metric = OtelMetric::new_counter("name", MetricKind::Absolute, 1.23);
 
         let validpaths_get = [
             ".name",
@@ -1701,11 +1693,7 @@ mod test {
 
     #[test]
     fn test_metric_insert_get_multi_value_tag() {
-        let metric = Metric::new(
-            "name",
-            MetricKind::Absolute,
-            MetricValue::Counter { value: 1.23 },
-        );
+        let metric = OtelMetric::new_counter("name", MetricKind::Absolute, 1.23);
         let info = ProgramInfo {
             fallible: false,
             abortable: false,

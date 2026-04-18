@@ -676,31 +676,39 @@ mod tests {
         // OtelMetric entry points so the dedup map stays consistent when
         // the exporter's input path is migrated to OtelMetric.
         use crate::event::OtelMetric;
-        let counter = Metric::new(
-            "requests_total",
-            MetricKind::Incremental,
-            MetricValue::Counter { value: 42.0 },
-        )
-        .with_namespace(Some("http"))
-        .with_tags(Some(metric_tags!("env" => "prod")));
+        let counter_otel = OtelMetric::new_counter("requests_total", MetricKind::Incremental, 42.0)
+            .with_namespace(Some("http"))
+            .with_tags(Some(metric_tags!("env" => "prod")));
+        let counter = {
+            let (s, d, md) = counter_otel.clone().into_metric_parts();
+            Metric::from_parts(s, d, md)
+        };
 
         let via_metric = MetricRef::from_metric(&counter);
-        let via_otel = MetricRef::from_otel_metric(&{ let (s, d, md) = counter.into_parts(); OtelMetric::from_metric_parts(s, d, md) });
+        let via_otel = MetricRef::from_otel_metric(&counter_otel);
 
         assert_eq!(via_metric, via_otel);
 
         // Histogram — the `bounds` field matters for dedup. Exercise it too.
-        let histogram = Metric::new(
-            "request_duration",
-            MetricKind::Absolute,
-            MetricValue::AggregatedHistogram {
-                buckets: vector_lib::buckets![0.1 => 10, 0.5 => 20, 1.0 => 5],
-                count: 35,
-                sum: 8.0,
-            },
-        );
+        let histogram_otel = {
+            let m = Metric::new(
+                "request_duration",
+                MetricKind::Absolute,
+                MetricValue::AggregatedHistogram {
+                    buckets: vector_lib::buckets![0.1 => 10, 0.5 => 20, 1.0 => 5],
+                    count: 35,
+                    sum: 8.0,
+                },
+            );
+            let (s, d, md) = m.into_parts();
+            OtelMetric::from_metric_parts(s, d, md)
+        };
+        let histogram = {
+            let (s, d, md) = histogram_otel.clone().into_metric_parts();
+            Metric::from_parts(s, d, md)
+        };
         let h_via_metric = MetricRef::from_metric(&histogram);
-        let h_via_otel = MetricRef::from_otel_metric(&{ let (s, d, md) = histogram.into_parts(); OtelMetric::from_metric_parts(s, d, md) });
+        let h_via_otel = MetricRef::from_otel_metric(&histogram_otel);
         assert_eq!(h_via_metric, h_via_otel);
     }
 
@@ -1195,12 +1203,12 @@ mod tests {
 
         let sink = PrometheusExporter::new(config);
 
-        let m1 = Metric::new(
-            "absolute",
-            MetricKind::Absolute,
-            MetricValue::Counter { value: 32. },
-        )
-        .with_tags(Some(metric_tags!("tag1" => "value1")));
+        let m1 = {
+            let otel = OtelMetric::new_counter("absolute", MetricKind::Absolute, 32.)
+                .with_tags(Some(metric_tags!("tag1" => "value1")));
+            let (s, d, md) = otel.into_metric_parts();
+            Metric::from_parts(s, d, md)
+        };
 
         let m2 = m1.clone().with_tags(Some(metric_tags!("tag1" => "value2")));
 
@@ -1251,23 +1259,35 @@ mod tests {
         let sink = PrometheusExporter::new(config);
 
         // Define a series of incremental distribution updates.
-        let base_summary_metric = Metric::new(
-            "distrib_summary",
-            MetricKind::Incremental,
-            MetricValue::Distribution {
-                statistic: StatisticKind::Summary,
-                samples: samples!(1.0 => 1, 3.0 => 2),
-            },
-        );
+        let base_summary_metric = {
+            let m = Metric::new(
+                "distrib_summary",
+                MetricKind::Incremental,
+                MetricValue::Distribution {
+                    statistic: StatisticKind::Summary,
+                    samples: samples!(1.0 => 1, 3.0 => 2),
+                },
+            );
+            let (s, d, md) = m.into_parts();
+            let otel = OtelMetric::from_metric_parts(s, d, md);
+            let (s, d, md) = otel.into_metric_parts();
+            Metric::from_parts(s, d, md)
+        };
 
-        let base_histogram_metric = Metric::new(
-            "distrib_histo",
-            MetricKind::Incremental,
-            MetricValue::Distribution {
-                statistic: StatisticKind::Histogram,
-                samples: samples!(7.0 => 1, 9.0 => 2),
-            },
-        );
+        let base_histogram_metric = {
+            let m = Metric::new(
+                "distrib_histo",
+                MetricKind::Incremental,
+                MetricValue::Distribution {
+                    statistic: StatisticKind::Histogram,
+                    samples: samples!(7.0 => 1, 9.0 => 2),
+                },
+            );
+            let (s, d, md) = m.into_parts();
+            let otel = OtelMetric::from_metric_parts(s, d, md);
+            let (s, d, md) = otel.into_metric_parts();
+            Metric::from_parts(s, d, md)
+        };
 
         let metrics = [
             base_summary_metric.clone(),
@@ -1368,23 +1388,35 @@ mod tests {
         let sink = PrometheusExporter::new(config);
 
         // Define a series of incremental distribution updates.
-        let base_summary_metric = Metric::new(
-            "distrib_summary",
-            MetricKind::Incremental,
-            MetricValue::Distribution {
-                statistic: StatisticKind::Summary,
-                samples: samples!(1.0 => 1, 3.0 => 2),
-            },
-        );
+        let base_summary_metric = {
+            let m = Metric::new(
+                "distrib_summary",
+                MetricKind::Incremental,
+                MetricValue::Distribution {
+                    statistic: StatisticKind::Summary,
+                    samples: samples!(1.0 => 1, 3.0 => 2),
+                },
+            );
+            let (s, d, md) = m.into_parts();
+            let otel = OtelMetric::from_metric_parts(s, d, md);
+            let (s, d, md) = otel.into_metric_parts();
+            Metric::from_parts(s, d, md)
+        };
 
-        let base_histogram_metric = Metric::new(
-            "distrib_histo",
-            MetricKind::Incremental,
-            MetricValue::Distribution {
-                statistic: StatisticKind::Histogram,
-                samples: samples!(7.0 => 1, 9.0 => 2),
-            },
-        );
+        let base_histogram_metric = {
+            let m = Metric::new(
+                "distrib_histo",
+                MetricKind::Incremental,
+                MetricValue::Distribution {
+                    statistic: StatisticKind::Histogram,
+                    samples: samples!(7.0 => 1, 9.0 => 2),
+                },
+            );
+            let (s, d, md) = m.into_parts();
+            let otel = OtelMetric::from_metric_parts(s, d, md);
+            let (s, d, md) = otel.into_metric_parts();
+            Metric::from_parts(s, d, md)
+        };
 
         let metrics = [
             base_summary_metric.clone(),
@@ -1478,17 +1510,23 @@ mod tests {
 
         let sink = PrometheusExporter::new(config);
 
-        let base_absolute_gauge_metric = Metric::new(
-            "gauge",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 100.0 },
-        );
+        let base_absolute_gauge_metric = {
+            let otel = OtelMetric::new_gauge("gauge", 100.0);
+            let (s, d, md) = otel.into_metric_parts();
+            Metric::from_parts(s, d, md)
+        };
 
-        let base_incremental_gauge_metric = Metric::new(
-            "gauge",
-            MetricKind::Incremental,
-            MetricValue::Gauge { value: -10.0 },
-        );
+        let base_incremental_gauge_metric = {
+            let m = Metric::new(
+                "gauge",
+                MetricKind::Incremental,
+                MetricValue::Gauge { value: -10.0 },
+            );
+            let (s, d, md) = m.into_parts();
+            let otel = OtelMetric::from_metric_parts(s, d, md);
+            let (s, d, md) = otel.into_metric_parts();
+            Metric::from_parts(s, d, md)
+        };
 
         let metrics = [
             base_absolute_gauge_metric.clone(),
@@ -1519,11 +1557,11 @@ mod tests {
         // The gauge metric should be present.
         assert_eq!(metrics_after.len(), 1);
 
-        let expected_gauge = Metric::new(
-            "gauge",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 327.0 },
-        );
+        let expected_gauge = {
+            let otel = OtelMetric::new_gauge("gauge", 327.0);
+            let (s, d, md) = otel.into_metric_parts();
+            Metric::from_parts(s, d, md)
+        };
 
         let actual_gauge = metrics_after
             .get(&MetricRef::from_metric(&expected_gauge))

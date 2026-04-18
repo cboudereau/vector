@@ -727,11 +727,11 @@ mod tests {
     }
 
     async fn transform_tags(metric_tag_values: MetricTagValues, tags: MetricTags) -> Value {
-        let counter = Metric::new(
-            "counter",
-            MetricKind::Absolute,
-            MetricValue::Counter { value: 1.0 },
-        )
+        let counter = {
+            let otel = OtelMetric::new_counter("counter", MetricKind::Absolute, 1.0);
+            let (s, d, md) = otel.into_metric_parts();
+            Metric::from_parts(s, d, md)
+        }
         .with_tags(Some(tags))
         .with_timestamp(Some(ts()));
 

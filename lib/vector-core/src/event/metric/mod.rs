@@ -672,6 +672,19 @@ mod test {
     use similar_asserts::assert_eq;
 
     use super::*;
+    use crate::event::OtelMetric;
+
+    /// Test helper: build a Metric via OtelMetric round-trip (for counter/gauge).
+    fn metric_from_otel(otel: OtelMetric) -> Metric {
+        let (s, d, md) = otel.into_metric_parts();
+        Metric::from_parts(s, d, md)
+    }
+
+    /// Test helper: build a Metric from complex MetricValue via from_metric_parts round-trip.
+    fn otel(m: Metric) -> OtelMetric {
+        let (s, d, md) = m.into_parts();
+        OtelMetric::from_metric_parts(s, d, md)
+    }
 
     fn ts() -> DateTime<Utc> {
         Utc.with_ymd_and_hms(2018, 11, 14, 8, 9, 10)
@@ -690,20 +703,16 @@ mod test {
 
     #[test]
     fn merge_counters() {
-        let mut counter = Metric::new(
-            "counter",
-            MetricKind::Incremental,
-            MetricValue::Counter { value: 1.0 },
+        let mut counter = metric_from_otel(
+            OtelMetric::new_counter("counter", MetricKind::Incremental, 1.0),
         );
 
-        let delta = Metric::new(
-            "counter",
-            MetricKind::Incremental,
-            MetricValue::Counter { value: 2.0 },
-        )
-        .with_namespace(Some("vector"))
-        .with_tags(Some(tags()))
-        .with_timestamp(Some(ts()));
+        let delta = metric_from_otel(
+            OtelMetric::new_counter("counter", MetricKind::Incremental, 2.0)
+                .with_namespace(Some("vector"))
+                .with_tags(Some(tags()))
+                .with_timestamp(Some(ts())),
+        );
 
         let expected = counter
             .clone()
@@ -716,20 +725,22 @@ mod test {
 
     #[test]
     fn merge_gauges() {
-        let mut gauge = Metric::new(
+        let mut gauge = metric_from_otel(otel(Metric::new(
             "gauge",
             MetricKind::Incremental,
             MetricValue::Gauge { value: 1.0 },
-        );
+        )));
 
-        let delta = Metric::new(
-            "gauge",
-            MetricKind::Incremental,
-            MetricValue::Gauge { value: -2.0 },
-        )
-        .with_namespace(Some("vector"))
-        .with_tags(Some(tags()))
-        .with_timestamp(Some(ts()));
+        let delta = metric_from_otel(
+            otel(Metric::new(
+                "gauge",
+                MetricKind::Incremental,
+                MetricValue::Gauge { value: -2.0 },
+            )
+            .with_namespace(Some("vector"))
+            .with_tags(Some(tags()))
+            .with_timestamp(Some(ts()))),
+        );
 
         let expected = gauge
             .clone()
@@ -742,24 +753,26 @@ mod test {
 
     #[test]
     fn merge_sets() {
-        let mut set = Metric::new(
+        let mut set = metric_from_otel(otel(Metric::new(
             "set",
             MetricKind::Incremental,
             MetricValue::Set {
                 values: vec!["old".into()].into_iter().collect(),
             },
-        );
+        )));
 
-        let delta = Metric::new(
-            "set",
-            MetricKind::Incremental,
-            MetricValue::Set {
-                values: vec!["new".into()].into_iter().collect(),
-            },
-        )
-        .with_namespace(Some("vector"))
-        .with_tags(Some(tags()))
-        .with_timestamp(Some(ts()));
+        let delta = metric_from_otel(
+            otel(Metric::new(
+                "set",
+                MetricKind::Incremental,
+                MetricValue::Set {
+                    values: vec!["new".into()].into_iter().collect(),
+                },
+            )
+            .with_namespace(Some("vector"))
+            .with_tags(Some(tags()))
+            .with_timestamp(Some(ts()))),
+        );
 
         let expected = set
             .clone()
@@ -774,26 +787,28 @@ mod test {
 
     #[test]
     fn merge_histograms() {
-        let mut dist = Metric::new(
+        let mut dist = metric_from_otel(otel(Metric::new(
             "hist",
             MetricKind::Incremental,
             MetricValue::Distribution {
                 samples: samples![1.0 => 10],
                 statistic: StatisticKind::Histogram,
             },
-        );
+        )));
 
-        let delta = Metric::new(
-            "hist",
-            MetricKind::Incremental,
-            MetricValue::Distribution {
-                samples: samples![1.0 => 20],
-                statistic: StatisticKind::Histogram,
-            },
-        )
-        .with_namespace(Some("vector"))
-        .with_tags(Some(tags()))
-        .with_timestamp(Some(ts()));
+        let delta = metric_from_otel(
+            otel(Metric::new(
+                "hist",
+                MetricKind::Incremental,
+                MetricValue::Distribution {
+                    samples: samples![1.0 => 20],
+                    statistic: StatisticKind::Histogram,
+                },
+            )
+            .with_namespace(Some("vector"))
+            .with_tags(Some(tags()))
+            .with_timestamp(Some(ts()))),
+        );
 
         let expected = dist
             .clone()
@@ -810,32 +825,24 @@ mod test {
     #[test]
     fn subtract_counters() {
         // Make sure a newer/higher value counter can subtract an older/lesser value counter:
-        let old_counter = Metric::new(
-            "counter",
-            MetricKind::Absolute,
-            MetricValue::Counter { value: 4.0 },
+        let old_counter = metric_from_otel(
+            OtelMetric::new_counter("counter", MetricKind::Absolute, 4.0),
         );
 
-        let mut new_counter = Metric::new(
-            "counter",
-            MetricKind::Absolute,
-            MetricValue::Counter { value: 6.0 },
+        let mut new_counter = metric_from_otel(
+            OtelMetric::new_counter("counter", MetricKind::Absolute, 6.0),
         );
 
         assert!(new_counter.subtract(&old_counter));
         assert_eq!(new_counter.value(), &MetricValue::Counter { value: 2.0 });
 
         // But not the other way around:
-        let old_counter = Metric::new(
-            "counter",
-            MetricKind::Absolute,
-            MetricValue::Counter { value: 6.0 },
+        let old_counter = metric_from_otel(
+            OtelMetric::new_counter("counter", MetricKind::Absolute, 6.0),
         );
 
-        let mut new_reset_counter = Metric::new(
-            "counter",
-            MetricKind::Absolute,
-            MetricValue::Counter { value: 1.0 },
+        let mut new_reset_counter = metric_from_otel(
+            OtelMetric::new_counter("counter", MetricKind::Absolute, 1.0),
         );
 
         assert!(!new_reset_counter.subtract(&old_counter));
@@ -845,7 +852,7 @@ mod test {
     fn subtract_aggregated_histograms() {
         // Make sure a newer/higher count aggregated histogram can subtract an older/lower count
         // aggregated histogram:
-        let old_histogram = Metric::new(
+        let old_histogram = metric_from_otel(otel(Metric::new(
             "histogram",
             MetricKind::Absolute,
             MetricValue::AggregatedHistogram {
@@ -853,9 +860,9 @@ mod test {
                 sum: 1.0,
                 buckets: buckets!(2.0 => 1),
             },
-        );
+        )));
 
-        let mut new_histogram = Metric::new(
+        let mut new_histogram = metric_from_otel(otel(Metric::new(
             "histogram",
             MetricKind::Absolute,
             MetricValue::AggregatedHistogram {
@@ -863,7 +870,7 @@ mod test {
                 sum: 3.0,
                 buckets: buckets!(2.0 => 3),
             },
-        );
+        )));
 
         assert!(new_histogram.subtract(&old_histogram));
         assert_eq!(
@@ -876,7 +883,7 @@ mod test {
         );
 
         // But not the other way around:
-        let old_histogram = Metric::new(
+        let old_histogram = metric_from_otel(otel(Metric::new(
             "histogram",
             MetricKind::Absolute,
             MetricValue::AggregatedHistogram {
@@ -884,9 +891,9 @@ mod test {
                 sum: 3.0,
                 buckets: buckets!(2.0 => 3),
             },
-        );
+        )));
 
-        let mut new_reset_histogram = Metric::new(
+        let mut new_reset_histogram = metric_from_otel(otel(Metric::new(
             "histogram",
             MetricKind::Absolute,
             MetricValue::AggregatedHistogram {
@@ -894,7 +901,7 @@ mod test {
                 sum: 1.0,
                 buckets: buckets!(2.0 => 1),
             },
-        );
+        )));
 
         assert!(!new_reset_histogram.subtract(&old_histogram));
     }
@@ -902,7 +909,7 @@ mod test {
     #[test]
     fn subtract_aggregated_histograms_bucket_redistribution() {
         // Test for issue #24415: when total count is higher but individual bucket counts is sometimes lower
-        let old_histogram = Metric::new(
+        let old_histogram = metric_from_otel(otel(Metric::new(
             "histogram",
             MetricKind::Absolute,
             MetricValue::AggregatedHistogram {
@@ -910,9 +917,9 @@ mod test {
                 sum: 15.0,
                 buckets: buckets!(1.0 => 10, 2.0 => 5),
             },
-        );
+        )));
 
-        let mut new_histogram_with_redistribution = Metric::new(
+        let mut new_histogram_with_redistribution = metric_from_otel(otel(Metric::new(
             "histogram",
             MetricKind::Absolute,
             MetricValue::AggregatedHistogram {
@@ -921,7 +928,7 @@ mod test {
                 // Total count is higher (20 > 15), but bucket1 count is lower (8 < 10)
                 buckets: buckets!(1.0 => 8, 2.0 => 12),
             },
-        );
+        )));
 
         assert!(!new_histogram_with_redistribution.subtract(&old_histogram));
     }
@@ -934,12 +941,10 @@ mod test {
         assert_eq!(
             format!(
                 "{}",
-                Metric::new(
-                    "one",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 1.23 },
+                metric_from_otel(
+                    OtelMetric::new_counter("one", MetricKind::Absolute, 1.23)
+                        .with_tags(Some(tags()))
                 )
-                .with_tags(Some(tags()))
             ),
             r#"one{empty_tag="",normal_tag="value",true_tag="true"} = 1.23"#
         );
@@ -947,12 +952,12 @@ mod test {
         assert_eq!(
             format!(
                 "{}",
-                Metric::new(
+                metric_from_otel(otel(Metric::new(
                     "two word",
                     MetricKind::Incremental,
                     MetricValue::Gauge { value: 2.0 }
                 )
-                .with_timestamp(Some(ts()))
+                .with_timestamp(Some(ts()))))
             ),
             r#"2018-11-14T08:09:10.000000011Z "two word"{} + 2"#
         );
@@ -960,12 +965,10 @@ mod test {
         assert_eq!(
             format!(
                 "{}",
-                Metric::new(
-                    "namespace",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 1.23 },
+                metric_from_otel(
+                    OtelMetric::new_counter("namespace", MetricKind::Absolute, 1.23)
+                        .with_namespace(Some("vector"))
                 )
-                .with_namespace(Some("vector"))
             ),
             r"vector_namespace{} = 1.23"
         );
@@ -973,12 +976,10 @@ mod test {
         assert_eq!(
             format!(
                 "{}",
-                Metric::new(
-                    "namespace",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 1.23 },
+                metric_from_otel(
+                    OtelMetric::new_counter("namespace", MetricKind::Absolute, 1.23)
+                        .with_namespace(Some("vector host"))
                 )
-                .with_namespace(Some("vector host"))
             ),
             r#""vector host"_namespace{} = 1.23"#
         );
@@ -991,7 +992,9 @@ mod test {
         assert_eq!(
             format!(
                 "{}",
-                Metric::new("three", MetricKind::Absolute, MetricValue::Set { values })
+                metric_from_otel(otel(
+                    Metric::new("three", MetricKind::Absolute, MetricValue::Set { values })
+                ))
             ),
             r#"three{} = "four=4" "thrəë" v1 v2_two"#
         );
@@ -999,14 +1002,14 @@ mod test {
         assert_eq!(
             format!(
                 "{}",
-                Metric::new(
+                metric_from_otel(otel(Metric::new(
                     "four",
                     MetricKind::Absolute,
                     MetricValue::Distribution {
                         samples: samples![1.0 => 3, 2.0 => 4],
                         statistic: StatisticKind::Histogram,
                     }
-                )
+                )))
             ),
             r"four{} = histogram 3@1 4@2"
         );
@@ -1014,7 +1017,7 @@ mod test {
         assert_eq!(
             format!(
                 "{}",
-                Metric::new(
+                metric_from_otel(otel(Metric::new(
                     "five",
                     MetricKind::Absolute,
                     MetricValue::AggregatedHistogram {
@@ -1022,7 +1025,7 @@ mod test {
                         count: 107,
                         sum: 103.0,
                     }
-                )
+                )))
             ),
             r"five{} = count=107 sum=103 53@51 54@52"
         );
@@ -1030,7 +1033,7 @@ mod test {
         assert_eq!(
             format!(
                 "{}",
-                Metric::new(
+                metric_from_otel(otel(Metric::new(
                     "six",
                     MetricKind::Absolute,
                     MetricValue::AggregatedSummary {
@@ -1038,7 +1041,7 @@ mod test {
                         count: 2,
                         sum: 127.0,
                     }
-                )
+                )))
             ),
             r"six{} = count=2 sum=127 1@63 2@64"
         );
@@ -1127,21 +1130,25 @@ mod test {
 
     #[test]
     fn merge_non_contiguous_interval() {
-        let mut gauge = Metric::new(
-            "gauge",
-            MetricKind::Incremental,
-            MetricValue::Gauge { value: 12.0 },
-        )
-        .with_timestamp(Some(ts()))
-        .with_interval_ms(std::num::NonZeroU32::new(10));
+        let mut gauge = metric_from_otel(
+            otel(Metric::new(
+                "gauge",
+                MetricKind::Incremental,
+                MetricValue::Gauge { value: 12.0 },
+            )
+            .with_timestamp(Some(ts()))
+            .with_interval_ms(std::num::NonZeroU32::new(10))),
+        );
 
-        let delta = Metric::new(
-            "gauge",
-            MetricKind::Incremental,
-            MetricValue::Gauge { value: -5.0 },
-        )
-        .with_timestamp(Some(ts() + chrono::Duration::milliseconds(20)))
-        .with_interval_ms(std::num::NonZeroU32::new(15));
+        let delta = metric_from_otel(
+            otel(Metric::new(
+                "gauge",
+                MetricKind::Incremental,
+                MetricValue::Gauge { value: -5.0 },
+            )
+            .with_timestamp(Some(ts() + chrono::Duration::milliseconds(20)))
+            .with_interval_ms(std::num::NonZeroU32::new(15))),
+        );
 
         let expected = gauge
             .clone()
@@ -1155,21 +1162,25 @@ mod test {
 
     #[test]
     fn merge_contiguous_interval() {
-        let mut gauge = Metric::new(
-            "gauge",
-            MetricKind::Incremental,
-            MetricValue::Gauge { value: 12.0 },
-        )
-        .with_timestamp(Some(ts()))
-        .with_interval_ms(std::num::NonZeroU32::new(10));
+        let mut gauge = metric_from_otel(
+            otel(Metric::new(
+                "gauge",
+                MetricKind::Incremental,
+                MetricValue::Gauge { value: 12.0 },
+            )
+            .with_timestamp(Some(ts()))
+            .with_interval_ms(std::num::NonZeroU32::new(10))),
+        );
 
-        let delta = Metric::new(
-            "gauge",
-            MetricKind::Incremental,
-            MetricValue::Gauge { value: -5.0 },
-        )
-        .with_timestamp(Some(ts() + chrono::Duration::milliseconds(5)))
-        .with_interval_ms(std::num::NonZeroU32::new(15));
+        let delta = metric_from_otel(
+            otel(Metric::new(
+                "gauge",
+                MetricKind::Incremental,
+                MetricValue::Gauge { value: -5.0 },
+            )
+            .with_timestamp(Some(ts() + chrono::Duration::milliseconds(5)))
+            .with_interval_ms(std::num::NonZeroU32::new(15))),
+        );
 
         let expected = gauge
             .clone()

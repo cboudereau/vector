@@ -318,18 +318,22 @@ mod tests {
 
     #[test]
     fn test_set() {
-        let metric = Metric::new(
-            "cpu_seconds_total",
-            MetricKind::Absolute,
-            MetricValue::Set {
-                values: ["foo".to_owned(), "bar".to_owned()].into_iter().collect(),
-            },
-        );
+        let otel = {
+            let m = Metric::new(
+                "cpu_seconds_total",
+                MetricKind::Absolute,
+                MetricValue::Set {
+                    values: ["foo".to_owned(), "bar".to_owned()].into_iter().collect(),
+                },
+            );
+            let (s, d, md) = m.into_parts();
+            OtelMetric::from_metric_parts(s, d, md)
+        };
         let options = RequestBuilderOptions {
             use_new_naming: false,
         };
 
-        let insert = metric_to_insert_request({ let (s, d, md) = metric.into_parts(); OtelMetric::from_metric_parts(s, d, md) }, &options);
+        let insert = metric_to_insert_request(otel, &options);
         let rows = insert.rows.expect("Empty insert request");
         assert_eq!(rows.rows[0].values.len(), 2);
 
@@ -338,19 +342,23 @@ mod tests {
 
     #[test]
     fn test_distribution() {
-        let metric = Metric::new(
-            "cpu_seconds_total",
-            MetricKind::Incremental,
-            MetricValue::Distribution {
-                samples: vector_lib::samples![1.0 => 2, 2.0 => 4, 3.0 => 2],
-                statistic: StatisticKind::Histogram,
-            },
-        );
+        let otel = {
+            let m = Metric::new(
+                "cpu_seconds_total",
+                MetricKind::Incremental,
+                MetricValue::Distribution {
+                    samples: vector_lib::samples![1.0 => 2, 2.0 => 4, 3.0 => 2],
+                    statistic: StatisticKind::Histogram,
+                },
+            );
+            let (s, d, md) = m.into_parts();
+            OtelMetric::from_metric_parts(s, d, md)
+        };
         let options = RequestBuilderOptions {
             use_new_naming: false,
         };
 
-        let insert = metric_to_insert_request({ let (s, d, md) = metric.into_parts(); OtelMetric::from_metric_parts(s, d, md) }, &options);
+        let insert = metric_to_insert_request(otel, &options);
         let rows = insert.rows.expect("Empty insert request");
         assert_eq!(
             rows.rows[0].values.len(),
@@ -373,20 +381,24 @@ mod tests {
     fn test_histogram() {
         let buckets = vector_lib::buckets![1.0 => 1, 2.0 => 2, 3.0 => 1];
         let buckets_len = buckets.len();
-        let metric = Metric::new(
-            "cpu_seconds_total",
-            MetricKind::Incremental,
-            MetricValue::AggregatedHistogram {
-                buckets,
-                count: 4,
-                sum: 8.0,
-            },
-        );
+        let otel = {
+            let m = Metric::new(
+                "cpu_seconds_total",
+                MetricKind::Incremental,
+                MetricValue::AggregatedHistogram {
+                    buckets,
+                    count: 4,
+                    sum: 8.0,
+                },
+            );
+            let (s, d, md) = m.into_parts();
+            OtelMetric::from_metric_parts(s, d, md)
+        };
         let options = RequestBuilderOptions {
             use_new_naming: false,
         };
 
-        let insert = metric_to_insert_request({ let (s, d, md) = metric.into_parts(); OtelMetric::from_metric_parts(s, d, md) }, &options);
+        let insert = metric_to_insert_request(otel, &options);
         let rows = insert.rows.expect("Empty insert request");
         assert_eq!(
             rows.rows[0].values.len(),
@@ -404,20 +416,24 @@ mod tests {
     fn test_summary() {
         let quantiles = vector_lib::quantiles![0.01 => 1.5, 0.5 => 2.0, 0.99 => 3.0];
         let quantiles_len = quantiles.len();
-        let metric = Metric::new(
-            "cpu_seconds_total",
-            MetricKind::Incremental,
-            MetricValue::AggregatedSummary {
-                quantiles,
-                count: 6,
-                sum: 12.0,
-            },
-        );
+        let otel = {
+            let m = Metric::new(
+                "cpu_seconds_total",
+                MetricKind::Incremental,
+                MetricValue::AggregatedSummary {
+                    quantiles,
+                    count: 6,
+                    sum: 12.0,
+                },
+            );
+            let (s, d, md) = m.into_parts();
+            OtelMetric::from_metric_parts(s, d, md)
+        };
         let options = RequestBuilderOptions {
             use_new_naming: false,
         };
 
-        let insert = metric_to_insert_request({ let (s, d, md) = metric.into_parts(); OtelMetric::from_metric_parts(s, d, md) }, &options);
+        let insert = metric_to_insert_request(otel, &options);
         let rows = insert.rows.expect("Empty insert request");
         assert_eq!(
             rows.rows[0].values.len(),

@@ -197,7 +197,7 @@ mod tests {
     use super::*;
     use crate::{
         api::schema::sort::SortField,
-        event::{MetricKind, MetricValue},
+        event::{MetricKind, OtelMetric},
     };
 
     struct FileSourceMetricTest {
@@ -224,11 +224,9 @@ mod tests {
     }
 
     fn metric(name: &str, value: f64) -> Metric {
-        Metric::new(
-            name,
-            MetricKind::Incremental,
-            MetricValue::Counter { value },
-        )
+        let otel = OtelMetric::new_counter(name, MetricKind::Incremental, value);
+        let (s, d, md) = otel.into_metric_parts();
+        Metric::from_parts(s, d, md)
     }
 
     fn by_name(name: &'static str) -> FileSourceMetricTest {

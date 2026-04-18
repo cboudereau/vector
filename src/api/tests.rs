@@ -18,7 +18,7 @@ use vector_lib::{
 use crate::{
     api::schema::events::{create_events_stream, log, metric, output::OutputEventsPayload},
     config::{Config, OutputId},
-    event::{OtelLog, Metric, MetricKind, MetricValue},
+    event::{OtelLog, Metric, MetricKind, MetricValue, OtelMetric},
     sinks::blackhole::BlackholeConfig,
     sources::demo_logs::{DemoLogsConfig, OutputFormat},
     test_util::{start_topology, trace_init},
@@ -93,11 +93,11 @@ async fn sink_events() {
     // Send some events down the wire. Waiting until the first notifications are in
     // to ensure the event handler has been initialized.
     let log_event = OtelLog::default();
-    let metric_event = Metric::new(
-        id.to_string(),
-        MetricKind::Incremental,
-        MetricValue::Counter { value: 1.0 },
-    );
+    let metric_event = {
+        let otel = OtelMetric::new_counter(id.to_string(), MetricKind::Incremental, 1.0);
+        let (s, d, md) = otel.into_metric_parts();
+        Metric::from_parts(s, d, md)
+    };
 
     fanout
         .send(vec![metric_event].into(), None)

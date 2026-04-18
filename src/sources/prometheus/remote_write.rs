@@ -289,22 +289,18 @@ mod test {
         let timestamp = || Utc::now().trunc_subsecs(3);
         vec![
             Event::Metric({
-                let m = Metric::new(
-                    "counter_1",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 42.0 },
-                )
-                .with_timestamp(Some(timestamp()));
+                let otel = OtelMetric::new_counter("counter_1", MetricKind::Absolute, 42.0);
+                let (s, d, md) = otel.into_metric_parts();
+                let m = Metric::from_parts(s, d, md)
+                    .with_timestamp(Some(timestamp()));
                 let (s, d, md) = m.into_parts();
                 OtelMetric::from_metric_parts(s, d, md)
             }),
             Event::Metric({
-                let m = Metric::new(
-                    "gauge_2",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 41.0 },
-                )
-                .with_timestamp(Some(timestamp()));
+                let otel = OtelMetric::new_gauge("gauge_2", 41.0);
+                let (s, d, md) = otel.into_metric_parts();
+                let m = Metric::from_parts(s, d, md)
+                    .with_timestamp(Some(timestamp()));
                 let (s, d, md) = m.into_parts();
                 OtelMetric::from_metric_parts(s, d, md)
             }),
@@ -478,16 +474,14 @@ mod test {
 
         let events = vec![
             Event::Metric({
-                let m = Metric::new(
-                    "gauge_2",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 41.0 },
-                )
-                .with_timestamp(Some(timestamp))
-                .with_tags(Some(metric_tags! {
-                    "code" => "200".to_string(),
-                    "code" => "success".to_string(),
-                }));
+                let otel = OtelMetric::new_gauge("gauge_2", 41.0);
+                let (s, d, md) = otel.into_metric_parts();
+                let m = Metric::from_parts(s, d, md)
+                    .with_timestamp(Some(timestamp))
+                    .with_tags(Some(metric_tags! {
+                        "code" => "200".to_string(),
+                        "code" => "success".to_string(),
+                    }));
                 let (s, d, md) = m.into_parts();
                 OtelMetric::from_metric_parts(s, d, md)
             }),
@@ -495,15 +489,13 @@ mod test {
 
         let expected = vec![
             Event::Metric({
-                let m = Metric::new(
-                    "gauge_2",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 41.0 },
-                )
-                .with_timestamp(Some(timestamp))
-                .with_tags(Some(metric_tags! {
-                    "code" => "success".to_string(),
-                }));
+                let otel = OtelMetric::new_gauge("gauge_2", 41.0);
+                let (s, d, md) = otel.into_metric_parts();
+                let m = Metric::from_parts(s, d, md)
+                    .with_timestamp(Some(timestamp))
+                    .with_tags(Some(metric_tags! {
+                        "code" => "success".to_string(),
+                    }));
                 let (s, d, md) = m.into_parts();
                 OtelMetric::from_metric_parts(s, d, md)
             }),

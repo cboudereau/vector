@@ -405,8 +405,21 @@ mod tests {
     use super::*;
     use crate::{
         event::metric::{Metric, MetricKind, MetricValue, StatisticKind},
+        event::OtelMetric,
         sinks::influxdb::test_util::{assert_fields, split_line_protocol, tags, ts},
     };
+
+    /// Test helper: build a Metric via OtelMetric round-trip.
+    fn metric_from_otel(otel: OtelMetric) -> Metric {
+        let (s, d, md) = otel.into_metric_parts();
+        Metric::from_parts(s, d, md)
+    }
+
+    /// Test helper: convert legacy Metric to OtelMetric (for complex value types).
+    fn otel(m: Metric) -> OtelMetric {
+        let (s, d, md) = m.into_parts();
+        OtelMetric::from_metric_parts(s, d, md)
+    }
 
     #[test]
     fn generate_config() {
@@ -427,21 +440,17 @@ mod tests {
     #[test]
     fn test_encode_counter() {
         let events = vec![
-            Metric::new(
-                "total",
-                MetricKind::Incremental,
-                MetricValue::Counter { value: 1.5 },
-            )
-            .with_namespace(Some("ns"))
-            .with_timestamp(Some(ts())),
-            Metric::new(
-                "check",
-                MetricKind::Incremental,
-                MetricValue::Counter { value: 1.0 },
-            )
-            .with_namespace(Some("ns"))
-            .with_tags(Some(tags()))
-            .with_timestamp(Some(ts())),
+            metric_from_otel(
+                OtelMetric::new_counter("total", MetricKind::Incremental, 1.5)
+                    .with_namespace(Some("ns"))
+                    .with_timestamp(Some(ts())),
+            ),
+            metric_from_otel(
+                OtelMetric::new_counter("check", MetricKind::Incremental, 1.0)
+                    .with_namespace(Some("ns"))
+                    .with_tags(Some(tags()))
+                    .with_timestamp(Some(ts())),
+            ),
         ];
 
         let line_protocols = encode_events(ProtocolVersion::V2, events, Some("vector"), None, &[]);
@@ -455,14 +464,16 @@ mod tests {
     #[test]
     fn test_encode_gauge() {
         let events = vec![
-            Metric::new(
-                "meter",
-                MetricKind::Incremental,
-                MetricValue::Gauge { value: -1.5 },
-            )
-            .with_namespace(Some("ns"))
-            .with_tags(Some(tags()))
-            .with_timestamp(Some(ts())),
+            metric_from_otel(
+                otel(Metric::new(
+                    "meter",
+                    MetricKind::Incremental,
+                    MetricValue::Gauge { value: -1.5 },
+                )
+                .with_namespace(Some("ns"))
+                .with_tags(Some(tags()))
+                .with_timestamp(Some(ts()))),
+            ),
         ];
 
         let line_protocols = encode_events(ProtocolVersion::V2, events, None, None, &[]);
@@ -475,16 +486,18 @@ mod tests {
     #[test]
     fn test_encode_set() {
         let events = vec![
-            Metric::new(
-                "users",
-                MetricKind::Incremental,
-                MetricValue::Set {
-                    values: vec!["alice".into(), "bob".into()].into_iter().collect(),
-                },
-            )
-            .with_namespace(Some("ns"))
-            .with_tags(Some(tags()))
-            .with_timestamp(Some(ts())),
+            metric_from_otel(
+                otel(Metric::new(
+                    "users",
+                    MetricKind::Incremental,
+                    MetricValue::Set {
+                        values: vec!["alice".into(), "bob".into()].into_iter().collect(),
+                    },
+                )
+                .with_namespace(Some("ns"))
+                .with_tags(Some(tags()))
+                .with_timestamp(Some(ts()))),
+            ),
         ];
 
         let line_protocols = encode_events(ProtocolVersion::V2, events, None, None, &[]);
@@ -497,18 +510,20 @@ mod tests {
     #[test]
     fn test_encode_histogram_v1() {
         let events = vec![
-            Metric::new(
-                "requests",
-                MetricKind::Absolute,
-                MetricValue::AggregatedHistogram {
-                    buckets: vector_lib::buckets![1.0 => 1, 2.1 => 2, 3.0 => 3],
-                    count: 6,
-                    sum: 12.5,
-                },
-            )
-            .with_namespace(Some("ns"))
-            .with_tags(Some(tags()))
-            .with_timestamp(Some(ts())),
+            metric_from_otel(
+                otel(Metric::new(
+                    "requests",
+                    MetricKind::Absolute,
+                    MetricValue::AggregatedHistogram {
+                        buckets: vector_lib::buckets![1.0 => 1, 2.1 => 2, 3.0 => 3],
+                        count: 6,
+                        sum: 12.5,
+                    },
+                )
+                .with_namespace(Some("ns"))
+                .with_tags(Some(tags()))
+                .with_timestamp(Some(ts()))),
+            ),
         ];
 
         let line_protocols = encode_events(ProtocolVersion::V1, events, None, None, &[]);
@@ -540,18 +555,20 @@ mod tests {
     #[test]
     fn test_encode_histogram() {
         let events = vec![
-            Metric::new(
-                "requests",
-                MetricKind::Absolute,
-                MetricValue::AggregatedHistogram {
-                    buckets: vector_lib::buckets![1.0 => 1, 2.1 => 2, 3.0 => 3],
-                    count: 6,
-                    sum: 12.5,
-                },
-            )
-            .with_namespace(Some("ns"))
-            .with_tags(Some(tags()))
-            .with_timestamp(Some(ts())),
+            metric_from_otel(
+                otel(Metric::new(
+                    "requests",
+                    MetricKind::Absolute,
+                    MetricValue::AggregatedHistogram {
+                        buckets: vector_lib::buckets![1.0 => 1, 2.1 => 2, 3.0 => 3],
+                        count: 6,
+                        sum: 12.5,
+                    },
+                )
+                .with_namespace(Some("ns"))
+                .with_tags(Some(tags()))
+                .with_timestamp(Some(ts()))),
+            ),
         ];
 
         let line_protocols = encode_events(ProtocolVersion::V2, events, None, None, &[]);
@@ -583,18 +600,20 @@ mod tests {
     #[test]
     fn test_encode_summary_v1() {
         let events = vec![
-            Metric::new(
-                "requests_sum",
-                MetricKind::Absolute,
-                MetricValue::AggregatedSummary {
-                    quantiles: vector_lib::quantiles![0.01 => 1.5, 0.5 => 2.0, 0.99 => 3.0],
-                    count: 6,
-                    sum: 12.0,
-                },
-            )
-            .with_namespace(Some("ns"))
-            .with_tags(Some(tags()))
-            .with_timestamp(Some(ts())),
+            metric_from_otel(
+                otel(Metric::new(
+                    "requests_sum",
+                    MetricKind::Absolute,
+                    MetricValue::AggregatedSummary {
+                        quantiles: vector_lib::quantiles![0.01 => 1.5, 0.5 => 2.0, 0.99 => 3.0],
+                        count: 6,
+                        sum: 12.0,
+                    },
+                )
+                .with_namespace(Some("ns"))
+                .with_tags(Some(tags()))
+                .with_timestamp(Some(ts()))),
+            ),
         ];
 
         let line_protocols = encode_events(ProtocolVersion::V1, events, None, None, &[]);
@@ -626,18 +645,20 @@ mod tests {
     #[test]
     fn test_encode_summary() {
         let events = vec![
-            Metric::new(
-                "requests_sum",
-                MetricKind::Absolute,
-                MetricValue::AggregatedSummary {
-                    quantiles: vector_lib::quantiles![0.01 => 1.5, 0.5 => 2.0, 0.99 => 3.0],
-                    count: 6,
-                    sum: 12.0,
-                },
-            )
-            .with_namespace(Some("ns"))
-            .with_tags(Some(tags()))
-            .with_timestamp(Some(ts())),
+            metric_from_otel(
+                otel(Metric::new(
+                    "requests_sum",
+                    MetricKind::Absolute,
+                    MetricValue::AggregatedSummary {
+                        quantiles: vector_lib::quantiles![0.01 => 1.5, 0.5 => 2.0, 0.99 => 3.0],
+                        count: 6,
+                        sum: 12.0,
+                    },
+                )
+                .with_namespace(Some("ns"))
+                .with_tags(Some(tags()))
+                .with_timestamp(Some(ts()))),
+            ),
         ];
 
         let line_protocols = encode_events(ProtocolVersion::V2, events, None, None, &[]);
@@ -669,47 +690,53 @@ mod tests {
     #[test]
     fn test_encode_distribution() {
         let events = vec![
-            Metric::new(
-                "requests",
-                MetricKind::Incremental,
-                MetricValue::Distribution {
-                    samples: vector_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2],
-                    statistic: StatisticKind::Histogram,
-                },
-            )
-            .with_namespace(Some("ns"))
-            .with_tags(Some(tags()))
-            .with_timestamp(Some(ts())),
-            Metric::new(
-                "dense_stats",
-                MetricKind::Incremental,
-                MetricValue::Distribution {
-                    samples: (0..20)
-                        .map(|v| Sample {
-                            value: f64::from(v),
-                            rate: 1,
-                        })
-                        .collect(),
-                    statistic: StatisticKind::Histogram,
-                },
-            )
-            .with_namespace(Some("ns"))
-            .with_timestamp(Some(ts())),
-            Metric::new(
-                "sparse_stats",
-                MetricKind::Incremental,
-                MetricValue::Distribution {
-                    samples: (1..5)
-                        .map(|v| Sample {
-                            value: f64::from(v),
-                            rate: v,
-                        })
-                        .collect(),
-                    statistic: StatisticKind::Histogram,
-                },
-            )
-            .with_namespace(Some("ns"))
-            .with_timestamp(Some(ts())),
+            metric_from_otel(
+                otel(Metric::new(
+                    "requests",
+                    MetricKind::Incremental,
+                    MetricValue::Distribution {
+                        samples: vector_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2],
+                        statistic: StatisticKind::Histogram,
+                    },
+                )
+                .with_namespace(Some("ns"))
+                .with_tags(Some(tags()))
+                .with_timestamp(Some(ts()))),
+            ),
+            metric_from_otel(
+                otel(Metric::new(
+                    "dense_stats",
+                    MetricKind::Incremental,
+                    MetricValue::Distribution {
+                        samples: (0..20)
+                            .map(|v| Sample {
+                                value: f64::from(v),
+                                rate: 1,
+                            })
+                            .collect(),
+                        statistic: StatisticKind::Histogram,
+                    },
+                )
+                .with_namespace(Some("ns"))
+                .with_timestamp(Some(ts()))),
+            ),
+            metric_from_otel(
+                otel(Metric::new(
+                    "sparse_stats",
+                    MetricKind::Incremental,
+                    MetricValue::Distribution {
+                        samples: (1..5)
+                            .map(|v| Sample {
+                                value: f64::from(v),
+                                rate: v,
+                            })
+                            .collect(),
+                        statistic: StatisticKind::Histogram,
+                    },
+                )
+                .with_namespace(Some("ns"))
+                .with_timestamp(Some(ts()))),
+            ),
         ];
 
         let line_protocols = encode_events(ProtocolVersion::V2, events, None, None, &[]);
@@ -779,17 +806,19 @@ mod tests {
     #[test]
     fn test_encode_distribution_empty_stats() {
         let events = vec![
-            Metric::new(
-                "requests",
-                MetricKind::Incremental,
-                MetricValue::Distribution {
-                    samples: vec![],
-                    statistic: StatisticKind::Histogram,
-                },
-            )
-            .with_namespace(Some("ns"))
-            .with_tags(Some(tags()))
-            .with_timestamp(Some(ts())),
+            metric_from_otel(
+                otel(Metric::new(
+                    "requests",
+                    MetricKind::Incremental,
+                    MetricValue::Distribution {
+                        samples: vec![],
+                        statistic: StatisticKind::Histogram,
+                    },
+                )
+                .with_namespace(Some("ns"))
+                .with_tags(Some(tags()))
+                .with_timestamp(Some(ts()))),
+            ),
         ];
 
         let line_protocols = encode_events(ProtocolVersion::V2, events, None, None, &[]);
@@ -799,17 +828,19 @@ mod tests {
     #[test]
     fn test_encode_distribution_zero_counts_stats() {
         let events = vec![
-            Metric::new(
-                "requests",
-                MetricKind::Incremental,
-                MetricValue::Distribution {
-                    samples: vector_lib::samples![1.0 => 0, 2.0 => 0],
-                    statistic: StatisticKind::Histogram,
-                },
-            )
-            .with_namespace(Some("ns"))
-            .with_tags(Some(tags()))
-            .with_timestamp(Some(ts())),
+            metric_from_otel(
+                otel(Metric::new(
+                    "requests",
+                    MetricKind::Incremental,
+                    MetricValue::Distribution {
+                        samples: vector_lib::samples![1.0 => 0, 2.0 => 0],
+                        statistic: StatisticKind::Histogram,
+                    },
+                )
+                .with_namespace(Some("ns"))
+                .with_tags(Some(tags()))
+                .with_timestamp(Some(ts()))),
+            ),
         ];
 
         let line_protocols = encode_events(ProtocolVersion::V2, events, None, None, &[]);
@@ -819,17 +850,19 @@ mod tests {
     #[test]
     fn test_encode_distribution_summary() {
         let events = vec![
-            Metric::new(
-                "requests",
-                MetricKind::Incremental,
-                MetricValue::Distribution {
-                    samples: vector_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2],
-                    statistic: StatisticKind::Summary,
-                },
-            )
-            .with_namespace(Some("ns"))
-            .with_tags(Some(tags()))
-            .with_timestamp(Some(ts())),
+            metric_from_otel(
+                otel(Metric::new(
+                    "requests",
+                    MetricKind::Incremental,
+                    MetricValue::Distribution {
+                        samples: vector_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2],
+                        statistic: StatisticKind::Summary,
+                    },
+                )
+                .with_namespace(Some("ns"))
+                .with_tags(Some(tags()))
+                .with_timestamp(Some(ts()))),
+            ),
         ];
 
         let line_protocols = encode_events(
@@ -875,21 +908,17 @@ mod tests {
         crate::test_util::trace_init();
 
         let events = vec![
-            Metric::new(
-                "cpu",
-                MetricKind::Absolute,
-                MetricValue::Gauge { value: 2.5 },
-            )
-            .with_namespace(Some("vector"))
-            .with_timestamp(Some(ts())),
-            Metric::new(
-                "mem",
-                MetricKind::Absolute,
-                MetricValue::Gauge { value: 1000.0 },
-            )
-            .with_namespace(Some("vector"))
-            .with_tags(Some(tags()))
-            .with_timestamp(Some(ts())),
+            metric_from_otel(
+                OtelMetric::new_gauge("cpu", 2.5)
+                    .with_namespace(Some("vector"))
+                    .with_timestamp(Some(ts())),
+            ),
+            metric_from_otel(
+                OtelMetric::new_gauge("mem", 1000.0)
+                    .with_namespace(Some("vector"))
+                    .with_tags(Some(tags()))
+                    .with_timestamp(Some(ts())),
+            ),
         ];
 
         let mut tags = HashMap::new();
@@ -929,7 +958,7 @@ mod integration_tests {
     use crate::{
         config::{SinkConfig, SinkContext},
         event::{
-            Event,
+            Event, OtelMetric,
             metric::{Metric, MetricKind, MetricValue},
         },
         http::HttpClient,
@@ -1088,16 +1117,12 @@ mod integration_tests {
         let mut events = Vec::new();
         for i in 0..10 {
             let event = Event::Metric(
-                Metric::new(
-                    metric.clone(),
-                    MetricKind::Incremental,
-                    MetricValue::Counter { value: i as f64 },
-                )
-                .with_namespace(Some("ns"))
-                .with_tags(Some(metric_tags!(
-                    "region" => "us-west-1",
-                    "production" => "true",
-                ))),
+                OtelMetric::new_counter(metric.clone(), MetricKind::Incremental, i as f64)
+                    .with_namespace(Some("ns"))
+                    .with_tags(Some(metric_tags!(
+                        "region" => "us-west-1",
+                        "production" => "true",
+                    ))),
             );
             events.push(event);
         }
@@ -1169,17 +1194,13 @@ mod integration_tests {
 
     fn create_event(i: i32) -> Event {
         Event::Metric(
-            Metric::new(
-                format!("counter-{i}"),
-                MetricKind::Incremental,
-                MetricValue::Counter { value: i as f64 },
-            )
-            .with_namespace(Some("ns"))
-            .with_tags(Some(metric_tags!(
-                "region" => "us-west-1",
-                "production" => "true",
-            )))
-            .with_timestamp(Some(Utc::now())),
+            OtelMetric::new_counter(format!("counter-{i}"), MetricKind::Incremental, i as f64)
+                .with_namespace(Some("ns"))
+                .with_tags(Some(metric_tags!(
+                    "region" => "us-west-1",
+                    "production" => "true",
+                )))
+                .with_timestamp(Some(Utc::now())),
         )
     }
 }

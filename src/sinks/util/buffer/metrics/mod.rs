@@ -140,7 +140,7 @@ mod tests {
     use itertools::Itertools;
     use similar_asserts::assert_eq;
     use vector_lib::{
-        event::metric::{MetricKind, MetricKind::*, MetricValue, StatisticKind},
+        event::{OtelMetric, metric::{MetricKind, MetricKind::*, MetricValue, StatisticKind}},
         metric_tags,
     };
 
@@ -153,37 +153,49 @@ mod tests {
     type Buffer = Vec<Vec<Metric>>;
 
     pub fn sample_counter(num: usize, tagstr: &str, kind: MetricKind, value: f64) -> Metric {
-        Metric::new(
-            format!("counter-{num}"),
-            kind,
-            MetricValue::Counter { value },
-        )
+        {
+            let otel = OtelMetric::new_counter(format!("counter-{num}"), kind, value);
+            let (s, d, md) = otel.into_metric_parts();
+            Metric::from_parts(s, d, md)
+        }
         .with_tags(Some(metric_tags!(tagstr => "true")))
     }
 
     pub fn sample_gauge(num: usize, kind: MetricKind, value: f64) -> Metric {
-        Metric::new(format!("gauge-{num}"), kind, MetricValue::Gauge { value })
+        let m = Metric::new(format!("gauge-{num}"), kind, MetricValue::Gauge { value });
+        let (s, d, md) = m.into_parts();
+        let otel = OtelMetric::from_metric_parts(s, d, md);
+        let (s, d, md) = otel.into_metric_parts();
+        Metric::from_parts(s, d, md)
     }
 
     pub fn sample_set<T: ToString>(num: usize, kind: MetricKind, values: &[T]) -> Metric {
-        Metric::new(
+        let m = Metric::new(
             format!("set-{num}"),
             kind,
             MetricValue::Set {
                 values: values.iter().map(|s| s.to_string()).collect(),
             },
-        )
+        );
+        let (s, d, md) = m.into_parts();
+        let otel = OtelMetric::from_metric_parts(s, d, md);
+        let (s, d, md) = otel.into_metric_parts();
+        Metric::from_parts(s, d, md)
     }
 
     pub fn sample_distribution_histogram(num: u32, kind: MetricKind, rate: u32) -> Metric {
-        Metric::new(
+        let m = Metric::new(
             format!("dist-{num}"),
             kind,
             MetricValue::Distribution {
                 samples: vector_lib::samples![num as f64 => rate],
                 statistic: StatisticKind::Histogram,
             },
-        )
+        );
+        let (s, d, md) = m.into_parts();
+        let otel = OtelMetric::from_metric_parts(s, d, md);
+        let (s, d, md) = otel.into_metric_parts();
+        Metric::from_parts(s, d, md)
     }
 
     pub fn sample_aggregated_histogram(
@@ -193,7 +205,7 @@ mod tests {
         cfactor: u64,
         sum: f64,
     ) -> Metric {
-        Metric::new(
+        let m = Metric::new(
             format!("buckets-{num}"),
             kind,
             MetricValue::AggregatedHistogram {
@@ -205,11 +217,15 @@ mod tests {
                 count: 7 * cfactor,
                 sum,
             },
-        )
+        );
+        let (s, d, md) = m.into_parts();
+        let otel = OtelMetric::from_metric_parts(s, d, md);
+        let (s, d, md) = otel.into_metric_parts();
+        Metric::from_parts(s, d, md)
     }
 
     pub fn sample_aggregated_summary(num: u32, kind: MetricKind, factor: f64) -> Metric {
-        Metric::new(
+        let m = Metric::new(
             format!("quantiles-{num}"),
             kind,
             MetricValue::AggregatedSummary {
@@ -221,7 +237,11 @@ mod tests {
                 count: factor as u64 * 10,
                 sum: factor * 7.0,
             },
-        )
+        );
+        let (s, d, md) = m.into_parts();
+        let otel = OtelMetric::from_metric_parts(s, d, md);
+        let (s, d, md) = otel.into_metric_parts();
+        Metric::from_parts(s, d, md)
     }
 
     fn rebuffer<State: MetricNormalize + Default>(metrics: Vec<Metric>) -> Buffer {

@@ -335,11 +335,11 @@ mod tests {
     #[test]
     fn test_encode_counter_event() {
         let events = vec![
-            Metric::new(
-                "pool.used",
-                MetricKind::Incremental,
-                MetricValue::Counter { value: 42.0 },
-            )
+            {
+                let otel = OtelMetric::new_counter("pool.used", MetricKind::Incremental, 42.0);
+                let (s, d, md) = otel.into_metric_parts();
+                Metric::from_parts(s, d, md)
+            }
             .with_namespace(Some("jvm"))
             .with_timestamp(Some(
                 Utc.with_ymd_and_hms(2020, 8, 18, 21, 0, 0)
@@ -357,11 +357,11 @@ mod tests {
     #[test]
     fn test_encode_counter_event_no_namespace() {
         let events = vec![
-            Metric::new(
-                "used",
-                MetricKind::Incremental,
-                MetricValue::Counter { value: 42.0 },
-            )
+            {
+                let otel = OtelMetric::new_counter("used", MetricKind::Incremental, 42.0);
+                let (s, d, md) = otel.into_metric_parts();
+                Metric::from_parts(s, d, md)
+            }
             .with_timestamp(Some(
                 Utc.with_ymd_and_hms(2020, 8, 18, 21, 0, 0)
                     .single()
@@ -378,22 +378,22 @@ mod tests {
     #[test]
     fn test_encode_counter_multiple_events() {
         let events = vec![
-            Metric::new(
-                "pool.used",
-                MetricKind::Incremental,
-                MetricValue::Counter { value: 42.0 },
-            )
+            {
+                let otel = OtelMetric::new_counter("pool.used", MetricKind::Incremental, 42.0);
+                let (s, d, md) = otel.into_metric_parts();
+                Metric::from_parts(s, d, md)
+            }
             .with_namespace(Some("jvm"))
             .with_timestamp(Some(
                 Utc.with_ymd_and_hms(2020, 8, 18, 21, 0, 0)
                     .single()
                     .expect("invalid timestamp"),
             )),
-            Metric::new(
-                "pool.committed",
-                MetricKind::Incremental,
-                MetricValue::Counter { value: 18874368.0 },
-            )
+            {
+                let otel = OtelMetric::new_counter("pool.committed", MetricKind::Incremental, 18874368.0);
+                let (s, d, md) = otel.into_metric_parts();
+                Metric::from_parts(s, d, md)
+            }
             .with_namespace(Some("jvm"))
             .with_timestamp(Some(
                 Utc.with_ymd_and_hms(2020, 8, 18, 21, 0, 0)
@@ -448,13 +448,11 @@ mod tests {
         let mut events = Vec::new();
         for (i, (namespace, metric, val)) in metrics.iter().enumerate() {
             let event = {
-                let m = Metric::new(
-                    *metric,
-                    MetricKind::Incremental,
-                    MetricValue::Counter { value: *val },
-                )
-                .with_namespace(Some(*namespace))
-                .with_tags(Some(metric_tags!("os.host" => "somehost")))
+                let otel = OtelMetric::new_counter(*metric, MetricKind::Incremental, *val);
+                let (s, d, md) = otel.into_metric_parts();
+                let m = Metric::from_parts(s, d, md)
+                    .with_namespace(Some(*namespace))
+                    .with_tags(Some(metric_tags!("os.host" => "somehost")))
                     .with_timestamp(Some(Utc.with_ymd_and_hms(2020, 8, 18, 21, 0, 0).single()
                                          .and_then(|t| t.with_nanosecond(i as u32))
                                          .expect("invalid timestamp")));

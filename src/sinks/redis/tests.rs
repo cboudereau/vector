@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use vector_lib::{
     codecs::{JsonSerializerConfig, TextSerializerConfig},
-    event::{Event, OtelLog, Metric, MetricKind, MetricValue, OtelMetric},
+    event::{Event, OtelLog, Metric, MetricKind, OtelMetric},
     request_metadata::GroupedCountByteSize,
 };
 
@@ -80,11 +80,11 @@ fn redis_log_encode_event() {
 #[test]
 fn redis_metric_encode_event() {
     let mut byte_size = GroupedCountByteSize::new_untagged();
-    let metric = Metric::new(
-        "test_counter",
-        MetricKind::Absolute,
-        MetricValue::Counter { value: 42.0 },
-    );
+    let metric = {
+        let otel = OtelMetric::new_counter("test_counter", MetricKind::Absolute, 42.0);
+        let (s, d, md) = otel.into_metric_parts();
+        Metric::from_parts(s, d, md)
+    };
 
     let result = encode_event(
         { let (s, d, md) = metric.into_parts(); Event::Metric(OtelMetric::from_metric_parts(s, d, md)) },

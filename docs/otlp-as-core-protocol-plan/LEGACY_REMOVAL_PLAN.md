@@ -582,7 +582,7 @@ Status key: **DONE** / **PARTIAL** / **OPEN** / **BLOCKED**
 | T10 | Delete proto encode `From<super::Metric>` parity test | **DONE** | `5a673ca` | Deleted parity test + `From<super::Metric> for Metric` (zero callers). `From<super::Metric> for WithMetadata` kept (trait impl, no dead_code warning). |
 | T11 | OtelMetric parity tests (15 sites in `otel_event.rs`) | **DONE** | `656da3c` | 13 call sites migrated, 5 test functions renamed |
 | T12 | Metric struct internal tests (30 sites in `metric/mod.rs`) | **TD-1** | | Metric stays as internal type — tests remain valid |
-| T13 | Delete Metric struct — refactor MetricNormalize trait | **IN PROGRESS** | `0361342`..`b7ab378` | Steps done: fields `pub`, all 10 normalizer impls use direct field access. **Remaining:** (1) replace remaining 46 Metric method calls in sink encoders, (2) replace 334 `Metric::new` with struct literal construction, (3) change trait signature to tuples or delete struct. |
+| T13 | Delete Metric struct — refactor MetricNormalize trait | **IN PROGRESS** | `0361342`..`34e915a` | Fields `pub`, all normalizer impls + all sink production code use direct field access. **Metric methods are dead in production** — only test code uses them. **Remaining:** 334 `Metric::new` in tests (cosmetic), delete unused accessor methods from struct, eventually replace struct with type alias. |
 | T14 | `Arbitrary` property tests bypass `from_legacy_metric` | **DONE** | `ac88015` | `array.rs` and `test/common.rs` use `into_parts` + `from_metric_parts` |
 
 #### Workstream 3: Eliminate legacy field model (VRL aliases + layout round-trip)

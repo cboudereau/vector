@@ -590,9 +590,9 @@ the struct**:
 | T4 | `MetricSet` internals: `Metric` → `OtelMetric` | **DONE** | `3856582` |
 | T5 | Prometheus collector/exporter: direct field access | **DONE** | `34e915a` |
 | T6 | Split iterator: `Metric` → `OtelMetric` | **DONE** | `3856582` |
-| T12 | Test code: `Metric::new` → `OtelMetric` constructors | **NEXT** | 326 remaining — mechanical bulk migration |
-| T13 | Delete `Metric` struct + all impls | **NEXT** | After T12 — delete struct, `FromLua`, `Arbitrary`, proto impls |
-| T20 | `from_metric_kv` → emit OtelMetric directly | **NEXT** | Internal metrics controller |
+| T12 | Test code: `Metric::new` → `OtelMetric` constructors | **IN PROGRESS** | `43ede6e` | 326→171 migrated. Remaining 171 use `otel()` wrapper or test helpers. |
+| T20 | `capture_metrics()` → return `Vec<OtelMetric>` | **NEXT** | Internal metrics controller + 48 callers. `from_metric_kv` → `from_metric_parts`. |
+| T13 | Delete `Metric` struct + all impls | **NEXT** | After T12+T20 — delete struct, `FromLua`, `Arbitrary`, proto impls, all remaining `Metric::new` |
 | T21 | Delete `normalize_otel` / `make_*_otel` wrappers | **DONE** | `3856582` — deleted as dead code |
 | T22 | Delete `MetricEntry::from_metric` / `into_metric` | **DONE** | `3856582` — replaced with `from_otel` / `into_otel` |
 

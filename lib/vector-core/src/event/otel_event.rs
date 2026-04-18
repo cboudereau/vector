@@ -836,6 +836,41 @@ impl OtelLog {
                                 }
                                 return old;
                             }
+                            "timestamp" => {
+                                // Fast-path: store as time_unix_nano
+                                let old = if self.record.time_unix_nano != 0 {
+                                    let n = self.record.time_unix_nano;
+                                    let secs = (n / 1_000_000_000) as i64;
+                                    let nsecs = (n % 1_000_000_000) as u32;
+                                    chrono::DateTime::from_timestamp(secs, nsecs).map(Value::Timestamp)
+                                } else { None };
+                                if let Some(ts) = value.as_timestamp() {
+                                    self.record_mut().time_unix_nano =
+                                        ts.timestamp_nanos_opt().unwrap_or(0).max(0) as u64;
+                                }
+                                return old;
+                            }
+                            "source_type" => {
+                                let old = self.get_source_type();
+                                if let Some(s) = value.as_str() {
+                                    self.set_resource_attribute(
+                                        "source_type".to_string(),
+                                        string_value(s),
+                                    );
+                                }
+                                return old;
+                            }
+                            "host" => {
+                                let old = self.get_host();
+                                let host_str = value.as_str()
+                                    .map(|s| s.to_string())
+                                    .unwrap_or_else(|| value.to_string_lossy().into_owned());
+                                self.set_resource_attribute(
+                                    "host.name".to_string(),
+                                    string_value(&host_str),
+                                );
+                                return old;
+                            }
                             _ => {} // fall through to legacy round-trip
                         }
                     }

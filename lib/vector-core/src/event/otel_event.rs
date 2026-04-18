@@ -3241,16 +3241,14 @@ impl From<std::collections::HashMap<vrl::prelude::KeyString, Value>> for OtelLog
 
 impl Serialize for OtelLog {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        // Legacy flat layout — many sinks use field paths in the serialized JSON
-        // at runtime (websocket ack message_id, Elasticsearch _id, Splunk HEC
-        // timestamp extraction). Changing to OTLP JSON breaks runtime behavior,
-        // not just tests. Use OtlpJsonLog wrapper for explicit opt-in.
+        // TODO(T15): Switch to OtlpJsonLog once all sinks/tests are migrated.
         self.to_value_legacy_layout().serialize(serializer)
     }
 }
 
 impl Serialize for OtelSpan {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        // TODO(T15): Switch to OtlpJsonSpan once all sinks/tests are migrated.
         self.to_value_legacy_layout().serialize(serializer)
     }
 }

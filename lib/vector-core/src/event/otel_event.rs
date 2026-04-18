@@ -837,18 +837,22 @@ impl OtelLog {
                                 return old;
                             }
                             "timestamp" => {
-                                // Fast-path: store as time_unix_nano
-                                let old = if self.record.time_unix_nano != 0 {
-                                    let n = self.record.time_unix_nano;
-                                    let secs = (n / 1_000_000_000) as i64;
-                                    let nsecs = (n % 1_000_000_000) as u32;
-                                    chrono::DateTime::from_timestamp(secs, nsecs).map(Value::Timestamp)
-                                } else { None };
+                                // Fast-path only for valid post-epoch timestamps
                                 if let Some(ts) = value.as_timestamp() {
-                                    self.record_mut().time_unix_nano =
-                                        ts.timestamp_nanos_opt().unwrap_or(0).max(0) as u64;
+                                    if let Some(nanos) = ts.timestamp_nanos_opt() {
+                                        if nanos >= 0 {
+                                            let old = if self.record.time_unix_nano != 0 {
+                                                let n = self.record.time_unix_nano;
+                                                let secs = (n / 1_000_000_000) as i64;
+                                                let nsecs = (n % 1_000_000_000) as u32;
+                                                chrono::DateTime::from_timestamp(secs, nsecs).map(Value::Timestamp)
+                                            } else { None };
+                                            self.record_mut().time_unix_nano = nanos as u64;
+                                            return old;
+                                        }
+                                    }
                                 }
-                                return old;
+                                // Fall through for pre-epoch, overflow, or non-timestamp values
                             }
                             "source_type" => {
                                 let old = self.get_source_type();

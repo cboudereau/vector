@@ -236,7 +236,7 @@ fn create_build_request(
 }
 
 fn merge_tags(event: &Metric, tags: Option<&HashMap<String, String>>) -> Option<MetricTags> {
-    match (event.tags().cloned(), tags) {
+    match (event.series.tags.as_ref().cloned(), tags) {
         (Some(mut event_tags), Some(config_tags)) => {
             event_tags.extend(config_tags.iter().map(|(k, v)| (k.clone(), v.clone())));
             Some(event_tags)
@@ -257,7 +257,7 @@ pub struct InfluxMetricNormalize;
 
 impl MetricNormalize for InfluxMetricNormalize {
     fn normalize(&mut self, state: &mut MetricSet, metric: Metric) -> Option<Metric> {
-        match (metric.kind(), &metric.value()) {
+        match (metric.data.kind, &metric.data.value) {
             // Counters are disaggregated. We take the previous value from the state
             // and emit the difference between previous and current as a Counter
             (_, MetricValue::Counter { .. }) => state.make_incremental(metric),
@@ -280,10 +280,10 @@ fn encode_events(
     let count = events.len();
 
     for event in events.into_iter() {
-        let fullname = encode_namespace(event.namespace().or(default_namespace), '.', event.name());
-        let ts = encode_timestamp(event.timestamp());
+        let fullname = encode_namespace(event.series.name.namespace.as_deref().or(default_namespace), '.', event.series.name.name.as_str());
+        let ts = encode_timestamp(event.data.time.timestamp);
         let tags = merge_tags(&event, tags);
-        let (metric_type, fields) = get_type_and_fields(event.value(), quantiles);
+        let (metric_type, fields) = get_type_and_fields(&event.data.value, quantiles);
 
         let mut unwrapped_tags = tags.unwrap_or_default();
         unwrapped_tags.replace("metric_type".to_owned(), metric_type.to_owned());

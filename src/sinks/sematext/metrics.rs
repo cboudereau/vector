@@ -229,7 +229,7 @@ struct SematextMetricNormalize;
 
 impl MetricNormalize for SematextMetricNormalize {
     fn normalize(&mut self, state: &mut MetricSet, metric: Metric) -> Option<Metric> {
-        match &metric.value() {
+        match &metric.data.value {
             MetricValue::Gauge { .. } => state.make_absolute(metric),
             MetricValue::Counter { .. } => state.make_incremental(metric),
             _ => {

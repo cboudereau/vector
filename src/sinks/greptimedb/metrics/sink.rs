@@ -21,7 +21,7 @@ pub struct GreptimeDBMetricNormalize;
 
 impl MetricNormalize for GreptimeDBMetricNormalize {
     fn normalize(&mut self, state: &mut MetricSet, metric: Metric) -> Option<Metric> {
-        match (metric.kind(), &metric.value()) {
+        match (metric.data.kind, &metric.data.value) {
             (_, MetricValue::Counter { .. }) => state.make_absolute(metric),
             (_, MetricValue::Gauge { .. }) => state.make_absolute(metric),
             // All others are left as-is

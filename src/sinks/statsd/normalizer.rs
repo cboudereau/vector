@@ -9,7 +9,7 @@ impl MetricNormalize for StatsdNormalizer {
     fn normalize(&mut self, state: &mut MetricSet, metric: Metric) -> Option<Metric> {
         // We primarily care about making sure that metrics are incremental, but for gauges, we can
         // handle both incremental and absolute versions during encoding.
-        match metric.value() {
+        match &metric.data.value {
             // Pass through gauges as-is.
             MetricValue::Gauge { .. } => Some(metric),
             // Otherwise, ensure that it's incremental.

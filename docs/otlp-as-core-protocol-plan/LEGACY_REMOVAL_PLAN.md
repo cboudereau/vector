@@ -586,17 +586,15 @@ the struct**:
 
 | # | Task | Status | Note |
 |---|------|--------|------|
-| T3 | Change `MetricNormalize` trait: `Metric` → `OtelMetric` | **PLANNED** | Change `fn normalize(&mut self, state: &mut MetricSet, metric: Metric) -> Option<Metric>` to `fn normalize(&mut self, state: &mut MetricSet, metric: OtelMetric) -> Option<OtelMetric>`. Update 10 impls. Impls call `metric.value()` / `metric.kind()` (OtelMetric has these). Call `state.make_absolute(metric)` etc. |
-| T4 | `MetricSet` internals: `Metric` → `OtelMetric` | **PLANNED** | `make_absolute`, `make_incremental`, `incremental_to_absolute`, `absolute_to_incremental`, `insert_update` — all take/return `Metric`. Change to `OtelMetric`. Internally decompose via `into_metric_parts()`, operate on `MetricData`, reassemble via `from_metric_parts()`. |
-| T5 | Prometheus collector/exporter: `&Metric` → `&OtelMetric` | **PLANNED** | `encode_metric(&Metric)` → `encode_metric(&OtelMetric)`. OtelMetric has `name()`, `namespace()`, `kind()`, `tags()`, `value()`, `timestamp()` — same API. |
-| T6 | Split iterator: `Metric` → `OtelMetric` | **PLANNED** | `split(Metric)` → `split(OtelMetric)`. Uses `into_metric_parts()` / `from_metric_parts()`. |
-| T12 | Test code: `Metric::new` → `OtelMetric` constructors | **PLANNED** | 334 `Metric::new` in tests → `OtelMetric::new_counter`, `new_gauge`, `new_histogram`, `new_summary`, or `from_metric_parts`. Mechanical bulk migration. |
-| T13 | Delete `Metric` struct + all impls | **PLANNED** | Delete `metric/mod.rs` struct + methods (~400 lines), `From<Metric>` proto impls, `FromLua for Metric` (breaking change), `Arbitrary for Metric`, `Display for Metric`, all trait impls. Keep sub-types (MetricSeries, MetricData, MetricValue, etc.). |
-| T20 | `from_metric_kv` → emit OtelMetric directly | **PLANNED** | Internal metrics controller at `metric/mod.rs:308`. Change to construct OtelMetric via `from_metric_parts` instead of `Metric::new`. |
-| T21 | Delete `normalize_otel` / `make_*_otel` wrapper methods | **PLANNED** | These bridge OtelMetric↔Metric at the normalizer boundary. Once the trait takes OtelMetric directly, these wrappers are dead code. |
-| T22 | Delete `MetricEntry::from_metric` / `into_metric` | **PLANNED** | Replace with `from_otel` / `into_otel` that use `into_metric_parts` / `from_metric_parts`. |
-
-Execution order: T3 → T4 → T5+T6 (parallel) → T20+T21+T22 → T12 → T13
+| T3 | Change `MetricNormalize` trait: `Metric` → `OtelMetric` | **DONE** | `3856582` |
+| T4 | `MetricSet` internals: `Metric` → `OtelMetric` | **DONE** | `3856582` |
+| T5 | Prometheus collector/exporter: direct field access | **DONE** | `34e915a` |
+| T6 | Split iterator: `Metric` → `OtelMetric` | **DONE** | `3856582` |
+| T12 | Test code: `Metric::new` → `OtelMetric` constructors | **NEXT** | 326 remaining — mechanical bulk migration |
+| T13 | Delete `Metric` struct + all impls | **NEXT** | After T12 — delete struct, `FromLua`, `Arbitrary`, proto impls |
+| T20 | `from_metric_kv` → emit OtelMetric directly | **NEXT** | Internal metrics controller |
+| T21 | Delete `normalize_otel` / `make_*_otel` wrappers | **DONE** | `3856582` — deleted as dead code |
+| T22 | Delete `MetricEntry::from_metric` / `into_metric` | **DONE** | `3856582` — replaced with `from_otel` / `into_otel` |
 
 #### Workstream 3: Eliminate legacy field model (layout round-trip)
 

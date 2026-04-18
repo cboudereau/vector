@@ -905,8 +905,44 @@ impl OtelLog {
         path: impl lookup::lookup_v2::TargetPath<'a>,
         prune: bool,
     ) -> Option<Value> {
+        use lookup::lookup_v2::ValuePath;
+        use lookup::path::BorrowedSegment;
+
         match path.prefix() {
             lookup::PathPrefix::Event => {
+                // Fast path for single-segment removes on known proto fields
+                let vp = path.value_path();
+                let mut iter = vp.segment_iter();
+                if let Some(BorrowedSegment::Field(ref field)) = iter.next() {
+                    if iter.next().is_none() {
+                        match field.as_ref() {
+                            "body" => {
+                                let old = self.body().map(any_value_to_vrl);
+                                self.record_mut().body = None;
+                                return old;
+                            }
+                            "severity_text" if !self.record.severity_text.is_empty() => {
+                                let old = Some(Value::Bytes(self.record.severity_text.clone().into()));
+                                self.record_mut().severity_text = String::new();
+                                return old;
+                            }
+                            "severity_number" if self.record.severity_number != 0 => {
+                                let old = Some(Value::Integer(self.record.severity_number as i64));
+                                self.record_mut().severity_number = 0;
+                                return old;
+                            }
+                            "timestamp" if self.record.time_unix_nano != 0 => {
+                                let n = self.record.time_unix_nano;
+                                let secs = (n / 1_000_000_000) as i64;
+                                let nsecs = (n % 1_000_000_000) as u32;
+                                let old = chrono::DateTime::from_timestamp(secs, nsecs).map(Value::Timestamp);
+                                self.record_mut().time_unix_nano = 0;
+                                return old;
+                            }
+                            _ => {} // fall through
+                        }
+                    }
+                }
                 let mut val = self.to_value_legacy_layout();
                 let old = val.remove(path.value_path(), prune);
                 self.apply_value_legacy_layout(val);

@@ -784,7 +784,29 @@ impl OtelLog {
                                 }
                                 // Fall through
                             }
-                            _ => {} // fall through to legacy layout
+                            other => {
+                                // Generic single-segment: check record attributes
+                                for kv in &self.record.attributes {
+                                    if kv.key == other {
+                                        if let Some(ref av) = kv.value {
+                                            return Some(any_value_to_vrl(av));
+                                        }
+                                    }
+                                }
+                                // Also check KvList body keys (legacy layout expands them)
+                                if let Some(body) = self.body() {
+                                    if let Some(OtelValueKind::KvlistValue(kvl)) = &body.value {
+                                        for kv in &kvl.values {
+                                            if kv.key == other {
+                                                if let Some(ref av) = kv.value {
+                                                    return Some(any_value_to_vrl(av));
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                // Fall through to legacy layout for multi-segment paths
+                            }
                         }
                     }
                 }

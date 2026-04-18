@@ -566,31 +566,45 @@ Status key: **DONE** / **PARTIAL** / **OPEN** / **BLOCKED**
 | G.3-boundary | Migrate 14 production boundary callers | **DONE** | `a696cd1`..`00f420b` | host_metrics, internal_metrics, nginx, mongodb, postgresql, static_metrics, aggregate, log_to_metric, statsd, apache, aws_ecs, eventstoredb |
 | G.3a | Source parsers return OtelMetric directly | **DONE** | `8382733` | prometheus (61), apache (61), aws_ecs (30), statsd (19), eventstoredb (9) — 180 Metric::new eliminated |
 
-#### Workstream 2: Delete Metric struct (T1-T14)
+#### Workstream 2: Delete Metric struct — replace with OtelMetric (T1-T14)
+
+Previously done:
+
+| # | Task | Status | Commit |
+|---|------|--------|--------|
+| T1 | Inline `from_legacy_metric` into `from_metric_parts` | **DONE** | `727c801` |
+| T2 | Proto decode bypasses Metric struct | **DONE** | `727c801` |
+| T7 | Sink/transform test `from_legacy_metric` migration (137 sites) | **DONE** | `4a56724`..`656da3c` |
+| T8 | VRL metrics → OtelMetric | **DONE** | `4a56724` |
+| T9 | Lua bindings → parts-based | **DONE** | `8a77309` |
+| T10 | Delete proto encode `From<Metric>` parity test | **DONE** | `5a673ca` |
+| T11 | OtelMetric parity tests | **DONE** | `656da3c` |
+| T14 | Arbitrary property tests | **DONE** | `ac88015` |
+
+Remaining — **replace Metric with OtelMetric everywhere, then delete
+the struct**:
+
+| # | Task | Status | Note |
+|---|------|--------|------|
+| T3 | Change `MetricNormalize` trait: `Metric` → `OtelMetric` | **PLANNED** | Change `fn normalize(&mut self, state: &mut MetricSet, metric: Metric) -> Option<Metric>` to `fn normalize(&mut self, state: &mut MetricSet, metric: OtelMetric) -> Option<OtelMetric>`. Update 10 impls. Impls call `metric.value()` / `metric.kind()` (OtelMetric has these). Call `state.make_absolute(metric)` etc. |
+| T4 | `MetricSet` internals: `Metric` → `OtelMetric` | **PLANNED** | `make_absolute`, `make_incremental`, `incremental_to_absolute`, `absolute_to_incremental`, `insert_update` — all take/return `Metric`. Change to `OtelMetric`. Internally decompose via `into_metric_parts()`, operate on `MetricData`, reassemble via `from_metric_parts()`. |
+| T5 | Prometheus collector/exporter: `&Metric` → `&OtelMetric` | **PLANNED** | `encode_metric(&Metric)` → `encode_metric(&OtelMetric)`. OtelMetric has `name()`, `namespace()`, `kind()`, `tags()`, `value()`, `timestamp()` — same API. |
+| T6 | Split iterator: `Metric` → `OtelMetric` | **PLANNED** | `split(Metric)` → `split(OtelMetric)`. Uses `into_metric_parts()` / `from_metric_parts()`. |
+| T12 | Test code: `Metric::new` → `OtelMetric` constructors | **PLANNED** | 334 `Metric::new` in tests → `OtelMetric::new_counter`, `new_gauge`, `new_histogram`, `new_summary`, or `from_metric_parts`. Mechanical bulk migration. |
+| T13 | Delete `Metric` struct + all impls | **PLANNED** | Delete `metric/mod.rs` struct + methods (~400 lines), `From<Metric>` proto impls, `FromLua for Metric` (breaking change), `Arbitrary for Metric`, `Display for Metric`, all trait impls. Keep sub-types (MetricSeries, MetricData, MetricValue, etc.). |
+| T20 | `from_metric_kv` → emit OtelMetric directly | **PLANNED** | Internal metrics controller at `metric/mod.rs:308`. Change to construct OtelMetric via `from_metric_parts` instead of `Metric::new`. |
+| T21 | Delete `normalize_otel` / `make_*_otel` wrapper methods | **PLANNED** | These bridge OtelMetric↔Metric at the normalizer boundary. Once the trait takes OtelMetric directly, these wrappers are dead code. |
+| T22 | Delete `MetricEntry::from_metric` / `into_metric` | **PLANNED** | Replace with `from_otel` / `into_otel` that use `into_metric_parts` / `from_metric_parts`. |
+
+Execution order: T3 → T4 → T5+T6 (parallel) → T20+T21+T22 → T12 → T13
+
+#### Workstream 3: Eliminate legacy field model (layout round-trip)
 
 | # | Task | Status | Commit | Note |
 |---|------|--------|--------|------|
-| T1 | Inline `from_legacy_metric` into `from_metric_parts` | **DONE** | `727c801` | 250-line body moved; `from_legacy_metric` is now a 3-line delegate |
-| T2 | Proto decode bypasses Metric struct | **DONE** | `727c801` | Added `From<proto::Metric> for OtelMetric` via `decode_metric_parts` |
-| T3 | MetricSet/Normalizer: remove Metric dependency (was B3) | **TRADE-OFF** | `5cd264b` | External OTel API migrated. **Internal methods kept using Metric by design** — the `MetricNormalize` trait (10 impls across sink normalizers) operates on `Metric` as an internal detail. No public API exposes it. Changing the trait would ripple to 10 files for zero user-facing benefit. Metric struct demoted to internal normalizer implementation detail. |
-| T4 | Prometheus collector: `encode_metric(&Metric)` | **TD-1** | | Part of normalizer pipeline — Metric stays as internal type |
-| T5 | Prometheus exporter: Metric aggregation logic | **TD-1** | | Part of normalizer pipeline — Metric stays as internal type |
-| T6 | Split iterator: `AggregatedSummarySplitter` | **TD-1** | | Part of normalizer pipeline — Metric stays as internal type |
-| T7 | Sink/transform test migration (137 `from_legacy_metric`) | **DONE** | `4a56724`..`656da3c` | ALL 137 sites migrated to `from_metric_parts`. Zero callers remain. |
-| T8 | VRL metrics → OtelMetric | **DONE** | `4a56724` | MetricsStorage stores `Vec<OtelMetric>`, added `tag_matches()`, 29 test sites wrapped |
-| T9 | Lua bindings (`lua/metric.rs`, 17 sites) | **DONE** | `8a77309` | `LuaMetric` holds `(MetricSeries, MetricData)` directly. `FromLua for Metric` kept (trait constraint). |
-| T10 | Delete proto encode `From<super::Metric>` parity test | **DONE** | `5a673ca` | Deleted parity test + `From<super::Metric> for Metric` (zero callers). `From<super::Metric> for WithMetadata` kept (trait impl, no dead_code warning). |
-| T11 | OtelMetric parity tests (15 sites in `otel_event.rs`) | **DONE** | `656da3c` | 13 call sites migrated, 5 test functions renamed |
-| T12 | Metric struct internal tests (30 sites in `metric/mod.rs`) | **TD-1** | | Metric stays as internal type — tests remain valid |
-| T13 | Delete Metric struct — refactor MetricNormalize trait | **IN PROGRESS** | `0361342`..`34e915a` | Fields `pub`, all normalizer impls + all sink production code use direct field access. **Metric methods are dead in production** — only test code uses them. **Remaining:** 334 `Metric::new` in tests (cosmetic), delete unused accessor methods from struct, eventually replace struct with type alias. |
-| T14 | `Arbitrary` property tests bypass `from_legacy_metric` | **DONE** | `ac88015` | `array.rs` and `test/common.rs` use `into_parts` + `from_metric_parts` |
-
-#### Workstream 3: Eliminate legacy field model (VRL aliases + layout round-trip)
-
-| # | Task | Status | Commit | Note |
-|---|------|--------|--------|------|
-| T15 | Phase B: Remove VRL aliases | **BLOCKED ON T16** | | Attempted and reverted (`77a4ce5`→`3502f78`). Cannot remove aliases from legacy layout without first eliminating the round-trip — 85 tests break because get/insert/remove/Serialize all go through the layout. **Must do T16 first.** |
-| T16 | Eliminate `to_value_legacy_layout`/`apply_value_legacy_layout` | **IN PROGRESS** | `63f76f1`..`b7ab378` | Fast-path get/insert for 8 proto fields: body, severity_text, severity_number, trace_id, span_id, timestamp, source_type, host. Pre-epoch timestamps handled correctly. Complex/nested paths still use round-trip. **Remaining:** fast-path remove, attribute paths, eventually make ALL paths proto-direct. |
+| T16 | Fast-path get/insert/remove bypassing legacy round-trip | **IN PROGRESS** | `63f76f1`..`9408e1e` | 8 fields for get/insert (body, severity_text, severity_number, trace_id, span_id, timestamp, source_type, host), 4 for remove. **Remaining:** generic attribute paths, resource/scope sub-paths, then delete round-trip functions. |
+| T15 | Remove VRL aliases + Serialize → proto-canonical | **BLOCKED ON T16** | | Serialize for OtelLog stays as legacy layout until T16 covers all paths. Proto is canonical format, JSON is codec — each sink chooses its format. `OtlpJsonLog`/`OtlpJsonSpan` wrappers exist for OTLP-aware sinks. |
+| T23 | Delete `to_value_legacy_layout` + `apply_value_legacy_layout` | **PLANNED** | | After T16 handles ALL paths, these become dead code. Delete ~200 lines including `hoist_resource_fields`, `hoist_scope_fields`. Serialize impl changes to use proto-direct serialization. |
 
 #### Workstream 4: Runtime safety + correctness
 
@@ -957,45 +971,31 @@ is attempted on an OtelMetric field.
 
 ### Trade-offs and architectural decisions
 
-**TD-1: Metric struct kept as internal normalizer type (T3/T13)**
+**TD-1: RESOLVED — Metric struct will be deleted (T3-T13)**
 
-The `MetricNormalize` trait and its 10 implementations operate on
-`Metric` internally. Refactoring the trait signature to accept
-`(MetricSeries, MetricData, EventMetadata)` would change 10 sink
-normalizer files + ~150 lines of MetricSet logic for zero user-facing
-benefit. Decision: keep `Metric` as an internal implementation detail
-of the normalizer pipeline. No public API exposes it; no production
-source/transform creates it; all external boundaries use `OtelMetric`.
+Previously: "kept as internal normalizer type." User decision:
+OtelMetric can replace Metric everywhere. The normalizer trait
+will take/return OtelMetric. Metric struct will be deleted entirely.
 
-**TD-2: `FromLua for Metric` kept (T9)**
+**TD-2: RESOLVED — `FromLua for Metric` will be deleted (T13)**
 
-The `FromLua` trait requires returning the type it's defined for.
-`LuaMetric` now holds `(MetricSeries, MetricData)` but `FromLua`
-still returns `Metric`. The caller immediately decomposes via
-`into_parts()` → `from_metric_parts()`. Acceptable until a future
-refactor changes the Lua event model entirely.
+Breaking change accepted. VRL migration tool handles the use case.
+`FromLua for Metric` will be deleted when the struct is deleted.
 
-**TD-3: VRL aliases product-gated (T15/T16)**
+**TD-3: RESOLVED — proto is canonical, JSON is codec**
 
-Removing `.message`, `.timestamp`, `.tags`, `.host`, `.source_type`
-aliases from `to_value_legacy_layout` is a **user-facing breaking
-change** that requires product sign-off. The `vector vrl-migrate`
-tool exists to rewrite configs. Until this decision is made, the
-round-trip (T16) — root cause of scope loss, observed_time zeroing,
-and O(n) get — cannot be eliminated.
+Serialize for OtelLog stays as legacy layout until T16 covers all
+paths. Each sink chooses its codec format. `OtlpJsonLog` wrapper
+exists for OTLP-aware sinks. VRL aliases will be removed when
+the round-trip is fully eliminated (T23).
 
-**TD-4: `Deserialize` stubs (T17)**
+**TD-4: RESOLVED (T17 done)**
 
-OtelLog/OtelSpan/OtelMetric have stub `Deserialize` that always fail.
-This is a runtime safety issue for any serde-based path. Needs an
-architectural decision on canonical JSON representation before it
-can be fixed.
+All 3 OTel types have working Deserialize implementations.
 
-**TD-5: VrlTarget OtelMetric remove no-op (T19)**
+**TD-5: RESOLVED (T19 done)**
 
-VRL `del(.name)` on a metric modifies the projection but never writes
-back to the proto. Needs design for metric write-back or explicit
-error/warning.
+VrlTarget metric remove has write-back for all mutable paths.
 
 ### Types that STAY after all tasks complete
 
@@ -1032,17 +1032,33 @@ T1 + T2 + T3-T7 + T8 + T9
  └─► T13 (DELETE Metric struct)
 ```
 
-### Recommended execution order
+### Automode execution plan (2026-04-18)
 
-1. **T1** — Inline conversion logic (unblocks T2, T11, T13)
-2. **T2** — Proto decode bypass (small, isolated)
-3. **T3** — MetricSet refactor (hardest, unblocks T4-T7)
-4. **T4+T5+T6** — Sink encoders (parallel after T3)
-5. **T8** — VRL metrics (independent, any time)
-6. **T9** — Lua bindings (independent, any time)
-7. **T7** — Sink test migration (bulk mechanical, after T3)
-8. **T11+T12** — Test cleanup
-9. **T10+T13** — Delete Metric struct + dead code
+**Campaign A: Replace Metric with OtelMetric in normalizer (T3→T6)**
+
+1. **T3** — Change `MetricNormalize` trait signature: `Metric` → `OtelMetric`
+   - Update all 10 impls: they call `metric.value()`, `metric.kind()`,
+     `state.make_absolute(metric)` — OtelMetric has all these methods
+2. **T4** — Change `MetricSet` internal methods: `make_absolute(Metric)` →
+   `make_absolute(OtelMetric)`. Internally: `into_metric_parts()` → operate
+   on MetricData → `from_metric_parts()`
+3. **T5** — Change prometheus collector/exporter: `&Metric` → `&OtelMetric`
+4. **T6** — Change split iterator: `Metric` → `OtelMetric`
+5. **T20** — Change `from_metric_kv` (internal metrics): emit OtelMetric
+6. **T21** — Delete `normalize_otel` / `make_*_otel` wrappers (dead code)
+7. **T22** — Delete `MetricEntry::from_metric` / `into_metric` (dead code)
+
+**Campaign B: Delete Metric struct (T12→T13)**
+
+8. **T12** — Migrate 334 `Metric::new` in tests → OtelMetric constructors
+9. **T13** — Delete `Metric` struct, all impls, `FromLua for Metric`,
+   `Arbitrary for Metric`, `From<Metric>` proto impls, `Display for Metric`
+
+**Campaign C: Extend fast-path + delete legacy round-trip (T16→T23)**
+
+10. **T16** — Extend fast-path to generic attribute paths + resource/scope
+11. **T15** — Remove VRL aliases from legacy layout
+12. **T23** — Delete `to_value_legacy_layout` + `apply_value_legacy_layout`
 
 ## Historical completion log
 

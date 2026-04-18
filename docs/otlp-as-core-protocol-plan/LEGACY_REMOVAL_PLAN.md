@@ -582,7 +582,7 @@ Status key: **DONE** / **PARTIAL** / **OPEN** / **BLOCKED**
 | T10 | Delete proto encode `From<super::Metric>` parity test | **DONE** | `5a673ca` | Deleted parity test + `From<super::Metric> for Metric` (zero callers). `From<super::Metric> for WithMetadata` kept (trait impl, no dead_code warning). |
 | T11 | OtelMetric parity tests (15 sites in `otel_event.rs`) | **DONE** | `656da3c` | 13 call sites migrated, 5 test functions renamed |
 | T12 | Metric struct internal tests (30 sites in `metric/mod.rs`) | **TD-1** | | Metric stays as internal type — tests remain valid |
-| T13 | Delete Metric struct — refactor MetricNormalize trait | **IN PROGRESS** | `0361342` | Step 1 done: fields now `pub`. **Remaining:** (1) replace `Metric::new`→direct struct construction (334 sites), (2) replace method calls with field access (11 in normalizer), (3) change trait to use tuples. **Multi-session campaign.** |
+| T13 | Delete Metric struct — refactor MetricNormalize trait | **IN PROGRESS** | `0361342`..`b7ab378` | Steps done: fields `pub`, all 10 normalizer impls use direct field access. **Remaining:** (1) replace remaining 46 Metric method calls in sink encoders, (2) replace 334 `Metric::new` with struct literal construction, (3) change trait signature to tuples or delete struct. |
 | T14 | `Arbitrary` property tests bypass `from_legacy_metric` | **DONE** | `ac88015` | `array.rs` and `test/common.rs` use `into_parts` + `from_metric_parts` |
 
 #### Workstream 3: Eliminate legacy field model (VRL aliases + layout round-trip)
@@ -590,7 +590,7 @@ Status key: **DONE** / **PARTIAL** / **OPEN** / **BLOCKED**
 | # | Task | Status | Commit | Note |
 |---|------|--------|--------|------|
 | T15 | Phase B: Remove VRL aliases | **BLOCKED ON T16** | | Attempted and reverted (`77a4ce5`→`3502f78`). Cannot remove aliases from legacy layout without first eliminating the round-trip — 85 tests break because get/insert/remove/Serialize all go through the layout. **Must do T16 first.** |
-| T16 | Eliminate `to_value_legacy_layout`/`apply_value_legacy_layout` | **IN PROGRESS** | `63f76f1` | **TD-6 was wrong** — `ValuePath::segment_iter()` IS available. Fast-path get/insert implemented for body, severity_text, severity_number, trace_id, span_id. Complex/nested paths still use round-trip. **Remaining:** extend fast-path to cover timestamp, source_type, host, attributes; add fast-path remove; eventually make all paths proto-direct. |
+| T16 | Eliminate `to_value_legacy_layout`/`apply_value_legacy_layout` | **IN PROGRESS** | `63f76f1`..`b7ab378` | Fast-path get/insert for 8 proto fields: body, severity_text, severity_number, trace_id, span_id, timestamp, source_type, host. Pre-epoch timestamps handled correctly. Complex/nested paths still use round-trip. **Remaining:** fast-path remove, attribute paths, eventually make ALL paths proto-direct. |
 
 #### Workstream 4: Runtime safety + correctness
 

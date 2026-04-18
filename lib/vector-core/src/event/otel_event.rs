@@ -897,7 +897,7 @@ impl OtelLog {
                                 );
                                 return old;
                             }
-                            _ => {} // fall through to legacy round-trip
+                            _ => {} // fall through — KvList body expansion makes generic paths unsafe
                         }
                     }
                 }
@@ -961,7 +961,7 @@ impl OtelLog {
                                 self.record_mut().time_unix_nano = 0;
                                 return old;
                             }
-                            _ => {} // fall through
+                            _ => {} // fall through — KvList body expansion makes generic paths unsafe
                         }
                     }
                 }

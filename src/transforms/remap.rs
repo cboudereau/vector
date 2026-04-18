@@ -1991,7 +1991,7 @@ mod tests {
             .capture_metrics()
             .into_iter()
             .map(|metric| (metric.name().to_string(), metric))
-            .collect::<BTreeMap<String, Metric>>();
+            .collect::<BTreeMap<String, OtelMetric>>();
         assert_eq!(metrics.get("component_discarded_events_total"), None);
         assert_eq!(metrics.get("component_errors_total"), None);
     }

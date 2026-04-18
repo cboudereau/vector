@@ -478,19 +478,19 @@ async fn run_test(params: TestParams) -> TestResults {
             .get("adaptive_concurrency_observed_rtt")
             .unwrap()
             .value(),
-        &MetricValue::AggregatedHistogram { .. }
+        MetricValue::AggregatedHistogram { .. }
     ));
     assert!(matches!(
         metrics
             .get("adaptive_concurrency_averaged_rtt")
             .unwrap()
             .value(),
-        &MetricValue::AggregatedHistogram { .. }
+        MetricValue::AggregatedHistogram { .. }
     ));
     if params.concurrency == Concurrency::Adaptive {
         assert!(matches!(
             metrics.get("adaptive_concurrency_limit").unwrap().value(),
-            &MetricValue::AggregatedHistogram { .. }
+            MetricValue::AggregatedHistogram { .. }
         ));
     }
     assert!(matches!(
@@ -498,7 +498,7 @@ async fn run_test(params: TestParams) -> TestResults {
             .get("adaptive_concurrency_in_flight")
             .unwrap()
             .value(),
-        &MetricValue::AggregatedHistogram { .. }
+        MetricValue::AggregatedHistogram { .. }
     ));
 
     TestResults { stats, cstats }

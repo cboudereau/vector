@@ -19,7 +19,7 @@ use self::{
 };
 use crate::{
     config::metrics_expiration::PerMetricSetExpiration,
-    event::{Metric, MetricValue},
+    event::{Metric, MetricValue, OtelMetric},
 };
 
 type Result<T> = std::result::Result<T, Error>;
@@ -176,23 +176,31 @@ impl Controller {
 
     /// Take a snapshot of all gathered metrics and expose them as metric
     /// [`Event`](crate::event::Event)s.
-    pub fn capture_metrics(&self) -> Vec<Metric> {
+    pub fn capture_metrics(&self) -> Vec<OtelMetric> {
         let timestamp = Utc::now();
 
         let mut metrics = self.recorder.with_registry(Registry::visit_metrics);
 
         #[allow(clippy::cast_precision_loss)]
         let value = (metrics.len() + 2) as f64;
-        metrics.push(Metric::from_metric_kv(
-            &CARDINALITY_KEY,
-            MetricValue::Gauge { value },
-            timestamp,
-        ));
-        metrics.push(Metric::from_metric_kv(
-            &CARDINALITY_COUNTER_KEY,
-            MetricValue::Counter { value },
-            timestamp,
-        ));
+        {
+            let m = Metric::from_metric_kv(
+                &CARDINALITY_KEY,
+                MetricValue::Gauge { value },
+                timestamp,
+            );
+            let (s, d, md) = m.into_parts();
+            metrics.push(OtelMetric::from_metric_parts(s, d, md));
+        }
+        {
+            let m = Metric::from_metric_kv(
+                &CARDINALITY_COUNTER_KEY,
+                MetricValue::Counter { value },
+                timestamp,
+            );
+            let (s, d, md) = m.into_parts();
+            metrics.push(OtelMetric::from_metric_parts(s, d, md));
+        }
 
         metrics
     }

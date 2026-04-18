@@ -7,7 +7,7 @@ use vector_lib::metrics::Controller;
 
 use crate::{
     config::Config,
-    event::{Event, OtelLog, Metric, MetricValue},
+    event::{Event, OtelLog, OtelMetric, MetricValue},
     test_util::{
         mock::{
             basic_source,
@@ -27,7 +27,7 @@ const TRANSFORM_KIND: &str = "transform";
 const SINK_ID: &str = "latency_sink";
 
 struct LatencyTestRun {
-    metrics: Vec<Metric>,
+    metrics: Vec<OtelMetric>,
     elapsed_time: f64,
 }
 
@@ -94,7 +94,7 @@ async fn run_latency_topology() -> LatencyTestRun {
     }
 }
 
-fn assert_histogram_count(metrics: &[Metric], metric_name: &str, tags_match: fn(&Metric) -> bool) {
+fn assert_histogram_count(metrics: &[OtelMetric], metric_name: &str, tags_match: fn(&OtelMetric) -> bool) {
     let histogram = metrics
         .iter()
         .find(|metric| metric.name() == metric_name && tags_match(metric))
@@ -103,7 +103,7 @@ fn assert_histogram_count(metrics: &[Metric], metric_name: &str, tags_match: fn(
     match histogram.value() {
         MetricValue::AggregatedHistogram { count, .. } => {
             assert_eq!(
-                *count, EVENT_COUNT as u64,
+                count, EVENT_COUNT as u64,
                 "histogram count should match number of events"
             );
         }
@@ -112,9 +112,9 @@ fn assert_histogram_count(metrics: &[Metric], metric_name: &str, tags_match: fn(
 }
 
 fn assert_gauge_range(
-    metrics: &[Metric],
+    metrics: &[OtelMetric],
     metric_name: &str,
-    tags_match: fn(&Metric) -> bool,
+    tags_match: fn(&OtelMetric) -> bool,
     expected_min: f64,
     elapsed_time: f64,
 ) {
@@ -126,11 +126,11 @@ fn assert_gauge_range(
     match gauge.value() {
         MetricValue::Gauge { value } => {
             assert!(
-                *value >= expected_min,
+                value >= expected_min,
                 "expected mean latency to be >= {expected_min}, got {value}"
             );
             assert!(
-                *value < elapsed_time,
+                value < elapsed_time,
                 "expected mean latency ({value}) to be less than elapsed time ({elapsed_time})"
             );
         }
@@ -138,7 +138,7 @@ fn assert_gauge_range(
     }
 }
 
-fn has_component_tags(metric: &Metric) -> bool {
+fn has_component_tags(metric: &OtelMetric) -> bool {
     metric.tags().is_some_and(|tags| {
         tags.get("component_id") == Some(TRANSFORM_ID)
             && tags.get("component_type") == Some(TRANSFORM_TYPE)

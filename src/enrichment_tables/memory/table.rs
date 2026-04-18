@@ -864,9 +864,9 @@ mod tests {
                     && m.name() == "memory_enrichment_table_byte_size"
             })
             .expect("Byte size metric is missing!");
-        assert_eq!(*insertions_count, 1.0);
-        assert_eq!(*flushes_count, 1.0);
-        assert_eq!(*object_count, 1.0);
+        assert_eq!(insertions_count, 1.0);
+        assert_eq!(flushes_count, 1.0);
+        assert_eq!(object_count, 1.0);
         assert!(!byte_size_gauge.value().is_empty());
     }
 
@@ -941,10 +941,10 @@ mod tests {
             })
             .expect("Byte size metric is missing!");
 
-        assert_eq!(*insertions_count, 2.0);
+        assert_eq!(insertions_count, 2.0);
         // One is done right away and the next one after the interval
-        assert_eq!(*flushes_count, 2.0);
-        assert_eq!(*object_count, 1.0);
+        assert_eq!(flushes_count, 2.0);
+        assert_eq!(object_count, 1.0);
         assert!(!byte_size_gauge.value().is_empty());
     }
 

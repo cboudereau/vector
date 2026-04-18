@@ -18,6 +18,18 @@ fn get_controller() -> &'static Controller {
     Controller::get().expect("Metrics system not initialized. Please report.")
 }
 
+/// Capture internal metrics, converting OtelMetric → Metric for the GraphQL API layer.
+fn capture_metrics_as_legacy() -> Vec<Metric> {
+    get_controller()
+        .capture_metrics()
+        .into_iter()
+        .map(|otel| {
+            let (s, d, md) = otel.into_metric_parts();
+            Metric::from_parts(s, d, md)
+        })
+        .collect()
+}
+
 /// Sums an iterable of `&Metric`, by folding metric values. Convenience function typically
 /// used to get aggregate metrics.
 pub fn sum_metrics<'a, I: IntoIterator<Item = &'a Metric>>(metrics: I) -> Option<Metric> {
@@ -130,13 +142,12 @@ impl<'a> MetricsFilter<'a> for Vec<&'a Metric> {
 
 /// Returns a stream of `Metric`s, collected at the provided millisecond interval.
 pub fn get_metrics(interval: i32) -> impl Stream<Item = Metric> {
-    let controller = get_controller();
     let mut interval = tokio::time::interval(Duration::from_millis(interval as u64));
 
     stream! {
         loop {
             interval.tick().await;
-            for m in controller.capture_metrics() {
+            for m in capture_metrics_as_legacy() {
                 yield m;
             }
         }
@@ -144,21 +155,19 @@ pub fn get_metrics(interval: i32) -> impl Stream<Item = Metric> {
 }
 
 pub fn get_all_metrics(interval: i32) -> impl Stream<Item = Vec<Metric>> {
-    let controller = get_controller();
     let mut interval = tokio::time::interval(Duration::from_millis(interval as u64));
 
     stream! {
         loop {
             interval.tick().await;
-            yield controller.capture_metrics()
+            yield capture_metrics_as_legacy()
         }
     }
 }
 
 /// Return [`Vec<Metric>`] based on a component id tag.
 pub fn by_component_key(component_key: &ComponentKey) -> Vec<Metric> {
-    get_controller()
-        .capture_metrics()
+    capture_metrics_as_legacy()
         .into_iter()
         .filter_map(|m| {
             m.tag_matches("component_id", component_key.id())

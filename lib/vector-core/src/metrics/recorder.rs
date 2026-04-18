@@ -14,7 +14,7 @@ use super::{
     recency::{GenerationalStorage, Recency},
     storage::VectorStorage,
 };
-use crate::event::{Metric, MetricValue};
+use crate::event::{Metric, MetricValue, OtelMetric};
 
 thread_local!(static LOCAL_REGISTRY: OnceCell<Registry> = const { OnceCell::new() });
 
@@ -54,7 +54,7 @@ impl Registry {
         *(self.recency.write()).expect("Failed to acquire write lock on recency map") = recency;
     }
 
-    pub(super) fn visit_metrics(&self) -> Vec<Metric> {
+    pub(super) fn visit_metrics(&self) -> Vec<OtelMetric> {
         let timestamp = Utc::now();
 
         let mut metrics = Vec::new();
@@ -68,11 +68,12 @@ impl Registry {
             if recency
                 .is_none_or(|recency| recency.should_store_counter(&key, &counter, &self.registry))
             {
-                // NOTE this will truncate if the value is greater than 2**52.
                 #[allow(clippy::cast_precision_loss)]
                 let value = counter.get_inner().load(Ordering::Relaxed) as f64;
                 let value = MetricValue::Counter { value };
-                metrics.push(Metric::from_metric_kv(&key, value, timestamp));
+                let m = Metric::from_metric_kv(&key, value, timestamp);
+                let (s, d, md) = m.into_parts();
+                metrics.push(OtelMetric::from_metric_parts(s, d, md));
             }
         }
         for (key, gauge) in self.registry.get_gauge_handles() {
@@ -81,7 +82,9 @@ impl Registry {
             {
                 let value = gauge.get_inner().load(Ordering::Relaxed);
                 let value = MetricValue::Gauge { value };
-                metrics.push(Metric::from_metric_kv(&key, value, timestamp));
+                let m = Metric::from_metric_kv(&key, value, timestamp);
+                let (s, d, md) = m.into_parts();
+                metrics.push(OtelMetric::from_metric_parts(s, d, md));
             }
         }
         for (key, histogram) in self.registry.get_histogram_handles() {
@@ -89,7 +92,9 @@ impl Registry {
                 recency.should_store_histogram(&key, &histogram, &self.registry)
             }) {
                 let value = histogram.get_inner().make_metric();
-                metrics.push(Metric::from_metric_kv(&key, value, timestamp));
+                let m = Metric::from_metric_kv(&key, value, timestamp);
+                let (s, d, md) = m.into_parts();
+                metrics.push(OtelMetric::from_metric_parts(s, d, md));
             }
         }
         metrics

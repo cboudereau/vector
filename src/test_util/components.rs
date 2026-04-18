@@ -18,7 +18,7 @@ use vector_lib::event_test_util;
 use crate::{
     SourceSender,
     config::{SourceConfig, SourceContext},
-    event::{Event, EventArray, Metric, MetricValue},
+    event::{Event, EventArray, OtelMetric, MetricValue},
     metrics::Controller,
     sinks::VectorSink,
 };
@@ -218,7 +218,7 @@ pub fn init_test() {
 }
 
 /// Tests if the given metric contains all the given tag names
-fn has_tags(metric: &Metric, names: &[&str]) -> bool {
+fn has_tags(metric: &OtelMetric, names: &[&str]) -> bool {
     metric
         .tags()
         .map(|tags| names.iter().all(|name| tags.contains_key(name)))
@@ -227,7 +227,7 @@ fn has_tags(metric: &Metric, names: &[&str]) -> bool {
 
 /// Standard metrics test environment data
 struct ComponentTester {
-    metrics: Vec<Metric>,
+    metrics: Vec<OtelMetric>,
     errors: Vec<String>,
 }
 
@@ -313,7 +313,7 @@ impl ComponentTester {
                 .required_tags
                 .iter()
                 .copied()
-                .filter(|tag| tags.is_none_or(|t| !t.contains_key(tag)))
+                .filter(|tag| tags.as_ref().is_none_or(|t| !t.contains_key(tag)))
                 .collect();
 
             if (is_histogram || is_gauge) && missing_tags.is_empty() {
@@ -322,6 +322,7 @@ impl ComponentTester {
             }
 
             let tags_desc = tags
+                .as_ref()
                 .map(|t| format!("{{{}}}", itertools::join(t.keys(), ",")))
                 .unwrap_or_default();
 

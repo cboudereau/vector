@@ -166,7 +166,7 @@ impl InternalMetrics<'_> {
             events_received.emit(CountByteSize(count, json_size));
 
             let batch = metrics.into_iter().map(|metric| {
-                let (series, data, metadata) = metric.into_parts();
+                let (series, data, metadata) = metric.into_metric_parts();
                 let mut otel = OtelMetric::from_metric_parts(series, data, metadata);
 
                 // A metric starts out with a default "vector" namespace, but will be overridden
@@ -208,7 +208,7 @@ mod tests {
     use crate::{
         event::{
             Event,
-            metric::{Metric, MetricValue},
+            metric::MetricValue,
         },
         test_util::{
             self,
@@ -246,12 +246,12 @@ mod tests {
             .capture_metrics()
             .into_iter()
             .map(|metric| (metric.name().to_string(), metric))
-            .collect::<BTreeMap<String, Metric>>();
+            .collect::<BTreeMap<String, OtelMetric>>();
 
-        assert_eq!(&MetricValue::Gauge { value: 2.0 }, output["foo"].value());
-        assert_eq!(&MetricValue::Counter { value: 7.0 }, output["bar"].value());
+        assert_eq!(MetricValue::Gauge { value: 2.0 }, output["foo"].value());
+        assert_eq!(MetricValue::Counter { value: 7.0 }, output["bar"].value());
 
-        match &output["baz"].value() {
+        match output["baz"].value() {
             MetricValue::AggregatedHistogram {
                 buckets,
                 count,
@@ -262,13 +262,13 @@ mod tests {
                 // check fails you might look there and see if we've allowed
                 // users to set their own bucket widths.
                 assert_eq!(buckets[15].count, 2);
-                assert_eq!(*count, 2);
-                assert_eq!(*sum, 11.0);
+                assert_eq!(count, 2);
+                assert_eq!(sum, 11.0);
             }
             _ => panic!("wrong type"),
         }
 
-        match &output["quux"].value() {
+        match output["quux"].value() {
             MetricValue::AggregatedHistogram {
                 buckets,
                 count,
@@ -280,14 +280,14 @@ mod tests {
                 // users to set their own bucket widths.
                 assert_eq!(buckets[15].count, 1);
                 assert_eq!(buckets[16].count, 1);
-                assert_eq!(*count, 2);
-                assert_eq!(*sum, 16.1);
+                assert_eq!(count, 2);
+                assert_eq!(sum, 16.1);
             }
             _ => panic!("wrong type"),
         }
 
         let labels = metric_tags!("host" => "foo");
-        assert_eq!(Some(&labels), output["quux"].tags());
+        assert_eq!(Some(labels), output["quux"].tags());
     }
 
     async fn event_from_config(config: InternalMetricsConfig) -> Event {

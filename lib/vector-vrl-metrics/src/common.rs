@@ -73,17 +73,10 @@ impl MetricsStorage {
     }
 
     pub fn refresh_metrics(&self) {
-        let legacy_metrics = Controller::get()
+        let metrics = Controller::get()
             .expect("metrics not initialized")
             .capture_metrics();
-        let otel_metrics: Vec<OtelMetric> = legacy_metrics
-            .into_iter()
-            .map(|m| {
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
-            })
-            .collect();
-        self.cache.store(otel_metrics.into());
+        self.cache.store(metrics.into());
     }
 
     pub async fn run_periodic_refresh(

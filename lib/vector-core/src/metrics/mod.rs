@@ -19,7 +19,7 @@ use self::{
 };
 use crate::{
     config::metrics_expiration::PerMetricSetExpiration,
-    event::{Metric, MetricValue, OtelMetric},
+    event::{MetricValue, OtelMetric},
 };
 
 type Result<T> = std::result::Result<T, Error>;
@@ -183,24 +183,16 @@ impl Controller {
 
         #[allow(clippy::cast_precision_loss)]
         let value = (metrics.len() + 2) as f64;
-        {
-            let m = Metric::from_metric_kv(
-                &CARDINALITY_KEY,
-                MetricValue::Gauge { value },
-                timestamp,
-            );
-            let (s, d, md) = m.into_parts();
-            metrics.push(OtelMetric::from_metric_parts(s, d, md));
-        }
-        {
-            let m = Metric::from_metric_kv(
-                &CARDINALITY_COUNTER_KEY,
-                MetricValue::Counter { value },
-                timestamp,
-            );
-            let (s, d, md) = m.into_parts();
-            metrics.push(OtelMetric::from_metric_parts(s, d, md));
-        }
+        metrics.push(self::recorder::otel_from_kv(
+            CARDINALITY_KEY.clone(),
+            MetricValue::Gauge { value },
+            timestamp,
+        ));
+        metrics.push(self::recorder::otel_from_kv(
+            CARDINALITY_COUNTER_KEY.clone(),
+            MetricValue::Counter { value },
+            timestamp,
+        ));
 
         metrics
     }

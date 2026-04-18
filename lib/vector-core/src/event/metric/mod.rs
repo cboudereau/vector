@@ -303,23 +303,6 @@ impl Metric {
         }
     }
 
-    /// Creates a new metric from components specific to a metric emitted by `metrics`.
-    #[allow(clippy::cast_precision_loss)]
-    pub(crate) fn from_metric_kv(
-        key: &metrics::Key,
-        value: MetricValue,
-        timestamp: DateTime<Utc>,
-    ) -> Self {
-        let labels = key
-            .labels()
-            .map(|label| (String::from(label.key()), String::from(label.value())))
-            .collect::<MetricTags>();
-
-        Self::new(key.name().to_string(), MetricKind::Absolute, value)
-            .with_namespace(Some("vector"))
-            .with_timestamp(Some(timestamp))
-            .with_tags((!labels.is_empty()).then_some(labels))
-    }
 
     /// Removes a tag from this metric, returning the value of the tag if the tag was previously in the metric.
     pub fn remove_tag(&mut self, key: &str) -> Option<String> {

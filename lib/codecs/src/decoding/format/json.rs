@@ -132,25 +132,13 @@ impl From<&JsonDeserializerConfig> for JsonDeserializer {
 
 #[cfg(test)]
 mod tests {
-    use opentelemetry_proto::tonic::common::v1::any_value::Value as OtelValueKind;
+    use vector_core::event::Value;
 
     use super::*;
 
-    fn get_body_kvlist_value(event: &Event, key: &str) -> Option<OtelValueKind> {
+    fn get_attribute_value(event: &Event, key: &str) -> Option<Value> {
         match event {
-            Event::Log(otel_log) => {
-                if let Some(body) = otel_log.body() {
-                    if let Some(OtelValueKind::KvlistValue(kvlist)) = &body.value {
-                        return kvlist
-                            .values
-                            .iter()
-                            .find(|kv| kv.key == key)
-                            .and_then(|kv| kv.value.as_ref())
-                            .and_then(|av| av.value.clone());
-                    }
-                }
-                None
-            }
+            Event::Log(otel_log) => otel_log.get(lookup::event_path!(key)),
             _ => None,
         }
     }
@@ -167,8 +155,8 @@ mod tests {
             let event = &events[0];
             assert!(matches!(event, Event::Log(_)), "expected Log(OtelLog)");
 
-            let val = get_body_kvlist_value(event, "foo");
-            assert_eq!(val, Some(OtelValueKind::IntValue(123)));
+            let val = get_attribute_value(event, "foo");
+            assert_eq!(val, Some(Value::Integer(123)));
         }
     }
 
@@ -184,11 +172,11 @@ mod tests {
             assert!(matches!(&events[0], Event::Log(_)));
             assert!(matches!(&events[1], Event::Log(_)));
 
-            let foo = get_body_kvlist_value(&events[0], "foo");
-            assert_eq!(foo, Some(OtelValueKind::IntValue(123)));
+            let foo = get_attribute_value(&events[0], "foo");
+            assert_eq!(foo, Some(Value::Integer(123)));
 
-            let bar = get_body_kvlist_value(&events[1], "bar");
-            assert_eq!(bar, Some(OtelValueKind::IntValue(456)));
+            let bar = get_attribute_value(&events[1], "bar");
+            assert_eq!(bar, Some(Value::Integer(456)));
         }
     }
 

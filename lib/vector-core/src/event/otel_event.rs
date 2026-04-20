@@ -489,15 +489,37 @@ impl OtelLog {
     /// Create an `OtelLog` from a JSON value, setting `record.body` to a kvlist
     /// if the value is an object, or a string/int/float/bool/array otherwise.
     pub fn from_json_value(value: serde_json::Value) -> Self {
-        let body = json_to_any_value(value);
-        Self {
-            record: LogRecord {
-                body: Some(body),
-                ..Default::default()
-            },
-            resource: None,
-            scope: None,
-            metadata: EventMetadata::default(),
+        match value {
+            serde_json::Value::Object(map) => {
+                let attributes: Vec<KeyValue> = map
+                    .into_iter()
+                    .map(|(k, v)| KeyValue {
+                        key: k,
+                        value: Some(json_to_any_value(v)),
+                    })
+                    .collect();
+                Self {
+                    record: LogRecord {
+                        attributes,
+                        ..Default::default()
+                    },
+                    resource: None,
+                    scope: None,
+                    metadata: EventMetadata::default(),
+                }
+            }
+            other => {
+                let body = json_to_any_value(other);
+                Self {
+                    record: LogRecord {
+                        body: Some(body),
+                        ..Default::default()
+                    },
+                    resource: None,
+                    scope: None,
+                    metadata: EventMetadata::default(),
+                }
+            }
         }
     }
 
@@ -734,7 +756,7 @@ impl OtelLog {
         source_name: &str,
         now: chrono::DateTime<chrono::Utc>,
     ) {
-        self.set_resource_attribute("source_type".to_string(), string_value(source_name));
+        self.set_attribute("source_type".to_string(), string_value(source_name));
         self.set_observed_timestamp(now);
     }
 
@@ -1680,31 +1702,7 @@ impl OtelLog {
             None => Vec::new(),
         };
 
-        // Route well-known log_schema fields (source_type, host) back to resource attrs
-        // — matches `to_value_legacy_layout`'s resource hoisting so round-trips
-        // are lossless.
-        // TODO(T15/T16): remove when legacy layout round-trip is eliminated.
-        let mut resource_attrs: Vec<KeyValue> = Vec::new();
-        if let Some(v) = map.remove("source_type") {
-            resource_attrs.push(KeyValue {
-                key: "source_type".to_string(),
-                value: Some(vrl_value_to_any_value(&v)),
-            });
-        }
-        if let Some(v) = map.remove("host") {
-            resource_attrs.push(KeyValue {
-                key: "host.name".to_string(),
-                value: Some(vrl_value_to_any_value(&v)),
-            });
-        }
-        self.resource = if resource_attrs.is_empty() {
-            None
-        } else {
-            Some(Resource {
-                attributes: resource_attrs,
-                dropped_attributes_count: 0,
-            })
-        };
+        self.resource = None;
 
         // Everything else → record.attributes (including "resource"/"scope"
         // sub-objects if present — they become regular attributes).
@@ -4199,13 +4197,13 @@ impl From<std::collections::HashMap<vrl::prelude::KeyString, Value>> for OtelLog
 
 impl Serialize for OtelLog {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        super::otel_json::OtlpJsonLog(self).serialize(serializer)
+        self.to_value_canonical().serialize(serializer)
     }
 }
 
 impl Serialize for OtelSpan {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        super::otel_json::OtlpJsonSpan(self).serialize(serializer)
+        self.to_value_canonical().serialize(serializer)
     }
 }
 
@@ -4610,11 +4608,9 @@ mod tests {
         let json = serde_json::to_string(&event).expect("serialize");
 
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
-        // Serialize produces OTLP JSON format (proto3 JSON mapping)
-        assert_eq!(v["body"]["stringValue"], "hello");
-        assert_eq!(v["severityText"], "INFO");
-        assert_eq!(v["resource"]["attributes"][0]["key"], "service.name");
-        assert_eq!(v["resource"]["attributes"][0]["value"]["stringValue"], "test-svc");
+        assert_eq!(v["body"], "hello");
+        assert_eq!(v["severity_text"], "INFO");
+        assert_eq!(v["resource"]["service.name"], "test-svc");
     }
 
     #[test]

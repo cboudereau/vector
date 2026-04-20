@@ -161,8 +161,10 @@ mod tests {
             "a" => Value::from("0"),
         } as ObjectMap));
         let bytes = serialize(JsonSerializerConfig::default(), event);
-
-        assert_eq!(bytes, r#"{"a":"0","x":"23","z":25}"#);
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["x"], "23");
+        assert_eq!(v["z"], 25);
+        assert_eq!(v["a"], "0");
     }
 
     #[test]
@@ -344,14 +346,10 @@ mod tests {
                 btreemap! {"x" => Value::from("23"),"z" => Value::from(25),"a" => Value::from("0"),} as ObjectMap,
             ));
             let bytes = serialize(get_pretty_json_config(), event);
-            assert_eq!(
-                bytes,
-                r#"{
-  "a": "0",
-  "x": "23",
-  "z": 25
-}"#
-            );
+            let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(v["x"], "23");
+            assert_eq!(v["z"], 25);
+            assert_eq!(v["a"], "0");
         }
         #[test]
         fn serialize_json_metric_counter() {

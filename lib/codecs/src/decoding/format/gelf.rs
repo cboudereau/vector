@@ -331,8 +331,11 @@ mod tests {
                 b"Backtrace here\n\nmore stuff"
             )))
         );
-        let dt = DateTime::from_timestamp(1385053862, 307_200_000).expect("invalid timestamp");
-        assert_eq!(log.parse_path_and_get_value(TIMESTAMP).ok().flatten(), Some(Value::Timestamp(dt)));
+        let expected_nanos: i64 = 1385053862 * 1_000_000_000 + 307_200_000;
+        assert_eq!(
+            log.parse_path_and_get_value("time_unix_nano").ok().flatten(),
+            Some(Value::Integer(expected_nanos))
+        );
         assert_eq!(log.parse_path_and_get_value(LEVEL).ok().flatten(), Some(Value::Integer(1)));
         assert_eq!(
             log.parse_path_and_get_value(FACILITY).ok().flatten(),

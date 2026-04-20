@@ -70,7 +70,7 @@ impl Encoder<Event> for AvroSerializer {
 
     fn encode(&mut self, event: Event, buffer: &mut BytesMut) -> Result<(), Self::Error> {
         let log = event.into_log();
-        let value = apache_avro::to_value(&log)?;
+        let value = apache_avro::to_value(&log.to_value_canonical())?;
         let value = value.resolve(&self.schema)?;
         let bytes = apache_avro::to_avro_datum(&self.schema, value)?;
         buffer.put_slice(&bytes);

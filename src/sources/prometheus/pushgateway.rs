@@ -249,7 +249,7 @@ fn decode_label_pair(k: &str, v: &str) -> Result<(String, String), ErrorMessage>
 mod test {
     use chrono::{TimeZone, Timelike, Utc};
     use vector_lib::{
-        event::{EventStatus, Metric, MetricKind, MetricValue, OtelMetric},
+        event::{EventStatus, Metric, MetricKind, OtelMetric},
         tls::MaybeTlsSettings,
     };
 
@@ -444,19 +444,15 @@ mod test {
                 ))
                 .with_timestamp(Some(timestamp)),
                 {
-                    let m = Metric::new(
+                    let buckets =
+                        vector_lib::buckets![1.0 => 0, 2.5 => 0, 5.0 => 0, 10.0 => 1];
+                    let otel = OtelMetric::new_histogram(
                         "jobs_distribution",
                         MetricKind::Incremental,
-                        MetricValue::AggregatedHistogram {
-                            buckets: vector_lib::buckets![
-                                1.0 => 0, 2.5 => 0, 5.0 => 0, 10.0 => 1
-                            ],
-                            count: 1,
-                            sum: 8.0,
-                        },
+                        &buckets,
+                        1,
+                        8.0,
                     );
-                    let (s, d, md) = m.into_parts();
-                    let otel = OtelMetric::from_metric_parts(s, d, md);
                     let (s, d, md) = otel.into_metric_parts();
                     Metric::from_parts(s, d, md)
                 }
@@ -465,17 +461,8 @@ mod test {
                 ))
                 .with_timestamp(Some(timestamp)),
                 {
-                    let m = Metric::new(
-                        "jobs_summary",
-                        MetricKind::Absolute,
-                        MetricValue::AggregatedSummary {
-                            quantiles: vector_lib::quantiles![],
-                            count: 1,
-                            sum: 8.0,
-                        },
-                    );
-                    let (s, d, md) = m.into_parts();
-                    let otel = OtelMetric::from_metric_parts(s, d, md);
+                    let quantiles = vector_lib::quantiles![];
+                    let otel = OtelMetric::new_summary("jobs_summary", &quantiles, 1, 8.0);
                     let (s, d, md) = otel.into_metric_parts();
                     Metric::from_parts(s, d, md)
                 }

@@ -382,13 +382,33 @@ mod tests {
     use super::*;
     use crate::{
         event::{
-            Event, Metric, OtelMetric,
-            metric::{MetricKind, MetricValue},
+            Event, EventMetadata, OtelMetric,
+            metric::{MetricData, MetricKind, MetricName, MetricSeries, MetricTime, MetricValue},
         },
         schema::Definition,
         test_util::components::assert_transform_compliance,
         transforms::test::create_topology,
     };
+
+    /// Build an OtelMetric directly from parts for arbitrary MetricValue variants.
+    fn otel_from_parts(name: &'static str, kind: MetricKind, value: MetricValue) -> OtelMetric {
+        let series = MetricSeries {
+            name: MetricName {
+                name: name.to_string(),
+                namespace: None,
+            },
+            tags: None,
+        };
+        let data = MetricData {
+            time: MetricTime {
+                timestamp: None,
+                interval_ms: None,
+            },
+            kind,
+            value,
+        };
+        OtelMetric::from_metric_parts(series, data, EventMetadata::default())
+    }
 
     #[test]
     fn generate_config() {
@@ -396,11 +416,7 @@ mod tests {
     }
 
     fn make_metric(name: &'static str, kind: MetricKind, value: MetricValue) -> Event {
-        let mut event = {
-            let m = Metric::new(name, kind, value);
-            let (s, d, md) = m.into_parts();
-            Event::Metric(OtelMetric::from_metric_parts(s, d, md))
-        }
+        let mut event = Event::Metric(otel_from_parts(name, kind, value))
             .with_source_id(Arc::new(ComponentKey::from("in")))
             .with_upstream_id(Arc::new(OutputId::from("transform")));
         event.metadata_mut().set_schema_definition(&Arc::new(

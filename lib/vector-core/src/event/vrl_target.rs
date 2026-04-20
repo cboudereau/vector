@@ -1441,12 +1441,7 @@ mod test {
 
     #[test]
     fn metric_all_fields() {
-        let metric = {
-            let m = Metric::new(
-                "zub",
-                MetricKind::Absolute,
-                MetricValue::Counter { value: 1.23 },
-            )
+        let metric = OtelMetric::new_counter("zub", MetricKind::Absolute, 1.23)
             .with_namespace(Some("zoob"))
             .with_tags(Some(metric_tags!("tig" => "tog")))
             .with_timestamp(Some(
@@ -1455,9 +1450,6 @@ mod test {
                     .expect("invalid timestamp"),
             ))
             .with_interval_ms(Some(NonZero::<u32>::new(507).unwrap()));
-            let (s, d, md) = m.into_parts();
-            OtelMetric::from_metric_parts(s, d, md)
-        };
 
         let info = ProgramInfo {
             fallible: false,

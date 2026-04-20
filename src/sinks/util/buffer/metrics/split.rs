@@ -148,22 +148,13 @@ impl MetricSplit for AggregatedSummarySplitter {
 
 #[cfg(test)]
 mod tests {
-    use vector_lib::event::{Metric, MetricKind, MetricValue, OtelMetric, metric::Quantile};
+    use vector_lib::event::{MetricKind, OtelMetric, metric::Quantile};
 
     use super::*;
 
-    fn otel(m: Metric) -> OtelMetric {
-        let (s, d, md) = m.into_parts();
-        OtelMetric::from_metric_parts(s, d, md)
-    }
-
     #[test]
     fn split_non_summary_passes_through() {
-        let counter = otel(Metric::new(
-            "counter",
-            MetricKind::Incremental,
-            MetricValue::Counter { value: 42.0 },
-        ));
+        let counter = OtelMetric::new_counter("counter", MetricKind::Incremental, 42.0);
 
         let mut splitter = MetricSplitter::<AggregatedSummarySplitter>::default();
         let results: Vec<_> = splitter.split(counter).collect();
@@ -172,24 +163,17 @@ mod tests {
 
     #[test]
     fn split_aggregated_summary() {
-        let summary = otel(Metric::new(
-            "requests",
-            MetricKind::Absolute,
-            MetricValue::AggregatedSummary {
-                quantiles: vec![
-                    Quantile {
-                        quantile: 0.5,
-                        value: 100.0,
-                    },
-                    Quantile {
-                        quantile: 0.99,
-                        value: 200.0,
-                    },
-                ],
-                count: 10,
-                sum: 500.0,
+        let quantiles = vec![
+            Quantile {
+                quantile: 0.5,
+                value: 100.0,
             },
-        ));
+            Quantile {
+                quantile: 0.99,
+                value: 200.0,
+            },
+        ];
+        let summary = OtelMetric::new_summary("requests", &quantiles, 10, 500.0);
 
         let mut splitter = MetricSplitter::<AggregatedSummarySplitter>::default();
         let results: Vec<_> = splitter.split(summary).collect();

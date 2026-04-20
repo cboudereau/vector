@@ -38,8 +38,8 @@ use tokio_util::codec::{Encoder, FramedRead, FramedWrite, LinesCodec};
 use vector_lib::{
     buffers::topology::channel::LimitedReceiver,
     event::{
-        BatchNotifier, BatchStatusReceiver, Event, EventArray, Metric, MetricKind,
-        MetricTags, MetricValue, OtelLog, OtelMetric,
+        BatchNotifier, BatchStatusReceiver, Event, EventArray, MetricKind, MetricTags,
+        OtelLog, OtelMetric,
     },
 };
 #[cfg(test)]
@@ -310,19 +310,15 @@ pub fn random_metrics_with_stream_timestamp(
     let events: Vec<_> = (0..count)
         .map(|index| {
             let ts = timestamp + (timestamp_offset * index as u32);
-            {
-                let m = Metric::new(
+            Event::Metric(
+                OtelMetric::new_counter(
                     format!("counter_{}", rng().random::<u32>()),
                     MetricKind::Incremental,
-                    MetricValue::Counter {
-                        value: index as f64,
-                    },
+                    index as f64,
                 )
                 .with_timestamp(Some(ts))
-                .with_tags(tags.clone());
-                let (s, d, md) = m.into_parts();
-                Event::Metric(OtelMetric::from_metric_parts(s, d, md))
-            }
+                .with_tags(tags.clone()),
+            )
             // this ensures we get Origin Metadata, with an undefined service but that's ok.
             .with_source_type("a_source_like_none_other")
         })

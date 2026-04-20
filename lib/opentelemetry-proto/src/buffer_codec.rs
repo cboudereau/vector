@@ -283,7 +283,7 @@ pub fn value_to_kv_list(v: &Value) -> Option<Vec<KeyValue>> {
 #[cfg(test)]
 mod tests {
     use vector_core::event::{
-        BufferFormat, EventArray, Metric, MetricKind, MetricValue, OtelLog, BUFFER_FORMAT,
+        BufferFormat, EventArray, MetricKind, OtelLog, OtelMetric, BUFFER_FORMAT,
     };
     use vrl::value::Value;
 
@@ -323,11 +323,7 @@ mod tests {
     #[test]
     fn round_trip_counter() {
         setup();
-        let metric = Metric::new(
-            "requests_total",
-            MetricKind::Incremental,
-            MetricValue::Counter { value: 42.0 },
-        );
+        let metric = OtelMetric::new_counter("requests_total", MetricKind::Incremental, 42.0);
         let array = EventArray::from(metric);
 
         let codec = VectorOtlpCodec;

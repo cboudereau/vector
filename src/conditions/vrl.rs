@@ -169,7 +169,7 @@ mod test {
 
     use super::*;
     use crate::{
-        event::{Metric, MetricKind, MetricValue, OtelMetric},
+        event::{MetricKind, OtelMetric},
         log_event,
     };
 
@@ -219,17 +219,11 @@ mod test {
             //     Ok(()),
             // ),
             (
-                {
-                    let m = Metric::new(
-                        "zork",
-                        MetricKind::Incremental,
-                        MetricValue::Counter { value: 1.0 },
-                    )
-                    .with_namespace(Some("zerk"))
-                    .with_tags(Some(metric_tags!("host" => "zoobub")));
-                    let (s, d, md) = m.into_parts();
-                    Event::Metric(OtelMetric::from_metric_parts(s, d, md))
-                },
+                Event::Metric(
+                    OtelMetric::new_counter("zork", MetricKind::Incremental, 1.0)
+                        .with_namespace(Some("zerk"))
+                        .with_tags(Some(metric_tags!("host" => "zoobub"))),
+                ),
                 r#".name == "zork""#,
                 Ok(()),
                 Ok(()),

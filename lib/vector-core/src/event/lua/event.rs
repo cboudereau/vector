@@ -87,7 +87,7 @@ impl FromLua for Event {
 mod test {
     use super::*;
     use crate::event::{
-        Metric, OtelMetric, Value,
+        OtelMetric, Value,
         metric::MetricKind,
     };
 

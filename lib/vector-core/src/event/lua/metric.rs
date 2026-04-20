@@ -310,7 +310,28 @@ mod test {
     use vector_common::assert_event_data_eq;
 
     use super::*;
-    use super::super::OtelMetric;
+    use crate::event::{EventMetadata, OtelMetric};
+
+    /// Build an OtelMetric directly from parts for Distribution / Set variants
+    /// that have no dedicated `OtelMetric::new_*` native constructor.
+    fn otel_from_parts(name: &str, kind: MetricKind, value: MetricValue) -> OtelMetric {
+        let series = MetricSeries {
+            name: MetricName {
+                name: name.to_string(),
+                namespace: None,
+            },
+            tags: None,
+        };
+        let data = MetricData {
+            time: MetricTime {
+                timestamp: None,
+                interval_ms: None,
+            },
+            kind,
+            value,
+        };
+        OtelMetric::from_metric_parts(series, data, EventMetadata::default())
+    }
 
     fn assert_metric(metric: Metric, multi_value_tags: bool, assertions: Vec<&'static str>) {
         let lua = Lua::new();
@@ -460,7 +481,7 @@ mod test {
     #[test]
     fn into_lua_set() {
         let metric = {
-            let m = Metric::new(
+            let otel = otel_from_parts(
                 "example set",
                 MetricKind::Incremental,
                 MetricValue::Set {
@@ -469,8 +490,6 @@ mod test {
                         .collect(),
                 },
             );
-            let (s, d, md) = m.into_parts();
-            let otel = OtelMetric::from_metric_parts(s, d, md);
             let (s, d, md) = otel.into_metric_parts();
             Metric::from_parts(s, d, md)
         };
@@ -490,7 +509,7 @@ mod test {
     #[test]
     fn into_lua_distribution() {
         let metric = {
-            let m = Metric::new(
+            let otel = otel_from_parts(
                 "example distribution",
                 MetricKind::Incremental,
                 MetricValue::Distribution {
@@ -498,8 +517,6 @@ mod test {
                     statistic: StatisticKind::Histogram,
                 },
             );
-            let (s, d, md) = m.into_parts();
-            let otel = OtelMetric::from_metric_parts(s, d, md);
             let (s, d, md) = otel.into_metric_parts();
             Metric::from_parts(s, d, md)
         };
@@ -521,17 +538,14 @@ mod test {
     #[test]
     fn into_lua_aggregated_histogram() {
         let metric = {
-            let m = Metric::new(
+            let buckets = crate::buckets![1.0 => 20, 2.0 => 10, 4.0 => 45, 8.0 => 12];
+            let otel = OtelMetric::new_histogram(
                 "example histogram",
                 MetricKind::Incremental,
-                MetricValue::AggregatedHistogram {
-                    buckets: crate::buckets![1.0 => 20, 2.0 => 10, 4.0 => 45, 8.0 => 12],
-                    count: 87,
-                    sum: 975.2,
-                },
+                &buckets,
+                87,
+                975.2,
             );
-            let (s, d, md) = m.into_parts();
-            let otel = OtelMetric::from_metric_parts(s, d, md);
             let (s, d, md) = otel.into_metric_parts();
             Metric::from_parts(s, d, md)
         };
@@ -555,19 +569,10 @@ mod test {
     #[test]
     fn into_lua_aggregated_summary() {
         let metric = {
-            let m = Metric::new(
-                "example summary",
-                MetricKind::Incremental,
-                MetricValue::AggregatedSummary {
-                    quantiles: crate::quantiles![
-                        0.1 => 2.0, 0.25 => 3.0, 0.5 => 5.0, 0.75 => 8.0, 0.9 => 7.0, 0.99 => 9.0, 1.0 => 10.0
-                    ],
-                    count: 197,
-                    sum: 975.2,
-                },
-            );
-            let (s, d, md) = m.into_parts();
-            let otel = OtelMetric::from_metric_parts(s, d, md);
+            let quantiles = crate::quantiles![
+                0.1 => 2.0, 0.25 => 3.0, 0.5 => 5.0, 0.75 => 8.0, 0.9 => 7.0, 0.99 => 9.0, 1.0 => 10.0
+            ];
+            let otel = OtelMetric::new_summary("example summary", &quantiles, 197, 975.2);
             let (s, d, md) = otel.into_metric_parts();
             Metric::from_parts(s, d, md)
         };
@@ -706,7 +711,7 @@ mod test {
             }
         }"#;
         let expected = {
-            let m = Metric::new(
+            let otel = otel_from_parts(
                 "example set",
                 MetricKind::Absolute,
                 MetricValue::Set {
@@ -715,8 +720,6 @@ mod test {
                         .collect(),
                 },
             );
-            let (s, d, md) = m.into_parts();
-            let otel = OtelMetric::from_metric_parts(s, d, md);
             let (s, d, md) = otel.into_metric_parts();
             Metric::from_parts(s, d, md)
         };
@@ -734,7 +737,7 @@ mod test {
             }
         }"#;
         let expected = {
-            let m = Metric::new(
+            let otel = otel_from_parts(
                 "example distribution",
                 MetricKind::Absolute,
                 MetricValue::Distribution {
@@ -742,8 +745,6 @@ mod test {
                     statistic: StatisticKind::Histogram,
                 },
             );
-            let (s, d, md) = m.into_parts();
-            let otel = OtelMetric::from_metric_parts(s, d, md);
             let (s, d, md) = otel.into_metric_parts();
             Metric::from_parts(s, d, md)
         };
@@ -761,17 +762,14 @@ mod test {
             }
         }"#;
         let expected = {
-            let m = Metric::new(
+            let buckets = crate::buckets![1.0 => 20, 2.0 => 10, 4.0 => 45, 8.0 => 12];
+            let otel = OtelMetric::new_histogram(
                 "example histogram",
                 MetricKind::Absolute,
-                MetricValue::AggregatedHistogram {
-                    buckets: crate::buckets![1.0 => 20, 2.0 => 10, 4.0 => 45, 8.0 => 12],
-                    count: 87,
-                    sum: 975.2,
-                },
+                &buckets,
+                87,
+                975.2,
             );
-            let (s, d, md) = m.into_parts();
-            let otel = OtelMetric::from_metric_parts(s, d, md);
             let (s, d, md) = otel.into_metric_parts();
             Metric::from_parts(s, d, md)
         };
@@ -790,19 +788,10 @@ mod test {
             }
         }"#;
         let expected = {
-            let m = Metric::new(
-                "example summary",
-                MetricKind::Absolute,
-                MetricValue::AggregatedSummary {
-                    quantiles: crate::quantiles![
-                        0.1 => 2.0, 0.25 => 3.0, 0.5 => 5.0, 0.75 => 8.0, 0.9 => 7.0, 0.99 => 9.0, 1.0 => 10.0
-                    ],
-                    count: 197,
-                    sum: 975.2,
-                },
-            );
-            let (s, d, md) = m.into_parts();
-            let otel = OtelMetric::from_metric_parts(s, d, md);
+            let quantiles = crate::quantiles![
+                0.1 => 2.0, 0.25 => 3.0, 0.5 => 5.0, 0.75 => 8.0, 0.9 => 7.0, 0.99 => 9.0, 1.0 => 10.0
+            ];
+            let otel = OtelMetric::new_summary("example summary", &quantiles, 197, 975.2);
             let (s, d, md) = otel.into_metric_parts();
             Metric::from_parts(s, d, md)
         };

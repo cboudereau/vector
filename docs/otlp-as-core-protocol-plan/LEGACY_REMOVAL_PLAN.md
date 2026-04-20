@@ -613,8 +613,8 @@ the struct**:
 
 | # | Task | Status | Commit | Note |
 |---|------|--------|--------|------|
-| T16 | Fast-path get/insert/remove bypassing legacy round-trip | **IN PROGRESS** | `63f76f1`..ongoing | Phase 1 DONE (single-segment fast-path for OtelLog). Phases 2-4 remain. |
-| T15 | Remove VRL aliases + Serialize → proto-canonical | **BLOCKED ON T16** | | 5 aliases to remove. Breaking change gated on `vector vrl-migrate`. See "Remaining work" for detailed plan. |
+| T16 | Fast-path get/insert/remove bypassing legacy round-trip | **DONE** | `5198ea7`..`a86b435` | Phases 1-3 complete. All-field get/insert/remove for OtelLog + OtelSpan bypass legacy layout. Phase 4 (batch methods) deferred to T15/T23. |
+| T15 | Remove VRL aliases + Serialize → proto-canonical | **OPEN** | | T16 done. 5 aliases to remove. Breaking change gated on `vector vrl-migrate`. See "Remaining work" for detailed plan. |
 | T23 | Simplify/rename legacy layout functions | **PLANNED** | | After T15, rename + simplify. `from_value_map` stays as canonical constructor. See "Remaining work" for analysis. |
 
 #### Workstream 4: Runtime safety + correctness
@@ -917,10 +917,12 @@ DONE — All legacy types deleted:
   F.6 (LogEvent), G.1 (TraceEvent), G.2 (proto compat)
   T12 + T13b (Metric struct DELETED — 9bd0d06)  ←── MILESTONE ✓
 
-OPEN — Legacy layout elimination (3 tasks remain):
-  T16 (extend fast-path: get/insert/remove never call to_value_legacy_layout)
-   └─► T15 (remove VRL aliases + switch Serialize/value/keys to proto-canonical)
-        └─► T23 (delete to_value_legacy_layout + apply_value_legacy_layout)
+DONE — Fast-path mutation optimization:
+  T16 (get/insert/remove bypass legacy layout for all-field paths) — DONE
+
+OPEN — Legacy layout elimination (2 tasks remain):
+  T15 (remove VRL aliases + switch Serialize/value/keys to proto-canonical)
+   └─► T23 (delete to_value_legacy_layout + apply_value_legacy_layout)
 
 CLOSED:
   T17 (serde Deserialize) — REVERTED, not needed
@@ -1057,21 +1059,23 @@ After Phase 2: **all-field multi-segment paths never call to_value_legacy_layout
 
 After Phase 3: **OtelSpan get/insert bypass legacy layout for all-field paths.** ✓
 
-**Phase 4 — Replace batch methods (~3h):**
-- `value()` → build Value from proto directly (still legacy field names
-  until T15: `.message`, `.timestamp`, `.host`, `.source_type`)
-- `keys()` → enumerate proto field names + attribute keys directly
-- `as_map()` → same as value(), returning ObjectMap
-- `convert_to_fields*()` → walk proto structure, flatten with dots
-- `event_data_eq()` → compare proto fields directly (avoid clone)
-- Delete `modify_as_value()` — individual insert/remove are now O(1).
-  Migrate 3 callers: splunk_hec → individual inserts (already fast),
-  dnstap → individual inserts.
-- `value_mut()` → returns proto-built Value (still read-only snapshot)
+**Phase 4 — Batch methods — DEFERRED to T15/T23:**
+- `value()`, `keys()`, `as_map()`, `convert_to_fields*()` are read-only
+  methods that inherently need a full Value tree. Rewriting them just
+  duplicates `to_value_legacy_layout` logic without perf gain. These
+  change field names when T15 switches to proto-canonical.
+- `event_data_eq()` intentionally normalizes storage differences
+  (source_type in resource vs attributes). Proto comparison would
+  need equivalent normalization — net zero benefit.
+- `modify_as_value()` callers (dnstap, splunk_hec) legitimately need
+  `&mut Value` for bulk parser APIs. Migration needs those APIs to
+  accept `&mut OtelLog` instead — tracked separately.
+- `value_mut()` returns a non-persisting snapshot — misleading API,
+  to be deprecated in T23.
 
-After Phase 4: **to_value_legacy_layout called ONLY by Serialize,
-from_value_map, and proto.rs disk-buffer encode.** These transfer to
-T15 (Serialize) and T23 (rename/simplify from_value_map).
+T16 impact: **get/insert/remove (the hot mutation paths) fully bypass
+legacy layout for all-field paths.** Read-only snapshot methods stay
+until T15/T23.
 
 **Effort:** ~2 sessions (8-12h). No breaking changes.
 **Depends on:** nothing.
@@ -1276,11 +1280,12 @@ expected-value construction. No migration needed.
 
 ## Verification (updated 2026-04-20)
 
-After T16 Phase 1 (single-segment fast-path):
-- `cargo test -p vector-core --lib -- otel` — 41/41 pass
-- `cargo test -p vector-core --lib` — 187 pass, 6 pre-existing TLS failures
+After T16 Phases 1-3 (full get/insert/remove fast-path):
+- `cargo test -p vector-core --lib -- otel` — 46/46 pass (5 new multi-segment tests)
+- `cargo test -p vector-core --lib` — 192 pass, 6 pre-existing TLS failures
 - `cargo test -p codecs` — all pass
-- Single-segment get/insert/remove bypass legacy layout completely
+- OtelLog: single + multi-segment get/insert/remove bypass legacy layout
+- OtelSpan: single + multi-segment get/insert bypass legacy layout
 
 ## Related docs
 

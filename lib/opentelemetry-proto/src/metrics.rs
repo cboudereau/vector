@@ -1,8 +1,8 @@
 use chrono::{TimeZone, Utc};
 use vector_core::event::{
-    Event, EventMetadata, Metric as MetricEvent, MetricKind, MetricTags, MetricValue,
+    Event, EventMetadata, MetricKind, MetricTags, MetricValue,
     OtelMetric,
-    metric::{Bucket, Quantile, TagValue},
+    metric::{Bucket, MetricData, MetricName, MetricSeries, MetricTime, Quantile, TagValue},
 };
 
 use super::proto::{
@@ -298,13 +298,7 @@ impl SumMetric {
             MetricValue::Gauge { value }
         };
 
-        Event::Metric({
-            let m = MetricEvent::new(metric_name, kind, metric_value)
-                .with_tags(Some(attributes))
-                .with_timestamp(timestamp);
-            let (s, d, md) = m.into_parts();
-            OtelMetric::from_metric_parts(s, d, md)
-        })
+        Event::Metric(make_otel_metric(metric_name, kind, metric_value, Some(attributes), timestamp))
     }
 }
 
@@ -314,17 +308,7 @@ impl GaugeMetric {
         let value = self.point.value.to_f64().unwrap_or(0.0);
         let attributes = build_metric_tags(self.resource, self.scope, &self.point.attributes);
 
-        Event::Metric({
-            let m = MetricEvent::new(
-                metric_name,
-                MetricKind::Absolute,
-                MetricValue::Gauge { value },
-            )
-            .with_timestamp(timestamp)
-            .with_tags(Some(attributes));
-            let (s, d, md) = m.into_parts();
-            OtelMetric::from_metric_parts(s, d, md)
-        })
+        Event::Metric(make_otel_metric(metric_name, MetricKind::Absolute, MetricValue::Gauge { value }, Some(attributes), timestamp))
     }
 }
 
@@ -358,32 +342,26 @@ impl HistogramMetric {
             MetricKind::Absolute
         };
 
-        Event::Metric({
-            let m = MetricEvent::new(
-                metric_name,
-                kind,
-                MetricValue::AggregatedHistogram {
-                    buckets,
-                    count: self.point.count,
-                    sum: self.point.sum.unwrap_or(0.0),
-                },
-            )
-            .with_timestamp(timestamp)
-            .with_tags(Some(attributes));
-            let (s, d, md) = m.into_parts();
-            OtelMetric::from_metric_parts(s, d, md)
-        })
+        Event::Metric(make_otel_metric(
+            metric_name,
+            kind,
+            MetricValue::AggregatedHistogram {
+                buckets,
+                count: self.point.count,
+                sum: self.point.sum.unwrap_or(0.0),
+            },
+            Some(attributes),
+            timestamp,
+        ))
     }
 }
 
 impl ExpHistogramMetric {
     fn into_metric(self, metric_name: String) -> Event {
-        // we have to convert Exponential Histogram to agg histogram using scale and base
         let timestamp = Some(Utc.timestamp_nanos(self.point.time_unix_nano as i64));
         let attributes = build_metric_tags(self.resource, self.scope, &self.point.attributes);
 
         let scale = self.point.scale;
-        // from Opentelemetry docs: base = 2**(2**(-scale))
         let base = 2f64.powf(2f64.powi(-scale));
 
         let mut buckets = Vec::new();
@@ -417,21 +395,17 @@ impl ExpHistogramMetric {
             MetricKind::Absolute
         };
 
-        Event::Metric({
-            let m = MetricEvent::new(
-                metric_name,
-                kind,
-                MetricValue::AggregatedHistogram {
-                    buckets,
-                    count: self.point.count,
-                    sum: self.point.sum.unwrap_or(0.0),
-                },
-            )
-            .with_timestamp(timestamp)
-            .with_tags(Some(attributes));
-            let (s, d, md) = m.into_parts();
-            OtelMetric::from_metric_parts(s, d, md)
-        })
+        Event::Metric(make_otel_metric(
+            metric_name,
+            kind,
+            MetricValue::AggregatedHistogram {
+                buckets,
+                count: self.point.count,
+                sum: self.point.sum.unwrap_or(0.0),
+            },
+            Some(attributes),
+            timestamp,
+        ))
     }
 }
 
@@ -450,22 +424,32 @@ impl SummaryMetric {
             })
             .collect();
 
-        Event::Metric({
-            let m = MetricEvent::new(
-                metric_name,
-                MetricKind::Absolute,
-                MetricValue::AggregatedSummary {
-                    quantiles,
-                    count: self.point.count,
-                    sum: self.point.sum,
-                },
-            )
-            .with_timestamp(timestamp)
-            .with_tags(Some(attributes));
-            let (s, d, md) = m.into_parts();
-            OtelMetric::from_metric_parts(s, d, md)
-        })
+        Event::Metric(make_otel_metric(
+            metric_name,
+            MetricKind::Absolute,
+            MetricValue::AggregatedSummary {
+                quantiles,
+                count: self.point.count,
+                sum: self.point.sum,
+            },
+            Some(attributes),
+            timestamp,
+        ))
     }
+}
+
+fn make_otel_metric(
+    name: String,
+    kind: MetricKind,
+    value: MetricValue,
+    tags: Option<MetricTags>,
+    timestamp: Option<chrono::DateTime<chrono::Utc>>,
+) -> OtelMetric {
+    OtelMetric::from_metric_parts(
+        MetricSeries { name: MetricName { name, namespace: None }, tags },
+        MetricData { time: MetricTime { timestamp, interval_ms: None }, kind, value },
+        EventMetadata::default(),
+    )
 }
 
 pub trait ToF64 {

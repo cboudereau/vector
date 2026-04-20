@@ -547,7 +547,7 @@ impl MetricTags {
 
     /// Reduces all the tag values to their single value, discarding any for which that value would
     /// be null.
-    pub(super) fn reduce_to_single(&mut self) {
+    pub fn reduce_to_single(&mut self) {
         self.0
             .iter_mut()
             .for_each(|(_, values)| values.reduce_to_simple());

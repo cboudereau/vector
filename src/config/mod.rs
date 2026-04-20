@@ -22,7 +22,7 @@ pub use vector_lib::{
 
 use crate::{
     conditions,
-    event::{Metric, Value},
+    event::{Value, metric::{MetricData, MetricSeries}},
     secrets::SecretBackends,
     serde::OneOrMany,
 };
@@ -576,7 +576,18 @@ pub struct TestInput {
     /// The metric to use as an input event.
     ///
     /// Only relevant when `type` is `metric`.
-    pub metric: Option<Metric>,
+    pub metric: Option<TestMetricInput>,
+}
+
+/// A metric definition for unit test inputs.
+#[configurable_component]
+#[derive(Clone, Debug)]
+pub struct TestMetricInput {
+    #[serde(flatten)]
+    pub series: MetricSeries,
+
+    #[serde(flatten)]
+    pub data: MetricData,
 }
 
 fn default_test_input_type() -> String {

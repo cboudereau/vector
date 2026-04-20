@@ -60,11 +60,7 @@ impl Arbitrary for Event {
         if choice.is_multiple_of(2) {
             Event::Log(OtelLog::arbitrary(g))
         } else {
-            {
-                let m = Metric::arbitrary(g);
-                let (s, d, md) = m.into_parts();
-                Event::Metric(OtelMetric::from_metric_parts(s, d, md))
-            }
+            Event::Metric(OtelMetric::arbitrary(g))
         }
     }
 

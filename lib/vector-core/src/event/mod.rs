@@ -10,7 +10,7 @@ pub use finalization::{
     Finalizable,
 };
 pub use metadata::{EventMetadata, WithMetadata};
-pub use metric::{Metric, MetricKind, MetricTags, MetricValue, StatisticKind};
+pub use metric::{MetricKind, MetricTags, MetricValue, StatisticKind};
 pub use r#ref::{EventMutRef, EventRef};
 use serde::Serialize;
 use vector_buffers::EventCount;

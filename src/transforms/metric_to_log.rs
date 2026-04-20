@@ -19,7 +19,7 @@ use crate::{
         DataType, GenerateConfig, Input, OutputId, TransformConfig, TransformContext,
         TransformOutput, log_schema,
     },
-    event::{self, Event, Metric, OtelLog, OtelMetric},
+    event::{self, Event, OtelLog, OtelMetric},
     internal_events::MetricToLogSerializeError,
     schema::Definition,
     transforms::{FunctionTransform, OutputBuffer, Transform},
@@ -283,17 +283,27 @@ impl MetricToLog {
     }
 
     pub fn transform_one(&self, otel: OtelMetric) -> Option<OtelLog> {
-        let (series, data, metadata) = otel.into_metric_parts();
-        let mut metric = Metric::from_parts(series, data, metadata);
+        let (mut series, data, metadata) = otel.into_metric_parts();
         if self.tag_values == MetricTagValues::Single {
-            metric.reduce_tags_to_single();
+            if let Some(tags) = &mut series.tags {
+                tags.reduce_to_single();
+                if tags.is_empty() {
+                    series.tags = None;
+                }
+            }
         }
-        serde_json::to_value(&metric)
+        #[derive(serde::Serialize)]
+        struct MetricJson<'a> {
+            #[serde(flatten)]
+            series: &'a event::metric::MetricSeries,
+            #[serde(flatten)]
+            data: &'a event::metric::MetricData,
+        }
+        serde_json::to_value(&MetricJson { series: &series, data: &data })
             .map_err(|error| emit!(MetricToLogSerializeError { error }))
             .ok()
             .and_then(|value| match value {
                 Value::Object(object) => {
-                    let (_, _, metadata) = metric.into_parts();
                     let fields: vrl::value::ObjectMap = object
                         .into_iter()
                         .map(|(k, v)| (k.into(), event::Value::from(v)))

@@ -1,28 +1,10 @@
 #[cfg(feature = "vrl")]
 use std::convert::TryFrom;
-use std::{
-    convert::AsRef,
-    fmt::{self, Display, Formatter},
-    num::NonZeroU32,
-};
+use std::fmt::{self, Formatter};
 
-use chrono::{DateTime, Utc};
-use vector_common::{
-    EventDataEq,
-    byte_size_of::ByteSizeOf,
-    internal_event::{OptionalTag, TaggedEventsSent},
-    json_size::JsonSize,
-    request_metadata::GetEventCountTags,
-};
 use vector_config::configurable_component;
 #[cfg(feature = "vrl")]
 use vrl::compiler::value::VrlValueConvert;
-
-use super::{
-    BatchNotifier, EventFinalizer, EventFinalizers, EventMetadata, Finalizable,
-    estimated_json_encoded_size_of::EstimatedJsonEncodedSizeOf,
-};
-use crate::config::telemetry;
 
 #[cfg(any(test, feature = "test"))]
 mod arbitrary;
@@ -50,437 +32,6 @@ macro_rules! metric_tags {
             $( ($key.into(), $crate::event::metric::TagValue::from($value)), )*
         ].into_iter().collect::<$crate::event::MetricTags>()
     };
-}
-
-/// A metric.
-#[configurable_component]
-#[derive(Clone, Debug, PartialEq)]
-pub struct Metric {
-    #[serde(flatten)]
-    pub series: MetricSeries,
-
-    #[serde(flatten)]
-    pub data: MetricData,
-
-    /// Internal event metadata.
-    #[serde(skip, default = "EventMetadata::default")]
-    pub metadata: EventMetadata,
-}
-
-impl Metric {
-    /// Creates a new `Metric` with the given `name`, `kind`, and `value`.
-    pub fn new<T: Into<String>>(name: T, kind: MetricKind, value: MetricValue) -> Self {
-        Self::new_with_metadata(name, kind, value, EventMetadata::default())
-    }
-
-    /// Creates a new `Metric` with the given `name`, `kind`, `value`, and `metadata`.
-    pub fn new_with_metadata<T: Into<String>>(
-        name: T,
-        kind: MetricKind,
-        value: MetricValue,
-        metadata: EventMetadata,
-    ) -> Self {
-        Self {
-            series: MetricSeries {
-                name: MetricName {
-                    name: name.into(),
-                    namespace: None,
-                },
-                tags: None,
-            },
-            data: MetricData {
-                time: MetricTime {
-                    timestamp: None,
-                    interval_ms: None,
-                },
-                kind,
-                value,
-            },
-            metadata,
-        }
-    }
-
-    /// Consumes this metric, returning it with an updated series based on the given `name`.
-    #[inline]
-    #[must_use]
-    pub fn with_name(mut self, name: impl Into<String>) -> Self {
-        self.series.name.name = name.into();
-        self
-    }
-
-    /// Consumes this metric, returning it with an updated series based on the given `namespace`.
-    #[inline]
-    #[must_use]
-    pub fn with_namespace<T: Into<String>>(mut self, namespace: Option<T>) -> Self {
-        self.series.name.namespace = namespace.map(Into::into);
-        self
-    }
-
-    /// Consumes this metric, returning it with an updated timestamp.
-    #[inline]
-    #[must_use]
-    pub fn with_timestamp(mut self, timestamp: Option<DateTime<Utc>>) -> Self {
-        self.data.time.timestamp = timestamp;
-        self
-    }
-
-    /// Consumes this metric, returning it with an updated interval.
-    #[inline]
-    #[must_use]
-    pub fn with_interval_ms(mut self, interval_ms: Option<NonZeroU32>) -> Self {
-        self.data.time.interval_ms = interval_ms;
-        self
-    }
-
-    pub fn add_finalizer(&mut self, finalizer: EventFinalizer) {
-        self.metadata.add_finalizer(finalizer);
-    }
-
-    /// Consumes this metric, returning it with an updated set of event finalizers attached to `batch`.
-    #[must_use]
-    pub fn with_batch_notifier(mut self, batch: &BatchNotifier) -> Self {
-        self.metadata = self.metadata.with_batch_notifier(batch);
-        self
-    }
-
-    /// Consumes this metric, returning it with an optionally updated set of event finalizers attached to `batch`.
-    #[must_use]
-    pub fn with_batch_notifier_option(mut self, batch: &Option<BatchNotifier>) -> Self {
-        self.metadata = self.metadata.with_batch_notifier_option(batch);
-        self
-    }
-
-    /// Consumes this metric, returning it with an updated series based on the given `tags`.
-    #[inline]
-    #[must_use]
-    pub fn with_tags(mut self, tags: Option<MetricTags>) -> Self {
-        self.series.tags = tags;
-        self
-    }
-
-    /// Consumes this metric, returning it with an updated value.
-    #[inline]
-    #[must_use]
-    pub fn with_value(mut self, value: MetricValue) -> Self {
-        self.data.value = value;
-        self
-    }
-
-    /// Gets a reference to the series of this metric.
-    ///
-    /// The "series" is the name of the metric itself, including any tags. In other words, it is the unique identifier
-    /// for a metric, although metrics of different values (counter vs gauge) may be able to co-exist in outside metrics
-    /// implementations with identical series.
-    pub fn series(&self) -> &MetricSeries {
-        &self.series
-    }
-
-    /// Gets a reference to the data of this metric.
-    pub fn data(&self) -> &MetricData {
-        &self.data
-    }
-
-    /// Gets a mutable reference to the data of this metric.
-    pub fn data_mut(&mut self) -> &mut MetricData {
-        &mut self.data
-    }
-
-    /// Gets a reference to the metadata of this metric.
-    pub fn metadata(&self) -> &EventMetadata {
-        &self.metadata
-    }
-
-    /// Gets a mutable reference to the metadata of this metric.
-    pub fn metadata_mut(&mut self) -> &mut EventMetadata {
-        &mut self.metadata
-    }
-
-    /// Gets a reference to the name of this metric.
-    ///
-    /// The name of the metric does not include the namespace or tags.
-    #[inline]
-    pub fn name(&self) -> &str {
-        &self.series.name.name
-    }
-
-    /// Gets a reference to the namespace of this metric, if it exists.
-    #[inline]
-    pub fn namespace(&self) -> Option<&str> {
-        self.series.name.namespace.as_deref()
-    }
-
-    /// Takes the namespace out of this metric, if it exists, leaving it empty.
-    #[inline]
-    pub fn take_namespace(&mut self) -> Option<String> {
-        self.series.name.namespace.take()
-    }
-
-    /// Gets a reference to the tags of this metric, if they exist.
-    #[inline]
-    pub fn tags(&self) -> Option<&MetricTags> {
-        self.series.tags.as_ref()
-    }
-
-    /// Gets a mutable reference to the tags of this metric, if they exist.
-    #[inline]
-    pub fn tags_mut(&mut self) -> Option<&mut MetricTags> {
-        self.series.tags.as_mut()
-    }
-
-    /// Gets a reference to the timestamp of this metric, if it exists.
-    #[inline]
-    pub fn timestamp(&self) -> Option<DateTime<Utc>> {
-        self.data.time.timestamp
-    }
-
-    /// Gets a reference to the interval (in milliseconds) covered by this metric, if it exists.
-    #[inline]
-    pub fn interval_ms(&self) -> Option<NonZeroU32> {
-        self.data.time.interval_ms
-    }
-
-    /// Gets a reference to the value of this metric.
-    #[inline]
-    pub fn value(&self) -> &MetricValue {
-        &self.data.value
-    }
-
-    /// Gets a mutable reference to the value of this metric.
-    #[inline]
-    pub fn value_mut(&mut self) -> &mut MetricValue {
-        &mut self.data.value
-    }
-
-    /// Gets the kind of this metric.
-    #[inline]
-    pub fn kind(&self) -> MetricKind {
-        self.data.kind
-    }
-
-    /// Gets the time information of this metric.
-    #[inline]
-    pub fn time(&self) -> MetricTime {
-        self.data.time
-    }
-
-    /// Decomposes a `Metric` into its individual parts.
-    #[inline]
-    pub fn into_parts(self) -> (MetricSeries, MetricData, EventMetadata) {
-        (self.series, self.data, self.metadata)
-    }
-
-    /// Creates a `Metric` directly from the raw components of another metric.
-    #[inline]
-    pub fn from_parts(series: MetricSeries, data: MetricData, metadata: EventMetadata) -> Self {
-        Self {
-            series,
-            data,
-            metadata,
-        }
-    }
-
-    /// Consumes this metric, returning it as an absolute metric.
-    ///
-    /// If the metric was already absolute, nothing is changed.
-    #[must_use]
-    pub fn into_absolute(self) -> Self {
-        Self {
-            series: self.series,
-            data: self.data.into_absolute(),
-            metadata: self.metadata,
-        }
-    }
-
-    /// Consumes this metric, returning it as an incremental metric.
-    ///
-    /// If the metric was already incremental, nothing is changed.
-    #[must_use]
-    pub fn into_incremental(self) -> Self {
-        Self {
-            series: self.series,
-            data: self.data.into_incremental(),
-            metadata: self.metadata,
-        }
-    }
-
-
-    /// Removes a tag from this metric, returning the value of the tag if the tag was previously in the metric.
-    pub fn remove_tag(&mut self, key: &str) -> Option<String> {
-        self.series.remove_tag(key)
-    }
-
-    /// Removes all the tags.
-    pub fn remove_tags(&mut self) {
-        self.series.remove_tags();
-    }
-
-    /// Returns `true` if `name` tag is present, and matches the provided `value`
-    pub fn tag_matches(&self, name: &str, value: &str) -> bool {
-        self.tags()
-            .filter(|t| t.get(name).filter(|v| *v == value).is_some())
-            .is_some()
-    }
-
-    /// Returns the string value of a tag, if it exists
-    pub fn tag_value(&self, name: &str) -> Option<String> {
-        self.tags().and_then(|t| t.get(name)).map(ToOwned::to_owned)
-    }
-
-    /// Inserts a tag into this metric.
-    ///
-    /// If the metric did not have this tag, `None` will be returned. Otherwise, `Some(String)` will be returned,
-    /// containing the previous value of the tag.
-    ///
-    /// *Note:* This will create the tags map if it is not present.
-    pub fn replace_tag(&mut self, name: String, value: String) -> Option<String> {
-        self.series.replace_tag(name, value)
-    }
-
-    pub fn set_multi_value_tag(
-        &mut self,
-        name: String,
-        values: impl IntoIterator<Item = TagValue>,
-    ) {
-        self.series.set_multi_value_tag(name, values);
-    }
-
-    /// Zeroes out the data in this metric.
-    pub fn zero(&mut self) {
-        self.data.zero();
-    }
-
-    /// Adds the data from the `other` metric to this one.
-    ///
-    /// The other metric must be incremental and contain the same value type as this one.
-    #[must_use]
-    pub fn add(&mut self, other: impl AsRef<MetricData>) -> bool {
-        self.data.add(other.as_ref())
-    }
-
-    /// Updates this metric by adding the data from `other`.
-    #[must_use]
-    pub fn update(&mut self, other: impl AsRef<MetricData>) -> bool {
-        self.data.update(other.as_ref())
-    }
-
-    /// Subtracts the data from the `other` metric from this one.
-    ///
-    /// The other metric must contain the same value type as this one.
-    #[must_use]
-    pub fn subtract(&mut self, other: impl AsRef<MetricData>) -> bool {
-        self.data.subtract(other.as_ref())
-    }
-
-    /// Reduces all the tag values to their single value, discarding any for which that value would
-    /// be null. If the result is empty, the tag set is dropped.
-    pub fn reduce_tags_to_single(&mut self) {
-        if let Some(tags) = &mut self.series.tags {
-            tags.reduce_to_single();
-            if tags.is_empty() {
-                self.series.tags = None;
-            }
-        }
-    }
-}
-
-impl AsRef<MetricData> for Metric {
-    fn as_ref(&self) -> &MetricData {
-        &self.data
-    }
-}
-
-impl AsRef<MetricValue> for Metric {
-    fn as_ref(&self) -> &MetricValue {
-        &self.data.value
-    }
-}
-
-impl Display for Metric {
-    /// Display a metric using something like Prometheus' text format:
-    ///
-    /// ```text
-    /// TIMESTAMP NAMESPACE_NAME{TAGS} KIND DATA
-    /// ```
-    ///
-    /// TIMESTAMP is in ISO 8601 format with UTC time zone.
-    ///
-    /// KIND is either `=` for absolute metrics, or `+` for incremental
-    /// metrics.
-    ///
-    /// DATA is dependent on the type of metric, and is a simplified
-    /// representation of the data contents. In particular,
-    /// distributions, histograms, and summaries are represented as a
-    /// list of `X@Y` words, where `X` is the rate, count, or quantile,
-    /// and `Y` is the value or bucket.
-    ///
-    /// example:
-    /// ```text
-    /// 2020-08-12T20:23:37.248661343Z vector_received_bytes_total{component_kind="sink",component_type="blackhole"} = 6391
-    /// ```
-    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        if let Some(timestamp) = &self.data.time.timestamp {
-            write!(fmt, "{timestamp:?} ")?;
-        }
-        let kind = match self.data.kind {
-            MetricKind::Absolute => '=',
-            MetricKind::Incremental => '+',
-        };
-        self.series.fmt(fmt)?;
-        write!(fmt, " {kind} ")?;
-        self.data.value.fmt(fmt)
-    }
-}
-
-impl EventDataEq for Metric {
-    fn event_data_eq(&self, other: &Self) -> bool {
-        self.series == other.series
-            && self.data == other.data
-            && self.metadata.event_data_eq(&other.metadata)
-    }
-}
-
-impl ByteSizeOf for Metric {
-    fn allocated_bytes(&self) -> usize {
-        self.series.allocated_bytes()
-            + self.data.allocated_bytes()
-            + self.metadata.allocated_bytes()
-    }
-}
-
-impl EstimatedJsonEncodedSizeOf for Metric {
-    fn estimated_json_encoded_size_of(&self) -> JsonSize {
-        // TODO: For now we're using the in-memory representation of the metric, but we'll convert
-        // this to actually calculate the JSON encoded size in the near future.
-        self.size_of().into()
-    }
-}
-
-impl Finalizable for Metric {
-    fn take_finalizers(&mut self) -> EventFinalizers {
-        self.metadata.take_finalizers()
-    }
-}
-
-impl GetEventCountTags for Metric {
-    fn get_tags(&self) -> TaggedEventsSent {
-        let source = if telemetry().tags().emit_source {
-            self.metadata().source_id().cloned().into()
-        } else {
-            OptionalTag::Ignored
-        };
-
-        // Currently there is no way to specify a tag that means the service,
-        // so we will be hardcoding it to "service".
-        let service = if telemetry().tags().emit_service {
-            self.tags()
-                .and_then(|tags| tags.get("service").map(ToString::to_string))
-                .into()
-        } else {
-            OptionalTag::Ignored
-        };
-
-        TaggedEventsSent { source, service }
-    }
 }
 
 /// Metric kind.
@@ -649,25 +200,10 @@ pub fn samples_to_buckets(samples: &[Sample], buckets: &[f64]) -> (Vec<Bucket>, 
 
 #[cfg(test)]
 mod test {
-    use std::collections::BTreeSet;
-
     use chrono::{DateTime, Timelike, Utc, offset::TimeZone};
     use similar_asserts::assert_eq;
 
     use super::*;
-    use crate::event::OtelMetric;
-
-    /// Test helper: build a Metric via OtelMetric round-trip (for counter/gauge).
-    fn metric_from_otel(otel: OtelMetric) -> Metric {
-        let (s, d, md) = otel.into_metric_parts();
-        Metric::from_parts(s, d, md)
-    }
-
-    /// Test helper: build a Metric from complex MetricValue via from_metric_parts round-trip.
-    fn otel(m: Metric) -> OtelMetric {
-        let (s, d, md) = m.into_parts();
-        OtelMetric::from_metric_parts(s, d, md)
-    }
 
     fn ts() -> DateTime<Utc> {
         Utc.with_ymd_and_hms(2018, 11, 14, 8, 9, 10)
@@ -676,358 +212,129 @@ mod test {
             .expect("invalid timestamp")
     }
 
-    fn tags() -> MetricTags {
-        metric_tags!(
-            "normal_tag" => "value",
-            "true_tag" => "true",
-            "empty_tag" => "",
-        )
+    fn make_data(kind: MetricKind, value: MetricValue) -> MetricData {
+        MetricData {
+            time: MetricTime { timestamp: None, interval_ms: None },
+            kind,
+            value,
+        }
     }
 
     #[test]
     fn merge_counters() {
-        let mut counter = metric_from_otel(
-            OtelMetric::new_counter("counter", MetricKind::Incremental, 1.0),
-        );
+        let mut data = make_data(MetricKind::Incremental, MetricValue::Counter { value: 1.0 });
+        let delta = MetricData {
+            time: MetricTime { timestamp: Some(ts()), interval_ms: None },
+            kind: MetricKind::Incremental,
+            value: MetricValue::Counter { value: 2.0 },
+        };
 
-        let delta = metric_from_otel(
-            OtelMetric::new_counter("counter", MetricKind::Incremental, 2.0)
-                .with_namespace(Some("vector"))
-                .with_tags(Some(tags()))
-                .with_timestamp(Some(ts())),
-        );
-
-        let expected = counter
-            .clone()
-            .with_value(MetricValue::Counter { value: 3.0 })
-            .with_timestamp(Some(ts()));
-
-        assert!(counter.data.add(&delta.data));
-        assert_eq!(counter, expected);
+        assert!(data.add(&delta));
+        assert_eq!(data.value, MetricValue::Counter { value: 3.0 });
+        assert_eq!(data.time.timestamp, Some(ts()));
     }
 
     #[test]
     fn merge_gauges() {
-        let mut gauge = metric_from_otel(otel(Metric::new(
-            "gauge",
-            MetricKind::Incremental,
-            MetricValue::Gauge { value: 1.0 },
-        )));
+        let mut data = make_data(MetricKind::Incremental, MetricValue::Gauge { value: 1.0 });
+        let delta = MetricData {
+            time: MetricTime { timestamp: Some(ts()), interval_ms: None },
+            kind: MetricKind::Incremental,
+            value: MetricValue::Gauge { value: -2.0 },
+        };
 
-        let delta = metric_from_otel(
-            otel(Metric::new(
-                "gauge",
-                MetricKind::Incremental,
-                MetricValue::Gauge { value: -2.0 },
-            )
-            .with_namespace(Some("vector"))
-            .with_tags(Some(tags()))
-            .with_timestamp(Some(ts()))),
-        );
-
-        let expected = gauge
-            .clone()
-            .with_value(MetricValue::Gauge { value: -1.0 })
-            .with_timestamp(Some(ts()));
-
-        assert!(gauge.data.add(&delta.data));
-        assert_eq!(gauge, expected);
+        assert!(data.add(&delta));
+        assert_eq!(data.value, MetricValue::Gauge { value: -1.0 });
+        assert_eq!(data.time.timestamp, Some(ts()));
     }
 
     #[test]
     fn merge_sets() {
-        let mut set = metric_from_otel(otel(Metric::new(
-            "set",
-            MetricKind::Incremental,
-            MetricValue::Set {
-                values: vec!["old".into()].into_iter().collect(),
+        let mut data = make_data(MetricKind::Incremental, MetricValue::Set {
+            values: vec!["old".into()].into_iter().collect(),
+        });
+        let delta = MetricData {
+            time: MetricTime { timestamp: Some(ts()), interval_ms: None },
+            kind: MetricKind::Incremental,
+            value: MetricValue::Set {
+                values: vec!["new".into()].into_iter().collect(),
             },
-        )));
+        };
 
-        let delta = metric_from_otel(
-            otel(Metric::new(
-                "set",
-                MetricKind::Incremental,
-                MetricValue::Set {
-                    values: vec!["new".into()].into_iter().collect(),
-                },
-            )
-            .with_namespace(Some("vector"))
-            .with_tags(Some(tags()))
-            .with_timestamp(Some(ts()))),
-        );
-
-        let expected = set
-            .clone()
-            .with_value(MetricValue::Set {
-                values: vec!["old".into(), "new".into()].into_iter().collect(),
-            })
-            .with_timestamp(Some(ts()));
-
-        assert!(set.data.add(&delta.data));
-        assert_eq!(set, expected);
+        assert!(data.add(&delta));
+        let MetricValue::Set { values } = &data.value else { panic!("expected set") };
+        assert!(values.contains("old"));
+        assert!(values.contains("new"));
+        assert_eq!(data.time.timestamp, Some(ts()));
     }
 
     #[test]
     fn merge_histograms() {
-        let mut dist = metric_from_otel(otel(Metric::new(
-            "hist",
-            MetricKind::Incremental,
-            MetricValue::Distribution {
-                samples: samples![1.0 => 10],
+        let mut data = make_data(MetricKind::Incremental, MetricValue::Distribution {
+            samples: samples![1.0 => 10],
+            statistic: StatisticKind::Histogram,
+        });
+        let delta = MetricData {
+            time: MetricTime { timestamp: Some(ts()), interval_ms: None },
+            kind: MetricKind::Incremental,
+            value: MetricValue::Distribution {
+                samples: samples![1.0 => 20],
                 statistic: StatisticKind::Histogram,
             },
-        )));
+        };
 
-        let delta = metric_from_otel(
-            otel(Metric::new(
-                "hist",
-                MetricKind::Incremental,
-                MetricValue::Distribution {
-                    samples: samples![1.0 => 20],
-                    statistic: StatisticKind::Histogram,
-                },
-            )
-            .with_namespace(Some("vector"))
-            .with_tags(Some(tags()))
-            .with_timestamp(Some(ts()))),
-        );
-
-        let expected = dist
-            .clone()
-            .with_value(MetricValue::Distribution {
-                samples: samples![1.0 => 10, 1.0 => 20],
-                statistic: StatisticKind::Histogram,
-            })
-            .with_timestamp(Some(ts()));
-
-        assert!(dist.data.add(&delta.data));
-        assert_eq!(dist, expected);
+        assert!(data.add(&delta));
+        assert_eq!(data.value, MetricValue::Distribution {
+            samples: samples![1.0 => 10, 1.0 => 20],
+            statistic: StatisticKind::Histogram,
+        });
     }
 
     #[test]
     fn subtract_counters() {
-        // Make sure a newer/higher value counter can subtract an older/lesser value counter:
-        let old_counter = metric_from_otel(
-            OtelMetric::new_counter("counter", MetricKind::Absolute, 4.0),
-        );
+        let old = make_data(MetricKind::Absolute, MetricValue::Counter { value: 4.0 });
+        let mut new = make_data(MetricKind::Absolute, MetricValue::Counter { value: 6.0 });
 
-        let mut new_counter = metric_from_otel(
-            OtelMetric::new_counter("counter", MetricKind::Absolute, 6.0),
-        );
+        assert!(new.subtract(&old));
+        assert_eq!(new.value, MetricValue::Counter { value: 2.0 });
 
-        assert!(new_counter.subtract(&old_counter));
-        assert_eq!(new_counter.value(), &MetricValue::Counter { value: 2.0 });
-
-        // But not the other way around:
-        let old_counter = metric_from_otel(
-            OtelMetric::new_counter("counter", MetricKind::Absolute, 6.0),
-        );
-
-        let mut new_reset_counter = metric_from_otel(
-            OtelMetric::new_counter("counter", MetricKind::Absolute, 1.0),
-        );
-
-        assert!(!new_reset_counter.subtract(&old_counter));
+        let old = make_data(MetricKind::Absolute, MetricValue::Counter { value: 6.0 });
+        let mut new_reset = make_data(MetricKind::Absolute, MetricValue::Counter { value: 1.0 });
+        assert!(!new_reset.subtract(&old));
     }
 
     #[test]
     fn subtract_aggregated_histograms() {
-        // Make sure a newer/higher count aggregated histogram can subtract an older/lower count
-        // aggregated histogram:
-        let old_histogram = metric_from_otel(otel(Metric::new(
-            "histogram",
-            MetricKind::Absolute,
-            MetricValue::AggregatedHistogram {
-                count: 1,
-                sum: 1.0,
-                buckets: buckets!(2.0 => 1),
-            },
-        )));
+        let old = make_data(MetricKind::Absolute, MetricValue::AggregatedHistogram {
+            count: 1, sum: 1.0, buckets: buckets!(2.0 => 1),
+        });
+        let mut new = make_data(MetricKind::Absolute, MetricValue::AggregatedHistogram {
+            count: 3, sum: 3.0, buckets: buckets!(2.0 => 3),
+        });
 
-        let mut new_histogram = metric_from_otel(otel(Metric::new(
-            "histogram",
-            MetricKind::Absolute,
-            MetricValue::AggregatedHistogram {
-                count: 3,
-                sum: 3.0,
-                buckets: buckets!(2.0 => 3),
-            },
-        )));
+        assert!(new.subtract(&old));
+        assert_eq!(new.value, MetricValue::AggregatedHistogram {
+            count: 2, sum: 2.0, buckets: buckets!(2.0 => 2),
+        });
 
-        assert!(new_histogram.subtract(&old_histogram));
-        assert_eq!(
-            new_histogram.value(),
-            &MetricValue::AggregatedHistogram {
-                count: 2,
-                sum: 2.0,
-                buckets: buckets!(2.0 => 2),
-            }
-        );
-
-        // But not the other way around:
-        let old_histogram = metric_from_otel(otel(Metric::new(
-            "histogram",
-            MetricKind::Absolute,
-            MetricValue::AggregatedHistogram {
-                count: 3,
-                sum: 3.0,
-                buckets: buckets!(2.0 => 3),
-            },
-        )));
-
-        let mut new_reset_histogram = metric_from_otel(otel(Metric::new(
-            "histogram",
-            MetricKind::Absolute,
-            MetricValue::AggregatedHistogram {
-                count: 1,
-                sum: 1.0,
-                buckets: buckets!(2.0 => 1),
-            },
-        )));
-
-        assert!(!new_reset_histogram.subtract(&old_histogram));
+        let old = make_data(MetricKind::Absolute, MetricValue::AggregatedHistogram {
+            count: 3, sum: 3.0, buckets: buckets!(2.0 => 3),
+        });
+        let mut new_reset = make_data(MetricKind::Absolute, MetricValue::AggregatedHistogram {
+            count: 1, sum: 1.0, buckets: buckets!(2.0 => 1),
+        });
+        assert!(!new_reset.subtract(&old));
     }
 
     #[test]
     fn subtract_aggregated_histograms_bucket_redistribution() {
-        // Test for issue #24415: when total count is higher but individual bucket counts is sometimes lower
-        let old_histogram = metric_from_otel(otel(Metric::new(
-            "histogram",
-            MetricKind::Absolute,
-            MetricValue::AggregatedHistogram {
-                count: 15,
-                sum: 15.0,
-                buckets: buckets!(1.0 => 10, 2.0 => 5),
-            },
-        )));
-
-        let mut new_histogram_with_redistribution = metric_from_otel(otel(Metric::new(
-            "histogram",
-            MetricKind::Absolute,
-            MetricValue::AggregatedHistogram {
-                count: 20,
-                sum: 20.0,
-                // Total count is higher (20 > 15), but bucket1 count is lower (8 < 10)
-                buckets: buckets!(1.0 => 8, 2.0 => 12),
-            },
-        )));
-
-        assert!(!new_histogram_with_redistribution.subtract(&old_histogram));
-    }
-
-    #[test]
-    // `too_many_lines` is mostly just useful for production code but we're not
-    // able to flag the lint on only for non-test.
-    #[allow(clippy::too_many_lines)]
-    fn display() {
-        assert_eq!(
-            format!(
-                "{}",
-                metric_from_otel(
-                    OtelMetric::new_counter("one", MetricKind::Absolute, 1.23)
-                        .with_tags(Some(tags()))
-                )
-            ),
-            r#"one{empty_tag="",normal_tag="value",true_tag="true"} = 1.23"#
-        );
-
-        assert_eq!(
-            format!(
-                "{}",
-                metric_from_otel(otel(Metric::new(
-                    "two word",
-                    MetricKind::Incremental,
-                    MetricValue::Gauge { value: 2.0 }
-                )
-                .with_timestamp(Some(ts()))))
-            ),
-            r#"2018-11-14T08:09:10.000000011Z "two word"{} + 2"#
-        );
-
-        assert_eq!(
-            format!(
-                "{}",
-                metric_from_otel(
-                    OtelMetric::new_counter("namespace", MetricKind::Absolute, 1.23)
-                        .with_namespace(Some("vector"))
-                )
-            ),
-            r"vector_namespace{} = 1.23"
-        );
-
-        assert_eq!(
-            format!(
-                "{}",
-                metric_from_otel(
-                    OtelMetric::new_counter("namespace", MetricKind::Absolute, 1.23)
-                        .with_namespace(Some("vector host"))
-                )
-            ),
-            r#""vector host"_namespace{} = 1.23"#
-        );
-
-        let mut values = BTreeSet::<String>::new();
-        values.insert("v1".into());
-        values.insert("v2_two".into());
-        values.insert("thrəë".into());
-        values.insert("four=4".into());
-        assert_eq!(
-            format!(
-                "{}",
-                metric_from_otel(otel(
-                    Metric::new("three", MetricKind::Absolute, MetricValue::Set { values })
-                ))
-            ),
-            r#"three{} = "four=4" "thrəë" v1 v2_two"#
-        );
-
-        assert_eq!(
-            format!(
-                "{}",
-                metric_from_otel(otel(Metric::new(
-                    "four",
-                    MetricKind::Absolute,
-                    MetricValue::Distribution {
-                        samples: samples![1.0 => 3, 2.0 => 4],
-                        statistic: StatisticKind::Histogram,
-                    }
-                )))
-            ),
-            r"four{} = histogram 3@1 4@2"
-        );
-
-        assert_eq!(
-            format!(
-                "{}",
-                metric_from_otel(otel(Metric::new(
-                    "five",
-                    MetricKind::Absolute,
-                    MetricValue::AggregatedHistogram {
-                        buckets: buckets![51.0 => 53, 52.0 => 54],
-                        count: 107,
-                        sum: 103.0,
-                    }
-                )))
-            ),
-            r"five{} = count=107 sum=103 53@51 54@52"
-        );
-
-        assert_eq!(
-            format!(
-                "{}",
-                metric_from_otel(otel(Metric::new(
-                    "six",
-                    MetricKind::Absolute,
-                    MetricValue::AggregatedSummary {
-                        quantiles: quantiles![1.0 => 63.0, 2.0 => 64.0],
-                        count: 2,
-                        sum: 127.0,
-                    }
-                )))
-            ),
-            r"six{} = count=2 sum=127 1@63 2@64"
-        );
+        let old = make_data(MetricKind::Absolute, MetricValue::AggregatedHistogram {
+            count: 15, sum: 15.0, buckets: buckets!(1.0 => 10, 2.0 => 5),
+        });
+        let mut new = make_data(MetricKind::Absolute, MetricValue::AggregatedHistogram {
+            count: 20, sum: 20.0, buckets: buckets!(1.0 => 8, 2.0 => 12),
+        });
+        assert!(!new.subtract(&old));
     }
 
     #[test]
@@ -1045,10 +352,7 @@ mod test {
         ];
 
         for (quantile, expected) in quantiles {
-            let quantile = Quantile {
-                quantile,
-                value: 1.0,
-            };
+            let quantile = Quantile { quantile, value: 1.0 };
             let result = quantile.to_percentile_string();
             assert_eq!(result, expected);
         }
@@ -1069,10 +373,7 @@ mod test {
         ];
 
         for (quantile, expected) in quantiles {
-            let quantile = Quantile {
-                quantile,
-                value: 1.0,
-            };
+            let quantile = Quantile { quantile, value: 1.0 };
             let result = quantile.to_quantile_string();
             assert_eq!(result, expected);
         }
@@ -1092,18 +393,9 @@ mod test {
             converted,
             Some(MetricValue::AggregatedHistogram {
                 buckets: vec![
-                    Bucket {
-                        upper_limit: 1.0,
-                        count: 10,
-                    },
-                    Bucket {
-                        upper_limit: 5.0,
-                        count: 7,
-                    },
-                    Bucket {
-                        upper_limit: 10.0,
-                        count: 0,
-                    },
+                    Bucket { upper_limit: 1.0, count: 10 },
+                    Bucket { upper_limit: 5.0, count: 7 },
+                    Bucket { upper_limit: 10.0, count: 0 },
                 ],
                 sum: 30.0,
                 count: 17,
@@ -1113,65 +405,45 @@ mod test {
 
     #[test]
     fn merge_non_contiguous_interval() {
-        let mut gauge = metric_from_otel(
-            otel(Metric::new(
-                "gauge",
-                MetricKind::Incremental,
-                MetricValue::Gauge { value: 12.0 },
-            )
-            .with_timestamp(Some(ts()))
-            .with_interval_ms(std::num::NonZeroU32::new(10))),
-        );
+        let mut data = MetricData {
+            time: MetricTime { timestamp: Some(ts()), interval_ms: std::num::NonZeroU32::new(10) },
+            kind: MetricKind::Incremental,
+            value: MetricValue::Gauge { value: 12.0 },
+        };
+        let delta = MetricData {
+            time: MetricTime {
+                timestamp: Some(ts() + chrono::Duration::milliseconds(20)),
+                interval_ms: std::num::NonZeroU32::new(15),
+            },
+            kind: MetricKind::Incremental,
+            value: MetricValue::Gauge { value: -5.0 },
+        };
 
-        let delta = metric_from_otel(
-            otel(Metric::new(
-                "gauge",
-                MetricKind::Incremental,
-                MetricValue::Gauge { value: -5.0 },
-            )
-            .with_timestamp(Some(ts() + chrono::Duration::milliseconds(20)))
-            .with_interval_ms(std::num::NonZeroU32::new(15))),
-        );
-
-        let expected = gauge
-            .clone()
-            .with_value(MetricValue::Gauge { value: 7.0 })
-            .with_timestamp(Some(ts()))
-            .with_interval_ms(std::num::NonZeroU32::new(35));
-
-        assert!(gauge.data.add(&delta.data));
-        assert_eq!(gauge, expected);
+        assert!(data.add(&delta));
+        assert_eq!(data.value, MetricValue::Gauge { value: 7.0 });
+        assert_eq!(data.time.timestamp, Some(ts()));
+        assert_eq!(data.time.interval_ms, std::num::NonZeroU32::new(35));
     }
 
     #[test]
     fn merge_contiguous_interval() {
-        let mut gauge = metric_from_otel(
-            otel(Metric::new(
-                "gauge",
-                MetricKind::Incremental,
-                MetricValue::Gauge { value: 12.0 },
-            )
-            .with_timestamp(Some(ts()))
-            .with_interval_ms(std::num::NonZeroU32::new(10))),
-        );
+        let mut data = MetricData {
+            time: MetricTime { timestamp: Some(ts()), interval_ms: std::num::NonZeroU32::new(10) },
+            kind: MetricKind::Incremental,
+            value: MetricValue::Gauge { value: 12.0 },
+        };
+        let delta = MetricData {
+            time: MetricTime {
+                timestamp: Some(ts() + chrono::Duration::milliseconds(5)),
+                interval_ms: std::num::NonZeroU32::new(15),
+            },
+            kind: MetricKind::Incremental,
+            value: MetricValue::Gauge { value: -5.0 },
+        };
 
-        let delta = metric_from_otel(
-            otel(Metric::new(
-                "gauge",
-                MetricKind::Incremental,
-                MetricValue::Gauge { value: -5.0 },
-            )
-            .with_timestamp(Some(ts() + chrono::Duration::milliseconds(5)))
-            .with_interval_ms(std::num::NonZeroU32::new(15))),
-        );
-
-        let expected = gauge
-            .clone()
-            .with_value(MetricValue::Gauge { value: 7.0 })
-            .with_timestamp(Some(ts()))
-            .with_interval_ms(std::num::NonZeroU32::new(20));
-
-        assert!(gauge.data.add(&delta.data));
-        assert_eq!(gauge, expected);
+        assert!(data.add(&delta));
+        assert_eq!(data.value, MetricValue::Gauge { value: 7.0 });
+        assert_eq!(data.time.timestamp, Some(ts()));
+        assert_eq!(data.time.interval_ms, std::num::NonZeroU32::new(20));
     }
 }

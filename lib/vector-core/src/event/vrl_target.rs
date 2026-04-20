@@ -1021,7 +1021,7 @@ mod test {
     use similar_asserts::assert_eq;
     use vrl::{btreemap, value::kind::Index};
 
-    use super::{super::{Metric, MetricValue, OtelMetric}, *};
+    use super::{super::{MetricValue, OtelMetric}, *};
     use crate::metric_tags;
 
     #[test]

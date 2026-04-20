@@ -121,12 +121,37 @@ mod tests {
     use bytes::{Bytes, BytesMut};
     use chrono::{TimeZone, Timelike, Utc};
     use vector_core::{
-        event::{OtelLog, Metric, MetricKind, MetricValue, ObjectMap, OtelMetric, StatisticKind, Value},
+        event::{
+            EventMetadata, MetricKind, MetricValue, ObjectMap, OtelLog, OtelMetric,
+            StatisticKind, Value,
+            metric::{MetricData, MetricName, MetricSeries, MetricTime},
+        },
         metric_tags,
     };
     use vrl::btreemap;
 
     use super::*;
+
+    /// Build an OtelMetric directly from parts for Distribution / Set variants
+    /// that have no dedicated `OtelMetric::new_*` native constructor.
+    fn otel_from_parts(name: &str, kind: MetricKind, value: MetricValue) -> OtelMetric {
+        let series = MetricSeries {
+            name: MetricName {
+                name: name.to_string(),
+                namespace: None,
+            },
+            tags: None,
+        };
+        let data = MetricData {
+            time: MetricTime {
+                timestamp: None,
+                interval_ms: None,
+            },
+            kind,
+            value,
+        };
+        OtelMetric::from_metric_parts(series, data, EventMetadata::default())
+    }
 
     #[test]
     fn serialize_json_log() {
@@ -169,17 +194,13 @@ mod tests {
     #[test]
     #[ignore = "Metric round-trip through OtelMetric is lossy for Set/Histogram types"]
     fn serialize_json_metric_set() {
-        let event = Event::Metric({
-            let m = Metric::new(
-                "users",
-                MetricKind::Incremental,
-                MetricValue::Set {
-                    values: vec!["bob".into()].into_iter().collect(),
-                },
-            );
-            let (s, d, md) = m.into_parts();
-            OtelMetric::from_metric_parts(s, d, md)
-        });
+        let event = Event::Metric(otel_from_parts(
+            "users",
+            MetricKind::Incremental,
+            MetricValue::Set {
+                values: vec!["bob".into()].into_iter().collect(),
+            },
+        ));
 
         let bytes = serialize(JsonSerializerConfig::default(), event);
 
@@ -192,18 +213,14 @@ mod tests {
     #[test]
     #[ignore = "Metric round-trip through OtelMetric is lossy for Set/Histogram types"]
     fn serialize_json_metric_histogram_without_timestamp() {
-        let event = Event::Metric({
-            let m = Metric::new(
-                "glork",
-                MetricKind::Incremental,
-                MetricValue::Distribution {
-                    samples: vector_core::samples![10.0 => 1],
-                    statistic: StatisticKind::Histogram,
-                },
-            );
-            let (s, d, md) = m.into_parts();
-            OtelMetric::from_metric_parts(s, d, md)
-        });
+        let event = Event::Metric(otel_from_parts(
+            "glork",
+            MetricKind::Incremental,
+            MetricValue::Distribution {
+                samples: vector_core::samples![10.0 => 1],
+                statistic: StatisticKind::Histogram,
+            },
+        ));
 
         let bytes = serialize(JsonSerializerConfig::default(), event);
 
@@ -282,7 +299,11 @@ mod tests {
         use bytes::{Bytes, BytesMut};
         use chrono::{TimeZone, Timelike, Utc};
         use vector_core::{
-            event::{OtelLog, Metric, MetricKind, MetricValue, ObjectMap, OtelMetric, StatisticKind, Value},
+            event::{
+                EventMetadata, MetricKind, MetricValue, ObjectMap, OtelLog, OtelMetric,
+                StatisticKind, Value,
+                metric::{MetricData, MetricName, MetricSeries, MetricTime},
+            },
             metric_tags,
         };
         use vrl::btreemap;
@@ -294,6 +315,27 @@ mod tests {
                 options: JsonSerializerOptions { pretty: true },
                 ..Default::default()
             }
+        }
+
+        /// Build an OtelMetric directly from parts for Distribution / Set variants
+        /// that have no dedicated `OtelMetric::new_*` native constructor.
+        fn otel_from_parts(name: &str, kind: MetricKind, value: MetricValue) -> OtelMetric {
+            let series = MetricSeries {
+                name: MetricName {
+                    name: name.to_string(),
+                    namespace: None,
+                },
+                tags: None,
+            };
+            let data = MetricData {
+                time: MetricTime {
+                    timestamp: None,
+                    interval_ms: None,
+                },
+                kind,
+                value,
+            };
+            OtelMetric::from_metric_parts(series, data, EventMetadata::default())
         }
 
         #[test]
@@ -377,17 +419,13 @@ mod tests {
         #[test]
         #[ignore = "Metric round-trip through OtelMetric is lossy for Set/Histogram types"]
         fn serialize_json_metric_set() {
-            let event = Event::Metric({
-                let m = Metric::new(
-                    "users",
-                    MetricKind::Incremental,
-                    MetricValue::Set {
-                        values: vec!["bob".into()].into_iter().collect(),
-                    },
-                );
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
-            });
+            let event = Event::Metric(otel_from_parts(
+                "users",
+                MetricKind::Incremental,
+                MetricValue::Set {
+                    values: vec!["bob".into()].into_iter().collect(),
+                },
+            ));
             let bytes = serialize(get_pretty_json_config(), event);
             assert_eq!(
                 bytes,
@@ -405,18 +443,14 @@ mod tests {
         #[test]
         #[ignore = "Metric round-trip through OtelMetric is lossy for Set/Histogram types"]
         fn serialize_json_metric_histogram_without_timestamp() {
-            let event = Event::Metric({
-                let m = Metric::new(
-                    "glork",
-                    MetricKind::Incremental,
-                    MetricValue::Distribution {
-                        samples: vector_core::samples![10.0 => 1],
-                        statistic: StatisticKind::Histogram,
-                    },
-                );
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
-            });
+            let event = Event::Metric(otel_from_parts(
+                "glork",
+                MetricKind::Incremental,
+                MetricValue::Distribution {
+                    samples: vector_core::samples![10.0 => 1],
+                    statistic: StatisticKind::Histogram,
+                },
+            ));
             let bytes = serialize(get_pretty_json_config(), event);
             assert_eq!(
                 bytes,

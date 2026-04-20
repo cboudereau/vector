@@ -4,7 +4,7 @@ use std::{
 };
 
 use vector_lib::event::{
-    Event, EventMetadata, Metric, MetricValue, OtelMetric, StatisticKind,
+    Event, EventMetadata, MetricValue, OtelMetric, StatisticKind,
     metric::{Bucket, MetricData, MetricName, MetricSeries, MetricTime, Sample},
 };
 
@@ -63,13 +63,7 @@ pub struct MetricState<N> {
 }
 
 impl<N: MetricNormalize> MetricState<N> {
-    pub fn merge(&mut self, metric: Metric) {
-        let (series, data, metadata) = metric.into_parts();
-        let otel = OtelMetric::from_metric_parts(series, data, metadata);
-        self.merge_otel(otel)
-    }
-
-    pub fn merge_otel(&mut self, otel: OtelMetric) {
+    pub fn merge(&mut self, otel: OtelMetric) {
         if let Some(output) = self.normalizer.normalize(&mut self.intermediate, otel) {
             let (series, data, metadata) = output.into_metric_parts();
             self.latest.insert(series, (data, metadata));
@@ -97,7 +91,7 @@ impl<N: MetricNormalize> MetricState<N> {
 impl<N: MetricNormalize> Extend<Event> for MetricState<N> {
     fn extend<T: IntoIterator<Item = Event>>(&mut self, iter: T) {
         for event in iter.into_iter() {
-            self.merge_otel(event.into_otel_metric());
+            self.merge(event.into_otel_metric());
         }
     }
 }
@@ -106,7 +100,7 @@ impl<N: MetricNormalize + Default> FromIterator<Event> for MetricState<N> {
     fn from_iter<T: IntoIterator<Item = Event>>(iter: T) -> Self {
         let mut state = MetricState::default();
         for event in iter.into_iter() {
-            state.merge_otel(event.into_otel_metric());
+            state.merge(event.into_otel_metric());
         }
         state
     }
@@ -323,28 +317,26 @@ pub fn generate_f64s(start: u16, end: u16) -> Vec<f64> {
     samples
 }
 
-pub fn get_set<S, V>(values: S, kind: MetricKind) -> Metric
+pub fn get_set<S, V>(values: S, kind: MetricKind) -> OtelMetric
 where
     S: IntoIterator<Item = V>,
     V: Display,
 {
-    let otel = otel_from_parts(
+    otel_from_parts(
         "set",
         kind,
         MetricValue::Set {
             values: values.into_iter().map(|i| i.to_string()).collect(),
         },
-    );
-    let (s, d, md) = otel.into_metric_parts();
-    Metric::from_parts(s, d, md)
+    )
 }
 
-pub fn get_distribution<S, V>(samples: S, kind: MetricKind) -> Metric
+pub fn get_distribution<S, V>(samples: S, kind: MetricKind) -> OtelMetric
 where
     S: IntoIterator<Item = V>,
     V: Into<f64>,
 {
-    let otel = otel_from_parts(
+    otel_from_parts(
         "distribution",
         kind,
         MetricValue::Distribution {
@@ -357,12 +349,10 @@ where
                 .collect(),
             statistic: StatisticKind::Histogram,
         },
-    );
-    let (s, d, md) = otel.into_metric_parts();
-    Metric::from_parts(s, d, md)
+    )
 }
 
-pub fn get_aggregated_histogram<S, V>(samples: S, kind: MetricKind) -> Metric
+pub fn get_aggregated_histogram<S, V>(samples: S, kind: MetricKind) -> OtelMetric
 where
     S: IntoIterator<Item = V>,
     V: Into<f64>,
@@ -370,37 +360,26 @@ where
     let samples = samples.into_iter().map(Into::into).collect::<Vec<_>>();
     let (buckets, sum, count) = buckets_from_samples(&samples);
 
-    let otel = OtelMetric::new_histogram("agg_histogram", kind, &buckets, count, sum);
-    let (s, d, md) = otel.into_metric_parts();
-    Metric::from_parts(s, d, md)
+    OtelMetric::new_histogram("agg_histogram", kind, &buckets, count, sum)
 }
 
-pub fn get_counter(value: f64, kind: MetricKind) -> Metric {
-    let otel = OtelMetric::new_counter("counter", kind, value);
-    let (s, d, md) = otel.into_metric_parts();
-    Metric::from_parts(s, d, md)
+pub fn get_counter(value: f64, kind: MetricKind) -> OtelMetric {
+    OtelMetric::new_counter("counter", kind, value)
 }
 
-pub fn get_gauge(value: f64, kind: MetricKind) -> Metric {
-    let otel = otel_from_parts("gauge", kind, MetricValue::Gauge { value });
-    let (s, d, md) = otel.into_metric_parts();
-    Metric::from_parts(s, d, md)
+pub fn get_gauge(value: f64, kind: MetricKind) -> OtelMetric {
+    otel_from_parts("gauge", kind, MetricValue::Gauge { value })
 }
 
 pub fn assert_normalize<N: MetricNormalize>(
     mut normalizer: N,
-    inputs: Vec<Metric>,
-    expected_outputs: Vec<Option<Metric>>,
+    inputs: Vec<OtelMetric>,
+    expected_outputs: Vec<Option<OtelMetric>>,
 ) {
     let mut metric_set = MetricSet::default();
 
     for (input, expected) in inputs.into_iter().zip(expected_outputs) {
-        let (series, data, metadata) = input.into_parts();
-        let otel_input = OtelMetric::from_metric_parts(series, data, metadata);
-        let result = normalizer.normalize(&mut metric_set, otel_input).map(|otel| {
-            let (s, d, md) = otel.into_metric_parts();
-            Metric::from_parts(s, d, md)
-        });
+        let result = normalizer.normalize(&mut metric_set, input);
         assert_eq!(result, expected);
     }
 }

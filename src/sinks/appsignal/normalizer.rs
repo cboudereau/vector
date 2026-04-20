@@ -27,7 +27,7 @@ mod tests {
     use super::AppsignalMetricsNormalizer;
     use crate::{
         event::{
-            EventMetadata, Metric, MetricKind, MetricValue, OtelMetric,
+            EventMetadata, MetricKind, MetricValue, OtelMetric,
             metric::{MetricData, MetricName, MetricSeries, MetricTime},
         },
         test_util::metrics::{assert_normalize, tests},
@@ -84,15 +84,13 @@ mod tests {
 
     #[test]
     fn other_metrics() {
-        let otel = otel_from_parts(
+        let metric = otel_from_parts(
             "set",
             MetricKind::Incremental,
             MetricValue::Set {
                 values: BTreeSet::new(),
             },
         );
-        let (s, d, md) = otel.into_metric_parts();
-        let metric = Metric::from_parts(s, d, md);
 
         assert_normalize(
             AppsignalMetricsNormalizer,

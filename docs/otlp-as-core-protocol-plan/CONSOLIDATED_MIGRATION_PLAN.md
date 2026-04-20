@@ -20,6 +20,8 @@ Single source of truth for the migration. All other documents in this folder fee
 | `VRL_MIGRATION_TOOL.md` | VRL migration tool specification and rewrite rule catalogue |
 | `GAP_ANALYSIS.md` | Code-verified gaps between docs and codebase — read before coding |
 | `UPSTREAM_PROTO_MIGRATION.md` | Migrate to upstream `opentelemetry-proto` crate + OTLP HTTP JSON support |
+| `LEGACY_REMOVAL_PLAN.md` | **Subpart of this plan** — legacy-type removal workstream: `LogEvent` / `TraceEvent` / `Metric` deletion, bridge removal (Phase C/F/G), legacy-layout round-trip elimination (T16/T23). Tracks progress per-task. |
+| `BRIDGE_REMOVAL_SESSION.md` | Per-session log of bridge elimination (feeds into LEGACY_REMOVAL_PLAN) |
 | `STEP7_PLAN.md` | Step 7 detailed plan — DD source cleanup (metrics + traces to OTel-native) |
 | `STEP4A_LOAD_BALANCING_PLAN.md` | Step 4a detailed plan — consistent-hash load-balancing sink |
 | `STEP4B_TAIL_SAMPLING_PLAN.md` | Step 4b detailed plan — tail sampling transform |

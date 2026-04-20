@@ -155,7 +155,7 @@ fn encode_and_write_single_event<V: Display>(
 mod tests {
     #[cfg(feature = "sources-statsd")]
     use vector_lib::event::{
-        EventMetadata, Metric, MetricKind, MetricValue, OtelMetric, StatisticKind,
+        EventMetadata, MetricKind, MetricValue, OtelMetric, StatisticKind,
         metric::{MetricData, MetricName, MetricSeries, MetricTime},
     };
     use vector_lib::{
@@ -193,31 +193,28 @@ mod tests {
     }
 
     #[cfg(feature = "sources-statsd")]
-    fn encode_metric(metric: &Metric) -> bytes::BytesMut {
+    fn encode_metric(metric: &OtelMetric) -> bytes::BytesMut {
         use tokio_util::codec::Encoder;
 
-        let otel = { let (s, d, md) = metric.clone().into_parts(); OtelMetric::from_metric_parts(s, d, md) };
         let mut encoder = super::StatsdEncoder {
             default_namespace: None,
         };
         let mut frame = bytes::BytesMut::new();
-        encoder.encode(&otel, &mut frame).unwrap();
+        encoder.encode(metric, &mut frame).unwrap();
         frame
     }
 
     #[cfg(feature = "sources-statsd")]
-    fn parse_encoded_metrics(metric: &[u8]) -> Vec<Metric> {
+    fn parse_encoded_metrics(metric: &[u8]) -> Vec<OtelMetric> {
         use crate::sources::statsd::{ConversionUnit, parser::Parser};
         let statsd_parser = Parser::new(true, ConversionUnit::Seconds);
 
         let s = std::str::from_utf8(metric).unwrap().trim();
         s.split('\n')
             .map(|packet| {
-                let otel = statsd_parser
+                statsd_parser
                     .parse(packet)
-                    .expect("should not fail to parse statsd packet");
-                let (s, d, md) = otel.into_metric_parts();
-                Metric::from_parts(s, d, md)
+                    .expect("should not fail to parse statsd packet")
             })
             .collect()
     }
@@ -272,8 +269,7 @@ mod tests {
         let input = {
             let otel = OtelMetric::new_counter("counter", MetricKind::Incremental, 1.5)
                 .with_tags(Some(tags()));
-            let (s, d, md) = otel.into_metric_parts();
-            Metric::from_parts(s, d, md)
+            otel
         };
 
         let frame = encode_metric(&input);
@@ -286,8 +282,7 @@ mod tests {
     fn test_encode_absolute_counter() {
         let input = {
             let otel = OtelMetric::new_counter("counter", MetricKind::Absolute, 1.5);
-            let (s, d, md) = otel.into_metric_parts();
-            Metric::from_parts(s, d, md)
+            otel
         };
 
         let frame = encode_metric(&input);
@@ -306,8 +301,7 @@ mod tests {
                 MetricValue::Gauge { value: -1.5 },
                 Some(tags()),
             );
-            let (s, d, md) = otel.into_metric_parts();
-            Metric::from_parts(s, d, md)
+            otel
         };
 
         let frame = encode_metric(&input);
@@ -321,8 +315,7 @@ mod tests {
         let input = {
             let otel = OtelMetric::new_gauge("gauge", 1.5)
                 .with_tags(Some(tags()));
-            let (s, d, md) = otel.into_metric_parts();
-            Metric::from_parts(s, d, md)
+            otel
         };
 
         let frame = encode_metric(&input);
@@ -343,8 +336,7 @@ mod tests {
                 },
                 Some(tags()),
             );
-            let (s, d, md) = otel.into_metric_parts();
-            Metric::from_parts(s, d, md)
+            otel
         };
 
         let expected = {
@@ -357,8 +349,7 @@ mod tests {
                 },
                 Some(tags()),
             );
-            let (s, d, md) = otel.into_metric_parts();
-            Metric::from_parts(s, d, md)
+            otel
         };
 
         let frame = encode_metric(&input);
@@ -379,8 +370,7 @@ mod tests {
                 },
                 Some(tags()),
             );
-            let (s, d, md) = otel.into_metric_parts();
-            Metric::from_parts(s, d, md)
+            otel
         };
 
         let expected1 = {
@@ -393,8 +383,7 @@ mod tests {
                 },
                 Some(tags()),
             );
-            let (s, d, md) = otel.into_metric_parts();
-            Metric::from_parts(s, d, md)
+            otel
         };
         let expected2 = {
             let otel = otel_from_parts(
@@ -406,8 +395,7 @@ mod tests {
                 },
                 Some(tags()),
             );
-            let (s, d, md) = otel.into_metric_parts();
-            Metric::from_parts(s, d, md)
+            otel
         };
 
         let frame = encode_metric(&input);
@@ -428,8 +416,7 @@ mod tests {
                 },
                 Some(tags()),
             );
-            let (s, d, md) = otel.into_metric_parts();
-            Metric::from_parts(s, d, md)
+            otel
         };
 
         let frame = encode_metric(&input);

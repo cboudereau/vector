@@ -592,7 +592,7 @@ the struct**:
 | T6 | Split iterator: `Metric` → `OtelMetric` | **DONE** | `3856582` |
 | T12 | Test code: `Metric::new` → `OtelMetric` constructors | **IN PROGRESS** | `43ede6e` | 326→171 migrated. Remaining 171 use `otel()` wrapper or test helpers. |
 | T20 | `capture_metrics()` → return `Vec<OtelMetric>` | **DONE** | `acc456c` | Internal metrics now OtelMetric natively. 48 callers updated. |
-| T13 | Eliminate Metric from all production code | **DONE** | `1b188d6`..`edd3329` | **Metric struct is ABSENT from all production code paths.** GraphQL API (16 files) fully OtelMetric. Sink boundaries (sematext, influxdb, cloudwatch, prometheus) fully OtelMetric. MetricsBuffer Input/Output = OtelMetric. Remaining Metric usage: test code + internal encoding functions. |
+| T13 | Eliminate Metric from all production code | **DONE** | `1b188d6`..`edd3329` | **Metric struct is ABSENT from all production code paths.** GraphQL API, sink boundaries, MetricsBuffer all OtelMetric. Struct deletion attempted — first agent deleted the struct definition but other agents hit rate limits before replacing all 294 callers. Work stashed (`git stash`). **Next session: pop stash, fix remaining callers, compile, delete struct.** |
 | T21 | Delete `normalize_otel` / `make_*_otel` wrappers | **DONE** | `3856582` — deleted as dead code |
 | T22 | Delete `MetricEntry::from_metric` / `into_metric` | **DONE** | `3856582` — replaced with `from_otel` / `into_otel` |
 

@@ -654,7 +654,10 @@ mod tests {
     use super::*;
     use crate::{
         config::ProxyConfig,
-        event::{OtelMetric, metric::{Metric, MetricValue}},
+        event::{
+            EventMetadata, OtelMetric,
+            metric::{Metric, MetricData, MetricName, MetricSeries, MetricTime, MetricValue},
+        },
         http::HttpClient,
         sinks::prometheus::distribution_to_agg_histogram,
         test_util::{
@@ -664,6 +667,32 @@ mod tests {
         },
         tls::MaybeTlsSettings,
     };
+
+    /// Build an OtelMetric directly from parts for Distribution / Set / signed-Gauge
+    /// variants that have no dedicated `OtelMetric::new_*` native constructor.
+    fn otel_from_parts(
+        name: &str,
+        kind: MetricKind,
+        value: MetricValue,
+        tags: Option<MetricTags>,
+    ) -> OtelMetric {
+        let series = MetricSeries {
+            name: MetricName {
+                name: name.to_string(),
+                namespace: None,
+            },
+            tags,
+        };
+        let data = MetricData {
+            time: MetricTime {
+                timestamp: None,
+                interval_ms: None,
+            },
+            kind,
+            value,
+        };
+        OtelMetric::from_metric_parts(series, data, EventMetadata::default())
+    }
 
     #[test]
     fn generate_config() {
@@ -691,17 +720,8 @@ mod tests {
 
         // Histogram — the `bounds` field matters for dedup. Exercise it too.
         let histogram_otel = {
-            let m = Metric::new(
-                "request_duration",
-                MetricKind::Absolute,
-                MetricValue::AggregatedHistogram {
-                    buckets: vector_lib::buckets![0.1 => 10, 0.5 => 20, 1.0 => 5],
-                    count: 35,
-                    sum: 8.0,
-                },
-            );
-            let (s, d, md) = m.into_parts();
-            OtelMetric::from_metric_parts(s, d, md)
+            let buckets = vector_lib::buckets![0.1 => 10, 0.5 => 20, 1.0 => 5];
+            OtelMetric::new_histogram("request_duration", MetricKind::Absolute, &buckets, 35, 8.0)
         };
         let histogram = {
             let (s, d, md) = histogram_otel.clone().into_metric_parts();
@@ -1183,12 +1203,12 @@ mod tests {
         tags: Option<MetricTags>,
     ) -> (String, Event) {
         let name = name.unwrap_or_else(|| format!("vector_set_{}", random_string(16)));
-        let event = Event::Metric({
-            let m = Metric::new(name.clone(), MetricKind::Incremental, value)
-                .with_tags(tags);
-            let (s, d, md) = m.into_parts();
-            OtelMetric::from_metric_parts(s, d, md)
-        });
+        let event = Event::Metric(otel_from_parts(
+            &name,
+            MetricKind::Incremental,
+            value,
+            tags,
+        ));
         (name, event)
     }
 
@@ -1260,31 +1280,29 @@ mod tests {
 
         // Define a series of incremental distribution updates.
         let base_summary_metric = {
-            let m = Metric::new(
+            let otel = otel_from_parts(
                 "distrib_summary",
                 MetricKind::Incremental,
                 MetricValue::Distribution {
                     statistic: StatisticKind::Summary,
                     samples: samples!(1.0 => 1, 3.0 => 2),
                 },
+                None,
             );
-            let (s, d, md) = m.into_parts();
-            let otel = OtelMetric::from_metric_parts(s, d, md);
             let (s, d, md) = otel.into_metric_parts();
             Metric::from_parts(s, d, md)
         };
 
         let base_histogram_metric = {
-            let m = Metric::new(
+            let otel = otel_from_parts(
                 "distrib_histo",
                 MetricKind::Incremental,
                 MetricValue::Distribution {
                     statistic: StatisticKind::Histogram,
                     samples: samples!(7.0 => 1, 9.0 => 2),
                 },
+                None,
             );
-            let (s, d, md) = m.into_parts();
-            let otel = OtelMetric::from_metric_parts(s, d, md);
             let (s, d, md) = otel.into_metric_parts();
             Metric::from_parts(s, d, md)
         };
@@ -1389,31 +1407,29 @@ mod tests {
 
         // Define a series of incremental distribution updates.
         let base_summary_metric = {
-            let m = Metric::new(
+            let otel = otel_from_parts(
                 "distrib_summary",
                 MetricKind::Incremental,
                 MetricValue::Distribution {
                     statistic: StatisticKind::Summary,
                     samples: samples!(1.0 => 1, 3.0 => 2),
                 },
+                None,
             );
-            let (s, d, md) = m.into_parts();
-            let otel = OtelMetric::from_metric_parts(s, d, md);
             let (s, d, md) = otel.into_metric_parts();
             Metric::from_parts(s, d, md)
         };
 
         let base_histogram_metric = {
-            let m = Metric::new(
+            let otel = otel_from_parts(
                 "distrib_histo",
                 MetricKind::Incremental,
                 MetricValue::Distribution {
                     statistic: StatisticKind::Histogram,
                     samples: samples!(7.0 => 1, 9.0 => 2),
                 },
+                None,
             );
-            let (s, d, md) = m.into_parts();
-            let otel = OtelMetric::from_metric_parts(s, d, md);
             let (s, d, md) = otel.into_metric_parts();
             Metric::from_parts(s, d, md)
         };
@@ -1517,13 +1533,12 @@ mod tests {
         };
 
         let base_incremental_gauge_metric = {
-            let m = Metric::new(
+            let otel = otel_from_parts(
                 "gauge",
                 MetricKind::Incremental,
                 MetricValue::Gauge { value: -10.0 },
+                None,
             );
-            let (s, d, md) = m.into_parts();
-            let otel = OtelMetric::from_metric_parts(s, d, md);
             let (s, d, md) = otel.into_metric_parts();
             Metric::from_parts(s, d, md)
         };

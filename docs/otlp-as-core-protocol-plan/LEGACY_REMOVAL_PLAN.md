@@ -614,7 +614,7 @@ the struct**:
 | # | Task | Status | Commit | Note |
 |---|------|--------|--------|------|
 | T16 | Fast-path get/insert/remove bypassing legacy round-trip | **DONE** | `5198ea7`..`a86b435` | Phases 1-3 complete. All-field get/insert/remove for OtelLog + OtelSpan bypass legacy layout. Phase 4 (batch methods) deferred to T15/T23. |
-| T15 | Remove VRL aliases + Serialize → proto-canonical | **OPEN** | | T16 done. 5 aliases to remove. Breaking change gated on `vector vrl-migrate`. See "Remaining work" for detailed plan. |
+| T15 | Remove VRL aliases + Serialize → proto-canonical | **PARTIAL** | Phase 1 done | T16 done. Phase 1: fast-path aliases removed from get/insert/remove. Phases 2-5 remain. |
 | T23 | Simplify/rename legacy layout functions | **PLANNED** | | After T15, rename + simplify. `from_value_map` stays as canonical constructor. See "Remaining work" for analysis. |
 
 #### Workstream 4: Runtime safety + correctness
@@ -1101,12 +1101,19 @@ backward compatibility with pre-OTLP Vector. Users run
 | `.source_type` | `.resource.attributes."source_type"` | Remove hoisting from `hoist_resource_fields` |
 | `.tags."key"` | `.attributes."key"` | OtelMetric only — remove alias in VrlTarget |
 
-**Phase 1 — Remove aliases from get/insert/remove (~1h):**
-- Remove `.message` case from get/insert/remove (only `.body` works)
-- Remove `.timestamp` case that returns Timestamp — replace with
-  `.time_unix_nano` returning Integer (nanoseconds since epoch)
-- Remove `.host` and `.source_type` alias cases
-- Keep canonical names (`.body`, `.time_unix_nano`, `.severity_text`, etc.)
+**Phase 1 — Remove aliases from get/insert/remove — DONE:**
+- Removed `.message` alias from get/insert/remove (only `.body` works)
+- Removed `.timestamp` → replaced with `.time_unix_nano` (Integer nanos)
+  and `.observed_time_unix_nano` as direct proto field accessors
+- Removed `.host` and `.source_type` top-level alias cases
+- Removed `source_type`/`host.name` guards from `get_field_path` and
+  `span_get_field_path` — these resource attributes are now accessible
+  at their canonical `resource.*` paths
+- Removed KvList body key expansion to top-level in get/remove fast-path
+- Deleted `get_timestamp_value()` helper (no callers)
+- Updated `timestamp_path()` to return `time_unix_nano`
+- `host_path()` and `source_type_path()` now return `None`
+- `message_path()` kept as alias for `body_path()` (3 callers)
 
 **Phase 2 — Switch Serialize to proto-canonical (~2h):**
 - OtelLog: switch from `to_value_legacy_layout().serialize(s)` to

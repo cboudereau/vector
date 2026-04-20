@@ -847,23 +847,7 @@ impl OtelLog {
     fn get_single_segment(&self, field: &str) -> Option<Value> {
         match field {
             "body" => {
-                // Legacy layout: KvList bodies are expanded to top-level,
-                // so ".body" returns None. Non-KvList bodies return the value.
-                if let Some(body) = self.body() {
-                    if !matches!(body.value, Some(OtelValueKind::KvlistValue(_))) {
-                        return Some(any_value_to_vrl(body));
-                    }
-                }
-                None
-            }
-            "message" => {
-                // Alias for body (legacy compat)
-                if let Some(body) = self.body() {
-                    if !matches!(body.value, Some(OtelValueKind::KvlistValue(_))) {
-                        return Some(any_value_to_vrl(body));
-                    }
-                }
-                None
+                self.body().map(any_value_to_vrl)
             }
             "severity_text" if !self.record.severity_text.is_empty() => {
                 Some(Value::Bytes(self.record.severity_text.clone().into()))
@@ -877,56 +861,17 @@ impl OtelLog {
             "span_id" if !self.record.span_id.is_empty() => {
                 Some(hex_encode(&self.record.span_id))
             }
-            "timestamp" => self.get_timestamp_value(),
-            "source_type" => {
-                if let Some(v) = self.get_source_type() {
-                    return Some(v);
-                }
-                // Also check record attributes (legacy layout merges all)
-                attribute_value(&self.record.attributes, "source_type")
-                    .map(any_value_to_vrl)
+            "time_unix_nano" if self.record.time_unix_nano != 0 => {
+                Some(Value::Integer(self.record.time_unix_nano as i64))
             }
-            "host" => {
-                if let Some(v) = self.get_host() {
-                    return Some(v);
-                }
-                attribute_value(&self.record.attributes, "host")
-                    .map(any_value_to_vrl)
+            "observed_time_unix_nano" if self.record.observed_time_unix_nano != 0 => {
+                Some(Value::Integer(self.record.observed_time_unix_nano as i64))
             }
             other => {
-                // Check record attributes
-                if let Some(av) = attribute_value(&self.record.attributes, other) {
-                    return Some(any_value_to_vrl(av));
-                }
-                // Check KvList body keys (legacy layout expands them to top-level)
-                if let Some(body) = self.body() {
-                    if let Some(OtelValueKind::KvlistValue(kvl)) = &body.value {
-                        if let Some(av) = attribute_value(&kvl.values, other) {
-                            return Some(any_value_to_vrl(av));
-                        }
-                    }
-                }
-                None
+                attribute_value(&self.record.attributes, other)
+                    .map(any_value_to_vrl)
             }
         }
-    }
-
-    fn get_timestamp_value(&self) -> Option<Value> {
-        // Priority: overflow attribute > time_unix_nano > observed_time_unix_nano
-        if let Some(overflow) = attribute_value(&self.record.attributes, "vector.timestamp_overflow") {
-            if let Some(OtelValueKind::StringValue(s)) = &overflow.value {
-                if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
-                    return Some(Value::Timestamp(dt.with_timezone(&chrono::Utc)));
-                }
-            }
-        }
-        if self.record.time_unix_nano != 0 {
-            return nanos_to_timestamp(self.record.time_unix_nano);
-        }
-        if self.record.observed_time_unix_nano != 0 {
-            return nanos_to_timestamp(self.record.observed_time_unix_nano);
-        }
-        None
     }
 
     fn get_field_path(&self, fields: &[String]) -> Option<Value> {
@@ -937,18 +882,12 @@ impl OtelLog {
                 let remaining = &fields[1..];
                 if remaining.len() == 1 {
                     let key = remaining[0].as_str();
-                    if key == "source_type" || key == "host.name" {
-                        return None;
-                    }
                     if key == "dropped_attributes_count" && res.dropped_attributes_count != 0 {
                         return Some(Value::Integer(res.dropped_attributes_count as i64));
                     }
                     attribute_value(&res.attributes, key).map(any_value_to_vrl)
                 } else {
                     let key = remaining[0].as_str();
-                    if key == "source_type" || key == "host.name" {
-                        return None;
-                    }
                     let av = attribute_value(&res.attributes, key)?;
                     let v = any_value_to_vrl(av);
                     navigate_value(&v, &remaining[1..])
@@ -984,21 +923,9 @@ impl OtelLog {
                 }
             }
             first => {
-                if let Some(av) = attribute_value(&self.record.attributes, first) {
-                    let v = any_value_to_vrl(av);
-                    if let Some(result) = navigate_value(&v, &fields[1..]) {
-                        return Some(result);
-                    }
-                }
-                if let Some(body) = self.body() {
-                    if let Some(OtelValueKind::KvlistValue(kvl)) = &body.value {
-                        if let Some(av) = attribute_value(&kvl.values, first) {
-                            let v = any_value_to_vrl(av);
-                            return navigate_value(&v, &fields[1..]);
-                        }
-                    }
-                }
-                None
+                let av = attribute_value(&self.record.attributes, first)?;
+                let v = any_value_to_vrl(av);
+                navigate_value(&v, &fields[1..])
             }
         }
     }
@@ -1063,7 +990,7 @@ impl OtelLog {
 
     fn insert_single_segment(&mut self, field: &str, value: Value) -> Option<Value> {
         match field {
-            "body" | "message" => {
+            "body" => {
                 let old = self.body().map(any_value_to_vrl);
                 self.record_mut().body = Some(vrl_value_to_any_value(&value));
                 old
@@ -1113,43 +1040,20 @@ impl OtelLog {
                 }
                 old
             }
-            "timestamp" => {
-                let old = self.get_timestamp_value();
-                if let Some(ts) = value.as_timestamp() {
-                    if let Some(nanos) = ts.timestamp_nanos_opt() {
-                        if nanos >= 0 {
-                            self.record_mut().time_unix_nano = nanos as u64;
-                            return old;
-                        }
-                    }
-                }
-                // Non-timestamp or pre-epoch: store as attribute so data isn't lost
-                set_attribute(
-                    &mut self.record_mut().attributes,
-                    "timestamp".to_string(),
-                    vrl_value_to_any_value(&value),
-                );
-                old
-            }
-            "source_type" => {
-                let old = self.get_source_type();
-                if let Some(s) = value.as_str() {
-                    self.set_resource_attribute(
-                        "source_type".to_string(),
-                        string_value(s),
-                    );
+            "time_unix_nano" => {
+                let old = if self.record.time_unix_nano == 0 { None }
+                    else { Some(Value::Integer(self.record.time_unix_nano as i64)) };
+                if let Some(n) = value.as_integer() {
+                    self.record_mut().time_unix_nano = n as u64;
                 }
                 old
             }
-            "host" => {
-                let old = self.get_host();
-                let host_str = value.as_str()
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| value.to_string_lossy().into_owned());
-                self.set_resource_attribute(
-                    "host.name".to_string(),
-                    string_value(&host_str),
-                );
+            "observed_time_unix_nano" => {
+                let old = if self.record.observed_time_unix_nano == 0 { None }
+                    else { Some(Value::Integer(self.record.observed_time_unix_nano as i64)) };
+                if let Some(n) = value.as_integer() {
+                    self.record_mut().observed_time_unix_nano = n as u64;
+                }
                 old
             }
             other => {
@@ -1345,7 +1249,7 @@ impl OtelLog {
 
     fn remove_single_segment(&mut self, field: &str) -> Option<Value> {
         match field {
-            "body" | "message" => {
+            "body" => {
                 let old = self.body().map(any_value_to_vrl);
                 self.record_mut().body = None;
                 old
@@ -1374,53 +1278,21 @@ impl OtelLog {
                 self.record_mut().span_id.clear();
                 old
             }
-            "timestamp" => {
-                let old = self.get_timestamp_value();
-                if old.is_some() {
-                    self.record_mut().time_unix_nano = 0;
-                    self.record_mut().observed_time_unix_nano = 0;
-                    remove_attribute(&mut self.record_mut().attributes, "vector.timestamp_overflow");
-                }
+            "time_unix_nano" => {
+                if self.record.time_unix_nano == 0 { return None; }
+                let old = Some(Value::Integer(self.record.time_unix_nano as i64));
+                self.record_mut().time_unix_nano = 0;
                 old
             }
-            "source_type" => {
-                let old = self.get_source_type();
-                if old.is_some() {
-                    if let Some(ref mut res) = self.resource {
-                        remove_attribute(&mut res.attributes, "source_type");
-                    }
-                } else {
-                    return remove_attribute(&mut self.record_mut().attributes, "source_type")
-                        .map(|av| any_value_to_vrl(&av));
-                }
-                old
-            }
-            "host" => {
-                let old = self.get_host();
-                if old.is_some() {
-                    if let Some(ref mut res) = self.resource {
-                        remove_attribute(&mut res.attributes, "host.name");
-                    }
-                } else {
-                    return remove_attribute(&mut self.record_mut().attributes, "host")
-                        .map(|av| any_value_to_vrl(&av));
-                }
+            "observed_time_unix_nano" => {
+                if self.record.observed_time_unix_nano == 0 { return None; }
+                let old = Some(Value::Integer(self.record.observed_time_unix_nano as i64));
+                self.record_mut().observed_time_unix_nano = 0;
                 old
             }
             other => {
-                // Try record attributes first
-                if let Some(av) = remove_attribute(&mut self.record_mut().attributes, other) {
-                    return Some(any_value_to_vrl(&av));
-                }
-                // Then KvList body keys
-                if let Some(ref mut body_av) = self.record_mut().body {
-                    if let Some(OtelValueKind::KvlistValue(ref mut kvl)) = body_av.value {
-                        if let Some(av) = remove_attribute(&mut kvl.values, other) {
-                            return Some(any_value_to_vrl(&av));
-                        }
-                    }
-                }
-                None
+                remove_attribute(&mut self.record_mut().attributes, other)
+                    .map(|av| any_value_to_vrl(&av))
             }
         }
     }
@@ -1489,51 +1361,25 @@ impl OtelLog {
                 }
             }
             first => {
-                if let Some(av) = attribute_value(&self.record.attributes, first) {
-                    let mut v = any_value_to_vrl(av);
-                    let result = remove_value_at(&mut v, &fields[1..], prune);
-                    if result.is_some() {
-                        if prune {
-                            if let Value::Object(ref map) = v {
-                                if map.is_empty() {
-                                    remove_attribute(&mut self.record_mut().attributes, first);
-                                    return result;
-                                }
+                let av = attribute_value(&self.record.attributes, first)?;
+                let mut v = any_value_to_vrl(av);
+                let result = remove_value_at(&mut v, &fields[1..], prune);
+                if result.is_some() {
+                    if prune {
+                        if let Value::Object(ref map) = v {
+                            if map.is_empty() {
+                                remove_attribute(&mut self.record_mut().attributes, first);
+                                return result;
                             }
                         }
-                        set_attribute(
-                            &mut self.record_mut().attributes,
-                            first.to_string(),
-                            vrl_value_to_any_value(&v),
-                        );
                     }
-                    return result;
+                    set_attribute(
+                        &mut self.record_mut().attributes,
+                        first.to_string(),
+                        vrl_value_to_any_value(&v),
+                    );
                 }
-                if let Some(ref mut body_av) = self.record_mut().body {
-                    if let Some(OtelValueKind::KvlistValue(ref mut kvl)) = body_av.value {
-                        if let Some(av) = attribute_value(&kvl.values, first) {
-                            let mut v = any_value_to_vrl(av);
-                            let result = remove_value_at(&mut v, &fields[1..], prune);
-                            if result.is_some() {
-                                if prune {
-                                    if let Value::Object(ref map) = v {
-                                        if map.is_empty() {
-                                            remove_attribute(&mut kvl.values, first);
-                                            return result;
-                                        }
-                                    }
-                                }
-                                set_attribute(
-                                    &mut kvl.values,
-                                    first.to_string(),
-                                    vrl_value_to_any_value(&v),
-                                );
-                            }
-                            return result;
-                        }
-                    }
-                }
-                None
+                result
             }
         }
     }
@@ -1968,18 +1814,16 @@ impl OtelLog {
         }
     }
 
-    /// Get the timestamp path.
+    /// Get the timestamp path (proto-canonical: `time_unix_nano`).
     pub fn timestamp_path(&self) -> Option<vrl::path::OwnedTargetPath> {
         use vrl::path::OwnedTargetPath;
         use lookup::owned_value_path;
-        Some(OwnedTargetPath::event(owned_value_path!("timestamp")))
+        Some(OwnedTargetPath::event(owned_value_path!("time_unix_nano")))
     }
 
-    /// Get the host path.
+    /// Returns `None` — host lives at `resource.host.name`, not a top-level field.
     pub fn host_path(&self) -> Option<vrl::path::OwnedTargetPath> {
-        use vrl::path::OwnedTargetPath;
-        use lookup::owned_value_path;
-        Some(OwnedTargetPath::event(owned_value_path!("host")))
+        None
     }
 
     /// Get the body path.
@@ -1989,16 +1833,14 @@ impl OtelLog {
         Some(OwnedTargetPath::event(owned_value_path!("body")))
     }
 
-    /// Deprecated alias for body_path.
+    /// Alias for body_path.
     pub fn message_path(&self) -> Option<vrl::path::OwnedTargetPath> {
         self.body_path()
     }
 
-    /// Get the source type path.
+    /// Returns `None` — source_type lives at `resource.source_type`, not a top-level field.
     pub fn source_type_path(&self) -> Option<vrl::path::OwnedTargetPath> {
-        use vrl::path::OwnedTargetPath;
-        use lookup::owned_value_path;
-        Some(OwnedTargetPath::event(owned_value_path!("source_type")))
+        None
     }
 
     /// Try insert - only inserts if the path doesn't exist.
@@ -2562,21 +2404,9 @@ impl OtelSpan {
                 status_map.insert("code".into(), Value::Integer(status.code as i64));
                 Some(Value::Object(status_map))
             }
-            "source_type" => {
-                self.resource.as_ref().and_then(|r| {
-                    attribute_value(&r.attributes, "source_type").map(any_value_to_vrl)
-                })
-            }
-            "host" => {
-                self.resource.as_ref().and_then(|r| {
-                    attribute_value(&r.attributes, "host.name").map(any_value_to_vrl)
-                })
-            }
             other => {
-                if let Some(av) = attribute_value(&self.span.attributes, other) {
-                    return Some(any_value_to_vrl(av));
-                }
-                None
+                attribute_value(&self.span.attributes, other)
+                    .map(any_value_to_vrl)
             }
         }
     }
@@ -2589,18 +2419,12 @@ impl OtelSpan {
                 let remaining = &fields[1..];
                 if remaining.len() == 1 {
                     let key = remaining[0].as_str();
-                    if key == "source_type" || key == "host.name" {
-                        return None;
-                    }
                     if key == "dropped_attributes_count" && res.dropped_attributes_count != 0 {
                         return Some(Value::Integer(res.dropped_attributes_count as i64));
                     }
                     attribute_value(&res.attributes, key).map(any_value_to_vrl)
                 } else {
                     let key = remaining[0].as_str();
-                    if key == "source_type" || key == "host.name" {
-                        return None;
-                    }
                     let av = attribute_value(&res.attributes, key)?;
                     let v = any_value_to_vrl(av);
                     navigate_value(&v, &remaining[1..])
@@ -2817,33 +2641,6 @@ impl OtelSpan {
                         .unwrap_or(0) as i32;
                     self.span.status = Some(Status { message, code });
                 }
-                old
-            }
-            "source_type" => {
-                let old = self.resource.as_ref().and_then(|r| {
-                    attribute_value(&r.attributes, "source_type").map(any_value_to_vrl)
-                });
-                if let Some(s) = value.as_str() {
-                    let res = self.resource.get_or_insert_with(|| Resource {
-                        attributes: Vec::new(),
-                        dropped_attributes_count: 0,
-                    });
-                    set_attribute(&mut res.attributes, "source_type".to_string(), string_value(s));
-                }
-                old
-            }
-            "host" => {
-                let old = self.resource.as_ref().and_then(|r| {
-                    attribute_value(&r.attributes, "host.name").map(any_value_to_vrl)
-                });
-                let host_str = value.as_str()
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| value.to_string_lossy().into_owned());
-                let res = self.resource.get_or_insert_with(|| Resource {
-                    attributes: Vec::new(),
-                    dropped_attributes_count: 0,
-                });
-                set_attribute(&mut res.attributes, "host.name".to_string(), string_value(&host_str));
                 old
             }
             other => {
@@ -4993,12 +4790,12 @@ mod tests {
             ol.get(vrl::event_path!("ready")).and_then(|v| v.as_boolean()).is_some(),
             "bool field via record_bool"
         );
-        // Timestamp is present.
+        // time_unix_nano is present as integer.
         assert!(
-            ol.get(vrl::event_path!("timestamp"))
-                .map(|v| matches!(v, vrl::value::Value::Timestamp(_)))
+            ol.get(vrl::event_path!("time_unix_nano"))
+                .map(|v| matches!(v, vrl::value::Value::Integer(_)))
                 .unwrap_or(false),
-            "OtelLog has timestamp"
+            "OtelLog has time_unix_nano"
         );
     }
 
@@ -5040,9 +4837,9 @@ mod tests {
             dropped_attributes_count: 0,
         });
         event.insert(vrl::event_path!("another"), "x");
-        // source_type should survive the round-trip (hoisted to top-level)
+        // source_type lives at canonical resource path
         assert_eq!(
-            event.get(vrl::event_path!("source_type")).and_then(|v| v.as_str().map(|s| s.into_owned())),
+            event.get(vrl::event_path!("resource", "source_type")).and_then(|v| v.as_str().map(|s| s.into_owned())),
             Some("syslog".to_string())
         );
     }
@@ -5114,9 +4911,9 @@ mod tests {
             dropped_attributes_count: 0,
         });
         event.insert(vrl::event_path!("attr"), "val");
-        // host.name → top-level "host" in value layout
+        // host.name at canonical resource path
         assert_eq!(
-            event.get(vrl::event_path!("host")).and_then(|v| v.as_str().map(|s| s.into_owned())),
+            event.get(vrl::event_path!("resource", "host.name")).and_then(|v| v.as_str().map(|s| s.into_owned())),
             Some("srv01".to_string())
         );
     }
@@ -5299,11 +5096,9 @@ mod tests {
             log.get(event_path!("resource", "service.name")),
             Some(Value::Bytes("my-svc".into()))
         );
-        // hoisted fields return None under "resource" (legacy compat)
-        assert_eq!(log.get(event_path!("resource", "source_type")), None);
-        // but visible at top-level
+        // source_type visible at canonical resource path
         assert_eq!(
-            log.get(event_path!("source_type")),
+            log.get(event_path!("resource", "source_type")),
             Some(Value::Bytes("syslog".into()))
         );
 

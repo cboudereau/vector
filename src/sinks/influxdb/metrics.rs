@@ -13,7 +13,7 @@ use crate::{
     config::{AcknowledgementsConfig, Input, SinkConfig, SinkContext},
     event::{
         Event, KeyString, OtelMetric,
-        metric::{Metric, MetricValue, Sample, StatisticKind},
+        metric::{MetricValue, Sample, StatisticKind},
     },
     http::HttpClient,
     internal_events::InfluxdbEncodingError,
@@ -280,13 +280,11 @@ fn encode_events(
     let count = events.len();
 
     for otel in events.into_iter() {
-        // Convert to legacy Metric internally for field access during encoding
         let (series, data, _metadata) = otel.into_metric_parts();
-        let event = Metric::from_parts(series, data, _metadata);
-        let fullname = encode_namespace(event.series.name.namespace.as_deref().or(default_namespace), '.', event.series.name.name.as_str());
-        let ts = encode_timestamp(event.data.time.timestamp);
-        let tags = merge_tags(event.series.tags.as_ref(), tags);
-        let (metric_type, fields) = get_type_and_fields(&event.data.value, quantiles);
+        let fullname = encode_namespace(series.name.namespace.as_deref().or(default_namespace), '.', series.name.name.as_str());
+        let ts = encode_timestamp(data.time.timestamp);
+        let tags = merge_tags(series.tags.as_ref(), tags);
+        let (metric_type, fields) = get_type_and_fields(&data.value, quantiles);
 
         let mut unwrapped_tags = tags.unwrap_or_default();
         unwrapped_tags.replace("metric_type".to_owned(), metric_type.to_owned());
@@ -414,11 +412,6 @@ mod tests {
         sinks::influxdb::test_util::{assert_fields, split_line_protocol, tags, ts},
     };
 
-    /// Test helper: pass through OtelMetric (previously round-tripped via Metric).
-    fn metric_from_otel(otel: OtelMetric) -> OtelMetric {
-        otel
-    }
-
     /// Build an OtelMetric directly from parts for Distribution / Set / signed-Gauge
     /// variants that have no dedicated `OtelMetric::new_*` native constructor.
     fn otel_from_parts(
@@ -466,17 +459,13 @@ mod tests {
     #[test]
     fn test_encode_counter() {
         let events = vec![
-            metric_from_otel(
-                OtelMetric::new_counter("total", MetricKind::Incremental, 1.5)
-                    .with_namespace(Some("ns"))
-                    .with_timestamp(Some(ts())),
-            ),
-            metric_from_otel(
-                OtelMetric::new_counter("check", MetricKind::Incremental, 1.0)
-                    .with_namespace(Some("ns"))
-                    .with_tags(Some(tags()))
-                    .with_timestamp(Some(ts())),
-            ),
+            OtelMetric::new_counter("total", MetricKind::Incremental, 1.5)
+                .with_namespace(Some("ns"))
+                .with_timestamp(Some(ts())),
+            OtelMetric::new_counter("check", MetricKind::Incremental, 1.0)
+                .with_namespace(Some("ns"))
+                .with_tags(Some(tags()))
+                .with_timestamp(Some(ts())),
         ];
 
         let line_protocols = encode_events(ProtocolVersion::V2, events, Some("vector"), None, &[]);
@@ -490,7 +479,7 @@ mod tests {
     #[test]
     fn test_encode_gauge() {
         let events = vec![
-            metric_from_otel(otel_from_parts(
+            (otel_from_parts(
                 "meter",
                 Some("ns"),
                 MetricKind::Incremental,
@@ -510,7 +499,7 @@ mod tests {
     #[test]
     fn test_encode_set() {
         let events = vec![
-            metric_from_otel(otel_from_parts(
+            (otel_from_parts(
                 "users",
                 Some("ns"),
                 MetricKind::Incremental,
@@ -533,12 +522,10 @@ mod tests {
     fn test_encode_histogram_v1() {
         let buckets = vector_lib::buckets![1.0 => 1, 2.1 => 2, 3.0 => 3];
         let events = vec![
-            metric_from_otel(
-                OtelMetric::new_histogram("requests", MetricKind::Absolute, &buckets, 6, 12.5)
-                    .with_namespace(Some("ns"))
-                    .with_tags(Some(tags()))
-                    .with_timestamp(Some(ts())),
-            ),
+            OtelMetric::new_histogram("requests", MetricKind::Absolute, &buckets, 6, 12.5)
+                .with_namespace(Some("ns"))
+                .with_tags(Some(tags()))
+                .with_timestamp(Some(ts())),
         ];
 
         let line_protocols = encode_events(ProtocolVersion::V1, events, None, None, &[]);
@@ -571,12 +558,10 @@ mod tests {
     fn test_encode_histogram() {
         let buckets = vector_lib::buckets![1.0 => 1, 2.1 => 2, 3.0 => 3];
         let events = vec![
-            metric_from_otel(
-                OtelMetric::new_histogram("requests", MetricKind::Absolute, &buckets, 6, 12.5)
-                    .with_namespace(Some("ns"))
-                    .with_tags(Some(tags()))
-                    .with_timestamp(Some(ts())),
-            ),
+            OtelMetric::new_histogram("requests", MetricKind::Absolute, &buckets, 6, 12.5)
+                .with_namespace(Some("ns"))
+                .with_tags(Some(tags()))
+                .with_timestamp(Some(ts())),
         ];
 
         let line_protocols = encode_events(ProtocolVersion::V2, events, None, None, &[]);
@@ -609,12 +594,10 @@ mod tests {
     fn test_encode_summary_v1() {
         let quantiles = vector_lib::quantiles![0.01 => 1.5, 0.5 => 2.0, 0.99 => 3.0];
         let events = vec![
-            metric_from_otel(
-                OtelMetric::new_summary("requests_sum", &quantiles, 6, 12.0)
-                    .with_namespace(Some("ns"))
-                    .with_tags(Some(tags()))
-                    .with_timestamp(Some(ts())),
-            ),
+            OtelMetric::new_summary("requests_sum", &quantiles, 6, 12.0)
+                .with_namespace(Some("ns"))
+                .with_tags(Some(tags()))
+                .with_timestamp(Some(ts())),
         ];
 
         let line_protocols = encode_events(ProtocolVersion::V1, events, None, None, &[]);
@@ -647,12 +630,10 @@ mod tests {
     fn test_encode_summary() {
         let quantiles = vector_lib::quantiles![0.01 => 1.5, 0.5 => 2.0, 0.99 => 3.0];
         let events = vec![
-            metric_from_otel(
-                OtelMetric::new_summary("requests_sum", &quantiles, 6, 12.0)
-                    .with_namespace(Some("ns"))
-                    .with_tags(Some(tags()))
-                    .with_timestamp(Some(ts())),
-            ),
+            OtelMetric::new_summary("requests_sum", &quantiles, 6, 12.0)
+                .with_namespace(Some("ns"))
+                .with_tags(Some(tags()))
+                .with_timestamp(Some(ts())),
         ];
 
         let line_protocols = encode_events(ProtocolVersion::V2, events, None, None, &[]);
@@ -684,7 +665,7 @@ mod tests {
     #[test]
     fn test_encode_distribution() {
         let events = vec![
-            metric_from_otel(otel_from_parts(
+            (otel_from_parts(
                 "requests",
                 Some("ns"),
                 MetricKind::Incremental,
@@ -695,7 +676,7 @@ mod tests {
                 Some(tags()),
                 Some(ts()),
             )),
-            metric_from_otel(otel_from_parts(
+            (otel_from_parts(
                 "dense_stats",
                 Some("ns"),
                 MetricKind::Incremental,
@@ -711,7 +692,7 @@ mod tests {
                 None,
                 Some(ts()),
             )),
-            metric_from_otel(otel_from_parts(
+            (otel_from_parts(
                 "sparse_stats",
                 Some("ns"),
                 MetricKind::Incremental,
@@ -796,7 +777,7 @@ mod tests {
     #[test]
     fn test_encode_distribution_empty_stats() {
         let events = vec![
-            metric_from_otel(otel_from_parts(
+            (otel_from_parts(
                 "requests",
                 Some("ns"),
                 MetricKind::Incremental,
@@ -816,7 +797,7 @@ mod tests {
     #[test]
     fn test_encode_distribution_zero_counts_stats() {
         let events = vec![
-            metric_from_otel(otel_from_parts(
+            (otel_from_parts(
                 "requests",
                 Some("ns"),
                 MetricKind::Incremental,
@@ -836,7 +817,7 @@ mod tests {
     #[test]
     fn test_encode_distribution_summary() {
         let events = vec![
-            metric_from_otel(otel_from_parts(
+            (otel_from_parts(
                 "requests",
                 Some("ns"),
                 MetricKind::Incremental,
@@ -892,17 +873,13 @@ mod tests {
         crate::test_util::trace_init();
 
         let events = vec![
-            metric_from_otel(
-                OtelMetric::new_gauge("cpu", 2.5)
-                    .with_namespace(Some("vector"))
-                    .with_timestamp(Some(ts())),
-            ),
-            metric_from_otel(
-                OtelMetric::new_gauge("mem", 1000.0)
-                    .with_namespace(Some("vector"))
-                    .with_tags(Some(tags()))
-                    .with_timestamp(Some(ts())),
-            ),
+            OtelMetric::new_gauge("cpu", 2.5)
+                .with_namespace(Some("vector"))
+                .with_timestamp(Some(ts())),
+            OtelMetric::new_gauge("mem", 1000.0)
+                .with_namespace(Some("vector"))
+                .with_tags(Some(tags()))
+                .with_timestamp(Some(ts())),
         ];
 
         let mut tags = HashMap::new();

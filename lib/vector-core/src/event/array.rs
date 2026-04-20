@@ -16,8 +16,10 @@ use vector_common::{
 
 use super::{
     EstimatedJsonEncodedSizeOf, Event, EventDataEq, EventFinalizer, EventMetadata, EventMutRef,
-    EventRef, Metric, OtelLog, OtelMetric, OtelSpan,
+    EventRef, OtelLog, OtelMetric, OtelSpan,
 };
+#[cfg(test)]
+use super::Metric;
 
 /// The type alias for an array of `OtelLog` elements.
 pub type LogArray = Vec<OtelLog>;
@@ -207,13 +209,6 @@ impl From<OtelSpan> for EventArray {
     }
 }
 
-
-impl From<Metric> for EventArray {
-    fn from(metric: Metric) -> Self {
-        let (s, d, md) = metric.into_parts();
-        Event::Metric(OtelMetric::from_metric_parts(s, d, md)).into()
-    }
-}
 
 impl From<LogArray> for EventArray {
     fn from(array: LogArray) -> Self {

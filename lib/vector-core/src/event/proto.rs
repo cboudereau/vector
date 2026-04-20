@@ -219,13 +219,6 @@ fn decode_metric_parts(
     (series, data, metadata)
 }
 
-impl From<Metric> for super::Metric {
-    fn from(metric: Metric) -> Self {
-        let (series, data, metadata) = decode_metric_parts(metric);
-        Self::from_parts(series, data, metadata)
-    }
-}
-
 impl From<Metric> for super::OtelMetric {
     fn from(metric: Metric) -> Self {
         let (series, data, metadata) = decode_metric_parts(metric);
@@ -397,13 +390,6 @@ impl From<super::MetricValue> for MetricValue {
                 sum,
             }),
         }
-    }
-}
-
-impl From<super::Metric> for WithMetadata<Metric> {
-    fn from(metric: super::Metric) -> Self {
-        let (series, data, metadata) = metric.into_parts();
-        encode_metric_proto(series, data, metadata)
     }
 }
 

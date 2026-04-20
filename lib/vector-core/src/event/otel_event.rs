@@ -3746,7 +3746,7 @@ mod tests {
 
     #[test]
     fn from_metric_for_event_produces_otel_metric() {
-        use crate::event::{Event, MetricKind};
+        use crate::event::Event;
 
         let otel = OtelMetric::new_gauge("test", 1.0);
         let event: Event = Event::Metric(otel);
@@ -3876,8 +3876,6 @@ mod tests {
 
     #[test]
     fn new_gauge_matches_from_metric_parts() {
-        use crate::event::MetricKind;
-
         let direct = OtelMetric::new_gauge("temperature", 98.6);
         let via_ctor = OtelMetric::new_gauge("temperature", 98.6);
 

@@ -1449,6 +1449,70 @@ impl OtelLog {
 
     /// Build a Value tree with the legacy layout — no intermediate conversion.
     /// This ensures callers see the same field names and types.
+    pub fn to_value_canonical(&self) -> Value {
+        let mut map = ObjectMap::new();
+
+        if let Some(body) = self.body() {
+            map.insert("body".into(), any_value_to_vrl(body));
+        }
+        if !self.record.severity_text.is_empty() {
+            map.insert("severity_text".into(), Value::Bytes(self.record.severity_text.clone().into()));
+        }
+        if self.record.severity_number != 0 {
+            map.insert("severity_number".into(), Value::Integer(self.record.severity_number as i64));
+        }
+        if self.record.time_unix_nano != 0 {
+            map.insert("time_unix_nano".into(), Value::Integer(self.record.time_unix_nano as i64));
+        }
+        if self.record.observed_time_unix_nano != 0 {
+            map.insert("observed_time_unix_nano".into(), Value::Integer(self.record.observed_time_unix_nano as i64));
+        }
+        if !self.record.trace_id.is_empty() {
+            map.insert("trace_id".into(), hex_encode(&self.record.trace_id));
+        }
+        if !self.record.span_id.is_empty() {
+            map.insert("span_id".into(), hex_encode(&self.record.span_id));
+        }
+        if !self.record.attributes.is_empty() {
+            let attrs = kvlist_to_object_map(&self.record.attributes);
+            for (k, v) in attrs {
+                map.insert(k, v);
+            }
+        }
+        if let Some(ref res) = self.resource {
+            let mut res_map = kvlist_to_object_map(&res.attributes);
+            if res.dropped_attributes_count != 0 {
+                res_map.insert(
+                    "dropped_attributes_count".into(),
+                    Value::Integer(res.dropped_attributes_count as i64),
+                );
+            }
+            if !res_map.is_empty() {
+                map.insert("resource".into(), Value::Object(res_map));
+            }
+        }
+        if let Some(ref scope) = self.scope {
+            let mut scope_map = ObjectMap::new();
+            if !scope.name.is_empty() {
+                scope_map.insert("name".into(), Value::Bytes(scope.name.clone().into()));
+            }
+            if !scope.version.is_empty() {
+                scope_map.insert("version".into(), Value::Bytes(scope.version.clone().into()));
+            }
+            if !scope.attributes.is_empty() {
+                scope_map.insert(
+                    "attributes".into(),
+                    Value::Object(kvlist_to_object_map(&scope.attributes)),
+                );
+            }
+            if !scope_map.is_empty() {
+                map.insert("scope".into(), Value::Object(scope_map));
+            }
+        }
+
+        Value::Object(map)
+    }
+
     pub fn to_value_legacy_layout(&self) -> Value {
         let mut map = ObjectMap::new();
 
@@ -1795,7 +1859,7 @@ impl OtelLog {
 
     /// Convert to fields — recursively flatten nested objects with dotted keys.
     pub fn convert_to_fields(&self) -> Vec<(vrl::value::KeyString, Value)> {
-        match self.to_value_legacy_layout() {
+        match self.to_value_canonical() {
             Value::Object(map) => super::util::log::all_fields(&map)
                 .map(|(k, v)| (k, v.clone()))
                 .collect(),
@@ -1856,22 +1920,20 @@ impl OtelLog {
 
     /// Get the underlying value.
     /// In Vector namespace: returns body only.
-    /// In Legacy namespace: returns full event with all fields.
+    /// In Legacy namespace: returns canonical proto layout.
     pub fn value(&self) -> Value {
         if self.namespace() == crate::config::LogNamespace::Vector {
             self.body()
                 .map(any_value_to_vrl)
                 .unwrap_or(Value::Null)
         } else {
-            self.to_value_legacy_layout()
+            self.to_value_canonical()
         }
     }
 
     /// Get all top-level keys from the event.
-    /// Uses to_value_legacy_layout() to guarantee the same deduplication
-    /// semantics as other accessors (e.g. attribute key colliding with body key).
     pub fn keys(&self) -> Option<std::vec::IntoIter<vrl::value::KeyString>> {
-        match self.to_value_legacy_layout() {
+        match self.to_value_canonical() {
             Value::Object(map) => Some(map.into_keys().collect::<Vec<_>>().into_iter()),
             _ => None,
         }
@@ -1884,7 +1946,7 @@ impl OtelLog {
 
     /// Convert to fields unquoted — recursively flatten nested objects with unquoted dotted keys.
     pub fn convert_to_fields_unquoted(&self) -> Vec<(vrl::value::KeyString, Value)> {
-        match self.to_value_legacy_layout() {
+        match self.to_value_canonical() {
             Value::Object(map) => super::util::log::all_fields_unquoted(&map)
                 .map(|(k, v)| (k, v.clone()))
                 .collect(),
@@ -1894,12 +1956,12 @@ impl OtelLog {
 
     /// Get a snapshot of the value (mutations won't persist — use insert/remove).
     pub fn value_mut(&mut self) -> Value {
-        self.to_value_legacy_layout()
+        self.to_value_canonical()
     }
 
     /// Get as an object map.
     pub fn as_map(&self) -> Option<ObjectMap> {
-        match self.to_value_legacy_layout() {
+        match self.to_value_canonical() {
             Value::Object(map) => Some(map),
             _ => None,
         }
@@ -2135,6 +2197,78 @@ impl OtelSpan {
     // -----------------------------------------------------------------------
     // Field access methods (same pattern as OtelLog — see comment above)
     // -----------------------------------------------------------------------
+
+    pub fn to_value_canonical(&self) -> Value {
+        let mut map = ObjectMap::new();
+
+        if !self.span.name.is_empty() {
+            map.insert("name".into(), Value::Bytes(self.span.name.clone().into()));
+        }
+        if !self.span.trace_id.is_empty() {
+            map.insert("trace_id".into(), hex_encode(&self.span.trace_id));
+        }
+        if !self.span.span_id.is_empty() {
+            map.insert("span_id".into(), hex_encode(&self.span.span_id));
+        }
+        if !self.span.parent_span_id.is_empty() {
+            map.insert("parent_span_id".into(), hex_encode(&self.span.parent_span_id));
+        }
+        if self.span.start_time_unix_nano != 0 {
+            map.insert("start_time_unix_nano".into(), Value::Integer(self.span.start_time_unix_nano as i64));
+        }
+        if self.span.end_time_unix_nano != 0 {
+            map.insert("end_time_unix_nano".into(), Value::Integer(self.span.end_time_unix_nano as i64));
+        }
+        if self.span.kind != 0 {
+            map.insert("kind".into(), Value::Integer(self.span.kind as i64));
+        }
+        if let Some(status) = &self.span.status {
+            let mut status_map = ObjectMap::new();
+            if !status.message.is_empty() {
+                status_map.insert("message".into(), Value::Bytes(status.message.clone().into()));
+            }
+            status_map.insert("code".into(), Value::Integer(status.code as i64));
+            map.insert("status".into(), Value::Object(status_map));
+        }
+        if !self.span.attributes.is_empty() {
+            let attrs = kvlist_to_object_map(&self.span.attributes);
+            for (k, v) in attrs {
+                map.insert(k, v);
+            }
+        }
+        if let Some(ref res) = self.resource {
+            let mut res_map = kvlist_to_object_map(&res.attributes);
+            if res.dropped_attributes_count != 0 {
+                res_map.insert(
+                    "dropped_attributes_count".into(),
+                    Value::Integer(res.dropped_attributes_count as i64),
+                );
+            }
+            if !res_map.is_empty() {
+                map.insert("resource".into(), Value::Object(res_map));
+            }
+        }
+        if let Some(ref scope) = self.scope {
+            let mut scope_map = ObjectMap::new();
+            if !scope.name.is_empty() {
+                scope_map.insert("name".into(), Value::Bytes(scope.name.clone().into()));
+            }
+            if !scope.version.is_empty() {
+                scope_map.insert("version".into(), Value::Bytes(scope.version.clone().into()));
+            }
+            if !scope.attributes.is_empty() {
+                scope_map.insert(
+                    "attributes".into(),
+                    Value::Object(kvlist_to_object_map(&scope.attributes)),
+                );
+            }
+            if !scope_map.is_empty() {
+                map.insert("scope".into(), Value::Object(scope_map));
+            }
+        }
+
+        Value::Object(map)
+    }
 
     /// Build a Value tree with the legacy layout — no intermediate conversion.
     pub fn to_value_legacy_layout(&self) -> Value {
@@ -2770,7 +2904,7 @@ impl OtelSpan {
 
     /// Get as an object map.
     pub fn as_map(&self) -> Option<ObjectMap> {
-        match self.to_value_legacy_layout() {
+        match self.to_value_canonical() {
             Value::Object(map) => Some(map),
             _ => None,
         }

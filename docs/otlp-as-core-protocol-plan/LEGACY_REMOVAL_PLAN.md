@@ -614,7 +614,7 @@ the struct**:
 | # | Task | Status | Commit | Note |
 |---|------|--------|--------|------|
 | T16 | Fast-path get/insert/remove bypassing legacy round-trip | **DONE** | `5198ea7`..`a86b435` | Phases 1-3 complete. All-field get/insert/remove for OtelLog + OtelSpan bypass legacy layout. Phase 4 (batch methods) deferred to T15/T23. |
-| T15 | Remove VRL aliases + Serialize → proto-canonical | **PARTIAL** | Phases 1-2 done | Phase 1: aliases removed. Phase 2: Serialize switched to OTLP JSON. Phases 3-5 remain. |
+| T15 | Remove VRL aliases + Serialize → proto-canonical | **PARTIAL** | Phases 1-3 done | Phase 1: aliases removed. Phase 2: Serialize → OTLP JSON. Phase 3: value()/keys()/as_map() canonical. Phases 4-5 remain. |
 | T23 | Simplify/rename legacy layout functions | **PLANNED** | | After T15, rename + simplify. `from_value_map` stays as canonical constructor. See "Remaining work" for analysis. |
 
 #### Workstream 4: Runtime safety + correctness
@@ -1121,11 +1121,13 @@ backward compatibility with pre-OTLP Vector. Users run
 - JSON output now uses proto3 field names: `body` (AnyValue-wrapped),
   `severityText`, `timeUnixNano`, `resource.attributes` array, etc.
 
-**Phase 3 — Update value()/keys()/as_map() (~2h):**
-- These methods build Value trees. Switch to proto-canonical field names.
-- `value()` for Legacy namespace returns `{ "body": ..., "time_unix_nano": ..., "severity_text": ..., "attributes": { ... }, "resource": { ... } }`
-- `keys()` returns proto field names
-- `as_map()` returns canonical ObjectMap
+**Phase 3 — Update value()/keys()/as_map() — DONE:**
+- Added `to_value_canonical()` for OtelLog and OtelSpan
+- `value()`, `keys()`, `as_map()`, `convert_to_fields()`,
+  `convert_to_fields_unquoted()`, `value_mut()` all switched from
+  `to_value_legacy_layout()` to `to_value_canonical()`
+- Proto-canonical field names: `body`, `time_unix_nano`,
+  `severity_text`, `resource.source_type`, `resource.host.name`, etc.
 
 **Phase 4 — Fix test assertions (~4h):**
 - Every test that expects `.message`, `.timestamp`, `.host`,

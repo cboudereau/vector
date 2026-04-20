@@ -205,7 +205,7 @@ impl HttpSource for RemoteWriteSource {
 mod test {
     use chrono::{SubsecRound as _, Utc};
     use vector_lib::{
-        event::{EventStatus, Metric, MetricKind, MetricValue, OtelMetric},
+        event::{EventStatus, MetricKind, MetricValue, OtelMetric},
         metric_tags,
     };
 
@@ -288,22 +288,13 @@ mod test {
     fn make_events() -> Vec<Event> {
         let timestamp = || Utc::now().trunc_subsecs(3);
         vec![
-            Event::Metric({
-                let otel = OtelMetric::new_counter("counter_1", MetricKind::Absolute, 42.0);
-                let (s, d, md) = otel.into_metric_parts();
-                let m = Metric::from_parts(s, d, md)
-                    .with_timestamp(Some(timestamp()));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
-            }),
-            Event::Metric({
-                let otel = OtelMetric::new_gauge("gauge_2", 41.0);
-                let (s, d, md) = otel.into_metric_parts();
-                let m = Metric::from_parts(s, d, md)
-                    .with_timestamp(Some(timestamp()));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
-            }),
+            Event::Metric(
+                OtelMetric::new_counter("counter_1", MetricKind::Absolute, 42.0)
+                    .with_timestamp(Some(timestamp())),
+            ),
+            Event::Metric(
+                OtelMetric::new_gauge("gauge_2", 41.0).with_timestamp(Some(timestamp())),
+            ),
             Event::Metric({
                 let buckets = vector_lib::buckets![ 2.3 => 11, 4.2 => 85 ];
                 OtelMetric::new_histogram("histogram_3", MetricKind::Absolute, &buckets, 96, 156.2)
@@ -455,32 +446,24 @@ mod test {
         let timestamp = Utc::now().trunc_subsecs(3);
 
         let events = vec![
-            Event::Metric({
-                let otel = OtelMetric::new_gauge("gauge_2", 41.0);
-                let (s, d, md) = otel.into_metric_parts();
-                let m = Metric::from_parts(s, d, md)
+            Event::Metric(
+                OtelMetric::new_gauge("gauge_2", 41.0)
                     .with_timestamp(Some(timestamp))
                     .with_tags(Some(metric_tags! {
                         "code" => "200".to_string(),
                         "code" => "success".to_string(),
-                    }));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
-            }),
+                    })),
+            ),
         ];
 
         let expected = vec![
-            Event::Metric({
-                let otel = OtelMetric::new_gauge("gauge_2", 41.0);
-                let (s, d, md) = otel.into_metric_parts();
-                let m = Metric::from_parts(s, d, md)
+            Event::Metric(
+                OtelMetric::new_gauge("gauge_2", 41.0)
                     .with_timestamp(Some(timestamp))
                     .with_tags(Some(metric_tags! {
                         "code" => "success".to_string(),
-                    }));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
-            }),
+                    })),
+            ),
         ];
 
         let output = test_util::spawn_collect_ready(

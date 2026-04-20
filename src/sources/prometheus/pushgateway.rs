@@ -249,7 +249,7 @@ fn decode_label_pair(k: &str, v: &str) -> Result<(String, String), ErrorMessage>
 mod test {
     use chrono::{TimeZone, Timelike, Utc};
     use vector_lib::{
-        event::{EventStatus, Metric, MetricKind, OtelMetric},
+        event::{EventStatus, MetricKind, OtelMetric},
         tls::MaybeTlsSettings,
     };
 
@@ -262,11 +262,8 @@ mod test {
         },
     };
 
-    fn events_to_metrics(events: Vec<Event>) -> Vec<Metric> {
-        events.into_iter().map(|e| {
-            let (s, d, md) = e.into_otel_metric().into_metric_parts();
-            Metric::from_parts(s, d, md)
-        }).collect()
+    fn events_to_metrics(events: Vec<Event>) -> Vec<OtelMetric> {
+        events.into_iter().map(|e| e.into_otel_metric()).collect()
     }
 
     #[test]
@@ -425,51 +422,39 @@ mod test {
                 .expect("invalid timestamp");
 
             let expected = vec![
-                {
-                    let otel = OtelMetric::new_counter("jobs_total", MetricKind::Incremental, 1.0);
-                    let (s, d, md) = otel.into_metric_parts();
-                    Metric::from_parts(s, d, md)
-                }
-                .with_tags(Some(
-                    metric_tags! { "job" => "async_worker", "type" => "a" },
-                ))
-                .with_timestamp(Some(timestamp)),
-                {
-                    let otel = OtelMetric::new_gauge("jobs_current", 5.0);
-                    let (s, d, md) = otel.into_metric_parts();
-                    Metric::from_parts(s, d, md)
-                }
-                .with_tags(Some(
-                    metric_tags! { "job" => "async_worker", "type" => "a" },
-                ))
-                .with_timestamp(Some(timestamp)),
+                OtelMetric::new_counter("jobs_total", MetricKind::Incremental, 1.0)
+                    .with_tags(Some(
+                        metric_tags! { "job" => "async_worker", "type" => "a" },
+                    ))
+                    .with_timestamp(Some(timestamp)),
+                OtelMetric::new_gauge("jobs_current", 5.0)
+                    .with_tags(Some(
+                        metric_tags! { "job" => "async_worker", "type" => "a" },
+                    ))
+                    .with_timestamp(Some(timestamp)),
                 {
                     let buckets =
                         vector_lib::buckets![1.0 => 0, 2.5 => 0, 5.0 => 0, 10.0 => 1];
-                    let otel = OtelMetric::new_histogram(
+                    OtelMetric::new_histogram(
                         "jobs_distribution",
                         MetricKind::Incremental,
                         &buckets,
                         1,
                         8.0,
-                    );
-                    let (s, d, md) = otel.into_metric_parts();
-                    Metric::from_parts(s, d, md)
-                }
-                .with_tags(Some(
-                    metric_tags! { "job" => "async_worker", "type" => "a" },
-                ))
-                .with_timestamp(Some(timestamp)),
+                    )
+                    .with_tags(Some(
+                        metric_tags! { "job" => "async_worker", "type" => "a" },
+                    ))
+                    .with_timestamp(Some(timestamp))
+                },
                 {
                     let quantiles = vector_lib::quantiles![];
-                    let otel = OtelMetric::new_summary("jobs_summary", &quantiles, 1, 8.0);
-                    let (s, d, md) = otel.into_metric_parts();
-                    Metric::from_parts(s, d, md)
-                }
-                .with_tags(Some(
-                    metric_tags! { "job" => "async_worker", "type" => "a" },
-                ))
-                .with_timestamp(Some(timestamp)),
+                    OtelMetric::new_summary("jobs_summary", &quantiles, 1, 8.0)
+                        .with_tags(Some(
+                            metric_tags! { "job" => "async_worker", "type" => "a" },
+                        ))
+                        .with_timestamp(Some(timestamp))
+                },
             ];
 
             let output = test_util::spawn_collect_ready(

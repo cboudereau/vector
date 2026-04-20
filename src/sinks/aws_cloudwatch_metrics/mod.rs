@@ -29,7 +29,7 @@ use crate::{
     config::{AcknowledgementsConfig, Input, ProxyConfig, SinkConfig, SinkContext},
     event::{
         Event, OtelMetric,
-        metric::{Metric, MetricTags, MetricValue},
+        metric::{MetricTags, MetricValue},
     },
     sinks::util::{
         Compression, EncodedEvent, PartitionBuffer, PartitionInnerBuffer, SinkBatchSettings,
@@ -282,17 +282,15 @@ impl CloudWatchMetricsSvc {
         events
             .into_iter()
             .filter_map(|otel| {
-                // Convert to legacy Metric internally for field access during encoding
-                let (series, data, metadata) = otel.into_metric_parts();
-                let event = Metric::from_parts(series, data, metadata);
-                let metric_name = event.series.name.name.to_string();
-                let timestamp = event
-                    .data.time.timestamp
+                let (series, data, _metadata) = otel.into_metric_parts();
+                let metric_name = series.name.name.to_string();
+                let timestamp = data
+                    .time.timestamp
                     .map(|x| AwsDateTime::from_millis(x.timestamp_millis()));
-                let dimensions = event.series.tags.as_ref().map(tags_to_dimensions);
+                let dimensions = series.tags.as_ref().map(tags_to_dimensions);
                 let resolution = resolutions.get(&metric_name).copied();
                 // AwsCloudwatchMetricNormalize converts these to the right MetricKind
-                match &event.data.value {
+                match &data.value {
                     MetricValue::Counter { value } => Some(
                         MetricDatum::builder()
                             .metric_name(metric_name)

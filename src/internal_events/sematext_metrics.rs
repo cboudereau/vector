@@ -4,11 +4,11 @@ use vector_lib::internal_event::{
     ComponentEventsDropped, InternalEvent, UNINTENTIONAL, error_stage, error_type,
 };
 
-use crate::event::metric::Metric;
+use crate::event::OtelMetric;
 
 #[derive(Debug, NamedInternalEvent)]
 pub struct SematextMetricsInvalidMetricError<'a> {
-    pub metric: &'a Metric,
+    pub metric: &'a OtelMetric,
 }
 
 impl InternalEvent for SematextMetricsInvalidMetricError<'_> {

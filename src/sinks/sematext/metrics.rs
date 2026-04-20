@@ -17,7 +17,7 @@ use crate::{
     config::{AcknowledgementsConfig, GenerateConfig, Input, SinkConfig, SinkContext},
     event::{
         Event, KeyString, OtelMetric,
-        metric::{Metric, MetricValue},
+        metric::MetricValue,
     },
     http::HttpClient,
     internal_events::{SematextMetricsEncodeEventError, SematextMetricsInvalidMetricError},
@@ -233,10 +233,7 @@ impl MetricNormalize for SematextMetricNormalize {
             MetricValue::Gauge { .. } => state.make_absolute(metric),
             MetricValue::Counter { .. } => state.make_incremental(metric),
             _ => {
-                // Convert to Metric temporarily for error reporting
-                let (series, data, metadata) = metric.into_metric_parts();
-                let legacy = Metric::from_parts(series, data, metadata);
-                emit!(SematextMetricsInvalidMetricError { metric: &legacy });
+                emit!(SematextMetricsInvalidMetricError { metric: &metric });
                 None
             }
         }
@@ -265,10 +262,7 @@ fn encode_events(
     let byte_size = metrics.size_of();
     let json_byte_size = metrics.estimated_json_encoded_size_of();
     for otel in metrics.into_iter() {
-        // Convert to legacy Metric internally for field access during encoding
         let (series, data, _metadata) = otel.into_metric_parts();
-        let metric = Metric::from_parts(series, data, _metadata);
-        let (series, data, _metadata) = metric.into_parts();
         let namespace = series
             .name
             .namespace

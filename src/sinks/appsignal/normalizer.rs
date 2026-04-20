@@ -26,9 +26,31 @@ mod tests {
 
     use super::AppsignalMetricsNormalizer;
     use crate::{
-        event::{Metric, MetricKind, MetricValue, OtelMetric},
+        event::{
+            EventMetadata, Metric, MetricKind, MetricValue, OtelMetric,
+            metric::{MetricData, MetricName, MetricSeries, MetricTime},
+        },
         test_util::metrics::{assert_normalize, tests},
     };
+
+    fn otel_from_parts(name: &str, kind: MetricKind, value: MetricValue) -> OtelMetric {
+        let series = MetricSeries {
+            name: MetricName {
+                name: name.to_string(),
+                namespace: None,
+            },
+            tags: None,
+        };
+        let data = MetricData {
+            time: MetricTime {
+                timestamp: None,
+                interval_ms: None,
+            },
+            kind,
+            value,
+        };
+        OtelMetric::from_metric_parts(series, data, EventMetadata::default())
+    }
 
     #[test]
     fn absolute_counter() {
@@ -62,19 +84,15 @@ mod tests {
 
     #[test]
     fn other_metrics() {
-        let metric = {
-            let m = Metric::new(
-                "set",
-                MetricKind::Incremental,
-                MetricValue::Set {
-                    values: BTreeSet::new(),
-                },
-            );
-            let (s, d, md) = m.into_parts();
-            let otel = OtelMetric::from_metric_parts(s, d, md);
-            let (s, d, md) = otel.into_metric_parts();
-            Metric::from_parts(s, d, md)
-        };
+        let otel = otel_from_parts(
+            "set",
+            MetricKind::Incremental,
+            MetricValue::Set {
+                values: BTreeSet::new(),
+            },
+        );
+        let (s, d, md) = otel.into_metric_parts();
+        let metric = Metric::from_parts(s, d, md);
 
         assert_normalize(
             AppsignalMetricsNormalizer,

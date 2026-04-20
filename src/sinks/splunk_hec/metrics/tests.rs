@@ -5,7 +5,10 @@ use futures_util::StreamExt;
 use serde_json::{Value as JsonValue, json};
 use vector_lib::{
     ByteSizeOf,
-    event::{Event, Metric, MetricKind, MetricValue, OtelMetric},
+    event::{
+        Event, EventMetadata, MetricKind, MetricValue, OtelMetric,
+        metric::{MetricData, MetricName, MetricSeries, MetricTime},
+    },
     metric_tags,
 };
 use vrl::owned_value_path;
@@ -24,54 +27,44 @@ use crate::{
     test_util::addr::next_addr,
 };
 
-fn get_counter() -> Metric {
+fn get_counter() -> OtelMetric {
     let timestamp = DateTime::parse_from_rfc3339("2005-12-12T14:12:55.123-00:00")
         .unwrap()
         .with_timezone(&Utc);
 
-    {
-        let otel = OtelMetric::new_counter("example-counter", MetricKind::Absolute, 26.8);
-        let (s, d, md) = otel.into_metric_parts();
-        Metric::from_parts(s, d, md)
-    }
-    .with_timestamp(Some(timestamp))
-    .with_tags(Some(metric_tags! {
-        "template_index".to_string() => "index_value".to_string(),
-        "template_source".to_string() => "source_value".to_string(),
-        "template_sourcetype".to_string() => "sourcetype_value".to_string(),
-        "tag_one".to_string() => "tag_one_value".to_string(),
-        "tag_two".to_string() => "tag_two_value".to_string(),
-        "host".to_string() => "host_value".to_string(),
-    }))
+    OtelMetric::new_counter("example-counter", MetricKind::Absolute, 26.8)
+        .with_timestamp(Some(timestamp))
+        .with_tags(Some(metric_tags! {
+            "template_index".to_string() => "index_value".to_string(),
+            "template_source".to_string() => "source_value".to_string(),
+            "template_sourcetype".to_string() => "sourcetype_value".to_string(),
+            "tag_one".to_string() => "tag_one_value".to_string(),
+            "tag_two".to_string() => "tag_two_value".to_string(),
+            "host".to_string() => "host_value".to_string(),
+        }))
 }
 
-fn get_gauge(namespace: Option<String>) -> Metric {
+fn get_gauge(namespace: Option<String>) -> OtelMetric {
     let timestamp = DateTime::parse_from_rfc3339("2005-12-12T14:12:55.123-00:00")
         .unwrap()
         .with_timezone(&Utc);
 
-    {
-        let otel = OtelMetric::new_gauge("example-gauge", 26.8);
-        let (s, d, md) = otel.into_metric_parts();
-        Metric::from_parts(s, d, md)
-    }
-    .with_timestamp(Some(timestamp))
-    .with_namespace(namespace)
+    OtelMetric::new_gauge("example-gauge", 26.8)
+        .with_timestamp(Some(timestamp))
+        .with_namespace(namespace)
 }
 
 fn get_processed_event(
-    metric: Metric,
+    metric: OtelMetric,
     sourcetype: Option<Template>,
     source: Option<Template>,
     index: Option<Template>,
     default_namespace: Option<&str>,
 ) -> HecProcessedEvent {
     let event_byte_size = metric.size_of();
-    let (s, d, md) = metric.into_parts();
-    let otel = OtelMetric::from_metric_parts(s, d, md);
 
     process_metric(
-        otel,
+        metric,
         event_byte_size,
         sourcetype.as_ref(),
         source.as_ref(),
@@ -83,7 +76,7 @@ fn get_processed_event(
 }
 
 fn get_event_with_token(token: &str) -> Event {
-    let mut event = Event::Metric({ let (s, d, md) = get_counter().into_parts(); OtelMetric::from_metric_parts(s, d, md) });
+    let mut event = Event::Metric(get_counter());
     event.metadata_mut().set_splunk_hec_token(Arc::from(token));
     event
 }
@@ -125,15 +118,22 @@ fn test_process_metric_unsupported_type_returns_none() {
     values.insert(String::from("value1"));
 
     let metric = {
-        let m = Metric::new(
-            "example-set",
-            MetricKind::Absolute,
-            MetricValue::Set { values },
-        );
-        let (s, d, md) = m.into_parts();
-        let otel = OtelMetric::from_metric_parts(s, d, md);
-        let (s, d, md) = otel.into_metric_parts();
-        Metric::from_parts(s, d, md)
+        let series = MetricSeries {
+            name: MetricName {
+                name: "example-set".to_string(),
+                namespace: None,
+            },
+            tags: None,
+        };
+        let data = MetricData {
+            time: MetricTime {
+                timestamp: None,
+                interval_ms: None,
+            },
+            kind: MetricKind::Absolute,
+            value: MetricValue::Set { values },
+        };
+        OtelMetric::from_metric_parts(series, data, EventMetadata::default())
     };
 
     let event_byte_size = metric.size_of();
@@ -143,7 +143,7 @@ fn test_process_metric_unsupported_type_returns_none() {
     let default_namespace = None;
     assert!(
         process_metric(
-            { let (s, d, md) = metric.into_parts(); OtelMetric::from_metric_parts(s, d, md) },
+            metric,
             event_byte_size,
             sourcetype,
             source,
@@ -355,7 +355,7 @@ async fn splunk_passthrough_token() {
     let events = vec![
         get_event_with_token("passthrough-token-1"),
         get_event_with_token("passthrough-token-2"),
-        Event::Metric({ let (s, d, md) = get_counter().into_parts(); OtelMetric::from_metric_parts(s, d, md) }),
+        Event::Metric(get_counter()),
     ];
 
     sink.run_events(events).await.unwrap();

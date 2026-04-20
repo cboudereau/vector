@@ -4,12 +4,41 @@ use vector_lib::metric_tags;
 
 use super::*;
 use crate::{
-    event::{Event, MetricKind, OtelMetric, metric::StatisticKind},
+    event::{
+        Event, EventMetadata, MetricKind, MetricTags, OtelMetric,
+        metric::{
+            MetricData, MetricName, MetricSeries, MetricTime, MetricValue, StatisticKind,
+        },
+    },
     test_util::{
         components::{AWS_SINK_TAGS, run_and_assert_sink_compliance},
         random_string,
     },
 };
+
+fn otel_from_parts(
+    name: impl Into<String>,
+    kind: MetricKind,
+    value: MetricValue,
+    tags: Option<MetricTags>,
+) -> OtelMetric {
+    let series = MetricSeries {
+        name: MetricName {
+            name: name.into(),
+            namespace: None,
+        },
+        tags,
+    };
+    let data = MetricData {
+        time: MetricTime {
+            timestamp: None,
+            interval_ms: None,
+        },
+        kind,
+        value,
+    };
+    OtelMetric::from_metric_parts(series, data, EventMetadata::default())
+}
 
 fn cloudwatch_address() -> String {
     std::env::var("CLOUDWATCH_ADDRESS").unwrap_or_else(|_| "http://localhost:4566".into())
@@ -43,18 +72,14 @@ async fn cloudwatch_metrics_put_data() {
     let mut events = Vec::new();
 
     for i in 0..100 {
-        let event = Event::Metric({
-            let otel = OtelMetric::new_counter(format!("counter-{}", 0), MetricKind::Incremental, i as f64);
-            let (s, d, md) = otel.into_metric_parts();
-            let m = Metric::from_parts(s, d, md)
+        let event = Event::Metric(
+            OtelMetric::new_counter(format!("counter-{}", 0), MetricKind::Incremental, i as f64)
                 .with_tags(Some(metric_tags!(
                     "region" => "us-west-1",
                     "production" => "true",
                     "e" => "",
-                )));
-            let (s, d, md) = m.into_parts();
-            OtelMetric::from_metric_parts(s, d, md)
-        });
+                ))),
+        );
         events.push(event);
     }
 
@@ -69,24 +94,23 @@ async fn cloudwatch_metrics_put_data() {
 
     let distribution_name = random_string(10);
     for i in 0..10 {
-        let event = Event::Metric({
-            let m = Metric::new(
+        let event = Event::Metric(
+            otel_from_parts(
                 format!("distribution-{distribution_name}"),
                 MetricKind::Incremental,
                 MetricValue::Distribution {
                     samples: vector_lib::samples![i as f64 => 100],
                     statistic: StatisticKind::Histogram,
                 },
+                None,
             )
             .with_timestamp(Some(
                 Utc.with_ymd_and_hms(2018, 11, 14, 8, 9, 10)
                     .single()
                     .and_then(|t| t.with_nanosecond(123456789))
                     .expect("invalid timestamp"),
-            ));
-            let (s, d, md) = m.into_parts();
-            OtelMetric::from_metric_parts(s, d, md)
-        });
+            )),
+        );
         events.push(event);
     }
 
@@ -104,14 +128,10 @@ async fn cloudwatch_metrics_namespace_partitioning() {
 
     for namespace in ["ns1", "ns2", "ns3", "ns4"].iter() {
         for _ in 0..100 {
-            let event = Event::Metric({
-                let otel = OtelMetric::new_counter("counter", MetricKind::Incremental, 1.0);
-                let (s, d, md) = otel.into_metric_parts();
-                let m = Metric::from_parts(s, d, md)
-                    .with_namespace(Some(*namespace));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
-            });
+            let event = Event::Metric(
+                OtelMetric::new_counter("counter", MetricKind::Incremental, 1.0)
+                    .with_namespace(Some(*namespace)),
+            );
             events.push(event);
         }
     }

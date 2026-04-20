@@ -240,8 +240,11 @@ mod tests {
     use super::*;
     use crate::{
         event::{
-            Event, Metric, OtelMetric,
-            metric::{MetricKind, MetricValue, StatisticKind},
+            Event, EventMetadata, MetricTags, OtelMetric,
+            metric::{
+                MetricData, MetricKind, MetricName, MetricSeries, MetricTime, MetricValue,
+                StatisticKind,
+            },
         },
         sinks::util::test::{build_test_server, load_sink},
         test_util::{
@@ -249,6 +252,30 @@ mod tests {
             components::{HTTP_SINK_TAGS, run_and_assert_sink_compliance},
         },
     };
+
+    fn otel_from_parts(
+        name: &str,
+        kind: MetricKind,
+        value: MetricValue,
+        tags: Option<MetricTags>,
+    ) -> OtelMetric {
+        let series = MetricSeries {
+            name: MetricName {
+                name: name.to_string(),
+                namespace: None,
+            },
+            tags,
+        };
+        let data = MetricData {
+            time: MetricTime {
+                timestamp: None,
+                interval_ms: None,
+            },
+            kind,
+            value,
+        };
+        OtelMetric::from_metric_parts(series, data, EventMetadata::default())
+    }
 
     #[test]
     fn generate_config() {
@@ -295,37 +322,31 @@ mod tests {
 
         // Make our test metrics.
         let metrics = vec![
-            Event::Metric({
-                let otel = OtelMetric::new_counter("metric1", MetricKind::Incremental, 42.0);
-                let (s, d, md) = otel.into_metric_parts();
-                let m = Metric::from_parts(s, d, md)
+            Event::Metric(
+                OtelMetric::new_counter("metric1", MetricKind::Incremental, 42.0)
                     .with_tags(Some(metric_tags!("os.host" => "somehost")))
                     .with_timestamp(Some(
                         Utc.with_ymd_and_hms(2020, 8, 18, 21, 0, 1)
                             .single()
                             .expect("invalid timestamp"),
-                    ));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
-            }),
-            Event::Metric({
-                let m = Metric::new(
+                    )),
+            ),
+            Event::Metric(
+                otel_from_parts(
                     "metric2",
                     MetricKind::Absolute,
                     MetricValue::Distribution {
                         samples: vector_lib::samples![1.0 => 100, 2.0 => 200, 3.0 => 300],
                         statistic: StatisticKind::Histogram,
                     },
+                    Some(metric_tags!("os.host" => "somehost")),
                 )
-                .with_tags(Some(metric_tags!("os.host" => "somehost")))
                 .with_timestamp(Some(
                     Utc.with_ymd_and_hms(2020, 8, 18, 21, 0, 2)
                         .single()
                         .expect("invalid timestamp"),
-                ));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
-            }),
+                )),
+            ),
         ];
 
         let len = metrics.len();
@@ -362,10 +383,8 @@ mod tests {
         tokio::spawn(server);
 
         // Make our test metrics.
-        let metrics = vec![Event::Metric({
-            let otel = OtelMetric::new_counter("metric1", MetricKind::Incremental, 42.0);
-            let (s, d, md) = otel.into_metric_parts();
-            let m = Metric::from_parts(s, d, md)
+        let metrics = vec![Event::Metric(
+            OtelMetric::new_counter("metric1", MetricKind::Incremental, 42.0)
                 .with_tags(Some(metric_tags!(
                     "code" => "200",
                     "code" => "success"
@@ -374,10 +393,8 @@ mod tests {
                     Utc.with_ymd_and_hms(2020, 8, 18, 21, 0, 1)
                         .single()
                         .expect("invalid timestamp"),
-                ));
-            let (s, d, md) = m.into_parts();
-            OtelMetric::from_metric_parts(s, d, md)
-        })];
+                )),
+        )];
 
         let len = metrics.len();
         run_and_assert_sink_compliance(sink, stream::iter(metrics), &HTTP_SINK_TAGS).await;

@@ -5,9 +5,38 @@ use tokio::{net::UdpSocket, sync::mpsc};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::{codec::BytesCodec, udp::UdpFramed};
 use vector_lib::{
-    event::{Event, Metric, MetricKind, MetricTags, MetricValue, OtelMetric, StatisticKind, metric::TagValue},
+    event::{
+        Event, EventMetadata, MetricKind, MetricTags, MetricValue, OtelMetric, StatisticKind,
+        metric::{MetricData, MetricName, MetricSeries, MetricTime, TagValue},
+    },
     metric_tags,
 };
+
+/// Build an OtelMetric directly from parts for arbitrary MetricValue variants.
+fn otel_from_parts(
+    name: &str,
+    namespace: Option<&str>,
+    kind: MetricKind,
+    value: MetricValue,
+    tags: Option<MetricTags>,
+) -> OtelMetric {
+    let series = MetricSeries {
+        name: MetricName {
+            name: name.to_string(),
+            namespace: namespace.map(ToString::to_string),
+        },
+        tags,
+    };
+    let data = MetricData {
+        time: MetricTime {
+            timestamp: None,
+            interval_ms: None,
+        },
+        kind,
+        value,
+    };
+    OtelMetric::from_metric_parts(series, data, EventMetadata::default())
+}
 
 use super::StatsdSinkConfig;
 use crate::{
@@ -48,30 +77,21 @@ async fn test_send_to_statsd() {
     };
 
     let events = vec![
-        {
-            let m = Metric::new(
-                "counter",
-                MetricKind::Incremental,
-                MetricValue::Counter { value: 1.5 },
-            )
-            .with_namespace(Some("vector"))
-            .with_tags(Some(tags()));
-            let (s, d, md) = m.into_parts();
-            Event::Metric(OtelMetric::from_metric_parts(s, d, md))
-        },
-        {
-            let m = Metric::new(
-                "histogram",
-                MetricKind::Incremental,
-                MetricValue::Distribution {
-                    samples: vector_lib::samples![2.0 => 100],
-                    statistic: StatisticKind::Histogram,
-                },
-            )
-            .with_namespace(Some("vector"));
-            let (s, d, md) = m.into_parts();
-            Event::Metric(OtelMetric::from_metric_parts(s, d, md))
-        },
+        Event::Metric(
+            OtelMetric::new_counter("counter", MetricKind::Incremental, 1.5)
+                .with_namespace(Some("vector"))
+                .with_tags(Some(tags())),
+        ),
+        Event::Metric(otel_from_parts(
+            "histogram",
+            Some("vector"),
+            MetricKind::Incremental,
+            MetricValue::Distribution {
+                samples: vector_lib::samples![2.0 => 100],
+                statistic: StatisticKind::Histogram,
+            },
+            None,
+        )),
     ];
     let (tx, rx) = mpsc::channel(1);
 

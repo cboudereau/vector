@@ -608,8 +608,9 @@ the struct**:
 
 | # | Task | Status | Commit | Note |
 |---|------|--------|--------|------|
-| T17 | Implement real `Deserialize` for OTel types | **DONE** | `7040e7b`, `acf50cc` | OtelLog/OtelSpan: Value→from_value_map. OtelMetric: OTLP JSON→proto via otel_json parse helpers. All 3 types have working Deserialize. |
+| T17 | ~~Implement real `Deserialize` for OTel types~~ | **REVERTED** | `070e536` reverts `7040e7b` + `acf50cc` | Audit found zero live callers of serde Deserialize on OtelLog/OtelSpan/OtelMetric. The `data` field was silently dropped in OtelMetric's impl (silent data loss). Removed entire Deserialize chain (-119 lines) — `Event` keeps `Serialize` only. All ingress paths go through proto (OtlpCodec) or the otel_json Serialize helpers; none use serde Deserialize. See T24 for if/when this becomes needed. |
 | T19 | Fix VrlTarget::OtelMetric remove (write-back) | **DONE** | `7040e7b`+ | Write-back for name, description, unit, resource, scope, attributes — same paths as target_insert. Returns removed value. |
+| T24 | **DEFERRED** — OTLP JSON → OtelMetric parse helpers | **DEFERRED (no caller)** | — | If/when a feature requires deserializing OTLP JSON directly into OtelMetric (e.g. a new OTLP HTTP source that does not go through proto; a config-driven JSON ingestion path; user-level `parse_otlp_json` VRL function), add parse helpers to `lib/vector-core/src/event/otel_json.rs` mirroring the existing Serialize side. Scope: ~5 parse functions (Sum, Gauge, Histogram, Summary, ExponentialHistogram) + data point helpers (NumberDataPoint, HistogramDataPoint, SummaryDataPoint). ~200 lines. Not "complex" — just tedious. Trigger: a PR that needs it. Until then, zero code is better than half-done code. See commit `070e536` rationale. |
 
 #### Workstream 5: Cleanup
 

@@ -5,7 +5,7 @@ use quickcheck::{Arbitrary, Gen, empty_shrinker};
 use vrl::value::{ObjectMap, Value};
 
 use super::super::{
-    Event, EventMetadata, Metric, MetricKind, MetricValue, OtelLog, OtelMetric, OtelSpan, StatisticKind,
+    Event, EventMetadata, MetricKind, MetricValue, OtelLog, OtelMetric, OtelSpan, StatisticKind,
     metric::{
         Bucket, MetricData, MetricName, MetricSeries, MetricTags, MetricTime,
         Quantile, Sample,
@@ -111,42 +111,28 @@ impl Arbitrary for OtelSpan {
     }
 }
 
-impl Arbitrary for Metric {
+impl Arbitrary for OtelMetric {
     fn arbitrary(g: &mut Gen) -> Self {
-        let name = String::from(Name::arbitrary(g));
-        let kind = MetricKind::arbitrary(g);
-        let value = MetricValue::arbitrary(g);
+        let data = MetricData::arbitrary(g);
+        let series = MetricSeries::arbitrary(g);
         let metadata = EventMetadata::arbitrary(g);
-        let mut metric = Metric::new_with_metadata(name, kind, value, metadata);
-        metric.data = MetricData::arbitrary(g);
-        metric.series = MetricSeries::arbitrary(g);
-
-        metric
+        OtelMetric::from_metric_parts(series, data, metadata)
     }
 
     fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
-        let metric = self.clone();
-        let name = String::from(metric.name());
-
+        let (series, data, metadata) = self.clone().into_metric_parts();
         Box::new(
-            name.shrink()
-                .map(move |name| metric.clone().with_name(name))
-                .flat_map(|metric| {
-                    let data = metric.data.clone();
-                    data.shrink().map(move |data| {
-                        let mut new_metric = metric.clone();
-                        new_metric.data = data;
-                        new_metric
-                    })
+            data.shrink()
+                .map({
+                    let series = series.clone();
+                    let metadata = metadata.clone();
+                    move |d| OtelMetric::from_metric_parts(series.clone(), d, metadata.clone())
                 })
-                .flat_map(|metric| {
-                    let series = metric.series.clone();
-                    series.shrink().map(move |series| {
-                        let mut new_metric = metric.clone();
-                        new_metric.series = series;
-                        new_metric
-                    })
-                }),
+                .chain(series.shrink().map({
+                    let data = data.clone();
+                    let metadata = metadata.clone();
+                    move |s| OtelMetric::from_metric_parts(s, data.clone(), metadata.clone())
+                })),
         )
     }
 }

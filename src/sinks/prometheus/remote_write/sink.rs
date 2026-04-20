@@ -2,7 +2,7 @@ use std::fmt;
 
 use vector_lib::{
     byte_size_of::ByteSizeOf,
-    event::{Metric, OtelMetric},
+    event::OtelMetric,
     stream::batcher::{data::BatchData, limiter::ByteSizeOfItemSize},
 };
 
@@ -75,23 +75,10 @@ pub(super) enum BatchedMetrics {
 }
 
 impl BatchedMetrics {
-    pub(super) fn into_metrics(self) -> Vec<Metric> {
+    pub(super) fn into_metrics(self) -> Vec<OtelMetric> {
         match self {
-            BatchedMetrics::Aggregated(metrics) => metrics
-                .into_metrics()
-                .into_iter()
-                .map(|otel| {
-                    let (s, d, md) = otel.into_metric_parts();
-                    Metric::from_parts(s, d, md)
-                })
-                .collect(),
-            BatchedMetrics::Unaggregated(metrics) => metrics
-                .into_iter()
-                .map(|otel| {
-                    let (s, d, md) = otel.into_metric_parts();
-                    Metric::from_parts(s, d, md)
-                })
-                .collect(),
+            BatchedMetrics::Aggregated(metrics) => metrics.into_metrics(),
+            BatchedMetrics::Unaggregated(metrics) => metrics,
         }
     }
 

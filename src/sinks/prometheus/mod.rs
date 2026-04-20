@@ -1,5 +1,3 @@
-#[cfg(test)]
-use vector_lib::event::Metric;
 use vector_lib::sensitive_string::SensitiveString;
 
 mod collector;
@@ -46,13 +44,5 @@ fn default_summary_quantiles() -> Vec<f64> {
     vec![0.5, 0.75, 0.9, 0.95, 0.99]
 }
 
-#[cfg(test)]
-fn distribution_to_agg_histogram(metric: Metric, buckets: &[f64]) -> Option<Metric> {
-    // If the metric isn;'t already a distribution, this ends up returning `None`.
-    let new_value = metric
-        .value()
-        .clone()
-        .distribution_to_agg_histogram(buckets);
-    new_value.map(move |value| metric.with_value(value))
-}
+
 

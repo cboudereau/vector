@@ -2,7 +2,7 @@ use std::io;
 
 use bytes::{Bytes, BytesMut};
 use prost::Message;
-use vector_lib::{config::telemetry, event::Metric};
+use vector_lib::{config::telemetry, event::OtelMetric};
 
 use super::{PartitionKey, sink::EventCollection};
 use crate::sinks::{
@@ -16,24 +16,26 @@ pub(crate) struct RemoteWriteEncoder {
     pub(super) quantiles: Vec<f64>,
 }
 
-impl encoding::Encoder<Vec<Metric>> for RemoteWriteEncoder {
+impl encoding::Encoder<Vec<OtelMetric>> for RemoteWriteEncoder {
     fn encode_input(
         &self,
-        input: Vec<Metric>,
+        input: Vec<OtelMetric>,
         writer: &mut dyn io::Write,
     ) -> io::Result<(usize, GroupedCountByteSize)> {
         let mut byte_size = telemetry().create_request_count_byte_size();
 
         let mut time_series = collector::TimeSeries::new();
         let len = input.len();
-        for metric in input {
-            byte_size.add_event(&metric, metric.estimated_json_encoded_size_of());
+        for otel in input {
+            byte_size.add_event(&otel, otel.estimated_json_encoded_size_of());
 
+            let (series, data, _) = otel.into_metric_parts();
             time_series.encode_metric(
                 self.default_namespace.as_deref(),
                 &self.buckets,
                 &self.quantiles,
-                &metric,
+                &series,
+                &data,
             );
         }
         let request = time_series.finish();
@@ -84,7 +86,7 @@ pub(super) struct RemoteWriteRequestBuilder {
 
 impl RequestBuilder<(PartitionKey, EventCollection)> for RemoteWriteRequestBuilder {
     type Metadata = RemoteWriteMetadata;
-    type Events = Vec<Metric>;
+    type Events = Vec<OtelMetric>;
     type Encoder = RemoteWriteEncoder;
     type Payload = Bytes;
     type Request = RemoteWriteRequest;

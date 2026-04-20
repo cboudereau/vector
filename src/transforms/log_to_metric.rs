@@ -21,8 +21,8 @@ use crate::{
         TransformOutput, schema::Definition,
     },
     event::{
-        Event, Value,
-        metric::{Metric, MetricKind, MetricTags, MetricValue, StatisticKind, TagValue},
+        Event, EventMetadata, Value,
+        metric::{MetricData, MetricKind, MetricName, MetricSeries, MetricTags, MetricTime, MetricValue, StatisticKind, TagValue},
     },
     internal_events::{
         DROP_EVENT, LogToMetricFieldNullError, LogToMetricParseFloatError,
@@ -35,7 +35,6 @@ use crate::{
         FunctionTransform, OutputBuffer, Transform, log_to_metric::TransformError::PathNotFound,
     },
 };
-
 
 /// Configuration for the `log_to_metric` transform.
 #[configurable_component(transform("log_to_metric", "Convert log events to metric events."))]
@@ -369,7 +368,7 @@ fn render_tag_into(
     Ok(())
 }
 
-fn to_metric_with_config(config: &MetricConfig, event: &Event) -> Result<Metric, TransformError> {
+fn to_metric_with_config(config: &MetricConfig, event: &Event) -> Result<OtelMetric, TransformError> {
     let log = event.as_log();
 
     let timestamp = log
@@ -474,10 +473,30 @@ fn to_metric_with_config(config: &MetricConfig, event: &Event) -> Result<Metric,
             )
         }
     };
-    Ok(Metric::new_with_metadata(name, kind, value, metadata)
+    Ok(otel_from_parts(name, kind, value, metadata)
         .with_namespace(namespace)
         .with_tags(tags)
         .with_timestamp(timestamp))
+}
+
+fn otel_from_parts(
+    name: impl Into<String>,
+    kind: MetricKind,
+    value: MetricValue,
+    metadata: EventMetadata,
+) -> OtelMetric {
+    OtelMetric::from_metric_parts(
+        MetricSeries {
+            name: MetricName { name: name.into(), namespace: None },
+            tags: None,
+        },
+        MetricData {
+            time: MetricTime { timestamp: None, interval_ms: None },
+            kind,
+            value,
+        },
+        metadata,
+    )
 }
 
 fn bytes_to_str(value: &Value) -> Option<String> {
@@ -780,7 +799,7 @@ fn get_summary_value(log: &OtelLog) -> Result<MetricValue, TransformError> {
     })
 }
 
-fn to_metrics(event: &Event) -> Result<Metric, TransformError> {
+fn to_metrics(event: &Event) -> Result<OtelMetric, TransformError> {
     let log = event.as_log();
     let timestamp = log
         .get_timestamp()
@@ -846,7 +865,7 @@ fn to_metrics(event: &Event) -> Result<Metric, TransformError> {
 
     let value = value.ok_or(TransformError::MetricDetailsNotFound)?;
 
-    let mut metric = Metric::new_with_metadata(name, kind, value, log.metadata().clone())
+    let mut metric = otel_from_parts(name, kind, value, log.metadata().clone())
         .with_tags(tags_result)
         .with_timestamp(timestamp);
 
@@ -866,9 +885,8 @@ impl FunctionTransform for LogToMetric {
         let mut buffer = Vec::with_capacity(self.metrics.len());
         if self.all_metrics {
             match to_metrics(&event) {
-                Ok(metric) => {
-                    let (series, data, metadata) = metric.into_parts();
-                    output.push(Event::Metric(OtelMetric::from_metric_parts(series, data, metadata)));
+                Ok(otel) => {
+                    output.push(Event::Metric(otel));
                 }
                 Err(err) => {
                     match err {
@@ -907,9 +925,8 @@ impl FunctionTransform for LogToMetric {
         } else {
             for config in self.metrics.iter() {
                 match to_metric_with_config(config, &event) {
-                    Ok(metric) => {
-                        let (series, data, metadata) = metric.into_parts();
-                        buffer.push(Event::Metric(OtelMetric::from_metric_parts(series, data, metadata)));
+                    Ok(otel) => {
+                        buffer.push(Event::Metric(otel));
                     }
                     Err(err) => {
                         match err {
@@ -978,8 +995,8 @@ mod tests {
     use crate::{
         config::log_schema,
         event::{
-            Event, OtelLog, OtelMetric,
-            metric::{Metric, MetricKind, MetricValue, StatisticKind},
+            Event, OtelLog,
+            metric::{MetricKind, MetricValue, StatisticKind},
         },
         test_util::components::assert_transform_compliance,
         transforms::test::create_topology,
@@ -1091,15 +1108,14 @@ mod tests {
         assert_eq!(
             metric.into_otel_metric(),
             {
-                let m = Metric::new_with_metadata(
+                otel_from_parts(
                     "status",
                     MetricKind::Incremental,
                     MetricValue::Counter { value: 1.0 },
                     metadata,
                 )
-                .with_timestamp(Some(ts()));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
+                .with_timestamp(Some(ts()))
+
             });
     }
 
@@ -1132,7 +1148,7 @@ mod tests {
         assert_eq!(
             metric.into_otel_metric(),
             {
-                let m = Metric::new_with_metadata(
+                otel_from_parts(
                     "http_requests_total",
                     MetricKind::Incremental,
                     MetricValue::Counter { value: 1.0 },
@@ -1144,9 +1160,8 @@ mod tests {
                     "code" => "200",
                     "host" => "localhost",
                 )))
-                .with_timestamp(Some(ts()));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
+                .with_timestamp(Some(ts()))
+
             });
     }
 
@@ -1184,7 +1199,7 @@ mod tests {
         assert_eq!(
             metric.into_otel_metric(),
             {
-                let m = Metric::new_with_metadata(
+                otel_from_parts(
                     "http_requests_total",
                     MetricKind::Incremental,
                     MetricValue::Counter { value: 1.0 },
@@ -1195,9 +1210,8 @@ mod tests {
                     "one" => "foo",
                     "two" => "baz",
                 )))
-                .with_timestamp(Some(ts()));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
+                .with_timestamp(Some(ts()))
+
             });
     }
     #[tokio::test]
@@ -1357,15 +1371,14 @@ mod tests {
         assert_eq!(
             metric.into_otel_metric(),
             {
-                let m = Metric::new_with_metadata(
+                otel_from_parts(
                     "exception_total",
                     MetricKind::Incremental,
                     MetricValue::Counter { value: 1.0 },
                     metadata
                 )
-                .with_timestamp(Some(ts()));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
+                .with_timestamp(Some(ts()))
+
             });
     }
 
@@ -1409,15 +1422,14 @@ mod tests {
         assert_eq!(
             metric.into_otel_metric(),
             {
-                let m = Metric::new_with_metadata(
+                otel_from_parts(
                     "amount_total",
                     MetricKind::Incremental,
                     MetricValue::Counter { value: 33.99 },
                     metadata,
                 )
-                .with_timestamp(Some(ts()));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
+                .with_timestamp(Some(ts()))
+
             });
     }
 
@@ -1448,15 +1460,14 @@ mod tests {
         assert_eq!(
             metric.into_otel_metric(),
             {
-                let m = Metric::new_with_metadata(
+                otel_from_parts(
                     "amount_total",
                     MetricKind::Absolute,
                     MetricValue::Counter { value: 33.99 },
                     metadata,
                 )
-                .with_timestamp(Some(ts()));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
+                .with_timestamp(Some(ts()))
+
             });
     }
 
@@ -1487,15 +1498,14 @@ mod tests {
         assert_eq!(
             metric.into_otel_metric(),
             {
-                let m = Metric::new_with_metadata(
+                otel_from_parts(
                     "memory_rss_bytes",
                     MetricKind::Absolute,
                     MetricValue::Gauge { value: 123.0 },
                     metadata,
                 )
-                .with_timestamp(Some(ts()));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
+                .with_timestamp(Some(ts()))
+
             });
     }
 
@@ -1581,28 +1591,26 @@ mod tests {
         assert_eq!(
             output[0].clone().into_otel_metric(),
             {
-                let m = Metric::new_with_metadata(
+                otel_from_parts(
                     "status",
                     MetricKind::Incremental,
                     MetricValue::Counter { value: 1.0 },
                     metadata.clone(),
                 )
-                .with_timestamp(Some(ts()));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
+                .with_timestamp(Some(ts()))
+
             });
         assert_eq!(
             output[1].clone().into_otel_metric(),
             {
-                let m = Metric::new_with_metadata(
+                otel_from_parts(
                     "exception_total",
                     MetricKind::Incremental,
                     MetricValue::Counter { value: 1.0 },
                     metadata,
                 )
-                .with_timestamp(Some(ts()));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
+                .with_timestamp(Some(ts()))
+
             });
     }
 
@@ -1648,7 +1656,7 @@ mod tests {
         assert_eq!(
             output[0].clone().into_otel_metric(),
             {
-                let m = Metric::new_with_metadata(
+                otel_from_parts(
                     "local_abc_status_set",
                     MetricKind::Incremental,
                     MetricValue::Set {
@@ -1656,23 +1664,21 @@ mod tests {
                     },
                     metadata.clone(),
                 )
-                .with_timestamp(Some(ts()));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
+                .with_timestamp(Some(ts()))
+
             });
         assert_eq!(
             output[1].clone().into_otel_metric(),
             {
-                let m = Metric::new_with_metadata(
+                otel_from_parts(
                     "xyz_exception_total",
                     MetricKind::Incremental,
                     MetricValue::Counter { value: 1.0 },
                     metadata,
                 )
                 .with_namespace(Some("local"))
-                .with_timestamp(Some(ts()));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
+                .with_timestamp(Some(ts()))
+
             });
     }
 
@@ -1702,7 +1708,7 @@ mod tests {
         assert_eq!(
             metric.into_otel_metric(),
             {
-                let m = Metric::new_with_metadata(
+                otel_from_parts(
                     "unique_user_ip",
                     MetricKind::Incremental,
                     MetricValue::Set {
@@ -1710,9 +1716,8 @@ mod tests {
                     },
                     metadata,
                 )
-                .with_timestamp(Some(ts()));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
+                .with_timestamp(Some(ts()))
+
             });
     }
 
@@ -1742,7 +1747,7 @@ mod tests {
         assert_eq!(
             metric.into_otel_metric(),
             {
-                let m = Metric::new_with_metadata(
+                otel_from_parts(
                     "response_time",
                     MetricKind::Incremental,
                     MetricValue::Distribution {
@@ -1751,9 +1756,8 @@ mod tests {
                     },
                     metadata
                 )
-                .with_timestamp(Some(ts()));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
+                .with_timestamp(Some(ts()))
+
             });
     }
 
@@ -1783,7 +1787,7 @@ mod tests {
         assert_eq!(
             metric.into_otel_metric(),
             {
-                let m = Metric::new_with_metadata(
+                otel_from_parts(
                     "response_time",
                     MetricKind::Incremental,
                     MetricValue::Distribution {
@@ -1792,9 +1796,8 @@ mod tests {
                     },
                     metadata
                 )
-                .with_timestamp(Some(ts()));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
+                .with_timestamp(Some(ts()))
+
             });
     }
 
@@ -1842,7 +1845,7 @@ mod tests {
         assert_eq!(
             metric.clone().into_otel_metric(),
             {
-                let m = Metric::new_with_metadata(
+                otel_from_parts(
                     "test.transform.gauge",
                     MetricKind::Absolute,
                     MetricValue::Gauge { value: 990.0 },
@@ -1853,9 +1856,8 @@ mod tests {
                     "env" => "test_env",
                     "host" => "localhost",
                 )))
-                .with_timestamp(Some(ts()));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
+                .with_timestamp(Some(ts()))
+
             });
     }
 
@@ -1901,7 +1903,7 @@ mod tests {
         assert_eq!(
             metric.clone().into_otel_metric(),
             {
-                let m = Metric::new_with_metadata(
+                otel_from_parts(
                     "test.transform.histogram",
                     MetricKind::Absolute,
                     MetricValue::AggregatedHistogram {
@@ -1933,9 +1935,8 @@ mod tests {
                     "env" => "test_env",
                     "host" => "localhost",
                 )))
-                .with_timestamp(Some(ts()));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
+                .with_timestamp(Some(ts()))
+
             });
     }
 
@@ -1973,7 +1974,7 @@ mod tests {
         assert_eq!(
             metric.clone().into_otel_metric(),
             {
-                let m = Metric::new_with_metadata(
+                otel_from_parts(
                     "test.transform.distribution_histogram",
                     MetricKind::Absolute,
                     MetricValue::Distribution {
@@ -1996,9 +1997,8 @@ mod tests {
                     "env" => "test_env",
                     "host" => "localhost",
                 )))
-                .with_timestamp(Some(ts()));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
+                .with_timestamp(Some(ts()))
+
             });
     }
 
@@ -2036,7 +2036,7 @@ mod tests {
         assert_eq!(
             metric.clone().into_otel_metric(),
             {
-                let m = Metric::new_with_metadata(
+                otel_from_parts(
                     "test.transform.distribution_summary",
                     MetricKind::Absolute,
                     MetricValue::Distribution {
@@ -2059,9 +2059,8 @@ mod tests {
                     "env" => "test_env",
                     "host" => "localhost",
                 )))
-                .with_timestamp(Some(ts()));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
+                .with_timestamp(Some(ts()))
+
             });
     }
 
@@ -2099,7 +2098,7 @@ mod tests {
         assert_eq!(
             metric.clone().into_otel_metric(),
             {
-                let m = Metric::new_with_metadata(
+                otel_from_parts(
                     "test.transform.histogram",
                     MetricKind::Absolute,
                     MetricValue::AggregatedSummary {
@@ -2123,9 +2122,8 @@ mod tests {
                     "env" => "test_env",
                     "host" => "localhost",
                 )))
-                .with_timestamp(Some(ts()));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
+                .with_timestamp(Some(ts()))
+
             });
     }
 
@@ -2152,7 +2150,7 @@ mod tests {
         assert_eq!(
             metric.clone().into_otel_metric(),
             {
-                let m = Metric::new_with_metadata(
+                otel_from_parts(
                     "test.transform.counter",
                     MetricKind::Incremental,
                     MetricValue::Counter { value: 10.0 },
@@ -2163,9 +2161,8 @@ mod tests {
                     "env" => "test_env",
                     "host" => "localhost",
                 )))
-                .with_timestamp(Some(ts()));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
+                .with_timestamp(Some(ts()))
+
             });
     }
 
@@ -2193,7 +2190,7 @@ mod tests {
         assert_eq!(
             metric.clone().into_otel_metric(),
             {
-                let m = Metric::new_with_metadata(
+                otel_from_parts(
                     "test.transform.set",
                     MetricKind::Incremental,
                     MetricValue::Set {
@@ -2206,9 +2203,8 @@ mod tests {
                     "env" => "test_env",
                     "host" => "localhost",
                 )))
-                .with_timestamp(Some(ts()));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
+                .with_timestamp(Some(ts()))
+
             });
     }
 
@@ -2235,7 +2231,7 @@ mod tests {
         assert_eq!(
             metric.clone().into_otel_metric(),
             {
-                let m = Metric::new_with_metadata(
+                otel_from_parts(
                     "test.transform.counter",
                     MetricKind::Incremental,
                     MetricValue::Counter { value: 10.0 },
@@ -2245,9 +2241,8 @@ mod tests {
                     "env" => "test_env",
                     "host" => "localhost",
                 )))
-                .with_timestamp(Some(ts()));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
+                .with_timestamp(Some(ts()))
+
             });
     }
 }

@@ -18,8 +18,6 @@ use super::{
     EstimatedJsonEncodedSizeOf, Event, EventDataEq, EventFinalizer, EventMetadata, EventMutRef,
     EventRef, OtelLog, OtelMetric, OtelSpan,
 };
-#[cfg(test)]
-use super::Metric;
 
 /// The type alias for an array of `OtelLog` elements.
 pub type LogArray = Vec<OtelLog>;
@@ -324,9 +322,7 @@ impl Arbitrary for EventArray {
         } else {
             let mut metrics = Vec::new();
             for _ in 0..len {
-                let m = Metric::arbitrary(g);
-                let (s, d, md) = m.into_parts();
-                metrics.push(OtelMetric::from_metric_parts(s, d, md));
+                metrics.push(OtelMetric::arbitrary(g));
             }
             EventArray::Metrics(metrics)
         }

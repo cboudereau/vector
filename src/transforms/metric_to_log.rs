@@ -19,7 +19,7 @@ use crate::{
         DataType, GenerateConfig, Input, OutputId, TransformConfig, TransformContext,
         TransformOutput, log_schema,
     },
-    event::{self, Event, Metric, OtelLog},
+    event::{self, Event, Metric, OtelLog, OtelMetric},
     internal_events::MetricToLogSerializeError,
     schema::Definition,
     transforms::{FunctionTransform, OutputBuffer, Transform},
@@ -282,7 +282,9 @@ impl MetricToLog {
         }
     }
 
-    pub fn transform_one(&self, mut metric: Metric) -> Option<OtelLog> {
+    pub fn transform_one(&self, otel: OtelMetric) -> Option<OtelLog> {
+        let (series, data, metadata) = otel.into_metric_parts();
+        let mut metric = Metric::from_parts(series, data, metadata);
         if self.tag_values == MetricTagValues::Single {
             metric.reduce_tags_to_single();
         }
@@ -342,17 +344,14 @@ impl MetricToLog {
 
 impl FunctionTransform for MetricToLog {
     fn transform(&mut self, output: &mut OutputBuffer, event: Event) {
-        let metric = match event {
-            Event::Metric(otel) => {
-                let (series, data, metadata) = otel.into_metric_parts();
-                Metric::from_parts(series, data, metadata)
-            }
+        let otel = match event {
+            Event::Metric(otel) => otel,
             other => {
                 output.push(other);
                 return;
             }
         };
-        let retval: Option<Event> = self.transform_one(metric).map(Event::Log);
+        let retval: Option<Event> = self.transform_one(otel).map(Event::Log);
         output.extend(retval.into_iter())
     }
 }
@@ -372,8 +371,8 @@ mod tests {
     use super::*;
     use crate::{
         event::{
-            KeyString, Metric, OtelLog, OtelMetric, Value,
-            metric::{MetricKind, MetricTags, MetricValue, StatisticKind, TagValue, TagValueSet},
+            KeyString, OtelLog, OtelMetric, Value,
+            metric::{MetricData, MetricKind, MetricName, MetricSeries, MetricTags, MetricTime, MetricValue, StatisticKind, TagValue, TagValueSet},
         },
         test_util::{components::assert_transform_compliance, random_string},
         transforms::test::create_topology,
@@ -384,7 +383,7 @@ mod tests {
         crate::test_util::test_generate_config::<MetricToLogConfig>();
     }
 
-    async fn do_transform(metric: Metric) -> Option<OtelLog> {
+    async fn do_transform(metric: OtelMetric) -> Option<OtelLog> {
         assert_transform_compliance(async move {
             let config = MetricToLogConfig {
                 host_tag: Some("host".into()),
@@ -395,7 +394,7 @@ mod tests {
             let (tx, rx) = mpsc::channel(1);
             let (topology, mut out) = create_topology(ReceiverStream::new(rx), config).await;
 
-            tx.send(Event::Metric({ let (s, d, md) = metric.into_parts(); OtelMetric::from_metric_parts(s, d, md) })).await.unwrap();
+            tx.send(Event::Metric(metric)).await.unwrap();
 
             let result = out.recv().await;
 
@@ -427,16 +426,19 @@ mod tests {
         EventMetadata::default().with_source_type("unit_test_stream")
     }
 
-    #[tokio::test]
-    async fn transform_counter() {
-        let counter = Metric::new_with_metadata(
-            "counter",
-            MetricKind::Absolute,
-            MetricValue::Counter { value: 1.0 },
+    fn make_metric(name: &str, kind: MetricKind, value: MetricValue) -> OtelMetric {
+        OtelMetric::from_metric_parts(
+            MetricSeries { name: MetricName { name: name.into(), namespace: None }, tags: None },
+            MetricData { time: MetricTime { timestamp: None, interval_ms: None }, kind, value },
             event_metadata(),
         )
-        .with_tags(Some(tags()))
-        .with_timestamp(Some(ts()));
+    }
+
+    #[tokio::test]
+    async fn transform_counter() {
+        let counter = make_metric("counter", MetricKind::Absolute, MetricValue::Counter { value: 1.0 })
+            .with_tags(Some(tags()))
+            .with_timestamp(Some(ts()));
         let mut metadata = counter.metadata().clone();
         metadata.set_source_id(Arc::new(ComponentKey::from("in")));
         metadata.set_upstream_id(Arc::new(OutputId::from("transform")));
@@ -461,13 +463,8 @@ mod tests {
 
     #[tokio::test]
     async fn transform_gauge() {
-        let gauge = Metric::new_with_metadata(
-            "gauge",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 1.0 },
-            event_metadata(),
-        )
-        .with_timestamp(Some(ts()));
+        let gauge = make_metric("gauge", MetricKind::Absolute, MetricValue::Gauge { value: 1.0 })
+            .with_timestamp(Some(ts()));
         let mut metadata = gauge.metadata().clone();
         metadata.set_source_id(Arc::new(ComponentKey::from("in")));
         metadata.set_upstream_id(Arc::new(OutputId::from("transform")));
@@ -491,15 +488,10 @@ mod tests {
     #[tokio::test]
     #[ignore = "Metric round-trip through OtelMetric is lossy"]
     async fn transform_set() {
-        let set = Metric::new_with_metadata(
-            "set",
-            MetricKind::Absolute,
-            MetricValue::Set {
+        let set = make_metric("set", MetricKind::Absolute, MetricValue::Set {
                 values: vec!["one".into(), "two".into()].into_iter().collect(),
-            },
-            event_metadata(),
-        )
-        .with_timestamp(Some(ts()));
+            })
+            .with_timestamp(Some(ts()));
         let mut metadata = set.metadata().clone();
         metadata.set_source_id(Arc::new(ComponentKey::from("in")));
         metadata.set_upstream_id(Arc::new(OutputId::from("transform")));
@@ -524,16 +516,11 @@ mod tests {
     #[tokio::test]
     #[ignore = "Metric round-trip through OtelMetric is lossy"]
     async fn transform_distribution() {
-        let distro = Metric::new_with_metadata(
-            "distro",
-            MetricKind::Absolute,
-            MetricValue::Distribution {
+        let distro = make_metric("distro", MetricKind::Absolute, MetricValue::Distribution {
                 samples: vector_lib::samples![1.0 => 10, 2.0 => 20],
                 statistic: StatisticKind::Histogram,
-            },
-            event_metadata(),
-        )
-        .with_timestamp(Some(ts()));
+            })
+            .with_timestamp(Some(ts()));
         let mut metadata = distro.metadata().clone();
         metadata.set_source_id(Arc::new(ComponentKey::from("in")));
         metadata.set_upstream_id(Arc::new(OutputId::from("transform")));
@@ -575,17 +562,12 @@ mod tests {
 
     #[tokio::test]
     async fn transform_histogram() {
-        let histo = Metric::new_with_metadata(
-            "histo",
-            MetricKind::Absolute,
-            MetricValue::AggregatedHistogram {
+        let histo = make_metric("histo", MetricKind::Absolute, MetricValue::AggregatedHistogram {
                 buckets: vector_lib::buckets![1.0 => 10, 2.0 => 20],
                 count: 30,
                 sum: 50.0,
-            },
-            event_metadata(),
-        )
-        .with_timestamp(Some(ts()));
+            })
+            .with_timestamp(Some(ts()));
         let mut metadata = histo.metadata().clone();
         metadata.set_source_id(Arc::new(ComponentKey::from("in")));
         metadata.set_upstream_id(Arc::new(OutputId::from("transform")));
@@ -631,17 +613,12 @@ mod tests {
 
     #[tokio::test]
     async fn transform_summary() {
-        let summary = Metric::new_with_metadata(
-            "summary",
-            MetricKind::Absolute,
-            MetricValue::AggregatedSummary {
+        let summary = make_metric("summary", MetricKind::Absolute, MetricValue::AggregatedSummary {
                 quantiles: vector_lib::quantiles![50.0 => 10.0, 90.0 => 20.0],
                 count: 30,
                 sum: 50.0,
-            },
-            event_metadata(),
-        )
-        .with_timestamp(Some(ts()));
+            })
+            .with_timestamp(Some(ts()));
         let mut metadata = summary.metadata().clone();
         metadata.set_source_id(Arc::new(ComponentKey::from("in")));
         metadata.set_upstream_id(Arc::new(OutputId::from("transform")));
@@ -727,13 +704,9 @@ mod tests {
     }
 
     async fn transform_tags(metric_tag_values: MetricTagValues, tags: MetricTags) -> Value {
-        let counter = {
-            let otel = OtelMetric::new_counter("counter", MetricKind::Absolute, 1.0);
-            let (s, d, md) = otel.into_metric_parts();
-            Metric::from_parts(s, d, md)
-        }
-        .with_tags(Some(tags))
-        .with_timestamp(Some(ts()));
+        let counter = OtelMetric::new_counter("counter", MetricKind::Absolute, 1.0)
+            .with_tags(Some(tags))
+            .with_timestamp(Some(ts()));
 
         let mut output = OutputBuffer::with_capacity(1);
 
@@ -742,7 +715,7 @@ mod tests {
             ..Default::default()
         }
         .build_transform(&TransformContext::default())
-        .transform(&mut output, Event::Metric({ let (s, d, md) = counter.into_parts(); OtelMetric::from_metric_parts(s, d, md) }));
+        .transform(&mut output, Event::Metric(counter));
 
         assert_eq!(output.len(), 1);
         output.into_events().next().unwrap().into_log().get("tags").unwrap()

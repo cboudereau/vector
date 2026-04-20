@@ -13,7 +13,7 @@ use vrl::compiler::prelude::Kind;
 use super::*;
 use crate::{
     config::{LogNamespace, schema::Definition},
-    event::{Event, Metric, MetricTags, OtelMetric, metric, metric::TagValue},
+    event::{Event, MetricTags, OtelMetric, metric, metric::TagValue},
     test_util::components::assert_transform_compliance,
     transforms::{
         tag_cardinality_limit::config::{BloomFilterConfig, Mode, default_cache_size},
@@ -28,18 +28,21 @@ fn generate_config() {
 
 fn make_metric_with_name(tags: MetricTags, name: &str) -> Event {
     let event_metadata = EventMetadata::default().with_source_type("unit_test_stream");
-
-    {
-        let m = Metric::new_with_metadata(
-            name,
-            metric::MetricKind::Incremental,
-            metric::MetricValue::Counter { value: 1.0 },
+    Event::Metric(
+        OtelMetric::from_metric_parts(
+            metric::MetricSeries {
+                name: metric::MetricName { name: name.to_string(), namespace: None },
+                tags: None,
+            },
+            metric::MetricData {
+                time: metric::MetricTime { timestamp: None, interval_ms: None },
+                kind: metric::MetricKind::Incremental,
+                value: metric::MetricValue::Counter { value: 1.0 },
+            },
             event_metadata,
         )
-        .with_tags(Some(tags));
-        let (s, d, md) = m.into_parts();
-        Event::Metric(OtelMetric::from_metric_parts(s, d, md))
-    }
+        .with_tags(Some(tags)),
+    )
 }
 
 fn make_metric(tags: MetricTags) -> Event {

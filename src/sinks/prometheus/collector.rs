@@ -8,7 +8,7 @@ use vector_lib::{
 };
 
 use crate::{
-    event::metric::{Metric, MetricKind, MetricValue, StatisticKind},
+    event::metric::{MetricData, MetricKind, MetricSeries, MetricValue, StatisticKind},
     sinks::util::{encode_namespace, statistic::DistributionStatistic},
 };
 
@@ -36,17 +36,18 @@ pub(super) trait MetricCollector {
         default_namespace: Option<&str>,
         buckets: &[f64],
         quantiles: &[f64],
-        metric: &Metric,
+        series: &MetricSeries,
+        data: &MetricData,
     ) {
-        let name = encode_namespace(metric.series.name.namespace.as_deref().or(default_namespace), '_', metric.series.name.name.as_str());
+        let name = encode_namespace(series.name.namespace.as_deref().or(default_namespace), '_', series.name.name.as_str());
         let name = &name;
-        let timestamp = metric.data.time.timestamp.map(|t| t.timestamp_millis());
+        let timestamp = data.time.timestamp.map(|t| t.timestamp_millis());
 
-        if metric.data.kind == MetricKind::Absolute {
-            let tags = metric.series.tags.as_ref();
-            self.emit_metadata(metric.series.name.name.as_str(), name, &metric.data.value);
+        if data.kind == MetricKind::Absolute {
+            let tags = series.tags.as_ref();
+            self.emit_metadata(series.name.name.as_str(), name, &data.value);
 
-            match &metric.data.value {
+            match &data.value {
                 MetricValue::Counter { value } => {
                     self.emit_value(timestamp, name, "", *value, tags, None);
                 }
@@ -409,7 +410,7 @@ mod tests {
     use super::{super::default_summary_quantiles, *};
     use crate::{
         event::metric::{
-            Metric, MetricData, MetricKind, MetricName, MetricSeries, MetricTime, MetricValue,
+            MetricData, MetricKind, MetricName, MetricSeries, MetricTime, MetricValue,
             StatisticKind,
         },
         event::{EventMetadata, OtelMetric},
@@ -447,10 +448,11 @@ mod tests {
         default_namespace: Option<&str>,
         buckets: &[f64],
         quantiles: &[f64],
-        metric: &Metric,
+        metric: OtelMetric,
     ) -> T::Output {
+        let (series, data, _) = metric.into_metric_parts();
         let mut s = T::new();
-        s.encode_metric(default_namespace, buckets, quantiles, metric);
+        s.encode_metric(default_namespace, buckets, quantiles, &series, &data);
         s.finish()
     }
 
@@ -519,14 +521,10 @@ mod tests {
     }
 
     fn encode_counter<T: MetricCollector>() -> T::Output {
-        let metric = {
-            let otel = OtelMetric::new_counter("hits", MetricKind::Absolute, 10.0)
-                .with_tags(Some(tags()))
-                .with_timestamp(Some(timestamp()));
-            let (s, d, md) = otel.into_metric_parts();
-            Metric::from_parts(s, d, md)
-        };
-        encode_one::<T>(Some("vector"), &[], &[], &metric)
+        let otel = OtelMetric::new_counter("hits", MetricKind::Absolute, 10.0)
+            .with_tags(Some(tags()))
+            .with_timestamp(Some(timestamp()));
+        encode_one::<T>(Some("vector"), &[], &[], otel)
     }
 
     #[test]
@@ -550,14 +548,10 @@ mod tests {
     }
 
     fn encode_gauge<T: MetricCollector>() -> T::Output {
-        let metric = {
-            let otel = OtelMetric::new_gauge("temperature", -1.1)
-                .with_tags(Some(tags()))
-                .with_timestamp(Some(timestamp()));
-            let (s, d, md) = otel.into_metric_parts();
-            Metric::from_parts(s, d, md)
-        };
-        encode_one::<T>(Some("vector"), &[], &[], &metric)
+        let otel = OtelMetric::new_gauge("temperature", -1.1)
+            .with_tags(Some(tags()))
+            .with_timestamp(Some(timestamp()));
+        encode_one::<T>(Some("vector"), &[], &[], otel)
     }
 
     #[test]
@@ -581,20 +575,16 @@ mod tests {
     }
 
     fn encode_set<T: MetricCollector>() -> T::Output {
-        let metric = {
-            let otel = otel_from_parts(
-                "users",
-                MetricKind::Absolute,
-                MetricValue::Set {
-                    values: vec!["foo".into()].into_iter().collect(),
-                },
-                None,
-                Some(timestamp()),
-            );
-            let (s, d, md) = otel.into_metric_parts();
-            Metric::from_parts(s, d, md)
-        };
-        encode_one::<T>(Some("vector"), &[], &[], &metric)
+        let otel = otel_from_parts(
+            "users",
+            MetricKind::Absolute,
+            MetricValue::Set {
+                values: vec!["foo".into()].into_iter().collect(),
+            },
+            None,
+            Some(timestamp()),
+        );
+        encode_one::<T>(Some("vector"), &[], &[], otel)
     }
 
     #[test]
@@ -618,20 +608,16 @@ mod tests {
     }
 
     fn encode_expired_set<T: MetricCollector>() -> T::Output {
-        let metric = {
-            let otel = otel_from_parts(
-                "users",
-                MetricKind::Absolute,
-                MetricValue::Set {
-                    values: BTreeSet::new(),
-                },
-                None,
-                Some(timestamp()),
-            );
-            let (s, d, md) = otel.into_metric_parts();
-            Metric::from_parts(s, d, md)
-        };
-        encode_one::<T>(Some("vector"), &[], &[], &metric)
+        let otel = otel_from_parts(
+            "users",
+            MetricKind::Absolute,
+            MetricValue::Set {
+                values: BTreeSet::new(),
+            },
+            None,
+            Some(timestamp()),
+        );
+        encode_one::<T>(Some("vector"), &[], &[], otel)
     }
 
     #[test]
@@ -669,21 +655,17 @@ mod tests {
     }
 
     fn encode_distribution<T: MetricCollector>() -> T::Output {
-        let metric = {
-            let otel = otel_from_parts(
-                "requests",
-                MetricKind::Absolute,
-                MetricValue::Distribution {
-                    samples: vector_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2],
-                    statistic: StatisticKind::Histogram,
-                },
-                None,
-                Some(timestamp()),
-            );
-            let (s, d, md) = otel.into_metric_parts();
-            Metric::from_parts(s, d, md)
-        };
-        encode_one::<T>(Some("vector"), &[0.0, 2.5, 5.0], &[], &metric)
+        let otel = otel_from_parts(
+            "requests",
+            MetricKind::Absolute,
+            MetricValue::Distribution {
+                samples: vector_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2],
+                statistic: StatisticKind::Histogram,
+            },
+            None,
+            Some(timestamp()),
+        );
+        encode_one::<T>(Some("vector"), &[0.0, 2.5, 5.0], &[], otel)
     }
 
     #[test]
@@ -764,20 +746,16 @@ mod tests {
         let mut histogram = VariableHistogram::new(bounds);
         histogram.record_many(&[0.4, 2.0, 1.75, 2.6, 2.25, 2.5][..]);
 
-        let metric = {
-            let buckets = histogram.buckets();
-            let otel = OtelMetric::new_histogram(
-                "requests",
-                MetricKind::Absolute,
-                &buckets,
-                histogram.count(),
-                histogram.sum(),
-            )
-            .with_timestamp(Some(timestamp()));
-            let (s, d, md) = otel.into_metric_parts();
-            Metric::from_parts(s, d, md)
-        };
-        encode_one::<T>(Some("vector"), &[], &[], &metric)
+        let buckets = histogram.buckets();
+        let otel = OtelMetric::new_histogram(
+            "requests",
+            MetricKind::Absolute,
+            &buckets,
+            histogram.count(),
+            histogram.sum(),
+        )
+        .with_timestamp(Some(timestamp()));
+        encode_one::<T>(Some("vector"), &[], &[], otel)
     }
 
     #[test]
@@ -812,15 +790,11 @@ mod tests {
     }
 
     fn encode_summary<T: MetricCollector>() -> T::Output {
-        let metric = {
-            let quantiles = vector_lib::quantiles![0.01 => 1.5, 0.5 => 2.0, 0.99 => 3.0];
-            let otel = OtelMetric::new_summary("requests", &quantiles, 6, 12.0)
-                .with_tags(Some(tags()))
-                .with_timestamp(Some(timestamp()));
-            let (s, d, md) = otel.into_metric_parts();
-            Metric::from_parts(s, d, md)
-        };
-        encode_one::<T>(Some("ns"), &[], &[], &metric)
+        let quantiles = vector_lib::quantiles![0.01 => 1.5, 0.5 => 2.0, 0.99 => 3.0];
+        let otel = OtelMetric::new_summary("requests", &quantiles, 6, 12.0)
+            .with_tags(Some(tags()))
+            .with_timestamp(Some(timestamp()));
+        encode_one::<T>(Some("ns"), &[], &[], otel)
     }
 
     #[test]
@@ -866,21 +840,17 @@ mod tests {
     }
 
     fn encode_distribution_summary<T: MetricCollector>() -> T::Output {
-        let metric = {
-            let otel = otel_from_parts(
-                "requests",
-                MetricKind::Absolute,
-                MetricValue::Distribution {
-                    samples: vector_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2],
-                    statistic: StatisticKind::Summary,
-                },
-                Some(tags()),
-                Some(timestamp()),
-            );
-            let (s, d, md) = otel.into_metric_parts();
-            Metric::from_parts(s, d, md)
-        };
-        encode_one::<T>(Some("ns"), &[], &default_summary_quantiles(), &metric)
+        let otel = otel_from_parts(
+            "requests",
+            MetricKind::Absolute,
+            MetricValue::Distribution {
+                samples: vector_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2],
+                statistic: StatisticKind::Summary,
+            },
+            Some(tags()),
+            Some(timestamp()),
+        );
+        encode_one::<T>(Some("ns"), &[], &default_summary_quantiles(), otel)
     }
 
     #[test]
@@ -904,24 +874,16 @@ mod tests {
     }
 
     fn encode_timestamp<T: MetricCollector>() -> T::Output {
-        let metric = {
-            let otel = OtelMetric::new_counter("temperature", MetricKind::Absolute, 2.0)
-                .with_timestamp(Some(timestamp()));
-            let (s, d, md) = otel.into_metric_parts();
-            Metric::from_parts(s, d, md)
-        };
-        encode_one::<T>(None, &[], &[], &metric)
+        let otel = OtelMetric::new_counter("temperature", MetricKind::Absolute, 2.0)
+            .with_timestamp(Some(timestamp()));
+        encode_one::<T>(None, &[], &[], otel)
     }
 
     #[test]
     fn adds_timestamp_request() {
         let now = Utc::now().timestamp_millis();
-        let metric = {
-            let otel = OtelMetric::new_gauge("something", 1.0);
-            let (s, d, md) = otel.into_metric_parts();
-            Metric::from_parts(s, d, md)
-        };
-        let encoded = encode_one::<TimeSeries>(None, &[], &[], &metric);
+        let otel = OtelMetric::new_gauge("something", 1.0);
+        let encoded = encode_one::<TimeSeries>(None, &[], &[], otel);
         assert!(encoded.timeseries[0].samples[0].timestamp >= now);
     }
 
@@ -939,13 +901,9 @@ mod tests {
             "quoted" => r#"host"1""#,
             "path" => r"c:\Windows",
         );
-        let metric = {
-            let otel = OtelMetric::new_counter("something", MetricKind::Absolute, 1.0)
-                .with_tags(Some(tags));
-            let (s, d, md) = otel.into_metric_parts();
-            Metric::from_parts(s, d, md)
-        };
-        let encoded = encode_one::<StringCollector>(None, &[], &[], &metric);
+        let otel = OtelMetric::new_counter("something", MetricKind::Absolute, 1.0)
+            .with_tags(Some(tags));
+        let encoded = encode_one::<StringCollector>(None, &[], &[], otel);
         assert_eq!(
             encoded,
             indoc! {r#"
@@ -968,13 +926,9 @@ mod tests {
             "code" => "200",
             "code" => "success",
         );
-        let metric = {
-            let otel = OtelMetric::new_counter("something", MetricKind::Absolute, 1.0)
-                .with_tags(Some(tags));
-            let (s, d, md) = otel.into_metric_parts();
-            Metric::from_parts(s, d, md)
-        };
-        let encoded = encode_one::<StringCollector>(None, &[], &[], &metric);
+        let otel = OtelMetric::new_counter("something", MetricKind::Absolute, 1.0)
+            .with_tags(Some(tags));
+        let encoded = encode_one::<StringCollector>(None, &[], &[], otel);
         assert_eq!(
             encoded,
             indoc! {r#"

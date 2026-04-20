@@ -8,9 +8,8 @@
 //! OTLP JSON serialization of logs and spans (per-sink migration).
 
 use opentelemetry_proto::tonic::common::v1::{
-    AnyValue, InstrumentationScope, KeyValue, any_value::Value as OtelValueKind,
+    AnyValue, KeyValue, any_value::Value as OtelValueKind,
 };
-use opentelemetry_proto::tonic::resource::v1::Resource;
 use serde::Serialize;
 
 use super::otel_event::{OtelLog, OtelSpan};
@@ -415,53 +414,3 @@ impl Serialize for SerializableExpHistogram<'_> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// OTLP JSON → proto deserialization helpers
-// ---------------------------------------------------------------------------
-
-/// Parse an OTLP JSON resource object into a proto Resource.
-pub(crate) fn parse_resource_from_json(obj: &serde_json::Map<String, serde_json::Value>) -> Resource {
-    let attributes = obj.get("attributes")
-        .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(parse_kv_from_json).collect())
-        .unwrap_or_default();
-    Resource {
-        attributes,
-        dropped_attributes_count: 0,
-    }
-}
-
-/// Parse an OTLP JSON scope object into a proto InstrumentationScope.
-pub(crate) fn parse_scope_from_json(obj: &serde_json::Map<String, serde_json::Value>) -> InstrumentationScope {
-    InstrumentationScope {
-        name: obj.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-        version: obj.get("version").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-        attributes: vec![],
-        dropped_attributes_count: 0,
-    }
-}
-
-/// Parse a single OTLP JSON KeyValue.
-fn parse_kv_from_json(v: &serde_json::Value) -> Option<KeyValue> {
-    let obj = v.as_object()?;
-    let key = obj.get("key")?.as_str()?.to_string();
-    let value = obj.get("value").and_then(parse_any_value_from_json);
-    Some(KeyValue { key, value })
-}
-
-/// Parse an OTLP JSON AnyValue.
-fn parse_any_value_from_json(v: &serde_json::Value) -> Option<AnyValue> {
-    let obj = v.as_object()?;
-    let value = if let Some(s) = obj.get("stringValue").and_then(|v| v.as_str()) {
-        Some(OtelValueKind::StringValue(s.to_string()))
-    } else if let Some(i) = obj.get("intValue").and_then(|v| v.as_str()).and_then(|s| s.parse::<i64>().ok()) {
-        Some(OtelValueKind::IntValue(i))
-    } else if let Some(d) = obj.get("doubleValue").and_then(|v| v.as_f64()) {
-        Some(OtelValueKind::DoubleValue(d))
-    } else if let Some(b) = obj.get("boolValue").and_then(|v| v.as_bool()) {
-        Some(OtelValueKind::BoolValue(b))
-    } else {
-        None
-    };
-    Some(AnyValue { value })
-}

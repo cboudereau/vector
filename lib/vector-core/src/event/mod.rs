@@ -12,7 +12,7 @@ pub use finalization::{
 pub use metadata::{EventMetadata, WithMetadata};
 pub use metric::{Metric, MetricKind, MetricTags, MetricValue, StatisticKind};
 pub use r#ref::{EventMutRef, EventRef};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use vector_buffers::EventCount;
 use vector_common::{
     EventDataEq, byte_size_of::ByteSizeOf, config::ComponentKey, finalization,
@@ -53,7 +53,12 @@ mod vrl_target;
 
 pub const PARTIAL: &str = "_partial";
 
-#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
+// Event is Serialize-only; no production path deserializes it (OTLP bodies
+// use proto, disk buffers use proto via OtlpCodec, OTLP HTTP uses the
+// otel_json module directly). Adding Deserialize required per-variant
+// Deserialize impls on OtelLog/OtelSpan/OtelMetric which had zero live
+// callers — removed for clarity.
+#[derive(PartialEq, Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
 #[allow(clippy::large_enum_variant)]
 pub enum Event {

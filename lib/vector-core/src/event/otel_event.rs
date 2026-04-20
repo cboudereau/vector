@@ -7,7 +7,7 @@ use opentelemetry_proto::tonic::metrics::v1::Metric as OtelMetricProto;
 use opentelemetry_proto::tonic::resource::v1::Resource;
 use opentelemetry_proto::tonic::trace::v1::Span;
 use prost::Message as _;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use vector_buffers::EventCount;
 use vector_common::{
     EventDataEq,
@@ -3364,70 +3364,6 @@ impl std::fmt::Display for OtelMetric {
     }
 }
 
-impl<'de> Deserialize<'de> for OtelLog {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        // Deserialize as legacy flat layout Value, then apply_value_legacy_layout
-        // to populate proto fields. Symmetric with Serialize which uses
-        // to_value_legacy_layout.
-        let value = vrl::value::Value::deserialize(deserializer)?;
-        Ok(Self::from_value_map(value, super::EventMetadata::default()))
-    }
-}
-
-impl<'de> Deserialize<'de> for OtelSpan {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = vrl::value::Value::deserialize(deserializer)?;
-        Ok(Self::from_value_map(value, super::EventMetadata::default()))
-    }
-}
-
-impl<'de> Deserialize<'de> for OtelMetric {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        // Deserialize as serde_json::Value, then parse the OTLP JSON fields
-        // into an OtelMetric proto. This is the inverse of Serialize for OtelMetric
-        // which uses the otel_json module.
-        let json: serde_json::Value = serde_json::Value::deserialize(deserializer)?;
-        let obj = json.as_object().ok_or_else(|| {
-            serde::de::Error::custom("OtelMetric must be a JSON object")
-        })?;
-
-        let name = obj.get("name")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        let description = obj.get("description")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        let unit = obj.get("unit")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-
-        // Parse resource/scope from OTLP JSON if present
-        let resource = obj.get("resource")
-            .and_then(|v| v.as_object())
-            .map(|res| super::otel_json::parse_resource_from_json(res));
-        let scope = obj.get("scope")
-            .and_then(|v| v.as_object())
-            .map(|s| super::otel_json::parse_scope_from_json(s));
-
-        let proto = OtelMetricProto {
-            name,
-            description,
-            unit,
-            metadata: vec![],
-            data: None, // Data parsing from OTLP JSON is complex; accept loss for serde path
-        };
-
-        Ok(Self {
-            metric: proto,
-            resource,
-            scope,
-            metadata: super::EventMetadata::default(),
-        })
-    }
-}
 
 #[cfg(test)]
 mod tests {

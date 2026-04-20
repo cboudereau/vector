@@ -492,7 +492,10 @@ mod tests {
     use chrono::NaiveDate;
     use std::sync::Arc;
     use vector_core::config::LogNamespace;
-    use vector_core::event::{Event, MetricKind, MetricValue, OtelMetric, StatisticKind};
+    use vector_core::event::{
+        Event, EventMetadata, MetricKind, MetricValue, OtelMetric, StatisticKind,
+        metric::{MetricData, MetricName, MetricSeries, MetricTime},
+    };
     use vrl::path::parse_target_path;
     use vrl::prelude::Kind;
     use vrl::{btreemap, event_path, value};
@@ -785,16 +788,29 @@ mod tests {
         .unwrap();
 
         let metric_event = {
-            let m = vector_core::event::Metric::new(
-                "metric1",
-                MetricKind::Incremental,
-                MetricValue::Distribution {
+            let series = MetricSeries {
+                name: MetricName {
+                    name: "metric1".to_string(),
+                    namespace: None,
+                },
+                tags: None,
+            };
+            let data = MetricData {
+                time: MetricTime {
+                    timestamp: None,
+                    interval_ms: None,
+                },
+                kind: MetricKind::Incremental,
+                value: MetricValue::Distribution {
                     samples: vector_core::samples![10.0 => 1],
                     statistic: StatisticKind::Histogram,
                 },
-            );
-            let (s, d, md) = m.into_parts();
-            Event::Metric(OtelMetric::from_metric_parts(s, d, md))
+            };
+            Event::Metric(OtelMetric::from_metric_parts(
+                series,
+                data,
+                EventMetadata::default(),
+            ))
         };
 
         let mut serializer = SyslogSerializer::new(&config);

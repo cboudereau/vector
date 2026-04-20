@@ -84,11 +84,35 @@ impl Encoder<Event> for TextSerializer {
 mod tests {
     use bytes::{Bytes, BytesMut};
     use vector_core::{
-        event::{OtelLog, Metric, MetricKind, MetricValue, OtelMetric},
+        event::{
+            EventMetadata, MetricKind, MetricValue, OtelLog, OtelMetric,
+            metric::{MetricData, MetricName, MetricSeries, MetricTime},
+        },
         metric_tags,
     };
 
     use super::*;
+
+    /// Build an OtelMetric directly from parts for Set variants
+    /// that have no dedicated `OtelMetric::new_*` native constructor.
+    fn otel_from_parts(name: &str, kind: MetricKind, value: MetricValue) -> OtelMetric {
+        let series = MetricSeries {
+            name: MetricName {
+                name: name.to_string(),
+                namespace: None,
+            },
+            tags: None,
+        };
+        let data = MetricData {
+            time: MetricTime {
+                timestamp: None,
+                interval_ms: None,
+            },
+            kind,
+            value,
+        };
+        OtelMetric::from_metric_parts(series, data, EventMetadata::default())
+    }
 
     #[test]
     fn serialize_log() {
@@ -104,17 +128,13 @@ mod tests {
     fn serialize_metric() {
         let buffer = serialize(
             TextSerializerConfig::default(),
-            {
-                let m = Metric::new(
-                    "users",
-                    MetricKind::Incremental,
-                    MetricValue::Set {
-                        values: vec!["bob".into()].into_iter().collect(),
-                    },
-                );
-                let (s, d, md) = m.into_parts();
-                Event::Metric(OtelMetric::from_metric_parts(s, d, md))
-            },
+            Event::Metric(otel_from_parts(
+                "users",
+                MetricKind::Incremental,
+                MetricValue::Set {
+                    values: vec!["bob".into()].into_iter().collect(),
+                },
+            )),
         );
         assert_eq!(buffer, Bytes::from("users{} + bob"));
     }
@@ -146,18 +166,15 @@ mod tests {
     }
 
     fn metric2() -> Event {
-        let m = Metric::new(
-            "counter",
-            MetricKind::Incremental,
-            MetricValue::Counter { value: 1.0 },
+        Event::Metric(
+            OtelMetric::new_counter("counter", MetricKind::Incremental, 1.0).with_tags(Some(
+                metric_tags!(
+                    "a" => "first",
+                    "a" => None,
+                    "a" => "second",
+                ),
+            )),
         )
-        .with_tags(Some(metric_tags! (
-            "a" => "first",
-            "a" => None,
-            "a" => "second",
-        )));
-        let (s, d, md) = m.into_parts();
-        Event::Metric(OtelMetric::from_metric_parts(s, d, md))
     }
 
     #[test]

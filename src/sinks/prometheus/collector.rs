@@ -408,10 +408,40 @@ mod tests {
 
     use super::{super::default_summary_quantiles, *};
     use crate::{
-        event::metric::{Metric, MetricKind, MetricValue, StatisticKind},
-        event::OtelMetric,
+        event::metric::{
+            Metric, MetricData, MetricKind, MetricName, MetricSeries, MetricTime, MetricValue,
+            StatisticKind,
+        },
+        event::{EventMetadata, OtelMetric},
         test_util::stats::VariableHistogram,
     };
+
+    /// Build an OtelMetric directly from parts for Distribution / Set / AggregatedSummary-like
+    /// variants that we want to keep in non-native form for test equivalence.
+    fn otel_from_parts(
+        name: &str,
+        kind: MetricKind,
+        value: MetricValue,
+        tags: Option<MetricTags>,
+        timestamp: Option<DateTime<Utc>>,
+    ) -> OtelMetric {
+        let series = MetricSeries {
+            name: MetricName {
+                name: name.to_string(),
+                namespace: None,
+            },
+            tags,
+        };
+        let data = MetricData {
+            time: MetricTime {
+                timestamp,
+                interval_ms: None,
+            },
+            kind,
+            value,
+        };
+        OtelMetric::from_metric_parts(series, data, EventMetadata::default())
+    }
 
     fn encode_one<T: MetricCollector>(
         default_namespace: Option<&str>,
@@ -552,16 +582,15 @@ mod tests {
 
     fn encode_set<T: MetricCollector>() -> T::Output {
         let metric = {
-            let m = Metric::new(
-                "users".to_owned(),
+            let otel = otel_from_parts(
+                "users",
                 MetricKind::Absolute,
                 MetricValue::Set {
                     values: vec!["foo".into()].into_iter().collect(),
                 },
-            )
-            .with_timestamp(Some(timestamp()));
-            let (s, d, md) = m.into_parts();
-            let otel = OtelMetric::from_metric_parts(s, d, md);
+                None,
+                Some(timestamp()),
+            );
             let (s, d, md) = otel.into_metric_parts();
             Metric::from_parts(s, d, md)
         };
@@ -590,16 +619,15 @@ mod tests {
 
     fn encode_expired_set<T: MetricCollector>() -> T::Output {
         let metric = {
-            let m = Metric::new(
-                "users".to_owned(),
+            let otel = otel_from_parts(
+                "users",
                 MetricKind::Absolute,
                 MetricValue::Set {
                     values: BTreeSet::new(),
                 },
-            )
-            .with_timestamp(Some(timestamp()));
-            let (s, d, md) = m.into_parts();
-            let otel = OtelMetric::from_metric_parts(s, d, md);
+                None,
+                Some(timestamp()),
+            );
             let (s, d, md) = otel.into_metric_parts();
             Metric::from_parts(s, d, md)
         };
@@ -642,17 +670,16 @@ mod tests {
 
     fn encode_distribution<T: MetricCollector>() -> T::Output {
         let metric = {
-            let m = Metric::new(
-                "requests".to_owned(),
+            let otel = otel_from_parts(
+                "requests",
                 MetricKind::Absolute,
                 MetricValue::Distribution {
                     samples: vector_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2],
                     statistic: StatisticKind::Histogram,
                 },
-            )
-            .with_timestamp(Some(timestamp()));
-            let (s, d, md) = m.into_parts();
-            let otel = OtelMetric::from_metric_parts(s, d, md);
+                None,
+                Some(timestamp()),
+            );
             let (s, d, md) = otel.into_metric_parts();
             Metric::from_parts(s, d, md)
         };
@@ -738,18 +765,15 @@ mod tests {
         histogram.record_many(&[0.4, 2.0, 1.75, 2.6, 2.25, 2.5][..]);
 
         let metric = {
-            let m = Metric::new(
-                "requests".to_owned(),
+            let buckets = histogram.buckets();
+            let otel = OtelMetric::new_histogram(
+                "requests",
                 MetricKind::Absolute,
-                MetricValue::AggregatedHistogram {
-                    buckets: histogram.buckets(),
-                    count: histogram.count(),
-                    sum: histogram.sum(),
-                },
+                &buckets,
+                histogram.count(),
+                histogram.sum(),
             )
             .with_timestamp(Some(timestamp()));
-            let (s, d, md) = m.into_parts();
-            let otel = OtelMetric::from_metric_parts(s, d, md);
             let (s, d, md) = otel.into_metric_parts();
             Metric::from_parts(s, d, md)
         };
@@ -789,19 +813,10 @@ mod tests {
 
     fn encode_summary<T: MetricCollector>() -> T::Output {
         let metric = {
-            let m = Metric::new(
-                "requests".to_owned(),
-                MetricKind::Absolute,
-                MetricValue::AggregatedSummary {
-                    quantiles: vector_lib::quantiles![0.01 => 1.5, 0.5 => 2.0, 0.99 => 3.0],
-                    count: 6,
-                    sum: 12.0,
-                },
-            )
-            .with_tags(Some(tags()))
-            .with_timestamp(Some(timestamp()));
-            let (s, d, md) = m.into_parts();
-            let otel = OtelMetric::from_metric_parts(s, d, md);
+            let quantiles = vector_lib::quantiles![0.01 => 1.5, 0.5 => 2.0, 0.99 => 3.0];
+            let otel = OtelMetric::new_summary("requests", &quantiles, 6, 12.0)
+                .with_tags(Some(tags()))
+                .with_timestamp(Some(timestamp()));
             let (s, d, md) = otel.into_metric_parts();
             Metric::from_parts(s, d, md)
         };
@@ -852,18 +867,16 @@ mod tests {
 
     fn encode_distribution_summary<T: MetricCollector>() -> T::Output {
         let metric = {
-            let m = Metric::new(
-                "requests".to_owned(),
+            let otel = otel_from_parts(
+                "requests",
                 MetricKind::Absolute,
                 MetricValue::Distribution {
                     samples: vector_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2],
                     statistic: StatisticKind::Summary,
                 },
-            )
-            .with_tags(Some(tags()))
-            .with_timestamp(Some(timestamp()));
-            let (s, d, md) = m.into_parts();
-            let otel = OtelMetric::from_metric_parts(s, d, md);
+                Some(tags()),
+                Some(timestamp()),
+            );
             let (s, d, md) = otel.into_metric_parts();
             Metric::from_parts(s, d, md)
         };

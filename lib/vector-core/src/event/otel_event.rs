@@ -4065,15 +4065,13 @@ impl From<std::collections::HashMap<vrl::prelude::KeyString, Value>> for OtelLog
 
 impl Serialize for OtelLog {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        // TODO(T15): Switch to OtlpJsonLog once all sinks/tests are migrated.
-        self.to_value_legacy_layout().serialize(serializer)
+        super::otel_json::OtlpJsonLog(self).serialize(serializer)
     }
 }
 
 impl Serialize for OtelSpan {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        // TODO(T15): Switch to OtlpJsonSpan once all sinks/tests are migrated.
-        self.to_value_legacy_layout().serialize(serializer)
+        super::otel_json::OtlpJsonSpan(self).serialize(serializer)
     }
 }
 
@@ -4478,10 +4476,11 @@ mod tests {
         let json = serde_json::to_string(&event).expect("serialize");
 
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
-        // Serialize produces legacy flat layout (resource as sub-object)
-        assert_eq!(v["body"], "hello");
-        assert_eq!(v["severity_text"], "INFO");
-        assert_eq!(v["resource"]["service.name"], "test-svc");
+        // Serialize produces OTLP JSON format (proto3 JSON mapping)
+        assert_eq!(v["body"]["stringValue"], "hello");
+        assert_eq!(v["severityText"], "INFO");
+        assert_eq!(v["resource"]["attributes"][0]["key"], "service.name");
+        assert_eq!(v["resource"]["attributes"][0]["value"]["stringValue"], "test-svc");
     }
 
     #[test]

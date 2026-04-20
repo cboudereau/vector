@@ -614,7 +614,7 @@ the struct**:
 | # | Task | Status | Commit | Note |
 |---|------|--------|--------|------|
 | T16 | Fast-path get/insert/remove bypassing legacy round-trip | **DONE** | `5198ea7`..`a86b435` | Phases 1-3 complete. All-field get/insert/remove for OtelLog + OtelSpan bypass legacy layout. Phase 4 (batch methods) deferred to T15/T23. |
-| T15 | Remove VRL aliases + Serialize → proto-canonical | **PARTIAL** | Phase 1 done | T16 done. Phase 1: fast-path aliases removed from get/insert/remove. Phases 2-5 remain. |
+| T15 | Remove VRL aliases + Serialize → proto-canonical | **PARTIAL** | Phases 1-2 done | Phase 1: aliases removed. Phase 2: Serialize switched to OTLP JSON. Phases 3-5 remain. |
 | T23 | Simplify/rename legacy layout functions | **PLANNED** | | After T15, rename + simplify. `from_value_map` stays as canonical constructor. See "Remaining work" for analysis. |
 
 #### Workstream 4: Runtime safety + correctness
@@ -1115,13 +1115,11 @@ backward compatibility with pre-OTLP Vector. Users run
 - `host_path()` and `source_type_path()` now return `None`
 - `message_path()` kept as alias for `body_path()` (3 callers)
 
-**Phase 2 — Switch Serialize to proto-canonical (~2h):**
-- OtelLog: switch from `to_value_legacy_layout().serialize(s)` to
-  `OtlpJsonLog` wrapper (already exists, already has TODO comment)
-- OtelSpan: switch to `OtlpJsonSpan` wrapper
-- This means JSON output changes field names:
-  `message` → `body`, `timestamp` → `timeUnixNano`,
-  `host` → nested in `resource.attributes`, etc.
+**Phase 2 — Switch Serialize to proto-canonical — DONE:**
+- OtelLog `Serialize` now delegates to `OtlpJsonLog` (OTLP JSON spec)
+- OtelSpan `Serialize` now delegates to `OtlpJsonSpan`
+- JSON output now uses proto3 field names: `body` (AnyValue-wrapped),
+  `severityText`, `timeUnixNano`, `resource.attributes` array, etc.
 
 **Phase 3 — Update value()/keys()/as_map() (~2h):**
 - These methods build Value trees. Switch to proto-canonical field names.

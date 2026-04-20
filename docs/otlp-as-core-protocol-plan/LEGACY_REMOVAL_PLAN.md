@@ -78,7 +78,7 @@ count was wrong. On close inspection all sites are either test modules
 |------|--------|------|
 | `LogEvent` | **DELETED** (`80ff2fb`) | 1217 lines removed |
 | `TraceEvent` | **DELETED** (`1236e8e`) | 191 lines removed |
-| `Metric` struct | **Test/lib only** | 0 production callers; 336 `Metric::new` in test/sink/lib; see Phase G task list |
+| `Metric` struct | **Test/lib only** | 0 production callers; 54 `Metric::from_parts`/`Metric::new` sites in 9 files as of 2026-04-20; see Phase G task list. Main remaining blockers: prometheus exporter (storage type), prometheus collector (MetricCollector trait), metric_to_log (JSON serialization), elasticsearch sink (metric_to_log dependency) |
 | `prometheus_parser::Metric` | Unrelated | External crate, not Vector's legacy type |
 
 ### VRL aliases / paths

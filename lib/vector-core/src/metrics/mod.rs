@@ -278,11 +278,11 @@ mod tests {
             for metric in metrics {
                 match metric.name() {
                     CARDINALITY_KEY_NAME => {
-                        assert_eq!(metric.value(), &MetricValue::Gauge { value });
+                        assert_eq!(metric.value(), MetricValue::Gauge { value });
                         assert_eq!(metric.kind(), MetricKind::Absolute);
                     }
                     CARDINALITY_COUNTER_KEY_NAME => {
-                        assert_eq!(metric.value(), &MetricValue::Counter { value });
+                        assert_eq!(metric.value(), MetricValue::Counter { value });
                         assert_eq!(metric.kind(), MetricKind::Absolute);
                     }
                     _ => {}
@@ -361,7 +361,7 @@ mod tests {
             .find(|metric| metric.name() == "test5")
             .expect("Test metric is not present");
         match metric.value() {
-            MetricValue::Counter { value } => assert_eq!(*value, 2.0),
+            MetricValue::Counter { value } => assert_eq!(value, 2.0),
             value => panic!("Invalid metric value {value:?}"),
         }
     }

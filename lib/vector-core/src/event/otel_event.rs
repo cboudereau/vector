@@ -2138,33 +2138,6 @@ impl OtelMetric {
         m
     }
 
-    /// Build an OtelMetric from (name, kind, value) without going through the
-    /// legacy `Metric` struct. Replaces `Metric::new(name, kind, value)` +
-    /// `OtelMetric::from_metric_parts(...)` for call sites that still use the
-    /// generic `MetricValue` enum (statsd/prometheus parsers, tests).
-    pub fn from_legacy_value(
-        name: impl Into<String>,
-        kind: super::MetricKind,
-        value: super::MetricValue,
-    ) -> Self {
-        let series = super::metric::MetricSeries {
-            name: super::metric::MetricName {
-                name: name.into(),
-                namespace: None,
-            },
-            tags: None,
-        };
-        let data = super::metric::MetricData {
-            time: super::metric::MetricTime {
-                timestamp: None,
-                interval_ms: None,
-            },
-            kind,
-            value,
-        };
-        Self::from_metric_parts(series, data, super::EventMetadata::default())
-    }
-
     /// Construct an OtelMetric directly from metric parts without the legacy Metric struct.
     pub fn from_metric_parts(
         series: super::metric::MetricSeries,

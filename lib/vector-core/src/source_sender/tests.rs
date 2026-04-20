@@ -7,7 +7,7 @@ use vrl::event_path;
 use super::*;
 use crate::{
     config::{DataType, SourceOutput},
-    event::{Event, OtelLog, Metric, MetricKind, MetricValue, OtelMetric, OtelSpan},
+    event::{Event, MetricValue, OtelLog, OtelMetric, OtelSpan},
     metrics::{self, Controller},
 };
 
@@ -26,12 +26,10 @@ async fn emits_lag_time_for_log() {
 #[ignore = "Lag time computation disabled for OTel event types"]
 async fn emits_lag_time_for_metric() {
     emit_and_test(|timestamp| {
-        Event::Metric({
-            let m = Metric::new("name", MetricKind::Absolute, MetricValue::Gauge { value: 123.4 })
-                .with_timestamp(Some(timestamp));
-            let (s, d, md) = m.into_parts();
-            OtelMetric::from_metric_parts(s, d, md)
-        })
+        Event::Metric(
+            OtelMetric::new_gauge("name", 123.4)
+                .with_timestamp(Some(timestamp)),
+        )
     })
     .await;
 }
@@ -85,11 +83,11 @@ async fn emit_and_test(make_event: impl FnOnce(DateTime<Utc>) -> Event) {
                     assert_eq!(bucket.count, 0);
                 }
             }
-            assert_eq!(*count, 1);
+            assert_eq!(count, 1);
             assert!(
-                (*sum - expected).abs() <= 0.002,
+                (sum - expected).abs() <= 0.002,
                 "Histogram sum does not match expected sum: {} vs {}",
-                *sum,
+                sum,
                 expected,
             );
         }
@@ -130,7 +128,7 @@ async fn emits_component_discarded_events_total_for_send_event() {
     let MetricValue::Counter { value } = component_discarded_events_total.value() else {
         panic!("component_discarded_events_total has invalid type")
     };
-    assert_eq!(*value, 1.0);
+    assert_eq!(value, 1.0);
 }
 
 #[tokio::test]
@@ -270,7 +268,7 @@ async fn per_signal_backpressure_isolation() {
     assert!(metric_rx.next().await.is_some(), "metric item must be receivable");
 }
 
-fn get_component_metrics() -> Vec<Metric> {
+fn get_component_metrics() -> Vec<OtelMetric> {
     Controller::get()
         .expect("There must be a controller")
         .capture_metrics()
@@ -279,14 +277,14 @@ fn get_component_metrics() -> Vec<Metric> {
         .collect()
 }
 
-fn assert_no_metric(metrics: &[Metric], name: &str) {
+fn assert_no_metric(metrics: &[OtelMetric], name: &str) {
     assert!(
         !metrics.iter().any(|metric| metric.name() == name),
         "Metric {name} should not be present"
     );
 }
 
-fn assert_counter_metric(metrics: &[Metric], name: &str, expected: f64) {
+fn assert_counter_metric(metrics: &[OtelMetric], name: &str, expected: f64) {
     let mut filter = metrics.iter().filter(|metric| metric.name() == name);
     let Some(metric) = filter.next() else {
         panic!("Metric {name} should be present");
@@ -294,7 +292,7 @@ fn assert_counter_metric(metrics: &[Metric], name: &str, expected: f64) {
     let MetricValue::Counter { value } = metric.value() else {
         panic!("Metric {name} should be a counter");
     };
-    assert_eq!(*value, expected);
+    assert_eq!(value, expected);
     assert!(
         filter.next().is_none(),
         "Only one {name} metric should be present"
@@ -352,17 +350,17 @@ fn assert_buffer_metrics(buffer_size: usize, level: usize) {
     let MetricValue::Gauge { value } = metric.value() else {
         panic!("source_buffer_utilization_level should be a gauge");
     };
-    assert_eq!(*value, level as f64);
+    assert_eq!(value, level as f64);
 
     let metric = find_metric("source_buffer_max_event_size");
     let MetricValue::Gauge { value } = metric.value() else {
         panic!("source_buffer_max_event_size should be a gauge");
     };
-    assert_eq!(*value, buffer_size as f64);
+    assert_eq!(value, buffer_size as f64);
 
     let metric = find_metric("source_buffer_max_size_events");
     let MetricValue::Gauge { value } = metric.value() else {
         panic!("source_buffer_max_size_events should be a gauge");
     };
-    assert_eq!(*value, buffer_size as f64);
+    assert_eq!(value, buffer_size as f64);
 }

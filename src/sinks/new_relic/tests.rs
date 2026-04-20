@@ -10,7 +10,7 @@ use vrl::value;
 use super::*;
 use crate::{
     config::{GenerateConfig, SinkConfig, SinkContext},
-    event::{Event, OtelLog, Metric, MetricKind, OtelMetric},
+    event::{Event, OtelLog, MetricKind, OtelMetric},
     test_util::{
         components::{
             DATA_VOLUME_SINK_TAGS, SINK_TAGS, run_and_assert_data_volume_sink_compliance,
@@ -260,12 +260,10 @@ fn generates_metric_api_model_without_timestamp() {
 #[test]
 fn generates_metric_api_model_with_timestamp() {
     let stamp = Utc::now();
-    let otel = OtelMetric::new_counter("my_metric", MetricKind::Absolute, 100.0);
-    let (s, d, md) = otel.into_metric_parts();
-    let m = Metric::from_parts(s, d, md)
-        .with_timestamp(Some(stamp));
-    let (s, d, md) = m.into_parts();
-    let event = Event::Metric(OtelMetric::from_metric_parts(s, d, md));
+    let event = Event::Metric(
+        OtelMetric::new_counter("my_metric", MetricKind::Absolute, 100.0)
+            .with_timestamp(Some(stamp)),
+    );
     let model =
         MetricsApiModel::try_from(vec![event]).expect("Failed mapping metrics into API model");
 
@@ -286,11 +284,9 @@ fn generates_metric_api_model_with_timestamp() {
 fn generates_metric_api_model_incremental_counter() {
     let stamp = Utc::now();
     let otel = OtelMetric::new_counter("my_metric", MetricKind::Incremental, 100.0);
-    let (s, d, md) = otel.into_metric_parts();
-    let m = Metric::from_parts(s, d, md)
-        .with_timestamp(Some(stamp))
-        .with_interval_ms(NonZeroU32::new(1000));
-    let (s, d, md) = m.into_parts();
+    let (s, mut d, md) = otel.into_metric_parts();
+    d.time.timestamp = Some(stamp);
+    d.time.interval_ms = NonZeroU32::new(1000);
     let event = Event::Metric(OtelMetric::from_metric_parts(s, d, md));
     let model =
         MetricsApiModel::try_from(vec![event]).expect("Failed mapping metrics into API model");

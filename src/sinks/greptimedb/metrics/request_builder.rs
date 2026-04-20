@@ -209,7 +209,34 @@ mod tests {
     use similar_asserts::assert_eq;
 
     use super::*;
-    use crate::event::{Metric, OtelMetric, metric::{MetricKind, StatisticKind}};
+    use crate::event::{
+        EventMetadata, OtelMetric,
+        metric::{
+            MetricData, MetricKind, MetricName, MetricSeries, MetricTime, MetricValue,
+            StatisticKind,
+        },
+    };
+
+    /// Build an OtelMetric directly from parts for Distribution / Set variants
+    /// that have no dedicated `OtelMetric::new_*` native constructor.
+    fn otel_from_parts(name: &str, kind: MetricKind, value: MetricValue) -> OtelMetric {
+        let series = MetricSeries {
+            name: MetricName {
+                name: name.to_string(),
+                namespace: None,
+            },
+            tags: None,
+        };
+        let data = MetricData {
+            time: MetricTime {
+                timestamp: None,
+                interval_ms: None,
+            },
+            kind,
+            value,
+        };
+        OtelMetric::from_metric_parts(series, data, EventMetadata::default())
+    }
 
     fn get_column(rows: &Rows, name: &str) -> f64 {
         let (col_index, _) = rows
@@ -318,17 +345,13 @@ mod tests {
 
     #[test]
     fn test_set() {
-        let otel = {
-            let m = Metric::new(
-                "cpu_seconds_total",
-                MetricKind::Absolute,
-                MetricValue::Set {
-                    values: ["foo".to_owned(), "bar".to_owned()].into_iter().collect(),
-                },
-            );
-            let (s, d, md) = m.into_parts();
-            OtelMetric::from_metric_parts(s, d, md)
-        };
+        let otel = otel_from_parts(
+            "cpu_seconds_total",
+            MetricKind::Absolute,
+            MetricValue::Set {
+                values: ["foo".to_owned(), "bar".to_owned()].into_iter().collect(),
+            },
+        );
         let options = RequestBuilderOptions {
             use_new_naming: false,
         };
@@ -342,18 +365,14 @@ mod tests {
 
     #[test]
     fn test_distribution() {
-        let otel = {
-            let m = Metric::new(
-                "cpu_seconds_total",
-                MetricKind::Incremental,
-                MetricValue::Distribution {
-                    samples: vector_lib::samples![1.0 => 2, 2.0 => 4, 3.0 => 2],
-                    statistic: StatisticKind::Histogram,
-                },
-            );
-            let (s, d, md) = m.into_parts();
-            OtelMetric::from_metric_parts(s, d, md)
-        };
+        let otel = otel_from_parts(
+            "cpu_seconds_total",
+            MetricKind::Incremental,
+            MetricValue::Distribution {
+                samples: vector_lib::samples![1.0 => 2, 2.0 => 4, 3.0 => 2],
+                statistic: StatisticKind::Histogram,
+            },
+        );
         let options = RequestBuilderOptions {
             use_new_naming: false,
         };
@@ -381,19 +400,13 @@ mod tests {
     fn test_histogram() {
         let buckets = vector_lib::buckets![1.0 => 1, 2.0 => 2, 3.0 => 1];
         let buckets_len = buckets.len();
-        let otel = {
-            let m = Metric::new(
-                "cpu_seconds_total",
-                MetricKind::Incremental,
-                MetricValue::AggregatedHistogram {
-                    buckets,
-                    count: 4,
-                    sum: 8.0,
-                },
-            );
-            let (s, d, md) = m.into_parts();
-            OtelMetric::from_metric_parts(s, d, md)
-        };
+        let otel = OtelMetric::new_histogram(
+            "cpu_seconds_total",
+            MetricKind::Incremental,
+            &buckets,
+            4,
+            8.0,
+        );
         let options = RequestBuilderOptions {
             use_new_naming: false,
         };
@@ -416,19 +429,7 @@ mod tests {
     fn test_summary() {
         let quantiles = vector_lib::quantiles![0.01 => 1.5, 0.5 => 2.0, 0.99 => 3.0];
         let quantiles_len = quantiles.len();
-        let otel = {
-            let m = Metric::new(
-                "cpu_seconds_total",
-                MetricKind::Incremental,
-                MetricValue::AggregatedSummary {
-                    quantiles,
-                    count: 6,
-                    sum: 12.0,
-                },
-            );
-            let (s, d, md) = m.into_parts();
-            OtelMetric::from_metric_parts(s, d, md)
-        };
+        let otel = OtelMetric::new_summary("cpu_seconds_total", &quantiles, 6, 12.0);
         let options = RequestBuilderOptions {
             use_new_naming: false,
         };

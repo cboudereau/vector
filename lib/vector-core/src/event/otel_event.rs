@@ -304,6 +304,12 @@ fn attribute_value<'a>(attrs: &'a [KeyValue], key: &str) -> Option<&'a AnyValue>
         .and_then(|kv| kv.value.as_ref())
 }
 
+fn nanos_to_timestamp(nanos: u64) -> Option<Value> {
+    let secs = (nanos / 1_000_000_000) as i64;
+    let nsecs = (nanos % 1_000_000_000) as u32;
+    chrono::DateTime::from_timestamp(secs, nsecs).map(Value::Timestamp)
+}
+
 fn set_attribute(attrs: &mut Vec<KeyValue>, key: String, value: AnyValue) {
     if let Some(kv) = attrs.iter_mut().find(|kv| kv.key == key) {
         kv.value = Some(value);
@@ -729,87 +735,14 @@ impl OtelLog {
 
         match path.prefix() {
             lookup::PathPrefix::Event => {
-                // Fast path: check if single-segment path matches a proto field
                 let vp = path.value_path();
                 let mut iter = vp.segment_iter();
                 if let Some(BorrowedSegment::Field(ref field)) = iter.next() {
                     if iter.next().is_none() {
-                        // Single-segment path — check proto fields directly
-                        match field.as_ref() {
-                            "body" => {
-                                // Only fast-path non-KvList bodies — KvList bodies
-                                // are expanded to top-level in the legacy layout.
-                                if let Some(body) = self.body() {
-                                    if !matches!(body.value, Some(OtelValueKind::KvlistValue(_))) {
-                                        return Some(any_value_to_vrl(body));
-                                    }
-                                }
-                                // Fall through to legacy layout
-                            }
-                            "severity_text" if !self.record.severity_text.is_empty() => {
-                                return Some(Value::Bytes(self.record.severity_text.clone().into()));
-                            }
-                            "severity_number" if self.record.severity_number != 0 => {
-                                return Some(Value::Integer(self.record.severity_number as i64));
-                            }
-                            "trace_id" if !self.record.trace_id.is_empty() => {
-                                return Some(hex_encode(&self.record.trace_id));
-                            }
-                            "span_id" if !self.record.span_id.is_empty() => {
-                                return Some(hex_encode(&self.record.span_id));
-                            }
-                            "timestamp" => {
-                                // Fast-path only for explicit time_unix_nano.
-                                // The observed_time fallback + overflow attribute
-                                // logic is complex — fall through to legacy layout.
-                                if self.record.time_unix_nano != 0 {
-                                    let nanos = self.record.time_unix_nano;
-                                    let secs = (nanos / 1_000_000_000) as i64;
-                                    let nsecs = (nanos % 1_000_000_000) as u32;
-                                    if let Some(ts) = chrono::DateTime::from_timestamp(secs, nsecs) {
-                                        return Some(Value::Timestamp(ts));
-                                    }
-                                }
-                                // Fall through to legacy layout for complex cases
-                            }
-                            "source_type" => {
-                                if let Some(v) = self.get_source_type() {
-                                    return Some(v);
-                                }
-                                // Fall through — may be in record attributes
-                            }
-                            "host" => {
-                                if let Some(v) = self.get_host() {
-                                    return Some(v);
-                                }
-                                // Fall through
-                            }
-                            other => {
-                                // Generic single-segment: check record attributes
-                                for kv in &self.record.attributes {
-                                    if kv.key == other {
-                                        if let Some(ref av) = kv.value {
-                                            return Some(any_value_to_vrl(av));
-                                        }
-                                    }
-                                }
-                                // Also check KvList body keys (legacy layout expands them)
-                                if let Some(body) = self.body() {
-                                    if let Some(OtelValueKind::KvlistValue(kvl)) = &body.value {
-                                        for kv in &kvl.values {
-                                            if kv.key == other {
-                                                if let Some(ref av) = kv.value {
-                                                    return Some(any_value_to_vrl(av));
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                // Fall through to legacy layout for multi-segment paths
-                            }
-                        }
+                        return self.get_single_segment(field.as_ref());
                     }
                 }
+                // Multi-segment or non-field paths: fall through to legacy layout
                 let value = self.to_value_legacy_layout();
                 value.get(path.value_path()).cloned()
             }
@@ -817,6 +750,91 @@ impl OtelLog {
                 self.metadata.value().get(path.value_path()).cloned()
             }
         }
+    }
+
+    fn get_single_segment(&self, field: &str) -> Option<Value> {
+        match field {
+            "body" => {
+                // Legacy layout: KvList bodies are expanded to top-level,
+                // so ".body" returns None. Non-KvList bodies return the value.
+                if let Some(body) = self.body() {
+                    if !matches!(body.value, Some(OtelValueKind::KvlistValue(_))) {
+                        return Some(any_value_to_vrl(body));
+                    }
+                }
+                None
+            }
+            "message" => {
+                // Alias for body (legacy compat)
+                if let Some(body) = self.body() {
+                    if !matches!(body.value, Some(OtelValueKind::KvlistValue(_))) {
+                        return Some(any_value_to_vrl(body));
+                    }
+                }
+                None
+            }
+            "severity_text" if !self.record.severity_text.is_empty() => {
+                Some(Value::Bytes(self.record.severity_text.clone().into()))
+            }
+            "severity_number" if self.record.severity_number != 0 => {
+                Some(Value::Integer(self.record.severity_number as i64))
+            }
+            "trace_id" if !self.record.trace_id.is_empty() => {
+                Some(hex_encode(&self.record.trace_id))
+            }
+            "span_id" if !self.record.span_id.is_empty() => {
+                Some(hex_encode(&self.record.span_id))
+            }
+            "timestamp" => self.get_timestamp_value(),
+            "source_type" => {
+                if let Some(v) = self.get_source_type() {
+                    return Some(v);
+                }
+                // Also check record attributes (legacy layout merges all)
+                attribute_value(&self.record.attributes, "source_type")
+                    .map(any_value_to_vrl)
+            }
+            "host" => {
+                if let Some(v) = self.get_host() {
+                    return Some(v);
+                }
+                attribute_value(&self.record.attributes, "host")
+                    .map(any_value_to_vrl)
+            }
+            other => {
+                // Check record attributes
+                if let Some(av) = attribute_value(&self.record.attributes, other) {
+                    return Some(any_value_to_vrl(av));
+                }
+                // Check KvList body keys (legacy layout expands them to top-level)
+                if let Some(body) = self.body() {
+                    if let Some(OtelValueKind::KvlistValue(kvl)) = &body.value {
+                        if let Some(av) = attribute_value(&kvl.values, other) {
+                            return Some(any_value_to_vrl(av));
+                        }
+                    }
+                }
+                None
+            }
+        }
+    }
+
+    fn get_timestamp_value(&self) -> Option<Value> {
+        // Priority: overflow attribute > time_unix_nano > observed_time_unix_nano
+        if let Some(overflow) = attribute_value(&self.record.attributes, "vector.timestamp_overflow") {
+            if let Some(OtelValueKind::StringValue(s)) = &overflow.value {
+                if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+                    return Some(Value::Timestamp(dt.with_timezone(&chrono::Utc)));
+                }
+            }
+        }
+        if self.record.time_unix_nano != 0 {
+            return nanos_to_timestamp(self.record.time_unix_nano);
+        }
+        if self.record.observed_time_unix_nano != 0 {
+            return nanos_to_timestamp(self.record.observed_time_unix_nano);
+        }
+        None
     }
 
     /// Insert a field value by path.
@@ -836,71 +854,10 @@ impl OtelLog {
                 let mut iter = vp.segment_iter();
                 if let Some(BorrowedSegment::Field(ref field)) = iter.next() {
                     if iter.next().is_none() {
-                        match field.as_ref() {
-                            "body" => {
-                                let old = self.body().map(any_value_to_vrl);
-                                self.record_mut().body = Some(vrl_value_to_any_value(&value));
-                                return old;
-                            }
-                            "severity_text" => {
-                                let old = if self.record.severity_text.is_empty() { None }
-                                    else { Some(Value::Bytes(self.record.severity_text.clone().into())) };
-                                self.record_mut().severity_text = value.as_str()
-                                    .map(|s| s.to_string())
-                                    .unwrap_or_else(|| value.to_string_lossy().into_owned());
-                                return old;
-                            }
-                            "severity_number" => {
-                                let old = if self.record.severity_number == 0 { None }
-                                    else { Some(Value::Integer(self.record.severity_number as i64)) };
-                                if let Some(n) = value.as_integer() {
-                                    self.record_mut().severity_number = n as i32;
-                                }
-                                return old;
-                            }
-                            "timestamp" => {
-                                // Fast-path only for valid post-epoch timestamps
-                                if let Some(ts) = value.as_timestamp() {
-                                    if let Some(nanos) = ts.timestamp_nanos_opt() {
-                                        if nanos >= 0 {
-                                            let old = if self.record.time_unix_nano != 0 {
-                                                let n = self.record.time_unix_nano;
-                                                let secs = (n / 1_000_000_000) as i64;
-                                                let nsecs = (n % 1_000_000_000) as u32;
-                                                chrono::DateTime::from_timestamp(secs, nsecs).map(Value::Timestamp)
-                                            } else { None };
-                                            self.record_mut().time_unix_nano = nanos as u64;
-                                            return old;
-                                        }
-                                    }
-                                }
-                                // Fall through for pre-epoch, overflow, or non-timestamp values
-                            }
-                            "source_type" => {
-                                let old = self.get_source_type();
-                                if let Some(s) = value.as_str() {
-                                    self.set_resource_attribute(
-                                        "source_type".to_string(),
-                                        string_value(s),
-                                    );
-                                }
-                                return old;
-                            }
-                            "host" => {
-                                let old = self.get_host();
-                                let host_str = value.as_str()
-                                    .map(|s| s.to_string())
-                                    .unwrap_or_else(|| value.to_string_lossy().into_owned());
-                                self.set_resource_attribute(
-                                    "host.name".to_string(),
-                                    string_value(&host_str),
-                                );
-                                return old;
-                            }
-                            _ => {} // fall through — KvList body expansion makes generic paths unsafe
-                        }
+                        return self.insert_single_segment(field.as_ref(), value);
                     }
                 }
+                // Multi-segment or non-field paths: fall through to legacy round-trip
                 let mut val = self.to_value_legacy_layout();
                 let old = val.insert(path.value_path(), value);
                 self.apply_value_legacy_layout(val);
@@ -908,6 +865,111 @@ impl OtelLog {
             }
             lookup::PathPrefix::Metadata => {
                 self.metadata.value_mut().insert(path.value_path(), value)
+            }
+        }
+    }
+
+    fn insert_single_segment(&mut self, field: &str, value: Value) -> Option<Value> {
+        match field {
+            "body" | "message" => {
+                let old = self.body().map(any_value_to_vrl);
+                self.record_mut().body = Some(vrl_value_to_any_value(&value));
+                old
+            }
+            "severity_text" => {
+                let old = if self.record.severity_text.is_empty() { None }
+                    else { Some(Value::Bytes(self.record.severity_text.clone().into())) };
+                self.record_mut().severity_text = value.as_str()
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| value.to_string_lossy().into_owned());
+                old
+            }
+            "severity_number" => {
+                let old = if self.record.severity_number == 0 { None }
+                    else { Some(Value::Integer(self.record.severity_number as i64)) };
+                if let Some(n) = value.as_integer() {
+                    self.record_mut().severity_number = n as i32;
+                }
+                old
+            }
+            "trace_id" => {
+                let old = if self.record.trace_id.is_empty() { None }
+                    else { Some(hex_encode(&self.record.trace_id)) };
+                if let Some(decoded) = hex_decode(&value) {
+                    self.record_mut().trace_id = decoded;
+                } else {
+                    // Malformed hex: store as attribute so data isn't lost
+                    set_attribute(
+                        &mut self.record_mut().attributes,
+                        "trace_id".to_string(),
+                        vrl_value_to_any_value(&value),
+                    );
+                }
+                old
+            }
+            "span_id" => {
+                let old = if self.record.span_id.is_empty() { None }
+                    else { Some(hex_encode(&self.record.span_id)) };
+                if let Some(decoded) = hex_decode(&value) {
+                    self.record_mut().span_id = decoded;
+                } else {
+                    set_attribute(
+                        &mut self.record_mut().attributes,
+                        "span_id".to_string(),
+                        vrl_value_to_any_value(&value),
+                    );
+                }
+                old
+            }
+            "timestamp" => {
+                let old = self.get_timestamp_value();
+                if let Some(ts) = value.as_timestamp() {
+                    if let Some(nanos) = ts.timestamp_nanos_opt() {
+                        if nanos >= 0 {
+                            self.record_mut().time_unix_nano = nanos as u64;
+                            return old;
+                        }
+                    }
+                }
+                // Non-timestamp or pre-epoch: store as attribute so data isn't lost
+                set_attribute(
+                    &mut self.record_mut().attributes,
+                    "timestamp".to_string(),
+                    vrl_value_to_any_value(&value),
+                );
+                old
+            }
+            "source_type" => {
+                let old = self.get_source_type();
+                if let Some(s) = value.as_str() {
+                    self.set_resource_attribute(
+                        "source_type".to_string(),
+                        string_value(s),
+                    );
+                }
+                old
+            }
+            "host" => {
+                let old = self.get_host();
+                let host_str = value.as_str()
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| value.to_string_lossy().into_owned());
+                self.set_resource_attribute(
+                    "host.name".to_string(),
+                    string_value(&host_str),
+                );
+                old
+            }
+            other => {
+                // Generic: upsert into record attributes
+                let old = attribute_value(&self.record.attributes, other)
+                    .map(any_value_to_vrl);
+                set_attribute(
+                    &mut self.record_mut().attributes,
+                    other.to_string(),
+                    vrl_value_to_any_value(&value),
+                );
+                old
             }
         }
     }
@@ -932,39 +994,14 @@ impl OtelLog {
 
         match path.prefix() {
             lookup::PathPrefix::Event => {
-                // Fast path for single-segment removes on known proto fields
                 let vp = path.value_path();
                 let mut iter = vp.segment_iter();
                 if let Some(BorrowedSegment::Field(ref field)) = iter.next() {
                     if iter.next().is_none() {
-                        match field.as_ref() {
-                            "body" => {
-                                let old = self.body().map(any_value_to_vrl);
-                                self.record_mut().body = None;
-                                return old;
-                            }
-                            "severity_text" if !self.record.severity_text.is_empty() => {
-                                let old = Some(Value::Bytes(self.record.severity_text.clone().into()));
-                                self.record_mut().severity_text = String::new();
-                                return old;
-                            }
-                            "severity_number" if self.record.severity_number != 0 => {
-                                let old = Some(Value::Integer(self.record.severity_number as i64));
-                                self.record_mut().severity_number = 0;
-                                return old;
-                            }
-                            "timestamp" if self.record.time_unix_nano != 0 => {
-                                let n = self.record.time_unix_nano;
-                                let secs = (n / 1_000_000_000) as i64;
-                                let nsecs = (n % 1_000_000_000) as u32;
-                                let old = chrono::DateTime::from_timestamp(secs, nsecs).map(Value::Timestamp);
-                                self.record_mut().time_unix_nano = 0;
-                                return old;
-                            }
-                            _ => {} // fall through — KvList body expansion makes generic paths unsafe
-                        }
+                        return self.remove_single_segment(field.as_ref());
                     }
                 }
+                // Multi-segment or non-field paths: fall through to legacy round-trip
                 let mut val = self.to_value_legacy_layout();
                 let old = val.remove(path.value_path(), prune);
                 self.apply_value_legacy_layout(val);
@@ -972,6 +1009,88 @@ impl OtelLog {
             }
             lookup::PathPrefix::Metadata => {
                 self.metadata.value_mut().remove(path.value_path(), prune)
+            }
+        }
+    }
+
+    fn remove_single_segment(&mut self, field: &str) -> Option<Value> {
+        match field {
+            "body" | "message" => {
+                let old = self.body().map(any_value_to_vrl);
+                self.record_mut().body = None;
+                old
+            }
+            "severity_text" => {
+                if self.record.severity_text.is_empty() { return None; }
+                let old = Some(Value::Bytes(self.record.severity_text.clone().into()));
+                self.record_mut().severity_text = String::new();
+                old
+            }
+            "severity_number" => {
+                if self.record.severity_number == 0 { return None; }
+                let old = Some(Value::Integer(self.record.severity_number as i64));
+                self.record_mut().severity_number = 0;
+                old
+            }
+            "trace_id" => {
+                if self.record.trace_id.is_empty() { return None; }
+                let old = Some(hex_encode(&self.record.trace_id));
+                self.record_mut().trace_id.clear();
+                old
+            }
+            "span_id" => {
+                if self.record.span_id.is_empty() { return None; }
+                let old = Some(hex_encode(&self.record.span_id));
+                self.record_mut().span_id.clear();
+                old
+            }
+            "timestamp" => {
+                let old = self.get_timestamp_value();
+                if old.is_some() {
+                    self.record_mut().time_unix_nano = 0;
+                    self.record_mut().observed_time_unix_nano = 0;
+                    remove_attribute(&mut self.record_mut().attributes, "vector.timestamp_overflow");
+                }
+                old
+            }
+            "source_type" => {
+                let old = self.get_source_type();
+                if old.is_some() {
+                    if let Some(ref mut res) = self.resource {
+                        remove_attribute(&mut res.attributes, "source_type");
+                    }
+                } else {
+                    return remove_attribute(&mut self.record_mut().attributes, "source_type")
+                        .map(|av| any_value_to_vrl(&av));
+                }
+                old
+            }
+            "host" => {
+                let old = self.get_host();
+                if old.is_some() {
+                    if let Some(ref mut res) = self.resource {
+                        remove_attribute(&mut res.attributes, "host.name");
+                    }
+                } else {
+                    return remove_attribute(&mut self.record_mut().attributes, "host")
+                        .map(|av| any_value_to_vrl(&av));
+                }
+                old
+            }
+            other => {
+                // Try record attributes first
+                if let Some(av) = remove_attribute(&mut self.record_mut().attributes, other) {
+                    return Some(any_value_to_vrl(&av));
+                }
+                // Then KvList body keys
+                if let Some(ref mut body_av) = self.record_mut().body {
+                    if let Some(OtelValueKind::KvlistValue(ref mut kvl)) = body_av.value {
+                        if let Some(av) = remove_attribute(&mut kvl.values, other) {
+                            return Some(any_value_to_vrl(&av));
+                        }
+                    }
+                }
+                None
             }
         }
     }

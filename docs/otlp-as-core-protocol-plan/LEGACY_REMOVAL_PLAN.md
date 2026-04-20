@@ -613,7 +613,7 @@ the struct**:
 
 | # | Task | Status | Commit | Note |
 |---|------|--------|--------|------|
-| T16 | Fast-path get/insert/remove bypassing legacy round-trip | **IN PROGRESS** | `63f76f1`..`9408e1e` | 4 phases planned — see "Remaining work" section below for automode-ready execution plan. |
+| T16 | Fast-path get/insert/remove bypassing legacy round-trip | **IN PROGRESS** | `63f76f1`..ongoing | Phase 1 DONE (single-segment fast-path for OtelLog). Phases 2-4 remain. |
 | T15 | Remove VRL aliases + Serialize → proto-canonical | **BLOCKED ON T16** | | 5 aliases to remove. Breaking change gated on `vector vrl-migrate`. See "Remaining work" for detailed plan. |
 | T23 | Simplify/rename legacy layout functions | **PLANNED** | | After T15, rename + simplify. `from_value_map` stays as canonical constructor. See "Remaining work" for analysis. |
 
@@ -1005,9 +1005,12 @@ on proto fields, never calling `to_value_legacy_layout`/`apply_value_legacy_layo
 
 **File:** `lib/vector-core/src/event/otel_event.rs`
 
-**Current state:** Fast-path handles 8 single-segment fields for get,
-6 for insert, 4 for remove. Generic single-segment attribute get works.
-All other paths fall through to the O(event_size) legacy round-trip.
+**Current state (Phase 1 DONE):** OtelLog single-segment fast-path fully
+covers get/insert/remove for ALL single-segment paths — proto fields
+(body, severity_text, severity_number, trace_id, span_id, time_unix_nano,
+observed_time_unix_nano), aliases (message, timestamp, host, source_type),
+and generic attribute/KvList-body lookup. Single-segment paths never fall
+through to legacy layout. Multi-segment paths still fall through.
 
 **Production path audit (2026-04-20):**
 - **Single-segment** `.message` (112 uses via log_schema): alias for
@@ -1022,16 +1025,13 @@ All other paths fall through to the O(event_size) legacy round-trip.
   log_to_metric, enrichment tables).
 - **OtelSpan**: no fast-path at all (3 methods call legacy layout).
 
-**Phase 1 — Close single-segment gaps (~2h):**
-- Add `.message` alias for `.body` in get/insert/remove
-- Add `trace_id`/`span_id` to insert (hex string → bytes decode)
-- Add `source_type`/`host`/`trace_id`/`span_id` to remove
-- Add generic single-segment attribute insert (write to
-  `record.attributes` as KeyValue)
-- Add generic single-segment attribute remove (search
-  `record.attributes` + KvList body, remove + return old value)
+**Phase 1 — Close single-segment gaps — DONE:**
+- Added `nanos_to_timestamp` helper
+- Extracted `get_single_segment`/`insert_single_segment`/`remove_single_segment`
+- All known proto fields + aliases + generic attributes handled
+- Multi-segment paths fall through to legacy layout (Phase 2)
 
-After Phase 1: **single-segment paths never fall through.**
+After Phase 1: **single-segment paths never fall through.** ✓
 
 **Phase 2 — Multi-segment proto navigation (~4h):**
 
@@ -1281,12 +1281,11 @@ expected-value construction. No migration needed.
 
 ## Verification (updated 2026-04-20)
 
-After T13b (Metric struct deletion):
-- `cargo check --tests -p vector` — compiles clean
-- `cargo test -p vector-core --lib` — all pass
+After T16 Phase 1 (single-segment fast-path):
+- `cargo test -p vector-core --lib -- otel` — 41/41 pass
+- `cargo test -p vector-core --lib` — 187 pass, 6 pre-existing TLS failures
 - `cargo test -p codecs` — all pass
-- `cargo test -p opentelemetry-proto` — all pass (5 otel_event tests)
-- All 97 tests across affected modules verified during T13b
+- Single-segment get/insert/remove bypass legacy layout completely
 
 ## Related docs
 

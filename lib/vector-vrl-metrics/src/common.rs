@@ -202,7 +202,7 @@ pub(crate) fn resolve_tags(
 mod tests {
     use vector_core::{
         compile_vrl,
-        event::{Event, Metric, OtelLog, MetricKind, MetricTags, VrlTarget},
+        event::{Event, MetricTags, OtelLog, VrlTarget},
     };
     use vrl::{
         compiler::{
@@ -213,12 +213,6 @@ mod tests {
     };
 
     use super::*;
-
-    /// Test helper: convert legacy Metric to OtelMetric for test construction.
-    fn otel(m: Metric) -> OtelMetric {
-        let (s, d, md) = m.into_parts();
-        OtelMetric::from_metric_parts(s, d, md)
-    }
 
     fn compile(
         storage: MetricsStorage,
@@ -284,11 +278,7 @@ mod tests {
     fn test_get_vector_metric() {
         let storage = MetricsStorage::default();
         storage.cache.store(
-            vec![otel(Metric::new(
-                "test",
-                MetricKind::Absolute,
-                vector_core::event::MetricValue::Gauge { value: 1.0 },
-            ))]
+            vec![OtelMetric::new_gauge("test", 1.0)]
             .into(),
         );
 
@@ -309,20 +299,12 @@ mod tests {
         let storage = MetricsStorage::default();
         storage.cache.store(
             vec![
-                otel(Metric::new(
-                    "test",
-                    MetricKind::Absolute,
-                    vector_core::event::MetricValue::Gauge { value: 1.0 },
-                )
+                (OtelMetric::new_gauge("test", 1.0)
                 .with_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "a".to_string(),
                 )])))),
-                otel(Metric::new(
-                    "test",
-                    MetricKind::Absolute,
-                    vector_core::event::MetricValue::Gauge { value: 1.0 },
-                )
+                (OtelMetric::new_gauge("test", 1.0)
                 .with_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "b".to_string(),
@@ -359,20 +341,12 @@ mod tests {
         let storage = MetricsStorage::default();
         storage.cache.store(
             vec![
-                otel(Metric::new(
-                    "test",
-                    MetricKind::Absolute,
-                    vector_core::event::MetricValue::Gauge { value: 1.0 },
-                )
+                (OtelMetric::new_gauge("test", 1.0)
                 .with_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "a".to_string(),
                 )])))),
-                otel(Metric::new(
-                    "test",
-                    MetricKind::Absolute,
-                    vector_core::event::MetricValue::Gauge { value: 1.0 },
-                )
+                (OtelMetric::new_gauge("test", 1.0)
                 .with_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "b".to_string(),
@@ -398,29 +372,17 @@ mod tests {
         let storage = MetricsStorage::default();
         storage.cache.store(
             vec![
-                otel(Metric::new(
-                    "test",
-                    MetricKind::Absolute,
-                    vector_core::event::MetricValue::Gauge { value: 1.0 },
-                )
+                (OtelMetric::new_gauge("test", 1.0)
                 .with_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "a".to_string(),
                 )])))),
-                otel(Metric::new(
-                    "test",
-                    MetricKind::Absolute,
-                    vector_core::event::MetricValue::Gauge { value: 1.0 },
-                )
+                (OtelMetric::new_gauge("test", 1.0)
                 .with_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "b".to_string(),
                 )])))),
-                otel(Metric::new(
-                    "test",
-                    MetricKind::Absolute,
-                    vector_core::event::MetricValue::Gauge { value: 1.0 },
-                )),
+                (OtelMetric::new_gauge("test", 1.0)),
             ]
             .into(),
         );
@@ -455,29 +417,17 @@ mod tests {
         let storage = MetricsStorage::default();
         storage.cache.store(
             vec![
-                otel(Metric::new(
-                    "test",
-                    MetricKind::Absolute,
-                    vector_core::event::MetricValue::Gauge { value: 1.0 },
-                )
+                (OtelMetric::new_gauge("test", 1.0)
                 .with_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "prefix.a".to_string(),
                 )])))),
-                otel(Metric::new(
-                    "test",
-                    MetricKind::Absolute,
-                    vector_core::event::MetricValue::Gauge { value: 1.0 },
-                )
+                (OtelMetric::new_gauge("test", 1.0)
                 .with_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "something_else".to_string(),
                 )])))),
-                otel(Metric::new(
-                    "test",
-                    MetricKind::Absolute,
-                    vector_core::event::MetricValue::Gauge { value: 1.0 },
-                )
+                (OtelMetric::new_gauge("test", 1.0)
                 .with_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "prefix.c".to_string(),
@@ -515,29 +465,17 @@ mod tests {
         let storage = MetricsStorage::default();
         storage.cache.store(
             vec![
-                otel(Metric::new(
-                    "test",
-                    MetricKind::Absolute,
-                    vector_core::event::MetricValue::Gauge { value: 1.0 },
-                )
+                (OtelMetric::new_gauge("test", 1.0)
                 .with_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "a.suffix".to_string(),
                 )])))),
-                otel(Metric::new(
-                    "test",
-                    MetricKind::Absolute,
-                    vector_core::event::MetricValue::Gauge { value: 1.0 },
-                )
+                (OtelMetric::new_gauge("test", 1.0)
                 .with_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "something_else".to_string(),
                 )])))),
-                otel(Metric::new(
-                    "test",
-                    MetricKind::Absolute,
-                    vector_core::event::MetricValue::Gauge { value: 1.0 },
-                )
+                (OtelMetric::new_gauge("test", 1.0)
                 .with_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "c.suffix".to_string(),
@@ -575,29 +513,17 @@ mod tests {
         let storage = MetricsStorage::default();
         storage.cache.store(
             vec![
-                otel(Metric::new(
-                    "test",
-                    MetricKind::Absolute,
-                    vector_core::event::MetricValue::Gauge { value: 1.0 },
-                )
+                (OtelMetric::new_gauge("test", 1.0)
                 .with_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "start.a.end".to_string(),
                 )])))),
-                otel(Metric::new(
-                    "test",
-                    MetricKind::Absolute,
-                    vector_core::event::MetricValue::Gauge { value: 1.0 },
-                )
+                (OtelMetric::new_gauge("test", 1.0)
                 .with_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "something_else".to_string(),
                 )])))),
-                otel(Metric::new(
-                    "test",
-                    MetricKind::Absolute,
-                    vector_core::event::MetricValue::Gauge { value: 1.0 },
-                )
+                (OtelMetric::new_gauge("test", 1.0)
                 .with_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "start.c.end".to_string(),
@@ -635,29 +561,17 @@ mod tests {
         let storage = MetricsStorage::default();
         storage.cache.store(
             vec![
-                otel(Metric::new(
-                    "test",
-                    MetricKind::Absolute,
-                    vector_core::event::MetricValue::Gauge { value: 6.0 },
-                )
+                (OtelMetric::new_gauge("test", 6.0)
                 .with_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "start.a.end".to_string(),
                 )])))),
-                otel(Metric::new(
-                    "test",
-                    MetricKind::Absolute,
-                    vector_core::event::MetricValue::Gauge { value: 1.0 },
-                )
+                (OtelMetric::new_gauge("test", 1.0)
                 .with_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "something_else".to_string(),
                 )])))),
-                otel(Metric::new(
-                    "test",
-                    MetricKind::Absolute,
-                    vector_core::event::MetricValue::Gauge { value: 3.0 },
-                )
+                (OtelMetric::new_gauge("test", 3.0)
                 .with_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "start.c.end".to_string(),
@@ -683,29 +597,17 @@ mod tests {
         let storage = MetricsStorage::default();
         storage.cache.store(
             vec![
-                otel(Metric::new(
-                    "test",
-                    MetricKind::Absolute,
-                    vector_core::event::MetricValue::Gauge { value: 6.0 },
-                )
+                (OtelMetric::new_gauge("test", 6.0)
                 .with_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "start.a.end".to_string(),
                 )])))),
-                otel(Metric::new(
-                    "test",
-                    MetricKind::Absolute,
-                    vector_core::event::MetricValue::Gauge { value: 1.0 },
-                )
+                (OtelMetric::new_gauge("test", 1.0)
                 .with_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "something_else".to_string(),
                 )])))),
-                otel(Metric::new(
-                    "test",
-                    MetricKind::Absolute,
-                    vector_core::event::MetricValue::Gauge { value: 3.0 },
-                )
+                (OtelMetric::new_gauge("test", 3.0)
                 .with_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "start.c.end".to_string(),
@@ -731,29 +633,17 @@ mod tests {
         let storage = MetricsStorage::default();
         storage.cache.store(
             vec![
-                otel(Metric::new(
-                    "test",
-                    MetricKind::Absolute,
-                    vector_core::event::MetricValue::Gauge { value: 6.0 },
-                )
+                (OtelMetric::new_gauge("test", 6.0)
                 .with_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "start.a.end".to_string(),
                 )])))),
-                otel(Metric::new(
-                    "test",
-                    MetricKind::Absolute,
-                    vector_core::event::MetricValue::Gauge { value: 1.0 },
-                )
+                (OtelMetric::new_gauge("test", 1.0)
                 .with_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "something_else".to_string(),
                 )])))),
-                otel(Metric::new(
-                    "test",
-                    MetricKind::Absolute,
-                    vector_core::event::MetricValue::Gauge { value: 3.0 },
-                )
+                (OtelMetric::new_gauge("test", 3.0)
                 .with_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "start.c.end".to_string(),
@@ -779,29 +669,17 @@ mod tests {
         let storage = MetricsStorage::default();
         storage.cache.store(
             vec![
-                otel(Metric::new(
-                    "test",
-                    MetricKind::Absolute,
-                    vector_core::event::MetricValue::Gauge { value: 6.0 },
-                )
+                (OtelMetric::new_gauge("test", 6.0)
                 .with_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "start.a.end".to_string(),
                 )])))),
-                otel(Metric::new(
-                    "test",
-                    MetricKind::Absolute,
-                    vector_core::event::MetricValue::Gauge { value: 1.0 },
-                )
+                (OtelMetric::new_gauge("test", 1.0)
                 .with_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "something_else".to_string(),
                 )])))),
-                otel(Metric::new(
-                    "test",
-                    MetricKind::Absolute,
-                    vector_core::event::MetricValue::Gauge { value: 3.0 },
-                )
+                (OtelMetric::new_gauge("test", 3.0)
                 .with_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "start.c.end".to_string(),

@@ -656,8 +656,8 @@ mod tests {
     use crate::{
         config::{ConfigBuilder, build_unit_tests},
         event::{
-            OtelLog, Metric, OtelMetric, Value,
-            metric::{MetricKind, MetricValue},
+            OtelLog, OtelMetric, Value,
+            metric::MetricKind,
         },
         metrics::Controller,
         schema,
@@ -1039,18 +1039,13 @@ mod tests {
         assert_eq!(
             result,
             Event::Metric({
-                let m = Metric::new_with_metadata(
-                    "zork",
-                    MetricKind::Incremental,
-                    MetricValue::Counter { value: 1.0 },
-                    metadata
-                )
-                .with_namespace(Some("zerk"))
-                .with_tags(Some(metric_tags! {
-                    "host" => "zoobub",
-                }));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
+                let mut otel = OtelMetric::new_counter("zork", MetricKind::Incremental, 1.0)
+                    .with_namespace(Some("zerk"))
+                    .with_tags(Some(metric_tags! {
+                        "host" => "zoobub",
+                    }));
+                *otel.metadata_mut() = metadata;
+                otel
             })
         );
     }
@@ -1145,30 +1140,21 @@ mod tests {
             Event::from_json_value(serde_json::json!({"hello": 42}), LogNamespace::Legacy).unwrap();
 
         let happy_metric = {
-            let otel = OtelMetric::new_counter("counter", MetricKind::Absolute, 1.0);
-            let (s, d, md) = otel.into_metric_parts();
-            let mut metric = Metric::from_parts(s, d, md);
-            metric.replace_tag("hello".into(), "world".into());
-            let (s, d, md) = metric.into_parts();
-            Event::Metric(OtelMetric::from_metric_parts(s, d, md))
+            let mut otel = OtelMetric::new_counter("counter", MetricKind::Absolute, 1.0);
+            otel.replace_tag("hello", "world");
+            Event::Metric(otel)
         };
 
         let abort_metric = {
-            let otel = OtelMetric::new_counter("counter", MetricKind::Absolute, 1.0);
-            let (s, d, md) = otel.into_metric_parts();
-            let mut metric = Metric::from_parts(s, d, md);
-            metric.replace_tag("hello".into(), "goodbye".into());
-            let (s, d, md) = metric.into_parts();
-            Event::Metric(OtelMetric::from_metric_parts(s, d, md))
+            let mut otel = OtelMetric::new_counter("counter", MetricKind::Absolute, 1.0);
+            otel.replace_tag("hello", "goodbye");
+            Event::Metric(otel)
         };
 
         let error_metric = {
-            let otel = OtelMetric::new_counter("counter", MetricKind::Absolute, 1.0);
-            let (s, d, md) = otel.into_metric_parts();
-            let mut metric = Metric::from_parts(s, d, md);
-            metric.replace_tag("not_hello".into(), "oops".into());
-            let (s, d, md) = metric.into_parts();
-            Event::Metric(OtelMetric::from_metric_parts(s, d, md))
+            let mut otel = OtelMetric::new_counter("counter", MetricKind::Absolute, 1.0);
+            otel.replace_tag("not_hello", "oops");
+            Event::Metric(otel)
         };
 
         let conf = RemapConfig {
@@ -1262,19 +1248,14 @@ mod tests {
         similar_asserts::assert_eq!(
             output,
             Event::Metric({
-                let m = Metric::new_with_metadata(
-                    "counter",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 1.0 },
-                    EventMetadata::default()
-                        .with_schema_definition(output.metadata().schema_definition()),
-                )
-                .with_tags(Some(metric_tags! {
-                    "hello" => "world",
-                    "foo" => "bar",
-                }));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
+                let mut otel = OtelMetric::new_counter("counter", MetricKind::Absolute, 1.0)
+                    .with_tags(Some(metric_tags! {
+                        "hello" => "world",
+                        "foo" => "bar",
+                    }));
+                *otel.metadata_mut() = EventMetadata::default()
+                    .with_schema_definition(output.metadata().schema_definition());
+                otel
             })
         );
 
@@ -1282,22 +1263,17 @@ mod tests {
         similar_asserts::assert_eq!(
             output,
             Event::Metric({
-                let m = Metric::new_with_metadata(
-                    "counter",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 1.0 },
-                    EventMetadata::default()
-                        .with_schema_definition(output.metadata().schema_definition()),
-                )
-                .with_tags(Some(metric_tags! {
-                    "hello" => "goodbye",
-                    "metadata.dropped.reason" => "abort",
-                    "metadata.dropped.component_id" => "remapper",
-                    "metadata.dropped.component_type" => "remap",
-                    "metadata.dropped.component_kind" => "transform",
-                }));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
+                let mut otel = OtelMetric::new_counter("counter", MetricKind::Absolute, 1.0)
+                    .with_tags(Some(metric_tags! {
+                        "hello" => "goodbye",
+                        "metadata.dropped.reason" => "abort",
+                        "metadata.dropped.component_id" => "remapper",
+                        "metadata.dropped.component_type" => "remap",
+                        "metadata.dropped.component_kind" => "transform",
+                    }));
+                *otel.metadata_mut() = EventMetadata::default()
+                    .with_schema_definition(output.metadata().schema_definition());
+                otel
             })
         );
 
@@ -1305,22 +1281,17 @@ mod tests {
         similar_asserts::assert_eq!(
             output,
             Event::Metric({
-                let m = Metric::new_with_metadata(
-                    "counter",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 1.0 },
-                    EventMetadata::default()
-                        .with_schema_definition(output.metadata().schema_definition()),
-                )
-                .with_tags(Some(metric_tags! {
-                    "not_hello" => "oops",
-                    "metadata.dropped.reason" => "error",
-                    "metadata.dropped.component_id" => "remapper",
-                    "metadata.dropped.component_type" => "remap",
-                    "metadata.dropped.component_kind" => "transform",
-                }));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
+                let mut otel = OtelMetric::new_counter("counter", MetricKind::Absolute, 1.0)
+                    .with_tags(Some(metric_tags! {
+                        "not_hello" => "oops",
+                        "metadata.dropped.reason" => "error",
+                        "metadata.dropped.component_id" => "remapper",
+                        "metadata.dropped.component_type" => "remap",
+                        "metadata.dropped.component_kind" => "transform",
+                    }));
+                *otel.metadata_mut() = EventMetadata::default()
+                    .with_schema_definition(output.metadata().schema_definition());
+                otel
             })
         );
     }

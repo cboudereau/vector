@@ -777,7 +777,7 @@ mod integration_tests {
 
     use super::*;
     use crate::{
-        event::{OtelLog, Metric, OtelMetric, metric},
+        event::{OtelLog, OtelMetric, metric},
         test_util::{addr::next_addr, components::assert_transform_compliance},
         transforms::test::create_topology,
     };
@@ -859,10 +859,8 @@ mod integration_tests {
         ]
     }
 
-    fn make_metric() -> Metric {
-        let otel = OtelMetric::new_counter("event", metric::MetricKind::Incremental, 1.0);
-        let (s, d, md) = otel.into_metric_parts();
-        Metric::from_parts(s, d, md)
+    fn make_metric() -> OtelMetric {
+        OtelMetric::new_counter("event", metric::MetricKind::Incremental, 1.0)
     }
 
     #[test]
@@ -998,11 +996,10 @@ mod integration_tests {
             sleep(Duration::from_secs(1)).await;
 
             let metric = make_metric();
-            let mut expected_metric = metric.clone();
+            let mut expected_otel = metric.clone();
             for (k, v) in expected_metric_fields().iter() {
-                expected_metric.replace_tag(k.to_string(), v.to_string());
+                expected_otel.replace_tag(k.to_string(), v.to_string());
             }
-            let expected_otel = { let (s, d, md) = expected_metric.into_parts(); OtelMetric::from_metric_parts(s, d, md) };
 
             tx.send(metric.into()).await.unwrap();
 
@@ -1083,16 +1080,15 @@ mod integration_tests {
             sleep(Duration::from_secs(1)).await;
 
             let metric = make_metric();
-            let mut expected_metric = metric.clone();
-            expected_metric.replace_tag(PUBLIC_IPV4_KEY.to_string(), "192.0.2.54".to_string());
-            expected_metric.replace_tag(REGION_KEY.to_string(), "us-east-1".to_string());
-            expected_metric.replace_tag(
+            let mut expected_otel = metric.clone();
+            expected_otel.replace_tag(PUBLIC_IPV4_KEY.to_string(), "192.0.2.54".to_string());
+            expected_otel.replace_tag(REGION_KEY.to_string(), "us-east-1".to_string());
+            expected_otel.replace_tag(
                 format!("{}[{}]", TAGS_KEY, "Name"),
                 "test-instance".to_string(),
             );
-            expected_metric
+            expected_otel
                 .replace_tag(format!("{}[{}]", TAGS_KEY, "Test"), "test-tag".to_string());
-            let expected_otel = { let (s, d, md) = expected_metric.into_parts(); OtelMetric::from_metric_parts(s, d, md) };
 
             tx.send(metric.into()).await.unwrap();
 

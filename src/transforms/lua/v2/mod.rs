@@ -471,7 +471,7 @@ mod tests {
     use crate::{
         event::{
             Event, OtelLog, Value,
-            metric::{Metric, MetricKind, MetricValue}, OtelMetric,
+            metric::{MetricKind, MetricValue}, OtelMetric,
         },
         test_util,
         test_util::{components::assert_transform_compliance, random_string},
@@ -969,25 +969,20 @@ mod tests {
             """
             "#,
             |tx, out| async move {
-                let metric = {
-                    let otel = OtelMetric::new_counter("example counter", MetricKind::Absolute, 1.0);
-                    let (s, d, md) = otel.into_metric_parts();
-                    Metric::from_parts(s, d, md)
-                };
+                let metric = OtelMetric::new_counter("example counter", MetricKind::Absolute, 1.0);
 
-                let mut expected = metric
-                    .clone()
-                    .with_value(MetricValue::Counter { value: 2.0 });
+                let mut expected = {
+                    let (s, mut d, md) = metric.clone().into_metric_parts();
+                    d.value = MetricValue::Counter { value: 2.0 };
+                    OtelMetric::from_metric_parts(s, d, md)
+                };
                 let metadata = expected.metadata_mut();
                 metadata.set_upstream_id(Arc::new(OutputId::from("transform")));
                 metadata.set_source_id(Arc::new(ComponentKey::from("in")));
 
-                tx.send(Event::Metric({ let (s, d, md) = metric.into_parts(); OtelMetric::from_metric_parts(s, d, md) })).await.unwrap();
+                tx.send(Event::Metric(metric)).await.unwrap();
 
-                assert_eq!(
-                    next_event(&out, "in").await.into_otel_metric(),
-                    { let (s, d, md) = expected.into_parts(); OtelMetric::from_metric_parts(s, d, md) },
-                );
+                assert_eq!(next_event(&out, "in").await.into_otel_metric(), expected);
             },
         )
         .await;

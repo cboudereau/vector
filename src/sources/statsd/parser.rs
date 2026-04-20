@@ -8,10 +8,41 @@ use std::{
 use regex::Regex;
 
 use crate::{
-    event::metric::{Metric, MetricKind, MetricTags, MetricValue, StatisticKind},
-    event::OtelMetric,
+    event::metric::{
+        MetricData, MetricKind, MetricName, MetricSeries, MetricTags, MetricTime, MetricValue,
+        StatisticKind,
+    },
+    event::{EventMetadata, OtelMetric},
     sources::{statsd::ConversionUnit, util::extract_tag_key_and_value},
 };
+
+/// Build an OtelMetric from parts without the legacy `Metric` intermediate.
+/// statsd parses several MetricValue variants (Distribution, Gauge signed,
+/// Set) that don't have dedicated OtelMetric native constructors, so we
+/// build the proto-backing tuple directly.
+fn otel_from_parts(
+    name: impl Into<String>,
+    kind: MetricKind,
+    value: MetricValue,
+    tags: Option<MetricTags>,
+) -> OtelMetric {
+    let series = MetricSeries {
+        name: MetricName {
+            name: name.into(),
+            namespace: None,
+        },
+        tags,
+    };
+    let data = MetricData {
+        time: MetricTime {
+            timestamp: None,
+            interval_ms: None,
+        },
+        kind,
+        value,
+    };
+    OtelMetric::from_metric_parts(series, data, EventMetadata::default())
+}
 
 static WHITESPACE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+").unwrap());
 static NONALPHANUM: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[^a-zA-Z_\-0-9\.]").unwrap());
@@ -82,17 +113,15 @@ impl Parser {
                     },
                     _ => val,
                 };
-                let legacy = Metric::new(
+                otel_from_parts(
                     name,
                     MetricKind::Incremental,
                     MetricValue::Distribution {
                         samples: vector_lib::samples![converted_val => sample_rate as u32],
                         statistic: convert_to_statistic(unit),
                     },
+                    tags,
                 )
-                .with_tags(tags);
-                let (series, data, metadata) = legacy.into_parts();
-                OtelMetric::from_metric_parts(series, data, metadata)
             }
             "g" => {
                 let value = if parts[0]
@@ -108,32 +137,24 @@ impl Parser {
 
                 match parse_direction(parts[0])? {
                     None => OtelMetric::new_gauge(name, value).with_tags(tags),
-                    Some(sign) => {
-                        let legacy = Metric::new(
-                            name,
-                            MetricKind::Incremental,
-                            MetricValue::Gauge {
-                                value: value * sign,
-                            },
-                        )
-                        .with_tags(tags);
-                        let (series, data, metadata) = legacy.into_parts();
-                        OtelMetric::from_metric_parts(series, data, metadata)
-                    }
+                    Some(sign) => otel_from_parts(
+                        name,
+                        MetricKind::Incremental,
+                        MetricValue::Gauge {
+                            value: value * sign,
+                        },
+                        tags,
+                    ),
                 }
             }
-            "s" => {
-                let legacy = Metric::new(
-                    name,
-                    MetricKind::Incremental,
-                    MetricValue::Set {
-                        values: vec![parts[0].into()].into_iter().collect(),
-                    },
-                )
-                .with_tags(tags);
-                let (series, data, metadata) = legacy.into_parts();
-                OtelMetric::from_metric_parts(series, data, metadata)
-            }
+            "s" => otel_from_parts(
+                name,
+                MetricKind::Incremental,
+                MetricValue::Set {
+                    values: vec![parts[0].into()].into_iter().collect(),
+                },
+                tags,
+            ),
             other => return Err(ParseError::UnknownMetricType(other.into())),
         };
         Ok(metric)
@@ -239,9 +260,9 @@ impl From<ParseFloatError> for ParseError {
 mod test {
     use vector_lib::{assert_event_data_eq, event::metric::TagValue, metric_tags};
 
-    use super::{ParseError, Parser, sanitize_key, sanitize_sampling};
+    use super::{ParseError, Parser, otel_from_parts, sanitize_key, sanitize_sampling};
     use crate::{
-        event::metric::{Metric, MetricKind, MetricValue, StatisticKind},
+        event::metric::{MetricKind, MetricValue, StatisticKind},
         event::OtelMetric,
         sources::statsd::ConversionUnit,
     };
@@ -265,15 +286,7 @@ mod test {
     fn basic_counter() {
         assert_event_data_eq!(
             parse("foo:1|c"),
-            Ok({
-                let m = Metric::new(
-                    "foo",
-                    MetricKind::Incremental,
-                    MetricValue::Counter { value: 1.0 },
-                );
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
-            }),
+            Ok(OtelMetric::new_counter("foo", MetricKind::Incremental, 1.0)),
         );
     }
 
@@ -281,19 +294,11 @@ mod test {
     fn tagged_counter() {
         assert_event_data_eq!(
             parse("foo/how@ever baz:1|c|#tag1,tag2:value"),
-            Ok({
-                let m = Metric::new(
-                    "foo-however_baz",
-                    MetricKind::Incremental,
-                    MetricValue::Counter { value: 1.0 },
-                )
+            Ok(OtelMetric::new_counter("foo-however_baz", MetricKind::Incremental, 1.0)
                 .with_tags(Some(metric_tags!(
                     "tag1" => TagValue::Bare,
                     "tag2" => "value",
-                )));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
-            }),
+                )))),
         );
     }
 
@@ -301,19 +306,11 @@ mod test {
     fn tagged_not_sanitized_counter() {
         assert_event_data_eq!(
             unsanitized_parse("foo/bar@baz baz:1|c|#tag1,tag2:value"),
-            Ok({
-                let m = Metric::new(
-                    "foo/bar@baz baz",
-                    MetricKind::Incremental,
-                    MetricValue::Counter { value: 1.0 },
-                )
+            Ok(OtelMetric::new_counter("foo/bar@baz baz", MetricKind::Incremental, 1.0)
                 .with_tags(Some(metric_tags!(
                     "tag1" => TagValue::Bare,
                     "tag2" => "value",
-                )));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
-            }),
+                )))),
         );
     }
 
@@ -321,12 +318,7 @@ mod test {
     fn enhanced_tags() {
         assert_event_data_eq!(
             parse("foo:1|c|#tag1,tag2:valueA,tag2:valueB,tag3:value,tag3,tag4:"),
-            Ok({
-                let m = Metric::new(
-                    "foo",
-                    MetricKind::Incremental,
-                    MetricValue::Counter { value: 1.0 },
-                )
+            Ok(OtelMetric::new_counter("foo", MetricKind::Incremental, 1.0)
                 .with_tags(Some(metric_tags!(
                     "tag1" => TagValue::Bare,
                     "tag2" => "valueA",
@@ -334,10 +326,7 @@ mod test {
                     "tag3" => "value",
                     "tag3" => TagValue::Bare,
                     "tag4" => "",
-                )));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
-            }),
+                )))),
         );
     }
 
@@ -345,15 +334,7 @@ mod test {
     fn sampled_counter() {
         assert_event_data_eq!(
             parse("bar:2|c|@0.1"),
-            Ok({
-                let m = Metric::new(
-                    "bar",
-                    MetricKind::Incremental,
-                    MetricValue::Counter { value: 20.0 },
-                );
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
-            }),
+            Ok(OtelMetric::new_counter("bar", MetricKind::Incremental, 20.0)),
         );
     }
 
@@ -361,15 +342,7 @@ mod test {
     fn zero_sampled_counter() {
         assert_event_data_eq!(
             parse("bar:2|c|@0"),
-            Ok({
-                let m = Metric::new(
-                    "bar",
-                    MetricKind::Incremental,
-                    MetricValue::Counter { value: 2.0 },
-                );
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
-            }),
+            Ok(OtelMetric::new_counter("bar", MetricKind::Incremental, 2.0)),
         );
     }
 
@@ -377,18 +350,15 @@ mod test {
     fn sampled_timer() {
         assert_event_data_eq!(
             parse("glork:320|ms|@0.1"),
-            Ok({
-                let m = Metric::new(
-                    "glork",
-                    MetricKind::Incremental,
-                    MetricValue::Distribution {
-                        samples: vector_lib::samples![0.320 => 10],
-                        statistic: StatisticKind::Histogram
-                    },
-                );
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
-            }),
+            Ok(otel_from_parts(
+                "glork",
+                MetricKind::Incremental,
+                MetricValue::Distribution {
+                    samples: vector_lib::samples![0.320 => 10],
+                    statistic: StatisticKind::Histogram,
+                },
+                None,
+            )),
         );
     }
 
@@ -396,18 +366,15 @@ mod test {
     fn sampled_timer_non_converting() {
         assert_event_data_eq!(
             parse_non_converting("glork:320|ms|@0.1"),
-            Ok({
-                let m = Metric::new(
-                    "glork",
-                    MetricKind::Incremental,
-                    MetricValue::Distribution {
-                        samples: vector_lib::samples![320.0 => 10],
-                        statistic: StatisticKind::Histogram
-                    },
-                );
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
-            }),
+            Ok(otel_from_parts(
+                "glork",
+                MetricKind::Incremental,
+                MetricValue::Distribution {
+                    samples: vector_lib::samples![320.0 => 10],
+                    statistic: StatisticKind::Histogram,
+                },
+                None,
+            )),
         );
     }
 
@@ -415,23 +382,19 @@ mod test {
     fn sampled_tagged_histogram() {
         assert_event_data_eq!(
             parse("glork:320|h|@0.1|#region:us-west1,production,e:"),
-            Ok({
-                let m = Metric::new(
-                    "glork",
-                    MetricKind::Incremental,
-                    MetricValue::Distribution {
-                        samples: vector_lib::samples![320.0 => 10],
-                        statistic: StatisticKind::Histogram
-                    },
-                )
-                .with_tags(Some(metric_tags!(
+            Ok(otel_from_parts(
+                "glork",
+                MetricKind::Incremental,
+                MetricValue::Distribution {
+                    samples: vector_lib::samples![320.0 => 10],
+                    statistic: StatisticKind::Histogram,
+                },
+                Some(metric_tags!(
                     "region" => "us-west1",
                     "production" => TagValue::Bare,
                     "e" => "",
-                )));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
-            }),
+                )),
+            )),
         );
     }
 
@@ -439,23 +402,19 @@ mod test {
     fn sampled_distribution() {
         assert_event_data_eq!(
             parse("glork:320|d|@0.1|#region:us-west1,production,e:"),
-            Ok({
-                let m = Metric::new(
-                    "glork",
-                    MetricKind::Incremental,
-                    MetricValue::Distribution {
-                        samples: vector_lib::samples![320.0 => 10],
-                        statistic: StatisticKind::Summary
-                    },
-                )
-                .with_tags(Some(metric_tags!(
+            Ok(otel_from_parts(
+                "glork",
+                MetricKind::Incremental,
+                MetricValue::Distribution {
+                    samples: vector_lib::samples![320.0 => 10],
+                    statistic: StatisticKind::Summary,
+                },
+                Some(metric_tags!(
                     "region" => "us-west1",
                     "production" => TagValue::Bare,
                     "e" => "",
-                )));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
-            }),
+                )),
+            )),
         );
     }
 
@@ -463,15 +422,7 @@ mod test {
     fn simple_gauge() {
         assert_event_data_eq!(
             parse("gaugor:333|g"),
-            Ok({
-                let m = Metric::new(
-                    "gaugor",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 333.0 },
-                );
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
-            }),
+            Ok(OtelMetric::new_gauge("gaugor", 333.0)),
         );
     }
 
@@ -479,27 +430,21 @@ mod test {
     fn signed_gauge() {
         assert_event_data_eq!(
             parse("gaugor:-4|g"),
-            Ok({
-                let m = Metric::new(
-                    "gaugor",
-                    MetricKind::Incremental,
-                    MetricValue::Gauge { value: -4.0 },
-                );
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
-            }),
+            Ok(otel_from_parts(
+                "gaugor",
+                MetricKind::Incremental,
+                MetricValue::Gauge { value: -4.0 },
+                None,
+            )),
         );
         assert_event_data_eq!(
             parse("gaugor:+10|g"),
-            Ok({
-                let m = Metric::new(
-                    "gaugor",
-                    MetricKind::Incremental,
-                    MetricValue::Gauge { value: 10.0 },
-                );
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
-            }),
+            Ok(otel_from_parts(
+                "gaugor",
+                MetricKind::Incremental,
+                MetricValue::Gauge { value: 10.0 },
+                None,
+            )),
         );
     }
 
@@ -507,17 +452,14 @@ mod test {
     fn sets() {
         assert_event_data_eq!(
             parse("uniques:765|s"),
-            Ok({
-                let m = Metric::new(
-                    "uniques",
-                    MetricKind::Incremental,
-                    MetricValue::Set {
-                        values: vec!["765".into()].into_iter().collect()
-                    },
-                );
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
-            }),
+            Ok(otel_from_parts(
+                "uniques",
+                MetricKind::Incremental,
+                MetricValue::Set {
+                    values: vec!["765".into()].into_iter().collect(),
+                },
+                None,
+            )),
         );
     }
 

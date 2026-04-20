@@ -1046,13 +1046,16 @@ After Phase 1: **single-segment paths never fall through.** ✓
 
 After Phase 2: **all-field multi-segment paths never call to_value_legacy_layout.** ✓
 
-**Phase 3 — OtelSpan fast-path (~2h):**
-- Mirror OtelLog approach for span fields: name, trace_id, span_id,
-  parent_span_id, start_time_unix_nano, end_time_unix_nano, kind,
-  status, attributes
-- Single-segment + multi-segment handling
+**Phase 3 — OtelSpan fast-path — DONE:**
+- Added `span_get_single_segment`/`span_insert_single_segment` for all
+  proto fields: name, trace_id, span_id, parent_span_id, start_time,
+  end_time, kind, status (with nested code/message), plus legacy aliases
+  (source_type → resource, host → resource.host.name)
+- Added `span_get_field_path`/`span_insert_field_path` for multi-segment:
+  resource, scope, status sub-fields, nested attributes
+- Single-segment + multi-segment fast-path, index segments fall through
 
-After Phase 3: **OtelSpan get/insert never call to_value_legacy_layout.**
+After Phase 3: **OtelSpan get/insert bypass legacy layout for all-field paths.** ✓
 
 **Phase 4 — Replace batch methods (~3h):**
 - `value()` → build Value from proto directly (still legacy field names

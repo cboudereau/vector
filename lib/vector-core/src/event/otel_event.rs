@@ -2485,13 +2485,178 @@ impl OtelSpan {
 
     /// Get a field value by path.
     pub fn get<'a>(&self, path: impl lookup::lookup_v2::TargetPath<'a>) -> Option<Value> {
+        use lookup::lookup_v2::ValuePath;
+        use lookup::path::BorrowedSegment;
+
         match path.prefix() {
             lookup::PathPrefix::Event => {
-                let value = self.to_value_legacy_layout();
-                value.get(path.value_path()).cloned()
+                let vp = path.value_path();
+                let mut iter = vp.segment_iter();
+                match iter.next() {
+                    Some(BorrowedSegment::Field(ref first)) => {
+                        match iter.next() {
+                            None => self.span_get_single_segment(first.as_ref()),
+                            Some(BorrowedSegment::Field(ref second)) => {
+                                let mut fields = vec![first.to_string(), second.to_string()];
+                                let mut all_fields = true;
+                                for seg in iter {
+                                    match seg {
+                                        BorrowedSegment::Field(f) => fields.push(f.to_string()),
+                                        _ => { all_fields = false; break; }
+                                    }
+                                }
+                                if all_fields {
+                                    self.span_get_field_path(&fields)
+                                } else {
+                                    let value = self.to_value_legacy_layout();
+                                    value.get(path.value_path()).cloned()
+                                }
+                            }
+                            _ => {
+                                let value = self.to_value_legacy_layout();
+                                value.get(path.value_path()).cloned()
+                            }
+                        }
+                    }
+                    _ => {
+                        let value = self.to_value_legacy_layout();
+                        value.get(path.value_path()).cloned()
+                    }
+                }
             }
             lookup::PathPrefix::Metadata => {
                 self.metadata.value().get(path.value_path()).cloned()
+            }
+        }
+    }
+
+    fn span_get_single_segment(&self, field: &str) -> Option<Value> {
+        match field {
+            "name" if !self.span.name.is_empty() => {
+                Some(Value::Bytes(self.span.name.clone().into()))
+            }
+            "trace_id" if !self.span.trace_id.is_empty() => {
+                Some(hex_encode(&self.span.trace_id))
+            }
+            "span_id" if !self.span.span_id.is_empty() => {
+                Some(hex_encode(&self.span.span_id))
+            }
+            "parent_span_id" if !self.span.parent_span_id.is_empty() => {
+                Some(hex_encode(&self.span.parent_span_id))
+            }
+            "start_time" if self.span.start_time_unix_nano != 0 => {
+                nanos_to_timestamp(self.span.start_time_unix_nano)
+            }
+            "end_time" if self.span.end_time_unix_nano != 0 => {
+                nanos_to_timestamp(self.span.end_time_unix_nano)
+            }
+            "kind" if self.span.kind != 0 => {
+                Some(Value::Integer(self.span.kind as i64))
+            }
+            "status" => {
+                let status = self.span.status.as_ref()?;
+                let mut status_map = ObjectMap::new();
+                if !status.message.is_empty() {
+                    status_map.insert("message".into(), Value::Bytes(status.message.clone().into()));
+                }
+                status_map.insert("code".into(), Value::Integer(status.code as i64));
+                Some(Value::Object(status_map))
+            }
+            "source_type" => {
+                self.resource.as_ref().and_then(|r| {
+                    attribute_value(&r.attributes, "source_type").map(any_value_to_vrl)
+                })
+            }
+            "host" => {
+                self.resource.as_ref().and_then(|r| {
+                    attribute_value(&r.attributes, "host.name").map(any_value_to_vrl)
+                })
+            }
+            other => {
+                if let Some(av) = attribute_value(&self.span.attributes, other) {
+                    return Some(any_value_to_vrl(av));
+                }
+                None
+            }
+        }
+    }
+
+    fn span_get_field_path(&self, fields: &[String]) -> Option<Value> {
+        debug_assert!(fields.len() >= 2);
+        match fields[0].as_str() {
+            "resource" => {
+                let res = self.resource.as_ref()?;
+                let remaining = &fields[1..];
+                if remaining.len() == 1 {
+                    let key = remaining[0].as_str();
+                    if key == "source_type" || key == "host.name" {
+                        return None;
+                    }
+                    if key == "dropped_attributes_count" && res.dropped_attributes_count != 0 {
+                        return Some(Value::Integer(res.dropped_attributes_count as i64));
+                    }
+                    attribute_value(&res.attributes, key).map(any_value_to_vrl)
+                } else {
+                    let key = remaining[0].as_str();
+                    if key == "source_type" || key == "host.name" {
+                        return None;
+                    }
+                    let av = attribute_value(&res.attributes, key)?;
+                    let v = any_value_to_vrl(av);
+                    navigate_value(&v, &remaining[1..])
+                }
+            }
+            "scope" => {
+                let scope = self.scope.as_ref()?;
+                let remaining = &fields[1..];
+                match remaining[0].as_str() {
+                    "name" if remaining.len() == 1 => {
+                        if scope.name.is_empty() { None }
+                        else { Some(Value::Bytes(scope.name.clone().into())) }
+                    }
+                    "version" if remaining.len() == 1 => {
+                        if scope.version.is_empty() { None }
+                        else { Some(Value::Bytes(scope.version.clone().into())) }
+                    }
+                    "attributes" => {
+                        if remaining.len() == 1 {
+                            if scope.attributes.is_empty() { None }
+                            else { Some(Value::Object(kvlist_to_object_map(&scope.attributes))) }
+                        } else {
+                            let av = attribute_value(&scope.attributes, &remaining[1])?;
+                            if remaining.len() == 2 {
+                                Some(any_value_to_vrl(av))
+                            } else {
+                                let v = any_value_to_vrl(av);
+                                navigate_value(&v, &remaining[2..])
+                            }
+                        }
+                    }
+                    _ => None,
+                }
+            }
+            "status" => {
+                let status = self.span.status.as_ref()?;
+                let remaining = &fields[1..];
+                match remaining[0].as_str() {
+                    "message" if remaining.len() == 1 => {
+                        if status.message.is_empty() { None }
+                        else { Some(Value::Bytes(status.message.clone().into())) }
+                    }
+                    "code" if remaining.len() == 1 => {
+                        Some(Value::Integer(status.code as i64))
+                    }
+                    _ => None,
+                }
+            }
+            first => {
+                if let Some(av) = attribute_value(&self.span.attributes, first) {
+                    let v = any_value_to_vrl(av);
+                    if let Some(result) = navigate_value(&v, &fields[1..]) {
+                        return Some(result);
+                    }
+                }
+                None
             }
         }
     }
@@ -2502,15 +2667,301 @@ impl OtelSpan {
         path: impl lookup::lookup_v2::TargetPath<'a>,
         value: impl Into<Value>,
     ) -> Option<Value> {
+        use lookup::lookup_v2::ValuePath;
+        use lookup::path::BorrowedSegment;
+
         match path.prefix() {
             lookup::PathPrefix::Event => {
-                let mut val = self.to_value_legacy_layout();
-                let old = val.insert(path.value_path(), value);
-                self.apply_value_legacy_layout(val);
-                old
+                let value = value.into();
+                let vp = path.value_path();
+                let mut iter = vp.segment_iter();
+                match iter.next() {
+                    Some(BorrowedSegment::Field(ref first)) => {
+                        match iter.next() {
+                            None => self.span_insert_single_segment(first.as_ref(), value),
+                            Some(BorrowedSegment::Field(ref second)) => {
+                                let mut fields = vec![first.to_string(), second.to_string()];
+                                let mut all_fields = true;
+                                for seg in iter {
+                                    match seg {
+                                        BorrowedSegment::Field(f) => fields.push(f.to_string()),
+                                        _ => { all_fields = false; break; }
+                                    }
+                                }
+                                if all_fields {
+                                    self.span_insert_field_path(&fields, value)
+                                } else {
+                                    let mut val = self.to_value_legacy_layout();
+                                    let old = val.insert(path.value_path(), value);
+                                    self.apply_value_legacy_layout(val);
+                                    old
+                                }
+                            }
+                            _ => {
+                                let mut val = self.to_value_legacy_layout();
+                                let old = val.insert(path.value_path(), value);
+                                self.apply_value_legacy_layout(val);
+                                old
+                            }
+                        }
+                    }
+                    _ => {
+                        let mut val = self.to_value_legacy_layout();
+                        let old = val.insert(path.value_path(), value);
+                        self.apply_value_legacy_layout(val);
+                        old
+                    }
+                }
             }
             lookup::PathPrefix::Metadata => {
                 self.metadata.value_mut().insert(path.value_path(), value)
+            }
+        }
+    }
+
+    fn span_insert_single_segment(&mut self, field: &str, value: Value) -> Option<Value> {
+        use opentelemetry_proto::tonic::trace::v1::Status;
+
+        match field {
+            "name" => {
+                let old = if self.span.name.is_empty() { None }
+                    else { Some(Value::Bytes(self.span.name.clone().into())) };
+                self.span.name = value.as_str()
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| value.to_string_lossy().into_owned());
+                old
+            }
+            "trace_id" => {
+                let old = if self.span.trace_id.is_empty() { None }
+                    else { Some(hex_encode(&self.span.trace_id)) };
+                if let Some(decoded) = hex_decode(&value) {
+                    self.span.trace_id = decoded;
+                } else {
+                    set_attribute(&mut self.span.attributes, "trace_id".to_string(), vrl_value_to_any_value(&value));
+                }
+                old
+            }
+            "span_id" => {
+                let old = if self.span.span_id.is_empty() { None }
+                    else { Some(hex_encode(&self.span.span_id)) };
+                if let Some(decoded) = hex_decode(&value) {
+                    self.span.span_id = decoded;
+                } else {
+                    set_attribute(&mut self.span.attributes, "span_id".to_string(), vrl_value_to_any_value(&value));
+                }
+                old
+            }
+            "parent_span_id" => {
+                let old = if self.span.parent_span_id.is_empty() { None }
+                    else { Some(hex_encode(&self.span.parent_span_id)) };
+                if let Some(decoded) = hex_decode(&value) {
+                    self.span.parent_span_id = decoded;
+                } else {
+                    set_attribute(&mut self.span.attributes, "parent_span_id".to_string(), vrl_value_to_any_value(&value));
+                }
+                old
+            }
+            "start_time" => {
+                let old = if self.span.start_time_unix_nano != 0 {
+                    nanos_to_timestamp(self.span.start_time_unix_nano)
+                } else { None };
+                if let Some(ts) = value.as_timestamp() {
+                    if let Some(nanos) = ts.timestamp_nanos_opt() {
+                        if nanos >= 0 {
+                            self.span.start_time_unix_nano = nanos as u64;
+                            return old;
+                        }
+                    }
+                }
+                set_attribute(&mut self.span.attributes, "start_time".to_string(), vrl_value_to_any_value(&value));
+                old
+            }
+            "end_time" => {
+                let old = if self.span.end_time_unix_nano != 0 {
+                    nanos_to_timestamp(self.span.end_time_unix_nano)
+                } else { None };
+                if let Some(ts) = value.as_timestamp() {
+                    if let Some(nanos) = ts.timestamp_nanos_opt() {
+                        if nanos >= 0 {
+                            self.span.end_time_unix_nano = nanos as u64;
+                            return old;
+                        }
+                    }
+                }
+                set_attribute(&mut self.span.attributes, "end_time".to_string(), vrl_value_to_any_value(&value));
+                old
+            }
+            "kind" => {
+                let old = if self.span.kind == 0 { None }
+                    else { Some(Value::Integer(self.span.kind as i64)) };
+                if let Some(n) = value.as_integer() {
+                    self.span.kind = n as i32;
+                }
+                old
+            }
+            "status" => {
+                let old = self.span.status.as_ref().map(|st| {
+                    let mut m = ObjectMap::new();
+                    if !st.message.is_empty() {
+                        m.insert("message".into(), Value::Bytes(st.message.clone().into()));
+                    }
+                    m.insert("code".into(), Value::Integer(st.code as i64));
+                    Value::Object(m)
+                });
+                if let Value::Object(map) = &value {
+                    let message = map.get("message")
+                        .and_then(|v| v.as_str().map(|s| s.to_string()))
+                        .unwrap_or_default();
+                    let code = map.get("code")
+                        .and_then(|v| v.as_integer())
+                        .unwrap_or(0) as i32;
+                    self.span.status = Some(Status { message, code });
+                }
+                old
+            }
+            "source_type" => {
+                let old = self.resource.as_ref().and_then(|r| {
+                    attribute_value(&r.attributes, "source_type").map(any_value_to_vrl)
+                });
+                if let Some(s) = value.as_str() {
+                    let res = self.resource.get_or_insert_with(|| Resource {
+                        attributes: Vec::new(),
+                        dropped_attributes_count: 0,
+                    });
+                    set_attribute(&mut res.attributes, "source_type".to_string(), string_value(s));
+                }
+                old
+            }
+            "host" => {
+                let old = self.resource.as_ref().and_then(|r| {
+                    attribute_value(&r.attributes, "host.name").map(any_value_to_vrl)
+                });
+                let host_str = value.as_str()
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| value.to_string_lossy().into_owned());
+                let res = self.resource.get_or_insert_with(|| Resource {
+                    attributes: Vec::new(),
+                    dropped_attributes_count: 0,
+                });
+                set_attribute(&mut res.attributes, "host.name".to_string(), string_value(&host_str));
+                old
+            }
+            other => {
+                let old = attribute_value(&self.span.attributes, other).map(any_value_to_vrl);
+                set_attribute(&mut self.span.attributes, other.to_string(), vrl_value_to_any_value(&value));
+                old
+            }
+        }
+    }
+
+    fn span_insert_field_path(&mut self, fields: &[String], value: Value) -> Option<Value> {
+        debug_assert!(fields.len() >= 2);
+        match fields[0].as_str() {
+            "resource" => {
+                let remaining = &fields[1..];
+                let res = self.resource.get_or_insert_with(|| Resource {
+                    attributes: Vec::new(),
+                    dropped_attributes_count: 0,
+                });
+                if remaining.len() == 1 {
+                    let key = remaining[0].as_str();
+                    let old = attribute_value(&res.attributes, key).map(any_value_to_vrl);
+                    set_attribute(&mut res.attributes, key.to_string(), vrl_value_to_any_value(&value));
+                    old
+                } else {
+                    let key = remaining[0].as_str();
+                    let mut v = attribute_value(&res.attributes, key)
+                        .map(any_value_to_vrl)
+                        .unwrap_or(Value::Object(ObjectMap::new()));
+                    let old = insert_value_at(&mut v, &remaining[1..], value);
+                    set_attribute(&mut res.attributes, key.to_string(), vrl_value_to_any_value(&v));
+                    old
+                }
+            }
+            "scope" => {
+                let remaining = &fields[1..];
+                let scope = self.scope.get_or_insert_with(InstrumentationScope::default);
+                match remaining[0].as_str() {
+                    "name" if remaining.len() == 1 => {
+                        let old = if scope.name.is_empty() { None }
+                            else { Some(Value::Bytes(scope.name.clone().into())) };
+                        scope.name = value.as_str()
+                            .map(|s| s.to_string())
+                            .unwrap_or_else(|| value.to_string_lossy().into_owned());
+                        old
+                    }
+                    "version" if remaining.len() == 1 => {
+                        let old = if scope.version.is_empty() { None }
+                            else { Some(Value::Bytes(scope.version.clone().into())) };
+                        scope.version = value.as_str()
+                            .map(|s| s.to_string())
+                            .unwrap_or_else(|| value.to_string_lossy().into_owned());
+                        old
+                    }
+                    "attributes" if remaining.len() == 1 => {
+                        let old = if scope.attributes.is_empty() { None }
+                            else { Some(Value::Object(kvlist_to_object_map(&scope.attributes))) };
+                        if let Value::Object(map) = &value {
+                            scope.attributes = map.iter()
+                                .map(|(k, v)| KeyValue {
+                                    key: k.to_string(),
+                                    value: Some(vrl_value_to_any_value(v)),
+                                })
+                                .collect();
+                        }
+                        old
+                    }
+                    "attributes" => {
+                        let key = remaining[1].as_str();
+                        if remaining.len() == 2 {
+                            let old = attribute_value(&scope.attributes, key).map(any_value_to_vrl);
+                            set_attribute(&mut scope.attributes, key.to_string(), vrl_value_to_any_value(&value));
+                            old
+                        } else {
+                            let mut v = attribute_value(&scope.attributes, key)
+                                .map(any_value_to_vrl)
+                                .unwrap_or(Value::Object(ObjectMap::new()));
+                            let old = insert_value_at(&mut v, &remaining[2..], value);
+                            set_attribute(&mut scope.attributes, key.to_string(), vrl_value_to_any_value(&v));
+                            old
+                        }
+                    }
+                    _ => None,
+                }
+            }
+            "status" => {
+                use opentelemetry_proto::tonic::trace::v1::Status;
+                let remaining = &fields[1..];
+                let status = self.span.status.get_or_insert_with(|| Status {
+                    message: String::new(),
+                    code: 0,
+                });
+                match remaining[0].as_str() {
+                    "message" if remaining.len() == 1 => {
+                        let old = if status.message.is_empty() { None }
+                            else { Some(Value::Bytes(status.message.clone().into())) };
+                        status.message = value.as_str()
+                            .map(|s| s.to_string())
+                            .unwrap_or_else(|| value.to_string_lossy().into_owned());
+                        old
+                    }
+                    "code" if remaining.len() == 1 => {
+                        let old = Some(Value::Integer(status.code as i64));
+                        if let Some(n) = value.as_integer() {
+                            status.code = n as i32;
+                        }
+                        old
+                    }
+                    _ => None,
+                }
+            }
+            first => {
+                let mut v = attribute_value(&self.span.attributes, first)
+                    .map(any_value_to_vrl)
+                    .unwrap_or(Value::Object(ObjectMap::new()));
+                let old = insert_value_at(&mut v, &fields[1..], value);
+                set_attribute(&mut self.span.attributes, first.to_string(), vrl_value_to_any_value(&v));
+                old
             }
         }
     }
@@ -4947,5 +5398,71 @@ mod tests {
         assert_eq!(removed, Some(Value::Bytes("val".into())));
         // After prune, "nested" attribute itself should be gone
         assert_eq!(log.get(event_path!("nested")), None);
+    }
+
+    #[test]
+    fn span_fast_path_single_and_multi_segment() {
+        use opentelemetry_proto::tonic::trace::v1::Span;
+
+        let mut span_event = OtelSpan::new(Span {
+            name: "GET /api".to_string(),
+            trace_id: vec![0xAA; 16],
+            span_id: vec![0xBB; 8],
+            kind: 2,
+            ..Default::default()
+        });
+        span_event.resource = Some(Resource {
+            attributes: vec![KeyValue {
+                key: "service.name".to_string(),
+                value: Some(string_value("my-svc")),
+            }],
+            dropped_attributes_count: 0,
+        });
+
+        // Single-segment gets
+        assert_eq!(
+            span_event.get(event_path!("name")),
+            Some(Value::Bytes("GET /api".into()))
+        );
+        assert_eq!(
+            span_event.get(event_path!("kind")),
+            Some(Value::Integer(2))
+        );
+
+        // Multi-segment resource get
+        assert_eq!(
+            span_event.get(event_path!("resource", "service.name")),
+            Some(Value::Bytes("my-svc".into()))
+        );
+
+        // Insert resource attribute
+        span_event.insert(event_path!("resource", "deployment.env"), "staging");
+        assert_eq!(
+            span_event.get(event_path!("resource", "deployment.env")),
+            Some(Value::Bytes("staging".into()))
+        );
+
+        // Insert nested attribute
+        span_event.insert(event_path!("http", "method"), "GET");
+        assert_eq!(
+            span_event.get(event_path!("http", "method")),
+            Some(Value::Bytes("GET".into()))
+        );
+
+        // Insert/get status sub-fields
+        span_event.insert(event_path!("status"), Value::Object({
+            let mut m = ObjectMap::new();
+            m.insert("message".into(), Value::Bytes("OK".into()));
+            m.insert("code".into(), Value::Integer(1));
+            m
+        }));
+        assert_eq!(
+            span_event.get(event_path!("status", "code")),
+            Some(Value::Integer(1))
+        );
+        assert_eq!(
+            span_event.get(event_path!("status", "message")),
+            Some(Value::Bytes("OK".into()))
+        );
     }
 }

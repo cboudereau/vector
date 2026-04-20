@@ -139,7 +139,13 @@ mod tests {
     use itertools::Itertools;
     use similar_asserts::assert_eq;
     use vector_lib::{
-        event::{OtelMetric, metric::{MetricKind, MetricKind::*, MetricValue, StatisticKind}},
+        event::{
+            EventMetadata, OtelMetric,
+            metric::{
+                MetricData, MetricKind, MetricKind::*, MetricName, MetricSeries, MetricTime,
+                MetricValue, StatisticKind,
+            },
+        },
         metric_tags,
     };
 
@@ -151,6 +157,27 @@ mod tests {
 
     type Buffer = Vec<Vec<Metric>>;
 
+    /// Build an OtelMetric directly from parts for Distribution / Set / signed-Gauge
+    /// variants that have no dedicated `OtelMetric::new_*` native constructor.
+    fn otel_from_parts(name: String, kind: MetricKind, value: MetricValue) -> OtelMetric {
+        let series = MetricSeries {
+            name: MetricName {
+                name,
+                namespace: None,
+            },
+            tags: None,
+        };
+        let data = MetricData {
+            time: MetricTime {
+                timestamp: None,
+                interval_ms: None,
+            },
+            kind,
+            value,
+        };
+        OtelMetric::from_metric_parts(series, data, EventMetadata::default())
+    }
+
     pub fn sample_counter(num: usize, tagstr: &str, kind: MetricKind, value: f64) -> Metric {
         {
             let otel = OtelMetric::new_counter(format!("counter-{num}"), kind, value);
@@ -161,29 +188,29 @@ mod tests {
     }
 
     pub fn sample_gauge(num: usize, kind: MetricKind, value: f64) -> Metric {
-        let m = Metric::new(format!("gauge-{num}"), kind, MetricValue::Gauge { value });
-        let (s, d, md) = m.into_parts();
-        let otel = OtelMetric::from_metric_parts(s, d, md);
+        let otel = otel_from_parts(
+            format!("gauge-{num}"),
+            kind,
+            MetricValue::Gauge { value },
+        );
         let (s, d, md) = otel.into_metric_parts();
         Metric::from_parts(s, d, md)
     }
 
     pub fn sample_set<T: ToString>(num: usize, kind: MetricKind, values: &[T]) -> Metric {
-        let m = Metric::new(
+        let otel = otel_from_parts(
             format!("set-{num}"),
             kind,
             MetricValue::Set {
                 values: values.iter().map(|s| s.to_string()).collect(),
             },
         );
-        let (s, d, md) = m.into_parts();
-        let otel = OtelMetric::from_metric_parts(s, d, md);
         let (s, d, md) = otel.into_metric_parts();
         Metric::from_parts(s, d, md)
     }
 
     pub fn sample_distribution_histogram(num: u32, kind: MetricKind, rate: u32) -> Metric {
-        let m = Metric::new(
+        let otel = otel_from_parts(
             format!("dist-{num}"),
             kind,
             MetricValue::Distribution {
@@ -191,8 +218,6 @@ mod tests {
                 statistic: StatisticKind::Histogram,
             },
         );
-        let (s, d, md) = m.into_parts();
-        let otel = OtelMetric::from_metric_parts(s, d, md);
         let (s, d, md) = otel.into_metric_parts();
         Metric::from_parts(s, d, md)
     }
@@ -204,41 +229,37 @@ mod tests {
         cfactor: u64,
         sum: f64,
     ) -> Metric {
-        let m = Metric::new(
+        let buckets = vector_lib::buckets![
+            1.0 => cfactor,
+            bpower.exp2() => cfactor * 2,
+            4.0f64.powf(bpower) => cfactor * 4
+        ];
+        let otel = OtelMetric::new_histogram(
             format!("buckets-{num}"),
             kind,
-            MetricValue::AggregatedHistogram {
-                buckets: vector_lib::buckets![
-                    1.0 => cfactor,
-                    bpower.exp2() => cfactor * 2,
-                    4.0f64.powf(bpower) => cfactor * 4
-                ],
-                count: 7 * cfactor,
-                sum,
-            },
+            &buckets,
+            7 * cfactor,
+            sum,
         );
-        let (s, d, md) = m.into_parts();
-        let otel = OtelMetric::from_metric_parts(s, d, md);
         let (s, d, md) = otel.into_metric_parts();
         Metric::from_parts(s, d, md)
     }
 
-    pub fn sample_aggregated_summary(num: u32, kind: MetricKind, factor: f64) -> Metric {
-        let m = Metric::new(
+    pub fn sample_aggregated_summary(num: u32, _kind: MetricKind, factor: f64) -> Metric {
+        // OTLP Summary has no aggregation temporality, so `kind` is accepted
+        // for call-site compatibility but ignored (matches prior Metric→Otel
+        // round-trip behavior, which always returned `Absolute`).
+        let quantiles = vector_lib::quantiles![
+            0.0 => factor,
+            0.5 => factor * 2.0,
+            1.0 => factor * 4.0
+        ];
+        let otel = OtelMetric::new_summary(
             format!("quantiles-{num}"),
-            kind,
-            MetricValue::AggregatedSummary {
-                quantiles: vector_lib::quantiles![
-                    0.0 => factor,
-                    0.5 => factor * 2.0,
-                    1.0 => factor * 4.0
-                ],
-                count: factor as u64 * 10,
-                sum: factor * 7.0,
-            },
+            &quantiles,
+            factor as u64 * 10,
+            factor * 7.0,
         );
-        let (s, d, md) = m.into_parts();
-        let otel = OtelMetric::from_metric_parts(s, d, md);
         let (s, d, md) = otel.into_metric_parts();
         Metric::from_parts(s, d, md)
     }

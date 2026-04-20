@@ -213,13 +213,7 @@ mod test {
     use vector_lib::{assert_event_data_eq, metric_tags};
 
     use super::*;
-    use crate::event::metric::{Metric, MetricKind, MetricValue};
-
-    /// Test helper: convert legacy Metric to OtelMetric for test construction.
-    fn otel(m: Metric) -> OtelMetric {
-        let (s, d, md) = m.into_parts();
-        OtelMetric::from_metric_parts(s, d, md)
-    }
+    use crate::event::metric::{MetricKind, MetricValue};
 
     static TIMESTAMP: LazyLock<DateTime<Utc>> = LazyLock::new(|| {
         Utc.with_ymd_and_hms(2021, 2, 4, 4, 5, 6)
@@ -647,18 +641,19 @@ mod test {
         assert_event_data_eq!(
             events_to_metrics(parse_text(exp)),
             Ok(vec![
-                otel(Metric::new(
-                    "http_request_duration_seconds",
-                    MetricKind::Absolute,
-                    MetricValue::AggregatedHistogram {
-                        buckets: vector_lib::buckets![
-                            0.05 => 24054, 0.1 => 9390, 0.2 => 66948, 0.5 => 28997, 1.0 => 4599
-                        ],
-                        count: 144320,
-                        sum: 53423.0,
-                    },
-                )
-                .with_timestamp(Some(*TIMESTAMP)))
+                {
+                    let buckets = vector_lib::buckets![
+                        0.05 => 24054, 0.1 => 9390, 0.2 => 66948, 0.5 => 28997, 1.0 => 4599
+                    ];
+                    OtelMetric::new_histogram(
+                        "http_request_duration_seconds",
+                        MetricKind::Absolute,
+                        &buckets,
+                        144320,
+                        53423.0,
+                    )
+                    .with_timestamp(Some(*TIMESTAMP))
+                }
             ]),
         );
     }
@@ -699,16 +694,17 @@ mod test {
         assert_event_data_eq!(
             events_to_metrics(parse_text(exp)),
             Ok(vec![
-                otel(Metric::new(
-                    "duration",
-                    MetricKind::Absolute,
-                    MetricValue::AggregatedHistogram {
-                        buckets: vector_lib::buckets![1.0 => 133988],
-                        count: 144320,
-                        sum: 53423.0,
-                    },
-                )
-                .with_timestamp(Some(*TIMESTAMP)))
+                {
+                    let buckets = vector_lib::buckets![1.0 => 133988];
+                    OtelMetric::new_histogram(
+                        "duration",
+                        MetricKind::Absolute,
+                        &buckets,
+                        144320,
+                        53423.0,
+                    )
+                    .with_timestamp(Some(*TIMESTAMP))
+                }
             ]),
         );
     }
@@ -728,16 +724,17 @@ mod test {
         assert_event_data_eq!(
             events_to_metrics(parse_text(exp)),
             Ok(vec![
-                otel(Metric::new(
-                    "duration",
-                    MetricKind::Absolute,
-                    MetricValue::AggregatedHistogram {
-                        buckets: vector_lib::buckets![1.0 => 2000, 10.0 => 0],
-                        count: 2000,
-                        sum: 2000.0,
-                    },
-                )
-                .with_timestamp(Some(*TIMESTAMP)))
+                {
+                    let buckets = vector_lib::buckets![1.0 => 2000, 10.0 => 0];
+                    OtelMetric::new_histogram(
+                        "duration",
+                        MetricKind::Absolute,
+                        &buckets,
+                        2000,
+                        2000.0,
+                    )
+                    .with_timestamp(Some(*TIMESTAMP))
+                }
             ]),
         );
     }
@@ -791,58 +788,67 @@ mod test {
         assert_event_data_eq!(
             events_to_metrics(parse_text(exp)),
             Ok(vec![
-                otel(Metric::new(
-                    "gitlab_runner_job_duration_seconds", MetricKind::Absolute, MetricValue::AggregatedHistogram {
-                        buckets: vector_lib::buckets![
-                            30.0 => 327,
-                            60.0 => 147,
-                            300.0 => 61,
-                            600.0 => 1,
-                            1800.0 => 0,
-                            3600.0 => 0,
-                            7200.0 => 0,
-                            10800.0 => 0,
-                            18000.0 => 0,
-                            36000.0 => 0
-                        ],
-                        count: 536,
-                        sum: 19690.129384881966,
-                    },
-                )
+                {
+                    let buckets = vector_lib::buckets![
+                        30.0 => 327,
+                        60.0 => 147,
+                        300.0 => 61,
+                        600.0 => 1,
+                        1800.0 => 0,
+                        3600.0 => 0,
+                        7200.0 => 0,
+                        10800.0 => 0,
+                        18000.0 => 0,
+                        36000.0 => 0
+                    ];
+                    OtelMetric::new_histogram(
+                        "gitlab_runner_job_duration_seconds",
+                        MetricKind::Absolute,
+                        &buckets,
+                        536,
+                        19690.129384881966,
+                    )
                     .with_tags(Some(metric_tags!("runner" => "z")))
-                    .with_timestamp(Some(*TIMESTAMP))),
-                otel(Metric::new(
-                    "gitlab_runner_job_duration_seconds", MetricKind::Absolute, MetricValue::AggregatedHistogram {
-                        buckets: vector_lib::buckets![
-                            30.0 => 1,
-                            60.0 => 0,
-                            300.0 => 0,
-                            600.0 => 0,
-                            1800.0 => 0,
-                            3600.0 => 0,
-                            7200.0 => 0,
-                            10800.0 => 0,
-                            18000.0 => 0,
-                            36000.0 => 0
-                        ],
-                        count: 1,
-                        sum: 28.975436316,
-                    },
-                )
+                    .with_timestamp(Some(*TIMESTAMP))
+                },
+                {
+                    let buckets = vector_lib::buckets![
+                        30.0 => 1,
+                        60.0 => 0,
+                        300.0 => 0,
+                        600.0 => 0,
+                        1800.0 => 0,
+                        3600.0 => 0,
+                        7200.0 => 0,
+                        10800.0 => 0,
+                        18000.0 => 0,
+                        36000.0 => 0
+                    ];
+                    OtelMetric::new_histogram(
+                        "gitlab_runner_job_duration_seconds",
+                        MetricKind::Absolute,
+                        &buckets,
+                        1,
+                        28.975436316,
+                    )
                     .with_tags(Some(metric_tags!("runner" => "x")))
-                    .with_timestamp(Some(*TIMESTAMP))),
-                otel(Metric::new(
-                    "gitlab_runner_job_duration_seconds", MetricKind::Absolute, MetricValue::AggregatedHistogram {
-                        buckets: vector_lib::buckets![
-                            30.0 => 285, 60.0 => 880, 300.0 => 1906, 600.0 => 80, 1800.0 => 101, 3600.0 => 3,
-                            7200.0 => 0, 10800.0 => 0, 18000.0 => 0, 36000.0 => 0
-                        ],
-                        count: 3255,
-                        sum: 381111.7498891335,
-                    },
-                )
+                    .with_timestamp(Some(*TIMESTAMP))
+                },
+                {
+                    let buckets = vector_lib::buckets![
+                        30.0 => 285, 60.0 => 880, 300.0 => 1906, 600.0 => 80, 1800.0 => 101, 3600.0 => 3,
+                        7200.0 => 0, 10800.0 => 0, 18000.0 => 0, 36000.0 => 0
+                    ];
+                    OtelMetric::new_histogram(
+                        "gitlab_runner_job_duration_seconds",
+                        MetricKind::Absolute,
+                        &buckets,
+                        3255,
+                        381111.7498891335,
+                    )
                     .with_tags(Some(metric_tags!("runner" => "y")))
-                    .with_timestamp(Some(*TIMESTAMP)))
+                    .with_timestamp(Some(*TIMESTAMP))
+                }
             ]),
         );
     }
@@ -873,39 +879,39 @@ mod test {
         assert_event_data_eq!(
             events_to_metrics(parse_text(exp)),
             Ok(vec![
-                otel(Metric::new(
-                    "rpc_duration_seconds",
-                    MetricKind::Absolute,
-                    MetricValue::AggregatedSummary {
-                        quantiles: vector_lib::quantiles![
-                            0.01 => 3102.0,
-                            0.05 => 3272.0,
-                            0.5 => 4773.0,
-                            0.9 => 9001.0,
-                            0.99 => 76656.0
-                        ],
-                        count: 2693,
-                        sum: 1.7560473e+07,
-                    },
-                )
-                .with_tags(Some(metric_tags!("service" => "a")))
-                .with_timestamp(Some(*TIMESTAMP))),
-                otel(Metric::new(
-                    "go_gc_duration_seconds",
-                    MetricKind::Absolute,
-                    MetricValue::AggregatedSummary {
-                        quantiles: vector_lib::quantiles![
-                            0.0 => 0.009460965,
-                            0.25 => 0.009793382,
-                            0.5 => 0.009870205,
-                            0.75 => 0.01001838,
-                            1.0 => 0.018827136
-                        ],
-                        count: 602767,
-                        sum: 4668.551713715,
-                    },
-                )
-                .with_timestamp(Some(*TIMESTAMP))),
+                {
+                    let quantiles = vector_lib::quantiles![
+                        0.01 => 3102.0,
+                        0.05 => 3272.0,
+                        0.5 => 4773.0,
+                        0.9 => 9001.0,
+                        0.99 => 76656.0
+                    ];
+                    OtelMetric::new_summary(
+                        "rpc_duration_seconds",
+                        &quantiles,
+                        2693,
+                        1.7560473e+07,
+                    )
+                    .with_tags(Some(metric_tags!("service" => "a")))
+                    .with_timestamp(Some(*TIMESTAMP))
+                },
+                {
+                    let quantiles = vector_lib::quantiles![
+                        0.0 => 0.009460965,
+                        0.25 => 0.009793382,
+                        0.5 => 0.009870205,
+                        0.75 => 0.01001838,
+                        1.0 => 0.018827136
+                    ];
+                    OtelMetric::new_summary(
+                        "go_gc_duration_seconds",
+                        &quantiles,
+                        602767,
+                        4668.551713715,
+                    )
+                    .with_timestamp(Some(*TIMESTAMP))
+                },
             ]),
         );
     }
@@ -1092,30 +1098,31 @@ mod test {
                 OtelMetric::new_gauge("jobs_current", 5.0)
                     .with_tags(Some(metric_tags! { "type" => "a" }))
                     .with_timestamp(Some(*TIMESTAMP)),
-                otel(Metric::new(
-                    "jobs_distribution",
-                    MetricKind::Incremental,
-                    MetricValue::AggregatedHistogram {
-                        buckets: vector_lib::buckets![
-                            1.0 => 0, 2.5 => 0, 5.0 => 0, 10.0 => 1
-                        ],
-                        count: 1,
-                        sum: 8.0,
-                    },
-                )
-                .with_tags(Some(metric_tags! { "type" => "a" }))
-                .with_timestamp(Some(*TIMESTAMP))),
-                otel(Metric::new(
-                    "jobs_summary",
-                    MetricKind::Absolute,
-                    MetricValue::AggregatedSummary {
-                        quantiles: vector_lib::quantiles![],
-                        count: 1,
-                        sum: 8.0,
-                    },
-                )
-                .with_tags(Some(metric_tags! { "type" => "a" }))
-                .with_timestamp(Some(*TIMESTAMP))),
+                {
+                    let buckets = vector_lib::buckets![
+                        1.0 => 0, 2.5 => 0, 5.0 => 0, 10.0 => 1
+                    ];
+                    OtelMetric::new_histogram(
+                        "jobs_distribution",
+                        MetricKind::Incremental,
+                        &buckets,
+                        1,
+                        8.0,
+                    )
+                    .with_tags(Some(metric_tags! { "type" => "a" }))
+                    .with_timestamp(Some(*TIMESTAMP))
+                },
+                {
+                    let quantiles = vector_lib::quantiles![];
+                    OtelMetric::new_summary(
+                        "jobs_summary",
+                        &quantiles,
+                        1,
+                        8.0,
+                    )
+                    .with_tags(Some(metric_tags! { "type" => "a" }))
+                    .with_timestamp(Some(*TIMESTAMP))
+                },
             ]),
         );
     }
@@ -1153,30 +1160,31 @@ mod test {
                 OtelMetric::new_gauge("jobs_current", 5.0)
                     .with_tags(Some(metric_tags! { "type" => "a" }))
                     .with_timestamp(Some(*TIMESTAMP)),
-                otel(Metric::new(
-                    "jobs_distribution",
-                    MetricKind::Absolute,
-                    MetricValue::AggregatedHistogram {
-                        buckets: vector_lib::buckets![
-                            1.0 => 0, 2.5 => 0, 5.0 => 0, 10.0 => 1
-                        ],
-                        count: 1,
-                        sum: 8.0,
-                    },
-                )
-                .with_tags(Some(metric_tags! { "type" => "a" }))
-                .with_timestamp(Some(*TIMESTAMP))),
-                otel(Metric::new(
-                    "jobs_summary",
-                    MetricKind::Absolute,
-                    MetricValue::AggregatedSummary {
-                        quantiles: vector_lib::quantiles![],
-                        count: 1,
-                        sum: 8.0,
-                    },
-                )
-                .with_tags(Some(metric_tags! { "type" => "a" }))
-                .with_timestamp(Some(*TIMESTAMP))),
+                {
+                    let buckets = vector_lib::buckets![
+                        1.0 => 0, 2.5 => 0, 5.0 => 0, 10.0 => 1
+                    ];
+                    OtelMetric::new_histogram(
+                        "jobs_distribution",
+                        MetricKind::Absolute,
+                        &buckets,
+                        1,
+                        8.0,
+                    )
+                    .with_tags(Some(metric_tags! { "type" => "a" }))
+                    .with_timestamp(Some(*TIMESTAMP))
+                },
+                {
+                    let quantiles = vector_lib::quantiles![];
+                    OtelMetric::new_summary(
+                        "jobs_summary",
+                        &quantiles,
+                        1,
+                        8.0,
+                    )
+                    .with_tags(Some(metric_tags! { "type" => "a" }))
+                    .with_timestamp(Some(*TIMESTAMP))
+                },
             ]),
         );
     }

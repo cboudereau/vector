@@ -305,32 +305,14 @@ mod test {
                 OtelMetric::from_metric_parts(s, d, md)
             }),
             Event::Metric({
-                let m = Metric::new(
-                    "histogram_3",
-                    MetricKind::Absolute,
-                    MetricValue::AggregatedHistogram {
-                        buckets: vector_lib::buckets![ 2.3 => 11, 4.2 => 85 ],
-                        count: 96,
-                        sum: 156.2,
-                    },
-                )
-                .with_timestamp(Some(timestamp()));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
+                let buckets = vector_lib::buckets![ 2.3 => 11, 4.2 => 85 ];
+                OtelMetric::new_histogram("histogram_3", MetricKind::Absolute, &buckets, 96, 156.2)
+                    .with_timestamp(Some(timestamp()))
             }),
             Event::Metric({
-                let m = Metric::new(
-                    "summary_4",
-                    MetricKind::Absolute,
-                    MetricValue::AggregatedSummary {
-                        quantiles: vector_lib::quantiles![ 0.1 => 1.2, 0.5 => 3.6, 0.9 => 5.2 ],
-                        count: 23,
-                        sum: 8.6,
-                    },
-                )
-                .with_timestamp(Some(timestamp()));
-                let (s, d, md) = m.into_parts();
-                OtelMetric::from_metric_parts(s, d, md)
+                let quantiles = vector_lib::quantiles![ 0.1 => 1.2, 0.5 => 3.6, 0.9 => 5.2 ];
+                OtelMetric::new_summary("summary_4", &quantiles, 23, 8.6)
+                    .with_timestamp(Some(timestamp()))
             }),
         ]
     }

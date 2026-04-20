@@ -12,7 +12,7 @@ use vector_lib::{
 use super::config::HecMetricsSinkConfig;
 use crate::{
     config::{SinkConfig, SinkContext},
-    event::{Metric, MetricKind, OtelMetric},
+    event::{MetricKind, OtelMetric},
     sinks::{
         splunk_hec::common::integration_test_helpers::{
             get_token, splunk_api_address, splunk_hec_address,
@@ -50,29 +50,21 @@ async fn config() -> HecMetricsSinkConfig {
 }
 
 fn get_gauge(batch: BatchNotifier) -> Event {
-    {
-        let otel = OtelMetric::new_gauge("example-gauge", 26.28);
-        let (s, d, md) = otel.into_metric_parts();
-        Metric::from_parts(s, d, md)
-    }
-    .with_tags(Some(
-        metric_tags! {"tag_gauge_test".to_string() => "tag_gauge_value".to_string()},
-    ))
-    .with_batch_notifier(&batch)
-    .into()
+    OtelMetric::new_gauge("example-gauge", 26.28)
+        .with_tags(Some(
+            metric_tags! {"tag_gauge_test".to_string() => "tag_gauge_value".to_string()},
+        ))
+        .with_batch_notifier(&batch)
+        .into()
 }
 
 fn get_counter(batch: BatchNotifier) -> Event {
-    {
-        let otel = OtelMetric::new_counter("example-counter", MetricKind::Absolute, 26.28);
-        let (s, d, md) = otel.into_metric_parts();
-        Metric::from_parts(s, d, md)
-    }
-    .with_tags(Some(
-        metric_tags! {"tag_counter_test".to_string() => "tag_counter_value".to_string()},
-    ))
-    .with_batch_notifier(&batch)
-    .into()
+    OtelMetric::new_counter("example-counter", MetricKind::Absolute, 26.28)
+        .with_tags(Some(
+            metric_tags! {"tag_counter_test".to_string() => "tag_counter_value".to_string()},
+        ))
+        .with_batch_notifier(&batch)
+        .into()
 }
 
 #[tokio::test]

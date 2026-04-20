@@ -11,7 +11,7 @@ use super::config::{
     DataTypeConfig, ListMethod, ListOption, RedisSinkConfig, SortedSetMethod, SortedSetOption,
 };
 use crate::{
-    event::{BatchNotifier, BatchStatus, Event, Metric, MetricKind, MetricValue, OtelMetric, OtelSpan},
+    event::{BatchNotifier, BatchStatus, Event, MetricKind, OtelMetric, OtelSpan},
     serde::OneOrMany,
     sinks::prelude::*,
     test_util::{
@@ -548,15 +548,9 @@ async fn redis_sink_metrics() {
     let mut events: Vec<Event> = Vec::new();
     for i in 0..num_events {
         let metric = if i % 2 == 0 {
-            // Counter metrics
-            let otel = OtelMetric::new_counter(format!("counter_{i}"), MetricKind::Absolute, i as f64);
-            let (s, d, md) = otel.into_metric_parts();
-            Metric::from_parts(s, d, md)
+            OtelMetric::new_counter(format!("counter_{i}"), MetricKind::Absolute, i as f64)
         } else {
-            // Gauge metrics
-            let otel = OtelMetric::new_gauge(format!("gauge_{i}"), i as f64);
-            let (s, d, md) = otel.into_metric_parts();
-            Metric::from_parts(s, d, md)
+            OtelMetric::new_gauge(format!("gauge_{i}"), i as f64)
         };
         events.push(metric.into());
     }

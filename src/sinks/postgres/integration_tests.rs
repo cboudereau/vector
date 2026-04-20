@@ -6,7 +6,7 @@ use ordered_float::NotNan;
 use serde::{Deserialize, Serialize};
 use sqlx::{Connection, FromRow, PgConnection};
 use vector_lib::event::{
-    BatchNotifier, BatchStatus, BatchStatusReceiver, Event, OtelLog, Metric, MetricKind,
+    BatchNotifier, BatchStatus, BatchStatusReceiver, Event, OtelLog, MetricKind,
     MetricValue, OtelMetric,
 };
 use vrl::event_path;
@@ -56,15 +56,11 @@ fn create_events(count: usize) -> (Vec<Event>, BatchStatusReceiver) {
     (events, receiver)
 }
 
-fn create_metric(name: &str) -> Metric {
-    {
-        let otel = OtelMetric::new_counter(name, MetricKind::Absolute, 1.0);
-        let (s, d, md) = otel.into_metric_parts();
-        Metric::from_parts(s, d, md)
-    }
-    .with_namespace(Some("vector"))
-    .with_tags(Some(metric_tags!("some_tag" => "some_value")))
-    .with_timestamp(Some(timestamp()))
+fn create_metric(name: &str) -> OtelMetric {
+    OtelMetric::new_counter(name, MetricKind::Absolute, 1.0)
+        .with_namespace(Some("vector"))
+        .with_tags(Some(metric_tags!("some_tag" => "some_value")))
+        .with_timestamp(Some(timestamp()))
 }
 
 fn create_span(resource: &str) -> ObjectMap {

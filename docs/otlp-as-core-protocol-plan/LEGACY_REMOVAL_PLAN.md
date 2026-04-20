@@ -155,7 +155,8 @@ see `VRL_MIGRATION_TOOL.md`) should rewrite before being removed.
   - `trace.rs` deleted (`1236e8e`).
 - **G — Delete Metric struct + buffer compat + legacy layout**:
   **TYPES DONE, LAYOUT IN PROGRESS** — all 3 legacy types deleted.
-  4 tasks remain (T16, T15, T23, T24) for legacy layout elimination.
+  3 tasks remain (T16 → T15 → T23) for legacy layout elimination.
+  T24 closed (OTLP JSON decode already exists via proto serde).
 
 ## Phase F — Delete legacy types entirely
 
@@ -620,9 +621,9 @@ the struct**:
 
 | # | Task | Status | Commit | Note |
 |---|------|--------|--------|------|
-| T17 | ~~Implement real `Deserialize` for OTel types~~ | **REVERTED** | `070e536` reverts `7040e7b` + `acf50cc` | Audit found zero live callers of serde Deserialize on OtelLog/OtelSpan/OtelMetric. The `data` field was silently dropped in OtelMetric's impl (silent data loss). Removed entire Deserialize chain (-119 lines) — `Event` keeps `Serialize` only. All ingress paths go through proto (OtlpCodec) or the otel_json Serialize helpers; none use serde Deserialize. See T24 for if/when this becomes needed. |
+| T17 | ~~Implement real `Deserialize` for OTel types~~ | **REVERTED** | `070e536` reverts `7040e7b` + `acf50cc` | serde Deserialize on Vector types silently dropped OtelMetric `data` field. Not needed — proto serde + `from_parts` covers the JSON decode path (see T24). |
 | T19 | Fix VrlTarget::OtelMetric remove (write-back) | **DONE** | `7040e7b`+ | Write-back for name, description, unit, resource, scope, attributes — same paths as target_insert. Returns removed value. |
-| T24 | OTLP JSON → OtelMetric parse helpers | **DEFERRED (no caller)** | — | Trigger-based. See "Remaining work" section for full implementation plan (5 metric parsers, 3 data point helpers, ~200 lines). Only implement when a concrete caller exists. |
+| T24 | ~~OTLP JSON → OtelMetric parse helpers~~ | **NOT NEEDED** | — | The OTLP JSON decode path already exists via proto serde: `serde_json::from_slice::<ExportMetricsServiceRequest>` → `OtelMetric::from_parts(metric, resource, scope, metadata)`. See `src/sources/opentelemetry/http.rs:369-391`. Same for logs (line 343) and traces (line 395). The `otel_json.rs` Serialize side has no mirror needed — prost's `#[derive(Deserialize)]` on proto types IS the parser. |
 
 #### Workstream 5: Cleanup
 
@@ -880,17 +881,17 @@ OtelLog can expose proto fields directly and eliminate the round-trip.
 
 #### T17 — ~~Implement real `Deserialize` for OTel types~~ **REVERTED** (`070e536`)
 
-Full details in the summary row above and in T24. Bottom line: an
-audit found **zero live callers** of serde `Deserialize` on
+Audit found **zero live callers** of serde `Deserialize` on
 `OtelLog`/`OtelSpan`/`OtelMetric`; the short-lived partial
 implementation (`7040e7b`+`acf50cc`) silently dropped the `data`
-field, which is worse than not deserializing at all. The entire
-`Deserialize` chain — including `Event`'s derive — was removed
-(-119 lines). Ingress paths use proto (`OtlpCodec`) or manual
-construction. See **T24** for the trigger-based re-introduction
-plan if/when a future caller needs OTLP JSON parsing.
+field. The entire `Deserialize` chain was removed (-119 lines).
 
-**Effort:** Medium — need to define what the canonical JSON representation is.
+**Why not needed:** The OTLP JSON decode path uses prost-generated
+`serde::Deserialize` on the **proto types** (ExportLogsServiceRequest,
+etc.), then `OtelLog/OtelMetric/OtelSpan::from_parts(proto, resource,
+scope, metadata)`. See `src/sources/opentelemetry/http.rs:343-415`.
+Adding Deserialize on the Vector wrapper types was redundant and
+dangerous (silent data loss).
 
 ---
 
@@ -916,14 +917,14 @@ DONE — All legacy types deleted:
   F.6 (LogEvent), G.1 (TraceEvent), G.2 (proto compat)
   T12 + T13b (Metric struct DELETED — 9bd0d06)  ←── MILESTONE ✓
 
-OPEN — Legacy layout elimination (4 tasks remain):
+OPEN — Legacy layout elimination (3 tasks remain):
   T16 (extend fast-path: get/insert/remove never call to_value_legacy_layout)
    └─► T15 (remove VRL aliases + switch Serialize/value/keys to proto-canonical)
         └─► T23 (delete to_value_legacy_layout + apply_value_legacy_layout)
 
-DEFERRED:
-  T17 (serde Deserialize) — REVERTED, see T24
-  T24 (OTLP-JSON → OtelMetric parse helpers) — trigger-based, no caller yet
+CLOSED:
+  T17 (serde Deserialize) — REVERTED, not needed
+  T24 (OTLP JSON parse) — NOT NEEDED, already covered by proto serde + from_parts
 ```
 
 ---
@@ -1177,58 +1178,35 @@ backward compatibility with pre-OTLP Vector. Users run
 
 ---
 
-#### T24 — OTLP JSON → OtelMetric parse helpers (DEFERRED)
+#### T24 — OTLP JSON parse helpers — NOT NEEDED (closed)
 
-**Goal:** Add parse functions for OTLP JSON format into OtelMetric,
-mirroring the existing Serialize side in `otel_json.rs`.
+The OTLP JSON decode path already exists in the opentelemetry source
+(`src/sources/opentelemetry/http.rs`):
 
-**Status:** DEFERRED — no caller exists. The T17 revert (`070e536`)
-demonstrated that premature Deserialize implementations silently drop
-data (the OtelMetric impl dropped the entire `data` field). Zero code
-is better than half-done code.
+```rust
+// json_decode_metrics (line 369):
+let request: ExportMetricsServiceRequest = serde_json::from_slice(&body)?;
+// → OtelMetric::from_parts(metric_proto, resource, scope, metadata)
 
-**Trigger:** A PR that needs to deserialize OTLP JSON directly into
-OtelMetric. Examples:
-- A new OTLP HTTP JSON source (not proto-based)
-- A config-driven JSON ingestion path
-- A VRL `parse_otlp_json` function
+// json_decode_logs (line 343):
+let request: ExportLogsServiceRequest = serde_json::from_slice(&body)?;
+// → OtelLog::from_parts(record, resource, scope, metadata)
 
-**When triggered, implementation plan:**
+// json_decode_traces (line 395):
+let request: ExportTraceServiceRequest = serde_json::from_slice(&body)?;
+// → OtelSpan::from_parts(span, resource, scope, metadata)
+```
 
-1. **Define canonical schema** — match proto3 JSON mapping:
-   ```json
-   {
-     "name": "...",
-     "description": "...",
-     "unit": "...",
-     "sum": { "dataPoints": [...], "aggregationTemporality": 1, "isMonotonic": true },
-     "resource": { "attributes": [...] },
-     "scope": { "name": "...", "version": "..." }
-   }
-   ```
+The prost-generated `#[derive(serde::Deserialize)]` on the proto types
+handles the proto3 JSON mapping. Combined with the `from_parts`
+constructors on OtelLog/OtelMetric/OtelSpan, this is the complete
+OTLP JSON → internal type path. No additional `otel_json.rs` parse
+helpers are needed.
 
-2. **Implement metric type parsers** (~5 functions):
-   - `parse_sum(json) → (MetricKind, MetricValue)` — monotonic sum →
-     Counter, non-monotonic → Gauge
-   - `parse_gauge(json) → MetricValue::Gauge`
-   - `parse_histogram(json) → MetricValue::AggregatedHistogram`
-   - `parse_summary(json) → MetricValue::AggregatedSummary`
-   - `parse_exponential_histogram(json) → MetricValue::Distribution`
-     (convert exp-histogram to distribution samples)
-
-3. **Implement data point helpers**:
-   - `parse_number_data_point(json) → (f64, attributes, timestamp)`
-   - `parse_histogram_data_point(json) → (buckets, count, sum, ...)`
-   - `parse_summary_data_point(json) → (quantiles, count, sum, ...)`
-
-4. **Add round-trip tests**: for each metric type,
-   `OtelMetric → serialize → parse → assert_eq(original)`
-
-5. **Wire into caller**: the triggering feature's deserialize path.
-
-**File:** `lib/vector-core/src/event/otel_json.rs` (extend existing)
-**Effort:** ~200 lines, ~4h when triggered.
-**Depends on:** concrete caller (no speculative implementation).
+T17 (serde Deserialize directly on Vector types) was correctly reverted
+because it duplicated what prost already provides and silently dropped
+the OtelMetric `data` field. The right architecture is:
+**JSON bytes → proto serde → proto types → from_parts → OTel types.**
 
 ## Historical completion log
 
@@ -1257,7 +1235,8 @@ round-trip is the **last legacy pattern**. It exists to support:
 2. Resource/scope hoisting into flat ObjectMap for backward compat
 3. Serialize implementations that emit legacy field names
 
-4 tasks (T16 → T15 → T23, plus deferred T24) eliminate this.
+3 tasks (T16 → T15 → T23) eliminate this. T24 is closed (already
+covered by proto serde + `from_parts`).
 
 ### Performance findings
 

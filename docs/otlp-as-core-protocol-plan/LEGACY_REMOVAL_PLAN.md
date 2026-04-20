@@ -1033,26 +1033,18 @@ through to legacy layout. Multi-segment paths still fall through.
 
 After Phase 1: **single-segment paths never fall through.** ✓
 
-**Phase 2 — Multi-segment proto navigation (~4h):**
+**Phase 2 — Multi-segment proto navigation — DONE:**
+- Added `get_field_path`/`insert_field_path`/`remove_field_path`
+- Added `navigate_value`/`insert_value_at`/`remove_value_at` helpers
+- Routes by first segment:
+  - `"resource"` → resource attributes (hoisted fields return None)
+  - `"scope"` → scope proto fields (name, version, attributes)
+  - anything else → nested KvList attribute/body navigation
+- 3+ segment paths supported (e.g., `["kubernetes", "pod_labels", "app"]`)
+- Prune support for empty parent cleanup
+- Index segments (array access) still fall through to legacy layout
 
-Multi-segment paths like `event_path!("kubernetes", "pod_name")` arise
-because the legacy layout stores dotted-key attributes (e.g.
-`kubernetes.pod_name`) as flat entries in the ObjectMap, and VRL's path
-navigator splits the dot to produce a 2-segment path. Direct proto
-handling must reconstruct the dotted key from segments:
-
-```
-["kubernetes", "pod_name"]  →  attribute key "kubernetes.pod_name"
-```
-
-Implementation:
-- For get: join path segments with `.`, look up in record.attributes
-- For insert: join path segments with `.`, upsert in record.attributes
-- For remove: join path segments with `.`, remove from record.attributes
-- Special cases: `body.*` navigates KvList body, `resource.*` navigates
-  resource proto, `scope.*` navigates scope proto
-
-After Phase 2: **get/insert/remove never call to_value_legacy_layout.**
+After Phase 2: **all-field multi-segment paths never call to_value_legacy_layout.** ✓
 
 **Phase 3 — OtelSpan fast-path (~2h):**
 - Mirror OtelLog approach for span fields: name, trace_id, span_id,

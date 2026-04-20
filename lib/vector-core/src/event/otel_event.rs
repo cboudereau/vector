@@ -329,6 +329,75 @@ fn remove_attribute(attrs: &mut Vec<KeyValue>, key: &str) -> Option<AnyValue> {
     }
 }
 
+fn navigate_value(v: &Value, remaining: &[String]) -> Option<Value> {
+    let mut current = v;
+    for seg in remaining {
+        match current {
+            Value::Object(map) => {
+                current = map.get(seg.as_str())?;
+            }
+            _ => return None,
+        }
+    }
+    Some(current.clone())
+}
+
+fn insert_value_at(v: &mut Value, remaining: &[String], new_val: Value) -> Option<Value> {
+    if remaining.len() == 1 {
+        match v {
+            Value::Object(map) => map.insert(remaining[0].as_str().into(), new_val),
+            _ => {
+                let mut map = ObjectMap::new();
+                map.insert(remaining[0].as_str().into(), new_val);
+                *v = Value::Object(map);
+                None
+            }
+        }
+    } else {
+        match v {
+            Value::Object(map) => {
+                let entry = map
+                    .entry(remaining[0].as_str().into())
+                    .or_insert_with(|| Value::Object(ObjectMap::new()));
+                insert_value_at(entry, &remaining[1..], new_val)
+            }
+            _ => {
+                let mut map = ObjectMap::new();
+                let mut inner = Value::Object(ObjectMap::new());
+                insert_value_at(&mut inner, &remaining[1..], new_val);
+                map.insert(remaining[0].as_str().into(), inner);
+                *v = Value::Object(map);
+                None
+            }
+        }
+    }
+}
+
+fn remove_value_at(v: &mut Value, remaining: &[String], prune: bool) -> Option<Value> {
+    if remaining.len() == 1 {
+        match v {
+            Value::Object(map) => map.remove(remaining[0].as_str()),
+            _ => None,
+        }
+    } else {
+        match v {
+            Value::Object(map) => {
+                let inner = map.get_mut(remaining[0].as_str())?;
+                let result = remove_value_at(inner, &remaining[1..], prune);
+                if prune {
+                    if let Value::Object(inner_map) = inner {
+                        if inner_map.is_empty() {
+                            map.remove(remaining[0].as_str());
+                        }
+                    }
+                }
+                result
+            }
+            _ => None,
+        }
+    }
+}
+
 /// Coerce a VRL `Value` to a `Timestamp` if it's a string that can be
 /// parsed as RFC 3339. This is needed because OTLP `AnyValue` has no native
 /// timestamp type, so timestamps round-trip as strings.
@@ -737,14 +806,37 @@ impl OtelLog {
             lookup::PathPrefix::Event => {
                 let vp = path.value_path();
                 let mut iter = vp.segment_iter();
-                if let Some(BorrowedSegment::Field(ref field)) = iter.next() {
-                    if iter.next().is_none() {
-                        return self.get_single_segment(field.as_ref());
+                match iter.next() {
+                    Some(BorrowedSegment::Field(ref first)) => {
+                        match iter.next() {
+                            None => self.get_single_segment(first.as_ref()),
+                            Some(BorrowedSegment::Field(ref second)) => {
+                                let mut fields = vec![first.to_string(), second.to_string()];
+                                let mut all_fields = true;
+                                for seg in iter {
+                                    match seg {
+                                        BorrowedSegment::Field(f) => fields.push(f.to_string()),
+                                        _ => { all_fields = false; break; }
+                                    }
+                                }
+                                if all_fields {
+                                    self.get_field_path(&fields)
+                                } else {
+                                    let value = self.to_value_legacy_layout();
+                                    value.get(path.value_path()).cloned()
+                                }
+                            }
+                            _ => {
+                                let value = self.to_value_legacy_layout();
+                                value.get(path.value_path()).cloned()
+                            }
+                        }
+                    }
+                    _ => {
+                        let value = self.to_value_legacy_layout();
+                        value.get(path.value_path()).cloned()
                     }
                 }
-                // Multi-segment or non-field paths: fall through to legacy layout
-                let value = self.to_value_legacy_layout();
-                value.get(path.value_path()).cloned()
             }
             lookup::PathPrefix::Metadata => {
                 self.metadata.value().get(path.value_path()).cloned()
@@ -837,8 +929,81 @@ impl OtelLog {
         None
     }
 
+    fn get_field_path(&self, fields: &[String]) -> Option<Value> {
+        debug_assert!(fields.len() >= 2);
+        match fields[0].as_str() {
+            "resource" => {
+                let res = self.resource.as_ref()?;
+                let remaining = &fields[1..];
+                if remaining.len() == 1 {
+                    let key = remaining[0].as_str();
+                    if key == "source_type" || key == "host.name" {
+                        return None;
+                    }
+                    if key == "dropped_attributes_count" && res.dropped_attributes_count != 0 {
+                        return Some(Value::Integer(res.dropped_attributes_count as i64));
+                    }
+                    attribute_value(&res.attributes, key).map(any_value_to_vrl)
+                } else {
+                    let key = remaining[0].as_str();
+                    if key == "source_type" || key == "host.name" {
+                        return None;
+                    }
+                    let av = attribute_value(&res.attributes, key)?;
+                    let v = any_value_to_vrl(av);
+                    navigate_value(&v, &remaining[1..])
+                }
+            }
+            "scope" => {
+                let scope = self.scope.as_ref()?;
+                let remaining = &fields[1..];
+                match remaining[0].as_str() {
+                    "name" if remaining.len() == 1 => {
+                        if scope.name.is_empty() { None }
+                        else { Some(Value::Bytes(scope.name.clone().into())) }
+                    }
+                    "version" if remaining.len() == 1 => {
+                        if scope.version.is_empty() { None }
+                        else { Some(Value::Bytes(scope.version.clone().into())) }
+                    }
+                    "attributes" => {
+                        if remaining.len() == 1 {
+                            if scope.attributes.is_empty() { None }
+                            else { Some(Value::Object(kvlist_to_object_map(&scope.attributes))) }
+                        } else {
+                            let av = attribute_value(&scope.attributes, &remaining[1])?;
+                            if remaining.len() == 2 {
+                                Some(any_value_to_vrl(av))
+                            } else {
+                                let v = any_value_to_vrl(av);
+                                navigate_value(&v, &remaining[2..])
+                            }
+                        }
+                    }
+                    _ => None,
+                }
+            }
+            first => {
+                if let Some(av) = attribute_value(&self.record.attributes, first) {
+                    let v = any_value_to_vrl(av);
+                    if let Some(result) = navigate_value(&v, &fields[1..]) {
+                        return Some(result);
+                    }
+                }
+                if let Some(body) = self.body() {
+                    if let Some(OtelValueKind::KvlistValue(kvl)) = &body.value {
+                        if let Some(av) = attribute_value(&kvl.values, first) {
+                            let v = any_value_to_vrl(av);
+                            return navigate_value(&v, &fields[1..]);
+                        }
+                    }
+                }
+                None
+            }
+        }
+    }
+
     /// Insert a field value by path.
-    /// Fast path for well-known single-segment proto fields; falls back to legacy round-trip.
     pub fn insert<'a>(
         &mut self,
         path: impl lookup::lookup_v2::TargetPath<'a>,
@@ -852,16 +1017,43 @@ impl OtelLog {
                 let value = value.into();
                 let vp = path.value_path();
                 let mut iter = vp.segment_iter();
-                if let Some(BorrowedSegment::Field(ref field)) = iter.next() {
-                    if iter.next().is_none() {
-                        return self.insert_single_segment(field.as_ref(), value);
+                match iter.next() {
+                    Some(BorrowedSegment::Field(ref first)) => {
+                        match iter.next() {
+                            None => self.insert_single_segment(first.as_ref(), value),
+                            Some(BorrowedSegment::Field(ref second)) => {
+                                let mut fields = vec![first.to_string(), second.to_string()];
+                                let mut all_fields = true;
+                                for seg in iter {
+                                    match seg {
+                                        BorrowedSegment::Field(f) => fields.push(f.to_string()),
+                                        _ => { all_fields = false; break; }
+                                    }
+                                }
+                                if all_fields {
+                                    self.insert_field_path(&fields, value)
+                                } else {
+                                    let mut val = self.to_value_legacy_layout();
+                                    let old = val.insert(path.value_path(), value);
+                                    self.apply_value_legacy_layout(val);
+                                    old
+                                }
+                            }
+                            _ => {
+                                let mut val = self.to_value_legacy_layout();
+                                let old = val.insert(path.value_path(), value);
+                                self.apply_value_legacy_layout(val);
+                                old
+                            }
+                        }
+                    }
+                    _ => {
+                        let mut val = self.to_value_legacy_layout();
+                        let old = val.insert(path.value_path(), value);
+                        self.apply_value_legacy_layout(val);
+                        old
                     }
                 }
-                // Multi-segment or non-field paths: fall through to legacy round-trip
-                let mut val = self.to_value_legacy_layout();
-                let old = val.insert(path.value_path(), value);
-                self.apply_value_legacy_layout(val);
-                old
             }
             lookup::PathPrefix::Metadata => {
                 self.metadata.value_mut().insert(path.value_path(), value)
@@ -974,6 +1166,117 @@ impl OtelLog {
         }
     }
 
+    fn insert_field_path(&mut self, fields: &[String], value: Value) -> Option<Value> {
+        debug_assert!(fields.len() >= 2);
+        match fields[0].as_str() {
+            "resource" => {
+                let remaining = &fields[1..];
+                if remaining.len() == 1 {
+                    let key = remaining[0].as_str();
+                    let res = self.resource.get_or_insert_with(|| Resource {
+                        attributes: Vec::new(),
+                        dropped_attributes_count: 0,
+                    });
+                    let old = attribute_value(&res.attributes, key).map(any_value_to_vrl);
+                    set_attribute(
+                        &mut res.attributes,
+                        key.to_string(),
+                        vrl_value_to_any_value(&value),
+                    );
+                    old
+                } else {
+                    let key = remaining[0].as_str();
+                    let res = self.resource.get_or_insert_with(|| Resource {
+                        attributes: Vec::new(),
+                        dropped_attributes_count: 0,
+                    });
+                    let mut v = attribute_value(&res.attributes, key)
+                        .map(any_value_to_vrl)
+                        .unwrap_or(Value::Object(ObjectMap::new()));
+                    let old = insert_value_at(&mut v, &remaining[1..], value);
+                    set_attribute(
+                        &mut res.attributes,
+                        key.to_string(),
+                        vrl_value_to_any_value(&v),
+                    );
+                    old
+                }
+            }
+            "scope" => {
+                let remaining = &fields[1..];
+                let scope = self.scope.get_or_insert_with(InstrumentationScope::default);
+                match remaining[0].as_str() {
+                    "name" if remaining.len() == 1 => {
+                        let old = if scope.name.is_empty() { None }
+                            else { Some(Value::Bytes(scope.name.clone().into())) };
+                        scope.name = value.as_str()
+                            .map(|s| s.to_string())
+                            .unwrap_or_else(|| value.to_string_lossy().into_owned());
+                        old
+                    }
+                    "version" if remaining.len() == 1 => {
+                        let old = if scope.version.is_empty() { None }
+                            else { Some(Value::Bytes(scope.version.clone().into())) };
+                        scope.version = value.as_str()
+                            .map(|s| s.to_string())
+                            .unwrap_or_else(|| value.to_string_lossy().into_owned());
+                        old
+                    }
+                    "attributes" => {
+                        if remaining.len() == 1 {
+                            let old = if scope.attributes.is_empty() { None }
+                                else { Some(Value::Object(kvlist_to_object_map(&scope.attributes))) };
+                            if let Value::Object(map) = &value {
+                                scope.attributes = map.iter()
+                                    .map(|(k, v)| KeyValue {
+                                        key: k.to_string(),
+                                        value: Some(vrl_value_to_any_value(v)),
+                                    })
+                                    .collect();
+                            }
+                            old
+                        } else {
+                            let key = remaining[1].as_str();
+                            if remaining.len() == 2 {
+                                let old = attribute_value(&scope.attributes, key).map(any_value_to_vrl);
+                                set_attribute(
+                                    &mut scope.attributes,
+                                    key.to_string(),
+                                    vrl_value_to_any_value(&value),
+                                );
+                                old
+                            } else {
+                                let mut v = attribute_value(&scope.attributes, key)
+                                    .map(any_value_to_vrl)
+                                    .unwrap_or(Value::Object(ObjectMap::new()));
+                                let old = insert_value_at(&mut v, &remaining[2..], value);
+                                set_attribute(
+                                    &mut scope.attributes,
+                                    key.to_string(),
+                                    vrl_value_to_any_value(&v),
+                                );
+                                old
+                            }
+                        }
+                    }
+                    _ => None,
+                }
+            }
+            first => {
+                let mut v = attribute_value(&self.record.attributes, first)
+                    .map(any_value_to_vrl)
+                    .unwrap_or(Value::Object(ObjectMap::new()));
+                let old = insert_value_at(&mut v, &fields[1..], value);
+                set_attribute(
+                    &mut self.record_mut().attributes,
+                    first.to_string(),
+                    vrl_value_to_any_value(&v),
+                );
+                old
+            }
+        }
+    }
+
     /// Remove a field value by path.
     pub fn remove<'a>(
         &mut self,
@@ -996,16 +1299,43 @@ impl OtelLog {
             lookup::PathPrefix::Event => {
                 let vp = path.value_path();
                 let mut iter = vp.segment_iter();
-                if let Some(BorrowedSegment::Field(ref field)) = iter.next() {
-                    if iter.next().is_none() {
-                        return self.remove_single_segment(field.as_ref());
+                match iter.next() {
+                    Some(BorrowedSegment::Field(ref first)) => {
+                        match iter.next() {
+                            None => self.remove_single_segment(first.as_ref()),
+                            Some(BorrowedSegment::Field(ref second)) => {
+                                let mut fields = vec![first.to_string(), second.to_string()];
+                                let mut all_fields = true;
+                                for seg in iter {
+                                    match seg {
+                                        BorrowedSegment::Field(f) => fields.push(f.to_string()),
+                                        _ => { all_fields = false; break; }
+                                    }
+                                }
+                                if all_fields {
+                                    self.remove_field_path(&fields, prune)
+                                } else {
+                                    let mut val = self.to_value_legacy_layout();
+                                    let old = val.remove(path.value_path(), prune);
+                                    self.apply_value_legacy_layout(val);
+                                    old
+                                }
+                            }
+                            _ => {
+                                let mut val = self.to_value_legacy_layout();
+                                let old = val.remove(path.value_path(), prune);
+                                self.apply_value_legacy_layout(val);
+                                old
+                            }
+                        }
+                    }
+                    _ => {
+                        let mut val = self.to_value_legacy_layout();
+                        let old = val.remove(path.value_path(), prune);
+                        self.apply_value_legacy_layout(val);
+                        old
                     }
                 }
-                // Multi-segment or non-field paths: fall through to legacy round-trip
-                let mut val = self.to_value_legacy_layout();
-                let old = val.remove(path.value_path(), prune);
-                self.apply_value_legacy_layout(val);
-                old
             }
             lookup::PathPrefix::Metadata => {
                 self.metadata.value_mut().remove(path.value_path(), prune)
@@ -1087,6 +1417,119 @@ impl OtelLog {
                     if let Some(OtelValueKind::KvlistValue(ref mut kvl)) = body_av.value {
                         if let Some(av) = remove_attribute(&mut kvl.values, other) {
                             return Some(any_value_to_vrl(&av));
+                        }
+                    }
+                }
+                None
+            }
+        }
+    }
+
+    fn remove_field_path(&mut self, fields: &[String], prune: bool) -> Option<Value> {
+        debug_assert!(fields.len() >= 2);
+        match fields[0].as_str() {
+            "resource" => {
+                let res = self.resource.as_mut()?;
+                let remaining = &fields[1..];
+                if remaining.len() == 1 {
+                    remove_attribute(&mut res.attributes, remaining[0].as_str())
+                        .map(|av| any_value_to_vrl(&av))
+                } else {
+                    let key = remaining[0].as_str();
+                    let av = attribute_value(&res.attributes, key)?;
+                    let mut v = any_value_to_vrl(av);
+                    let result = remove_value_at(&mut v, &remaining[1..], prune);
+                    set_attribute(
+                        &mut res.attributes,
+                        key.to_string(),
+                        vrl_value_to_any_value(&v),
+                    );
+                    result
+                }
+            }
+            "scope" => {
+                let scope = self.scope.as_mut()?;
+                let remaining = &fields[1..];
+                match remaining[0].as_str() {
+                    "name" if remaining.len() == 1 => {
+                        if scope.name.is_empty() { return None; }
+                        let old = Some(Value::Bytes(scope.name.clone().into()));
+                        scope.name = String::new();
+                        old
+                    }
+                    "version" if remaining.len() == 1 => {
+                        if scope.version.is_empty() { return None; }
+                        let old = Some(Value::Bytes(scope.version.clone().into()));
+                        scope.version = String::new();
+                        old
+                    }
+                    "attributes" => {
+                        if remaining.len() == 1 {
+                            if scope.attributes.is_empty() { return None; }
+                            let old = Some(Value::Object(kvlist_to_object_map(&scope.attributes)));
+                            scope.attributes.clear();
+                            old
+                        } else if remaining.len() == 2 {
+                            remove_attribute(&mut scope.attributes, remaining[1].as_str())
+                                .map(|av| any_value_to_vrl(&av))
+                        } else {
+                            let key = remaining[1].as_str();
+                            let av = attribute_value(&scope.attributes, key)?;
+                            let mut v = any_value_to_vrl(av);
+                            let result = remove_value_at(&mut v, &remaining[2..], prune);
+                            set_attribute(
+                                &mut scope.attributes,
+                                key.to_string(),
+                                vrl_value_to_any_value(&v),
+                            );
+                            result
+                        }
+                    }
+                    _ => None,
+                }
+            }
+            first => {
+                if let Some(av) = attribute_value(&self.record.attributes, first) {
+                    let mut v = any_value_to_vrl(av);
+                    let result = remove_value_at(&mut v, &fields[1..], prune);
+                    if result.is_some() {
+                        if prune {
+                            if let Value::Object(ref map) = v {
+                                if map.is_empty() {
+                                    remove_attribute(&mut self.record_mut().attributes, first);
+                                    return result;
+                                }
+                            }
+                        }
+                        set_attribute(
+                            &mut self.record_mut().attributes,
+                            first.to_string(),
+                            vrl_value_to_any_value(&v),
+                        );
+                    }
+                    return result;
+                }
+                if let Some(ref mut body_av) = self.record_mut().body {
+                    if let Some(OtelValueKind::KvlistValue(ref mut kvl)) = body_av.value {
+                        if let Some(av) = attribute_value(&kvl.values, first) {
+                            let mut v = any_value_to_vrl(av);
+                            let result = remove_value_at(&mut v, &fields[1..], prune);
+                            if result.is_some() {
+                                if prune {
+                                    if let Value::Object(ref map) = v {
+                                        if map.is_empty() {
+                                            remove_attribute(&mut kvl.values, first);
+                                            return result;
+                                        }
+                                    }
+                                }
+                                set_attribute(
+                                    &mut kvl.values,
+                                    first.to_string(),
+                                    vrl_value_to_any_value(&v),
+                                );
+                            }
+                            return result;
                         }
                     }
                 }
@@ -3479,6 +3922,7 @@ impl std::fmt::Display for OtelMetric {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lookup::event_path;
 
     #[test]
     fn otel_log_event_default_fields() {
@@ -4391,5 +4835,117 @@ mod tests {
             other => panic!("expected ArrayValue on both sides, got {other:?}"),
         }
         assert_eq!(direct.tag_value("host"), via_ctor.tag_value("host"));
+    }
+
+    #[test]
+    fn multi_segment_resource_get_insert_remove() {
+        let mut log = OtelLog::new(LogRecord::default());
+        log.set_resource_attribute("service.name".to_string(), string_value("my-svc"));
+        log.set_resource_attribute("source_type".to_string(), string_value("syslog"));
+
+        // get resource attribute
+        assert_eq!(
+            log.get(event_path!("resource", "service.name")),
+            Some(Value::Bytes("my-svc".into()))
+        );
+        // hoisted fields return None under "resource" (legacy compat)
+        assert_eq!(log.get(event_path!("resource", "source_type")), None);
+        // but visible at top-level
+        assert_eq!(
+            log.get(event_path!("source_type")),
+            Some(Value::Bytes("syslog".into()))
+        );
+
+        // insert resource attribute
+        log.insert(event_path!("resource", "deployment.environment"), "prod");
+        assert_eq!(
+            log.get(event_path!("resource", "deployment.environment")),
+            Some(Value::Bytes("prod".into()))
+        );
+
+        // remove resource attribute
+        let removed = log.remove(event_path!("resource", "service.name"));
+        assert_eq!(removed, Some(Value::Bytes("my-svc".into())));
+        assert_eq!(log.get(event_path!("resource", "service.name")), None);
+    }
+
+    #[test]
+    fn multi_segment_scope_get_insert_remove() {
+        let mut log = OtelLog::new(LogRecord::default());
+        log.scope = Some(InstrumentationScope {
+            name: "my-lib".to_string(),
+            version: "1.0".to_string(),
+            attributes: vec![],
+            dropped_attributes_count: 0,
+        });
+
+        assert_eq!(
+            log.get(event_path!("scope", "name")),
+            Some(Value::Bytes("my-lib".into()))
+        );
+        assert_eq!(
+            log.get(event_path!("scope", "version")),
+            Some(Value::Bytes("1.0".into()))
+        );
+
+        log.insert(event_path!("scope", "name"), "updated-lib");
+        assert_eq!(
+            log.get(event_path!("scope", "name")),
+            Some(Value::Bytes("updated-lib".into()))
+        );
+
+        log.insert(event_path!("scope", "attributes", "env"), "prod");
+        assert_eq!(
+            log.get(event_path!("scope", "attributes", "env")),
+            Some(Value::Bytes("prod".into()))
+        );
+
+        let removed = log.remove(event_path!("scope", "name"));
+        assert_eq!(removed, Some(Value::Bytes("updated-lib".into())));
+        assert_eq!(log.get(event_path!("scope", "name")), None);
+    }
+
+    #[test]
+    fn multi_segment_nested_attribute_get_insert_remove() {
+        let mut log = OtelLog::new(LogRecord::default());
+
+        // Insert nested attribute (like kubernetes metadata)
+        log.insert(event_path!("kubernetes", "pod_name"), "sandbox0");
+        assert_eq!(
+            log.get(event_path!("kubernetes", "pod_name")),
+            Some(Value::Bytes("sandbox0".into()))
+        );
+
+        // 3-segment path
+        log.insert(event_path!("kubernetes", "pod_labels", "app"), "my-app");
+        assert_eq!(
+            log.get(event_path!("kubernetes", "pod_labels", "app")),
+            Some(Value::Bytes("my-app".into()))
+        );
+
+        // Remove nested path
+        let removed = log.remove(event_path!("kubernetes", "pod_name"));
+        assert_eq!(removed, Some(Value::Bytes("sandbox0".into())));
+        assert_eq!(log.get(event_path!("kubernetes", "pod_name")), None);
+        // pod_labels still there
+        assert_eq!(
+            log.get(event_path!("kubernetes", "pod_labels", "app")),
+            Some(Value::Bytes("my-app".into()))
+        );
+    }
+
+    #[test]
+    fn multi_segment_prune_removes_empty_parents() {
+        let mut log = OtelLog::new(LogRecord::default());
+        log.insert(event_path!("nested", "only_child"), "val");
+        assert_eq!(
+            log.get(event_path!("nested", "only_child")),
+            Some(Value::Bytes("val".into()))
+        );
+
+        let removed = log.remove_prune(event_path!("nested", "only_child"), true);
+        assert_eq!(removed, Some(Value::Bytes("val".into())));
+        // After prune, "nested" attribute itself should be gone
+        assert_eq!(log.get(event_path!("nested")), None);
     }
 }

@@ -1,4 +1,4 @@
-use vector_lib::event::{OtelMetric, metric::{Metric, MetricValue, Sample}};
+use vector_lib::event::{OtelMetric, metric::{MetricValue, Sample}};
 
 use crate::sinks::util::{
     Merged, SinkBatchSettings,
@@ -75,7 +75,6 @@ impl Batch for MetricsBuffer {
     }
 
     fn finish(self) -> Self::Output {
-        // Collect all OtelMetrics, finalize distributions via Metric round-trip, and hand back.
         let otel_metrics = self
             .metrics
             .map(MetricSet::into_metrics)
@@ -83,11 +82,8 @@ impl Batch for MetricsBuffer {
         otel_metrics
             .into_iter()
             .map(|otel| {
-                // Finalize: compress distribution samples via legacy Metric path
-                let (s, d, md) = otel.into_metric_parts();
-                let mut metric = Metric::from_parts(s, d, md);
-                finalize_metric(&mut metric);
-                let (s, d, md) = metric.into_parts();
+                let (s, mut d, md) = otel.into_metric_parts();
+                finalize_metric_value(&mut d.value);
                 OtelMetric::from_metric_parts(s, d, md)
             })
             .collect()
@@ -101,8 +97,8 @@ impl Batch for MetricsBuffer {
     }
 }
 
-fn finalize_metric(metric: &mut Metric) {
-    if let MetricValue::Distribution { samples, .. } = metric.data_mut().value_mut() {
+fn finalize_metric_value(value: &mut MetricValue) {
+    if let MetricValue::Distribution { samples, .. } = value {
         let compressed_samples = compress_distribution(samples);
         *samples = compressed_samples;
     }
@@ -155,7 +151,7 @@ mod tests {
         test_util::metrics::{AbsoluteMetricNormalizer, IncrementalMetricNormalizer},
     };
 
-    type Buffer = Vec<Vec<Metric>>;
+    type Buffer = Vec<Vec<OtelMetric>>;
 
     /// Build an OtelMetric directly from parts for Distribution / Set / signed-Gauge
     /// variants that have no dedicated `OtelMetric::new_*` native constructor.
@@ -178,48 +174,38 @@ mod tests {
         OtelMetric::from_metric_parts(series, data, EventMetadata::default())
     }
 
-    pub fn sample_counter(num: usize, tagstr: &str, kind: MetricKind, value: f64) -> Metric {
-        {
-            let otel = OtelMetric::new_counter(format!("counter-{num}"), kind, value);
-            let (s, d, md) = otel.into_metric_parts();
-            Metric::from_parts(s, d, md)
-        }
-        .with_tags(Some(metric_tags!(tagstr => "true")))
+    pub fn sample_counter(num: usize, tagstr: &str, kind: MetricKind, value: f64) -> OtelMetric {
+        OtelMetric::new_counter(format!("counter-{num}"), kind, value)
+            .with_tags(Some(metric_tags!(tagstr => "true")))
     }
 
-    pub fn sample_gauge(num: usize, kind: MetricKind, value: f64) -> Metric {
-        let otel = otel_from_parts(
+    pub fn sample_gauge(num: usize, kind: MetricKind, value: f64) -> OtelMetric {
+        otel_from_parts(
             format!("gauge-{num}"),
             kind,
             MetricValue::Gauge { value },
-        );
-        let (s, d, md) = otel.into_metric_parts();
-        Metric::from_parts(s, d, md)
+        )
     }
 
-    pub fn sample_set<T: ToString>(num: usize, kind: MetricKind, values: &[T]) -> Metric {
-        let otel = otel_from_parts(
+    pub fn sample_set<T: ToString>(num: usize, kind: MetricKind, values: &[T]) -> OtelMetric {
+        otel_from_parts(
             format!("set-{num}"),
             kind,
             MetricValue::Set {
                 values: values.iter().map(|s| s.to_string()).collect(),
             },
-        );
-        let (s, d, md) = otel.into_metric_parts();
-        Metric::from_parts(s, d, md)
+        )
     }
 
-    pub fn sample_distribution_histogram(num: u32, kind: MetricKind, rate: u32) -> Metric {
-        let otel = otel_from_parts(
+    pub fn sample_distribution_histogram(num: u32, kind: MetricKind, rate: u32) -> OtelMetric {
+        otel_from_parts(
             format!("dist-{num}"),
             kind,
             MetricValue::Distribution {
                 samples: vector_lib::samples![num as f64 => rate],
                 statistic: StatisticKind::Histogram,
             },
-        );
-        let (s, d, md) = otel.into_metric_parts();
-        Metric::from_parts(s, d, md)
+        )
     }
 
     pub fn sample_aggregated_histogram(
@@ -228,24 +214,22 @@ mod tests {
         bpower: f64,
         cfactor: u64,
         sum: f64,
-    ) -> Metric {
+    ) -> OtelMetric {
         let buckets = vector_lib::buckets![
             1.0 => cfactor,
             bpower.exp2() => cfactor * 2,
             4.0f64.powf(bpower) => cfactor * 4
         ];
-        let otel = OtelMetric::new_histogram(
+        OtelMetric::new_histogram(
             format!("buckets-{num}"),
             kind,
             &buckets,
             7 * cfactor,
             sum,
-        );
-        let (s, d, md) = otel.into_metric_parts();
-        Metric::from_parts(s, d, md)
+        )
     }
 
-    pub fn sample_aggregated_summary(num: u32, _kind: MetricKind, factor: f64) -> Metric {
+    pub fn sample_aggregated_summary(num: u32, _kind: MetricKind, factor: f64) -> OtelMetric {
         // OTLP Summary has no aggregation temporality, so `kind` is accepted
         // for call-site compatibility but ignored (matches prior Metric→Otel
         // round-trip behavior, which always returned `Absolute`).
@@ -254,17 +238,15 @@ mod tests {
             0.5 => factor * 2.0,
             1.0 => factor * 4.0
         ];
-        let otel = OtelMetric::new_summary(
+        OtelMetric::new_summary(
             format!("quantiles-{num}"),
             &quantiles,
             factor as u64 * 10,
             factor * 7.0,
-        );
-        let (s, d, md) = otel.into_metric_parts();
-        Metric::from_parts(s, d, md)
+        )
     }
 
-    fn rebuffer<State: MetricNormalize + Default>(metrics: Vec<Metric>) -> Buffer {
+    fn rebuffer<State: MetricNormalize + Default>(metrics: Vec<OtelMetric>) -> Buffer {
         let mut batch_settings = BatchSettings::default();
         batch_settings.size.bytes = 9999;
         batch_settings.size.events = 6;
@@ -274,20 +256,13 @@ mod tests {
         let mut result = vec![];
 
         for metric in metrics {
-            let (s, d, md) = metric.into_parts();
-            let otel = OtelMetric::from_metric_parts(s, d, md);
-            if let Some(normalized) = normalizer.normalize(otel) {
+            if let Some(normalized) = normalizer.normalize(metric) {
                 match buffer.push(normalized) {
                     PushResult::Overflow(_) => panic!("overflowed too early"),
                     PushResult::Ok(true) => {
                         let batch =
                             std::mem::replace(&mut buffer, MetricsBuffer::new(batch_settings.size));
-                        // Convert back to Vec<Metric> for test assertions
-                        let finished: Vec<Metric> = batch.finish().into_iter().map(|otel| {
-                            let (s, d, md) = otel.into_metric_parts();
-                            Metric::from_parts(s, d, md)
-                        }).collect();
-                        result.push(finished);
+                        result.push(batch.finish());
                     }
                     PushResult::Ok(false) => (),
                 }
@@ -295,11 +270,7 @@ mod tests {
         }
 
         if !buffer.is_empty() {
-            let finished: Vec<Metric> = buffer.finish().into_iter().map(|otel| {
-                let (s, d, md) = otel.into_metric_parts();
-                Metric::from_parts(s, d, md)
-            }).collect();
-            result.push(finished)
+            result.push(buffer.finish())
         }
 
         // Sort each batch to provide a predictable result ordering

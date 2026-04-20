@@ -2,7 +2,7 @@ use mlua::prelude::*;
 use vrl::value::Value;
 
 use super::{
-    super::{Event, EventMetadata, Metric, OtelLog},
+    super::{Event, EventMetadata, OtelLog, OtelMetric},
     metric::LuaMetric,
 };
 
@@ -65,11 +65,8 @@ impl FromLua for Event {
                 )))
             }
             (LuaValue::Nil, LuaValue::Table(metric)) => {
-                let metric = Metric::from_lua(LuaValue::Table(metric), lua)?;
-                Ok(Event::Metric({
-                    let (s, d, md) = metric.into_parts();
-                    super::super::OtelMetric::from_metric_parts(s, d, md)
-                }))
+                let otel = OtelMetric::from_lua(LuaValue::Table(metric), lua)?;
+                Ok(Event::Metric(otel))
             }
             _ => Err(LuaError::FromLuaConversionError {
                 from: value.type_name(),

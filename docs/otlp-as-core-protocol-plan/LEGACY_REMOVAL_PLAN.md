@@ -72,13 +72,13 @@ The previous version of this plan claimed "~5 production callers"; that
 count was wrong. On close inspection all sites are either test modules
 (`#[cfg(test)]`, `mod tests`) or bridge `impl From<...>` definitions.
 
-### Legacy types — current status (2026-04-17)
+### Legacy types — current status (2026-04-20)
 
 | Type | Status | Note |
 |------|--------|------|
 | `LogEvent` | **DELETED** (`80ff2fb`) | 1217 lines removed |
 | `TraceEvent` | **DELETED** (`1236e8e`) | 191 lines removed |
-| `Metric` struct | **Test/lib only** | 0 production callers; 54 `Metric::from_parts`/`Metric::new` sites in 9 files as of 2026-04-20; see Phase G task list. Main remaining blockers: prometheus exporter (storage type), prometheus collector (MetricCollector trait), metric_to_log (JSON serialization), elasticsearch sink (metric_to_log dependency) |
+| `Metric` struct | **DELETED** (`9bd0d06`) | 1040 lines removed across 21 files. T13b complete 2026-04-20. |
 | `prometheus_parser::Metric` | Unrelated | External crate, not Vector's legacy type |
 
 ### VRL aliases / paths
@@ -146,7 +146,7 @@ see `VRL_MIGRATION_TOOL.md`) should rewrite before being removed.
 
 - **A — VRL migration tool rules**: **DONE** (B4)
 - **B — Remove VRL aliases**: **OPEN** — see Phase G task T15.
-  Product decision required. `vector vrl-migrate` can rewrite configs.
+  Product decision: approved. `vector vrl-migrate` rewrites configs.
 - **C — OTel-to-Legacy bridge**: **DONE**
 - **D — Legacy-to-OTel bridge**: Folded into F → G.
 - **E — Remove legacy types from production**: **DONE**
@@ -154,7 +154,8 @@ see `VRL_MIGRATION_TOOL.md`) should rewrite before being removed.
   - F.1-F.6 complete. `log_event.rs` deleted (`80ff2fb`).
   - `trace.rs` deleted (`1236e8e`).
 - **G — Delete Metric struct + buffer compat + legacy layout**:
-  **IN PROGRESS** — 18 tasks identified, see Phase G below.
+  **TYPES DONE, LAYOUT IN PROGRESS** — all 3 legacy types deleted.
+  4 tasks remain (T16, T15, T23, T24) for legacy layout elimination.
 
 ## Phase F — Delete legacy types entirely
 
@@ -535,24 +536,25 @@ the sink boundary.
 4. **B4 audit** — 1h discovery before committing to implementation
 5. **B1 dnstap** — biggest remaining, needs design doc first
 
-## Phase G — Final legacy type + buffer compat removal (2026-04-17)
+## Phase G — Final legacy type + buffer compat removal (2026-04-20)
 
 ### Goal
 
 Delete **all** remaining legacy Vector types:
 - ~~`LogEvent`~~ — **DELETED** (`80ff2fb`, Phase F.6)
 - ~~`TraceEvent`~~ — **DELETED** (`1236e8e`, Phase G.1)
-- `Metric` struct — **IN PROGRESS** (Phase G.3)
+- ~~`Metric` struct~~ — **DELETED** (`9bd0d06`, Phase G T13b)
 
 Delete all backward buffer compatibility code and bridge functions.
 
-### Current state (2026-04-17 end-of-session)
+### Current state (2026-04-20 end-of-session)
 
 | Counter | Value | Note |
 |---------|-------|------|
-| `Metric::new` sites | 336 | All test/sink/lib — zero production sources |
-| `from_legacy_metric` sites | **0** | **DELETED** — T1 (`727c801`) inlined it; function definition gone. Only `.md` doc references remain. |
-| `from_metric_parts` sites | 91 | New callers replacing from_legacy_metric |
+| `Metric::new` sites | **0** | **ALL DELETED** — T12 + T13b complete |
+| `Metric` struct | **DELETED** | `9bd0d06` — 723 lines of struct + impls + trait impls removed |
+| `from_legacy_metric` sites | **0** | **DELETED** — T1 (`727c801`) |
+| `from_metric_parts` sites | 91 | Canonical OtelMetric constructor — stays |
 
 ### Complete task list — full migration to OTel-native types
 
@@ -599,10 +601,10 @@ the struct**:
 | T4 | `MetricSet` internals: `Metric` → `OtelMetric` | **DONE** | `3856582` |
 | T5 | Prometheus collector/exporter: direct field access | **DONE** | `34e915a` |
 | T6 | Split iterator: `Metric` → `OtelMetric` | **DONE** | `3856582` |
-| T12 | Test code: `Metric::new` → `OtelMetric` constructors | **DONE** | `43ede6e`..`6bb35db` | **All 171 production/test `Metric::new` sites migrated.** Only `metric/mod.rs` own tests and `lua/metric.rs` test helpers remain — these go away with T13b (Metric struct deletion). Per-file coverage: statsd parser, prometheus parser, vrl-metrics, lua metric tests, statsd encoder, prometheus exporter/collector, sinks/util/buffer, test_util/metrics, greptimedb, codecs/json, prometheus/remote_write, transforms + codecs singletons. Deleted `otel()` test helper and `from_legacy_value` convenience constructor (`4ef6f8e`, `21d1694`). Fixed by-value `MetricValue` deref bugs in vector-core tests. |
+| T12 | Test code: `Metric::new` → `OtelMetric` constructors | **DONE** | `43ede6e`..`9bd0d06` | **All `Metric::new` sites migrated or deleted.** Per-file: statsd, prometheus, vrl-metrics, lua, codecs, sinks, transforms. `from_legacy_value` deleted (`21d1694`). |
 | T20 | `capture_metrics()` → return `Vec<OtelMetric>` | **DONE** | `acc456c` | Internal metrics now OtelMetric natively. 48 callers updated. |
 | T13a | Eliminate Metric from all production code | **DONE** | `1b188d6`..`edd3329` | **Metric struct is ABSENT from all production code paths.** GraphQL API, sink boundaries, MetricsBuffer all OtelMetric. |
-| T13b | Delete `Metric` struct + all `impl Metric` + `Display` / `Arbitrary` / `FromLua` / `From<proto::Metric>` / proto encode impls | **IN PROGRESS (stashed)** | — | Struct still exists at `lib/vector-core/src/event/metric/mod.rs:58`. First deletion attempt stashed to `stash@{0}` (on top of `08d729d`, before commit `4413907`) — agent ran out of budget replacing ~294 callers. **Next session guidance: prefer redoing fresh rather than popping the stash.** Rationale: (1) between `08d729d` and HEAD, `43ede6e` migrated 155 `Metric::new` test callers — the stash may now conflict with already-migrated tests; (2) the stash state was known-broken (compile failures), not a clean checkpoint. Only pop if you first diff `stash@{0}` vs HEAD to audit overlap. The cleaner path is: start from HEAD, delete the struct, and use `cargo check --tests` errors as a worklist for remaining callers. |
+| T13b | Delete `Metric` struct + all `impl Metric` + `Display` / `Arbitrary` / `FromLua` / `From<proto::Metric>` / proto encode impls | **DONE** | `cf9a713`..`9bd0d06` | **Metric struct fully deleted.** -1040 lines across 21 files. metric_to_log uses inline `MetricJson` for serde. `TestMetricInput` replaces `Metric` in config unit tests. `metric/mod.rs` tests rewritten to use `MetricData` directly. |
 | T21 | Delete `make_absolute_otel` / `make_incremental_otel` / `insert_update_otel` wrappers | **DONE** | `3856582` — real methods now take `OtelMetric` directly. `normalize_otel` kept intentionally as the `OtelMetric → Event` convenience for sink pipelines. |
 | T22 | Delete `MetricEntry::from_metric` / `into_metric` | **DONE** | `3856582` — replaced with `from_otel` / `into_otel` |
 
@@ -610,9 +612,9 @@ the struct**:
 
 | # | Task | Status | Commit | Note |
 |---|------|--------|--------|------|
-| T16 | Fast-path get/insert/remove bypassing legacy round-trip | **IN PROGRESS** | `63f76f1`..`9408e1e` | 8 fields for get/insert (body, severity_text, severity_number, trace_id, span_id, timestamp, source_type, host), 4 for remove. **Remaining:** generic attribute paths, resource/scope sub-paths, then delete round-trip functions. |
-| T15 | Remove VRL aliases + Serialize → proto-canonical | **BLOCKED ON T16** | | Serialize for OtelLog stays as legacy layout until T16 covers all paths. Proto is canonical format, JSON is codec — each sink chooses its format. `OtlpJsonLog`/`OtlpJsonSpan` wrappers exist for OTLP-aware sinks. |
-| T23 | Delete `to_value_legacy_layout` + `apply_value_legacy_layout` | **PLANNED** | | After T16 handles ALL paths, these become dead code. Delete ~200 lines including `hoist_resource_fields`, `hoist_scope_fields`. Serialize impl changes to use proto-direct serialization. |
+| T16 | Fast-path get/insert/remove bypassing legacy round-trip | **IN PROGRESS** | `63f76f1`..`9408e1e` | 4 phases planned — see "Remaining work" section below for automode-ready execution plan. |
+| T15 | Remove VRL aliases + Serialize → proto-canonical | **BLOCKED ON T16** | | 5 aliases to remove. Breaking change gated on `vector vrl-migrate`. See "Remaining work" for detailed plan. |
+| T23 | Simplify/rename legacy layout functions | **PLANNED** | | After T15, rename + simplify. `from_value_map` stays as canonical constructor. See "Remaining work" for analysis. |
 
 #### Workstream 4: Runtime safety + correctness
 
@@ -620,7 +622,7 @@ the struct**:
 |---|------|--------|--------|------|
 | T17 | ~~Implement real `Deserialize` for OTel types~~ | **REVERTED** | `070e536` reverts `7040e7b` + `acf50cc` | Audit found zero live callers of serde Deserialize on OtelLog/OtelSpan/OtelMetric. The `data` field was silently dropped in OtelMetric's impl (silent data loss). Removed entire Deserialize chain (-119 lines) — `Event` keeps `Serialize` only. All ingress paths go through proto (OtlpCodec) or the otel_json Serialize helpers; none use serde Deserialize. See T24 for if/when this becomes needed. |
 | T19 | Fix VrlTarget::OtelMetric remove (write-back) | **DONE** | `7040e7b`+ | Write-back for name, description, unit, resource, scope, attributes — same paths as target_insert. Returns removed value. |
-| T24 | **DEFERRED** — OTLP JSON → OtelMetric parse helpers | **DEFERRED (no caller)** | — | If/when a feature requires deserializing OTLP JSON directly into OtelMetric (e.g. a new OTLP HTTP source that does not go through proto; a config-driven JSON ingestion path; user-level `parse_otlp_json` VRL function), add parse helpers to `lib/vector-core/src/event/otel_json.rs` mirroring the existing Serialize side. Scope: ~5 parse functions (Sum, Gauge, Histogram, Summary, ExponentialHistogram) + data point helpers (NumberDataPoint, HistogramDataPoint, SummaryDataPoint). ~200 lines. Not "complex" — just tedious. Trigger: a PR that needs it. Until then, zero code is better than half-done code. See commit `070e536` rationale. |
+| T24 | OTLP JSON → OtelMetric parse helpers | **DEFERRED (no caller)** | — | Trigger-based. See "Remaining work" section for full implementation plan (5 metric parsers, 3 data point helpers, ~200 lines). Only implement when a concrete caller exists. |
 
 #### Workstream 5: Cleanup
 
@@ -909,22 +911,19 @@ plan if/when a future caller needs OTLP JSON parsing.
 ### Complete dependency graph (all tasks)
 
 ```
-DONE (Phase G — Campaigns A, B boundary, buffer-compat):
-  T1..T11, T14, T18, T19, T20, T21, T22
-  F.6 (LogEvent delete), G.1 (TraceEvent delete), G.2 (proto compat)
+DONE — All legacy types deleted:
+  T1..T14, T18..T22
+  F.6 (LogEvent), G.1 (TraceEvent), G.2 (proto compat)
+  T12 + T13b (Metric struct DELETED — 9bd0d06)  ←── MILESTONE ✓
 
-OPEN — Metric struct deletion:
-  T12 (migrate remaining 171 Metric::new test callers)
-   └─► T13b (DELETE Metric struct + all impls)  ←── MILESTONE
-
-OPEN — Legacy layout elimination:
-  T16 (extend fast-path to ALL paths)  ←── DEEPEST CHANGE
-   └─► T15 (remove VRL aliases)        ←── product decision gate
-        └─► T23 (delete to_value_legacy_layout / apply_value_legacy_layout)
+OPEN — Legacy layout elimination (4 tasks remain):
+  T16 (extend fast-path: get/insert/remove never call to_value_legacy_layout)
+   └─► T15 (remove VRL aliases + switch Serialize/value/keys to proto-canonical)
+        └─► T23 (delete to_value_legacy_layout + apply_value_legacy_layout)
 
 DEFERRED:
-  T17 (serde Deserialize for OTel types) — REVERTED, see T24
-  T24 (OTLP-JSON → OtelMetric parse helpers) — trigger-based, no caller
+  T17 (serde Deserialize) — REVERTED, see T24
+  T24 (OTLP-JSON → OtelMetric parse helpers) — trigger-based, no caller yet
 ```
 
 ---
@@ -967,9 +966,11 @@ paths. Each sink chooses its codec format. `OtlpJsonLog` wrapper
 exists for OTLP-aware sinks. VRL aliases will be removed when
 the round-trip is fully eliminated (T23).
 
-**TD-4: RESOLVED (T17 done)**
+**TD-4: RESOLVED (T17 reverted)**
 
-All 3 OTel types have working Deserialize implementations.
+Deserialize implementations are NOT needed — zero callers exist.
+T17 was reverted (`070e536`) after discovering the impl silently
+dropped OtelMetric's `data` field. See T24 for trigger-based plan.
 
 **TD-5: RESOLVED (T19 done)**
 
@@ -990,27 +991,244 @@ These are OtelMetric's public API — NOT legacy types:
 
 ### Remaining work (automode-ready, 2026-04-20)
 
-Campaigns A and B boundary migrations are **DONE**. What's left:
+All legacy types deleted (LogEvent, TraceEvent, Metric). What remains
+is **legacy layout elimination** — removing the O(event_size) round-trip
+that every get/insert/remove call pays.
 
-1. **T12** — Migrate the remaining 171 test-site `Metric::new` callers
-   to `OtelMetric` (155/326 already migrated in `43ede6e`). Mechanical.
-2. **T13b** — Delete the `Metric` struct itself plus:
-   - all `impl Metric` blocks (~330 lines)
-   - trait impls: `Display`, `AsRef<MetricData>`, `EventDataEq`,
-     `ByteSizeOf`, `EstimatedJsonEncodedSizeOf`, `Finalizable`,
-     `GetEventCountTags`, `Configurable`
-   - `Arbitrary for Metric`, `FromLua for Metric`
-   - `From<proto::Metric> for Metric` / `From<Metric> for proto::Metric`
-   - `pub use metric::Metric` re-export in `event/mod.rs`
-   See T13b row above for stash-vs-redo guidance.
-3. **T16** — Extend fast-path to generic attribute paths + resource/scope
-   sub-paths. In progress (8 fields for get/insert, 4 for remove).
-4. **T15** — Remove VRL aliases (`.message`, `.tags`, `.host`,
-   `.source_type`, `.timestamp`). Blocked on T16; product decision gate.
-5. **T23** — Delete `to_value_legacy_layout` + `apply_value_legacy_layout`
-   once T16 covers all paths.
-6. **T24** — DEFERRED. Adds OTLP-JSON → OtelMetric parse helpers if/when
-   a caller needs it.
+**4 tasks remain**, in execution order:
+
+#### T16 — Eliminate legacy-layout fallbacks in get/insert/remove
+
+**Goal:** Make OtelLog and OtelSpan get/insert/remove operate directly
+on proto fields, never calling `to_value_legacy_layout`/`apply_value_legacy_layout`.
+
+**File:** `lib/vector-core/src/event/otel_event.rs`
+
+**Current state:** Fast-path handles 8 single-segment fields for get,
+6 for insert, 4 for remove. Generic single-segment attribute get works.
+All other paths fall through to the O(event_size) legacy round-trip.
+
+**Production path audit (2026-04-20):**
+- **Single-segment** `.message` (112 uses via log_schema): alias for
+  `.body` — NOT handled by fast-path, falls through.
+- **Multi-segment** `kubernetes.*` (24 uses), `data_stream.*` (9 uses),
+  `counter.value`/`gauge.value` (10 uses), `origin.*` (3 uses): all
+  stored as record attributes with dotted keys; the legacy layout
+  inserts them flat into the ObjectMap so VRL's multi-segment path
+  navigator finds them by splitting the dotted key.
+- **Batch methods** `modify_as_value` (3 production callers: splunk_hec,
+  dnstap), `as_map` (8 production callers: elasticsearch, new_relic,
+  log_to_metric, enrichment tables).
+- **OtelSpan**: no fast-path at all (3 methods call legacy layout).
+
+**Phase 1 — Close single-segment gaps (~2h):**
+- Add `.message` alias for `.body` in get/insert/remove
+- Add `trace_id`/`span_id` to insert (hex string → bytes decode)
+- Add `source_type`/`host`/`trace_id`/`span_id` to remove
+- Add generic single-segment attribute insert (write to
+  `record.attributes` as KeyValue)
+- Add generic single-segment attribute remove (search
+  `record.attributes` + KvList body, remove + return old value)
+
+After Phase 1: **single-segment paths never fall through.**
+
+**Phase 2 — Multi-segment proto navigation (~4h):**
+
+Multi-segment paths like `event_path!("kubernetes", "pod_name")` arise
+because the legacy layout stores dotted-key attributes (e.g.
+`kubernetes.pod_name`) as flat entries in the ObjectMap, and VRL's path
+navigator splits the dot to produce a 2-segment path. Direct proto
+handling must reconstruct the dotted key from segments:
+
+```
+["kubernetes", "pod_name"]  →  attribute key "kubernetes.pod_name"
+```
+
+Implementation:
+- For get: join path segments with `.`, look up in record.attributes
+- For insert: join path segments with `.`, upsert in record.attributes
+- For remove: join path segments with `.`, remove from record.attributes
+- Special cases: `body.*` navigates KvList body, `resource.*` navigates
+  resource proto, `scope.*` navigates scope proto
+
+After Phase 2: **get/insert/remove never call to_value_legacy_layout.**
+
+**Phase 3 — OtelSpan fast-path (~2h):**
+- Mirror OtelLog approach for span fields: name, trace_id, span_id,
+  parent_span_id, start_time_unix_nano, end_time_unix_nano, kind,
+  status, attributes
+- Single-segment + multi-segment handling
+
+After Phase 3: **OtelSpan get/insert never call to_value_legacy_layout.**
+
+**Phase 4 — Replace batch methods (~3h):**
+- `value()` → build Value from proto directly (still legacy field names
+  until T15: `.message`, `.timestamp`, `.host`, `.source_type`)
+- `keys()` → enumerate proto field names + attribute keys directly
+- `as_map()` → same as value(), returning ObjectMap
+- `convert_to_fields*()` → walk proto structure, flatten with dots
+- `event_data_eq()` → compare proto fields directly (avoid clone)
+- Delete `modify_as_value()` — individual insert/remove are now O(1).
+  Migrate 3 callers: splunk_hec → individual inserts (already fast),
+  dnstap → individual inserts.
+- `value_mut()` → returns proto-built Value (still read-only snapshot)
+
+After Phase 4: **to_value_legacy_layout called ONLY by Serialize,
+from_value_map, and proto.rs disk-buffer encode.** These transfer to
+T15 (Serialize) and T23 (rename/simplify from_value_map).
+
+**Effort:** ~2 sessions (8-12h). No breaking changes.
+**Depends on:** nothing.
+
+---
+
+#### T15 — Remove VRL aliases + switch Serialize to proto-canonical
+
+**Goal:** Remove the legacy field name aliases that exist solely for
+backward compatibility with pre-OTLP Vector. Users run
+`vector vrl-migrate` (Phase A, DONE) to update their configs first.
+
+**Breaking change:** YES. Gated on `vector vrl-migrate` availability
+(already shipped).
+
+**Aliases to remove:**
+
+| Alias | Canonical | Action |
+|-------|-----------|--------|
+| `.message` | `.body` | Remove from fast-path; delete `message_path()` alias |
+| `.timestamp` | `.time_unix_nano` | Remove from fast-path; change type from Timestamp to Integer (nanos) |
+| `.host` | `.resource.attributes."host.name"` | Remove hoisting from `hoist_resource_fields` |
+| `.source_type` | `.resource.attributes."source_type"` | Remove hoisting from `hoist_resource_fields` |
+| `.tags."key"` | `.attributes."key"` | OtelMetric only — remove alias in VrlTarget |
+
+**Phase 1 — Remove aliases from get/insert/remove (~1h):**
+- Remove `.message` case from get/insert/remove (only `.body` works)
+- Remove `.timestamp` case that returns Timestamp — replace with
+  `.time_unix_nano` returning Integer (nanoseconds since epoch)
+- Remove `.host` and `.source_type` alias cases
+- Keep canonical names (`.body`, `.time_unix_nano`, `.severity_text`, etc.)
+
+**Phase 2 — Switch Serialize to proto-canonical (~2h):**
+- OtelLog: switch from `to_value_legacy_layout().serialize(s)` to
+  `OtlpJsonLog` wrapper (already exists, already has TODO comment)
+- OtelSpan: switch to `OtlpJsonSpan` wrapper
+- This means JSON output changes field names:
+  `message` → `body`, `timestamp` → `timeUnixNano`,
+  `host` → nested in `resource.attributes`, etc.
+
+**Phase 3 — Update value()/keys()/as_map() (~2h):**
+- These methods build Value trees. Switch to proto-canonical field names.
+- `value()` for Legacy namespace returns `{ "body": ..., "time_unix_nano": ..., "severity_text": ..., "attributes": { ... }, "resource": { ... } }`
+- `keys()` returns proto field names
+- `as_map()` returns canonical ObjectMap
+
+**Phase 4 — Fix test assertions (~4h):**
+- Every test that expects `.message`, `.timestamp`, `.host`,
+  `.source_type` must be updated to use canonical names.
+- VRL test configs must be migrated (use `vector vrl-migrate` or manual update).
+- This is the high-volume mechanical work.
+
+**Phase 5 — Delete alias infrastructure (~1h):**
+- Delete `hoist_resource_fields` / `hoist_scope_fields` helper functions
+- Delete `message_path()`, `host_path()`, `source_type_path()` aliases
+- Delete `log_schema()` field mapping where it references legacy names
+- Delete coerce_to_timestamp (timestamp becomes integer nanos)
+
+**Effort:** ~1-2 sessions (6-10h), mainly test assertion updates.
+**Depends on:** T16 complete (fast-path covers all paths).
+
+---
+
+#### T23 — Simplify/rename legacy layout functions
+
+**Goal:** After T15 removes aliases, `to_value_legacy_layout` and
+`apply_value_legacy_layout` either:
+- Have zero callers → **delete** them (~200 lines), OR
+- Still serve `from_value_map` constructor → **rename + simplify**
+
+**Analysis of remaining callers after T15:**
+
+| Caller | Status after T15 |
+|--------|------------------|
+| `get()` fallback | **GONE** (T16) |
+| `insert()` fallback | **GONE** (T16) |
+| `remove_prune()` fallback | **GONE** (T16) |
+| `modify_as_value()` | **GONE** (T16 Phase 4 deletes it) |
+| `value()` | **GONE** (T16 Phase 4 rewrites it) |
+| `keys()` / `as_map()` / `convert_to_fields*()` | **GONE** (T16 Phase 4) |
+| `event_data_eq()` | **GONE** (T16 Phase 4) |
+| `Serialize` | **GONE** (T15 Phase 2 switches to OtlpJson) |
+| `from_value_map` (constructor) | **STAYS** — needs apply_value_layout |
+| `proto.rs` disk buffer encode | **STAYS** — needs to_value for disk format |
+
+**Action:**
+1. Rename `to_value_legacy_layout` → `to_value_canonical` (or inline into
+   the 1-2 remaining callers if small enough)
+2. Rename `apply_value_legacy_layout` → `apply_value_canonical`
+3. Simplify: remove alias mapping (`.message` → body), resource hoisting
+   (source_type, host.name), timestamp coercion. After T15, these
+   functions just do a direct proto ↔ Value conversion with no magic.
+4. Delete `hoist_resource_fields`, `hoist_scope_fields` (moved to
+   T15 Phase 5 if not already deleted)
+5. Delete `coerce_to_timestamp` helper
+
+**Effort:** ~1-2h cleanup.
+**Depends on:** T15 complete.
+
+---
+
+#### T24 — OTLP JSON → OtelMetric parse helpers (DEFERRED)
+
+**Goal:** Add parse functions for OTLP JSON format into OtelMetric,
+mirroring the existing Serialize side in `otel_json.rs`.
+
+**Status:** DEFERRED — no caller exists. The T17 revert (`070e536`)
+demonstrated that premature Deserialize implementations silently drop
+data (the OtelMetric impl dropped the entire `data` field). Zero code
+is better than half-done code.
+
+**Trigger:** A PR that needs to deserialize OTLP JSON directly into
+OtelMetric. Examples:
+- A new OTLP HTTP JSON source (not proto-based)
+- A config-driven JSON ingestion path
+- A VRL `parse_otlp_json` function
+
+**When triggered, implementation plan:**
+
+1. **Define canonical schema** — match proto3 JSON mapping:
+   ```json
+   {
+     "name": "...",
+     "description": "...",
+     "unit": "...",
+     "sum": { "dataPoints": [...], "aggregationTemporality": 1, "isMonotonic": true },
+     "resource": { "attributes": [...] },
+     "scope": { "name": "...", "version": "..." }
+   }
+   ```
+
+2. **Implement metric type parsers** (~5 functions):
+   - `parse_sum(json) → (MetricKind, MetricValue)` — monotonic sum →
+     Counter, non-monotonic → Gauge
+   - `parse_gauge(json) → MetricValue::Gauge`
+   - `parse_histogram(json) → MetricValue::AggregatedHistogram`
+   - `parse_summary(json) → MetricValue::AggregatedSummary`
+   - `parse_exponential_histogram(json) → MetricValue::Distribution`
+     (convert exp-histogram to distribution samples)
+
+3. **Implement data point helpers**:
+   - `parse_number_data_point(json) → (f64, attributes, timestamp)`
+   - `parse_histogram_data_point(json) → (buckets, count, sum, ...)`
+   - `parse_summary_data_point(json) → (quantiles, count, sum, ...)`
+
+4. **Add round-trip tests**: for each metric type,
+   `OtelMetric → serialize → parse → assert_eq(original)`
+
+5. **Wire into caller**: the triggering feature's deserialize path.
+
+**File:** `lib/vector-core/src/event/otel_json.rs` (extend existing)
+**Effort:** ~200 lines, ~4h when triggered.
+**Depends on:** concrete caller (no speculative implementation).
 
 ## Historical completion log
 
@@ -1022,19 +1240,24 @@ Campaigns A and B boundary migrations are **DONE**. What's left:
 6. ~~Migrate transforms (Group E)~~ — **DONE**: reduce + metric_to_log
 7. ~~Performance: per-insert round-trips~~ — **DONE** via `OtelLog::modify_as_value`, applied to splunk_hec `build_log_legacy`
 
-## Current state (2026-04-17)
+## Current state (2026-04-20)
 
-### Legacy types deleted
+### ALL legacy types deleted
 - **`LogEvent`** — DELETED (`80ff2fb`, 1217 lines)
 - **`TraceEvent`** — DELETED (`1236e8e`, 191 lines)
+- **`Metric` struct** — DELETED (`9bd0d06`, 1040 lines across 21 files)
 - **Proto backward compat** — DELETED (`9363568`, old decoders/encoders)
-- **`Event::from(LogEvent/Metric/TraceEvent)` bridges** — DELETED
+- **All `Event::from(LogEvent/Metric/TraceEvent)` bridges** — DELETED
+- **All `from_legacy_metric`/`from_log_event`/`from_trace_event`** — DELETED
 
-### Remaining legacy type: `Metric` struct
-- **0 production callers** of `Metric::new` in sources/transforms
-- **0 callers** of `from_legacy_metric` (function deleted, T1 `727c801`)
-- **171 test/sink/lib sites** still use `Metric::new` (down from 326 — T12 in progress)
-- **T12 + T13b** are the last blocking tasks before `Metric` struct deletion
+### What remains: legacy layout round-trip
+The O(event_size) `to_value_legacy_layout`/`apply_value_legacy_layout`
+round-trip is the **last legacy pattern**. It exists to support:
+1. VRL field aliases (`.message`, `.host`, `.source_type`, `.timestamp`)
+2. Resource/scope hoisting into flat ObjectMap for backward compat
+3. Serialize implementations that emit legacy field names
+
+4 tasks (T16 → T15 → T23, plus deferred T24) eliminate this.
 
 ### Performance findings
 
@@ -1077,12 +1300,14 @@ expected-value construction. No migration needed.
    targets a specific proto field. These are O(1) and bypass the
    legacy layout entirely.
 
-## Verification (updated 2026-04-17)
+## Verification (updated 2026-04-20)
 
-- `cargo test -p vector --lib` — 1782/1782 pass (1 flaky `file_start_position` excluded)
-- `cargo test -p vector-core --lib` — 179/179 pass (6 pre-existing TLS failures excluded)
-- `cargo test -p codecs` — 216/216 pass
-- `cargo check --tests -p vector` — compiles clean (lib + tests)
+After T13b (Metric struct deletion):
+- `cargo check --tests -p vector` — compiles clean
+- `cargo test -p vector-core --lib` — all pass
+- `cargo test -p codecs` — all pass
+- `cargo test -p opentelemetry-proto` — all pass (5 otel_event tests)
+- All 97 tests across affected modules verified during T13b
 
 ## Related docs
 

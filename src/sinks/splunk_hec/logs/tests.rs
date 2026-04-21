@@ -189,12 +189,11 @@ fn splunk_encode_log_event_json() {
 
     assert_eq!(hec_data.fields.get("event_field1").unwrap(), "test_value1");
 
-    // In the OTLP-canonical format, Value::Timestamp is stored as
-    // time_unix_nano (Integer) rather than a "timestamp" attribute.
-    // The HEC timestamp extractor matches only Value::Timestamp, so
-    // it returns None and ts_nanos_key is never set.
-    assert_eq!(hec_data.time, None);
-    assert!(event.get("ts_nanos_key").is_none());
+    assert_eq!(hec_data.time, Some(1638366107.111));
+    assert_eq!(
+        event.get("ts_nanos_key").unwrap(),
+        &serde_json::Value::from(456123)
+    );
 }
 
 #[test]
@@ -212,10 +211,7 @@ fn splunk_encode_log_event_text() {
 
     assert_eq!(hec_data.fields.get("event_field1").unwrap(), "test_value1");
 
-    // In the OTLP-canonical format, timestamp round-trips through
-    // time_unix_nano (Integer), so the HEC extractor finds no
-    // Value::Timestamp at the "timestamp" path → time is None.
-    assert_eq!(hec_data.time, None);
+    assert_eq!(hec_data.time, Some(1638366107.111));
 }
 
 #[tokio::test]
@@ -310,16 +306,12 @@ fn splunk_encode_log_event_json_timestamps() {
     hec_data = get_hec_data_for_timestamp_test(None, timestamp_key.clone(), dont_auto_extract);
     assert_eq!(hec_data.time, None);
 
-    // timestamp_key is provided and Value::Timestamp is inserted, but
-    // in the OTLP-canonical format the Timestamp round-trips through
-    // AnyValue (StringValue), so the HEC extractor no longer sees a
-    // Value::Timestamp and returns None.
     hec_data = get_hec_data_for_timestamp_test(
         Some(Value::Timestamp(Utc::now())),
         timestamp_key.clone(),
         dont_auto_extract,
     );
-    assert_eq!(hec_data.time, None);
+    assert!(hec_data.time.is_some());
 
     // timestamp_key is provided and timestamp is valid, but auto_extract_timestamp is set
     hec_data = get_hec_data_for_timestamp_test(

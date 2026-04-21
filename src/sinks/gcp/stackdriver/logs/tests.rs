@@ -174,7 +174,7 @@ fn encode_inserts_timestamp() {
         json,
         serde_json::json!({
             "logName":"projects/project/logs/testlogs",
-            "jsonPayload":{"body":"hello world","timestamp":"2020-01-01T12:30:00Z"},
+            "jsonPayload":{"body":"hello world","time_unix_nano":1577881800000000000_i64},
             "severity":100,
             "labels":{"config_user_label_1":"value_1"},
             "resource":{

@@ -63,7 +63,7 @@ async fn sets_create_action_when_configured() {
         .unwrap();
 
     let expected = r#"{"create":{"_index":"vector","_type":"_doc"}}
-{"action":"crea","body":"hello there","timestamp":"2020-12-01T01:02:03Z"}
+{"action":"crea","body":"hello there","time_unix_nano":1606784523000000000}
 "#;
     assert_expected_is_encoded(expected, &encoded);
     assert_eq!(encoded.len(), encoded_size);
@@ -132,7 +132,7 @@ async fn encoding_with_external_versioning_with_version_set_includes_version() {
         .unwrap();
 
     let expected = r#"{"create":{"_id":"42","_index":"vector","_type":"_doc","version":1337,"version_type":"external"}}
-{"body":"hello there","my_field":"1337","timestamp":"2020-12-01T01:02:03Z"}
+{"body":"hello there","my_field":"1337","time_unix_nano":1606784523000000000}
 "#;
     assert_expected_is_encoded(expected, &encoded);
     assert_eq!(encoded.len(), encoded_size);
@@ -182,7 +182,7 @@ async fn encoding_with_external_gte_versioning_with_version_set_includes_version
         .unwrap();
 
     let expected = r#"{"create":{"_id":"42","_index":"vector","_type":"_doc","version":1337,"version_type":"external_gte"}}
-{"body":"hello there","my_field":"1337","timestamp":"2020-12-01T01:02:03Z"}
+{"body":"hello there","my_field":"1337","time_unix_nano":1606784523000000000}
 "#;
     assert_expected_is_encoded(expected, &encoded);
     assert_eq!(encoded.len(), encoded_size);
@@ -368,7 +368,7 @@ async fn handle_metrics() {
         encoded_lines
             .get(1)
             .unwrap()
-            .starts_with(r#"{"gauge":{"value":42.0},"kind":"absolute","name":"cpu","timestamp""#)
+            .starts_with(r#"{"gauge":{"value":42.0},"kind":"absolute","name":"cpu","time_unix_nano""#)
     );
 }
 

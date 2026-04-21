@@ -84,17 +84,31 @@ count was wrong. On close inspection all sites are either test modules
 
 ### VRL aliases / paths
 
-| Alias | Target | Still live |
-|-------|--------|-----------|
-| `.message` | `.body` | Yes — deprecation notice only |
-| `.timestamp` | `.time_unix_nano` | Yes — schema-meaning mapping |
+| Alias | Target | Status |
+|-------|--------|--------|
+| `.message` | `.body` | `apply_value_map` fallback only (generic decoders) |
+| `.timestamp` / `.@timestamp` | `.time_unix_nano` | **Virtual fast-path field** — get/insert/remove map transparently to `time_unix_nano` proto field |
 | `.tags."key"` | `.attributes."key"` | Yes (OtelLog); OtelMetric `.tags` also live |
 | `.host` | `.resource.attributes."host.name"` | Yes — fast-path alias in get/insert |
 | `.source_type` | `.resource.attributes."source_type"` | Yes — fast-path alias in get/insert |
 | `%vector.*` | `%pipeline.*` | Metadata namespace prefix — TBD |
 
-These aliases are what the `vector vrl-migrate` tool (Phase A, blocked —
-see `VRL_MIGRATION_TOOL.md`) should rewrite before being removed.
+**Virtual timestamp field (2026-04-21)**: `"timestamp"` and `"@timestamp"` are
+virtual fast-path fields on OtelLog's `get_single_segment`, `insert_single_segment`,
+and `remove_single_segment`. They transparently map to the proto `time_unix_nano`
+field without storing a "timestamp" attribute:
+- **get**: returns `Value::Timestamp` converted from `time_unix_nano` nanos
+- **insert**: accepts `Value::Timestamp` → nanos, `Value::Integer` → direct,
+  other types → attribute fallback
+- **remove**: returns `Value::Timestamp`, clears `time_unix_nano`
+
+This makes all 150+ `log_schema().timestamp_key()` call sites work without changes.
+Serialization via `to_value_canonical()` outputs `"time_unix_nano": Integer(nanos)`.
+Sinks that need formatted timestamps (ES datastream → `@timestamp`) do the
+conversion at the encoder level.
+
+Decoders (GELF, syslog) now write `"time_unix_nano"` Integer directly.
+The `extract_timestamp_nanos` helper function has been deleted.
 
 ## What we missed / previously not tracked
 
@@ -146,9 +160,11 @@ see `VRL_MIGRATION_TOOL.md`) should rewrite before being removed.
 ## Remaining phases
 
 - **A — VRL migration tool rules**: **DONE** (B4)
-- **B — Remove VRL aliases**: **OPEN** — T15 eliminated internal alias
-  infrastructure; user-facing VRL aliases remain until `vector vrl-migrate`
-  rewrites configs. Product decision: approved.
+- **B — Remove VRL aliases**: **IN PROGRESS** — `.timestamp`/`@timestamp`
+  converted to virtual fast-path field (maps to `time_unix_nano` proto field).
+  Decoders canonicalized (GELF, syslog). `extract_timestamp_nanos` deleted.
+  ES encoder updated for `time_unix_nano` → `@timestamp`. Remaining aliases
+  (`.message`, `.host`, `.source_type`, `.tags`) still live.
 - **C — OTel-to-Legacy bridge**: **DONE**
 - **D — Legacy-to-OTel bridge**: Folded into F → G.
 - **E — Remove legacy types from production**: **DONE**

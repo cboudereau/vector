@@ -1122,7 +1122,7 @@ mod tests {
         let log = events[0].as_log();
         assert_eq!(log.get("field").unwrap(), msg.into());
         assert!(matches!(log.get(event_path!("resource", "host.name")).unwrap(), Value::Bytes(_)));
-        assert!(matches!(log.get("timestamp").unwrap(), Value::Bytes(_)));
+        assert!(matches!(log.get("timestamp").unwrap(), Value::Timestamp(_)));
         assert_eq!(log.get("tag").unwrap(), tag.into());
 
         (result, output.into())

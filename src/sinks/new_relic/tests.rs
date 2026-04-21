@@ -218,28 +218,21 @@ fn generates_log_api_model_with_dotted_fields() {
 #[test]
 fn generates_log_api_model_with_timestamp() {
     let stamp = Utc::now();
+    let time_unix_nano = stamp.timestamp_nanos_opt().unwrap_or(0);
     let event = Event::Log(OtelLog::from(value!({
-        "timestamp": stamp,
+        "time_unix_nano": time_unix_nano,
         "tag_key": "tag_value",
         "body": "This is a message",
     })));
     let model = LogsApiModel::try_from(vec![event]).expect("Failed mapping logs into API model");
 
-    // In the OTLP-canonical format, Value::Timestamp at the "timestamp"
-    // path is stored as time_unix_nano (Integer). The LogsApiModel looks
-    // for "timestamp" via log_schema(), which no longer finds a
-    // Value::Timestamp, so `timestamp` in the output is absent and
-    // time_unix_nano appears in attributes instead.
-    let time_unix_nano = stamp.timestamp_nanos_opt().unwrap_or(0);
     assert_eq!(
         to_value(&model).unwrap(),
         json!([{
             "logs": [{
                 "message": "This is a message",
-                "attributes": {
-                    "tag_key": "tag_value",
-                    "time_unix_nano": time_unix_nano,
-                },
+                "timestamp": stamp.timestamp_millis(),
+                "attributes": {"tag_key": "tag_value"},
             }]
         }])
     );

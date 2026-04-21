@@ -414,34 +414,6 @@ fn coerce_to_timestamp(v: Value) -> Value {
     }
 }
 
-struct TimestampExtract {
-    nanos: u64,
-    overflow_rfc3339: Option<String>,
-}
-
-fn extract_timestamp_nanos(map: &mut ObjectMap) -> TimestampExtract {
-    for key in &["timestamp", "@timestamp"] {
-        match map.remove(*key) {
-            Some(Value::Timestamp(ts)) => {
-                match ts.timestamp_nanos_opt() {
-                    Some(n) => {
-                        return TimestampExtract { nanos: n as u64, overflow_rfc3339: None };
-                    }
-                    None => {
-                        let rfc = ts.to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true);
-                        return TimestampExtract { nanos: 0, overflow_rfc3339: Some(rfc) };
-                    }
-                }
-            }
-            Some(other) => {
-                map.insert((*key).into(), other);
-            }
-            None => {}
-        }
-    }
-    TimestampExtract { nanos: 0, overflow_rfc3339: None }
-}
-
 // -- OtelLog --
 
 #[derive(Clone, Debug, PartialEq)]
@@ -886,6 +858,17 @@ impl OtelLog {
             "observed_time_unix_nano" if self.record.observed_time_unix_nano != 0 => {
                 Some(Value::Integer(self.record.observed_time_unix_nano as i64))
             }
+            "timestamp" | "@timestamp" => {
+                if self.record.time_unix_nano != 0 {
+                    let nanos = self.record.time_unix_nano;
+                    let secs = (nanos / 1_000_000_000) as i64;
+                    let nsecs = (nanos % 1_000_000_000) as u32;
+                    chrono::DateTime::from_timestamp(secs, nsecs).map(Value::Timestamp)
+                } else {
+                    attribute_value(&self.record.attributes, field)
+                        .map(any_value_to_vrl)
+                }
+            }
             other => {
                 attribute_value(&self.record.attributes, other)
                     .map(any_value_to_vrl)
@@ -1066,6 +1049,38 @@ impl OtelLog {
                     self.record_mut().time_unix_nano = n as u64;
                 }
                 old
+            }
+            "timestamp" | "@timestamp" => {
+                match &value {
+                    Value::Timestamp(ts) => {
+                        let old = if self.record.time_unix_nano == 0 { None }
+                            else {
+                                let n = self.record.time_unix_nano;
+                                let s = (n / 1_000_000_000) as i64;
+                                let ns = (n % 1_000_000_000) as u32;
+                                chrono::DateTime::from_timestamp(s, ns).map(Value::Timestamp)
+                            };
+                        self.record_mut().time_unix_nano =
+                            ts.timestamp_nanos_opt().unwrap_or(0) as u64;
+                        old
+                    }
+                    Value::Integer(n) => {
+                        let old = if self.record.time_unix_nano == 0 { None }
+                            else { Some(Value::Integer(self.record.time_unix_nano as i64)) };
+                        self.record_mut().time_unix_nano = *n as u64;
+                        old
+                    }
+                    _ => {
+                        let old = remove_attribute(&mut self.record_mut().attributes, field)
+                            .map(|av| any_value_to_vrl(&av));
+                        set_attribute(
+                            &mut self.record_mut().attributes,
+                            field.to_string(),
+                            vrl_value_to_any_value(&value),
+                        );
+                        old
+                    }
+                }
             }
             "observed_time_unix_nano" => {
                 let old = if self.record.observed_time_unix_nano == 0 { None }
@@ -1302,6 +1317,19 @@ impl OtelLog {
                 let old = Some(Value::Integer(self.record.time_unix_nano as i64));
                 self.record_mut().time_unix_nano = 0;
                 old
+            }
+            "timestamp" | "@timestamp" => {
+                if self.record.time_unix_nano != 0 {
+                    let nanos = self.record.time_unix_nano;
+                    let secs = (nanos / 1_000_000_000) as i64;
+                    let nsecs = (nanos % 1_000_000_000) as u32;
+                    let old = chrono::DateTime::from_timestamp(secs, nsecs).map(Value::Timestamp);
+                    self.record_mut().time_unix_nano = 0;
+                    old
+                } else {
+                    remove_attribute(&mut self.record_mut().attributes, field)
+                        .map(|av| any_value_to_vrl(&av))
+                }
             }
             "observed_time_unix_nano" => {
                 if self.record.observed_time_unix_nano == 0 { return None; }
@@ -1548,8 +1576,7 @@ impl OtelLog {
 
     /// Write back a Value tree to proto fields.
     ///
-    /// Accepts canonical keys (`body`, `time_unix_nano` as Integer) and
-    /// legacy fallbacks (`message` → body, `timestamp` as Timestamp → nanos).
+    /// Accepts canonical keys (`body`/`message`, `time_unix_nano` as Integer).
     /// Proto fields are extracted into their native slots;
     /// `resource`/`scope` sub-objects are restored;
     /// the remainder becomes `record.attributes`.
@@ -1571,17 +1598,11 @@ impl OtelLog {
             .or_else(|| map.remove("message"))
             .map(|v| vrl_value_to_any_value(&v));
 
-        let mut time_unix_nano = match map.remove("time_unix_nano") {
+        let time_unix_nano = match map.remove("time_unix_nano") {
             Some(Value::Integer(n)) => n as u64,
             Some(other) => { map.insert("time_unix_nano".into(), other); 0 }
             None => 0,
         };
-        let mut overflow_rfc3339 = None;
-        if time_unix_nano == 0 {
-            let ts_extract = extract_timestamp_nanos(&mut map);
-            time_unix_nano = ts_extract.nanos;
-            overflow_rfc3339 = ts_extract.overflow_rfc3339;
-        }
 
         let observed_time_unix_nano = match map.remove("observed_time_unix_nano") {
             Some(Value::Integer(n)) => n as u64,
@@ -1618,19 +1639,13 @@ impl OtelLog {
         self.resource = restore_resource(&mut map);
         self.scope = restore_scope(&mut map);
 
-        let mut attributes: Vec<KeyValue> = map
+        let attributes: Vec<KeyValue> = map
             .into_iter()
             .map(|(k, v)| KeyValue {
                 key: k.to_string(),
                 value: Some(vrl_value_to_any_value(&v)),
             })
             .collect();
-        if let Some(ref overflow_ts) = overflow_rfc3339 {
-            attributes.push(KeyValue {
-                key: "vector.timestamp_overflow".to_string(),
-                value: Some(string_value(overflow_ts)),
-            });
-        }
 
         self.record = LogRecord {
             body,
@@ -1647,18 +1662,9 @@ impl OtelLog {
 
     /// Get the timestamp from the event.
     ///
-    /// Respects semantic meanings for timestamp resolution.
     /// Prefers `time_unix_nano` (event time), falls back to
-    /// `attribute("timestamp")` (log_schema compat), then
     /// `observed_time_unix_nano` (ingest time).
     pub fn get_timestamp(&self) -> Option<Value> {
-        if let Some(overflow) = self.attribute("vector.timestamp_overflow") {
-            if let Some(OtelValueKind::StringValue(s)) = &overflow.value {
-                if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
-                    return Some(Value::Timestamp(dt.with_timezone(&chrono::Utc)));
-                }
-            }
-        }
         if self.namespace() == crate::config::LogNamespace::Vector {
             if let Some(ts) = self.get_by_meaning("timestamp") {
                 return Some(coerce_to_timestamp(ts));
@@ -1669,9 +1675,6 @@ impl OtelLog {
             let secs = (nanos / 1_000_000_000) as i64;
             let nsecs = (nanos % 1_000_000_000) as u32;
             chrono::DateTime::from_timestamp(secs, nsecs).map(Value::Timestamp)
-        } else if let Some(av) = self.attribute("timestamp") {
-            let v = any_value_to_vrl(av);
-            Some(coerce_to_timestamp(v))
         } else if self.record.observed_time_unix_nano != 0 {
             let nanos = self.record.observed_time_unix_nano;
             let secs = (nanos / 1_000_000_000) as i64;
@@ -1686,8 +1689,6 @@ impl OtelLog {
     pub fn remove_timestamp(&mut self) -> Option<Value> {
         let ts = self.get_timestamp();
         self.record.time_unix_nano = 0;
-        remove_attribute(&mut self.record.attributes, "timestamp");
-        remove_attribute(&mut self.record.attributes, "vector.timestamp_overflow");
         ts
     }
 

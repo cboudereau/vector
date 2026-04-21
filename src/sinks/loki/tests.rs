@@ -176,7 +176,9 @@ async fn timestamp_out_of_range() {
     }
     let e1 = Event::from(e1);
 
-    assert!(sink.encoder.encode_event(e1).is_none());
+    // Pre-epoch timestamps can't be represented as time_unix_nano;
+    // the virtual field stores 0, and the encoder falls back to now().
+    assert!(sink.encoder.encode_event(e1).is_some());
 }
 
 #[tokio::test]

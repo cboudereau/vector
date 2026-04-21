@@ -602,7 +602,7 @@ mod tests {
         let record = encoder.encode_event(event).unwrap();
         assert!(
             String::from_utf8_lossy(&record.event.event)
-                .contains(log_schema().timestamp_key().unwrap().to_string().as_str())
+                .contains("time_unix_nano")
         );
         assert_eq!(record.labels.len(), 1);
         assert_eq!(
@@ -657,7 +657,7 @@ mod tests {
         let record = encoder.encode_event(event).unwrap();
         assert!(
             String::from_utf8_lossy(&record.event.event)
-                .contains(log_schema().timestamp_key().unwrap().to_string().as_str())
+                .contains("time_unix_nano")
         );
         assert_eq!(record.labels.len(), 4);
 

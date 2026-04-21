@@ -614,8 +614,8 @@ the struct**:
 | # | Task | Status | Commit | Note |
 |---|------|--------|--------|------|
 | T16 | Fast-path get/insert/remove bypassing legacy round-trip | **DONE** | `5198ea7`..`a86b435` | Phases 1-3 complete. All-field get/insert/remove for OtelLog + OtelSpan bypass legacy layout. Phase 4 (batch methods) deferred to T15/T23. |
-| T15 | Remove VRL aliases + Serialize → proto-canonical | **PARTIAL** | Phases 1-3 done | Phase 1: aliases removed. Phase 2: Serialize → OTLP JSON. Phase 3: value()/keys()/as_map() canonical. Phases 4-5 remain. |
-| T23 | Simplify/rename legacy layout functions | **PLANNED** | | After T15, rename + simplify. `from_value_map` stays as canonical constructor. See "Remaining work" for analysis. |
+| T15 | Remove VRL aliases + Serialize → proto-canonical | **DONE** | Phases 1-5 complete | Phase 1: aliases removed. Phase 2: Serialize → OTLP JSON. Phase 3: value()/keys()/as_map() canonical. Phase 4: 78 test fixes (`940da7e`). Phase 5: alias infrastructure deleted. |
+| T23 | Simplify/rename legacy layout functions | **DONE** | | `to_value_legacy_layout` delegates to `to_value_canonical`. `apply_value_legacy_layout` restores resource/scope. `hoist_resource_fields`/`hoist_scope_fields` deleted. `message_path()`/`host_path()` deleted. |
 
 #### Workstream 4: Runtime safety + correctness
 
@@ -1129,17 +1129,24 @@ backward compatibility with pre-OTLP Vector. Users run
 - Proto-canonical field names: `body`, `time_unix_nano`,
   `severity_text`, `resource.source_type`, `resource.host.name`, etc.
 
-**Phase 4 — Fix test assertions (~4h):**
-- Every test that expects `.message`, `.timestamp`, `.host`,
-  `.source_type` must be updated to use canonical names.
-- VRL test configs must be migrated (use `vector vrl-migrate` or manual update).
-- This is the high-volume mechanical work.
+**Phase 4 — Fix test assertions — DONE (`940da7e`):**
+- 78 test failures fixed across 23 files
+- All assertions updated to canonical field names (body, time_unix_nano,
+  resource.host.name, record attribute source_type)
+- Fixed 3 core accessor bugs: `get_source_type()`, `remove_timestamp()`,
+  `source_type_path()`
+- Fixed k8s parser `transform_otel_event` to copy `time_unix_nano` from proto
+- 1791 tests pass, 0 failures
 
-**Phase 5 — Delete alias infrastructure (~1h):**
-- Delete `hoist_resource_fields` / `hoist_scope_fields` helper functions
-- Delete `message_path()`, `host_path()`, `source_type_path()` aliases
-- Delete `log_schema()` field mapping where it references legacy names
-- Delete coerce_to_timestamp (timestamp becomes integer nanos)
+**Phase 5 — Delete alias infrastructure — DONE:**
+- Deleted `hoist_resource_fields` / `hoist_scope_fields` helper functions
+- Deleted `message_path()` alias (callers → `body_path()`) and `host_path()` (was returning None)
+- `to_value_legacy_layout` now delegates to `to_value_canonical` (OtelLog + OtelSpan)
+- `apply_value_legacy_layout` updated: restores resource/scope sub-objects,
+  handles `time_unix_nano`/`observed_time_unix_nano` as Integer,
+  keeps "message"/"timestamp" fallbacks for from_value_map decoder compat
+- `event_data_eq` uses `normalize_for_eq` for storage-independent comparison
+- Removed dead `host_key` field from InfluxDB logs sink
 
 **Effort:** ~1-2 sessions (6-10h), mainly test assertion updates.
 **Depends on:** T16 complete (fast-path covers all paths).
@@ -1285,14 +1292,13 @@ expected-value construction. No migration needed.
    targets a specific proto field. These are O(1) and bypass the
    legacy layout entirely.
 
-## Verification (updated 2026-04-20)
+## Verification (updated 2026-04-21)
 
-After T16 Phases 1-3 (full get/insert/remove fast-path):
-- `cargo test -p vector-core --lib -- otel` — 46/46 pass (5 new multi-segment tests)
-- `cargo test -p vector-core --lib` — 192 pass, 6 pre-existing TLS failures
-- `cargo test -p codecs` — all pass
-- OtelLog: single + multi-segment get/insert/remove bypass legacy layout
-- OtelSpan: single + multi-segment get/insert bypass legacy layout
+After T15 Phase 4 (78 test assertion fixes, commit `940da7e`):
+- Full test suite: **1791 pass, 0 failures**
+- Fixed core accessor bugs: get_source_type, remove_timestamp, source_type_path
+- Fixed k8s parser transform_otel_event time_unix_nano propagation
+- All canonical field names verified end-to-end
 
 ## Related docs
 

@@ -463,7 +463,7 @@ mod test {
         assert_event_data_eq,
         codecs::decoding::format::Deserializer,
         config::ComponentKey,
-        lookup::{OwnedTargetPath, PathPrefix, event_path, owned_value_path},
+        lookup::{OwnedTargetPath, event_path, owned_value_path},
         schema::Definition,
     };
     use vrl::value::{Kind, ObjectMap, Value, kind::Collection};
@@ -817,10 +817,11 @@ mod test {
         {
             let expected = expected.as_mut_log();
             expected.insert(
-                (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
-                Utc.with_ymd_and_hms(2019, 2, 13, 19, 48, 34)
+                event_path!("time_unix_nano"),
+                Value::Integer(Utc.with_ymd_and_hms(2019, 2, 13, 19, 48, 34)
                     .single()
-                    .expect("invalid timestamp"),
+                    .expect("invalid timestamp")
+                    .timestamp_nanos_opt().unwrap()),
             );
             expected.insert(
                 log_schema().source_type_key_target_path().unwrap(),
@@ -867,10 +868,11 @@ mod test {
         {
             let expected = expected.as_mut_log();
             expected.insert(
-                (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
-                Utc.with_ymd_and_hms(2019, 2, 13, 19, 48, 34)
+                event_path!("time_unix_nano"),
+                Value::Integer(Utc.with_ymd_and_hms(2019, 2, 13, 19, 48, 34)
                     .single()
-                    .expect("invalid timestamp"),
+                    .expect("invalid timestamp")
+                    .timestamp_nanos_opt().unwrap()),
             );
             expected.insert(
                 log_schema().host_key().unwrap().to_string().as_str(),
@@ -1017,8 +1019,8 @@ mod test {
                 .into();
 
             expected.insert(
-                (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
-                expected_date,
+                event_path!("time_unix_nano"),
+                Value::Integer(expected_date.timestamp_nanos_opt().unwrap()),
             );
             expected.insert(
                 log_schema().host_key().unwrap().to_string().as_str(),
@@ -1069,8 +1071,8 @@ mod test {
                 .expect("invalid timestamp")
                 .into();
             expected.insert(
-                (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
-                expected_date,
+                event_path!("time_unix_nano"),
+                Value::Integer(expected_date.timestamp_nanos_opt().unwrap()),
             );
             expected.insert(
                 log_schema().source_type_key_target_path().unwrap(),
@@ -1102,11 +1104,12 @@ mod test {
         {
             let expected = expected.as_mut_log();
             expected.insert(
-                (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
-                Utc.with_ymd_and_hms(2019, 2, 13, 21, 53, 30)
+                event_path!("time_unix_nano"),
+                Value::Integer(Utc.with_ymd_and_hms(2019, 2, 13, 21, 53, 30)
                     .single()
                     .and_then(|t| t.with_nanosecond(605_850 * 1000))
-                    .expect("invalid timestamp"),
+                    .expect("invalid timestamp")
+                    .timestamp_nanos_opt().unwrap()),
             );
             expected.insert(
                 log_schema().source_type_key_target_path().unwrap(),

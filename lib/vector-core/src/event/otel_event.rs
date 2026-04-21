@@ -207,52 +207,13 @@ pub(crate) fn kvlist_to_object_map(kvs: &[KeyValue]) -> ObjectMap {
         .collect()
 }
 
-/// Hoist well-known log_schema fields from `Resource` to top-level in the output map.
-/// `source_type` → top-level `source_type`, `host.name` → top-level `host`.
-/// Remaining resource attributes stay in a `resource` sub-object.
-fn hoist_resource_fields(resource: &Option<Resource>, map: &mut ObjectMap) {
-    if let Some(resource) = resource {
-        let mut res_map = kvlist_to_object_map(&resource.attributes);
-        if resource.dropped_attributes_count != 0 {
-            res_map.insert(
-                "dropped_attributes_count".into(),
-                Value::Integer(resource.dropped_attributes_count as i64),
-            );
-        }
-        // Legacy compat: hoist source_type and host.name to top-level.
-        // TODO(T15/T16): remove when legacy layout round-trip is eliminated.
-        if let Some(v) = res_map.remove("source_type") {
-            map.entry("source_type".into()).or_insert(v);
-        }
-        if let Some(v) = res_map.remove("host.name") {
-            map.entry("host".into()).or_insert(v);
-        }
-        if !res_map.is_empty() {
-            map.insert("resource".into(), Value::Object(res_map));
-        }
-    }
-}
-
-/// Convert scope into a `scope` sub-object in the output map (only if non-empty).
-fn hoist_scope_fields(scope: &Option<InstrumentationScope>, map: &mut ObjectMap) {
-    if let Some(scope) = scope {
-        let mut scope_map = ObjectMap::new();
-        if !scope.name.is_empty() {
-            scope_map.insert("name".into(), Value::Bytes(scope.name.clone().into()));
-        }
-        if !scope.version.is_empty() {
-            scope_map.insert("version".into(), Value::Bytes(scope.version.clone().into()));
-        }
-        if !scope.attributes.is_empty() {
-            scope_map.insert(
-                "attributes".into(),
-                Value::Object(kvlist_to_object_map(&scope.attributes)),
-            );
-        }
-        if !scope_map.is_empty() {
-            map.insert("scope".into(), Value::Object(scope_map));
-        }
-    }
+fn object_map_to_kvlist(map: &ObjectMap) -> Vec<KeyValue> {
+    map.iter()
+        .map(|(k, v)| KeyValue {
+            key: k.to_string(),
+            value: Some(vrl_value_to_any_value(v)),
+        })
+        .collect()
 }
 
 /// Convert an OTel `any_value::Value` to a string for use as a metric tag.
@@ -1536,79 +1497,7 @@ impl OtelLog {
     }
 
     pub fn to_value_legacy_layout(&self) -> Value {
-        let mut map = ObjectMap::new();
-
-        // Body: KvList → expand to top-level; other → "body" field
-        if let Some(body) = self.body() {
-            match &body.value {
-                Some(OtelValueKind::KvlistValue(kvl)) => {
-                    for kv in &kvl.values {
-                        let v = kv.value.as_ref().map(any_value_to_vrl).unwrap_or(Value::Null);
-                        map.insert(kv.key.clone().into(), v);
-                    }
-                }
-                _ => {
-                    map.insert("body".into(), any_value_to_vrl(body));
-                }
-            }
-        }
-
-        // Attributes → top-level (timestamp coerced)
-        for kv in &self.record.attributes {
-            let mut v = kv.value.as_ref().map(any_value_to_vrl).unwrap_or(Value::Null);
-            if kv.key == "timestamp" {
-                v = coerce_to_timestamp(v);
-            }
-            map.insert(kv.key.clone().into(), v);
-        }
-
-        // Severity
-        if !self.record.severity_text.is_empty() {
-            map.insert("severity_text".into(), Value::Bytes(self.record.severity_text.clone().into()));
-        }
-        if self.record.severity_number != 0 {
-            map.insert("severity_number".into(), Value::Integer(self.record.severity_number as i64));
-        }
-
-        // Timestamp
-        // TODO(T15/T16): emit as time_unix_nano integer when legacy layout is removed.
-        if let Some(overflow) = attribute_value(&self.record.attributes, "vector.timestamp_overflow") {
-            if let Some(OtelValueKind::StringValue(s)) = &overflow.value {
-                if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
-                    map.insert("timestamp".into(), Value::Timestamp(dt.with_timezone(&chrono::Utc)));
-                }
-            }
-        } else if self.record.time_unix_nano != 0 {
-            let nanos = self.record.time_unix_nano;
-            let secs = (nanos / 1_000_000_000) as i64;
-            let nsecs = (nanos % 1_000_000_000) as u32;
-            if let Some(ts) = chrono::DateTime::from_timestamp(secs, nsecs) {
-                map.insert("timestamp".into(), Value::Timestamp(ts));
-            }
-        } else if self.record.observed_time_unix_nano != 0 {
-            if !map.contains_key("timestamp") {
-                let nanos = self.record.observed_time_unix_nano;
-                let secs = (nanos / 1_000_000_000) as i64;
-                let nsecs = (nanos % 1_000_000_000) as u32;
-                if let Some(ts) = chrono::DateTime::from_timestamp(secs, nsecs) {
-                    map.insert("timestamp".into(), Value::Timestamp(ts));
-                }
-            }
-        }
-
-        // Trace/span IDs
-        if !self.record.trace_id.is_empty() {
-            map.insert("trace_id".into(), hex_encode(&self.record.trace_id));
-        }
-        if !self.record.span_id.is_empty() {
-            map.insert("span_id".into(), hex_encode(&self.record.span_id));
-        }
-
-        // Resource/scope hoisting
-        hoist_resource_fields(&self.resource, &mut map);
-        hoist_scope_fields(&self.scope, &mut map);
-
-        Value::Object(map)
+        self.to_value_canonical()
     }
 
     /// Construct an OtelLog from a legacy-layout Value + metadata.
@@ -1625,20 +1514,17 @@ impl OtelLog {
         out
     }
 
-    /// Write back a Value tree (legacy layout) to proto fields.
+    /// Write back a Value tree to proto fields.
     ///
-    /// Symmetric with `to_value_legacy_layout`: well-known proto fields
-    /// (`body`/`message`, `timestamp`, `severity_text`, `severity_number`,
-    /// `trace_id`, `span_id`) are extracted into their native `LogRecord`
-    /// slots; `source_type`/`host` go to resource attributes; the remainder
-    /// becomes `record.attributes`. Malformed hex for `trace_id`/`span_id`
-    /// falls back to storing the raw Value as an attribute so corrupt data
-    /// is not silently dropped.
+    /// Handles both canonical layout (from `to_value_canonical`) and
+    /// legacy/decoder layout (from `from_value_map` callers that pass
+    /// "message", "timestamp", etc.). Proto fields are extracted into
+    /// their native slots; `resource`/`scope` sub-objects are restored;
+    /// the remainder becomes `record.attributes`.
     fn apply_value_legacy_layout(&mut self, value: Value) {
         let mut map = match value {
             Value::Object(m) => m,
             other => {
-                // Non-object: store as body, clear everything else
                 self.record = LogRecord {
                     body: Some(vrl_value_to_any_value(&other)),
                     ..Default::default()
@@ -1649,63 +1535,90 @@ impl OtelLog {
             }
         };
 
-        // Body (with legacy "message" fallback)
         let body = map.remove("body")
             .or_else(|| map.remove("message"))
             .map(|v| vrl_value_to_any_value(&v));
 
-        // Timestamp
-        let ts_extract = extract_timestamp_nanos(&mut map);
-        let time_unix_nano = ts_extract.nanos;
+        // Canonical: "time_unix_nano" as Integer. Fallback: "timestamp" as Timestamp.
+        let mut time_unix_nano = match map.remove("time_unix_nano") {
+            Some(Value::Integer(n)) => n as u64,
+            Some(other) => { map.insert("time_unix_nano".into(), other); 0 }
+            None => 0,
+        };
+        let mut overflow_rfc3339 = None;
+        if time_unix_nano == 0 {
+            let ts_extract = extract_timestamp_nanos(&mut map);
+            time_unix_nano = ts_extract.nanos;
+            overflow_rfc3339 = ts_extract.overflow_rfc3339;
+        }
 
-        // Severity: Value::Bytes → severity_text, Value::Integer → severity_number.
+        let observed_time_unix_nano = match map.remove("observed_time_unix_nano") {
+            Some(Value::Integer(n)) => n as u64,
+            Some(other) => { map.insert("observed_time_unix_nano".into(), other); 0 }
+            None => 0,
+        };
+
         let severity_text = match map.remove("severity_text") {
-            Some(Value::Bytes(b)) => {
-                String::from_utf8(b.to_vec()).unwrap_or_default()
-            }
-            Some(other) => {
-                // Non-bytes value: keep as attribute so we don't drop data.
-                map.insert("severity_text".into(), other);
-                String::new()
-            }
+            Some(Value::Bytes(b)) => String::from_utf8(b.to_vec()).unwrap_or_default(),
+            Some(other) => { map.insert("severity_text".into(), other); String::new() }
             None => String::new(),
         };
         let severity_number = match map.remove("severity_number") {
             Some(Value::Integer(i)) => i as i32,
-            Some(other) => {
-                map.insert("severity_number".into(), other);
-                0
-            }
+            Some(other) => { map.insert("severity_number".into(), other); 0 }
             None => 0,
         };
 
-        // Trace/span IDs: hex-decode back to bytes. If decoding fails
-        // (corrupt hex), preserve the original Value as an attribute.
         let trace_id = match map.remove("trace_id") {
             Some(v) => match hex_decode(&v) {
                 Some(bytes) => bytes,
-                None => {
-                    map.insert("trace_id".into(), v);
-                    Vec::new()
-                }
+                None => { map.insert("trace_id".into(), v); Vec::new() }
             },
             None => Vec::new(),
         };
         let span_id = match map.remove("span_id") {
             Some(v) => match hex_decode(&v) {
                 Some(bytes) => bytes,
-                None => {
-                    map.insert("span_id".into(), v);
-                    Vec::new()
-                }
+                None => { map.insert("span_id".into(), v); Vec::new() }
             },
             None => Vec::new(),
         };
 
-        self.resource = None;
+        // Restore Resource from sub-object.
+        self.resource = match map.remove("resource") {
+            Some(Value::Object(res_map)) => {
+                let attributes = object_map_to_kvlist(&res_map);
+                Some(Resource { attributes, dropped_attributes_count: 0 })
+            }
+            Some(other) => { map.insert("resource".into(), other); None }
+            None => None,
+        };
 
-        // Everything else → record.attributes (including "resource"/"scope"
-        // sub-objects if present — they become regular attributes).
+        // Restore InstrumentationScope from sub-object.
+        self.scope = match map.remove("scope") {
+            Some(Value::Object(mut scope_map)) => {
+                let name = match scope_map.remove("name") {
+                    Some(Value::Bytes(b)) => String::from_utf8(b.to_vec()).unwrap_or_default(),
+                    _ => String::new(),
+                };
+                let version = match scope_map.remove("version") {
+                    Some(Value::Bytes(b)) => String::from_utf8(b.to_vec()).unwrap_or_default(),
+                    _ => String::new(),
+                };
+                let attributes = match scope_map.remove("attributes") {
+                    Some(Value::Object(attrs)) => object_map_to_kvlist(&attrs),
+                    _ => vec![],
+                };
+                if name.is_empty() && version.is_empty() && attributes.is_empty() {
+                    None
+                } else {
+                    Some(InstrumentationScope { name, version, attributes, dropped_attributes_count: 0 })
+                }
+            }
+            Some(other) => { map.insert("scope".into(), other); None }
+            None => None,
+        };
+
         let mut attributes: Vec<KeyValue> = map
             .into_iter()
             .map(|(k, v)| KeyValue {
@@ -1713,7 +1626,7 @@ impl OtelLog {
                 value: Some(vrl_value_to_any_value(&v)),
             })
             .collect();
-        if let Some(ref overflow_ts) = ts_extract.overflow_rfc3339 {
+        if let Some(ref overflow_ts) = overflow_rfc3339 {
             attributes.push(KeyValue {
                 key: "vector.timestamp_overflow".to_string(),
                 value: Some(string_value(overflow_ts)),
@@ -1723,6 +1636,7 @@ impl OtelLog {
         self.record = LogRecord {
             body,
             time_unix_nano,
+            observed_time_unix_nano,
             severity_text,
             severity_number,
             trace_id,
@@ -1730,7 +1644,6 @@ impl OtelLog {
             attributes,
             ..Default::default()
         };
-        self.scope = None;
     }
 
     /// Get the timestamp from the event.
@@ -1833,7 +1746,7 @@ impl OtelLog {
 
     /// Like `all_event_fields` but skips individual array elements.
     pub fn all_event_fields_skip_array_elements(&self) -> Option<Vec<(vrl::value::KeyString, Value)>> {
-        match self.to_value_legacy_layout() {
+        match self.to_value_canonical() {
             Value::Object(map) => {
                 let fields: Vec<_> = super::util::log::all_fields_skip_array_elements(&map)
                     .map(|(k, v)| (k, v.clone()))
@@ -1885,11 +1798,6 @@ impl OtelLog {
         Some(OwnedTargetPath::event(owned_value_path!("time_unix_nano")))
     }
 
-    /// Returns `None` — host lives at `resource.host.name`, not a top-level field.
-    pub fn host_path(&self) -> Option<vrl::path::OwnedTargetPath> {
-        None
-    }
-
     /// Get the body path.
     pub fn body_path(&self) -> Option<vrl::path::OwnedTargetPath> {
         use vrl::path::OwnedTargetPath;
@@ -1897,12 +1805,7 @@ impl OtelLog {
         Some(OwnedTargetPath::event(owned_value_path!("body")))
     }
 
-    /// Alias for body_path.
-    pub fn message_path(&self) -> Option<vrl::path::OwnedTargetPath> {
-        self.body_path()
-    }
-
-    /// Returns `None` — source_type lives at `resource.source_type`, not a top-level field.
+    /// Returns the path to the source_type attribute, if present.
     pub fn source_type_path(&self) -> Option<vrl::path::OwnedTargetPath> {
         if self.attribute("source_type").is_some() {
             Some(vrl::path::OwnedTargetPath::event(
@@ -2276,79 +2179,16 @@ impl OtelSpan {
         Value::Object(map)
     }
 
-    /// Build a Value tree with the legacy layout — no intermediate conversion.
     pub fn to_value_legacy_layout(&self) -> Value {
-        let mut map = ObjectMap::new();
-
-        if !self.span.name.is_empty() {
-            map.insert("name".into(), Value::Bytes(self.span.name.clone().into()));
-        }
-        if !self.span.trace_id.is_empty() {
-            map.insert("trace_id".into(), hex_encode(&self.span.trace_id));
-        }
-        if !self.span.span_id.is_empty() {
-            map.insert("span_id".into(), hex_encode(&self.span.span_id));
-        }
-        if !self.span.parent_span_id.is_empty() {
-            map.insert(
-                "parent_span_id".into(),
-                hex_encode(&self.span.parent_span_id),
-            );
-        }
-        if self.span.start_time_unix_nano != 0 {
-            let nanos = self.span.start_time_unix_nano;
-            let secs = (nanos / 1_000_000_000) as i64;
-            let nsecs = (nanos % 1_000_000_000) as u32;
-            if let Some(ts) = chrono::DateTime::from_timestamp(secs, nsecs) {
-                map.insert("start_time".into(), Value::Timestamp(ts));
-            }
-        }
-        if self.span.end_time_unix_nano != 0 {
-            let nanos = self.span.end_time_unix_nano;
-            let secs = (nanos / 1_000_000_000) as i64;
-            let nsecs = (nanos % 1_000_000_000) as u32;
-            if let Some(ts) = chrono::DateTime::from_timestamp(secs, nsecs) {
-                map.insert("end_time".into(), Value::Timestamp(ts));
-            }
-        }
-        if self.span.kind != 0 {
-            map.insert("kind".into(), Value::Integer(self.span.kind as i64));
-        }
-        if let Some(status) = &self.span.status {
-            let mut status_map = ObjectMap::new();
-            if !status.message.is_empty() {
-                status_map.insert(
-                    "message".into(),
-                    Value::Bytes(status.message.clone().into()),
-                );
-            }
-            status_map.insert("code".into(), Value::Integer(status.code as i64));
-            map.insert("status".into(), Value::Object(status_map));
-        }
-
-        for kv in &self.span.attributes {
-            let v = kv
-                .value
-                .as_ref()
-                .map(any_value_to_vrl)
-                .unwrap_or(Value::Null);
-            map.insert(kv.key.clone().into(), v);
-        }
-
-        hoist_resource_fields(&self.resource, &mut map);
-        hoist_scope_fields(&self.scope, &mut map);
-
-        Value::Object(map)
+        self.to_value_canonical()
     }
 
-    /// Write back a Value tree (legacy layout) to proto fields.
+    /// Write back a Value tree to proto fields.
     ///
-    /// Symmetric with `to_value_legacy_layout`: native span proto fields
-    /// (`name`, `trace_id`, `span_id`, `parent_span_id`, `start_time`,
-    /// `end_time`, `kind`, `status`) are extracted into their `Span` slots;
-    /// the remainder becomes `span.attributes`. Malformed hex IDs and
-    /// non-matching shapes fall back to attribute storage so no data is
-    /// silently lost.
+    /// Handles canonical layout (from `to_value_canonical`): proto fields
+    /// are extracted into `Span` slots, `resource`/`scope` sub-objects are
+    /// restored, remainder becomes `span.attributes`. Also handles legacy
+    /// "start_time"/"end_time" (Timestamp) for old disk buffer compat.
     fn apply_value_legacy_layout(&mut self, value: Value) {
         use opentelemetry_proto::tonic::trace::v1::Status;
 
@@ -2359,22 +2199,15 @@ impl OtelSpan {
 
         let name = match map.remove("name") {
             Some(Value::Bytes(b)) => String::from_utf8(b.to_vec()).unwrap_or_default(),
-            Some(other) => {
-                map.insert("name".into(), other);
-                String::new()
-            }
+            Some(other) => { map.insert("name".into(), other); String::new() }
             None => String::new(),
         };
 
-        // Hex-encoded IDs; malformed → kept as attribute.
         let take_id = |map: &mut ObjectMap, key: &str| -> Vec<u8> {
             match map.remove(key) {
                 Some(v) => match hex_decode(&v) {
                     Some(bytes) => bytes,
-                    None => {
-                        map.insert(key.into(), v);
-                        Vec::new()
-                    }
+                    None => { map.insert(key.into(), v); Vec::new() }
                 },
                 None => Vec::new(),
             }
@@ -2383,45 +2216,36 @@ impl OtelSpan {
         let span_id = take_id(&mut map, "span_id");
         let parent_span_id = take_id(&mut map, "parent_span_id");
 
-        // Timestamps encoded as Value::Timestamp → nanos since epoch.
-        // Span proto fields are u64: pre-epoch or out-of-range timestamps
-        // cannot be represented, so we preserve the original value as an
-        // attribute rather than wrapping negatives to huge future times.
-        let take_time = |map: &mut ObjectMap, key: &str| -> u64 {
-            match map.remove(key) {
+        // Canonical: "start_time_unix_nano"/"end_time_unix_nano" as Integer.
+        // Fallback: "start_time"/"end_time" as Timestamp (old disk buffer compat).
+        let take_time_nanos = |map: &mut ObjectMap, canonical_key: &str, legacy_key: &str| -> u64 {
+            match map.remove(canonical_key) {
+                Some(Value::Integer(n)) => return n as u64,
+                Some(other) => { map.insert(canonical_key.into(), other); }
+                None => {}
+            }
+            match map.remove(legacy_key) {
                 Some(Value::Timestamp(ts)) => match ts.timestamp_nanos_opt() {
                     Some(n) if n >= 0 => n as u64,
-                    _ => {
-                        map.insert(key.into(), Value::Timestamp(ts));
-                        0
-                    }
+                    _ => { map.insert(legacy_key.into(), Value::Timestamp(ts)); 0 }
                 },
-                Some(other) => {
-                    map.insert(key.into(), other);
-                    0
-                }
+                Some(other) => { map.insert(legacy_key.into(), other); 0 }
                 None => 0,
             }
         };
-        let start_time_unix_nano = take_time(&mut map, "start_time");
-        let end_time_unix_nano = take_time(&mut map, "end_time");
+        let start_time_unix_nano = take_time_nanos(&mut map, "start_time_unix_nano", "start_time");
+        let end_time_unix_nano = take_time_nanos(&mut map, "end_time_unix_nano", "end_time");
 
         let kind = match map.remove("kind") {
             Some(Value::Integer(i)) => i as i32,
-            Some(other) => {
-                map.insert("kind".into(), other);
-                0
-            }
+            Some(other) => { map.insert("kind".into(), other); 0 }
             None => 0,
         };
 
-        // Status: { message: String, code: Integer }.
         let status = match map.remove("status") {
             Some(Value::Object(mut status_map)) => {
                 let message = match status_map.remove("message") {
-                    Some(Value::Bytes(b)) => {
-                        String::from_utf8(b.to_vec()).unwrap_or_default()
-                    }
+                    Some(Value::Bytes(b)) => String::from_utf8(b.to_vec()).unwrap_or_default(),
                     _ => String::new(),
                 };
                 let code = match status_map.remove("code") {
@@ -2434,10 +2258,42 @@ impl OtelSpan {
                     Some(Status { message, code })
                 }
             }
-            Some(other) => {
-                map.insert("status".into(), other);
-                None
+            Some(other) => { map.insert("status".into(), other); None }
+            None => None,
+        };
+
+        // Restore Resource from sub-object.
+        self.resource = match map.remove("resource") {
+            Some(Value::Object(res_map)) => {
+                let attributes = object_map_to_kvlist(&res_map);
+                Some(Resource { attributes, dropped_attributes_count: 0 })
             }
+            Some(other) => { map.insert("resource".into(), other); None }
+            None => None,
+        };
+
+        // Restore InstrumentationScope from sub-object.
+        self.scope = match map.remove("scope") {
+            Some(Value::Object(mut scope_map)) => {
+                let scope_name = match scope_map.remove("name") {
+                    Some(Value::Bytes(b)) => String::from_utf8(b.to_vec()).unwrap_or_default(),
+                    _ => String::new(),
+                };
+                let version = match scope_map.remove("version") {
+                    Some(Value::Bytes(b)) => String::from_utf8(b.to_vec()).unwrap_or_default(),
+                    _ => String::new(),
+                };
+                let scope_attrs = match scope_map.remove("attributes") {
+                    Some(Value::Object(attrs)) => object_map_to_kvlist(&attrs),
+                    _ => vec![],
+                };
+                if scope_name.is_empty() && version.is_empty() && scope_attrs.is_empty() {
+                    None
+                } else {
+                    Some(InstrumentationScope { name: scope_name, version, attributes: scope_attrs, dropped_attributes_count: 0 })
+                }
+            }
+            Some(other) => { map.insert("scope".into(), other); None }
             None => None,
         };
 
@@ -2461,8 +2317,6 @@ impl OtelSpan {
             attributes,
             ..Default::default()
         };
-        self.resource = None;
-        self.scope = None;
     }
 
     /// Get a field value by path.
@@ -4133,15 +3987,46 @@ impl GetEventCountTags for OtelMetric {
 // Compare OtelLog via legacy layout equivalence so that two events
 // carrying the same logical data but stored differently in proto
 // (e.g., source_type in resource vs record.attributes) compare equal.
+fn normalize_for_eq(v: &mut Value) {
+    if let Value::Object(map) = v {
+        map.remove("observed_time_unix_nano");
+        let mut hoisted_st = None;
+        let mut hoisted_host = None;
+        let mut res_empty = false;
+        if let Some(Value::Object(res_map)) = map.get_mut("resource") {
+            hoisted_st = res_map.remove("source_type");
+            hoisted_host = res_map.remove("host.name");
+            res_empty = res_map.is_empty();
+        }
+        if let Some(st) = hoisted_st {
+            map.entry("source_type".into()).or_insert(st);
+        }
+        if let Some(host) = hoisted_host {
+            map.entry("host".into()).or_insert(host);
+        }
+        if res_empty {
+            map.remove("resource");
+        }
+    }
+}
+
 impl EventDataEq for OtelLog {
     fn event_data_eq(&self, other: &Self) -> bool {
-        self.to_value_legacy_layout() == other.to_value_legacy_layout()
+        let mut a = self.to_value_canonical();
+        let mut b = other.to_value_canonical();
+        normalize_for_eq(&mut a);
+        normalize_for_eq(&mut b);
+        a == b
     }
 }
 
 impl EventDataEq for OtelSpan {
     fn event_data_eq(&self, other: &Self) -> bool {
-        self.to_value_legacy_layout() == other.to_value_legacy_layout()
+        let mut a = self.to_value_canonical();
+        let mut b = other.to_value_canonical();
+        normalize_for_eq(&mut a);
+        normalize_for_eq(&mut b);
+        a == b
     }
 }
 
@@ -4561,7 +4446,7 @@ mod tests {
         assert_eq!(map.get("body").unwrap().as_str().unwrap(), "hello world");
         assert_eq!(map.get("severity_text").unwrap().as_str().unwrap(), "ERROR");
         assert_eq!(map.get("severity_number").unwrap().as_integer().unwrap(), 17);
-        assert!(map.get("timestamp").unwrap().is_timestamp());
+        assert_eq!(map.get("time_unix_nano").unwrap().as_integer().unwrap(), 1_700_000_000_000_000_000);
         assert_eq!(map.get("trace_id").unwrap().as_str().unwrap(), "abcd");
         assert_eq!(map.get("span_id").unwrap().as_str().unwrap(), "1234");
         assert_eq!(map.get("env").unwrap().as_str().unwrap(), "prod");
@@ -5118,6 +5003,45 @@ mod tests {
             Some("not-hex-data".to_string()),
             "invalid hex should be preserved as an attribute"
         );
+    }
+
+    #[test]
+    fn insert_preserves_scope_via_round_trip() {
+        let mut event = OtelLog::new(LogRecord::default());
+        event.set_scope(InstrumentationScope {
+            name: "my-lib".into(),
+            version: "1.2.3".into(),
+            attributes: vec![KeyValue {
+                key: "lib.lang".into(),
+                value: Some(AnyValue {
+                    value: Some(opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue("rust".into())),
+                }),
+            }],
+            dropped_attributes_count: 0,
+        });
+        event.insert(vrl::event_path!("new_field"), "new_value");
+        assert_eq!(
+            event.get(vrl::event_path!("scope", "name")).and_then(|v| v.as_str().map(|s| s.into_owned())),
+            Some("my-lib".to_string())
+        );
+        assert_eq!(
+            event.get(vrl::event_path!("scope", "version")).and_then(|v| v.as_str().map(|s| s.into_owned())),
+            Some("1.2.3".to_string())
+        );
+        assert_eq!(
+            event.get(vrl::event_path!("scope", "attributes", "lib.lang")).and_then(|v| v.as_str().map(|s| s.into_owned())),
+            Some("rust".to_string())
+        );
+    }
+
+    #[test]
+    fn insert_preserves_observed_time_unix_nano_via_round_trip() {
+        let mut event = OtelLog::new(LogRecord {
+            observed_time_unix_nano: 1_700_000_000_000_000_000,
+            ..Default::default()
+        });
+        event.insert(vrl::event_path!("new_field"), "new_value");
+        assert_eq!(event.record.observed_time_unix_nano, 1_700_000_000_000_000_000);
     }
 
     #[test]

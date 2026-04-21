@@ -251,7 +251,7 @@ impl HttpEventEncoder<PartitionInnerBuffer<serde_json::Value, PartitionKey>> for
         let mut log = event.into_log();
 
         let line = log
-            .message_path()
+            .body_path()
             .as_ref()
             .and_then(|path| log.remove(path))
             .unwrap_or_else(|| String::from("").into());

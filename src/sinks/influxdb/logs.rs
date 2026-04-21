@@ -135,7 +135,6 @@ struct InfluxDbLogsSink {
     measurement: String,
     tags: HashSet<KeyString>,
     transformer: Transformer,
-    host_key: OwnedValuePath,
     message_key: OwnedValuePath,
     source_type_key: OwnedValuePath,
 }
@@ -180,13 +179,6 @@ impl SinkConfig for InfluxDbLogsConfig {
         let token = settings.token();
         let protocol_version = settings.protocol_version();
 
-        let host_key = self
-            .host_key
-            .as_ref()
-            .and_then(|k| k.path.clone())
-            .or_else(|| log_schema().host_key().cloned())
-            .expect("global log_schema.host_key to be valid path");
-
         let message_key = self
             .message_key
             .as_ref()
@@ -208,7 +200,6 @@ impl SinkConfig for InfluxDbLogsConfig {
             measurement,
             tags,
             transformer: self.encoding.clone(),
-            host_key,
             message_key,
             source_type_key,
         };
@@ -245,7 +236,6 @@ struct InfluxDbLogsEncoder {
     measurement: String,
     tags: HashSet<KeyString>,
     transformer: Transformer,
-    host_key: OwnedValuePath,
     message_key: OwnedValuePath,
     source_type_key: OwnedValuePath,
 }
@@ -257,14 +247,8 @@ impl HttpEventEncoder<BytesMut> for InfluxDbLogsEncoder {
         // the original value that was assigned to the root. To avoid this we intentionally rename
         // the path that points to "body" such that it has a dedicated key.
         // TODO: add a `TargetPath::is_event_root()` to conditionally rename?
-        if let Some(message_path) = log.message_path().as_ref() {
-            log.rename_key(message_path, (PathPrefix::Event, &self.message_key));
-        }
-        // Add the `host` and `source_type` to the HashSet of tags to include
-        // Ensure those paths are on the event to be encoded, rather than metadata
-        if let Some(host_path) = log.host_path().as_ref() {
-            self.tags.replace(host_path.path.to_string().into());
-            log.rename_key(host_path, (PathPrefix::Event, &self.host_key));
+        if let Some(body_path) = log.body_path().as_ref() {
+            log.rename_key(body_path, (PathPrefix::Event, &self.message_key));
         }
 
         if let Some(source_type_path) = log.source_type_path().as_ref() {
@@ -329,7 +313,6 @@ impl HttpSink for InfluxDbLogsSink {
             measurement: self.measurement.clone(),
             tags: self.tags.clone(),
             transformer: self.transformer.clone(),
-            host_key: self.host_key.clone(),
             message_key: self.message_key.clone(),
             source_type_key: self.source_type_key.clone(),
         }
@@ -856,7 +839,6 @@ mod tests {
             measurement,
             tags,
             transformer: Default::default(),
-            host_key: owned_value_path!("host"),
             message_key: owned_value_path!("body"),
             source_type_key: owned_value_path!("source_type"),
         }

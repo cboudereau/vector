@@ -144,9 +144,7 @@ fn map_timestamp(mut events: EventArray) -> EventArray {
                     log.rename_key(path, event_path!("@timestamp"));
                 }
 
-                if let Some(path) = log.host_path().as_ref() {
-                    log.rename_key(path, event_path!("os.host"));
-                }
+                // host lives at resource.host.name, not top-level — no rename needed
             }
         }
         _ => {}

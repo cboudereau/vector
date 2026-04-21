@@ -9,7 +9,7 @@ use serde_with::{TimestampSecondsWithFrac, serde_as};
 use smallvec::{SmallVec, smallvec};
 use vector_config::configurable_component;
 use vector_core::{
-    config::{DataType, LogNamespace, log_schema},
+    config::{DataType, LogNamespace},
     event::{Event, EventMetadata, OtelLog},
     schema,
 };
@@ -146,12 +146,7 @@ impl GelfDeserializer {
 
         let mut map = ObjectMap::new();
 
-        // short_message becomes the message_key (Legacy) or body
-        let message_key = log_schema()
-            .message_key()
-            .map(|k| k.to_string())
-            .unwrap_or_else(|| "message".to_string());
-        map.insert(message_key.into(), Value::from(parsed.short_message.to_string()));
+        map.insert("body".into(), Value::from(parsed.short_message.to_string()));
 
         map.insert(VERSION.into(), Value::from(parsed.version.to_string()));
         map.insert(HOST.into(), Value::from(parsed.host.to_string()));
@@ -160,12 +155,10 @@ impl GelfDeserializer {
             map.insert(FULL_MESSAGE.into(), Value::from(full_message.to_string()));
         }
 
-        if let Some(timestamp_key) = log_schema().timestamp_key() {
-            let ts: Value = parsed
-                .timestamp
-                .map(Value::Timestamp)
-                .unwrap_or_else(|| Value::Timestamp(Utc::now()));
-            map.insert(timestamp_key.to_string().into(), ts);
+        {
+            let ts = parsed.timestamp.unwrap_or_else(Utc::now);
+            let nanos = ts.timestamp_nanos_opt().unwrap_or(0) as u64;
+            map.insert("time_unix_nano".into(), Value::Integer(nanos as i64));
         }
 
         if let Some(level) = parsed.level {

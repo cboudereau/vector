@@ -838,24 +838,38 @@ then call `from_metric_parts`).
 
 ---
 
-#### T15 — Phase B: Remove VRL aliases (product decision required)
+#### T15 — Phase B: VRL alias cleanup — PARTIALLY DONE
 
-**Files:** `lib/vector-core/src/event/otel_event.rs` (`to_value_legacy_layout`)
+**VRL read-path aliases (DONE):**
+All VRL read aliases are dead. Accessing `.message`, `.host`, `.timestamp`
+via VRL `get` does NOT resolve to proto canonical fields — they fall through
+to record attribute lookup (which finds nothing unless an attribute exists
+with that exact name). The `to_value_canonical()` output uses canonical
+field names only (`body`, `time_unix_nano`, etc.).
 
-The legacy field aliases are still live in VRL:
+| Alias | Read path | Write path (`apply_value_map`) |
+|-------|-----------|-------------------------------|
+| `.message` → `.body` | **DEAD** | Kept — `from_value_map` fallback for decoders (Avro, Protobuf, etc.) |
+| `.timestamp` → `.time_unix_nano` | **DEAD** | Kept — `extract_timestamp_nanos` fallback for `log_schema()` mechanism |
+| `.tags."key"` → `.attributes."key"` | **DEAD** | N/A |
+| `.host` → `.resource.host.name` | **DEAD** | N/A (hoisting removed) |
+| `.source_type` → `.resource.source_type` | **DEAD** | N/A (hoisting removed) |
 
-| Alias | Target | Status |
-|-------|--------|--------|
-| `.message` | `.body` | Live — `to_value_legacy_layout` hoists body→message |
-| `.timestamp` | `.time_unix_nano` | Live — schema-meaning mapping |
-| `.tags."key"` | `.attributes."key"` | Live |
-| `.host` | `.resource.attributes."host.name"` | Live — hoisted |
-| `.source_type` | `.resource.attributes."source_type"` | Live — hoisted |
+**Decoder canonicalization (DONE):**
+- GELF decoder: uses `"body"` and `"time_unix_nano"` (Integer) directly
+- Syslog decoder: uses `"body"` and `"time_unix_nano"` (Integer) directly
+- `from_tracing_event`: uses `"time_unix_nano"` (Integer) directly
+- OtelSpan `apply_value_map`: removed `"start_time"`/`"end_time"` Timestamp fallback
 
-`vector vrl-migrate` (Phase A, DONE) can rewrite user configs.
-Removing aliases is a **breaking change** gated on product decision.
-
-**Effort:** Medium — ~15-25 test breakages expected.
+**What remains (blocked on `log_schema()` deprecation):**
+- `extract_timestamp_nanos` in `apply_value_map` — 30+ callers insert via
+  `log_schema().timestamp_key_target_path()` which defaults to `"timestamp"`.
+  Removing requires migrating all sources/sinks that use log_schema for timestamps.
+- `"message"` → body fallback in `apply_value_map` — generic decoders
+  (Avro, Protobuf) pass user-defined field names; can't be fixed at decoder level.
+- `get_timestamp()` attribute `"timestamp"` fallback — needed while log_schema
+  mechanism inserts via timestamp_key_target_path.
+- `normalize_for_eq` host/source_type hoisting — EventDataEq compat.
 
 ---
 
@@ -1223,13 +1237,25 @@ the OtelMetric `data` field. The right architecture is:
 - **`message_path()`/`host_path()`** — DELETED
 - **`log_event!` macro** — renamed to `otel_event!`
 
-### What remains: user-facing VRL alias removal (Phase B)
-The only remaining legacy pattern is that VRL field aliases (`.message`,
-`.host`, `.source_type`, `.timestamp`) are still accepted by the
-fast-path get/insert/remove code. This is a **user-facing breaking
-change** gated on the product decision to ship `vector vrl-migrate`.
-The migration tool is implemented (B4 DONE). When the decision is made,
-removing the aliases is ~2h of mechanical work.
+### What remains: `log_schema()` deprecation (Phase B tail)
+
+VRL read-path aliases are fully dead — `.message`, `.host`, `.timestamp`
+no longer resolve to canonical proto fields. The remaining legacy
+patterns are in `apply_value_map` (construction path) and
+`get_timestamp()`, tied to the `log_schema()` mechanism:
+
+1. **`extract_timestamp_nanos`** — accepts `"timestamp"` / `"@timestamp"`
+   as Timestamp values in `apply_value_map`. 30+ callers insert timestamps
+   via `log_schema().timestamp_key_target_path()` (defaults to `"timestamp"`).
+2. **`"message"` → body fallback** — generic decoders (Avro, Protobuf)
+   pass user-defined field names through `from_value_map`.
+3. **`get_timestamp()` attribute fallback** — reads `attribute("timestamp")`
+   for sources that insert via log_schema.
+4. **`normalize_for_eq`** — hoists resource.source_type / resource.host.name
+   for EventDataEq compat.
+
+Removing these requires deprecating `log_schema()` timestamp/host/source_type
+configuration, which is a cross-cutting change across all sources and sinks.
 
 ### Performance findings
 

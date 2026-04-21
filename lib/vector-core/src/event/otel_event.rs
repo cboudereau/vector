@@ -414,9 +414,6 @@ fn coerce_to_timestamp(v: Value) -> Value {
     }
 }
 
-/// Extract a `Timestamp` value from the map, trying the log schema timestamp
-/// key (`"timestamp"`) first, then the common `"@timestamp"` variant.
-/// Non-Timestamp values are preserved in the map. Returns nanoseconds.
 struct TimestampExtract {
     nanos: u64,
     overflow_rfc3339: Option<String>,
@@ -545,9 +542,12 @@ impl OtelLog {
         event.record(&mut builder);
 
         let meta = event.metadata();
+        let now_nanos = chrono::Utc::now()
+            .timestamp_nanos_opt()
+            .unwrap_or(0) as u64;
         builder.map.insert(
-            "timestamp".into(),
-            Value::Timestamp(chrono::Utc::now()),
+            "time_unix_nano".into(),
+            Value::Integer(now_nanos as i64),
         );
         let kind_value = if meta.is_event() {
             Value::Bytes("event".to_string().into())
@@ -1548,10 +1548,10 @@ impl OtelLog {
 
     /// Write back a Value tree to proto fields.
     ///
-    /// Handles both canonical layout (from `to_value_canonical`) and
-    /// legacy/decoder layout (from `from_value_map` callers that pass
-    /// "message", "timestamp", etc.). Proto fields are extracted into
-    /// their native slots; `resource`/`scope` sub-objects are restored;
+    /// Accepts canonical keys (`body`, `time_unix_nano` as Integer) and
+    /// legacy fallbacks (`message` → body, `timestamp` as Timestamp → nanos).
+    /// Proto fields are extracted into their native slots;
+    /// `resource`/`scope` sub-objects are restored;
     /// the remainder becomes `record.attributes`.
     fn apply_value_map(&mut self, value: Value) {
         let mut map = match value {
@@ -1571,7 +1571,6 @@ impl OtelLog {
             .or_else(|| map.remove("message"))
             .map(|v| vrl_value_to_any_value(&v));
 
-        // Canonical: "time_unix_nano" as Integer. Fallback: "timestamp" as Timestamp.
         let mut time_unix_nano = match map.remove("time_unix_nano") {
             Some(Value::Integer(n)) => n as u64,
             Some(other) => { map.insert("time_unix_nano".into(), other); 0 }
@@ -1648,12 +1647,10 @@ impl OtelLog {
 
     /// Get the timestamp from the event.
     ///
-    /// In Vector namespace, delegates to the schema-meaning-aware
     /// Respects semantic meanings for timestamp resolution.
-    /// String values are parsed as RFC 3339 timestamps (since OTLP
-    /// `AnyValue` has no native timestamp type).
-    /// In Legacy namespace, prefers `time_unix_nano` (event time), falls
-    /// back to `observed_time_unix_nano` (ingest time).
+    /// Prefers `time_unix_nano` (event time), falls back to
+    /// `attribute("timestamp")` (log_schema compat), then
+    /// `observed_time_unix_nano` (ingest time).
     pub fn get_timestamp(&self) -> Option<Value> {
         if let Some(overflow) = self.attribute("vector.timestamp_overflow") {
             if let Some(OtelValueKind::StringValue(s)) = &overflow.value {
@@ -1662,8 +1659,6 @@ impl OtelLog {
                 }
             }
         }
-        // In Vector namespace, timestamp may be stored via schema meaning (e.g. @timestamp).
-        // Check this FIRST before falling back to time_unix_nano (which may be ingest time).
         if self.namespace() == crate::config::LogNamespace::Vector {
             if let Some(ts) = self.get_by_meaning("timestamp") {
                 return Some(coerce_to_timestamp(ts));
@@ -2212,25 +2207,15 @@ impl OtelSpan {
         let span_id = take_id(&mut map, "span_id");
         let parent_span_id = take_id(&mut map, "parent_span_id");
 
-        // Canonical: "start_time_unix_nano"/"end_time_unix_nano" as Integer.
-        // Fallback: "start_time"/"end_time" as Timestamp (old disk buffer compat).
-        let take_time_nanos = |map: &mut ObjectMap, canonical_key: &str, legacy_key: &str| -> u64 {
-            match map.remove(canonical_key) {
-                Some(Value::Integer(n)) => return n as u64,
-                Some(other) => { map.insert(canonical_key.into(), other); }
-                None => {}
-            }
-            match map.remove(legacy_key) {
-                Some(Value::Timestamp(ts)) => match ts.timestamp_nanos_opt() {
-                    Some(n) if n >= 0 => n as u64,
-                    _ => { map.insert(legacy_key.into(), Value::Timestamp(ts)); 0 }
-                },
-                Some(other) => { map.insert(legacy_key.into(), other); 0 }
+        let take_integer = |map: &mut ObjectMap, key: &str| -> u64 {
+            match map.remove(key) {
+                Some(Value::Integer(n)) => n as u64,
+                Some(other) => { map.insert(key.into(), other); 0 }
                 None => 0,
             }
         };
-        let start_time_unix_nano = take_time_nanos(&mut map, "start_time_unix_nano", "start_time");
-        let end_time_unix_nano = take_time_nanos(&mut map, "end_time_unix_nano", "end_time");
+        let start_time_unix_nano = take_integer(&mut map, "start_time_unix_nano");
+        let end_time_unix_nano = take_integer(&mut map, "end_time_unix_nano");
 
         let kind = match map.remove("kind") {
             Some(Value::Integer(i)) => i as i32,

@@ -1810,7 +1810,8 @@ mod tests {
     fn create_log_event_with_namespace(json_str: &str, namespace: Option<&str>) -> Event {
         let mut log_value: Value =
             serde_json::from_str(json_str).expect("JSON was not well-formatted");
-        log_value.insert("timestamp", ts());
+        let nanos = ts().timestamp_nanos_opt().unwrap_or(0) as u64;
+        log_value.insert("time_unix_nano", Value::Integer(nanos as i64));
 
         if let Some(namespace) = namespace {
             log_value.insert("namespace", namespace);

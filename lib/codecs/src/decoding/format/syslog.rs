@@ -424,30 +424,16 @@ fn insert_metadata_fields_from_syslog(
 
 fn build_fields_from_syslog(
     parsed: Message<&str>,
-    log_namespace: LogNamespace,
+    _log_namespace: LogNamespace,
 ) -> ObjectMap {
     let mut map = ObjectMap::new();
 
-    let message_key: vrl::prelude::KeyString = match log_namespace {
-        LogNamespace::Legacy => log_schema()
-            .message_key()
-            .and_then(|p| p.to_string().parse().ok())
-            .map(|k: String| k.into())
-            .unwrap_or_else(|| "message".into()),
-        LogNamespace::Vector => "body".into(),
-    };
-    map.insert(message_key, Value::from(parsed.msg));
+    map.insert("body".into(), Value::from(parsed.msg));
 
     if let Some(timestamp) = parsed.timestamp {
         let timestamp = DateTime::<Utc>::from(timestamp);
-        let timestamp_key: vrl::prelude::KeyString = match log_namespace {
-            LogNamespace::Legacy => log_schema()
-                .timestamp_key()
-                .map(|p| p.to_string().into())
-                .unwrap_or_else(|| "timestamp".into()),
-            LogNamespace::Vector => "timestamp".into(),
-        };
-        map.insert(timestamp_key, Value::Timestamp(timestamp));
+        let nanos = timestamp.timestamp_nanos_opt().unwrap_or(0) as u64;
+        map.insert("time_unix_nano".into(), Value::Integer(nanos as i64));
     }
     if let Some(host) = parsed.hostname {
         map.insert("hostname".into(), Value::from(host.to_string()));

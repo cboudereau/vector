@@ -253,7 +253,7 @@ fn encode_log_proto(value: VrlValue, metadata: super::EventMetadata) -> WithMeta
 
 impl From<super::OtelLog> for WithMetadata<Log> {
     fn from(otel_log: super::OtelLog) -> Self {
-        let value = otel_log.to_value_legacy_layout();
+        let value = otel_log.to_value_canonical();
         let (_, _, _, metadata) = otel_log.into_parts();
         encode_log_proto(value, metadata)
     }
@@ -335,7 +335,7 @@ fn encode_metric_proto(
 
 impl From<super::OtelSpan> for WithMetadata<Trace> {
     fn from(otel_span: super::OtelSpan) -> Self {
-        let value = otel_span.to_value_legacy_layout();
+        let value = otel_span.to_value_canonical();
         let (_, _, _, metadata) = otel_span.into_parts();
         let fields = match value {
             VrlValue::Object(fields) => fields,

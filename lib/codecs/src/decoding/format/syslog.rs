@@ -292,7 +292,7 @@ impl Deserializer for SyslogDeserializer {
             }
             _ => {
                 // Build the full Value tree in one pass, then convert once.
-                // Avoids the per-insert to_value_legacy_layout round-trip.
+                // Avoids the per-insert to_value_canonical round-trip.
                 let map = build_fields_from_syslog(parsed, log_namespace);
                 OtelLog::from_value_map(Value::Object(map), EventMetadata::default())
             }

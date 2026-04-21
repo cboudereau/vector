@@ -904,7 +904,7 @@ impl<'de, R: JsonRead<'de>> EventIterator<'de, R> {
                     let message_key_path = log_schema().message_key().cloned();
                     log.modify_as_value(|v| {
                         // Invariant: OtelLog::new(Default::default()) always
-                        // produces Value::Object via to_value_legacy_layout.
+                        // produces Value::Object via to_value_canonical.
                         // If this ever becomes a scalar (e.g., upstream
                         // deserialization change), fail loudly in tests
                         // rather than silently drop all field insertions.

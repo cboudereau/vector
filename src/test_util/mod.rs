@@ -81,7 +81,7 @@ macro_rules! assert_downcast_matches {
 }
 
 #[macro_export]
-macro_rules! log_event {
+macro_rules! otel_event {
     ($($key:expr_2021 => $value:expr_2021),*  $(,)?) => {
         #[allow(unused_variables)]
         {

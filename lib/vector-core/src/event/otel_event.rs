@@ -216,6 +216,43 @@ fn object_map_to_kvlist(map: &ObjectMap) -> Vec<KeyValue> {
         .collect()
 }
 
+fn restore_resource(map: &mut ObjectMap) -> Option<Resource> {
+    match map.remove("resource") {
+        Some(Value::Object(res_map)) => {
+            let attributes = object_map_to_kvlist(&res_map);
+            Some(Resource { attributes, dropped_attributes_count: 0 })
+        }
+        Some(other) => { map.insert("resource".into(), other); None }
+        None => None,
+    }
+}
+
+fn restore_scope(map: &mut ObjectMap) -> Option<InstrumentationScope> {
+    match map.remove("scope") {
+        Some(Value::Object(mut scope_map)) => {
+            let name = match scope_map.remove("name") {
+                Some(Value::Bytes(b)) => String::from_utf8(b.to_vec()).unwrap_or_default(),
+                _ => String::new(),
+            };
+            let version = match scope_map.remove("version") {
+                Some(Value::Bytes(b)) => String::from_utf8(b.to_vec()).unwrap_or_default(),
+                _ => String::new(),
+            };
+            let attributes = match scope_map.remove("attributes") {
+                Some(Value::Object(attrs)) => object_map_to_kvlist(&attrs),
+                _ => vec![],
+            };
+            if name.is_empty() && version.is_empty() && attributes.is_empty() {
+                None
+            } else {
+                Some(InstrumentationScope { name, version, attributes, dropped_attributes_count: 0 })
+            }
+        }
+        Some(other) => { map.insert("scope".into(), other); None }
+        None => None,
+    }
+}
+
 /// Convert an OTel `any_value::Value` to a string for use as a metric tag.
 fn otel_value_to_tag_string(v: &OtelValueKind) -> String {
     match v {
@@ -756,9 +793,8 @@ impl OtelLog {
     // -----------------------------------------------------------------------
     // Field access methods
     //
-    // These use `to_value_legacy_layout()` to build a flat Value tree from
-    // proto fields. Target state: replace with direct proto accessors once
-    // all external callers (codecs, sinks, transforms) are migrated.
+    // Single-segment and multi-segment field paths use direct proto
+    // accessors. Array-index paths fall back to `to_value_canonical()`.
     // -----------------------------------------------------------------------
 
     /// Get a field value by its semantic meaning (looks up schema definition).
@@ -805,18 +841,18 @@ impl OtelLog {
                                 if all_fields {
                                     self.get_field_path(&fields)
                                 } else {
-                                    let value = self.to_value_legacy_layout();
+                                    let value = self.to_value_canonical();
                                     value.get(path.value_path()).cloned()
                                 }
                             }
                             _ => {
-                                let value = self.to_value_legacy_layout();
+                                let value = self.to_value_canonical();
                                 value.get(path.value_path()).cloned()
                             }
                         }
                     }
                     _ => {
-                        let value = self.to_value_legacy_layout();
+                        let value = self.to_value_canonical();
                         value.get(path.value_path()).cloned()
                     }
                 }
@@ -943,24 +979,24 @@ impl OtelLog {
                                 if all_fields {
                                     self.insert_field_path(&fields, value)
                                 } else {
-                                    let mut val = self.to_value_legacy_layout();
+                                    let mut val = self.to_value_canonical();
                                     let old = val.insert(path.value_path(), value);
-                                    self.apply_value_legacy_layout(val);
+                                    self.apply_value_map(val);
                                     old
                                 }
                             }
                             _ => {
-                                let mut val = self.to_value_legacy_layout();
+                                let mut val = self.to_value_canonical();
                                 let old = val.insert(path.value_path(), value);
-                                self.apply_value_legacy_layout(val);
+                                self.apply_value_map(val);
                                 old
                             }
                         }
                     }
                     _ => {
-                        let mut val = self.to_value_legacy_layout();
+                        let mut val = self.to_value_canonical();
                         let old = val.insert(path.value_path(), value);
-                        self.apply_value_legacy_layout(val);
+                        self.apply_value_map(val);
                         old
                     }
                 }
@@ -1202,24 +1238,24 @@ impl OtelLog {
                                 if all_fields {
                                     self.remove_field_path(&fields, prune)
                                 } else {
-                                    let mut val = self.to_value_legacy_layout();
+                                    let mut val = self.to_value_canonical();
                                     let old = val.remove(path.value_path(), prune);
-                                    self.apply_value_legacy_layout(val);
+                                    self.apply_value_map(val);
                                     old
                                 }
                             }
                             _ => {
-                                let mut val = self.to_value_legacy_layout();
+                                let mut val = self.to_value_canonical();
                                 let old = val.remove(path.value_path(), prune);
-                                self.apply_value_legacy_layout(val);
+                                self.apply_value_map(val);
                                 old
                             }
                         }
                     }
                     _ => {
-                        let mut val = self.to_value_legacy_layout();
+                        let mut val = self.to_value_canonical();
                         let old = val.remove(path.value_path(), prune);
-                        self.apply_value_legacy_layout(val);
+                        self.apply_value_map(val);
                         old
                     }
                 }
@@ -1367,7 +1403,7 @@ impl OtelLog {
         }
     }
 
-    /// Amortize the `to_value_legacy_layout` → `apply_value_legacy_layout`
+    /// Amortize the `to_value_canonical` → `apply_value_map`
     /// round-trip across multiple mutations. Each call to `insert` /
     /// `remove` / `maybe_insert` on `OtelLog` does a full round-trip via
     /// the legacy layout (O(event size)). Hot paths that mutate many
@@ -1391,9 +1427,9 @@ impl OtelLog {
     where
         F: FnOnce(&mut Value) -> R,
     {
-        let mut value = self.to_value_legacy_layout();
+        let mut value = self.to_value_canonical();
         let result = f(&mut value);
-        self.apply_value_legacy_layout(value);
+        self.apply_value_map(value);
         result
     }
 
@@ -1496,10 +1532,6 @@ impl OtelLog {
         Value::Object(map)
     }
 
-    pub fn to_value_legacy_layout(&self) -> Value {
-        self.to_value_canonical()
-    }
-
     /// Construct an OtelLog from a legacy-layout Value + metadata.
     /// Routes fields into OTel structure: body, timestamp, source_type/host
     /// → resource attrs, everything else → record.attributes. Clears scope.
@@ -1510,7 +1542,7 @@ impl OtelLog {
             scope: None,
             metadata,
         };
-        out.apply_value_legacy_layout(value);
+        out.apply_value_map(value);
         out
     }
 
@@ -1521,7 +1553,7 @@ impl OtelLog {
     /// "message", "timestamp", etc.). Proto fields are extracted into
     /// their native slots; `resource`/`scope` sub-objects are restored;
     /// the remainder becomes `record.attributes`.
-    fn apply_value_legacy_layout(&mut self, value: Value) {
+    fn apply_value_map(&mut self, value: Value) {
         let mut map = match value {
             Value::Object(m) => m,
             other => {
@@ -1584,40 +1616,8 @@ impl OtelLog {
             None => Vec::new(),
         };
 
-        // Restore Resource from sub-object.
-        self.resource = match map.remove("resource") {
-            Some(Value::Object(res_map)) => {
-                let attributes = object_map_to_kvlist(&res_map);
-                Some(Resource { attributes, dropped_attributes_count: 0 })
-            }
-            Some(other) => { map.insert("resource".into(), other); None }
-            None => None,
-        };
-
-        // Restore InstrumentationScope from sub-object.
-        self.scope = match map.remove("scope") {
-            Some(Value::Object(mut scope_map)) => {
-                let name = match scope_map.remove("name") {
-                    Some(Value::Bytes(b)) => String::from_utf8(b.to_vec()).unwrap_or_default(),
-                    _ => String::new(),
-                };
-                let version = match scope_map.remove("version") {
-                    Some(Value::Bytes(b)) => String::from_utf8(b.to_vec()).unwrap_or_default(),
-                    _ => String::new(),
-                };
-                let attributes = match scope_map.remove("attributes") {
-                    Some(Value::Object(attrs)) => object_map_to_kvlist(&attrs),
-                    _ => vec![],
-                };
-                if name.is_empty() && version.is_empty() && attributes.is_empty() {
-                    None
-                } else {
-                    Some(InstrumentationScope { name, version, attributes, dropped_attributes_count: 0 })
-                }
-            }
-            Some(other) => { map.insert("scope".into(), other); None }
-            None => None,
-        };
+        self.resource = restore_resource(&mut map);
+        self.scope = restore_scope(&mut map);
 
         let mut attributes: Vec<KeyValue> = map
             .into_iter()
@@ -1957,7 +1957,7 @@ impl OtelSpan {
     /// Routes native span fields (`name`, `trace_id`, `span_id`,
     /// `parent_span_id`, `start_time`/`end_time`, `kind`, `status`) into
     /// their proto slots; everything else becomes `span.attributes`. See
-    /// `apply_value_legacy_layout` for the full routing contract.
+    /// `apply_value_map` for the full routing contract.
     pub fn from_value_map(value: Value, metadata: EventMetadata) -> Self {
         let mut out = Self {
             span: Span::default(),
@@ -1965,7 +1965,7 @@ impl OtelSpan {
             scope: None,
             metadata,
         };
-        out.apply_value_legacy_layout(value);
+        out.apply_value_map(value);
         out
     }
 
@@ -2179,17 +2179,13 @@ impl OtelSpan {
         Value::Object(map)
     }
 
-    pub fn to_value_legacy_layout(&self) -> Value {
-        self.to_value_canonical()
-    }
-
     /// Write back a Value tree to proto fields.
     ///
     /// Handles canonical layout (from `to_value_canonical`): proto fields
     /// are extracted into `Span` slots, `resource`/`scope` sub-objects are
     /// restored, remainder becomes `span.attributes`. Also handles legacy
     /// "start_time"/"end_time" (Timestamp) for old disk buffer compat.
-    fn apply_value_legacy_layout(&mut self, value: Value) {
+    fn apply_value_map(&mut self, value: Value) {
         use opentelemetry_proto::tonic::trace::v1::Status;
 
         let mut map = match value {
@@ -2262,40 +2258,8 @@ impl OtelSpan {
             None => None,
         };
 
-        // Restore Resource from sub-object.
-        self.resource = match map.remove("resource") {
-            Some(Value::Object(res_map)) => {
-                let attributes = object_map_to_kvlist(&res_map);
-                Some(Resource { attributes, dropped_attributes_count: 0 })
-            }
-            Some(other) => { map.insert("resource".into(), other); None }
-            None => None,
-        };
-
-        // Restore InstrumentationScope from sub-object.
-        self.scope = match map.remove("scope") {
-            Some(Value::Object(mut scope_map)) => {
-                let scope_name = match scope_map.remove("name") {
-                    Some(Value::Bytes(b)) => String::from_utf8(b.to_vec()).unwrap_or_default(),
-                    _ => String::new(),
-                };
-                let version = match scope_map.remove("version") {
-                    Some(Value::Bytes(b)) => String::from_utf8(b.to_vec()).unwrap_or_default(),
-                    _ => String::new(),
-                };
-                let scope_attrs = match scope_map.remove("attributes") {
-                    Some(Value::Object(attrs)) => object_map_to_kvlist(&attrs),
-                    _ => vec![],
-                };
-                if scope_name.is_empty() && version.is_empty() && scope_attrs.is_empty() {
-                    None
-                } else {
-                    Some(InstrumentationScope { name: scope_name, version, attributes: scope_attrs, dropped_attributes_count: 0 })
-                }
-            }
-            Some(other) => { map.insert("scope".into(), other); None }
-            None => None,
-        };
+        self.resource = restore_resource(&mut map);
+        self.scope = restore_scope(&mut map);
 
         let attributes: Vec<KeyValue> = map
             .into_iter()
@@ -2344,18 +2308,18 @@ impl OtelSpan {
                                 if all_fields {
                                     self.span_get_field_path(&fields)
                                 } else {
-                                    let value = self.to_value_legacy_layout();
+                                    let value = self.to_value_canonical();
                                     value.get(path.value_path()).cloned()
                                 }
                             }
                             _ => {
-                                let value = self.to_value_legacy_layout();
+                                let value = self.to_value_canonical();
                                 value.get(path.value_path()).cloned()
                             }
                         }
                     }
                     _ => {
-                        let value = self.to_value_legacy_layout();
+                        let value = self.to_value_canonical();
                         value.get(path.value_path()).cloned()
                     }
                 }
@@ -2509,24 +2473,24 @@ impl OtelSpan {
                                 if all_fields {
                                     self.span_insert_field_path(&fields, value)
                                 } else {
-                                    let mut val = self.to_value_legacy_layout();
+                                    let mut val = self.to_value_canonical();
                                     let old = val.insert(path.value_path(), value);
-                                    self.apply_value_legacy_layout(val);
+                                    self.apply_value_map(val);
                                     old
                                 }
                             }
                             _ => {
-                                let mut val = self.to_value_legacy_layout();
+                                let mut val = self.to_value_canonical();
                                 let old = val.insert(path.value_path(), value);
-                                self.apply_value_legacy_layout(val);
+                                self.apply_value_map(val);
                                 old
                             }
                         }
                     }
                     _ => {
-                        let mut val = self.to_value_legacy_layout();
+                        let mut val = self.to_value_canonical();
                         let old = val.insert(path.value_path(), value);
-                        self.apply_value_legacy_layout(val);
+                        self.apply_value_map(val);
                         old
                     }
                 }
@@ -4318,8 +4282,8 @@ mod tests {
         };
         let mut event = OtelSpan::new(span);
 
-        // Trigger the round-trip: insert → to_value_legacy_layout →
-        // apply_value_legacy_layout.
+        // Trigger the round-trip: insert → to_value_canonical →
+        // apply_value_map.
         event.insert(vrl::event_path!("new_field"), "new_value");
 
         // Ideal: native proto fields survive.
@@ -4441,7 +4405,7 @@ mod tests {
             ..Default::default()
         });
 
-        let value = event.to_value_legacy_layout();
+        let value = event.to_value_canonical();
         let map = value.as_object().expect("expected object");
         assert_eq!(map.get("body").unwrap().as_str().unwrap(), "hello world");
         assert_eq!(map.get("severity_text").unwrap().as_str().unwrap(), "ERROR");
@@ -4821,9 +4785,9 @@ mod tests {
         );
     }
 
-    /// Round-trip fidelity test: OtelLog → to_value_legacy_layout → apply_value_legacy_layout
+    /// Round-trip fidelity test: OtelLog → to_value_canonical → apply_value_map
     /// should produce an OtelLog equivalent to the starting one for field lookups.
-    /// This protects against regressions when rewriting apply_value_legacy_layout.
+    /// This protects against regressions when rewriting apply_value_map.
     #[test]
     fn insert_preserves_body_via_round_trip() {
         use opentelemetry_proto::tonic::common::v1::any_value::Value as Kind;
@@ -4942,8 +4906,8 @@ mod tests {
 
     // --- Round-trip fidelity for native proto fields -----------------------
     //
-    // `apply_value_legacy_layout` extracts these fields symmetrically with
-    // `to_value_legacy_layout`, so a round-trip via `insert()` preserves them.
+    // `apply_value_map` extracts these fields symmetrically with
+    // `to_value_canonical`, so a round-trip via `insert()` preserves them.
 
     #[test]
     fn insert_preserves_severity_text_via_round_trip() {

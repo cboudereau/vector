@@ -501,7 +501,7 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{event::OtelLog, log_event};
+    use crate::{event::OtelLog, otel_event};
 
     /// Returns the following: Datadog Search Syntax source (to be parsed), an `Event` that
     /// should pass when matched against the compiled source, and an `Event` that should fail.
@@ -512,32 +512,32 @@ mod test {
             // Tag exists.
             (
                 "_exists_:a",                        // Source
-                log_event!["tags" => vec!["a:foo"]], // Pass
-                log_event!["tags" => vec!["b:foo"]], // Fail
+                otel_event!["tags" => vec!["a:foo"]], // Pass
+                otel_event!["tags" => vec!["b:foo"]], // Fail
             ),
             // Tag exists with - in name.
             (
                 "_exists_:a-b",                        // Source
-                log_event!["tags" => vec!["a-b:foo"]], // Pass
-                log_event!["tags" => vec!["ab:foo"]],  // Fail
+                otel_event!["tags" => vec!["a-b:foo"]], // Pass
+                otel_event!["tags" => vec!["ab:foo"]],  // Fail
             ),
             // Tag exists (negate).
             (
                 "NOT _exists_:a",
-                log_event!["tags" => vec!["b:foo"]],
-                log_event!("tags" => vec!["a:foo"]),
+                otel_event!["tags" => vec!["b:foo"]],
+                otel_event!("tags" => vec!["a:foo"]),
             ),
             // Tag exists (negate w/-).
             (
                 "-_exists_:a",
-                log_event!["tags" => vec!["b:foo"]],
-                log_event!["tags" => vec!["a:foo"]],
+                otel_event!["tags" => vec!["b:foo"]],
+                otel_event!["tags" => vec!["a:foo"]],
             ),
             // Attribute exists.
             (
                 "_exists_:@b",
-                log_event!["b" => "foo"],
-                log_event!["a" => "foo"],
+                otel_event!["b" => "foo"],
+                otel_event!["a" => "foo"],
             ),
             // Attribute with - in name, exists.
             // TODO: this is a test case which exists in the Datadog implementation of the feature.
@@ -545,1085 +545,1085 @@ mod test {
             //       the `-` in the field name is an invalid field name.
             // (
             //     "_exists_:@foo-bar",
-            //     log_event!["foo-bar" => "foo"],
-            //     log_event!["foobar" => "foo"],
+            //     otel_event!["foo-bar" => "foo"],
+            //     otel_event!["foobar" => "foo"],
             // ),
             // Attribute exists (negate).
             (
                 "NOT _exists_:@b",
-                log_event!["a" => "foo"],
-                log_event!["b" => "foo"],
+                otel_event!["a" => "foo"],
+                otel_event!["b" => "foo"],
             ),
             // Attribute exists (negate w/-).
             (
                 "-_exists_:@b",
-                log_event!["a" => "foo"],
-                log_event!["b" => "foo"],
+                otel_event!["a" => "foo"],
+                otel_event!["b" => "foo"],
             ),
             // Tag doesn't exist.
             (
                 "_missing_:a",
-                log_event![],
-                log_event!["tags" => vec!["a:foo"]],
+                otel_event![],
+                otel_event!["tags" => vec!["a:foo"]],
             ),
             // Tag doesn't exist (negate).
             (
                 "NOT _missing_:a",
-                log_event!["tags" => vec!["a:foo"]],
-                log_event![],
+                otel_event!["tags" => vec!["a:foo"]],
+                otel_event![],
             ),
             // Tag doesn't exist (negate w/-).
             (
                 "-_missing_:a",
-                log_event!["tags" => vec!["a:foo"]],
-                log_event![],
+                otel_event!["tags" => vec!["a:foo"]],
+                otel_event![],
             ),
             // Attribute doesn't exist.
             (
                 "_missing_:@b",
-                log_event!["a" => "foo"],
-                log_event!["b" => "foo"],
+                otel_event!["a" => "foo"],
+                otel_event!["b" => "foo"],
             ),
             // Attribute doesn't exist (negate).
             (
                 "NOT _missing_:@b",
-                log_event!["b" => "foo"],
-                log_event!["a" => "foo"],
+                otel_event!["b" => "foo"],
+                otel_event!["a" => "foo"],
             ),
             // Attribute doesn't exist (negate w/-).
             (
                 "-_missing_:@b",
-                log_event!["b" => "foo"],
-                log_event!["a" => "foo"],
+                otel_event!["b" => "foo"],
+                otel_event!["a" => "foo"],
             ),
             // Keyword.
-            ("bla", log_event!["body" => "bla"], log_event![]),
+            ("bla", otel_event!["body" => "bla"], otel_event![]),
             (
                 "foo",
-                log_event!["body" => r#"{"key": "foo"}"#],
-                log_event![],
+                otel_event!["body" => r#"{"key": "foo"}"#],
+                otel_event![],
             ),
             (
                 "bar",
-                log_event!["body" => r#"{"nested": {"value": ["foo", "bar"]}}"#],
-                log_event![],
+                otel_event!["body" => r#"{"nested": {"value": ["foo", "bar"]}}"#],
+                otel_event![],
             ),
             // Keyword (negate).
             (
                 "NOT bla",
-                log_event!["body" => "nothing"],
-                log_event!["body" => "bla"],
+                otel_event!["body" => "nothing"],
+                otel_event!["body" => "bla"],
             ),
             (
                 "NOT foo",
-                log_event![],
-                log_event!["body" => r#"{"key": "foo"}"#],
+                otel_event![],
+                otel_event!["body" => r#"{"key": "foo"}"#],
             ),
             (
                 "NOT bar",
-                log_event![],
-                log_event!["body" => r#"{"nested": {"value": ["foo", "bar"]}}"#],
+                otel_event![],
+                otel_event!["body" => r#"{"nested": {"value": ["foo", "bar"]}}"#],
             ),
             // Keyword (negate w/-).
             (
                 "-bla",
-                log_event!["body" => "nothing"],
-                log_event!["body" => "bla"],
+                otel_event!["body" => "nothing"],
+                otel_event!["body" => "bla"],
             ),
             (
                 "-foo",
-                log_event![],
-                log_event!["body" => r#"{"key": "foo"}"#],
+                otel_event![],
+                otel_event!["body" => r#"{"key": "foo"}"#],
             ),
             (
                 "-bar",
-                log_event![],
-                log_event!["body" => r#"{"nested": {"value": ["foo", "bar"]}}"#],
+                otel_event![],
+                otel_event!["body" => r#"{"nested": {"value": ["foo", "bar"]}}"#],
             ),
             // Quoted keyword.
-            (r#""bla""#, log_event!["body" => "bla"], log_event![]),
+            (r#""bla""#, otel_event!["body" => "bla"], otel_event![]),
             (
                 r#""foo""#,
-                log_event!["body" => r#"{"key": "foo"}"#],
-                log_event![],
+                otel_event!["body" => r#"{"key": "foo"}"#],
+                otel_event![],
             ),
             (
                 r#""bar""#,
-                log_event!["body" => r#"{"nested": {"value": ["foo", "bar"]}}"#],
-                log_event![],
+                otel_event!["body" => r#"{"nested": {"value": ["foo", "bar"]}}"#],
+                otel_event![],
             ),
             // Quoted keyword (negate).
-            (r#"NOT "bla""#, log_event![], log_event!["body" => "bla"]),
+            (r#"NOT "bla""#, otel_event![], otel_event!["body" => "bla"]),
             (
                 r#"NOT "foo""#,
-                log_event![],
-                log_event!["body" => r#"{"key": "foo"}"#],
+                otel_event![],
+                otel_event!["body" => r#"{"key": "foo"}"#],
             ),
             (
                 r#"NOT "bar""#,
-                log_event![],
-                log_event!["body" => r#"{"nested": {"value": ["foo", "bar"]}}"#],
+                otel_event![],
+                otel_event!["body" => r#"{"nested": {"value": ["foo", "bar"]}}"#],
             ),
             // Quoted keyword (negate w/-).
-            (r#"-"bla""#, log_event![], log_event!["body" => "bla"]),
+            (r#"-"bla""#, otel_event![], otel_event!["body" => "bla"]),
             (
                 r#"NOT "foo""#,
-                log_event![],
-                log_event!["body" => r#"{"key": "foo"}"#],
+                otel_event![],
+                otel_event!["body" => r#"{"key": "foo"}"#],
             ),
             (
                 r#"NOT "bar""#,
-                log_event![],
-                log_event!["body" => r#"{"nested": {"value": ["foo", "bar"]}}"#],
+                otel_event![],
+                otel_event!["body" => r#"{"nested": {"value": ["foo", "bar"]}}"#],
             ),
             // Tag match.
             (
                 "a:bla",
-                log_event!["tags" => vec!["a:bla"]],
-                log_event!["tags" => vec!["b:bla"]],
+                otel_event!["tags" => vec!["a:bla"]],
+                otel_event!["tags" => vec!["b:bla"]],
             ),
             // Reserved tag match.
             (
                 "host:foo",
-                log_event!["host" => "foo"],
-                log_event!["tags" => vec!["host:foo"]],
+                otel_event!["host" => "foo"],
+                otel_event!["tags" => vec!["host:foo"]],
             ),
             (
                 "host:foo",
-                log_event!["host" => "foo"],
-                log_event!["host" => "foobar"],
+                otel_event!["host" => "foo"],
+                otel_event!["host" => "foobar"],
             ),
             (
                 "host:foo",
-                log_event!["host" => "foo"],
-                log_event!["host" => r#"{"value": "foo"}"#],
+                otel_event!["host" => "foo"],
+                otel_event!["host" => r#"{"value": "foo"}"#],
             ),
             // Tag match (negate).
             (
                 "NOT a:bla",
-                log_event!["tags" => vec!["b:bla"]],
-                log_event!["tags" => vec!["a:bla"]],
+                otel_event!["tags" => vec!["b:bla"]],
+                otel_event!["tags" => vec!["a:bla"]],
             ),
             // Reserved tag match (negate).
             (
                 "NOT host:foo",
-                log_event!["tags" => vec!["host:fo  o"]],
-                log_event!["host" => "foo"],
+                otel_event!["tags" => vec!["host:fo  o"]],
+                otel_event!["host" => "foo"],
             ),
             // Tag match (negate w/-).
             (
                 "-a:bla",
-                log_event!["tags" => vec!["b:bla"]],
-                log_event!["tags" => vec!["a:bla"]],
+                otel_event!["tags" => vec!["b:bla"]],
+                otel_event!["tags" => vec!["a:bla"]],
             ),
             // Reserved tag match (negate w/-).
             (
                 "-trace_id:foo",
-                log_event![],
-                log_event!["trace_id" => "foo"],
+                otel_event![],
+                otel_event!["trace_id" => "foo"],
             ),
             // Quoted tag match.
             (
                 r#"a:"bla""#,
-                log_event!["tags" => vec!["a:bla"]],
-                log_event!["a" => "bla"],
+                otel_event!["tags" => vec!["a:bla"]],
+                otel_event!["a" => "bla"],
             ),
             // Quoted tag match (negate).
             (
                 r#"NOT a:"bla""#,
-                log_event!["a" => "bla"],
-                log_event!["tags" => vec!["a:bla"]],
+                otel_event!["a" => "bla"],
+                otel_event!["tags" => vec!["a:bla"]],
             ),
             // Quoted tag match (negate w/-).
             (
                 r#"-a:"bla""#,
-                log_event!["a" => "bla"],
-                log_event!["tags" => vec!["a:bla"]],
+                otel_event!["a" => "bla"],
+                otel_event!["tags" => vec!["a:bla"]],
             ),
             // Boolean attribute match.
-            ("@a:true", log_event!["a" => true], log_event!["a" => false]),
+            ("@a:true", otel_event!["a" => true], otel_event!["a" => false]),
             // Boolean attribute match (negate).
             (
                 "NOT @a:false",
-                log_event!["a" => true],
-                log_event!["a" => false],
+                otel_event!["a" => true],
+                otel_event!["a" => false],
             ),
             // String attribute match.
             (
                 "@a:bla",
-                log_event!["a" => "bla"],
-                log_event!["tags" => vec!["a:bla"]],
+                otel_event!["a" => "bla"],
+                otel_event!["tags" => vec!["a:bla"]],
             ),
             // String attribute match (negate).
             (
                 "NOT @a:bla",
-                log_event!["tags" => vec!["a:bla"]],
-                log_event!["a" => "bla"],
+                otel_event!["tags" => vec!["a:bla"]],
+                otel_event!["a" => "bla"],
             ),
             // String attribute match single character.
-            ("@a:b", log_event!["a" => "b"], log_event!["a" => "c"]),
+            ("@a:b", otel_event!["a" => "b"], otel_event!["a" => "c"]),
             // String attribute match special chars
             (
                 "@a:va\\/lue",
-                log_event!["a" => "va/lue"],
-                log_event!["a" => "value"],
+                otel_event!["a" => "va/lue"],
+                otel_event!["a" => "value"],
             ),
             // String attribute match escaped && chars
             (
                 "@a:va\\&&lue",
-                log_event!["a" => "va&&lue"],
-                log_event!["a" => "value"],
+                otel_event!["a" => "va&&lue"],
+                otel_event!["a" => "value"],
             ),
             // String attribute match escaped spaces
             (
                 "@a:va\\ lue",
-                log_event!["a" => "va lue"],
-                log_event!["a" => "value"],
+                otel_event!["a" => "va lue"],
+                otel_event!["a" => "value"],
             ),
             // String attribute match escaped || chars
             (
                 "@a:va\\||lue",
-                log_event!["a" => "va||lue"],
-                log_event!["a" => "value"],
+                otel_event!["a" => "va||lue"],
+                otel_event!["a" => "value"],
             ),
             // String attribute match escaped () chars
             (
                 "@a:va\\(lue",
-                log_event!["a" => "va(lue"],
-                log_event!["a" => "value"],
+                otel_event!["a" => "va(lue"],
+                otel_event!["a" => "value"],
             ),
             // String attribute match escaped * chars
             (
                 "@a:va\\*lue",
-                log_event!["a" => "va*lue"],
-                log_event!["a" => "value"],
+                otel_event!["a" => "va*lue"],
+                otel_event!["a" => "value"],
             ),
             // String attribute match ~ chars
             // TODO: in Datadog, this character does not need to be escaped.
             (
                 "@a:va\\~lue",
-                log_event!["a" => "va~lue"],
-                log_event!["a" => "value"],
+                otel_event!["a" => "va~lue"],
+                otel_event!["a" => "value"],
             ),
             // String attribute match ^ chars
             // TODO: in Datadog, this character does not need to be escaped.
             (
                 "@a:va\\^lue",
-                log_event!["a" => "va^lue"],
-                log_event!["a" => "value"],
+                otel_event!["a" => "va^lue"],
+                otel_event!["a" => "value"],
             ),
             // String attribute match / chars
             (
                 "@a:va/lue",
-                log_event!["a" => "va/lue"],
-                log_event!["a" => "value"],
+                otel_event!["a" => "va/lue"],
+                otel_event!["a" => "value"],
             ),
             // String attribute match (negate w/-).
             (
                 "-@a:bla",
-                log_event!["tags" => vec!["a:bla"]],
-                log_event!["a" => "bla"],
+                otel_event!["tags" => vec!["a:bla"]],
+                otel_event!["a" => "bla"],
             ),
             // Quoted attribute match.
             (
                 r#"@a:"bla""#,
-                log_event!["a" => "bla"],
-                log_event!["tags" => vec!["a:bla"]],
+                otel_event!["a" => "bla"],
+                otel_event!["tags" => vec!["a:bla"]],
             ),
             // Quoted attribute match (negate).
             (
                 r#"NOT @a:"bla""#,
-                log_event!["tags" => vec!["a:bla"]],
-                log_event!["a" => "bla"],
+                otel_event!["tags" => vec!["a:bla"]],
+                otel_event!["a" => "bla"],
             ),
             // Quoted attribute match (negate w/-).
             (
                 r#"-@a:"bla""#,
-                log_event!["tags" => vec!["a:bla"]],
-                log_event!["a" => "bla"],
+                otel_event!["tags" => vec!["a:bla"]],
+                otel_event!["a" => "bla"],
             ),
             // Integer attribute match.
             (
                 "@a:200",
-                log_event!["a" => 200],
-                log_event!["tags" => vec!["a:200"]],
+                otel_event!["a" => 200],
+                otel_event!["tags" => vec!["a:200"]],
             ),
             // Integer attribute match (negate w/-).
-            ("-@a:200", log_event!["a" => 199], log_event!["a" => 200]),
+            ("-@a:200", otel_event!["a" => 199], otel_event!["a" => 200]),
             // Float attribute match.
             (
                 "@a:0.75",
-                log_event!["a" => 0.75],
-                log_event!["tags" => vec!["a:0.75"]],
+                otel_event!["a" => 0.75],
+                otel_event!["tags" => vec!["a:0.75"]],
             ),
             // Float attribute match (negate w/-).
-            ("-@a:0.75", log_event!["a" => 0.74], log_event!["a" => 0.75]),
+            ("-@a:0.75", otel_event!["a" => 0.74], otel_event!["a" => 0.75]),
             // Attribute match with dot in name
             (
                 "@a.b:x",
-                log_event!["a" => serde_json::json!({"b": "x"})],
+                otel_event!["a" => serde_json::json!({"b": "x"})],
                 Event::Log(OtelLog::from(Value::from(serde_json::json!({"a.b": "x"})))),
             ),
             // Attribute with dot in name (flattened key) - requires escaped quotes.
             (
                 r#"@\"a.b\":x"#,
                 Event::Log(OtelLog::from(Value::from(serde_json::json!({"a.b": "x"})))),
-                log_event!["a" => serde_json::json!({"b": "x"})],
+                otel_event!["a" => serde_json::json!({"b": "x"})],
             ),
             // Wildcard prefix.
             (
                 "*bla",
-                log_event!["body" => "foobla"],
-                log_event!["body" => "blafoo"],
+                otel_event!["body" => "foobla"],
+                otel_event!["body" => "blafoo"],
             ),
             // Wildcard prefix (negate).
             (
                 "NOT *bla",
-                log_event!["body" => "blafoo"],
-                log_event!["body" => "foobla"],
+                otel_event!["body" => "blafoo"],
+                otel_event!["body" => "foobla"],
             ),
             // Wildcard prefix (negate w/-).
             (
                 "-*bla",
-                log_event!["body" => "blafoo"],
-                log_event!["body" => "foobla"],
+                otel_event!["body" => "blafoo"],
+                otel_event!["body" => "foobla"],
             ),
             // Wildcard suffix.
             (
                 "bla*",
-                log_event!["body" => "blafoo"],
-                log_event!["body" => "foobla"],
+                otel_event!["body" => "blafoo"],
+                otel_event!["body" => "foobla"],
             ),
             // Wildcard suffix (negate).
             (
                 "NOT bla*",
-                log_event!["body" => "foobla"],
-                log_event!["body" => "blafoo"],
+                otel_event!["body" => "foobla"],
+                otel_event!["body" => "blafoo"],
             ),
             // Wildcard suffix (negate w/-).
             (
                 "-bla*",
-                log_event!["body" => "foobla"],
-                log_event!["body" => "blafoo"],
+                otel_event!["body" => "foobla"],
+                otel_event!["body" => "blafoo"],
             ),
             // Multiple wildcards.
-            ("*b*la*", log_event!["body" => "foobla"], log_event![]),
+            ("*b*la*", otel_event!["body" => "foobla"], otel_event![]),
             // Multiple wildcards (negate).
             (
                 "NOT *b*la*",
-                log_event![],
-                log_event!["body" => "foobla"],
+                otel_event![],
+                otel_event!["body" => "foobla"],
             ),
             // Multiple wildcards (negate w/-).
-            ("-*b*la*", log_event![], log_event!["body" => "foobla"]),
+            ("-*b*la*", otel_event![], otel_event!["body" => "foobla"]),
             // Wildcard prefix - tag.
             (
                 "a:*bla",
-                log_event!["tags" => vec!["a:foobla"]],
-                log_event!["tags" => vec!["a:blafoo"]],
+                otel_event!["tags" => vec!["a:foobla"]],
+                otel_event!["tags" => vec!["a:blafoo"]],
             ),
             // Wildcard prefix - tag (negate).
             (
                 "NOT a:*bla",
-                log_event!["tags" => vec!["a:blafoo"]],
-                log_event!["tags" => vec!["a:foobla"]],
+                otel_event!["tags" => vec!["a:blafoo"]],
+                otel_event!["tags" => vec!["a:foobla"]],
             ),
             // Wildcard prefix - tag (negate w/-).
             (
                 "-a:*bla",
-                log_event!["tags" => vec!["a:blafoo"]],
-                log_event!["tags" => vec!["a:foobla"]],
+                otel_event!["tags" => vec!["a:blafoo"]],
+                otel_event!["tags" => vec!["a:foobla"]],
             ),
             // Wildcard suffix - tag.
             (
                 "b:bla*",
-                log_event!["tags" => vec!["b:blabop"]],
-                log_event!["tags" => vec!["b:bopbla"]],
+                otel_event!["tags" => vec!["b:blabop"]],
+                otel_event!["tags" => vec!["b:bopbla"]],
             ),
             // Wildcard suffix - tag (negate).
             (
                 "NOT b:bla*",
-                log_event!["tags" => vec!["b:bopbla"]],
-                log_event!["tags" => vec!["b:blabop"]],
+                otel_event!["tags" => vec!["b:bopbla"]],
+                otel_event!["tags" => vec!["b:blabop"]],
             ),
             // Wildcard suffix - tag (negate w/-).
             (
                 "-b:bla*",
-                log_event!["tags" => vec!["b:bopbla"]],
-                log_event!["tags" => vec!["b:blabop"]],
+                otel_event!["tags" => vec!["b:bopbla"]],
+                otel_event!["tags" => vec!["b:blabop"]],
             ),
             // Multiple wildcards - tag.
             (
                 "c:*b*la*",
-                log_event!["tags" => vec!["c:foobla"]],
-                log_event!["custom" => r#"{"title" => "foobla"}"#],
+                otel_event!["tags" => vec!["c:foobla"]],
+                otel_event!["custom" => r#"{"title" => "foobla"}"#],
             ),
             // Multiple wildcards - tag (negate).
             (
                 "NOT c:*b*la*",
-                log_event!["custom" => r#"{"title" => "foobla"}"#],
-                log_event!["tags" => vec!["c:foobla"]],
+                otel_event!["custom" => r#"{"title" => "foobla"}"#],
+                otel_event!["tags" => vec!["c:foobla"]],
             ),
             // Multiple wildcards - tag (negate w/-).
             (
                 "-c:*b*la*",
-                log_event!["custom" => r#"{"title" => "foobla"}"#],
-                log_event!["tags" => vec!["c:foobla"]],
+                otel_event!["custom" => r#"{"title" => "foobla"}"#],
+                otel_event!["tags" => vec!["c:foobla"]],
             ),
             // Wildcard prefix - attribute.
             (
                 "@a:*bla",
-                log_event!["a" => "foobla"],
-                log_event!["tags" => vec!["a:foobla"]],
+                otel_event!["a" => "foobla"],
+                otel_event!["tags" => vec!["a:foobla"]],
             ),
             // Wildcard prefix - attribute (negate).
             (
                 "NOT @a:*bla",
-                log_event!["tags" => vec!["a:foobla"]],
-                log_event!["a" => "foobla"],
+                otel_event!["tags" => vec!["a:foobla"]],
+                otel_event!["a" => "foobla"],
             ),
             // Wildcard prefix - attribute (negate w/-).
             (
                 "-@a:*bla",
-                log_event!["tags" => vec!["a:foobla"]],
-                log_event!["a" => "foobla"],
+                otel_event!["tags" => vec!["a:foobla"]],
+                otel_event!["a" => "foobla"],
             ),
             // Wildcard suffix - attribute.
             (
                 "@b:bla*",
-                log_event!["b" => "blabop"],
-                log_event!["tags" => vec!["b:blabop"]],
+                otel_event!["b" => "blabop"],
+                otel_event!["tags" => vec!["b:blabop"]],
             ),
             // Wildcard suffix - attribute (negate).
             (
                 "NOT @b:bla*",
-                log_event!["tags" => vec!["b:blabop"]],
-                log_event!["b" => "blabop"],
+                otel_event!["tags" => vec!["b:blabop"]],
+                otel_event!["b" => "blabop"],
             ),
             // Wildcard suffix - attribute (negate w/-).
             (
                 "-@b:bla*",
-                log_event!["tags" => vec!["b:blabop"]],
-                log_event!["b" => "blabop"],
+                otel_event!["tags" => vec!["b:blabop"]],
+                otel_event!["b" => "blabop"],
             ),
             // Multiple wildcards - attribute.
             (
                 "@c:*b*la*",
-                log_event!["c" => "foobla"],
-                log_event!["tags" => vec!["c:foobla"]],
+                otel_event!["c" => "foobla"],
+                otel_event!["tags" => vec!["c:foobla"]],
             ),
             // Multiple wildcards - attribute (negate).
             (
                 "NOT @c:*b*la*",
-                log_event!["tags" => vec!["c:foobla"]],
-                log_event!["c" => "foobla"],
+                otel_event!["tags" => vec!["c:foobla"]],
+                otel_event!["c" => "foobla"],
             ),
             // Multiple wildcards - attribute (negate w/-).
             (
                 "-@c:*b*la*",
-                log_event!["tags" => vec!["c:foobla"]],
-                log_event!["c" => "foobla"],
+                otel_event!["tags" => vec!["c:foobla"]],
+                otel_event!["c" => "foobla"],
             ),
             // Special case for tags.
             (
                 "tags:a",
-                log_event!["tags" => vec!["a", "b", "c"]],
-                log_event!["tags" => vec!["d", "e", "f"]],
+                otel_event!["tags" => vec!["a", "b", "c"]],
+                otel_event!["tags" => vec!["d", "e", "f"]],
             ),
             // Special case for tags (negate).
             (
                 "NOT tags:a",
-                log_event!["tags" => vec!["d", "e", "f"]],
-                log_event!["tags" => vec!["a", "b", "c"]],
+                otel_event!["tags" => vec!["d", "e", "f"]],
+                otel_event!["tags" => vec!["a", "b", "c"]],
             ),
             // Special case for tags (negate w/-).
             (
                 "-tags:a",
-                log_event!["tags" => vec!["d", "e", "f"]],
-                log_event!["tags" => vec!["a", "b", "c"]],
+                otel_event!["tags" => vec!["d", "e", "f"]],
+                otel_event!["tags" => vec!["a", "b", "c"]],
             ),
             // Range - numeric, inclusive.
             (
                 "[1 TO 10]",
-                log_event!["body" => "1"],
-                log_event!["body" => "2"],
+                otel_event!["body" => "1"],
+                otel_event!["body" => "2"],
             ),
             // Range - numeric, inclusive (negate).
             (
                 "NOT [1 TO 10]",
-                log_event!["body" => "2"],
-                log_event!["body" => "1"],
+                otel_event!["body" => "2"],
+                otel_event!["body" => "1"],
             ),
             // Range - numeric, inclusive (negate w/-).
             (
                 "-[1 TO 10]",
-                log_event!["body" => "2"],
-                log_event!["body" => "1"],
+                otel_event!["body" => "2"],
+                otel_event!["body" => "1"],
             ),
             // Range - numeric, inclusive, unbounded (upper).
             (
                 "[50 TO *]",
-                log_event!["body" => "6"],
-                log_event!["body" => "40"],
+                otel_event!["body" => "6"],
+                otel_event!["body" => "40"],
             ),
             // Range - numeric, inclusive, unbounded (upper) (negate).
             (
                 "NOT [50 TO *]",
-                log_event!["body" => "40"],
-                log_event!["body" => "6"],
+                otel_event!["body" => "40"],
+                otel_event!["body" => "6"],
             ),
             // Range - numeric, inclusive, unbounded (upper) (negate w/-).
             (
                 "-[50 TO *]",
-                log_event!["body" => "40"],
-                log_event!["body" => "6"],
+                otel_event!["body" => "40"],
+                otel_event!["body" => "6"],
             ),
             // Range - numeric, inclusive, unbounded (lower).
             (
                 "[* TO 50]",
-                log_event!["body" => "3"],
-                log_event!["body" => "6"],
+                otel_event!["body" => "3"],
+                otel_event!["body" => "6"],
             ),
             // Range - numeric, inclusive, unbounded (lower) (negate).
             (
                 "NOT [* TO 50]",
-                log_event!["body" => "6"],
-                log_event!["body" => "3"],
+                otel_event!["body" => "6"],
+                otel_event!["body" => "3"],
             ),
             // Range - numeric, inclusive, unbounded (lower) (negate w/-).
             (
                 "-[* TO 50]",
-                log_event!["body" => "6"],
-                log_event!["body" => "3"],
+                otel_event!["body" => "6"],
+                otel_event!["body" => "3"],
             ),
             // Range - numeric, inclusive, unbounded (both).
-            ("[* TO *]", log_event!["body" => "foo"], log_event![]),
+            ("[* TO *]", otel_event!["body" => "foo"], otel_event![]),
             // Range - numeric, inclusive, unbounded (both) (negate).
-            ("NOT [* TO *]", log_event![], log_event!["body" => "foo"]),
+            ("NOT [* TO *]", otel_event![], otel_event!["body" => "foo"]),
             // Range - numeric, inclusive, unbounded (both) (negate w/-i).
-            ("-[* TO *]", log_event![], log_event!["body" => "foo"]),
+            ("-[* TO *]", otel_event![], otel_event!["body" => "foo"]),
             // Range - numeric, inclusive, tag.
             (
                 "a:[1 TO 10]",
-                log_event!["tags" => vec!["a:1"]],
-                log_event!["tags" => vec!["a:2"]],
+                otel_event!["tags" => vec!["a:1"]],
+                otel_event!["tags" => vec!["a:2"]],
             ),
             // Range - numeric, inclusive, tag (negate).
             (
                 "NOT a:[1 TO 10]",
-                log_event!["tags" => vec!["a:2"]],
-                log_event!["tags" => vec!["a:1"]],
+                otel_event!["tags" => vec!["a:2"]],
+                otel_event!["tags" => vec!["a:1"]],
             ),
             // Range - numeric, inclusive, tag (negate w/-).
             (
                 "-a:[1 TO 10]",
-                log_event!["tags" => vec!["a:2"]],
-                log_event!["tags" => vec!["a:1"]],
+                otel_event!["tags" => vec!["a:2"]],
+                otel_event!["tags" => vec!["a:1"]],
             ),
             // Range - numeric, inclusive, unbounded (upper), tag.
             (
                 "a:[50 TO *]",
-                log_event!["tags" => vec!["a:6"]],
-                log_event!["tags" => vec!["a:40"]],
+                otel_event!["tags" => vec!["a:6"]],
+                otel_event!["tags" => vec!["a:40"]],
             ),
             // Range - numeric, inclusive, unbounded (upper), tag (negate).
             (
                 "NOT a:[50 TO *]",
-                log_event!["tags" => vec!["a:40"]],
-                log_event!["tags" => vec!["a:6"]],
+                otel_event!["tags" => vec!["a:40"]],
+                otel_event!["tags" => vec!["a:6"]],
             ),
             // Range - numeric, inclusive, unbounded (upper), tag (negate w/-).
             (
                 "-a:[50 TO *]",
-                log_event!["tags" => vec!["a:40"]],
-                log_event!["tags" => vec!["a:6"]],
+                otel_event!["tags" => vec!["a:40"]],
+                otel_event!["tags" => vec!["a:6"]],
             ),
             // Range - numeric, inclusive, unbounded (lower), tag.
             (
                 "a:[* TO 50]",
-                log_event!["tags" => vec!["a:400"]],
-                log_event!["tags" => vec!["a:600"]],
+                otel_event!["tags" => vec!["a:400"]],
+                otel_event!["tags" => vec!["a:600"]],
             ),
             // Range - numeric, inclusive, unbounded (lower), tag (negate).
             (
                 "NOT a:[* TO 50]",
-                log_event!["tags" => vec!["a:600"]],
-                log_event!["tags" => vec!["a:400"]],
+                otel_event!["tags" => vec!["a:600"]],
+                otel_event!["tags" => vec!["a:400"]],
             ),
             // Range - numeric, inclusive, unbounded (lower), tag (negate w/-).
             (
                 "-a:[* TO 50]",
-                log_event!["tags" => vec!["a:600"]],
-                log_event!["tags" => vec!["a:400"]],
+                otel_event!["tags" => vec!["a:600"]],
+                otel_event!["tags" => vec!["a:400"]],
             ),
             // Range - numeric, inclusive, unbounded (both), tag.
             (
                 "a:[* TO *]",
-                log_event!["tags" => vec!["a:test"]],
-                log_event!["tags" => vec!["b:test"]],
+                otel_event!["tags" => vec!["a:test"]],
+                otel_event!["tags" => vec!["b:test"]],
             ),
             // Range - numeric, inclusive, unbounded (both), tag (negate).
             (
                 "NOT a:[* TO *]",
-                log_event!["tags" => vec!["b:test"]],
-                log_event!["tags" => vec!["a:test"]],
+                otel_event!["tags" => vec!["b:test"]],
+                otel_event!["tags" => vec!["a:test"]],
             ),
             // Range - numeric, inclusive, unbounded (both), tag (negate w/-).
             (
                 "-a:[* TO *]",
-                log_event!["tags" => vec!["b:test"]],
-                log_event!["tags" => vec!["a:test"]],
+                otel_event!["tags" => vec!["b:test"]],
+                otel_event!["tags" => vec!["a:test"]],
             ),
             // Range - numeric, inclusive, attribute.
-            ("@b:[1 TO 10]", log_event!["b" => 5], log_event!["b" => 11]),
+            ("@b:[1 TO 10]", otel_event!["b" => 5], otel_event!["b" => 11]),
             (
                 "@b:[1 TO 100]",
-                log_event!["b" => "10"],
-                log_event!["b" => "2"],
+                otel_event!["b" => "10"],
+                otel_event!["b" => "2"],
             ),
             // Range - numeric, inclusive, attribute (negate).
             (
                 "NOT @b:[1 TO 10]",
-                log_event!["b" => 11],
-                log_event!["b" => 5],
+                otel_event!["b" => 11],
+                otel_event!["b" => 5],
             ),
             (
                 "NOT @b:[1 TO 100]",
-                log_event!["b" => "2"],
-                log_event!["b" => "10"],
+                otel_event!["b" => "2"],
+                otel_event!["b" => "10"],
             ),
             // Range - numeric, inclusive, attribute (negate w/-).
-            ("-@b:[1 TO 10]", log_event!["b" => 11], log_event!["b" => 5]),
+            ("-@b:[1 TO 10]", otel_event!["b" => 11], otel_event!["b" => 5]),
             (
                 "NOT @b:[1 TO 100]",
-                log_event!["b" => "2"],
-                log_event!["b" => "10"],
+                otel_event!["b" => "2"],
+                otel_event!["b" => "10"],
             ),
             // Range - alpha, inclusive, attribute.
-            ("@b:[a TO z]", log_event!["b" => "c"], log_event!["b" => 5]),
+            ("@b:[a TO z]", otel_event!["b" => "c"], otel_event!["b" => 5]),
             // Range - alphanumeric, inclusive, attribute.
             (
                 r#"@b:["1" TO "100"]"#,
-                log_event!["b" => "10"],
-                log_event!["b" => "2"],
+                otel_event!["b" => "10"],
+                otel_event!["b" => "2"],
             ),
             // Range - alphanumeric, inclusive, attribute (negate).
             (
                 r#"NOT @b:["1" TO "100"]"#,
-                log_event!["b" => "2"],
-                log_event!["b" => "10"],
+                otel_event!["b" => "2"],
+                otel_event!["b" => "10"],
             ),
             // Range - alphanumeric, inclusive, attribute (negate).
             (
                 r#"-@b:["1" TO "100"]"#,
-                log_event!["b" => "2"],
-                log_event!["b" => "10"],
+                otel_event!["b" => "2"],
+                otel_event!["b" => "10"],
             ),
             // Range - tag, exclusive.
             (
                 "f:{1 TO 100}",
-                log_event!["tags" => vec!["f:10"]],
-                log_event!["tags" => vec!["f:1"]],
+                otel_event!["tags" => vec!["f:10"]],
+                otel_event!["tags" => vec!["f:1"]],
             ),
             (
                 "f:{1 TO 100}",
-                log_event!["tags" => vec!["f:10"]],
-                log_event!["tags" => vec!["f:100"]],
+                otel_event!["tags" => vec!["f:10"]],
+                otel_event!["tags" => vec!["f:100"]],
             ),
             // Range - tag, exclusive (negate).
             (
                 "NOT f:{1 TO 100}",
-                log_event!["tags" => vec!["f:1"]],
-                log_event!["tags" => vec!["f:10"]],
+                otel_event!["tags" => vec!["f:1"]],
+                otel_event!["tags" => vec!["f:10"]],
             ),
             (
                 "NOT f:{1 TO 100}",
-                log_event!["tags" => vec!["f:100"]],
-                log_event!["tags" => vec!["f:10"]],
+                otel_event!["tags" => vec!["f:100"]],
+                otel_event!["tags" => vec!["f:10"]],
             ),
             // Range - tag, exclusive (negate w/-).
             (
                 "-f:{1 TO 100}",
-                log_event!["tags" => vec!["f:1"]],
-                log_event!["tags" => vec!["f:10"]],
+                otel_event!["tags" => vec!["f:1"]],
+                otel_event!["tags" => vec!["f:10"]],
             ),
             (
                 "-f:{1 TO 100}",
-                log_event!["tags" => vec!["f:100"]],
-                log_event!["tags" => vec!["f:10"]],
+                otel_event!["tags" => vec!["f:100"]],
+                otel_event!["tags" => vec!["f:10"]],
             ),
             // Range - attribute, exclusive.
-            ("@f:{1 TO 100}", log_event!["f" => 50], log_event!["f" => 1]),
+            ("@f:{1 TO 100}", otel_event!["f" => 50], otel_event!["f" => 1]),
             (
                 "@f:{1 TO 100}",
-                log_event!["f" => 50],
-                log_event!["f" => 100],
+                otel_event!["f" => 50],
+                otel_event!["f" => 100],
             ),
             // Range - attribute, exclusive (negate).
             (
                 "NOT @f:{1 TO 100}",
-                log_event!["f" => 1],
-                log_event!["f" => 50],
+                otel_event!["f" => 1],
+                otel_event!["f" => 50],
             ),
             (
                 "NOT @f:{1 TO 100}",
-                log_event!["f" => 100],
-                log_event!["f" => 50],
+                otel_event!["f" => 100],
+                otel_event!["f" => 50],
             ),
             // Range - attribute, exclusive (negate w/-).
             (
                 "-@f:{1 TO 100}",
-                log_event!["f" => 1],
-                log_event!["f" => 50],
+                otel_event!["f" => 1],
+                otel_event!["f" => 50],
             ),
             (
                 "-@f:{1 TO 100}",
-                log_event!["f" => 100],
-                log_event!["f" => 50],
+                otel_event!["f" => 100],
+                otel_event!["f" => 50],
             ),
             // OR of two values
             (
                 "@field:(value1 OR value2)",
-                log_event!["field" => "value1"],
-                log_event!["field" => "value"],
+                otel_event!["field" => "value1"],
+                otel_event!["field" => "value"],
             ),
             // OR of two values
             (
                 "@field:value1 OR @field:value2",
-                log_event!["field" => "value1"],
-                log_event!["field" => "value"],
+                otel_event!["field" => "value1"],
+                otel_event!["field" => "value"],
             ),
             // negate OR of two values
             (
                 "-@field1:value1 OR -@field2:value2",
-                log_event!["field1" => "value1"],
-                log_event!["field1" => "value1", "field2" => "value2"],
+                otel_event!["field1" => "value1"],
+                otel_event!["field1" => "value1", "field2" => "value2"],
             ),
             // default AND of two values
             (
                 "@field:value @field2:value2",
-                log_event!["field" => "value", "field2" => "value2"],
-                log_event!["field" => "value", "field2" => "value3"],
+                otel_event!["field" => "value", "field2" => "value2"],
+                otel_event!["field" => "value", "field2" => "value3"],
             ),
             // handles newline
             (
                 "@field:(value1 OR \n value2)",
-                log_event!["field" => "value1"],
-                log_event!["field" => "value"],
+                otel_event!["field" => "value1"],
+                otel_event!["field" => "value"],
             ),
             // negate AND of bool and string
             (
                 "NOT (@field:true AND @field2:value2)",
-                log_event!["field" => false, "field2" => "value2"],
-                log_event!["field" => true, "field2" => "value2"],
+                otel_event!["field" => false, "field2" => "value2"],
+                otel_event!["field" => true, "field2" => "value2"],
             ),
             // tags checks with 'ddtags' (DD Agent Source naming)
 
             // Tag exists.
             (
                 "_exists_:a",                          // Source
-                log_event!["ddtags" => vec!["a:foo"]], // Pass
-                log_event!["ddtags" => vec!["b:foo"]], // Fail
+                otel_event!["ddtags" => vec!["a:foo"]], // Pass
+                otel_event!["ddtags" => vec!["b:foo"]], // Fail
             ),
             // Tag exists with - in name.
             (
                 "_exists_:a-b",                          // Source
-                log_event!["ddtags" => vec!["a-b:foo"]], // Pass
-                log_event!["ddtags" => vec!["ab:foo"]],  // Fail
+                otel_event!["ddtags" => vec!["a-b:foo"]], // Pass
+                otel_event!["ddtags" => vec!["ab:foo"]],  // Fail
             ),
             // Tag exists (negate).
             (
                 "NOT _exists_:a",
-                log_event!["ddtags" => vec!["b:foo"]],
-                log_event!("ddtags" => vec!["a:foo"]),
+                otel_event!["ddtags" => vec!["b:foo"]],
+                otel_event!("ddtags" => vec!["a:foo"]),
             ),
             // Tag exists (negate w/-).
             (
                 "-_exists_:a",
-                log_event!["ddtags" => vec!["b:foo"]],
-                log_event!["ddtags" => vec!["a:foo"]],
+                otel_event!["ddtags" => vec!["b:foo"]],
+                otel_event!["ddtags" => vec!["a:foo"]],
             ),
             // Tag doesn't exist.
             (
                 "_missing_:a",
-                log_event![],
-                log_event!["ddtags" => vec!["a:foo"]],
+                otel_event![],
+                otel_event!["ddtags" => vec!["a:foo"]],
             ),
             // Tag doesn't exist (negate).
             (
                 "NOT _missing_:a",
-                log_event!["ddtags" => vec!["a:foo"]],
-                log_event![],
+                otel_event!["ddtags" => vec!["a:foo"]],
+                otel_event![],
             ),
             // Tag doesn't exist (negate w/-).
             (
                 "-_missing_:a",
-                log_event!["ddtags" => vec!["a:foo"]],
-                log_event![],
+                otel_event!["ddtags" => vec!["a:foo"]],
+                otel_event![],
             ),
             // Tag match.
             (
                 "a:bla",
-                log_event!["ddtags" => vec!["a:bla"]],
-                log_event!["ddtags" => vec!["b:bla"]],
+                otel_event!["ddtags" => vec!["a:bla"]],
+                otel_event!["ddtags" => vec!["b:bla"]],
             ),
             // Tag match (negate).
             (
                 "NOT a:bla",
-                log_event!["ddtags" => vec!["b:bla"]],
-                log_event!["ddtags" => vec!["a:bla"]],
+                otel_event!["ddtags" => vec!["b:bla"]],
+                otel_event!["ddtags" => vec!["a:bla"]],
             ),
             // Reserved tag match (negate).
             (
                 "NOT host:foo",
-                log_event!["ddtags" => vec!["host:fo  o"]],
-                log_event!["host" => "foo"],
+                otel_event!["ddtags" => vec!["host:fo  o"]],
+                otel_event!["host" => "foo"],
             ),
             // Tag match (negate w/-).
             (
                 "-a:bla",
-                log_event!["ddtags" => vec!["b:bla"]],
-                log_event!["ddtags" => vec!["a:bla"]],
+                otel_event!["ddtags" => vec!["b:bla"]],
+                otel_event!["ddtags" => vec!["a:bla"]],
             ),
             // Quoted tag match.
             (
                 r#"a:"bla""#,
-                log_event!["ddtags" => vec!["a:bla"]],
-                log_event!["a" => "bla"],
+                otel_event!["ddtags" => vec!["a:bla"]],
+                otel_event!["a" => "bla"],
             ),
             // Quoted tag match (negate).
             (
                 r#"NOT a:"bla""#,
-                log_event!["a" => "bla"],
-                log_event!["ddtags" => vec!["a:bla"]],
+                otel_event!["a" => "bla"],
+                otel_event!["ddtags" => vec!["a:bla"]],
             ),
             // Quoted tag match (negate w/-).
             (
                 r#"-a:"bla""#,
-                log_event!["a" => "bla"],
-                log_event!["ddtags" => vec!["a:bla"]],
+                otel_event!["a" => "bla"],
+                otel_event!["ddtags" => vec!["a:bla"]],
             ),
             // String attribute match.
             (
                 "@a:bla",
-                log_event!["a" => "bla"],
-                log_event!["ddtags" => vec!["a:bla"]],
+                otel_event!["a" => "bla"],
+                otel_event!["ddtags" => vec!["a:bla"]],
             ),
             // String attribute match (negate).
             (
                 "NOT @a:bla",
-                log_event!["ddtags" => vec!["a:bla"]],
-                log_event!["a" => "bla"],
+                otel_event!["ddtags" => vec!["a:bla"]],
+                otel_event!["a" => "bla"],
             ),
             // String attribute match (negate w/-).
             (
                 "-@a:bla",
-                log_event!["ddtags" => vec!["a:bla"]],
-                log_event!["a" => "bla"],
+                otel_event!["ddtags" => vec!["a:bla"]],
+                otel_event!["a" => "bla"],
             ),
             // Quoted attribute match.
             (
                 r#"@a:"bla""#,
-                log_event!["a" => "bla"],
-                log_event!["ddtags" => vec!["a:bla"]],
+                otel_event!["a" => "bla"],
+                otel_event!["ddtags" => vec!["a:bla"]],
             ),
             // Quoted attribute match (negate).
             (
                 r#"NOT @a:"bla""#,
-                log_event!["ddtags" => vec!["a:bla"]],
-                log_event!["a" => "bla"],
+                otel_event!["ddtags" => vec!["a:bla"]],
+                otel_event!["a" => "bla"],
             ),
             // Quoted attribute match (negate w/-).
             (
                 r#"-@a:"bla""#,
-                log_event!["ddtags" => vec!["a:bla"]],
-                log_event!["a" => "bla"],
+                otel_event!["ddtags" => vec!["a:bla"]],
+                otel_event!["a" => "bla"],
             ),
             // Integer attribute match.
             (
                 "@a:200",
-                log_event!["a" => 200],
-                log_event!["ddtags" => vec!["a:200"]],
+                otel_event!["a" => 200],
+                otel_event!["ddtags" => vec!["a:200"]],
             ),
             // Float attribute match.
             (
                 "@a:0.75",
-                log_event!["a" => 0.75],
-                log_event!["ddtags" => vec!["a:0.75"]],
+                otel_event!["a" => 0.75],
+                otel_event!["ddtags" => vec!["a:0.75"]],
             ),
             (
                 "a:*bla",
-                log_event!["ddtags" => vec!["a:foobla"]],
-                log_event!["ddtags" => vec!["a:blafoo"]],
+                otel_event!["ddtags" => vec!["a:foobla"]],
+                otel_event!["ddtags" => vec!["a:blafoo"]],
             ),
             // Wildcard prefix - tag (negate).
             (
                 "NOT a:*bla",
-                log_event!["ddtags" => vec!["a:blafoo"]],
-                log_event!["ddtags" => vec!["a:foobla"]],
+                otel_event!["ddtags" => vec!["a:blafoo"]],
+                otel_event!["ddtags" => vec!["a:foobla"]],
             ),
             // Wildcard prefix - tag (negate w/-).
             (
                 "-a:*bla",
-                log_event!["ddtags" => vec!["a:blafoo"]],
-                log_event!["ddtags" => vec!["a:foobla"]],
+                otel_event!["ddtags" => vec!["a:blafoo"]],
+                otel_event!["ddtags" => vec!["a:foobla"]],
             ),
             // Wildcard suffix - tag.
             (
                 "b:bla*",
-                log_event!["ddtags" => vec!["b:blabop"]],
-                log_event!["ddtags" => vec!["b:bopbla"]],
+                otel_event!["ddtags" => vec!["b:blabop"]],
+                otel_event!["ddtags" => vec!["b:bopbla"]],
             ),
             // Wildcard suffix - tag (negate).
             (
                 "NOT b:bla*",
-                log_event!["ddtags" => vec!["b:bopbla"]],
-                log_event!["ddtags" => vec!["b:blabop"]],
+                otel_event!["ddtags" => vec!["b:bopbla"]],
+                otel_event!["ddtags" => vec!["b:blabop"]],
             ),
             // Wildcard suffix - tag (negate w/-).
             (
                 "-b:bla*",
-                log_event!["ddtags" => vec!["b:bopbla"]],
-                log_event!["ddtags" => vec!["b:blabop"]],
+                otel_event!["ddtags" => vec!["b:bopbla"]],
+                otel_event!["ddtags" => vec!["b:blabop"]],
             ),
             // Multiple wildcards - tag.
             (
                 "c:*b*la*",
-                log_event!["ddtags" => vec!["c:foobla"]],
-                log_event!["custom" => r#"{"title" => "foobla"}"#],
+                otel_event!["ddtags" => vec!["c:foobla"]],
+                otel_event!["custom" => r#"{"title" => "foobla"}"#],
             ),
             // Multiple wildcards - tag (negate).
             (
                 "NOT c:*b*la*",
-                log_event!["custom" => r#"{"title" => "foobla"}"#],
-                log_event!["ddtags" => vec!["c:foobla"]],
+                otel_event!["custom" => r#"{"title" => "foobla"}"#],
+                otel_event!["ddtags" => vec!["c:foobla"]],
             ),
             // Multiple wildcards - tag (negate w/-).
             (
                 "-c:*b*la*",
-                log_event!["custom" => r#"{"title" => "foobla"}"#],
-                log_event!["ddtags" => vec!["c:foobla"]],
+                otel_event!["custom" => r#"{"title" => "foobla"}"#],
+                otel_event!["ddtags" => vec!["c:foobla"]],
             ),
             // Wildcard prefix - attribute.
             (
                 "@a:*bla",
-                log_event!["a" => "foobla"],
-                log_event!["ddtags" => vec!["a:foobla"]],
+                otel_event!["a" => "foobla"],
+                otel_event!["ddtags" => vec!["a:foobla"]],
             ),
             // Wildcard prefix - attribute (negate).
             (
                 "NOT @a:*bla",
-                log_event!["ddtags" => vec!["a:foobla"]],
-                log_event!["a" => "foobla"],
+                otel_event!["ddtags" => vec!["a:foobla"]],
+                otel_event!["a" => "foobla"],
             ),
             // Wildcard prefix - attribute (negate w/-).
             (
                 "-@a:*bla",
-                log_event!["ddtags" => vec!["a:foobla"]],
-                log_event!["a" => "foobla"],
+                otel_event!["ddtags" => vec!["a:foobla"]],
+                otel_event!["a" => "foobla"],
             ),
             // Wildcard suffix - attribute.
             (
                 "@b:bla*",
-                log_event!["b" => "blabop"],
-                log_event!["ddtags" => vec!["b:blabop"]],
+                otel_event!["b" => "blabop"],
+                otel_event!["ddtags" => vec!["b:blabop"]],
             ),
             // Wildcard suffix - attribute (negate).
             (
                 "NOT @b:bla*",
-                log_event!["ddtags" => vec!["b:blabop"]],
-                log_event!["b" => "blabop"],
+                otel_event!["ddtags" => vec!["b:blabop"]],
+                otel_event!["b" => "blabop"],
             ),
             // Wildcard suffix - attribute (negate w/-).
             (
                 "-@b:bla*",
-                log_event!["ddtags" => vec!["b:blabop"]],
-                log_event!["b" => "blabop"],
+                otel_event!["ddtags" => vec!["b:blabop"]],
+                otel_event!["b" => "blabop"],
             ),
             // Multiple wildcards - attribute.
             (
                 "@c:*b*la*",
-                log_event!["c" => "foobla"],
-                log_event!["ddtags" => vec!["c:foobla"]],
+                otel_event!["c" => "foobla"],
+                otel_event!["ddtags" => vec!["c:foobla"]],
             ),
             // Multiple wildcards - attribute (negate).
             (
                 "NOT @c:*b*la*",
-                log_event!["ddtags" => vec!["c:foobla"]],
-                log_event!["c" => "foobla"],
+                otel_event!["ddtags" => vec!["c:foobla"]],
+                otel_event!["c" => "foobla"],
             ),
             // Multiple wildcards - attribute (negate w/-).
             (
                 "-@c:*b*la*",
-                log_event!["ddtags" => vec!["c:foobla"]],
-                log_event!["c" => "foobla"],
+                otel_event!["ddtags" => vec!["c:foobla"]],
+                otel_event!["c" => "foobla"],
             ),
             // Special case for tags.
             (
                 "tags:a",
-                log_event!["ddtags" => vec!["a", "b", "c"]],
-                log_event!["ddtags" => vec!["d", "e", "f"]],
+                otel_event!["ddtags" => vec!["a", "b", "c"]],
+                otel_event!["ddtags" => vec!["d", "e", "f"]],
             ),
             // Special case for tags (negate).
             (
                 "NOT tags:a",
-                log_event!["ddtags" => vec!["d", "e", "f"]],
-                log_event!["ddtags" => vec!["a", "b", "c"]],
+                otel_event!["ddtags" => vec!["d", "e", "f"]],
+                otel_event!["ddtags" => vec!["a", "b", "c"]],
             ),
             // Special case for tags (negate w/-).
             (
                 "-tags:a",
-                log_event!["ddtags" => vec!["d", "e", "f"]],
-                log_event!["ddtags" => vec!["a", "b", "c"]],
+                otel_event!["ddtags" => vec!["d", "e", "f"]],
+                otel_event!["ddtags" => vec!["a", "b", "c"]],
             ),
             // Special case: 'source' looks up on 'source' and 'ddsource' (OR condition)
             // source
             (
                 "source:foo",
-                log_event!["source" => "foo"],
-                log_event!["tags" => vec!["source:foo"]],
+                otel_event!["source" => "foo"],
+                otel_event!["tags" => vec!["source:foo"]],
             ),
             (
                 "source:foo",
-                log_event!["source" => "foo"],
-                log_event!["source" => "foobar"],
+                otel_event!["source" => "foo"],
+                otel_event!["source" => "foobar"],
             ),
             (
                 "source:foo",
-                log_event!["source" => "foo"],
-                log_event!["source" => r#"{"value": "foo"}"#],
+                otel_event!["source" => "foo"],
+                otel_event!["source" => r#"{"value": "foo"}"#],
             ),
             // ddsource
             (
                 "source:foo",
-                log_event!["ddsource" => "foo"],
-                log_event!["tags" => vec!["ddsource:foo"]],
+                otel_event!["ddsource" => "foo"],
+                otel_event!["tags" => vec!["ddsource:foo"]],
             ),
             (
                 "source:foo",
-                log_event!["ddsource" => "foo"],
-                log_event!["ddsource" => "foobar"],
+                otel_event!["ddsource" => "foo"],
+                otel_event!["ddsource" => "foobar"],
             ),
             (
                 "source:foo",
-                log_event!["ddsource" => "foo"],
-                log_event!["ddsource" => r#"{"value": "foo"}"#],
+                otel_event!["ddsource" => "foo"],
+                otel_event!["ddsource" => r#"{"value": "foo"}"#],
             ),
             // both source and ddsource
             (
                 "source:foo",
-                log_event!["source" => "foo", "ddsource" => "foo"],
-                log_event!["source" => "foobar", "ddsource" => "foobar"],
+                otel_event!["source" => "foo", "ddsource" => "foo"],
+                otel_event!["source" => "foobar", "ddsource" => "foobar"],
             ),
             (
                 "source:foo",
-                log_event!["source" => "foo", "ddsource" => "foobar"],
-                log_event!["source" => "foobar", "ddsource" => "foobar"],
+                otel_event!["source" => "foo", "ddsource" => "foobar"],
+                otel_event!["source" => "foobar", "ddsource" => "foobar"],
             ),
             (
                 "source:foo",
-                log_event!["source" => "foobar", "ddsource" => "foo"],
-                log_event!["source" => "foobar", "ddsource" => "foobar"],
+                otel_event!["source" => "foobar", "ddsource" => "foo"],
+                otel_event!["source" => "foobar", "ddsource" => "foobar"],
             ),
         ]
     }

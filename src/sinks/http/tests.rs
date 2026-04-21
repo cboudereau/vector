@@ -27,7 +27,7 @@ use super::{
 use crate::{
     assert_downcast_matches,
     codecs::{EncodingConfigWithFraming, SinkType},
-    log_event,
+    otel_event,
     sinks::{
         prelude::*,
         util::{
@@ -631,7 +631,7 @@ async fn json_compression_with_payload_wrapper(compression: &str) {
 async fn templateable_uri_path() {
     init_test();
     fn create_event_with_id(id: i64) -> Event {
-        log_event!["id" => id]
+        otel_event!["id" => id]
     }
 
     let num_events_per_id = 100;
@@ -700,7 +700,7 @@ async fn templateable_uri_auth() {
     init_test();
 
     fn create_event_with_user_and_pass(user: &str, pass: &str) -> Event {
-        log_event!["user" => user, "pass" => pass]
+        otel_event!["user" => user, "pass" => pass]
     }
 
     let num_events_per_auth = 100;

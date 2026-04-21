@@ -20,12 +20,13 @@
 | `Template::render_string_from_log/metric` | OTel → Legacy | **DELETED** |
 
 All ~250 lines of OTel → Legacy bridge code were removed. Reverse-direction
-access goes through `to_value_legacy_layout` (read) / proto accessors.
+access goes through `to_value_canonical` (read) / proto accessors.
 
 **Phase E gap (write-back symmetry) — FIXED 2026-04-13**
 
-`apply_value_legacy_layout` now extracts native proto fields symmetrically
-with `to_value_legacy_layout`:
+`apply_value_map` (formerly `apply_value_legacy_layout`) extracts native
+proto fields symmetrically with `to_value_canonical` (formerly
+`to_value_legacy_layout`):
 
 - **OtelLog**: `severity_text`, `severity_number`, `trace_id` (hex →
   bytes), `span_id` (hex → bytes), plus existing `body`/`message`,
@@ -35,8 +36,8 @@ with `to_value_legacy_layout`:
 
 Malformed hex IDs fall back to attribute storage rather than dropping
 data. `from_log_event` and `from_trace_event` now delegate to
-`apply_value_legacy_layout`, so both round-trip paths share one
-field-routing implementation.
+`apply_value_map`, so both round-trip paths share one field-routing
+implementation.
 
 5 previously-ignored gap tests now pass; plus new
 `insert_preserves_corrupt_trace_id_as_attribute` covers the fallback.
@@ -88,8 +89,8 @@ count was wrong. On close inspection all sites are either test modules
 | `.message` | `.body` | Yes — deprecation notice only |
 | `.timestamp` | `.time_unix_nano` | Yes — schema-meaning mapping |
 | `.tags."key"` | `.attributes."key"` | Yes (OtelLog); OtelMetric `.tags` also live |
-| `.host` | `.resource.attributes."host.name"` | Yes — hoisted by `to_value_legacy_layout` |
-| `.source_type` | `.resource.attributes."source_type"` | Yes — hoisted |
+| `.host` | `.resource.attributes."host.name"` | Yes — fast-path alias in get/insert |
+| `.source_type` | `.resource.attributes."source_type"` | Yes — fast-path alias in get/insert |
 | `%vector.*` | `%pipeline.*` | Metadata namespace prefix — TBD |
 
 These aliases are what the `vector vrl-migrate` tool (Phase A, blocked —
@@ -145,18 +146,21 @@ see `VRL_MIGRATION_TOOL.md`) should rewrite before being removed.
 ## Remaining phases
 
 - **A — VRL migration tool rules**: **DONE** (B4)
-- **B — Remove VRL aliases**: **OPEN** — see Phase G task T15.
-  Product decision: approved. `vector vrl-migrate` rewrites configs.
+- **B — Remove VRL aliases**: **OPEN** — T15 eliminated internal alias
+  infrastructure; user-facing VRL aliases remain until `vector vrl-migrate`
+  rewrites configs. Product decision: approved.
 - **C — OTel-to-Legacy bridge**: **DONE**
 - **D — Legacy-to-OTel bridge**: Folded into F → G.
 - **E — Remove legacy types from production**: **DONE**
 - **F — Delete LogEvent + TraceEvent**: **DONE**
   - F.1-F.6 complete. `log_event.rs` deleted (`80ff2fb`).
   - `trace.rs` deleted (`1236e8e`).
-- **G — Delete Metric struct + buffer compat + legacy layout**:
-  **TYPES DONE, LAYOUT IN PROGRESS** — all 3 legacy types deleted.
-  3 tasks remain (T16 → T15 → T23) for legacy layout elimination.
+- **G — Delete Metric struct + buffer compat + legacy layout**: **DONE**
+  All 3 legacy types deleted. Legacy layout eliminated (T16 + T15 + T23).
   T24 closed (OTLP JSON decode already exists via proto serde).
+  Post-cleanup: `to_value_legacy_layout` / `apply_value_legacy_layout`
+  renamed to `to_value_canonical` / `apply_value_map`. `log_event!` macro
+  renamed to `otel_event!`. DRY helpers extracted for resource/scope.
 
 ## Phase F — Delete legacy types entirely
 
@@ -258,7 +262,7 @@ sessions. Recommended order:
   No feature flag needed — when tests are migrated to use
   `OtelLog::from_bytes/from_value_map` directly, both the bridge
   AND LogEvent type can be deleted together.
-- `log_event!` macro already uses `OtelLog::new` directly.
+- `otel_event!` macro (renamed from `log_event!`) uses `OtelLog::new` directly.
 - Zero production LogEvent imports remain outside vector-core/src/event/.
 - **LogEvent migration COMPLETE** — 555 → 4 sites remaining.
   All test code migrated from LogEvent:: to OtelLog:: constructors.
@@ -615,7 +619,7 @@ the struct**:
 |---|------|--------|--------|------|
 | T16 | Fast-path get/insert/remove bypassing legacy round-trip | **DONE** | `5198ea7`..`a86b435` | Phases 1-3 complete. All-field get/insert/remove for OtelLog + OtelSpan bypass legacy layout. Phase 4 (batch methods) deferred to T15/T23. |
 | T15 | Remove VRL aliases + Serialize → proto-canonical | **DONE** | Phases 1-5 complete | Phase 1: aliases removed. Phase 2: Serialize → OTLP JSON. Phase 3: value()/keys()/as_map() canonical. Phase 4: 78 test fixes (`940da7e`). Phase 5: alias infrastructure deleted. |
-| T23 | Simplify/rename legacy layout functions | **DONE** | | `to_value_legacy_layout` delegates to `to_value_canonical`. `apply_value_legacy_layout` restores resource/scope. `hoist_resource_fields`/`hoist_scope_fields` deleted. `message_path()`/`host_path()` deleted. |
+| T23 | Simplify/rename legacy layout functions | **DONE** | | `to_value_legacy_layout` deleted (all callers → `to_value_canonical`). `apply_value_legacy_layout` renamed → `apply_value_map`; restores resource/scope via shared `restore_resource`/`restore_scope` helpers. `hoist_resource_fields`/`hoist_scope_fields` deleted. `message_path()`/`host_path()` deleted. `log_event!` macro → `otel_event!`. |
 
 #### Workstream 4: Runtime safety + correctness
 
@@ -629,7 +633,7 @@ the struct**:
 
 | # | Task | Status | Commit | Note |
 |---|------|--------|--------|------|
-| T18 | Stale names and dead aliases | **DONE** | `d920e8a`..`5a673ca` | `MergeState` renamed, dead aliases deleted, span helpers deleted, `try_into_log_coerce`/`into_log_coerce` replaced (17 callers) + aliases deleted. **Remaining cosmetic:** `log_event!` macro (392 usages, works correctly), `event.proto` deprecated field markers. |
+| T18 | Stale names and dead aliases | **DONE** | `d920e8a`..`5a673ca` | `MergeState` renamed, dead aliases deleted, span helpers deleted, `try_into_log_coerce`/`into_log_coerce` replaced (17 callers) + aliases deleted. `log_event!` macro renamed to `otel_event!`. **Remaining cosmetic:** `event.proto` deprecated field markers. |
 
 ---
 
@@ -855,9 +859,9 @@ Removing aliases is a **breaking change** gated on product decision.
 
 ---
 
-#### T16 — Eliminate `to_value_legacy_layout` / `apply_value_legacy_layout`
+#### T16 — Eliminate legacy layout round-trip from get/insert/remove — DONE
 
-**File:** `lib/vector-core/src/event/otel_event.rs` (47 call sites)
+**File:** `lib/vector-core/src/event/otel_event.rs`
 
 This is the **deepest remaining legacy pattern**. Every `OtelLog::insert()`,
 `get()`, `remove()` call does a full round-trip through a flat `Value` tree:
@@ -902,7 +906,7 @@ dangerous (silent data loss).
 | `LogEventMergeState` | `merge_state.rs`, `docker_logs/mod.rs` | Rename to `MergeState` |
 | `OtelLogEvent`/`OtelMetricEvent`/`OtelSpanEvent` aliases | `event/mod.rs:45-47` | Delete (0 callers) |
 | `try_into_log_coerce`/`into_log_coerce` | `event/mod.rs:161-166` (17 callers) | Rename to `try_into_log`/`into_log` (already exist, these are duplicates) |
-| `log_event!` macro | `test_util/mod.rs:84` (392 usages) | Keep or rename — test ergonomics, name is cosmetic |
+| ~~`log_event!` macro~~ | `test_util/mod.rs:84` | **DONE** — renamed to `otel_event!` |
 | `event.proto` deprecated fields | `proto/event.proto` | Remove deprecated `metadata` + `fields` field declarations |
 
 **Effort:** Low — mechanical renames and dead code deletion.
@@ -920,9 +924,9 @@ DONE — All legacy types deleted:
 DONE — Fast-path mutation optimization:
   T16 (get/insert/remove bypass legacy layout for all-field paths) — DONE
 
-OPEN — Legacy layout elimination (2 tasks remain):
-  T15 (remove VRL aliases + switch Serialize/value/keys to proto-canonical)
-   └─► T23 (delete to_value_legacy_layout + apply_value_legacy_layout)
+DONE — Legacy layout elimination:
+  T15 (remove VRL aliases + switch Serialize/value/keys to proto-canonical) — DONE
+  T23 (delete to_value_legacy_layout, rename apply_value_map, DRY helpers) — DONE
 
 CLOSED:
   T17 (serde Deserialize) — REVERTED, not needed
@@ -992,18 +996,16 @@ These are OtelMetric's public API — NOT legacy types:
 `OtelMetric::into_metric_parts()` returns these; `with_tags`,
 `with_namespace`, `with_timestamp` consume them.
 
-### Remaining work (automode-ready, 2026-04-20)
+### Completed work log (2026-04-20 → 2026-04-21)
 
-All legacy types deleted (LogEvent, TraceEvent, Metric). What remains
-is **legacy layout elimination** — removing the O(event_size) round-trip
-that every get/insert/remove call pays.
-
-**4 tasks remain**, in execution order:
+All legacy types deleted (LogEvent, TraceEvent, Metric). Legacy layout
+elimination complete — the O(event_size) round-trip for get/insert/remove
+has been replaced by direct proto fast-path accessors. All 4 tasks done:
 
 #### T16 — Eliminate legacy-layout fallbacks in get/insert/remove
 
 **Goal:** Make OtelLog and OtelSpan get/insert/remove operate directly
-on proto fields, never calling `to_value_legacy_layout`/`apply_value_legacy_layout`.
+on proto fields, never calling the legacy layout round-trip.
 
 **File:** `lib/vector-core/src/event/otel_event.rs`
 
@@ -1046,7 +1048,7 @@ After Phase 1: **single-segment paths never fall through.** ✓
 - Prune support for empty parent cleanup
 - Index segments (array access) still fall through to legacy layout
 
-After Phase 2: **all-field multi-segment paths never call to_value_legacy_layout.** ✓
+After Phase 2: **all-field multi-segment paths use direct proto access.** ✓
 
 **Phase 3 — OtelSpan fast-path — DONE:**
 - Added `span_get_single_segment`/`span_insert_single_segment` for all
@@ -1059,23 +1061,18 @@ After Phase 2: **all-field multi-segment paths never call to_value_legacy_layout
 
 After Phase 3: **OtelSpan get/insert bypass legacy layout for all-field paths.** ✓
 
-**Phase 4 — Batch methods — DEFERRED to T15/T23:**
-- `value()`, `keys()`, `as_map()`, `convert_to_fields*()` are read-only
-  methods that inherently need a full Value tree. Rewriting them just
-  duplicates `to_value_legacy_layout` logic without perf gain. These
-  change field names when T15 switches to proto-canonical.
-- `event_data_eq()` intentionally normalizes storage differences
-  (source_type in resource vs attributes). Proto comparison would
-  need equivalent normalization — net zero benefit.
-- `modify_as_value()` callers (dnstap, splunk_hec) legitimately need
-  `&mut Value` for bulk parser APIs. Migration needs those APIs to
-  accept `&mut OtelLog` instead — tracked separately.
-- `value_mut()` returns a non-persisting snapshot — misleading API,
-  to be deprecated in T23.
+**Phase 4 — Batch methods — DONE (T15/T23):**
+- `value()`, `keys()`, `as_map()`, `convert_to_fields*()` switched to
+  `to_value_canonical()` — proto-canonical field names throughout.
+- `event_data_eq()` uses `normalize_for_eq` for storage-independent
+  comparison (hoists source_type/host.name from resource, strips
+  observed_time_unix_nano).
+- `modify_as_value()` callers (dnstap, splunk_hec) use `to_value_canonical`
+  → mutate → `apply_value_map` round-trip for bulk parser APIs.
 
 T16 impact: **get/insert/remove (the hot mutation paths) fully bypass
-legacy layout for all-field paths.** Read-only snapshot methods stay
-until T15/T23.
+legacy layout for all-field paths.** Read-only snapshot methods switched
+to `to_value_canonical()` in T15/T23.
 
 **Effort:** ~2 sessions (8-12h). No breaking changes.
 **Depends on:** nothing.
@@ -1140,54 +1137,34 @@ backward compatibility with pre-OTLP Vector. Users run
 
 **Phase 5 — Delete alias infrastructure — DONE:**
 - Deleted `hoist_resource_fields` / `hoist_scope_fields` helper functions
-- Deleted `message_path()` alias (callers → `body_path()`) and `host_path()` (was returning None)
-- `to_value_legacy_layout` now delegates to `to_value_canonical` (OtelLog + OtelSpan)
-- `apply_value_legacy_layout` updated: restores resource/scope sub-objects,
-  handles `time_unix_nano`/`observed_time_unix_nano` as Integer,
-  keeps "message"/"timestamp" fallbacks for from_value_map decoder compat
+- Deleted `message_path()` alias (callers → `body_path()`) and `host_path()`
+- `to_value_legacy_layout` deleted — all callers switched to `to_value_canonical`
+- `apply_value_legacy_layout` renamed to `apply_value_map`; restores
+  resource/scope sub-objects via shared `restore_resource`/`restore_scope`
+  helpers; handles `time_unix_nano`/`observed_time_unix_nano` as Integer;
+  keeps "message"/"timestamp" fallbacks for `from_value_map` decoder compat
 - `event_data_eq` uses `normalize_for_eq` for storage-independent comparison
 - Removed dead `host_key` field from InfluxDB logs sink
+- `log_event!` macro renamed to `otel_event!` (392 sites)
 
 **Effort:** ~1-2 sessions (6-10h), mainly test assertion updates.
 **Depends on:** T16 complete (fast-path covers all paths).
 
 ---
 
-#### T23 — Simplify/rename legacy layout functions
+#### T23 — Simplify/rename legacy layout functions — DONE
 
-**Goal:** After T15 removes aliases, `to_value_legacy_layout` and
-`apply_value_legacy_layout` either:
-- Have zero callers → **delete** them (~200 lines), OR
-- Still serve `from_value_map` constructor → **rename + simplify**
-
-**Analysis of remaining callers after T15:**
-
-| Caller | Status after T15 |
-|--------|------------------|
-| `get()` fallback | **GONE** (T16) |
-| `insert()` fallback | **GONE** (T16) |
-| `remove_prune()` fallback | **GONE** (T16) |
-| `modify_as_value()` | **GONE** (T16 Phase 4 deletes it) |
-| `value()` | **GONE** (T16 Phase 4 rewrites it) |
-| `keys()` / `as_map()` / `convert_to_fields*()` | **GONE** (T16 Phase 4) |
-| `event_data_eq()` | **GONE** (T16 Phase 4) |
-| `Serialize` | **GONE** (T15 Phase 2 switches to OtlpJson) |
-| `from_value_map` (constructor) | **STAYS** — needs apply_value_layout |
-| `proto.rs` disk buffer encode | **STAYS** — needs to_value for disk format |
-
-**Action:**
-1. Rename `to_value_legacy_layout` → `to_value_canonical` (or inline into
-   the 1-2 remaining callers if small enough)
-2. Rename `apply_value_legacy_layout` → `apply_value_canonical`
-3. Simplify: remove alias mapping (`.message` → body), resource hoisting
-   (source_type, host.name), timestamp coercion. After T15, these
-   functions just do a direct proto ↔ Value conversion with no magic.
-4. Delete `hoist_resource_fields`, `hoist_scope_fields` (moved to
-   T15 Phase 5 if not already deleted)
-5. Delete `coerce_to_timestamp` helper
-
-**Effort:** ~1-2h cleanup.
-**Depends on:** T15 complete.
+**Completed actions:**
+1. `to_value_legacy_layout` deleted — all 22 callers (20 internal +
+   2 in proto.rs) switched to `to_value_canonical`
+2. `apply_value_legacy_layout` renamed to `apply_value_map`
+3. Resource/scope restoration extracted into shared `restore_resource` /
+   `restore_scope` helpers (DRY — eliminated 40 lines of duplication)
+4. `hoist_resource_fields` / `hoist_scope_fields` deleted (T15 Phase 5)
+5. `coerce_to_timestamp` kept — still used by `get_timestamp()` for
+   RFC3339 string→Timestamp conversion at I/O boundaries
+6. `log_event!` macro renamed to `otel_event!` (392 sites across 4 files)
+7. Stale comments referencing old function names updated across 5 files
 
 ---
 
@@ -1231,39 +1208,40 @@ the OtelMetric `data` field. The right architecture is:
 6. ~~Migrate transforms (Group E)~~ — **DONE**: reduce + metric_to_log
 7. ~~Performance: per-insert round-trips~~ — **DONE** via `OtelLog::modify_as_value`, applied to splunk_hec `build_log_legacy`
 
-## Current state (2026-04-20)
+## Current state (2026-04-21)
 
-### ALL legacy types deleted
+### ALL legacy types and layout eliminated
 - **`LogEvent`** — DELETED (`80ff2fb`, 1217 lines)
 - **`TraceEvent`** — DELETED (`1236e8e`, 191 lines)
 - **`Metric` struct** — DELETED (`9bd0d06`, 1040 lines across 21 files)
 - **Proto backward compat** — DELETED (`9363568`, old decoders/encoders)
 - **All `Event::from(LogEvent/Metric/TraceEvent)` bridges** — DELETED
 - **All `from_legacy_metric`/`from_log_event`/`from_trace_event`** — DELETED
+- **`to_value_legacy_layout`** — DELETED (all callers → `to_value_canonical`)
+- **`apply_value_legacy_layout`** — renamed to `apply_value_map`
+- **`hoist_resource_fields`/`hoist_scope_fields`** — DELETED
+- **`message_path()`/`host_path()`** — DELETED
+- **`log_event!` macro** — renamed to `otel_event!`
 
-### What remains: legacy layout round-trip
-The O(event_size) `to_value_legacy_layout`/`apply_value_legacy_layout`
-round-trip is the **last legacy pattern**. It exists to support:
-1. VRL field aliases (`.message`, `.host`, `.source_type`, `.timestamp`)
-2. Resource/scope hoisting into flat ObjectMap for backward compat
-3. Serialize implementations that emit legacy field names
-
-3 tasks (T16 → T15 → T23) eliminate this. T24 is closed (already
-covered by proto serde + `from_parts`).
+### What remains: user-facing VRL alias removal (Phase B)
+The only remaining legacy pattern is that VRL field aliases (`.message`,
+`.host`, `.source_type`, `.timestamp`) are still accepted by the
+fast-path get/insert/remove code. This is a **user-facing breaking
+change** gated on the product decision to ship `vector vrl-migrate`.
+The migration tool is implemented (B4 DONE). When the decision is made,
+removing the aliases is ~2h of mechanical work.
 
 ### Performance findings
 
-**Per-insert round-trip cost (discovered 2026-04-14 via syslog test failure)**
+**Per-insert round-trip cost (discovered 2026-04-14, FIXED by T16)**
 
-`OtelLog::insert(event_path!(...), value)` is **O(size of event)**:
-1. Calls `to_value_legacy_layout()` — clones the entire event into a
-   flat `Value` tree (with field routing).
-2. Calls `Value::insert()` on the flat tree.
-3. Calls `apply_value_legacy_layout()` — reparses the flat tree back
-   into proto `LogRecord` + `Resource` + `Scope` + `EventMetadata`.
+Before T16, `OtelLog::insert(event_path!(...), value)` was
+**O(size of event)** — a full `to_value_canonical()` → mutate →
+`apply_value_map()` round-trip per call. T16 replaced this with
+direct proto fast-path accessors for single-segment and multi-segment
+paths. Only array-index paths still fall through to the round-trip.
 
-Each insert does at least 1 full round-trip. `LogEvent::insert` is
-O(depth of path). In hot paths this matters:
+Historical impact before the fix:
 
 | Site | Inserts / event | Throughput impact |
 |------|------------------|-------------------|
@@ -1294,11 +1272,13 @@ expected-value construction. No migration needed.
 
 ## Verification (updated 2026-04-21)
 
-After T15 Phase 4 (78 test assertion fixes, commit `940da7e`):
+After post-migration cleanup:
 - Full test suite: **1791 pass, 0 failures**
-- Fixed core accessor bugs: get_source_type, remove_timestamp, source_type_path
-- Fixed k8s parser transform_otel_event time_unix_nano propagation
-- All canonical field names verified end-to-end
+- `to_value_legacy_layout` deleted — all callers use `to_value_canonical`
+- `apply_value_legacy_layout` renamed to `apply_value_map`
+- `log_event!` macro renamed to `otel_event!` (392 sites)
+- DRY: `restore_resource`/`restore_scope` shared helpers extracted
+- Resource/scope round-trip tests added (scope, observed_time_unix_nano)
 
 ## Related docs
 

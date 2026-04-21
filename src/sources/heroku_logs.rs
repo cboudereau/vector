@@ -430,7 +430,7 @@ mod tests {
     use crate::{
         SourceSender,
         common::http::server_auth::HttpServerAuthConfig,
-        config::{SourceConfig, SourceContext, log_schema},
+        config::{SourceConfig, SourceContext},
         serde::{default_decoding, default_framing_message_based},
         test_util::{
             addr::{PortGuard, next_addr},
@@ -539,7 +539,7 @@ mod tests {
                 r#"at=info method=GET path="/cart_link" host=lumberjack-store.timber.io request_id=05726858-c44e-4f94-9a20-37df73be9006 fwd="73.75.38.87" dyno=web.1 connect=1ms service=22ms status=304 bytes=656 protocol=http"#.into()
             );
             assert_eq!(
-                log.get(log_schema().timestamp_key().unwrap().to_string().as_str()).unwrap(),
+                log.get_timestamp().unwrap(),
                 "2020-01-08T22:33:57.353034+00:00"
                     .parse::<DateTime<Utc>>()
                     .unwrap()
@@ -585,7 +585,7 @@ mod tests {
                 r#"at=info method=GET path="/cart_link" host=lumberjack-store.timber.io request_id=05726858-c44e-4f94-9a20-37df73be9006 fwd="73.75.38.87" dyno=web.1 connect=1ms service=22ms status=304 bytes=656 protocol=http"#.into()
             );
             assert_eq!(
-                log.get(log_schema().timestamp_key().unwrap().to_string().as_str()).unwrap(),
+                log.get_timestamp().unwrap(),
                 "2020-01-08T22:33:57.353034+00:00"
                     .parse::<DateTime<Utc>>()
                     .unwrap()
@@ -670,7 +670,7 @@ mod tests {
 
         assert_eq!(log.get_body().unwrap(), "foo bar baz".into());
         assert_eq!(
-            log.get(log_schema().timestamp_key().unwrap().to_string().as_str()).unwrap(),
+            log.get_timestamp().unwrap(),
             "2020-01-08T22:33:57.353034+00:00"
                 .parse::<DateTime<Utc>>()
                 .unwrap()
@@ -701,7 +701,7 @@ mod tests {
 
         assert_eq!(log.get_body().unwrap(), "i'm not that long".into());
         assert_eq!(
-            log.get(log_schema().timestamp_key().unwrap().to_string().as_str()).unwrap(),
+            log.get_timestamp().unwrap(),
             "2020-01-08T22:33:57.353034+00:00"
                 .parse::<DateTime<Utc>>()
                 .unwrap()

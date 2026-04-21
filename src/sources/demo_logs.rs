@@ -482,7 +482,6 @@ mod tests {
 
     #[tokio::test]
     async fn host_is_set() {
-        let host_key = log_schema().host_key().unwrap().to_string();
         let mut rx = runit(
             r#"format = "syslog"
             count = 5"#,
@@ -494,9 +493,14 @@ mod tests {
             _ => unreachable!(),
         };
         let log = event.as_log();
-        let val = log.get(host_key.as_str()).unwrap();
-        let host = val.to_string_lossy();
-        assert_eq!("localhost", host);
+        // Host is stored as OTLP resource attribute "host.name"
+        use opentelemetry_proto::tonic::common::v1::any_value::Value as V;
+        let host_av = log.resource_attribute("host.name")
+            .expect("resource attribute host.name must be set");
+        match host_av.value.as_ref() {
+            Some(V::StringValue(s)) => assert_eq!(s, "localhost"),
+            other => panic!("expected StringValue(\"localhost\"), got {:?}", other),
+        }
     }
 
     #[tokio::test]

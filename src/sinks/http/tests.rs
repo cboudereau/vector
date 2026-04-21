@@ -112,12 +112,13 @@ fn http_encode_event_ndjson() {
     #[allow(dead_code)] // deserialize all fields
     struct ExpectedEvent {
         body: String,
-        timestamp: chrono::DateTime<chrono::Utc>,
+        time_unix_nano: i64,
     }
 
     let output = serde_json::from_slice::<ExpectedEvent>(&encoded[..]).unwrap();
 
     assert_eq!(output.body, "hello world".to_string());
+    assert!(output.time_unix_nano > 0);
 }
 
 #[test]

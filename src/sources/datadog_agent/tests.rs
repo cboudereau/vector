@@ -120,8 +120,20 @@ fn test_decode_log_body() {
             let log = event.as_log();
             assert_eq!(log.get("body").unwrap(), Value::from(msg.message));
             assert_eq!(log.get("status").unwrap(), Value::from(msg.status));
-            assert_eq!(log.get("timestamp").unwrap(), Value::from(msg.timestamp));
-            assert_eq!(log.get("hostname").unwrap(), Value::from(msg.hostname));
+            let expected_nanos = msg.timestamp.timestamp_nanos_opt().unwrap();
+            if expected_nanos != 0 {
+                assert_eq!(
+                    log.get("time_unix_nano").unwrap(),
+                    Value::Integer(expected_nanos as i64)
+                );
+            } else {
+                // When nanos == 0, time_unix_nano is stored as 0 on the proto record
+                // but get("time_unix_nano") skips zero values; instead "timestamp"
+                // is stored as a string attribute.
+                assert!(log.get("time_unix_nano").is_none());
+                assert!(log.get("timestamp").is_some());
+            }
+            assert_eq!(log.get("hostname").unwrap(), Value::from(String::from_utf8_lossy(&msg.hostname).into_owned()));
             assert_eq!(log.get("service").unwrap(), Value::from(msg.service));
             assert_eq!(log.get("ddsource").unwrap(), Value::from(msg.ddsource));
             assert_eq!(log.get("ddtags").unwrap(), Value::from(msg.ddtags));
@@ -180,8 +192,11 @@ fn test_decode_log_body_parse_ddtags() {
 
     assert_eq!(log.get("body").unwrap(), Value::from(log_msg.message));
     assert_eq!(log.get("status").unwrap(), Value::from(log_msg.status));
-    assert_eq!(log.get("timestamp").unwrap(), Value::from(log_msg.timestamp));
-    assert_eq!(log.get("hostname").unwrap(), Value::from(log_msg.hostname));
+    assert_eq!(
+        log.get("time_unix_nano").unwrap(),
+        Value::Integer(log_msg.timestamp.timestamp_nanos_opt().unwrap() as i64)
+    );
+    assert_eq!(log.get("hostname").unwrap(), Value::from(String::from_utf8_lossy(&log_msg.hostname).into_owned()));
     assert_eq!(log.get("service").unwrap(), Value::from(log_msg.service));
     assert_eq!(log.get("ddsource").unwrap(), Value::from(log_msg.ddsource));
 
@@ -394,11 +409,8 @@ async fn full_payload_v1() {
             let log = event.as_log();
             assert_eq!(log.get("body").unwrap(), "foo".into());
             assert_eq!(
-                log.get("timestamp").unwrap(),
-                Utc.timestamp_opt(123, 0)
-                    .single()
-                    .expect("invalid timestamp")
-                    .into()
+                log.get("time_unix_nano").unwrap(),
+                Value::Integer(123_000_000_000i64)
             );
             assert_eq!(log.get("hostname").unwrap(), "festeburg".into());
             assert_eq!(log.get("status").unwrap(), "notice".into());
@@ -406,7 +418,7 @@ async fn full_payload_v1() {
             assert_eq!(log.get("ddsource").unwrap(), "curl".into());
             assert_eq!(log.get("ddtags").unwrap(), "one,two,three".into());
             assert!(event.metadata().secrets().get("datadog_api_key").is_none());
-            assert_eq!(log.get_source_type().unwrap(), "datadog_agent".into());
+            assert_eq!(log.get("source_type").unwrap(), "datadog_agent".into());
             assert_eq!(
                 event.metadata().schema_definition().as_ref(),
                 &test_logs_schema_definition()
@@ -449,11 +461,8 @@ async fn full_payload_v2() {
             let log = event.as_log();
             assert_eq!(log.get("body").unwrap(), "foo".into());
             assert_eq!(
-                log.get("timestamp").unwrap(),
-                Utc.timestamp_opt(123, 0)
-                    .single()
-                    .expect("invalid timestamp")
-                    .into()
+                log.get("time_unix_nano").unwrap(),
+                Value::Integer(123_000_000_000i64)
             );
             assert_eq!(log.get("hostname").unwrap(), "festeburg".into());
             assert_eq!(log.get("status").unwrap(), "notice".into());
@@ -461,7 +470,7 @@ async fn full_payload_v2() {
             assert_eq!(log.get("ddsource").unwrap(), "curl".into());
             assert_eq!(log.get("ddtags").unwrap(), "one,two,three".into());
             assert!(event.metadata().secrets().get("datadog_api_key").is_none());
-            assert_eq!(log.get_source_type().unwrap(), "datadog_agent".into());
+            assert_eq!(log.get("source_type").unwrap(), "datadog_agent".into());
             assert_eq!(
                 event.metadata().schema_definition().as_ref(),
                 &test_logs_schema_definition()
@@ -504,11 +513,8 @@ async fn no_api_key() {
             let log = event.as_log();
             assert_eq!(log.get("body").unwrap(), "foo".into());
             assert_eq!(
-                log.get("timestamp").unwrap(),
-                Utc.timestamp_opt(123, 0)
-                    .single()
-                    .expect("invalid timestamp")
-                    .into()
+                log.get("time_unix_nano").unwrap(),
+                Value::Integer(123_000_000_000i64)
             );
             assert_eq!(log.get("hostname").unwrap(), "festeburg".into());
             assert_eq!(log.get("status").unwrap(), "notice".into());
@@ -516,7 +522,7 @@ async fn no_api_key() {
             assert_eq!(log.get("ddsource").unwrap(), "curl".into());
             assert_eq!(log.get("ddtags").unwrap(), "one,two,three".into());
             assert!(event.metadata().secrets().get("datadog_api_key").is_none());
-            assert_eq!(log.get_source_type().unwrap(), "datadog_agent".into());
+            assert_eq!(log.get("source_type").unwrap(), "datadog_agent".into());
             assert_eq!(
                 event.metadata().schema_definition().as_ref(),
                 &test_logs_schema_definition()
@@ -559,18 +565,15 @@ async fn api_key_in_url() {
             let log = event.as_log();
             assert_eq!(log.get("body").unwrap(), "bar".into());
             assert_eq!(
-                log.get("timestamp").unwrap(),
-                Utc.timestamp_opt(456, 0)
-                    .single()
-                    .expect("invalid timestamp")
-                    .into()
+                log.get("time_unix_nano").unwrap(),
+                Value::Integer(456_000_000_000i64)
             );
             assert_eq!(log.get("hostname").unwrap(), "festeburg".into());
             assert_eq!(log.get("status").unwrap(), "notice".into());
             assert_eq!(log.get("service").unwrap(), "vector".into());
             assert_eq!(log.get("ddsource").unwrap(), "curl".into());
             assert_eq!(log.get("ddtags").unwrap(), "one,two,three".into());
-            assert_eq!(log.get_source_type().unwrap(), "datadog_agent".into());
+            assert_eq!(log.get("source_type").unwrap(), "datadog_agent".into());
             assert_eq!(
                 &event.metadata().secrets().get("datadog_api_key").unwrap()[..],
                 DD_API_KEY
@@ -617,18 +620,15 @@ async fn api_key_in_query_params() {
             let log = event.as_log();
             assert_eq!(log.get("body").unwrap(), "bar".into());
             assert_eq!(
-                log.get("timestamp").unwrap(),
-                Utc.timestamp_opt(456, 0)
-                    .single()
-                    .expect("invalid timestamp")
-                    .into()
+                log.get("time_unix_nano").unwrap(),
+                Value::Integer(456_000_000_000i64)
             );
             assert_eq!(log.get("hostname").unwrap(), "festeburg".into());
             assert_eq!(log.get("status").unwrap(), "notice".into());
             assert_eq!(log.get("service").unwrap(), "vector".into());
             assert_eq!(log.get("ddsource").unwrap(), "curl".into());
             assert_eq!(log.get("ddtags").unwrap(), "one,two,three".into());
-            assert_eq!(log.get_source_type().unwrap(), "datadog_agent".into());
+            assert_eq!(log.get("source_type").unwrap(), "datadog_agent".into());
             assert_eq!(
                 &event.metadata().secrets().get("datadog_api_key").unwrap()[..],
                 DD_API_KEY
@@ -675,18 +675,15 @@ async fn api_key_in_header() {
             let log = event.as_log();
             assert_eq!(log.get("body").unwrap(), "baz".into());
             assert_eq!(
-                log.get("timestamp").unwrap(),
-                Utc.timestamp_opt(789, 0)
-                    .single()
-                    .expect("invalid timestamp")
-                    .into()
+                log.get("time_unix_nano").unwrap(),
+                Value::Integer(789_000_000_000i64)
             );
             assert_eq!(log.get("hostname").unwrap(), "festeburg".into());
             assert_eq!(log.get("status").unwrap(), "notice".into());
             assert_eq!(log.get("service").unwrap(), "vector".into());
             assert_eq!(log.get("ddsource").unwrap(), "curl".into());
             assert_eq!(log.get("ddtags").unwrap(), "one,two,three".into());
-            assert_eq!(log.get_source_type().unwrap(), "datadog_agent".into());
+            assert_eq!(log.get("source_type").unwrap(), "datadog_agent".into());
             assert_eq!(
                 &event.metadata().secrets().get("datadog_api_key").unwrap()[..],
                 DD_API_KEY
@@ -864,18 +861,15 @@ async fn ignores_api_key() {
             let log = event.as_log();
             assert_eq!(log.get("body").unwrap(), "baz".into());
             assert_eq!(
-                log.get("timestamp").unwrap(),
-                Utc.timestamp_opt(789, 0)
-                    .single()
-                    .expect("invalid timestamp")
-                    .into()
+                log.get("time_unix_nano").unwrap(),
+                Value::Integer(789_000_000_000i64)
             );
             assert_eq!(log.get("hostname").unwrap(), "festeburg".into());
             assert_eq!(log.get("status").unwrap(), "notice".into());
             assert_eq!(log.get("service").unwrap(), "vector".into());
             assert_eq!(log.get("ddsource").unwrap(), "curl".into());
             assert_eq!(log.get("ddtags").unwrap(), "one,two,three".into());
-            assert_eq!(log.get_source_type().unwrap(), "datadog_agent".into());
+            assert_eq!(log.get("source_type").unwrap(), "datadog_agent".into());
             assert!(event.metadata().secrets().get("datadog_api_key").is_none());
             assert_eq!(
                 event.metadata().schema_definition().as_ref(),
@@ -1441,18 +1435,15 @@ async fn split_outputs() {
             let log = event.as_log();
             assert_eq!(log.get("body").unwrap(), "baz".into());
             assert_eq!(
-                log.get("timestamp").unwrap(),
-                Utc.timestamp_opt(789, 0)
-                    .single()
-                    .expect("invalid timestamp")
-                    .into()
+                log.get("time_unix_nano").unwrap(),
+                Value::Integer(789_000_000_000i64)
             );
             assert_eq!(log.get("hostname").unwrap(), "festeburg".into());
             assert_eq!(log.get("status").unwrap(), "notice".into());
             assert_eq!(log.get("service").unwrap(), "vector".into());
             assert_eq!(log.get("ddsource").unwrap(), "curl".into());
             assert_eq!(log.get("ddtags").unwrap(), "one,two,three".into());
-            assert_eq!(log.get_source_type().unwrap(), "datadog_agent".into());
+            assert_eq!(log.get("source_type").unwrap(), "datadog_agent".into());
             assert_eq!(
                 &event.metadata().secrets().get("datadog_api_key").unwrap()[..],
                 DD_API_KEY

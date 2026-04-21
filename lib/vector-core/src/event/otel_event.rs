@@ -1778,6 +1778,8 @@ impl OtelLog {
     pub fn remove_timestamp(&mut self) -> Option<Value> {
         let ts = self.get_timestamp();
         self.record.time_unix_nano = 0;
+        remove_attribute(&mut self.record.attributes, "timestamp");
+        remove_attribute(&mut self.record.attributes, "vector.timestamp_overflow");
         ts
     }
 
@@ -1791,9 +1793,9 @@ impl OtelLog {
         self.body().map(any_value_to_vrl)
     }
 
-    /// Get the "source_type" from resource attributes.
+    /// Get the "source_type" from record attributes.
     pub fn get_source_type(&self) -> Option<Value> {
-        self.resource_attribute("source_type")
+        self.attribute("source_type")
             .map(|av| any_value_to_vrl(&av))
     }
 
@@ -1902,7 +1904,13 @@ impl OtelLog {
 
     /// Returns `None` — source_type lives at `resource.source_type`, not a top-level field.
     pub fn source_type_path(&self) -> Option<vrl::path::OwnedTargetPath> {
-        None
+        if self.attribute("source_type").is_some() {
+            Some(vrl::path::OwnedTargetPath::event(
+                lookup::owned_value_path!("source_type"),
+            ))
+        } else {
+            None
+        }
     }
 
     /// Try insert - only inserts if the path doesn't exist.

@@ -755,7 +755,7 @@ mod test {
             "logstash".to_string()
         );
         assert!(log.get("host").is_some());
-        assert!(log.get("timestamp").is_some());
+        assert!(log.get_timestamp().is_some());
     }
 
     fn encode_req(seq: u32, pairs: &[(&str, &str)]) -> Bytes {
@@ -917,7 +917,7 @@ mod integration_tests {
             Some(String::from("heartbeat").into()).as_ref()
         );
         assert_eq!(log.get("summary.up"), Some(1.into()).as_ref());
-        assert!(log.get("timestamp").is_some());
+        assert!(log.get_timestamp().is_some());
         assert!(log.get("host").is_some());
     }
 

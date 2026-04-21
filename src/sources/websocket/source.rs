@@ -481,7 +481,7 @@ mod tests {
             let (stream, _) = listener.accept().await.unwrap();
             let mut websocket = accept_async(stream).await.expect("Failed to accept");
 
-            let binary_payload = br#"{"body": "binary data"}"#.to_vec();
+            let binary_payload = br#"{"msg": "binary data"}"#.to_vec();
             websocket
                 .send(Message::Binary(binary_payload))
                 .await
@@ -600,7 +600,7 @@ mod tests {
 
         assert!(!events.is_empty(), "No events received from source");
         let event = events[0].as_log();
-        assert_eq!(event.get("body").unwrap(), "binary data".into());
+        assert_eq!(event.get("msg").unwrap(), "binary data".into());
         assert_eq!(event.get_source_type().unwrap(), "websocket".into());
     }
 

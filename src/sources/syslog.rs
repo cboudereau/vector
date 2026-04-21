@@ -1002,8 +1002,12 @@ mod test {
 
         let mut expected = Event::Log(OtelLog::from(msg));
         {
-            let value = event.as_log().get("timestamp").unwrap();
-            let year = value.as_timestamp().unwrap().naive_local().year();
+            let nanos = event.as_log().get(event_path!("time_unix_nano")).unwrap();
+            let nanos_i64 = nanos.as_integer().unwrap();
+            let year = chrono::DateTime::from_timestamp(
+                nanos_i64 / 1_000_000_000,
+                (nanos_i64 % 1_000_000_000) as u32,
+            ).unwrap().naive_local().year();
 
             let expected = expected.as_mut_log();
             let expected_date: DateTime<Utc> = Local
@@ -1051,8 +1055,12 @@ mod test {
 
         let mut expected = Event::Log(OtelLog::from(msg));
         {
-            let value = event.as_log().get("timestamp").unwrap();
-            let year = value.as_timestamp().unwrap().naive_local().year();
+            let nanos = event.as_log().get(event_path!("time_unix_nano")).unwrap();
+            let nanos_i64 = nanos.as_integer().unwrap();
+            let year = chrono::DateTime::from_timestamp(
+                nanos_i64 / 1_000_000_000,
+                (nanos_i64 % 1_000_000_000) as u32,
+            ).unwrap().naive_local().year();
 
             let expected = expected.as_mut_log();
             let expected_date: DateTime<Utc> = Local
@@ -1497,8 +1505,23 @@ mod test {
                     .map(value_to_string)
                     .map(|s: String| u8::from_str(s.as_str()).unwrap())
                     .unwrap(),
-                timestamp: fields.remove("timestamp").map(value_to_string).unwrap(),
-                host: fields.remove("host").map(value_to_string).unwrap(),
+                timestamp: fields.remove("time_unix_nano").map(|v| {
+                    if let Some(nanos) = v.as_integer() {
+                        let secs = nanos / 1_000_000_000;
+                        let nsecs = (nanos % 1_000_000_000) as u32;
+                        chrono::DateTime::from_timestamp(secs, nsecs)
+                            .map(|dt| dt.to_rfc3339_opts(SecondsFormat::AutoSi, true))
+                            .unwrap_or_else(|| nanos.to_string())
+                    } else {
+                        value_to_string(v)
+                    }
+                }).unwrap(),
+                host: fields.remove("resource")
+                    .and_then(|v| match v {
+                        Value::Object(mut m) => m.remove("host.name").map(value_to_string),
+                        _ => None,
+                    })
+                    .unwrap(),
                 source_type: fields.remove("source_type").map(value_to_string).unwrap(),
                 appname: fields.remove("appname").map(value_to_string).unwrap(),
                 procid: fields
@@ -1507,7 +1530,13 @@ mod test {
                     .map(|s: String| usize::from_str(s.as_str()).unwrap())
                     .unwrap(),
                 message: fields.remove("body").map(value_to_string).unwrap(),
-                structured_data: structured_data_from_fields(fields),
+                structured_data: {
+                    // Only pass Object values — those are syslog structured data sections.
+                    // Non-object leftovers (observed_time_unix_nano, severity_number, etc.) are
+                    // proto-canonical fields that don't map to structured data.
+                    fields.retain(|_, v| v.is_object());
+                    structured_data_from_fields(fields)
+                },
             }
         }
     }

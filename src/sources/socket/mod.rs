@@ -346,7 +346,7 @@ mod test {
     use vector_lib::{
         codecs::{GelfDeserializerConfig, NewlineDelimitedDecoderConfig},
         event::EventContainer,
-        lookup::{lookup_v2::OptionalValuePath, owned_value_path, path},
+        lookup::{event_path, lookup_v2::OptionalValuePath, owned_value_path, path},
     };
     use vrl::{btreemap, value, value::ObjectMap};
     #[cfg(unix)]
@@ -476,7 +476,7 @@ mod test {
 
             let event = rx.next().await.unwrap();
 
-            assert_eq!(event.as_log().get("host").unwrap(), addr.ip().to_string().into());
+            assert_eq!(event.as_log().get(event_path!("resource", "host.name")).unwrap(), addr.ip().to_string().into());
             assert_eq!(event.as_log().get("port").unwrap(), addr.port().into());
         })
         .await;
@@ -1227,7 +1227,7 @@ mod test {
             let events = collect_n(rx, 1).await;
 
             assert_eq!(
-                events[0].as_log().get("host").unwrap(),
+                events[0].as_log().get(event_path!("resource", "host.name")).unwrap(),
                 from.local_addr().unwrap().ip().to_string().into()
             );
             assert_eq!(
@@ -1636,7 +1636,7 @@ mod test {
                 events[0].as_log().get(log_schema().source_type_key().unwrap().to_string().as_str()).unwrap(),
                 "socket".into()
             );
-            assert_eq!(events[0].as_log().get("host").unwrap(), UNNAMED_SOCKET_HOST.into());
+            assert_eq!(events[0].as_log().get(event_path!("resource", "host.name")).unwrap(), UNNAMED_SOCKET_HOST.into());
         })
         .await;
     }

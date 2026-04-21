@@ -816,9 +816,11 @@ mod tests {
             chrono::Utc::now(),
         );
         let record = encoder.encode_event(event).unwrap();
+        // In the OTLP-canonical format the native timestamp field is
+        // "time_unix_nano"; remove_timestamp clears that field.
         assert!(
             !String::from_utf8_lossy(&record.event.event)
-                .contains(log_schema().timestamp_key().unwrap().to_string().as_str())
+                .contains("time_unix_nano")
         );
     }
 

@@ -306,7 +306,7 @@ mod test {
         let packet = String::from_utf8(buf[..size].to_vec()).expect("Invalid data received");
         let data = serde_json::from_str::<Value>(&packet).expect("Invalid JSON received");
         let data = data.as_object().expect("Not a JSON object");
-        assert!(data.get("timestamp").is_some());
+        assert!(data.get("time_unix_nano").is_some());
         let message = data.get("body").expect("No message in JSON");
         assert_eq!(message, &Value::String("raw log line".into()));
     }

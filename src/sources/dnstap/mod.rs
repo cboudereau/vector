@@ -409,11 +409,26 @@ mod tests {
 
         let json: serde_json::Value = serde_json::from_str(record).unwrap();
         let mut event = Event::Log(OtelLog::from(vrl::value::Value::from(json)));
-        event.as_mut_log().insert("timestamp", chrono::Utc::now());
+        // Set the observed timestamp via OTLP-native API (stored as
+        // observed_time_unix_nano in the canonical view, not "timestamp").
+        event.as_mut_log().set_observed_timestamp(chrono::Utc::now());
 
         let definition = DnstapEventSchema;
+        // Build the schema without with_standard_vector_source_metadata:
+        // OtelLog stores source_type as an attribute (already present in the
+        // JSON fixture) and the timestamp as observed_time_unix_nano (integer),
+        // not the legacy "timestamp" (Kind::timestamp) path.
         let schema = vector_lib::schema::Definition::empty_legacy_namespace()
-            .with_standard_vector_source_metadata();
+            .with_event_field(
+                &owned_value_path!("source_type"),
+                Kind::bytes(),
+                None,
+            )
+            .with_event_field(
+                &owned_value_path!("observed_time_unix_nano"),
+                Kind::integer(),
+                None,
+            );
 
         definition
             .schema_definition(schema)

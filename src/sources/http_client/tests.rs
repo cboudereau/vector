@@ -640,7 +640,7 @@ async fn post_with_vrl_body() {
         headers: HashMap::new(),
         method: HttpMethod::Post,
         body: Some(ParameterValue::Typed {
-            value: r#"encode_json({"body": upcase("hello"), "value": 42})"#.to_string(),
+            value: r#"encode_json({"msg": upcase("hello"), "value": 42})"#.to_string(),
             r#type: ParamType::Vrl,
         }),
         tls: None,
@@ -653,7 +653,7 @@ async fn post_with_vrl_body() {
 
     // Verify VRL was evaluated correctly
     for log in logs {
-        assert_eq!(log.get("body").unwrap().as_str().unwrap(), "HELLO");
+        assert_eq!(log.get("msg").unwrap().as_str().unwrap(), "HELLO");
         let value = log.get("value").unwrap();
         match value {
             vector_lib::event::Value::Integer(n) => assert_eq!(n, 42),

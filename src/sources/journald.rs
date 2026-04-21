@@ -1721,11 +1721,11 @@ mod tests {
     }
 
     fn message(event: &Event) -> Value {
-        event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap()
+        event.as_log().get_body().unwrap()
     }
 
     fn timestamp(event: &Event) -> Value {
-        event.as_log().get(log_schema().timestamp_key().unwrap().to_string().as_str()).unwrap()
+        event.as_log().get_timestamp().unwrap()
     }
 
     fn cursor(event: &Event) -> Value {
@@ -1843,11 +1843,37 @@ mod tests {
         let json: serde_json::Value = serde_json::from_str(record).unwrap();
         let mut event = Event::Log(OtelLog::from(vrl::value::Value::from(json)));
 
-        event.as_mut_log().insert("timestamp", chrono::Utc::now());
+        let now = chrono::Utc::now();
+        event.as_mut_log().record_mut().time_unix_nano =
+            now.timestamp_nanos_opt().unwrap_or(0) as u64;
+        // Production code also inserts a "timestamp" attribute via insert_vector_metadata
+        event.as_mut_log().insert(
+            vector_lib::lookup::event_path!("timestamp"),
+            vrl::value::Value::Timestamp(now),
+        );
 
         let definitions = config.outputs(namespace).remove(0).schema_definition(true);
 
-        definitions.unwrap().assert_valid_for_event(&event);
+        // Proto-canonical fields exposed by OtelLog::to_value_canonical():
+        // - observed_time_unix_nano/time_unix_nano are Integer
+        // - "timestamp" becomes bytes (AnyValue has no timestamp type)
+        let def = definitions.unwrap()
+            .with_event_field(
+                &vector_lib::lookup::owned_value_path!("observed_time_unix_nano"),
+                vrl::value::Kind::integer().or_undefined(),
+                None,
+            )
+            .with_event_field(
+                &vector_lib::lookup::owned_value_path!("timestamp"),
+                vrl::value::Kind::bytes().or_timestamp().or_undefined(),
+                None,
+            )
+            .with_event_field(
+                &vector_lib::lookup::owned_value_path!("time_unix_nano"),
+                vrl::value::Kind::integer().or_undefined(),
+                None,
+            );
+        def.assert_valid_for_event(&event);
     }
 
     #[test]

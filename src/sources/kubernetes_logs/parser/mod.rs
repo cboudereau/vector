@@ -49,9 +49,8 @@ fn transform_otel_event(parser: &mut ParserState, output: &mut OutputBuffer, mut
                             },
                         );
                     }
-                    if let Some(Value::Timestamp(ts)) = parsed_otel.parse_path_and_get_value(".timestamp").ok().flatten() {
-                        otel_log.record_mut().time_unix_nano =
-                            ts.timestamp_nanos_opt().unwrap_or(0) as u64;
+                    if parsed_otel.record().time_unix_nano != 0 {
+                        otel_log.record_mut().time_unix_nano = parsed_otel.record().time_unix_nano;
                     }
                 }
             }

@@ -305,10 +305,11 @@ mod tests {
 
         for (i, event) in events.iter().enumerate() {
             let log = event.as_log();
-            let timestamp = log.get("timestamp").unwrap()
-                .as_timestamp()
-                .expect("timestamp isn't a timestamp")
-                .to_owned();
+            let nanos = match log.get("time_unix_nano").unwrap() {
+                Value::Integer(n) => n,
+                other => panic!("expected Integer for time_unix_nano, got {other:?}"),
+            };
+            let timestamp = chrono::DateTime::from_timestamp_nanos(nanos);
             assert!(timestamp >= start);
             assert!(timestamp <= end);
             assert_eq!(log.get("metadata.kind").unwrap(), "event".into());

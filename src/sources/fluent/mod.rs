@@ -834,8 +834,8 @@ mod tests {
         time::{Duration, error::Elapsed, timeout},
     };
     use tokio_util::codec::Decoder;
-    use vector_lib::{assert_event_data_eq, lookup::OwnedTargetPath, schema::Definition};
-    use vrl::value::{ObjectMap, Value, kind::Collection};
+    use vector_lib::{assert_event_data_eq, lookup::{OwnedTargetPath, event_path}, schema::Definition};
+    use vrl::value::{Value, kind::Collection};
 
     use super::{message::FluentMessageOptions, *};
     use crate::{
@@ -856,18 +856,15 @@ mod tests {
     // Decode base64: https://toolslick.com/conversion/data/messagepack-to-json
 
     fn mock_event(name: &str, timestamp: &str) -> Event {
-        Event::Log(OtelLog::from(ObjectMap::from([
-            ("message".into(), Value::from(name)),
-            (
-                log_schema().source_type_key().unwrap().to_string().into(),
-                Value::from(FluentConfig::NAME),
-            ),
-            ("tag".into(), Value::from("tag.name")),
-            (
-                "timestamp".into(),
-                Value::Timestamp(DateTime::parse_from_rfc3339(timestamp).unwrap().into()),
-            ),
-        ])))
+        let dt: chrono::DateTime<chrono::Utc> = DateTime::parse_from_rfc3339(timestamp).unwrap().into();
+        let mut log = OtelLog::new(Default::default());
+        log.insert(event_path!(log_schema().source_type_key().unwrap().to_string().as_str()), Value::from(FluentConfig::NAME));
+        if let Some(key) = log_schema().timestamp_key_target_path() {
+            log.insert(key, Value::Timestamp(dt));
+        }
+        log.insert(event_path!("tag"), Value::from("tag.name"));
+        log.insert(event_path!("message"), Value::from(name));
+        Event::Log(log)
     }
 
     #[test]
@@ -1124,8 +1121,8 @@ mod tests {
         assert_eq!(events.len(), 1);
         let log = events[0].as_log();
         assert_eq!(log.get("field").unwrap(), msg.into());
-        assert!(matches!(log.get("host").unwrap(), Value::Bytes(_)));
-        assert!(matches!(log.get("timestamp").unwrap(), Value::Timestamp(_)));
+        assert!(matches!(log.get(event_path!("resource", "host.name")).unwrap(), Value::Bytes(_)));
+        assert!(matches!(log.get("timestamp").unwrap(), Value::Bytes(_)));
         assert_eq!(log.get("tag").unwrap(), tag.into());
 
         (result, output.into())
@@ -1348,7 +1345,7 @@ mod integration_tests {
             assert_eq!(log["tag"], "http.0".into());
             assert_eq!(log["message"], msg.into());
             assert!(log.get("timestamp").is_some());
-            assert!(log.get("host").is_some());
+            assert!(log.get(event_path!("resource", "host.name")).is_some());
         })
         .await;
     }
@@ -1427,7 +1424,7 @@ mod integration_tests {
             assert_eq!(events[0].as_log()["tag"], "".into());
             assert_eq!(events[0].as_log()["message"], msg.into());
             assert!(events[0].as_log().get("timestamp").is_some());
-            assert!(events[0].as_log().get("host").is_some());
+            assert!(events[0].as_log().get(event_path!("resource", "host.name")).is_some());
         })
         .await;
     }

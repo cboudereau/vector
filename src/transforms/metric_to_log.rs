@@ -457,6 +457,8 @@ mod tests {
         let log = do_transform(counter).await.unwrap();
         let collected: Vec<_> = log.all_event_fields().unwrap();
 
+        // Timestamp round-trips through AnyValue (which has no timestamp
+        // type) and comes back as a Bytes string.
         assert_eq!(
             collected,
             vec![
@@ -465,7 +467,9 @@ mod tests {
                 (KeyString::from("kind"), Value::from("absolute")),
                 (KeyString::from("name"), Value::from("counter")),
                 (KeyString::from("tags.some_tag"), Value::from("some_value")),
-                (KeyString::from("timestamp"), Value::from(ts())),
+                (KeyString::from("timestamp"), Value::Bytes(bytes::Bytes::from(
+                    ts().to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true)
+                ))),
             ]
         );
         assert_eq!(log.metadata(), &metadata);
@@ -489,7 +493,9 @@ mod tests {
                 (KeyString::from("gauge.value"), Value::from(1.0)),
                 (KeyString::from("kind"), Value::from("absolute")),
                 (KeyString::from("name"), Value::from("gauge")),
-                (KeyString::from("timestamp"), Value::from(ts())),
+                (KeyString::from("timestamp"), Value::Bytes(bytes::Bytes::from(
+                    ts().to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true)
+                ))),
             ]
         );
         assert_eq!(log.metadata(), &metadata);
@@ -615,7 +621,9 @@ mod tests {
                 ),
                 (KeyString::from("kind"), Value::from("absolute")),
                 (KeyString::from("name"), Value::from("histo")),
-                (KeyString::from("timestamp"), Value::from(ts())),
+                (KeyString::from("timestamp"), Value::Bytes(bytes::Bytes::from(
+                    ts().to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true)
+                ))),
             ]
         );
         assert_eq!(log.metadata(), &metadata);
@@ -666,7 +674,9 @@ mod tests {
                 ),
                 (KeyString::from("kind"), Value::from("absolute")),
                 (KeyString::from("name"), Value::from("summary")),
-                (KeyString::from("timestamp"), Value::from(ts())),
+                (KeyString::from("timestamp"), Value::Bytes(bytes::Bytes::from(
+                    ts().to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true)
+                ))),
             ]
         );
         assert_eq!(log.metadata(), &metadata);

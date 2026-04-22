@@ -18,7 +18,7 @@ use vector_lib::{
     configurable::configurable_component,
     internal_event::{ByteSize, BytesReceived, InternalEventHandle as _, Protocol},
     ipallowlist::IpAllowlistConfig,
-    lookup::{OwnedValuePath, lookup_v2::OptionalValuePath},
+    lookup::lookup_v2::OptionalValuePath,
 };
 
 #[cfg(unix)]
@@ -27,7 +27,7 @@ use crate::{
     SourceSender,
     codecs::Decoder,
     config::{
-        DataType, GenerateConfig, Resource, SourceConfig, SourceContext, SourceOutput, log_schema,
+        DataType, GenerateConfig, Resource, SourceConfig, SourceContext, SourceOutput,
     },
     event::{Event, string_value},
     internal_events::{
@@ -173,12 +173,6 @@ impl GenerateConfig for SyslogConfig {
 impl SourceConfig for SyslogConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
         let log_namespace = cx.log_namespace(self.log_namespace);
-        let host_key = self
-            .host_key
-            .clone()
-            .and_then(|k| k.path)
-            .or(log_schema().host_key().cloned());
-
         match self.mode.clone() {
             Mode::Tcp {
                 address,
@@ -190,8 +184,6 @@ impl SourceConfig for SyslogConfig {
             } => {
                 let source = SyslogTcpSource {
                     max_length: self.max_length,
-                    host_key,
-                    log_namespace,
                 };
                 let shutdown_secs = Duration::from_secs(30);
                 let tls_config = tls.as_ref().map(|tls| tls.tls_config.clone());
@@ -222,10 +214,8 @@ impl SourceConfig for SyslogConfig {
             } => Ok(udp(
                 address,
                 self.max_length,
-                host_key,
                 receive_buffer_bytes,
                 cx.shutdown,
-                log_namespace,
                 cx.out,
             )),
             #[cfg(unix)]
@@ -246,7 +236,7 @@ impl SourceConfig for SyslogConfig {
                     path,
                     socket_file_mode,
                     decoder,
-                    move |events, host| handle_events(events, &host_key, host, log_namespace),
+                    move |events, host| handle_events(events, host),
                     cx.shutdown,
                     cx.out,
                 )
@@ -283,8 +273,6 @@ impl SourceConfig for SyslogConfig {
 #[derive(Debug, Clone)]
 struct SyslogTcpSource {
     max_length: usize,
-    host_key: Option<OwnedValuePath>,
-    log_namespace: LogNamespace,
 }
 
 impl TcpSource for SyslogTcpSource {
@@ -303,9 +291,7 @@ impl TcpSource for SyslogTcpSource {
     fn handle_events(&self, events: &mut [Event], host: SocketAddr) {
         handle_events(
             events,
-            &self.host_key,
             Some(host.ip().to_string().into()),
-            self.log_namespace,
         );
     }
 
@@ -317,10 +303,8 @@ impl TcpSource for SyslogTcpSource {
 pub fn udp(
     addr: SocketListenAddr,
     _max_length: usize,
-    host_key: Option<OwnedValuePath>,
     receive_buffer_bytes: Option<usize>,
     shutdown: ShutdownSignal,
-    log_namespace: LogNamespace,
     mut out: SourceSender,
 ) -> super::Source {
     Box::pin(async move {
@@ -357,7 +341,6 @@ pub fn udp(
         )
         .take_until(shutdown)
         .filter_map(|frame| {
-            let host_key = host_key.clone();
             let bytes_received = bytes_received.clone();
             async move {
                 match frame {
@@ -370,7 +353,7 @@ pub fn udp(
                             count,
                         });
                         let received_from = received_from.ip().to_string().into();
-                        handle_events(&mut events, &host_key, Some(received_from), log_namespace);
+                        handle_events(&mut events, Some(received_from));
                         Some(events.remove(0))
                     }
                     Err(error) => {
@@ -401,20 +384,16 @@ pub fn udp(
 
 fn handle_events(
     events: &mut [Event],
-    host_key: &Option<OwnedValuePath>,
     default_host: Option<Bytes>,
-    log_namespace: LogNamespace,
 ) {
     for event in events {
-        enrich_syslog_event(event, host_key, default_host.clone(), log_namespace);
+        enrich_syslog_event(event, default_host.clone());
     }
 }
 
 fn enrich_syslog_event(
     event: &mut Event,
-    _host_key: &Option<OwnedValuePath>,
     default_host: Option<Bytes>,
-    _log_namespace: LogNamespace,
 ) {
     if let Event::Log(otel_log) = event {
         let now = Utc::now();
@@ -480,18 +459,16 @@ mod test {
     };
 
     fn event_from_bytes(
-        host_key: &str,
+        _host_key: &str,
         default_host: Option<Bytes>,
         bytes: Bytes,
-        log_namespace: LogNamespace,
+        _log_namespace: LogNamespace,
     ) -> Option<Event> {
         let parser = SyslogDeserializerConfig::from_source(SyslogConfig::NAME).build();
         let mut events = parser.parse(bytes, LogNamespace::Legacy).ok()?;
         handle_events(
             &mut events,
-            &Some(owned_value_path!(host_key)),
             default_host,
-            log_namespace,
         );
         Some(events.remove(0))
     }

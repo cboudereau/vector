@@ -148,12 +148,7 @@ impl Deserializer for ProtobufDeserializer {
         let mut log = OtelLog::from_value_map(vrl_value, EventMetadata::default());
 
         if log_namespace == LogNamespace::Legacy {
-            let timestamp = Utc::now();
-            if let Some(timestamp_key) = log_schema().timestamp_key_target_path() {
-                if !log.contains(timestamp_key) {
-                    log.insert(timestamp_key, timestamp);
-                }
-            }
+            log.try_set_timestamp(Utc::now());
         }
 
         Ok(smallvec![Event::Log(log)])

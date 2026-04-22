@@ -912,9 +912,7 @@ fn enrich_log_event(log: &mut OtelLog, log_namespace: LogNamespace) {
         }
         LogNamespace::Legacy => {
             if let Some(ts) = timestamp {
-                if let Some(key) = log_schema().timestamp_key_target_path() {
-                    log.insert(key, ts);
-                }
+                log.set_timestamp(ts);
             }
         }
     }

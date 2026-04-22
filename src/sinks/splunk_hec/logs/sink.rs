@@ -279,33 +279,28 @@ pub fn process_log(event: Event, data: &HecLogData) -> HecProcessedEvent {
     // the timestamp in the event as-is, and let Splunk do the extraction).
     let timestamp = if EndpointTarget::Event == data.endpoint_target && !data.auto_extract_timestamp
     {
-        user_or_namespaced_path(
-            &log,
-            data.timestamp_key.as_ref(),
-            meaning::TIMESTAMP,
-            log_schema().timestamp_key_target_path(),
-        )
-        .and_then(|timestamp_path| {
-            match log.remove(&timestamp_path) {
-                Some(Value::Timestamp(ts)) => {
-                    // set nanos in log if valid timestamp in event and timestamp_nanos_key is configured
-                    if let Some(key) = data.timestamp_nanos_key {
-                        log.try_insert(event_path!(key), ts.timestamp_subsec_nanos() % 1_000_000);
-                    }
-                    Some((ts.timestamp_millis() as f64) / 1000f64)
+        let removed = match data.timestamp_key.as_ref().and_then(|k| k.path.as_ref()) {
+            Some(user_path) => log.remove(user_path),
+            None => log.remove_timestamp(),
+        };
+        match removed {
+            Some(Value::Timestamp(ts)) => {
+                if let Some(key) = data.timestamp_nanos_key {
+                    log.try_insert(event_path!(key), ts.timestamp_subsec_nanos() % 1_000_000);
                 }
-                Some(value) => {
-                    emit!(SplunkEventTimestampInvalidType {
-                        r#type: value.kind_str()
-                    });
-                    None
-                }
-                None => {
-                    emit!(SplunkEventTimestampMissing {});
-                    None
-                }
+                Some((ts.timestamp_millis() as f64) / 1000f64)
             }
-        })
+            Some(value) => {
+                emit!(SplunkEventTimestampInvalidType {
+                    r#type: value.kind_str()
+                });
+                None
+            }
+            None => {
+                emit!(SplunkEventTimestampMissing {});
+                None
+            }
+        }
     } else {
         None
     };

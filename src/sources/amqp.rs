@@ -307,9 +307,7 @@ fn populate_log_event(
             log.insert(metadata_path!("vector", "ingest_timestamp"), Utc::now());
         }
         LogNamespace::Legacy => {
-            if let Some(timestamp_key) = log_schema().timestamp_key_target_path() {
-                log.try_insert(timestamp_key, timestamp.unwrap_or_else(Utc::now));
-            }
+            log.try_set_timestamp(timestamp.unwrap_or_else(Utc::now));
         }
     };
 }
@@ -784,9 +782,7 @@ mod integration_test {
         assert_eq!(*log.get_body().unwrap(), "my message".into());
         assert_eq!(log["routing"], routing_key.into());
         assert_eq!(*log.get_source_type().unwrap(), "amqp".into());
-        let log_ts = log[log_schema().timestamp_key().unwrap().to_string()]
-            .as_timestamp()
-            .unwrap();
+        let log_ts = log.get_timestamp().unwrap().as_timestamp().unwrap();
         assert!(log_ts.signed_duration_since(now) < chrono::Duration::seconds(1));
         assert_eq!(log["exchange"], exchange.into());
     }

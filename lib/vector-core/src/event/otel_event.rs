@@ -1692,6 +1692,23 @@ impl OtelLog {
         ts
     }
 
+    /// Set the event timestamp (`time_unix_nano`) from a chrono DateTime.
+    /// Returns the previous timestamp value, if any.
+    pub fn set_timestamp(&mut self, ts: chrono::DateTime<chrono::Utc>) -> Option<Value> {
+        let old = self.get_timestamp();
+        self.record_mut().time_unix_nano =
+            ts.timestamp_nanos_opt().unwrap_or(0) as u64;
+        old
+    }
+
+    /// Set the event timestamp only if one is not already present.
+    pub fn try_set_timestamp(&mut self, ts: chrono::DateTime<chrono::Utc>) {
+        if self.record.time_unix_nano == 0 {
+            self.record_mut().time_unix_nano =
+                ts.timestamp_nanos_opt().unwrap_or(0) as u64;
+        }
+    }
+
     /// Check if a field exists.
     pub fn contains<'a>(&self, path: impl lookup::lookup_v2::TargetPath<'a>) -> bool {
         self.get(path).is_some()
@@ -4529,6 +4546,34 @@ mod tests {
 
         let metric = event.try_into_otel_metric().expect("should convert back");
         assert_eq!(metric.name(), "test");
+    }
+
+    #[test]
+    fn set_timestamp_and_try_set_timestamp() {
+        use chrono::{TimeZone, Utc};
+
+        let mut log = OtelLog::from("hello");
+        assert!(log.get_timestamp().is_none());
+
+        let ts1 = Utc.with_ymd_and_hms(2024, 6, 15, 12, 0, 0).unwrap();
+        let old = log.set_timestamp(ts1);
+        assert!(old.is_none());
+        assert_eq!(log.get_timestamp(), Some(Value::Timestamp(ts1)));
+
+        let ts2 = Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap();
+        let old = log.set_timestamp(ts2);
+        assert_eq!(old, Some(Value::Timestamp(ts1)));
+        assert_eq!(log.get_timestamp(), Some(Value::Timestamp(ts2)));
+
+        // try_set_timestamp is a no-op when already set
+        let ts3 = Utc.with_ymd_and_hms(2026, 3, 3, 3, 3, 3).unwrap();
+        log.try_set_timestamp(ts3);
+        assert_eq!(log.get_timestamp(), Some(Value::Timestamp(ts2)));
+
+        // try_set_timestamp works when cleared
+        log.remove_timestamp();
+        log.try_set_timestamp(ts3);
+        assert_eq!(log.get_timestamp(), Some(Value::Timestamp(ts3)));
     }
 
     #[test]

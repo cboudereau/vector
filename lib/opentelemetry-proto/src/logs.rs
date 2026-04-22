@@ -401,19 +401,24 @@ impl ResourceLog {
         );
 
         // If time_unix_nano is not present (0 represents missing or unknown timestamp) use observed time
-        let timestamp = if self.log_record.time_unix_nano > 0 {
+        let timestamp: Value = if self.log_record.time_unix_nano > 0 {
             Utc.timestamp_nanos(self.log_record.time_unix_nano as i64)
                 .into()
         } else {
             observed_timestamp
         };
-        log_namespace.insert_source_metadata(
-            SOURCE_NAME,
-            &mut log,
-            log_schema().timestamp_key().map(LegacyKey::Overwrite),
-            path!("timestamp"),
-            timestamp,
-        );
+        match log_namespace {
+            LogNamespace::Vector => {
+                log.metadata_mut()
+                    .value_mut()
+                    .insert(path!(SOURCE_NAME, "timestamp"), timestamp);
+            }
+            LogNamespace::Legacy => {
+                if let Value::Timestamp(ts) = &timestamp {
+                    log.set_timestamp(*ts);
+                }
+            }
+        }
 
         log_namespace.insert_vector_metadata(
             &mut log,

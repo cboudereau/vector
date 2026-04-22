@@ -36,7 +36,7 @@ use vector_lib::{
     internal_event::{
         ByteSize, BytesReceived, CountByteSize, InternalEventHandle as _, Protocol, Registered,
     },
-    lookup::{PathPrefix, metadata_path, path},
+    lookup::{metadata_path, path},
     source_sender::SendError,
 };
 
@@ -974,12 +974,7 @@ fn handle_single_log(
             log.insert(metadata_path!("vector", "ingest_timestamp"), Utc::now());
         }
         LogNamespace::Legacy => {
-            if let Some(timestamp_key) = log_schema().timestamp_key() {
-                log.try_insert(
-                    (PathPrefix::Event, timestamp_key),
-                    timestamp.unwrap_or_else(Utc::now),
-                );
-            }
+            log.try_set_timestamp(timestamp.unwrap_or_else(Utc::now));
         }
     };
 }

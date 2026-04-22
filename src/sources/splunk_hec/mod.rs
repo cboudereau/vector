@@ -824,13 +824,16 @@ impl<'de, R: JsonRead<'de>> EventIterator<'de, R> {
             Time::Now(time) => time,
         };
 
-        self.log_namespace.insert_source_metadata(
-            SplunkConfig::NAME,
-            &mut log,
-            log_schema().timestamp_key().map(LegacyKey::Overwrite),
-            lookup::path!("timestamp"),
-            timestamp,
-        );
+        match self.log_namespace {
+            LogNamespace::Vector => {
+                log.metadata_mut()
+                    .value_mut()
+                    .insert(lookup::path!(SplunkConfig::NAME, "timestamp"), timestamp);
+            }
+            LogNamespace::Legacy => {
+                log.set_timestamp(timestamp);
+            }
+        }
 
         // Extract default extracted fields
         for de in self.extractors.iter_mut() {
@@ -864,13 +867,16 @@ impl<'de, R: JsonRead<'de>> EventIterator<'de, R> {
                 self.events_received
                     .emit(CountByteSize(1, log.estimated_json_encoded_size_of()));
 
-                // The timestamp is extracted from the message for the Legacy namespace.
-                self.log_namespace.insert_vector_metadata(
-                    &mut log,
-                    log_schema().timestamp_key(),
-                    lookup::path!("ingest_timestamp"),
-                    chrono::Utc::now(),
-                );
+                match self.log_namespace {
+                    LogNamespace::Vector => {
+                        log.metadata_mut()
+                            .value_mut()
+                            .insert(lookup::path!("vector", "ingest_timestamp"), chrono::Utc::now());
+                    }
+                    LogNamespace::Legacy => {
+                        log.try_set_timestamp(chrono::Utc::now());
+                    }
+                }
 
                 Ok(log)
             }

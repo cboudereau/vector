@@ -280,7 +280,6 @@ impl TryFrom<Vec<Event>> for LogsApiModel {
         let mut num_non_log_events = 0;
         let mut num_non_object_events = 0;
         let message_key = log_schema().message_key_target_path().unwrap();
-        let timestamp_key = log_schema().timestamp_key_target_path().unwrap();
 
         let logs_array: Vec<LogMessage> = buf_events
             .into_iter()
@@ -291,7 +290,7 @@ impl TryFrom<Vec<Event>> for LogsApiModel {
                 };
 
                 let message = get_message_string(otel_log.remove(message_key));
-                let timestamp = otel_log.remove(timestamp_key).and_then(map_timestamp_value);
+                let timestamp = otel_log.remove_timestamp().and_then(map_timestamp_value);
 
                 let Some(mut attributes) = otel_log.as_map() else {
                     num_non_object_events += 1;

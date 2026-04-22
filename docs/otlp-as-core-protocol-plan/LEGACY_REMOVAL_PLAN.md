@@ -87,7 +87,7 @@ count was wrong. On close inspection all sites are either test modules
 | Alias | Target | Status |
 |-------|--------|--------|
 | `.message` | `.body` | `apply_value_map` fallback only (generic decoders) |
-| `.timestamp` / `.@timestamp` | `.time_unix_nano` | **Virtual fast-path field** — get/insert/remove map transparently to `time_unix_nano` proto field |
+| `.timestamp` / `.@timestamp` | `.time_unix_nano` | **Virtual fast-path field** — get/insert/remove map transparently to `time_unix_nano` proto field. **Removal in progress** (2026-04-21): Phase 0-2 of 6 complete — `set_timestamp()`/`try_set_timestamp()` added, all INSERT sites migrated, 2/4 GET/REMOVE sites migrated. See "Virtual timestamp removal campaign" section. |
 | `.tags."key"` | `.attributes."key"` | Yes (OtelLog); OtelMetric `.tags` also live |
 | `.host` | `.resource.attributes."host.name"` | Yes — fast-path alias in get/insert |
 | `.source_type` | `.resource.attributes."source_type"` | Yes — fast-path alias in get/insert |
@@ -109,6 +109,11 @@ conversion at the encoder level.
 
 Decoders (GELF, syslog) now write `"time_unix_nano"` Integer directly.
 The `extract_timestamp_nanos` helper function has been deleted.
+
+**Virtual timestamp removal campaign (started 2026-04-21):**
+Phases 0-2 of 6 complete — migrating all `log_schema().timestamp_key()` call sites
+to direct proto methods (`set_timestamp()`, `remove_timestamp()`, `get_timestamp()`),
+after which the virtual field match arms can be deleted. See dedicated section below.
 
 ## What we missed / previously not tracked
 
@@ -165,6 +170,10 @@ The `extract_timestamp_nanos` helper function has been deleted.
   Decoders canonicalized (GELF, syslog). `extract_timestamp_nanos` deleted.
   ES encoder updated for `time_unix_nano` → `@timestamp`. Remaining aliases
   (`.message`, `.host`, `.source_type`, `.tags`) still live.
+  **Virtual timestamp removal campaign** started: Phases 0-2 of 6 complete —
+  `set_timestamp()`/`try_set_timestamp()` added, all 15 INSERT sites migrated,
+  2/4 GET/REMOVE sites migrated. Phases 3-5 (schema defs, `log_schema()` default,
+  delete virtual field) remain.
 - **C — OTel-to-Legacy bridge**: **DONE**
 - **D — Legacy-to-OTel bridge**: Folded into F → G.
 - **E — Remove legacy types from production**: **DONE**
@@ -878,13 +887,17 @@ field names only (`body`, `time_unix_nano`, etc.).
 - OtelSpan `apply_value_map`: removed `"start_time"`/`"end_time"` Timestamp fallback
 
 **What remains (blocked on `log_schema()` deprecation):**
-- `extract_timestamp_nanos` in `apply_value_map` — 30+ callers insert via
-  `log_schema().timestamp_key_target_path()` which defaults to `"timestamp"`.
-  Removing requires migrating all sources/sinks that use log_schema for timestamps.
+- `extract_timestamp_nanos` in `apply_value_map` — ~~30+ callers insert via
+  `log_schema().timestamp_key_target_path()`~~ **Phase 1 of virtual timestamp
+  removal migrated all 15 production INSERT sites to `set_timestamp()`.**
+  `extract_timestamp_nanos` kept for decoder `from_value_map` compat only.
+  Full removal blocked on Phase 4 (`log_schema()` default change).
 - `"message"` → body fallback in `apply_value_map` — generic decoders
   (Avro, Protobuf) pass user-defined field names; can't be fixed at decoder level.
-- `get_timestamp()` attribute `"timestamp"` fallback — needed while log_schema
-  mechanism inserts via timestamp_key_target_path.
+- `get_timestamp()` attribute `"timestamp"` fallback — **Phase 2 migrated
+  2 production GET/REMOVE sites to `remove_timestamp()`.** Remaining:
+  `azure_monitor_logs` (schema), `dedupe` (config). Fallback needed until
+  Phase 5 (virtual field deletion).
 - `normalize_for_eq` host/source_type hoisting — EventDataEq compat.
 
 ---
@@ -1261,17 +1274,24 @@ patterns are in `apply_value_map` (construction path) and
 `get_timestamp()`, tied to the `log_schema()` mechanism:
 
 1. **`extract_timestamp_nanos`** — accepts `"timestamp"` / `"@timestamp"`
-   as Timestamp values in `apply_value_map`. 30+ callers insert timestamps
-   via `log_schema().timestamp_key_target_path()` (defaults to `"timestamp"`).
+   as Timestamp values in `apply_value_map`. **Partially resolved (2026-04-21):**
+   Phase 1 of the virtual timestamp removal migrated all 15 production INSERT
+   sites from `log_schema().timestamp_key_target_path()` → `set_timestamp()` /
+   `try_set_timestamp()`. Remaining callers: schema definitions and
+   `apply_value_map` fallback (decoder compat).
 2. **`"message"` → body fallback** — generic decoders (Avro, Protobuf)
    pass user-defined field names through `from_value_map`.
 3. **`get_timestamp()` attribute fallback** — reads `attribute("timestamp")`
-   for sources that insert via log_schema.
+   for sources that insert via log_schema. **Partially resolved (2026-04-21):**
+   Phase 2 migrated `new_relic` and `splunk_hec` sink GET/REMOVE sites to
+   `remove_timestamp()`. Remaining: `azure_monitor_logs` (Phase 3 schema),
+   `dedupe` (Phase 3 config-level).
 4. **`normalize_for_eq`** — hoists resource.source_type / resource.host.name
    for EventDataEq compat.
 
 Removing these requires deprecating `log_schema()` timestamp/host/source_type
 configuration, which is a cross-cutting change across all sources and sinks.
+The virtual timestamp removal campaign (below) is the first step toward this.
 
 ### Performance findings
 
@@ -1321,6 +1341,155 @@ After post-migration cleanup:
 - `log_event!` macro renamed to `otel_event!` (392 sites)
 - DRY: `restore_resource`/`restore_scope` shared helpers extracted
 - Resource/scope round-trip tests added (scope, observed_time_unix_nano)
+
+After virtual timestamp Phase 0-2 (2026-04-21):
+- Full test suite: **1791 pass, 0 failures**
+- `set_timestamp()` / `try_set_timestamp()` added to OtelLog
+- 15 production INSERT sites migrated (13 files)
+- 2 production GET/REMOVE sites migrated (new_relic, splunk_hec sink)
+- dnstap parser: timestamp now correctly flows to `time_unix_nano` proto field
+- dnstap VRL function tests: updated expected output from `"timestamp"` → `"time_unix_nano"`
+
+## Virtual timestamp removal campaign (2026-04-21)
+
+### Goal
+
+Remove the virtual `"timestamp"` / `"@timestamp"` fast-path fields from
+OtelLog's `get_single_segment`, `insert_single_segment`, and
+`remove_single_segment`. These transparently map to `time_unix_nano` so
+that code using `log_schema().timestamp_key()` (default `"timestamp"`)
+works. Once all callers use canonical proto methods, the virtual field
+can be deleted.
+
+### Phase status
+
+| Phase | Description | Status | Note |
+|-------|-------------|--------|------|
+| 0 | Add `set_timestamp()` / `try_set_timestamp()` | **DONE** | Foundation methods on OtelLog (`otel_event.rs:1697-1710`) |
+| 1 | Migrate production INSERT sites (~15 sites, 13 files) | **DONE** | All `log.insert(timestamp_key, ts)` → `log.set_timestamp(ts)` |
+| 2 | Migrate production GET/REMOVE sites | **PARTIAL** | 2/4 sites done (new_relic, splunk_hec sink) |
+| 3 | Migrate schema definitions (~8 sites, 7 files) | OPEN | Declare `"time_unix_nano"` with `Kind::integer()` |
+| 4 | Change `log_schema()` default + deprecation | OPEN | `"timestamp"` → `"time_unix_nano"` default |
+| 5 | Remove the virtual field | OPEN | Delete match arms from otel_event.rs |
+| 6 | Migrate test code (26 occurrences, 8 files) | OPEN | Alongside Phases 1-5 |
+
+### Phase 0 — `set_timestamp()` / `try_set_timestamp()` — DONE
+
+Added to `lib/vector-core/src/event/otel_event.rs`:
+- `set_timestamp(DateTime<Utc>) → Option<Value>`: sets `time_unix_nano`
+  from DateTime, returns old value as `Value::Timestamp`
+- `try_set_timestamp(DateTime<Utc>)`: no-op if `time_unix_nano != 0`
+
+Mirrors existing `get_timestamp()` / `remove_timestamp()` /
+`set_observed_timestamp()`.
+
+### Phase 1 — Migrate INSERT sites — DONE
+
+All production INSERT sites migrated from `log.insert(timestamp_key, ts)`
+or `insert_source_metadata(…, timestamp_key, …)` to direct proto methods:
+
+| File | Change |
+|------|--------|
+| `src/sources/journald.rs` | `log.set_timestamp(ts)` |
+| `src/sources/fluent/mod.rs` | Extract DateTime from FluentTimestamp enum, `log.set_timestamp(ts)` |
+| `src/sources/fluent/message.rs` | Made `FluentEventTime` inner field `pub(super)` |
+| `src/sources/amqp.rs` | `log.try_set_timestamp(timestamp.unwrap_or_else(Utc::now))` |
+| `src/sources/aws_s3/sqs.rs` | `log.try_set_timestamp(timestamp)` |
+| `src/sources/splunk_hec/mod.rs` (×2) | Explicit namespace match: Legacy → `set_timestamp()`, Vector → metadata insert |
+| `src/sources/dnstap/mod.rs` | Direct metadata insert for Vector namespace |
+| `lib/opentelemetry-proto/src/logs.rs` | Explicit namespace match with `set_timestamp()` |
+| `lib/codecs/src/decoding/format/protobuf.rs` | `log.try_set_timestamp(Utc::now())` |
+| `lib/codecs/src/decoding/format/avro.rs` | `log.try_set_timestamp(Utc::now())` |
+| `lib/dnstap-parser/src/parser.rs` | Insert `"time_unix_nano"` Integer directly (parsed by `apply_value_map`) |
+| `src/transforms/metric_to_log.rs` | `log.set_timestamp(*ts)` via `as_timestamp()` extraction |
+| `src/sinks/humio/logs.rs` (test) | `event.set_timestamp(ts)` |
+
+**Key fix:** dnstap parser was effectively broken — inserting via
+`log_schema().timestamp_key()` = `"timestamp"` meant `apply_value_map`
+routed it to attributes, not the proto `time_unix_nano` field. Now
+inserts `"time_unix_nano"` Integer directly. Test helper `parse_into_log_event`
+also fixed (was no-op due to `value_mut()` returning by value).
+
+### Phase 2 — Migrate GET/REMOVE sites — PARTIAL (2/4)
+
+| File | Status | Change |
+|------|--------|--------|
+| `src/sinks/new_relic/model.rs` | **DONE** | `otel_log.remove_timestamp()` replaces `otel_log.remove(timestamp_key)` |
+| `src/sinks/splunk_hec/logs/sink.rs` | **DONE** | User-configured key → `log.remove(user_path)`; default → `log.remove_timestamp()` |
+| `src/sinks/azure_monitor_logs/config.rs` | OPEN | Phase 3 schema-level site |
+| `src/transforms/dedupe/common.rs` | OPEN | Phase 3 config-level site (default fields list) |
+
+### Phase 3 — Migrate schema definitions — OPEN
+
+These declare `"timestamp"` as a field in output schemas. Change to
+`"time_unix_nano"` with `Kind::integer()`:
+
+| File | Role |
+|------|------|
+| `lib/vector-core/src/schema/definition.rs:155` | `with_standard_vector_source_metadata()` |
+| `lib/vector-core/src/config/mod.rs` | MetadataInsertable default |
+| `lib/codecs/src/decoding/format/json.rs:46` | JSON decoder schema |
+| `lib/codecs/src/decoding/format/syslog.rs:74` | Syslog decoder schema |
+| `lib/codecs/src/decoding/format/protobuf.rs:51` | Protobuf decoder schema |
+| `lib/codecs/src/decoding/format/avro.rs:63` | Avro decoder schema |
+| `src/sources/dnstap/mod.rs:239` | Dnstap source schema |
+| `src/sinks/azure_monitor_logs/config.rs:150` | Timestamp fallback key |
+| `src/transforms/dedupe/common.rs:114` | Default fields list |
+
+### Phase 4 — Change `log_schema()` default + deprecation — OPEN
+
+In `lib/vector-core/src/config/log_schema.rs`:
+- Change `const TIMESTAMP: &str = "timestamp"` → `"time_unix_nano"`
+- Add startup warning if user has explicit `timestamp_key = "timestamp"`
+- Document in release notes
+
+**User-facing breaking change.** After Phases 1-3, no production code
+uses `log_schema().timestamp_key()` for runtime access, so this only
+affects user VRL programs referencing `.timestamp` and user configs
+with explicit `timestamp_key` setting.
+
+### Phase 5 — Remove the virtual field — OPEN
+
+Delete the three `"timestamp" | "@timestamp"` match arms from
+`otel_event.rs`:
+- `get_single_segment`
+- `insert_single_segment`
+- `remove_single_segment`
+
+Also delete `extract_timestamp_nanos` from `apply_value_map` and the
+`get_timestamp()` attribute `"timestamp"` fallback.
+
+### Phase 6 — Migrate test code — OPEN
+
+26 occurrences in 8 test files. Migrate alongside Phases 1-5:
+- `elasticsearch/tests.rs` (6), `loki/integration_tests.rs` (9),
+  `azure_monitor_logs/tests.rs` (4), `clickhouse/integration_tests.rs` (2),
+  `aws_cloudwatch_logs/integration_tests.rs` (2), `loki/tests.rs` (1),
+  `splunk_hec/logs/tests.rs` (1), `elasticsearch/integration_tests.rs` (1)
+- Plus test modules inside production files (`template.rs`,
+  `transformer.rs`, `log_to_metric.rs`, etc.)
+
+### Dependency graph
+
+```
+Phase 0 (add set_timestamp) ✓
+  ├── Phase 1 (INSERT sites) ✓  ─┐
+  ├── Phase 2 (GET/REMOVE sites) ─┤ (2/4 done)
+  └── Phase 6 (test code)     ─┤
+                                ├── Phase 3 (schema defs)
+                                │     └── Phase 4 (log_schema default)
+                                │           └── Phase 5 (delete virtual field)
+```
+
+### Risks
+
+1. **User-visible break (Phase 4)**: Users with `.timestamp` in VRL or
+   `timestamp_key = "timestamp"` config. Mitigation: deprecation warning
+   one release before, VRL migration tool handles rewrite.
+2. **Type change**: `get("timestamp")` via virtual field returns
+   `Value::Timestamp`; after removal, `get("time_unix_nano")` returns
+   `Value::Integer`. All production code should use `get_timestamp()`
+   (which always returns `Value::Timestamp`) by that point.
 
 ## Related docs
 

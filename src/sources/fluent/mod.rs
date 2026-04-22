@@ -37,7 +37,9 @@ use crate::{
 };
 
 mod message;
-use self::message::{FluentEntry, FluentMessage, FluentRecord, FluentTag, FluentTimestamp};
+use self::message::{
+    FluentEntry, FluentEventTime, FluentMessage, FluentRecord, FluentTag, FluentTimestamp,
+};
 
 /// Configuration for the `fluent` source.
 #[configurable_component(source("fluent", "Collect logs from a Fluentd or Fluent Bit agent."))]
@@ -783,9 +785,11 @@ impl From<FluentEvent<'_>> for Event {
                     .insert(path!("vector", "ingest_timestamp"), Utc::now());
             }
             LogNamespace::Legacy => {
-                if let Some(key) = log_schema().timestamp_key_target_path() {
-                    log.insert(key, timestamp);
-                }
+                let ts = match timestamp {
+                    FluentTimestamp::Unix(ts)
+                    | FluentTimestamp::Ext(FluentEventTime(ts)) => ts,
+                };
+                log.set_timestamp(ts);
             }
         }
 
@@ -859,9 +863,7 @@ mod tests {
         let dt: chrono::DateTime<chrono::Utc> = DateTime::parse_from_rfc3339(timestamp).unwrap().into();
         let mut log = OtelLog::new(Default::default());
         log.insert(event_path!(log_schema().source_type_key().unwrap().to_string().as_str()), Value::from(FluentConfig::NAME));
-        if let Some(key) = log_schema().timestamp_key_target_path() {
-            log.insert(key, Value::Timestamp(dt));
-        }
+        log.set_timestamp(dt);
         log.insert(event_path!("tag"), Value::from("tag.name"));
         log.insert(event_path!("message"), Value::from(name));
         Event::Log(log)

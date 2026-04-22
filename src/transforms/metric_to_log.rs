@@ -325,8 +325,8 @@ impl MetricToLog {
                             })
                             .unwrap_or_else(|| event::Value::Timestamp(Utc::now()));
 
-                        if let Some(key) = log_schema().timestamp_key_target_path() {
-                            log.insert(key, timestamp);
+                        if let Some(ts) = timestamp.as_timestamp() {
+                            log.set_timestamp(*ts);
                         }
 
                         if let Some(host_tag) = &self.host_tag

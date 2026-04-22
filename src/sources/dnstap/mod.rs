@@ -315,13 +315,9 @@ impl FrameHandler for CommonFrameHandler {
         }
 
         if self.log_namespace == LogNamespace::Vector {
-            // The timestamp is inserted by the parser which caters for the Legacy namespace.
-            self.log_namespace.insert_vector_metadata(
-                &mut log,
-                self.timestamp_key(),
-                path!("ingest_timestamp"),
-                chrono::Utc::now(),
-            );
+            log.metadata_mut()
+                .value_mut()
+                .insert(path!("vector", "ingest_timestamp"), chrono::Utc::now());
         }
 
         self.log_namespace.insert_vector_metadata(

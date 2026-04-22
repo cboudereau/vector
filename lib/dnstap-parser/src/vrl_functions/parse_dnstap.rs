@@ -159,7 +159,7 @@ impl Function for ParseDnstap {
                         "sourcePort": 46835,
                         "time": 1593489007920014129,
                         "timePrecision": "ns",
-                        "timestamp": "2020-06-30T03:50:07.920014129Z"
+                        "time_unix_nano": 1593489007920014129
                     }"#
             )),
         )]
@@ -219,7 +219,6 @@ impl FunctionExpression for ParseDnstapFn {
 
 #[cfg(test)]
 mod tests {
-    use chrono::{DateTime, TimeZone, Utc};
     use vrl::value;
 
     use super::*;
@@ -229,15 +228,7 @@ mod tests {
 
         query {
             args: func_args![value: value!("ChVqYW1lcy1WaXJ0dWFsLU1hY2hpbmUSC0JJTkQgOS4xNi4zGgBy5wEIAxACGAEiEAAAAAAAAAAAAAAAAAAAAAAqECABBQJwlAAAAAAAAAAAADAw8+0CODVA7+zq9wVNMU3WNlI2kwIAAAABAAAAAAABCWZhY2Vib29rMQNjb20AAAEAAQAAKQIAAACAAAAMAAoACOxjCAG9zVgzWgUDY29tAGAAbQAAAAByZLM4AAAAAQAAAAAAAQJoNQdleGFtcGxlA2NvbQAABgABAAApBNABAUAAADkADwA1AAlubyBTRVAgbWF0Y2hpbmcgdGhlIERTIGZvdW5kIGZvciBkbnNzZWMtZmFpbGVkLm9yZy54AQ==")],
-            want: Ok({
-                let timestamp = Value::Timestamp(
-                    Utc.from_utc_datetime(
-                        &DateTime::parse_from_rfc3339("2020-06-30T03:50:07.920014129Z")
-                            .unwrap()
-                            .naive_utc(),
-                    ),
-                );
-                value!({
+            want: Ok(value!({
                     dataType: "Message",
                     dataTypeId: 1,
                     extraInfo: "",
@@ -336,23 +327,14 @@ mod tests {
                     sourcePort: 46835,
                     time: 1_593_489_007_920_014_129i64,
                     timePrecision: "ns",
-                    timestamp: timestamp
-                })
-            }),
+                    time_unix_nano: 1_593_489_007_920_014_129i64,
+                })),
             tdef: TypeDef::object(DnstapEventSchema.request_message_schema_definition()).fallible(),
         }
 
         update {
             args: func_args![value: value!("ChVqYW1lcy1WaXJ0dWFsLU1hY2hpbmUSC0JJTkQgOS4xNi4zcmsIDhABGAEiBH8AAAEqBH8AAAEwrG44AEC+iu73BU14gfofUh1wi6gAAAEAAAAAAAAHZXhhbXBsZQNjb20AAAYAAWC+iu73BW0agDwvch1wi6gAAAEAAAAAAAAHZXhhbXBsZQNjb20AAAYAAXgB")],
-            want: Ok({
-                let timestamp = Value::Timestamp(
-                    Utc.from_utc_datetime(
-                        &DateTime::parse_from_rfc3339("2020-06-30T18:32:30.792494106Z")
-                            .unwrap()
-                            .naive_utc(),
-                    ),
-                );
-                value!({
+            want: Ok(value!({
                     dataType: "Message",
                     dataTypeId: 1,
                     messageType: "UpdateResponse",
@@ -407,9 +389,8 @@ mod tests {
                     sourcePort: 14124,
                     time: 1_593_541_950_792_494_106i64,
                     timePrecision: "ns",
-                    timestamp: timestamp
-                })
-            }),
+                    time_unix_nano: 1_593_541_950_792_494_106i64,
+                })),
             tdef: TypeDef::object(DnstapEventSchema.request_message_schema_definition()).fallible(),
         }
 

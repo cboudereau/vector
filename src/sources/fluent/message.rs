@@ -63,7 +63,7 @@ pub(super) type FluentTag = String;
 ///
 /// <https://github.com/fluent/fluentd/wiki/Forward-Protocol-Specification-v1#eventtime-ext-format>
 #[derive(Clone, Debug, PartialEq, Serialize)]
-pub(super) struct FluentEventTime(DateTime<Utc>);
+pub(super) struct FluentEventTime(pub(super) DateTime<Utc>);
 
 impl<'de> serde::de::Deserialize<'de> for FluentEventTime {
     fn deserialize<D>(deserializer: D) -> Result<FluentEventTime, D::Error>

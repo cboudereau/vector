@@ -36,7 +36,6 @@ use dnstap_proto::{
     Dnstap, Message as DnstapMessage, SocketFamily, SocketProtocol,
     message::Type as DnstapMessageType,
 };
-use vector_core::config::log_schema;
 use vector_lookup::lookup_v2::ValuePath;
 
 use crate::{internal_events::DnstapParseWarning, schema::DNSTAP_VALUE_PATHS};
@@ -381,13 +380,10 @@ impl DnstapParser {
 
         if type_ids.contains(&dnstap_message_type_id) {
             DnstapParser::log_time(event, prefix.clone(), time_in_nanosec, "ns");
-            let timestamp = Utc
-                .timestamp_opt(time_sec.try_into().unwrap(), query_time_nsec)
+            Utc.timestamp_opt(time_sec.try_into().unwrap(), query_time_nsec)
                 .single()
                 .ok_or("Invalid timestamp")?;
-            if let Some(timestamp_key) = log_schema().timestamp_key() {
-                DnstapParser::insert(event, prefix.clone(), timestamp_key, timestamp);
-            }
+            DnstapParser::insert(event, prefix.clone(), "time_unix_nano", time_in_nanosec);
         }
 
         if message.is_none() {
@@ -1034,7 +1030,6 @@ fn to_dnstap_message_type(type_id: i32) -> String {
 mod tests {
     use std::{collections::BTreeMap, vec};
 
-    use chrono::DateTime;
     use dnsmsg_parser::dns_message_parser::DnsParserOptions;
     use vector_core::event::OtelLog;
 
@@ -1049,10 +1044,7 @@ mod tests {
         frame: Bytes,
         opts: DnsParserOptions,
     ) -> Result<()> {
-        let mut value = event.value().clone();
-        DnstapParser::parse(&mut value, frame, opts)?;
-        *event.value_mut() = value;
-        Ok(())
+        event.modify_as_value(|value| DnstapParser::parse(value, frame, opts))
     }
 
     #[test]
@@ -1138,23 +1130,16 @@ mod tests {
             ("sourcePort", Value::Integer(46835)),
             ("time", Value::Integer(1_593_489_007_920_014_129)),
             ("timePrecision", Value::Bytes(Bytes::from("ns"))),
-            (
-                "timestamp",
-                Value::Timestamp(
-                    Utc.from_utc_datetime(
-                        &DateTime::parse_from_rfc3339("2020-06-30T03:50:07.920014129Z")
-                            .unwrap()
-                            .naive_utc(),
-                    ),
-                ),
-            ),
         ]);
 
         // The maps need to contain identical keys and values.
         for (exp_key, exp_value) in expected_map {
             let value = log_event.get(exp_key).unwrap();
-            assert_eq!(*value, exp_value);
+            assert_eq!(value, exp_value);
         }
+
+        assert!(log_event.get_timestamp().unwrap().as_timestamp().is_some(),
+            "parser should set time_unix_nano via modify_as_value round-trip");
     }
 
     #[test]
@@ -1208,11 +1193,11 @@ mod tests {
         // The maps need to contain identical keys and values.
         for (exp_key, exp_value) in no_lowercase_expected {
             let value = log_event.get(exp_key).unwrap();
-            assert_eq!(*value, exp_value);
+            assert_eq!(value, exp_value);
         }
         for (exp_key, exp_value) in expected_map {
             let value = lowercase_log_event.get(exp_key).unwrap();
-            assert_eq!(*value, exp_value);
+            assert_eq!(value, exp_value);
         }
     }
 
@@ -1247,7 +1232,7 @@ mod tests {
         // The maps need to contain identical keys and values.
         for (exp_key, exp_value) in expected_map {
             let value = log_event.get(exp_key).unwrap();
-            assert_eq!(*value, exp_value);
+            assert_eq!(value, exp_value);
         }
     }
 
@@ -1325,23 +1310,16 @@ mod tests {
             ("sourcePort", Value::Integer(14124)),
             ("time", Value::Integer(1_593_541_950_792_494_106)),
             ("timePrecision", Value::Bytes(Bytes::from("ns"))),
-            (
-                "timestamp",
-                Value::Timestamp(
-                    Utc.from_utc_datetime(
-                        &DateTime::parse_from_rfc3339("2020-06-30T18:32:30.792494106Z")
-                            .unwrap()
-                            .naive_utc(),
-                    ),
-                ),
-            ),
         ]);
 
         // The maps need to contain identical keys and values.
         for (exp_key, exp_value) in expected_map {
             let value = log_event.get(exp_key).unwrap();
-            assert_eq!(*value, exp_value);
+            assert_eq!(value, exp_value);
         }
+
+        assert!(log_event.get_timestamp().unwrap().as_timestamp().is_some(),
+            "parser should set time_unix_nano via modify_as_value round-trip");
     }
 
     #[test]

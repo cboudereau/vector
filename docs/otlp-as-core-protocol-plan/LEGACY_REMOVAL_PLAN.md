@@ -34,27 +34,31 @@ source_type. They were removed in T15 Phase 1. Accessing `"host"` or
 | Key | Default | Canonical OTLP location | Production callers |
 |-----|---------|-------------------------|-------------------|
 | `message_key` | `"body"` | `body` (proto field) | ~65 |
-| `host_key` | `"host"` | `resource.attributes."host.name"` | ~35 |
-| `source_type_key` | `"source_type"` | `resource.attributes."source_type"` | ~35 |
+| `host_key` | `"host"` | `resource.attributes."host.name"` | ~4 (was ~35) |
+| `source_type_key` | `"source_type"` | `resource.attributes."source_type"` | **0** (all migrated) |
 | `timestamp_key` | `"time_unix_nano"` | `time_unix_nano` (proto field) | **0** (all migrated) |
 
-`message_key` already defaults to `"body"` (the canonical name). The other
-two default to legacy names that store values as **record attributes** instead
-of at their canonical OTLP resource-attribute locations.
+`message_key` already defaults to `"body"` (the canonical name).
+`source_type_key` has zero remaining callers — all migrated to `set_source_type()`.
+`host_key` has 4 remaining callers: `internal_metrics` (metrics domain),
+`dedupe` (uses virtual field compat), and 2 test files.
+Schema definitions all use hardcoded resource paths (`149f4c3`).
 
 ### Remaining legacy code
 
-| Item | Location | Role |
-|------|----------|------|
-| `apply_value_map` "message" fallback | `otel_event.rs:1557` | `map.remove("body").or_else(\|\| map.remove("message"))` |
-| `normalize_for_eq` | `otel_event.rs:3916-3937` | Hoists `resource.source_type` → top-level for test equality |
-| `get_source_type()` | `otel_event.rs:1682` | Reads from `attribute("source_type")` — wrong location |
-| `get_host()` | `otel_event.rs:1688` | Reads from `resource_attribute("host.name")` — correct |
-| `log_schema()` mechanism | `lib/vector-core/src/config/log_schema.rs` | 5-field user-configurable indirection |
+| Item | Location | Role | Status |
+|------|----------|------|--------|
+| `apply_value_map` "message" fallback | — | — | **DELETED** (Phase B) |
+| `normalize_for_eq` | `otel_event.rs:3952` | Only strips `observed_time_unix_nano` | **SIMPLIFIED** (Phase B) |
+| `get_source_type()` | `otel_event.rs:1691` | Reads from `resource_attribute("source_type")` | **FIXED** (reads correct location) |
+| `set_source_type()` | `otel_event.rs:1697` | Writes to `resource_attribute("source_type")` | **ADDED** (Phase B) |
+| `get_host()` | `otel_event.rs:1712` | Reads from `resource_attribute("host.name")` | Correct |
+| `set_host()` | `otel_event.rs:1718` | Writes to `resource_attribute("host.name")` | **ADDED** (Phase B) |
+| `log_schema()` mechanism | `lib/vector-core/src/config/log_schema.rs` | 5-field user-configurable indirection | ~223 callers remain (mostly `message_key`) |
 
 ---
 
-## Phase B — Remove remaining VRL aliases (PLAN)
+## Phase B — Remove remaining VRL aliases
 
 ### Goal
 
@@ -66,153 +70,64 @@ deprecate and eventually delete the `LogSchema` mechanism.
 ### Dependency graph
 
 ```
-B.1 (message cleanup)           — independent, easy
-B.2 (host migration)            — independent, medium
-B.3 (source_type migration)     — independent, medium
-B.4 (normalize_for_eq cleanup)  — after B.2 + B.3
-B.5 (deprecate log_schema())    — after B.1 + B.2 + B.3
+B.1 (message cleanup)           ✅ DONE
+B.2 (host migration)            ✅ DONE
+B.3 (source_type migration)     ✅ DONE
+B.4 (normalize_for_eq cleanup)  ✅ DONE (already simplified)
+B.5 (deprecate log_schema())    — remaining: ~223 callers (mostly message_key in tests/decoders)
 ```
 
-B.1, B.2, B.3 can proceed in parallel.
+---
+
+### B.1 — Message cleanup ✅
+
+`message_key` defaults to `"body"`. The `"message"` fallback in
+`apply_value_map` was deleted in Phase B. No further action needed.
 
 ---
 
-### B.1 — Message cleanup
+### B.2 — Host migration ✅
 
-**Effort:** Low (~1h)
+`set_host()` / `try_set_host()` / `get_host()` added. All source callers
+migrated to typed methods. Schema definitions updated to `resource.host.name`
+path. Sink `config_host_key()` defaults changed:
+- humio logs: `path: None` (uses semantic `get_host()` fallback)
+- splunk_hec logs: already `None` by default
+- splunk_hec/humio metrics: `"host"` (correct for metric tag_value)
 
-`message_key` already defaults to `"body"`, which IS the proto field name.
-No caller migration needed — `log.insert(event_path!("body"), v)` already
-hits the proto fast-path.
-
-**Actions:**
-1. Delete the `"message"` fallback in `apply_value_map` (line 1557):
-   `map.remove("body").or_else(|| map.remove("message"))` → `map.remove("body")`
-2. Update VRL migration tool docs to note that `.message` no longer works
-   even via `from_value_map`
-3. Fix any test that constructs events with `"message"` key expecting it
-   to become `body`
-
-**Risk:** LOW. Only affects events constructed via `from_value_map` with
-a `"message"` key and no `"body"` key. Generic decoders (Avro, Protobuf)
-pass user-defined field names — if user schema has a field literally named
-"message" that they want as the body, they need VRL to rename it.
+4 remaining `log_schema().host_key()` calls:
+- `internal_metrics.rs` — metrics domain, not OtelLog
+- `dedupe/common.rs` — default match fields, works via record attribute fallback
+- 2 test files — non-critical
 
 ---
 
-### B.2 — Host migration
+### B.3 — Source_type migration ✅
 
-**Effort:** Medium (~4h, 2 sub-phases)
-
-`host_key` defaults to `"host"`, which stores as a record attribute.
-The canonical OTLP location is `resource.attributes."host.name"`.
-
-**Current typed API:**
-- `get_host()` — reads `resource_attribute("host.name")` (correct location)
-- `set_host()` — **does not exist**, needs to be added
-
-**B.2a — Add `set_host()` + migrate callers (~35 production sites):**
-
-Add to OtelLog:
-```rust
-pub fn set_host(&mut self, value: impl Into<Value>) -> Option<Value> {
-    self.set_resource_attribute("host.name", value)
-}
-pub fn try_set_host(&mut self, value: impl Into<Value>) {
-    if self.get_host().is_none() { self.set_host(value); }
-}
-```
-
-Migrate callers that insert via `log_schema().host_key()`:
-
-| Location | Pattern | New |
-|----------|---------|-----|
-| Sources (journald, kafka, socket, etc.) | `log.insert(host_key, hostname)` | `log.set_host(hostname)` |
-| Sinks (splunk_hec, humio, etc.) | `log.get(host_key)` | `log.get_host()` |
-| Schema defs | `Kind::bytes()` at `"host"` | `Kind::bytes()` at resource path |
-
-**B.2b — Change default + deprecation:**
-
-Change `const HOST: &str = "host"` → not needed if all callers migrated.
-Instead, mark `log_schema().host_key()` as deprecated. Callers that still
-use it (user-configurable overrides) continue to work via the generic
-attribute path.
-
-**Risk:** MEDIUM. Sources that currently write `"host"` as a record
-attribute will now write `resource.attributes."host.name"`. Sinks that
-read `"host"` (via `log_schema().host_key()`) need to be migrated to
-`get_host()` simultaneously. Must be done atomically per source/sink pair.
+`set_source_type()` / `try_set_source_type()` / `get_source_type()` added.
+All read from/write to `resource_attribute("source_type")` (OTLP-aligned).
+Zero remaining `log_schema().source_type_key()` callers.
+Schema definitions use `resource.source_type` path.
 
 ---
 
-### B.3 — Source_type migration
+### B.4 — Clean up `normalize_for_eq` ✅
 
-**Effort:** Medium (~4h, 2 sub-phases)
-
-`source_type_key` defaults to `"source_type"`, which stores as a record
-attribute. Currently `get_source_type()` reads from `attribute("source_type")`
-(record attribute) — this matches where callers write, but is NOT the
-canonical resource-attribute location.
-
-**Decision needed:** Should `source_type` live at:
-- (a) `resource.attributes."source_type"` (OTLP-aligned), or
-- (b) `record.attributes."source_type"` (current behavior)?
-
-Recommendation: **(a)** — source_type describes the origin/source, which is
-conceptually a resource attribute. It's analogous to `service.name` in OTLP.
-
-**B.3a — Add `set_source_type()` + migrate callers (~35 production sites):**
-
-Add to OtelLog:
-```rust
-pub fn set_source_type(&mut self, value: impl Into<Value>) -> Option<Value> {
-    self.set_resource_attribute("source_type", value)
-}
-pub fn get_source_type(&self) -> Option<Value> {
-    // Fix: read from resource, not record
-    self.resource_attribute("source_type").map(any_value_to_vrl)
-}
-```
-
-Migrate callers that insert via `log_schema().source_type_key()`.
-
-**B.3b — Change default + deprecation:**
-
-Same pattern as B.2b.
-
-**Risk:** MEDIUM. Same atomicity requirement as host. Additionally,
-`get_source_type()` currently reads from record attributes; changing to
-resource attributes means events written before this change will have
-source_type at the old location. Need a migration path or dual-read
-during transition.
+Already simplified — only strips `observed_time_unix_nano`. No more
+resource.source_type hoisting needed since `to_value_canonical()` now
+includes resource attributes at `resource.*` paths natively.
 
 ---
 
-### B.4 — Delete `normalize_for_eq`
+### B.5 — Deprecate `log_schema()` mechanism (REMAINING)
 
-**Effort:** Low (~30min). After B.2 + B.3.
+**Effort:** Medium (~2h). After B.1 + B.2 + B.3 (all done).
 
-Once host lives at `resource.attributes."host.name"` and source_type at
-`resource.attributes."source_type"` canonically, the hoisting in
-`normalize_for_eq` is unnecessary — `to_value_canonical()` already
-includes resource attributes at `resource.*` paths.
-
-**Actions:**
-1. Delete `normalize_for_eq()` function
-2. Update `EventDataEq for OtelLog/OtelSpan/OtelMetric` to compare
-   `to_value_canonical()` directly (still strip `observed_time_unix_nano`)
-3. Fix any test equality assertions that relied on hoisted field positions
-
----
-
-### B.5 — Deprecate `log_schema()` mechanism
-
-**Effort:** Medium (~2h). After B.1 + B.2 + B.3.
-
-At this point, zero production callers use `log_schema().{message,host,source_type}_key()`
-for runtime access. The mechanism only matters for:
-- User VRL programs referencing `.host` or `.source_type`
-- User configs with explicit `host_key = "..."` overrides
+Remaining `log_schema()` callers: ~223 across 69 files. Breakdown:
+- `message_key`: ~65 callers (mostly decoders + tests). Already defaults to `"body"`.
+- `host_key`: ~4 callers (internal_metrics, dedupe, tests). Still defaults to `"host"`.
+- `source_type_key`: **0** callers.
+- `timestamp_key`: **0** callers.
 
 **Actions:**
 1. Add startup deprecation warning if user config sets `host_key`,
@@ -237,6 +152,9 @@ All tasks below are **DONE**. See git history for details.
 |-------|-------------|-------------|
 | A | VRL migration tool (22 rules, 3 passes) | `src/vrl_migrate/` |
 | B (timestamp) | Virtual field removal, all 6 phases | `302d3a1` |
+| B (host/source_type) | Runtime migration to typed methods | `31f6668`, `b3564d6`, `2361edb` |
+| B (schema defs) | Schema definitions → resource paths | `149f4c3` |
+| B (sink host_key fix) | Humio semantic fallback | `4bbf03d` |
 | C | OTel → Legacy bridge removal (~250 lines) | — |
 | E | Remove legacy types from production | — |
 | F | Delete LogEvent + TraceEvent types | `80ff2fb`, `1236e8e` |

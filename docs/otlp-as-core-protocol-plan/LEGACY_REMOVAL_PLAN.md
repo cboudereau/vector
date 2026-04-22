@@ -9,52 +9,45 @@
 
 | Item | Status |
 |------|--------|
-| `LogEvent` type | **DELETED** (`80ff2fb`, -1217 lines) |
-| `TraceEvent` type | **DELETED** (`1236e8e`, -191 lines) |
-| `Metric` struct | **DELETED** (`9bd0d06`, -1040 lines) |
+| `LogEvent` type | **DELETED** (`80ff2fb`) |
+| `TraceEvent` type | **DELETED** (`1236e8e`) |
+| `Metric` struct | **DELETED** (`9bd0d06`) |
 | Proto backward buffer compat | **DELETED** (`9363568`) |
-| All `Event::from(Legacy)` bridges | **DELETED** |
-| All `from_legacy_*` / `from_log_event` / `from_trace_event` | **DELETED** |
-| `to_value_legacy_layout` | **DELETED** (all callers → `to_value_canonical`) |
-| `hoist_resource_fields` / `hoist_scope_fields` | **DELETED** |
+| All legacy bridges / `from_legacy_*` | **DELETED** |
+| `to_value_legacy_layout` / `hoist_*` | **DELETED** |
 | `message_path()` / `host_path()` | **DELETED** |
 | `log_event!` macro | Renamed → `otel_event!` |
-| Virtual `"timestamp"` / `"@timestamp"` fast-path | **DELETED** (2026-04-22) |
-| `log_schema().timestamp_key()` default | Changed: `"timestamp"` → `"time_unix_nano"` |
+| Virtual fast-path aliases | **DELETED** (T15) |
 
-### Fast-path aliases still live in `otel_event.rs`
+### `log_schema()` indirection — nearly eliminated
 
-The `get_single_segment` / `insert_single_segment` / `remove_single_segment`
-functions have **no remaining hardcoded aliases** for message, host, or
-source_type. They were removed in T15 Phase 1. Accessing `"host"` or
-`"source_type"` goes through the generic record-attribute path.
+| Key | Default | Canonical OTLP location | `log_schema()` callers | Status |
+|-----|---------|-------------------------|----------------------|--------|
+| `message_key` | `"body"` | `body` (proto field) | **0** | ✅ All hardcoded |
+| `timestamp_key` | `"time_unix_nano"` | `time_unix_nano` (proto field) | **0** | ✅ All hardcoded |
+| `source_type_key` | `"source_type"` | `resource.attributes."source_type"` | **0** | ✅ All hardcoded |
+| `host_key` | `"host"` | `resource.attributes."host.name"` | **2** | Kept (internal_metrics, dedupe) |
+| `metadata_key` | `"metadata"` | *(no OTLP mapping)* | **13** files | Active (remap errors, sources) |
 
-### `log_schema()` indirection still live
+The `log_schema` config is marked **`#[configurable(deprecated)]`** with
+startup warnings when non-default values are set (`6e6d47b`).
 
-| Key | Default | Canonical OTLP location | Production callers |
-|-----|---------|-------------------------|-------------------|
-| `message_key` | `"body"` | `body` (proto field) | ~65 |
-| `host_key` | `"host"` | `resource.attributes."host.name"` | ~4 (was ~35) |
-| `source_type_key` | `"source_type"` | `resource.attributes."source_type"` | **0** (all migrated) |
-| `timestamp_key` | `"time_unix_nano"` | `time_unix_nano` (proto field) | **0** (all migrated) |
+### `LogSchema` struct — stays until breaking release
 
-`message_key` already defaults to `"body"` (the canonical name).
-`source_type_key` has zero remaining callers — all migrated to `set_source_type()`.
-`host_key` has 4 remaining callers: `internal_metrics` (metrics domain),
-`dedupe` (uses virtual field compat), and 2 test files.
-Schema definitions all use hardcoded resource paths (`149f4c3`).
+The `LogSchema` struct (5 fields, accessors, setters, `merge()`) must
+remain while `[log_schema]` is accepted in user configs. The accessors
+are used by `merge()`, config parsing tests, and test setup in
+`lib/codecs` and `lib/vector-core`. Deletion requires a breaking release
+(B.7).
 
 ### Remaining legacy code
 
-| Item | Location | Role | Status |
-|------|----------|------|--------|
-| `apply_value_map` "message" fallback | — | — | **DELETED** (Phase B) |
-| `normalize_for_eq` | `otel_event.rs:3952` | Only strips `observed_time_unix_nano` | **SIMPLIFIED** (Phase B) |
-| `get_source_type()` | `otel_event.rs:1691` | Reads from `resource_attribute("source_type")` | **FIXED** (reads correct location) |
-| `set_source_type()` | `otel_event.rs:1697` | Writes to `resource_attribute("source_type")` | **ADDED** (Phase B) |
-| `get_host()` | `otel_event.rs:1712` | Reads from `resource_attribute("host.name")` | Correct |
-| `set_host()` | `otel_event.rs:1718` | Writes to `resource_attribute("host.name")` | **ADDED** (Phase B) |
-| `log_schema()` mechanism | `lib/vector-core/src/config/log_schema.rs` | 5-field user-configurable indirection | **2 callers remain** (host_key: internal_metrics, dedupe) |
+| Item | Location | Status |
+|------|----------|--------|
+| `normalize_for_eq` | `otel_event.rs` | **SIMPLIFIED** — only strips `observed_time_unix_nano` |
+| `get/set_source_type()` | `otel_event.rs` | ✅ OTLP-aligned (resource attribute) |
+| `get/set_host()` | `otel_event.rs` | ✅ OTLP-aligned (resource attribute) |
+| `LogSchema` struct | `log_schema.rs` | **DEPRECATED** — 2 `host_key` + 13 `metadata_key` callers remain |
 
 ---
 
@@ -74,7 +67,9 @@ B.1 (message cleanup)           ✅ DONE
 B.2 (host migration)            ✅ DONE
 B.3 (source_type migration)     ✅ DONE
 B.4 (normalize_for_eq cleanup)  ✅ DONE (already simplified)
-B.5 (deprecate log_schema())    ✅ DONE — 2 host_key callers remain (internal_metrics, dedupe)
+B.5 (eliminate log_schema callers) ✅ DONE — 2 host_key callers remain (internal_metrics, dedupe)
+B.6 (deprecate + VRL migration)  ✅ DONE — startup warnings + LS-01..05 rules
+B.7 (remove LogSchema struct)     DEFERRED — requires breaking release
 ```
 
 ---
@@ -95,10 +90,9 @@ path. Sink `config_host_key()` defaults changed:
 - splunk_hec logs: already `None` by default
 - splunk_hec/humio metrics: `"host"` (correct for metric tag_value)
 
-4 remaining `log_schema().host_key()` calls:
+2 remaining `log_schema().host_key()` calls:
 - `internal_metrics.rs` — metrics domain, not OtelLog
 - `dedupe/common.rs` — default match fields, works via record attribute fallback
-- 2 test files — non-critical
 
 ---
 
@@ -137,9 +131,23 @@ VRL migrate tool enhanced with Pass 0 (LS-01..LS-05):
 - `--log-schema <config>` flag for standalone VRL file migration
 - 10 new tests covering all rule IDs and edge cases
 
-**Remaining (future release):**
-1. Delete unused `LogSchema` struct fields (`message_key`, `timestamp_key`, `source_type_key`)
-2. Document the migration in release notes
+---
+
+### B.7 — Remove `LogSchema` struct (DEFERRED — next breaking release)
+
+The `LogSchema` struct, all 5 fields, accessors, setters, and `merge()`
+logic must stay while we still accept `[log_schema]` in user configs.
+The accessors are used by:
+- `merge()` — compares and merges config from multiple files
+- Config parsing tests in `src/config/mod.rs`
+- Test setup in `lib/codecs` and `lib/vector-core`
+
+**Removal requires a breaking release.** At that point:
+1. Delete the `[log_schema]` section from `GlobalOptions`
+2. Delete the `LogSchema` struct and all accessors
+3. Delete `init_log_schema()` / `log_schema()` global
+4. Hardcode the 2 remaining `host_key` callers (internal_metrics, dedupe)
+5. Document in release notes
 
 ---
 

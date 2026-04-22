@@ -276,7 +276,7 @@ mod test {
 #[cfg(feature = "sinks-vector")]
 #[cfg(test)]
 mod tests {
-    use vector_lib::{assert_event_data_eq, config::log_schema};
+    use vector_lib::assert_event_data_eq;
 
     use super::*;
     use crate::{
@@ -309,10 +309,7 @@ mod tests {
         sink.run(stream).await.unwrap();
 
         for event in &mut events {
-            event.as_mut_log().insert(
-                log_schema().source_type_key_target_path().unwrap(),
-                "vector",
-            );
+            event.as_mut_log().set_source_type("vector");
         }
 
         let output = test_util::collect_ready(rx).await;

@@ -539,7 +539,7 @@ mod tests {
                 assert_eq!(events.len(), 1);
                 let log = events[0].as_log();
                 assert_eq!(log.get("body").unwrap(), Value::Bytes(Bytes::from(expected)));
-                assert_eq!(log.get("source_type").unwrap(), Value::Bytes(Bytes::from("aws_kinesis_firehose")));
+                assert_eq!(log.get_source_type().unwrap(), Value::Bytes(Bytes::from("aws_kinesis_firehose")));
                 assert_eq!(log.get("request_id").unwrap(), Value::Bytes(Bytes::from(REQUEST_ID)));
                 assert_eq!(log.get("source_arn").unwrap(), Value::Bytes(Bytes::from(SOURCE_ARN)));
 
@@ -707,7 +707,7 @@ mod tests {
             assert_eq!(events.len(), 1);
             let log = events[0].as_log();
             assert_eq!(log.get("body").unwrap(), Value::Bytes(Bytes::from(RECORD)));
-            assert_eq!(log.get("source_type").unwrap(), Value::Bytes(Bytes::from("aws_kinesis_firehose")));
+            assert_eq!(log.get_source_type().unwrap(), Value::Bytes(Bytes::from("aws_kinesis_firehose")));
             assert_eq!(log.get("request_id").unwrap(), Value::Bytes(Bytes::from(REQUEST_ID)));
             assert_eq!(log.get("source_arn").unwrap(), Value::Bytes(Bytes::from(SOURCE_ARN)));
 
@@ -864,7 +864,7 @@ mod tests {
         assert_eq!(events.len(), 1);
         let log = events[0].as_log();
         assert_eq!(log.get("body").unwrap(), Value::Bytes(Bytes::from(expected)));
-        assert_eq!(log.get("source_type").unwrap(), Value::Bytes(Bytes::from("aws_kinesis_firehose")));
+        assert_eq!(log.get_source_type().unwrap(), Value::Bytes(Bytes::from("aws_kinesis_firehose")));
         assert_eq!(log.get("request_id").unwrap(), Value::Bytes(Bytes::from(REQUEST_ID)));
         assert_eq!(log.get("source_arn").unwrap(), Value::Bytes(Bytes::from(SOURCE_ARN)));
 

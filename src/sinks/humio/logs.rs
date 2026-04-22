@@ -267,7 +267,7 @@ mod integration_tests {
         let message = random_string(100);
         let host = "192.168.1.1".to_string();
         let mut event = OtelLog::from(message.clone());
-        event.insert(log_schema().host_key_target_path().unwrap(), host.clone());
+        event.set_host(host.clone());
 
         let ts = Utc.timestamp_nanos(Utc::now().timestamp_millis() * 1_000_000 + 132_456);
         event.set_timestamp(ts);

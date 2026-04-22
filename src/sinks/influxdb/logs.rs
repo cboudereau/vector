@@ -251,9 +251,12 @@ impl HttpEventEncoder<BytesMut> for InfluxDbLogsEncoder {
             log.rename_key(body_path, (PathPrefix::Event, &self.message_key));
         }
 
-        if let Some(source_type_path) = log.source_type_path().as_ref() {
-            self.tags.replace(source_type_path.path.to_string().into());
-            log.rename_key(source_type_path, (PathPrefix::Event, &self.source_type_key));
+        if let Some(source_type) = log.get_source_type() {
+            self.tags.replace(self.source_type_key.to_string().into());
+            log.insert((PathPrefix::Event, &self.source_type_key), source_type);
+            if let Some(path) = log.source_type_path() {
+                log.remove(&path);
+            }
         }
 
         self.tags.replace("metric_type".into());
@@ -472,7 +475,7 @@ mod tests {
     fn test_encode_event_v1() {
         let mut event = Event::Log(OtelLog::from("hello"));
         event.as_mut_log().insert("host", "aws.cloud.eur");
-        event.as_mut_log().insert("source_type", "file");
+        event.as_mut_log().set_source_type("file");
 
         event.as_mut_log().insert("int", 4i32);
         event.as_mut_log().insert("float", 5.5);
@@ -517,7 +520,7 @@ mod tests {
     fn test_encode_event() {
         let mut event = Event::Log(OtelLog::from("hello"));
         event.as_mut_log().insert("host", "aws.cloud.eur");
-        event.as_mut_log().insert("source_type", "file");
+        event.as_mut_log().set_source_type("file");
 
         event.as_mut_log().insert("int", 4i32);
         event.as_mut_log().insert("float", 5.5);
@@ -640,7 +643,7 @@ mod tests {
     #[test]
     fn test_add_tag() {
         let mut event = Event::Log(OtelLog::from("hello"));
-        event.as_mut_log().insert("source_type", "file");
+        event.as_mut_log().set_source_type("file");
 
         event.as_mut_log().insert("as_a_tag", 10);
         event.as_mut_log().set_timestamp(ts());
@@ -772,7 +775,7 @@ mod tests {
                 .single()
                 .expect("invalid timestamp");
             event.set_timestamp(timestamp);
-            event.insert("source_type", "file");
+            event.set_source_type("file");
 
             events.push(Event::from(event));
         }
@@ -911,11 +914,11 @@ mod integration_tests {
 
         let mut event1 = OtelLog::from("message_1").with_batch_notifier(&batch);
         event1.insert("host", "aws.cloud.eur");
-        event1.insert("source_type", "file");
+        event1.set_source_type("file");
 
         let mut event2 = OtelLog::from("message_2").with_batch_notifier(&batch);
         event2.insert("host", "aws.cloud.eur");
-        event2.insert("source_type", "file");
+        event2.set_source_type("file");
 
         let mut namespaced_log =
             OtelLog::from(value!("namespaced message")).with_batch_notifier(&batch);

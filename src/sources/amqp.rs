@@ -13,7 +13,7 @@ use tokio_util::codec::FramedRead;
 use vector_lib::{
     EstimatedJsonEncodedSizeOf,
     codecs::decoding::{DeserializerConfig, FramingConfig},
-    config::{LegacyKey, LogNamespace, SourceAcknowledgementsConfig, log_schema},
+    config::{LegacyKey, LogNamespace, SourceAcknowledgementsConfig},
     configurable::configurable_component,
     event::{Event, OtelLog},
     finalizer::UnorderedFinalizer,
@@ -285,12 +285,16 @@ fn populate_log_event(
         keys.delivery_tag,
     );
 
-    log_namespace.insert_vector_metadata(
-        log,
-        log_schema().source_type_key(),
-        path!("source_type"),
-        Bytes::from_static(AmqpSourceConfig::NAME.as_bytes()),
-    );
+    match log_namespace {
+        LogNamespace::Vector => {
+            log.metadata_mut()
+                .value_mut()
+                .insert(path!("vector", "source_type"), AmqpSourceConfig::NAME);
+        }
+        LogNamespace::Legacy => {
+            log.try_set_source_type(Bytes::from_static(AmqpSourceConfig::NAME.as_bytes()));
+        }
+    }
 
     // This handles the transition from the original timestamp logic. Originally the
     // `timestamp_key` was populated by the `properties.timestamp()` time on the message, falling

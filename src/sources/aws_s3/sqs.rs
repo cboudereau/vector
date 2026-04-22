@@ -31,7 +31,7 @@ use tokio_util::codec::FramedRead;
 use tracing::Instrument;
 use vector_lib::{
     codecs::decoding::FramingError,
-    config::{LegacyKey, LogNamespace, log_schema},
+    config::{LegacyKey, LogNamespace},
     configurable::configurable_component,
     internal_event::{
         ByteSize, BytesReceived, CountByteSize, InternalEventHandle as _, Protocol, Registered,
@@ -955,12 +955,16 @@ fn handle_single_log(
         }
     }
 
-    log_namespace.insert_vector_metadata(
-        log,
-        log_schema().source_type_key(),
-        path!("source_type"),
-        Bytes::from_static(AwsS3Config::NAME.as_bytes()),
-    );
+    match log_namespace {
+        LogNamespace::Vector => {
+            log.metadata_mut()
+                .value_mut()
+                .insert(path!("vector", "source_type"), AwsS3Config::NAME);
+        }
+        LogNamespace::Legacy => {
+            log.try_set_source_type(Bytes::from_static(AwsS3Config::NAME.as_bytes()));
+        }
+    }
 
     // This handles the transition from the original timestamp logic. Originally the
     // `timestamp_key` was populated by the `last_modified` time on the object, falling

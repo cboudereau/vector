@@ -1666,7 +1666,7 @@ mod integration_test {
                 );
                 assert_eq!(event.as_log()["message_key"], format!("{KEY} {i}").into());
                 assert_eq!(
-                    event.as_log()[log_schema().source_type_key().unwrap().to_string()],
+                    event.as_log().get_source_type().unwrap(),
                     "kafka".into()
                 );
                 assert_eq!(

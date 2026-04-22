@@ -80,32 +80,42 @@ struct OtelLogTracingBuilder {
     map: ObjectMap,
 }
 
+impl OtelLogTracingBuilder {
+    /// Map the tracing field name to the canonical OtelLog key.
+    /// The tracing framework uses "message" for the log body, but
+    /// the proto-canonical key is "body".
+    fn canonical_key(field: &tracing::field::Field) -> vrl::prelude::KeyString {
+        let name = field.name();
+        if name == "message" { "body".into() } else { name.into() }
+    }
+}
+
 impl tracing::field::Visit for OtelLogTracingBuilder {
     fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
         self.map
-            .insert(field.name().into(), Value::Bytes(value.to_string().into()));
+            .insert(Self::canonical_key(field), Value::Bytes(value.to_string().into()));
     }
 
     fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
         self.map
-            .insert(field.name().into(), Value::Bytes(format!("{value:?}").into()));
+            .insert(Self::canonical_key(field), Value::Bytes(format!("{value:?}").into()));
     }
 
     fn record_i64(&mut self, field: &tracing::field::Field, value: i64) {
-        self.map.insert(field.name().into(), Value::Integer(value));
+        self.map.insert(Self::canonical_key(field), Value::Integer(value));
     }
 
     fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
         match i64::try_from(value) {
-            Ok(v) => self.map.insert(field.name().into(), Value::Integer(v)),
+            Ok(v) => self.map.insert(Self::canonical_key(field), Value::Integer(v)),
             Err(_) => self
                 .map
-                .insert(field.name().into(), Value::Bytes(value.to_string().into())),
+                .insert(Self::canonical_key(field), Value::Bytes(value.to_string().into())),
         };
     }
 
     fn record_bool(&mut self, field: &tracing::field::Field, value: bool) {
-        self.map.insert(field.name().into(), Value::Boolean(value));
+        self.map.insert(Self::canonical_key(field), Value::Boolean(value));
     }
 }
 
@@ -720,13 +730,13 @@ impl OtelLog {
             now.timestamp_nanos_opt().unwrap_or(0) as u64;
     }
 
-    /// Set source metadata: source_type and observed_time_unix_nano.
+    /// Set source metadata: source_type (resource attribute) and observed_time_unix_nano.
     pub fn set_source_metadata(
         &mut self,
         source_name: &str,
         now: chrono::DateTime<chrono::Utc>,
     ) {
-        self.set_attribute("source_type".to_string(), string_value(source_name));
+        self.set_resource_attribute("source_type".to_string(), string_value(source_name));
         self.set_observed_timestamp(now);
     }
 
@@ -1554,7 +1564,6 @@ impl OtelLog {
         };
 
         let body = map.remove("body")
-            .or_else(|| map.remove("message"))
             .map(|v| vrl_value_to_any_value(&v));
 
         let time_unix_nano = match map.remove("time_unix_nano") {
@@ -1678,16 +1687,46 @@ impl OtelLog {
         self.body().map(any_value_to_vrl)
     }
 
-    /// Get the "source_type" from record attributes.
+    /// Get the "source_type" from resource attributes.
     pub fn get_source_type(&self) -> Option<Value> {
-        self.attribute("source_type")
-            .map(|av| any_value_to_vrl(&av))
+        self.resource_attribute("source_type")
+            .map(any_value_to_vrl)
+    }
+
+    /// Set the source_type as a resource attribute.
+    pub fn set_source_type(&mut self, value: impl Into<Value>) {
+        self.set_resource_attribute(
+            "source_type".to_string(),
+            vrl_value_to_any_value(&value.into()),
+        );
+    }
+
+    /// Set the source_type only if not already present.
+    pub fn try_set_source_type(&mut self, value: impl Into<Value>) {
+        if self.resource_attribute("source_type").is_none() {
+            self.set_source_type(value);
+        }
     }
 
     /// Get the host value from resource attributes.
     pub fn get_host(&self) -> Option<Value> {
         self.resource_attribute("host.name")
             .map(any_value_to_vrl)
+    }
+
+    /// Set the host as a resource attribute (`host.name`).
+    pub fn set_host(&mut self, value: impl Into<Value>) {
+        self.set_resource_attribute(
+            "host.name".to_string(),
+            vrl_value_to_any_value(&value.into()),
+        );
+    }
+
+    /// Set the host only if not already present.
+    pub fn try_set_host(&mut self, value: impl Into<Value>) {
+        if self.resource_attribute("host.name").is_none() {
+            self.set_host(value);
+        }
     }
 
     /// Parse a path and get a value.
@@ -1777,11 +1816,11 @@ impl OtelLog {
         Some(OwnedTargetPath::event(owned_value_path!("body")))
     }
 
-    /// Returns the path to the source_type attribute, if present.
+    /// Returns the path to the source_type resource attribute, if present.
     pub fn source_type_path(&self) -> Option<vrl::path::OwnedTargetPath> {
-        if self.attribute("source_type").is_some() {
+        if self.resource_attribute("source_type").is_some() {
             Some(vrl::path::OwnedTargetPath::event(
-                lookup::owned_value_path!("source_type"),
+                lookup::owned_value_path!("resource", "source_type"),
             ))
         } else {
             None
@@ -3910,29 +3949,9 @@ impl GetEventCountTags for OtelMetric {
     }
 }
 
-// Compare OtelLog via legacy layout equivalence so that two events
-// carrying the same logical data but stored differently in proto
-// (e.g., source_type in resource vs record.attributes) compare equal.
 fn normalize_for_eq(v: &mut Value) {
     if let Value::Object(map) = v {
         map.remove("observed_time_unix_nano");
-        let mut hoisted_st = None;
-        let mut hoisted_host = None;
-        let mut res_empty = false;
-        if let Some(Value::Object(res_map)) = map.get_mut("resource") {
-            hoisted_st = res_map.remove("source_type");
-            hoisted_host = res_map.remove("host.name");
-            res_empty = res_map.is_empty();
-        }
-        if let Some(st) = hoisted_st {
-            map.entry("source_type".into()).or_insert(st);
-        }
-        if let Some(host) = hoisted_host {
-            map.entry("host".into()).or_insert(host);
-        }
-        if res_empty {
-            map.remove("resource");
-        }
     }
 }
 

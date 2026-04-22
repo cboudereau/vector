@@ -1074,10 +1074,7 @@ mod test {
         fn handle_event(&self, received_from: Option<Bytes>, frame: Bytes) -> Option<Event> {
             let mut log_event = OtelLog::from(frame);
 
-            log_event.insert(
-                log_schema().source_type_key_target_path().unwrap(),
-                "framestream",
-            );
+            log_event.set_source_type("framestream");
             if let Some(host) = received_from {
                 self.log_namespace.insert_source_metadata(
                     "framestream",

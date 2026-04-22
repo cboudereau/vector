@@ -768,12 +768,16 @@ impl From<FluentEvent<'_>> for Event {
 
         let mut log = OtelLog::new(Default::default());
 
-        log_namespace.insert_vector_metadata(
-            &mut log,
-            log_schema().source_type_key(),
-            path!("source_type"),
-            Bytes::from_static(FluentConfig::NAME.as_bytes()),
-        );
+        match log_namespace {
+            LogNamespace::Vector => {
+                log.metadata_mut()
+                    .value_mut()
+                    .insert(path!("vector", "source_type"), FluentConfig::NAME);
+            }
+            LogNamespace::Legacy => {
+                log.try_set_source_type(Bytes::from_static(FluentConfig::NAME.as_bytes()));
+            }
+        }
 
         match log_namespace {
             LogNamespace::Vector => {
@@ -862,7 +866,7 @@ mod tests {
     fn mock_event(name: &str, timestamp: &str) -> Event {
         let dt: chrono::DateTime<chrono::Utc> = DateTime::parse_from_rfc3339(timestamp).unwrap().into();
         let mut log = OtelLog::new(Default::default());
-        log.insert(event_path!(log_schema().source_type_key().unwrap().to_string().as_str()), Value::from(FluentConfig::NAME));
+        log.set_source_type(FluentConfig::NAME);
         log.set_timestamp(dt);
         log.insert(event_path!("tag"), Value::from("tag.name"));
         log.insert(event_path!("message"), Value::from(name));

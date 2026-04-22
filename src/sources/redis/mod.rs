@@ -487,7 +487,7 @@ mod integration_test {
                 text.into()
             );
             assert_eq!(
-                event.as_log()[log_schema().source_type_key().unwrap().to_string()],
+                event.as_log().get_source_type().unwrap(),
                 RedisSourceConfig::NAME.into()
             );
         }

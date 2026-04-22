@@ -420,12 +420,16 @@ impl ResourceLog {
             }
         }
 
-        log_namespace.insert_vector_metadata(
-            &mut log,
-            log_schema().source_type_key(),
-            path!("source_type"),
-            Bytes::from_static(SOURCE_NAME.as_bytes()),
-        );
+        match log_namespace {
+            LogNamespace::Vector => {
+                log.metadata_mut()
+                    .value_mut()
+                    .insert(path!("vector", "source_type"), SOURCE_NAME);
+            }
+            LogNamespace::Legacy => {
+                log.try_set_source_type(Bytes::from_static(SOURCE_NAME.as_bytes()));
+            }
+        }
         if log_namespace == LogNamespace::Vector {
             log.metadata_mut()
                 .value_mut()

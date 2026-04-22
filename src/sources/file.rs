@@ -1031,7 +1031,7 @@ mod tests {
         assert_eq!(otel_log.body_string(), "hello world");
 
         use opentelemetry_proto::tonic::common::v1::any_value::Value as V;
-        let source_type = otel_log.attribute("source_type");
+        let source_type = otel_log.resource_attribute("source_type");
         assert!(
             matches!(
                 source_type.and_then(|av| av.value.as_ref()),
@@ -1464,13 +1464,13 @@ mod tests {
 
             assert_eq!(received.len(), 1);
             let actual_keys = received[0].as_log().keys().unwrap().collect::<HashSet<_>>();
-            // Canonical keys: body, source_type, file, resource (host.name), observed_time_unix_nano
-            for expected_key in &["body", "source_type", "file", "resource", "observed_time_unix_nano"] {
+            for expected_key in &["body", "file", "resource", "observed_time_unix_nano"] {
                 assert!(
                     actual_keys.contains(&vrl::value::KeyString::from(*expected_key)),
                     "missing key {expected_key}, actual keys: {actual_keys:?}"
                 );
             }
+            assert!(received[0].as_log().get_source_type().is_some(), "missing source_type in resource");
         }
     }
 

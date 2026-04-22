@@ -342,6 +342,17 @@ mod tests {
                 &vector_lib::lookup::owned_value_path!("time_unix_nano"),
                 vrl::value::Kind::integer().or_undefined(),
                 None,
+            )
+            // source_type is now stored as a resource attribute, not a record attribute
+            .with_event_field(
+                &vector_lib::lookup::owned_value_path!("source_type"),
+                vrl::value::Kind::bytes().or_undefined(),
+                None,
+            )
+            .with_event_field(
+                &vector_lib::lookup::owned_value_path!("resource"),
+                vrl::value::Kind::object(vrl::value::kind::Collection::empty().with_unknown(vrl::value::Kind::bytes())).or_undefined(),
+                None,
             );
         def.assert_valid_for_event(&events[0]);
     }

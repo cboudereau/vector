@@ -470,7 +470,6 @@ mod test {
 
     use super::*;
     use crate::{
-        config::log_schema,
         event::{Event, OtelLog},
         test_util::{
             CountReceiver,
@@ -823,11 +822,8 @@ mod test {
                     .expect("invalid timestamp")
                     .timestamp_nanos_opt().unwrap()),
             );
-            expected.insert(
-                log_schema().source_type_key_target_path().unwrap(),
-                "syslog",
-            );
-            expected.insert("host", "74794bfb6795");
+            expected.set_source_type("syslog");
+            expected.set_host("74794bfb6795");
             expected.insert("hostname", "74794bfb6795");
 
             expected.insert("meta.sequenceId", "1");
@@ -874,15 +870,9 @@ mod test {
                     .expect("invalid timestamp")
                     .timestamp_nanos_opt().unwrap()),
             );
-            expected.insert(
-                log_schema().host_key().unwrap().to_string().as_str(),
-                "74794bfb6795",
-            );
+            expected.set_host("74794bfb6795");
             expected.insert("hostname", "74794bfb6795");
-            expected.insert(
-                log_schema().source_type_key_target_path().unwrap(),
-                "syslog",
-            );
+            expected.set_source_type("syslog");
             expected.insert("severity", "notice");
             expected.insert("facility", "user");
             expected.insert("version", 1);
@@ -1022,14 +1012,8 @@ mod test {
                 event_path!("time_unix_nano"),
                 Value::Integer(expected_date.timestamp_nanos_opt().unwrap()),
             );
-            expected.insert(
-                log_schema().host_key().unwrap().to_string().as_str(),
-                "74794bfb6795",
-            );
-            expected.insert(
-                log_schema().source_type_key_target_path().unwrap(),
-                "syslog",
-            );
+            expected.set_host("74794bfb6795");
+            expected.set_source_type("syslog");
             expected.insert("hostname", "74794bfb6795");
             expected.insert("severity", "notice");
             expected.insert("facility", "user");
@@ -1074,11 +1058,8 @@ mod test {
                 event_path!("time_unix_nano"),
                 Value::Integer(expected_date.timestamp_nanos_opt().unwrap()),
             );
-            expected.insert(
-                log_schema().source_type_key_target_path().unwrap(),
-                "syslog",
-            );
-            expected.insert("host", "74794bfb6795");
+            expected.set_source_type("syslog");
+            expected.set_host("74794bfb6795");
             expected.insert("hostname", "74794bfb6795");
             expected.insert("severity", "info");
             expected.insert("facility", "local7");
@@ -1111,11 +1092,8 @@ mod test {
                     .expect("invalid timestamp")
                     .timestamp_nanos_opt().unwrap()),
             );
-            expected.insert(
-                log_schema().source_type_key_target_path().unwrap(),
-                "syslog",
-            );
-            expected.insert("host", "74794bfb6795");
+            expected.set_source_type("syslog");
+            expected.set_host("74794bfb6795");
             expected.insert("hostname", "74794bfb6795");
             expected.insert("severity", "info");
             expected.insert("facility", "local7");
@@ -1491,6 +1469,14 @@ mod test {
         fn from(e: Event) -> Self {
             let mut fields = e.into_log().as_map().unwrap();
 
+            let (host, source_type) = match fields.remove("resource") {
+                Some(Value::Object(mut m)) => (
+                    m.remove("host.name").map(value_to_string).unwrap(),
+                    m.remove("source_type").map(value_to_string).unwrap(),
+                ),
+                _ => panic!("expected resource object with host.name and source_type"),
+            };
+
             Self {
                 msgid: fields.remove("msgid").map(value_to_string).unwrap(),
                 severity: fields
@@ -1519,13 +1505,8 @@ mod test {
                         value_to_string(v)
                     }
                 }).unwrap(),
-                host: fields.remove("resource")
-                    .and_then(|v| match v {
-                        Value::Object(mut m) => m.remove("host.name").map(value_to_string),
-                        _ => None,
-                    })
-                    .unwrap(),
-                source_type: fields.remove("source_type").map(value_to_string).unwrap(),
+                host,
+                source_type,
                 appname: fields.remove("appname").map(value_to_string).unwrap(),
                 procid: fields
                     .remove("procid")

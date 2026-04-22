@@ -535,7 +535,7 @@ mod tests {
                 r#"
             version = "2"
             hooks.init = """function (emit)
-                event = {{log={{message="{line1}"}}}}
+                event = {{log={{body="{line1}"}}}}
                 emit(event)
             end
             """

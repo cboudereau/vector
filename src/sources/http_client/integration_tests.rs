@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 
 use tokio::time::{Duration, Instant};
-use vector_lib::{codecs::decoding::DeserializerConfig, config::log_schema};
+use vector_lib::codecs::decoding::DeserializerConfig;
 
 use super::{
     HttpClientConfig,
@@ -141,7 +141,7 @@ async fn collected_metrics_native_json() {
         metric
             .tags()
             .unwrap()
-            .get(log_schema().source_type_key().unwrap().to_string().as_str())
+            .get("source_type")
             .map(AsRef::as_ref),
         Some(HttpClientConfig::NAME)
     );
@@ -168,7 +168,7 @@ async fn collected_trace_native_json() {
 
     let trace = events[0].as_trace();
     assert_eq!(
-        trace.as_map()[log_schema().source_type_key().unwrap().to_string().as_str()],
+        trace.as_map()["source_type"],
         HttpClientConfig::NAME.into()
     );
 }

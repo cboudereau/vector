@@ -747,11 +747,11 @@ mod test {
         assert_eq!(events.len(), 1);
         let log = events[0].as_log();
         assert_eq!(
-            log.get("body").unwrap().to_string_lossy(),
+            log.get("message").unwrap().to_string_lossy(),
             "Hello, world!".to_string()
         );
         assert_eq!(
-            log.get("source_type").unwrap().to_string_lossy(),
+            log.get_source_type().unwrap().to_string_lossy(),
             "logstash".to_string()
         );
         assert!(log.get("host").is_some());

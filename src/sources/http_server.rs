@@ -533,7 +533,7 @@ mod tests {
         config::LogNamespace,
         event::OtelLog,
         lookup::{
-            OwnedTargetPath, PathPrefix, event_path, lookup_v2::OptionalValuePath, owned_value_path,
+            OwnedTargetPath, event_path, lookup_v2::OptionalValuePath, owned_value_path,
         },
         schema::Definition,
     };
@@ -544,7 +544,7 @@ mod tests {
         SourceSender,
         common::http::server_auth::HttpServerAuthConfig,
         components::validation::prelude::*,
-        config::{SourceConfig, SourceContext, log_schema},
+        config::{SourceConfig, SourceContext},
         event::{Event, EventStatus, Value},
         sources::http_server::HttpMethod,
         test_util::{
@@ -1023,7 +1023,7 @@ mod tests {
         assert!(log.get_timestamp().is_some());
 
         let source_type_value = log
-            .get((PathPrefix::Event, log_schema().source_type_key().unwrap()))
+            .get_source_type()
             .unwrap();
         assert_eq!(source_type_value.as_str().unwrap(), SimpleHttpConfig::NAME);
         assert_eq!(log.get("http_path").unwrap(), Value::from("/"));

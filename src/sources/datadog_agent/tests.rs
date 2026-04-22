@@ -418,7 +418,7 @@ async fn full_payload_v1() {
             assert_eq!(log.get("ddsource").unwrap(), "curl".into());
             assert_eq!(log.get("ddtags").unwrap(), "one,two,three".into());
             assert!(event.metadata().secrets().get("datadog_api_key").is_none());
-            assert_eq!(log.get("source_type").unwrap(), "datadog_agent".into());
+            assert_eq!(log.get_source_type().unwrap(), "datadog_agent".into());
             assert_eq!(
                 event.metadata().schema_definition().as_ref(),
                 &test_logs_schema_definition()
@@ -470,7 +470,7 @@ async fn full_payload_v2() {
             assert_eq!(log.get("ddsource").unwrap(), "curl".into());
             assert_eq!(log.get("ddtags").unwrap(), "one,two,three".into());
             assert!(event.metadata().secrets().get("datadog_api_key").is_none());
-            assert_eq!(log.get("source_type").unwrap(), "datadog_agent".into());
+            assert_eq!(log.get_source_type().unwrap(), "datadog_agent".into());
             assert_eq!(
                 event.metadata().schema_definition().as_ref(),
                 &test_logs_schema_definition()
@@ -522,7 +522,7 @@ async fn no_api_key() {
             assert_eq!(log.get("ddsource").unwrap(), "curl".into());
             assert_eq!(log.get("ddtags").unwrap(), "one,two,three".into());
             assert!(event.metadata().secrets().get("datadog_api_key").is_none());
-            assert_eq!(log.get("source_type").unwrap(), "datadog_agent".into());
+            assert_eq!(log.get_source_type().unwrap(), "datadog_agent".into());
             assert_eq!(
                 event.metadata().schema_definition().as_ref(),
                 &test_logs_schema_definition()
@@ -573,7 +573,7 @@ async fn api_key_in_url() {
             assert_eq!(log.get("service").unwrap(), "vector".into());
             assert_eq!(log.get("ddsource").unwrap(), "curl".into());
             assert_eq!(log.get("ddtags").unwrap(), "one,two,three".into());
-            assert_eq!(log.get("source_type").unwrap(), "datadog_agent".into());
+            assert_eq!(log.get_source_type().unwrap(), "datadog_agent".into());
             assert_eq!(
                 &event.metadata().secrets().get("datadog_api_key").unwrap()[..],
                 DD_API_KEY
@@ -628,7 +628,7 @@ async fn api_key_in_query_params() {
             assert_eq!(log.get("service").unwrap(), "vector".into());
             assert_eq!(log.get("ddsource").unwrap(), "curl".into());
             assert_eq!(log.get("ddtags").unwrap(), "one,two,three".into());
-            assert_eq!(log.get("source_type").unwrap(), "datadog_agent".into());
+            assert_eq!(log.get_source_type().unwrap(), "datadog_agent".into());
             assert_eq!(
                 &event.metadata().secrets().get("datadog_api_key").unwrap()[..],
                 DD_API_KEY
@@ -683,7 +683,7 @@ async fn api_key_in_header() {
             assert_eq!(log.get("service").unwrap(), "vector".into());
             assert_eq!(log.get("ddsource").unwrap(), "curl".into());
             assert_eq!(log.get("ddtags").unwrap(), "one,two,three".into());
-            assert_eq!(log.get("source_type").unwrap(), "datadog_agent".into());
+            assert_eq!(log.get_source_type().unwrap(), "datadog_agent".into());
             assert_eq!(
                 &event.metadata().secrets().get("datadog_api_key").unwrap()[..],
                 DD_API_KEY
@@ -869,7 +869,7 @@ async fn ignores_api_key() {
             assert_eq!(log.get("service").unwrap(), "vector".into());
             assert_eq!(log.get("ddsource").unwrap(), "curl".into());
             assert_eq!(log.get("ddtags").unwrap(), "one,two,three".into());
-            assert_eq!(log.get("source_type").unwrap(), "datadog_agent".into());
+            assert_eq!(log.get_source_type().unwrap(), "datadog_agent".into());
             assert!(event.metadata().secrets().get("datadog_api_key").is_none());
             assert_eq!(
                 event.metadata().schema_definition().as_ref(),
@@ -1443,7 +1443,7 @@ async fn split_outputs() {
             assert_eq!(log.get("service").unwrap(), "vector".into());
             assert_eq!(log.get("ddsource").unwrap(), "curl".into());
             assert_eq!(log.get("ddtags").unwrap(), "one,two,three".into());
-            assert_eq!(log.get("source_type").unwrap(), "datadog_agent".into());
+            assert_eq!(log.get_source_type().unwrap(), "datadog_agent".into());
             assert_eq!(
                 &event.metadata().secrets().get("datadog_api_key").unwrap()[..],
                 DD_API_KEY

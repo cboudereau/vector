@@ -456,7 +456,7 @@ mod integration_tests {
             assert!(log.get(format!("label.{label}").as_str()).is_some());
             assert_eq!(events[0].as_log()[&NAME], name.into());
             assert_eq!(
-                events[0].as_log()[log_schema().source_type_key().unwrap().to_string()],
+                events[0].as_log().get_source_type().unwrap(),
                 DockerLogsConfig::NAME.into()
             );
         })
@@ -653,7 +653,7 @@ mod integration_tests {
             assert!(log.get(format!("label.{label}").as_str()).is_some());
             assert_eq!(events[0].as_log()[&NAME], name.into());
             assert_eq!(
-                events[0].as_log()[log_schema().source_type_key().unwrap().to_string()],
+                events[0].as_log().get_source_type().unwrap(),
                 DockerLogsConfig::NAME.into()
             );
         })
@@ -795,7 +795,7 @@ mod integration_tests {
             );
             assert_eq!(events[0].as_log()[&NAME], name.into());
             assert_eq!(
-                events[0].as_log()[log_schema().source_type_key().unwrap().to_string()],
+                events[0].as_log().get_source_type().unwrap(),
                 DockerLogsConfig::NAME.into()
             );
         })

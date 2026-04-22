@@ -859,13 +859,7 @@ fn enrich_log_event(log: &mut OtelLog, log_namespace: LogNamespace) {
         }
         LogNamespace::Legacy => {
             if let Some(host) = log.remove(event_path!(HOSTNAME)) {
-                log_namespace.insert_source_metadata(
-                    JournaldConfig::NAME,
-                    log,
-                    log_schema().host_key().map(LegacyKey::Overwrite),
-                    path!("host"),
-                    host,
-                );
+                log.set_host(host);
             }
         }
     }
@@ -917,13 +911,16 @@ fn enrich_log_event(log: &mut OtelLog, log_namespace: LogNamespace) {
         }
     }
 
-    // Add source type.
-    log_namespace.insert_vector_metadata(
-        log,
-        log_schema().source_type_key(),
-        path!("source_type"),
-        JournaldConfig::NAME,
-    );
+    match log_namespace {
+        LogNamespace::Vector => {
+            log.metadata_mut()
+                .value_mut()
+                .insert(path!("vector", "source_type"), JournaldConfig::NAME);
+        }
+        LogNamespace::Legacy => {
+            log.try_set_source_type(JournaldConfig::NAME);
+        }
+    }
 }
 
 fn create_log_event_from_record(
@@ -1348,7 +1345,7 @@ mod tests {
             Value::Bytes("System Initialization".into())
         );
         assert_eq!(
-            received[0].as_log().get(log_schema().source_type_key().unwrap().to_string().as_str()).unwrap(),
+            received[0].as_log().get_source_type().unwrap(),
             "journald".into()
         );
         assert_eq!(timestamp(&received[0]), value_ts(1578529839, 140001000));

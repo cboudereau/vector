@@ -438,7 +438,7 @@ mod tests {
 
         let mut writer = Vec::new();
         let input = Event::from(OtelLog::from(BTreeMap::from([(
-            KeyString::from("message"),
+            KeyString::from("body"),
             Value::from("value"),
         )])));
         let input_json_size = input.estimated_json_encoded_size_of();

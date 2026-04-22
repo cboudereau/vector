@@ -575,7 +575,7 @@ mod test {
 
             let event = rx.next().await.unwrap();
             assert_eq!(
-                event.as_log().get(log_schema().source_type_key().unwrap().to_string().as_str()).unwrap(),
+                event.as_log().get_source_type().unwrap(),
                 "socket".into()
             );
         })
@@ -1276,7 +1276,7 @@ mod test {
             let events = collect_n(rx, 1).await;
 
             assert_eq!(
-                events[0].as_log().get(log_schema().source_type_key().unwrap().to_string().as_str()).unwrap(),
+                events[0].as_log().get_source_type().unwrap(),
                 "socket".into()
             );
         })
@@ -1633,7 +1633,7 @@ mod test {
                 "test".into()
             );
             assert_eq!(
-                events[0].as_log().get(log_schema().source_type_key().unwrap().to_string().as_str()).unwrap(),
+                events[0].as_log().get_source_type().unwrap(),
                 "socket".into()
             );
             assert_eq!(events[0].as_log().get(event_path!("resource", "host.name")).unwrap(), UNNAMED_SOCKET_HOST.into());
@@ -1760,7 +1760,7 @@ mod test {
                 "foo\nbar".into()
             );
             assert_eq!(
-                events[0].as_log().get(log_schema().source_type_key().unwrap().to_string().as_str()).unwrap(),
+                events[0].as_log().get_source_type().unwrap(),
                 "socket".into()
             );
         })
@@ -1847,7 +1847,7 @@ mod test {
                 "test".into()
             );
             assert_eq!(
-                events[0].as_log().get(log_schema().source_type_key().unwrap().to_string().as_str()).unwrap(),
+                events[0].as_log().get_source_type().unwrap(),
                 "socket".into()
             );
         })
@@ -1890,7 +1890,7 @@ mod test {
                 "foo".into()
             );
             assert_eq!(
-                events[0].as_log().get(log_schema().source_type_key().unwrap().to_string().as_str()).unwrap(),
+                events[0].as_log().get_source_type().unwrap(),
                 "socket".into()
             );
             assert_eq!(
@@ -1898,7 +1898,7 @@ mod test {
                 "bar".into()
             );
             assert_eq!(
-                events[1].as_log().get(log_schema().source_type_key().unwrap().to_string().as_str()).unwrap(),
+                events[1].as_log().get_source_type().unwrap(),
                 "socket".into()
             );
         })

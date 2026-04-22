@@ -39,6 +39,10 @@ pub trait MetadataInsertable {
     fn try_insert_by_path<'a>(&mut self, path: impl ValuePath<'a>, value: impl Into<Value>);
     fn maybe_insert_by_path<'a>(&mut self, path: Option<impl ValuePath<'a>>, value: impl Into<Value>);
     fn event_metadata_mut(&mut self) -> &mut EventMetadata;
+    fn set_source_type(&mut self, value: impl Into<Value>);
+    fn try_set_source_type(&mut self, value: impl Into<Value>);
+    fn set_host(&mut self, value: impl Into<Value>);
+    fn try_set_host(&mut self, value: impl Into<Value>);
 }
 
 impl MetadataInsertable for OtelLog {
@@ -55,6 +59,18 @@ impl MetadataInsertable for OtelLog {
     }
     fn event_metadata_mut(&mut self) -> &mut EventMetadata {
         self.metadata_mut()
+    }
+    fn set_source_type(&mut self, value: impl Into<Value>) {
+        OtelLog::set_source_type(self, value);
+    }
+    fn try_set_source_type(&mut self, value: impl Into<Value>) {
+        OtelLog::try_set_source_type(self, value);
+    }
+    fn set_host(&mut self, value: impl Into<Value>) {
+        OtelLog::set_host(self, value);
+    }
+    fn try_set_host(&mut self, value: impl Into<Value>) {
+        OtelLog::try_set_host(self, value);
     }
 }
 
@@ -533,12 +549,16 @@ impl LogNamespace {
         source_name: &'static str,
         now: DateTime<Utc>,
     ) {
-        self.insert_vector_metadata(
-            log,
-            log_schema().source_type_key(),
-            path!("source_type"),
-            Bytes::from_static(source_name.as_bytes()),
-        );
+        match self {
+            LogNamespace::Vector => {
+                log.event_metadata_mut()
+                    .value_mut()
+                    .insert(path!("vector", "source_type"), source_name);
+            }
+            LogNamespace::Legacy => {
+                log.try_set_source_type(Bytes::from_static(source_name.as_bytes()));
+            }
+        }
         self.insert_vector_metadata(
             log,
             log_schema().timestamp_key(),

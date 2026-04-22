@@ -1,11 +1,11 @@
 use std::{fmt, sync::Arc};
 
 use vector_lib::{
-    config::{LogNamespace, log_schema},
+    config::LogNamespace,
     lookup::{OwnedValuePath, PathPrefix, event_path, lookup_v2::OptionalTargetPath},
     schema::meaning,
 };
-use vrl::{path::OwnedTargetPath, value::{KeyString, ObjectMap}};
+use vrl::value::{KeyString, ObjectMap};
 
 use super::request_builder::HecLogsRequestBuilder;
 use crate::{
@@ -188,14 +188,24 @@ impl Partitioner for EventPartitioner {
                 .ok()
         });
 
-        let host = user_or_namespaced_path(
-            &item.event,
-            self.host_key.as_ref(),
-            meaning::HOST,
-            log_schema().host_key_target_path(),
-        )
-        .and_then(|path| item.event.get(&path))
-        .and_then(|value| value.as_str().map(|s| s.to_string()));
+        let host = match self.host_key.as_ref() {
+            Some(maybe_key) => maybe_key
+                .path
+                .as_ref()
+                .and_then(|path| item.event.get(path))
+                .and_then(|value| value.as_str().map(|s| s.to_string())),
+            None => match item.event.namespace() {
+                LogNamespace::Vector => item
+                    .event
+                    .find_key_by_meaning(meaning::HOST)
+                    .and_then(|path| item.event.get(path))
+                    .and_then(|value| value.as_str().map(|s| s.to_string())),
+                LogNamespace::Legacy => item
+                    .event
+                    .get_host()
+                    .and_then(|value| value.as_str().map(|s| s.to_string())),
+            },
+        };
 
         Some(Partitioned {
             token: item.event.metadata().splunk_hec_token(),
@@ -230,27 +240,6 @@ impl ByteSizeOf for HecLogsProcessedEventMetadata {
 
 pub type HecProcessedEvent = ProcessedEvent<OtelLog, HecLogsProcessedEventMetadata>;
 
-// determine the path for a field from one of the following use cases:
-// 1. user provided a path in the config settings
-//     a. If the path provided was an empty string, None is returned
-// 2. namespaced path ("default")
-//     a. if Legacy namespace, use the provided path from the global log schema
-//     b. if Vector namespace, use the semantically defined path
-fn user_or_namespaced_path(
-    log: &OtelLog,
-    user_key: Option<&OptionalTargetPath>,
-    semantic: &str,
-    legacy_path: Option<&OwnedTargetPath>,
-) -> Option<OwnedTargetPath> {
-    match user_key {
-        Some(maybe_key) => maybe_key.path.clone(),
-        None => match log.namespace() {
-            LogNamespace::Vector => log.find_key_by_meaning(semantic).cloned(),
-            LogNamespace::Legacy => legacy_path.cloned(),
-        },
-    }
-}
-
 pub fn process_log(event: Event, data: &HecLogData) -> HecProcessedEvent {
     let mut log = event.into_log();
 
@@ -266,13 +255,18 @@ pub fn process_log(event: Event, data: &HecLogData) -> HecProcessedEvent {
         .index
         .and_then(|index| render_template_string(index, &log, INDEX_FIELD));
 
-    let host = user_or_namespaced_path(
-        &log,
-        data.host_key.as_ref(),
-        meaning::HOST,
-        log_schema().host_key_target_path(),
-    )
-    .and_then(|path| log.get(&path));
+    let host = match data.host_key.as_ref() {
+        Some(maybe_key) => maybe_key
+            .path
+            .as_ref()
+            .and_then(|path| log.get(path)),
+        None => match log.namespace() {
+            LogNamespace::Vector => log
+                .find_key_by_meaning(meaning::HOST)
+                .and_then(|path| log.get(path)),
+            LogNamespace::Legacy => log.get_host(),
+        },
+    };
 
     // only extract the timestamp if this is the Event endpoint, and if the setting
     // `auto_extract_timestamp` is false (because that indicates that we should leave

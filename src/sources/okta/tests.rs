@@ -9,7 +9,6 @@ use warp::Filter;
 
 use crate::{
     components::validation::prelude::*,
-    config::log_schema,
     sources::okta::OktaConfig,
     test_util::{
         addr::next_addr,
@@ -103,7 +102,7 @@ async fn okta_compliance() {
 
     for event in events.iter() {
         assert_eq!(
-            event.as_log().get(log_schema().source_type_key().unwrap().to_string().as_str()).unwrap(),
+            event.as_log().get_source_type().unwrap(),
             OktaConfig::NAME.into()
         );
     }
@@ -171,7 +170,7 @@ async fn okta_follows_rel() {
 
     for event in events.iter() {
         assert_eq!(
-            event.as_log().get(log_schema().source_type_key().unwrap().to_string().as_str()).unwrap(),
+            event.as_log().get_source_type().unwrap(),
             OktaConfig::NAME.into()
         );
     }

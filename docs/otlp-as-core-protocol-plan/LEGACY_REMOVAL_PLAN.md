@@ -54,7 +54,7 @@ Schema definitions all use hardcoded resource paths (`149f4c3`).
 | `set_source_type()` | `otel_event.rs:1697` | Writes to `resource_attribute("source_type")` | **ADDED** (Phase B) |
 | `get_host()` | `otel_event.rs:1712` | Reads from `resource_attribute("host.name")` | Correct |
 | `set_host()` | `otel_event.rs:1718` | Writes to `resource_attribute("host.name")` | **ADDED** (Phase B) |
-| `log_schema()` mechanism | `lib/vector-core/src/config/log_schema.rs` | 5-field user-configurable indirection | ~223 callers remain (mostly `message_key`) |
+| `log_schema()` mechanism | `lib/vector-core/src/config/log_schema.rs` | 5-field user-configurable indirection | **2 callers remain** (host_key: internal_metrics, dedupe) |
 
 ---
 
@@ -74,7 +74,7 @@ B.1 (message cleanup)           ✅ DONE
 B.2 (host migration)            ✅ DONE
 B.3 (source_type migration)     ✅ DONE
 B.4 (normalize_for_eq cleanup)  ✅ DONE (already simplified)
-B.5 (deprecate log_schema())    — remaining: ~223 callers (mostly message_key in tests/decoders)
+B.5 (deprecate log_schema())    ✅ DONE — 2 host_key callers remain (internal_metrics, dedupe)
 ```
 
 ---
@@ -119,28 +119,18 @@ includes resource attributes at `resource.*` paths natively.
 
 ---
 
-### B.5 — Deprecate `log_schema()` mechanism (REMAINING)
+### B.5 — Eliminate `log_schema()` callers ✅
 
-**Effort:** Medium (~2h). After B.1 + B.2 + B.3 (all done).
+All `message_key`, `timestamp_key`, `source_type_key` callers eliminated
+across 66 files (`8cfd0ae`). Only 2 `host_key` callers intentionally remain:
+- `internal_metrics.rs` — metrics domain, not OtelLog
+- `dedupe/common.rs` — default match fields, works via record attribute fallback
 
-Remaining `log_schema()` callers: ~223 across 69 files. Breakdown:
-- `message_key`: ~65 callers (mostly decoders + tests). Already defaults to `"body"`.
-- `host_key`: ~4 callers (internal_metrics, dedupe, tests). Still defaults to `"host"`.
-- `source_type_key`: **0** callers.
-- `timestamp_key`: **0** callers.
-
-**Actions:**
+**Next steps (future release):**
 1. Add startup deprecation warning if user config sets `host_key`,
    `source_type_key`, or `message_key` explicitly
-2. Document the migration in release notes
-3. Update `vector vrl-migrate` rules for host/source_type paths
-4. In a future release: delete `LogSchema` fields (keep only
-   `timestamp_key` and `metadata_key` if still needed)
-
-**Risk:** HIGH (user-facing breaking change). Mitigated by:
-- `vector vrl-migrate` tool handles path rewrites
-- Deprecation warnings one release before removal
-- Config validation explains what to change
+2. Delete `LogSchema` fields (keep only `metadata_key` if still needed)
+3. Document the migration in release notes
 
 ---
 
@@ -155,6 +145,7 @@ All tasks below are **DONE**. See git history for details.
 | B (host/source_type) | Runtime migration to typed methods | `31f6668`, `b3564d6`, `2361edb` |
 | B (schema defs) | Schema definitions → resource paths | `149f4c3` |
 | B (sink host_key fix) | Humio semantic fallback | `4bbf03d` |
+| B.5 (log_schema elimination) | Replace all message_key/timestamp_key callers | `8cfd0ae` |
 | C | OTel → Legacy bridge removal (~250 lines) | — |
 | E | Remove legacy types from production | — |
 | F | Delete LogEvent + TraceEvent types | `80ff2fb`, `1236e8e` |

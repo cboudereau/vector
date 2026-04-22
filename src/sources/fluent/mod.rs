@@ -18,7 +18,7 @@ use vector_lib::{
     config::{LegacyKey, LogNamespace},
     configurable::configurable_component,
     ipallowlist::IpAllowlistConfig,
-    lookup::{OwnedValuePath, lookup_v2::parse_value_path, owned_value_path, path},
+    lookup::{lookup_v2::parse_value_path, owned_value_path, path},
     schema::Definition,
 };
 use vrl::value::{Kind, Value, kind::Collection};
@@ -29,7 +29,7 @@ use crate::{
         DataType, GenerateConfig, Resource, SourceAcknowledgementsConfig, SourceConfig,
         SourceContext, SourceOutput, log_schema,
     },
-    event::{Event, OtelLog, string_value},
+    event::{Event, OtelLog},
     internal_events::{FluentMessageDecodeError, FluentMessageReceived},
     serde::bool_or_struct,
     tcp::TcpKeepaliveConfig,
@@ -403,29 +403,17 @@ impl FluentConfig {
 #[derive(Debug, Clone)]
 struct FluentSource {
     log_namespace: LogNamespace,
-    #[allow(dead_code)]
-    legacy_host_key_path: Option<OwnedValuePath>,
 }
 
 impl FluentSource {
     fn new(log_namespace: LogNamespace) -> Self {
-        Self {
-            log_namespace,
-            legacy_host_key_path: log_schema().host_key().cloned(),
-        }
+        Self { log_namespace }
     }
 
     fn handle_events_impl(&self, events: &mut [Event], host: Value) {
         for event in events {
             if let Event::Log(otel_log) = event {
-                let host_str = match &host {
-                    Value::Bytes(b) => String::from_utf8_lossy(b).into_owned(),
-                    other => other.to_string(),
-                };
-                otel_log.set_resource_attribute(
-                    "host.name".to_string(),
-                    string_value(host_str),
-                );
+                otel_log.set_host(host.clone());
             }
         }
     }

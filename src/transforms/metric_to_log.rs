@@ -333,9 +333,7 @@ impl MetricToLog {
                             && let Some(host_value) =
                                 log.remove_prune((PathPrefix::Event, host_tag), true)
                         {
-                            if let Some(key) = log_schema().host_key_target_path() {
-                                log.insert(key, host_value);
-                            }
+                            log.set_host(host_value);
                         }
                     }
                     if self.log_namespace == LogNamespace::Vector {
@@ -461,9 +459,9 @@ mod tests {
             collected,
             vec![
                 (KeyString::from("counter.value"), Value::from(1.0)),
-                (KeyString::from("host"), Value::from("localhost")),
                 (KeyString::from("kind"), Value::from("absolute")),
                 (KeyString::from("name"), Value::from("counter")),
+                (KeyString::from("resource.\"host.name\""), Value::from("localhost")),
                 (KeyString::from("tags.some_tag"), Value::from("some_value")),
                 (KeyString::from("time_unix_nano"), Value::Integer(
                     ts().timestamp_nanos_opt().unwrap() as i64

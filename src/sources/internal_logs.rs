@@ -102,11 +102,6 @@ impl InternalLogsConfig {
 #[typetag::serde(name = "internal_logs")]
 impl SourceConfig for InternalLogsConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
-        let host_key = self
-            .host_key
-            .clone()
-            .unwrap_or(log_schema().host_key().cloned().into())
-            .path;
         let pid_key = self.pid_key.clone().path;
 
         let subscription = TraceSubscription::subscribe();
@@ -114,7 +109,6 @@ impl SourceConfig for InternalLogsConfig {
         let log_namespace = cx.log_namespace(self.log_namespace);
 
         Ok(Box::pin(run(
-            host_key,
             pid_key,
             subscription,
             cx.out,
@@ -139,7 +133,6 @@ impl SourceConfig for InternalLogsConfig {
 }
 
 async fn run(
-    host_key: Option<OwnedValuePath>,
     pid_key: Option<OwnedValuePath>,
     mut subscription: TraceSubscription,
     mut out: SourceSender,
@@ -171,14 +164,7 @@ async fn run(
         });
 
         if let Ok(hostname) = &hostname {
-            let legacy_host_key = host_key.as_ref().map(LegacyKey::Overwrite);
-            log_namespace.insert_source_metadata(
-                InternalLogsConfig::NAME,
-                &mut log,
-                legacy_host_key,
-                path!("host"),
-                hostname.to_owned(),
-            );
+            log.set_host(hostname.to_owned());
         }
 
         let legacy_pid_key = pid_key.as_ref().map(LegacyKey::Overwrite);

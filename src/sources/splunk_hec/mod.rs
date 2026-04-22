@@ -1061,16 +1061,18 @@ impl DefaultExtractor {
         }
 
         // Add data field
-        if let Some(index) = self.value.as_ref()
-            && let Some(metadata_key) = self.to_field.path.as_ref()
-        {
-            self.log_namespace.insert_source_metadata(
-                SplunkConfig::NAME,
-                log,
-                Some(LegacyKey::Overwrite(metadata_key)),
-                &self.to_field.path.clone().unwrap_or(owned_value_path!("")),
-                index.clone(),
-            )
+        if let Some(val) = self.value.as_ref() {
+            if self.field == "host" {
+                log.set_host(val.clone());
+            } else if let Some(metadata_key) = self.to_field.path.as_ref() {
+                self.log_namespace.insert_source_metadata(
+                    SplunkConfig::NAME,
+                    log,
+                    Some(LegacyKey::Overwrite(metadata_key)),
+                    &self.to_field.path.clone().unwrap_or(owned_value_path!("")),
+                    val.clone(),
+                )
+            }
         }
     }
 }
@@ -1878,8 +1880,8 @@ mod tests {
 
             let event = collect_n(source, 1).await.remove(0);
             assert_eq!(
-                event.as_log().get(log_schema().host_key().unwrap().to_string().as_str()).unwrap(),
-                "10.1.0.2".into()
+                event.as_log().get_host().unwrap().to_string_lossy(),
+                "10.1.0.2"
             );
         })
         .await;
@@ -1904,8 +1906,8 @@ mod tests {
 
             let event = collect_n(source, 1).await.remove(0);
             assert_eq!(
-                event.as_log().get(log_schema().host_key().unwrap().to_string().as_str()).unwrap(),
-                "10.0.0.1".into()
+                event.as_log().get_host().unwrap().to_string_lossy(),
+                "10.0.0.1"
             );
         })
         .await;

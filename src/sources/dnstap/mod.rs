@@ -31,7 +31,7 @@ pub mod tcp;
 #[cfg(unix)]
 pub mod unix;
 use vector_lib::{
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     lookup::lookup_v2::OptionalValuePath,
 };
 
@@ -278,13 +278,7 @@ impl FrameHandler for CommonFrameHandler {
         let mut log = OtelLog::new(Default::default());
 
         if let Some(host) = received_from {
-            self.log_namespace.insert_source_metadata(
-                DnstapConfig::NAME,
-                &mut log,
-                self.host_key.as_ref().map(LegacyKey::Overwrite),
-                path!("host"),
-                host,
-            );
+            log.set_host(host);
         }
 
         // Drive the dnstap parser through modify_as_value: the parser's

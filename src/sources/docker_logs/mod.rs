@@ -29,7 +29,7 @@ use vector_lib::{
     configurable::configurable_component,
     internal_event::{ByteSize, BytesReceived, InternalEventHandle as _, Protocol, Registered},
     lookup::{
-        OwnedValuePath, lookup_v2::OptionalValuePath, metadata_path, owned_value_path,
+        lookup_v2::OptionalValuePath, metadata_path, owned_value_path,
         path,
     },
 };
@@ -482,10 +482,6 @@ impl DockerLogsSource {
     ) -> crate::Result<DockerLogsSource> {
         let backoff_secs = config.retry_backoff_secs;
 
-        let host_key = config
-            .host_key
-            .clone()
-            .unwrap_or(log_schema().host_key().cloned().into());
         let hostname = crate::get_hostname().ok();
 
         // Only logs created at, or after this moment are logged.
@@ -508,7 +504,6 @@ impl DockerLogsSource {
         // t3 -- list_containers
         // In that case, logs between [t1,t2] will be pulled to vector only on next start/unpause of that container.
         let esb = EventStreamBuilder {
-            host_key,
             hostname: hostname.clone(),
             core: Arc::new(core),
             out,
@@ -724,7 +719,6 @@ impl DockerLogsSource {
 /// Used to construct and start event stream futures
 #[derive(Clone)]
 struct EventStreamBuilder {
-    host_key: OptionalValuePath,
     hostname: Option<String>,
     core: Arc<DockerLogsSourceCore>,
     /// Event stream futures send events through this
@@ -862,11 +856,10 @@ impl EventStreamBuilder {
                 Box::new(events_stream)
             };
 
-        let host_key = self.host_key.clone().path;
         let hostname = self.hostname.clone();
         let result = {
             let mut stream = events_stream
-                .map(move |log| add_hostname(log, &host_key, &hostname, self.log_namespace))
+                .map(move |log| add_hostname(log, &hostname))
                 .map(Event::Log);
             self.out.send_event_stream(&mut stream).await.map_err(|_| {
                 let (count, _) = stream.size_hint();
@@ -897,20 +890,10 @@ impl EventStreamBuilder {
 
 fn add_hostname(
     mut log: OtelLog,
-    host_key: &Option<OwnedValuePath>,
     hostname: &Option<String>,
-    log_namespace: LogNamespace,
 ) -> OtelLog {
     if let Some(hostname) = hostname {
-        let legacy_host_key = host_key.as_ref().map(LegacyKey::Overwrite);
-
-        log_namespace.insert_source_metadata(
-            DockerLogsConfig::NAME,
-            &mut log,
-            legacy_host_key,
-            path!("host"),
-            hostname.clone(),
-        );
+        log.set_host(hostname.clone());
     }
 
     log

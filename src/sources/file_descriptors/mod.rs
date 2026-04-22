@@ -15,7 +15,7 @@ use vector_lib::{
     configurable::NamedComponent,
     event::{Event, string_value},
     internal_event::{ByteSize, BytesReceived, CountByteSize, InternalEventHandle as _, Protocol},
-    lookup::{OwnedValuePath, lookup_v2::OptionalValuePath, owned_value_path},
+    lookup::{lookup_v2::OptionalValuePath, owned_value_path},
 };
 use vrl::value::Kind;
 
@@ -48,10 +48,6 @@ pub trait FileDescriptorConfig: NamedComponent {
     where
         R: Send + io::BufRead + 'static,
     {
-        let host_key = self
-            .host_key()
-            .and_then(|k| k.path)
-            .or(log_schema().host_key().cloned());
         let hostname = crate::get_hostname().ok();
 
         let description = self.description();
@@ -79,7 +75,6 @@ pub trait FileDescriptorConfig: NamedComponent {
             decoder,
             out,
             shutdown,
-            host_key,
             self.get_component_name(),
             hostname,
             log_namespace,
@@ -118,7 +113,6 @@ async fn process_stream(
     decoder: Decoder,
     mut out: SourceSender,
     shutdown: ShutdownSignal,
-    _host_key: Option<OwnedValuePath>,
     source_type: &'static str,
     hostname: Option<String>,
     log_namespace: LogNamespace,

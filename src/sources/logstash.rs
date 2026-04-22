@@ -16,7 +16,7 @@ use vector_lib::{
     config::{LegacyKey, LogNamespace, log_schema},
     configurable::configurable_component,
     ipallowlist::IpAllowlistConfig,
-    lookup::{OwnedValuePath, owned_value_path},
+    lookup::owned_value_path,
     schema::Definition,
 };
 use vrl::value::{KeyString, Kind, kind::Collection};
@@ -27,7 +27,7 @@ use crate::{
         DataType, GenerateConfig, Resource, SourceAcknowledgementsConfig, SourceConfig,
         SourceContext, SourceOutput,
     },
-    event::{Event, OtelLog, Value, string_value},
+    event::{Event, OtelLog, Value},
     serde::bool_or_struct,
     tcp::TcpKeepaliveConfig,
     tls::{MaybeTlsSettings, TlsSourceConfig},
@@ -143,7 +143,6 @@ impl SourceConfig for LogstashConfig {
         let log_namespace = cx.log_namespace(self.log_namespace);
         let source = LogstashSource {
             timestamp_converter: types::Conversion::Timestamp(cx.globals.timezone()),
-            legacy_host_key_path: log_schema().host_key().cloned(),
             log_namespace,
         };
         let shutdown_secs = Duration::from_secs(30);
@@ -196,8 +195,6 @@ struct LogstashSource {
     timestamp_converter: types::Conversion,
     #[allow(dead_code)]
     log_namespace: LogNamespace,
-    #[allow(dead_code)]
-    legacy_host_key_path: Option<OwnedValuePath>,
 }
 
 impl TcpSource for LogstashSource {
@@ -215,10 +212,7 @@ impl TcpSource for LogstashSource {
         for event in events {
             if let Event::Log(otel_log) = event {
                 otel_log.set_source_metadata(LogstashConfig::NAME, now);
-                otel_log.set_attribute(
-                    "host".to_string(),
-                    string_value(host.ip().to_string()),
-                );
+                otel_log.set_host(host.ip().to_string());
             }
         }
     }
@@ -754,7 +748,7 @@ mod test {
             log.get_source_type().unwrap().to_string_lossy(),
             "logstash".to_string()
         );
-        assert!(log.get("host").is_some());
+        assert!(log.get_host().is_some());
         assert!(log.get_timestamp().is_some());
     }
 
@@ -918,7 +912,7 @@ mod integration_tests {
         );
         assert_eq!(log.get("summary.up"), Some(1.into()).as_ref());
         assert!(log.get_timestamp().is_some());
-        assert!(log.get("host").is_some());
+        assert!(log.get_host().is_some());
     }
 
     fn logstash_address() -> String {
@@ -961,7 +955,7 @@ mod integration_tests {
                 .to_string_lossy()
                 .contains("Hello World")
         );
-        assert!(log.get("host").is_some());
+        assert!(log.get_host().is_some());
     }
 
     async fn source(

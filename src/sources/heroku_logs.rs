@@ -348,7 +348,6 @@ fn line_to_events(
         let mut buffer = BytesMut::new();
         buffer.put(message.as_bytes());
 
-        let _legacy_host_key = log_schema().host_key().cloned();
         let _legacy_app_key = parse_value_path("app_name").ok();
         let _legacy_proc_key = parse_value_path("proc_id").ok();
 

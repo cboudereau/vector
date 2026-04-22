@@ -239,7 +239,7 @@ mod integration_tests {
 
     use super::*;
     use crate::{
-        config::{SinkConfig, SinkContext, log_schema},
+        config::{SinkConfig, SinkContext},
         event::OtelLog,
         sinks::util::Compression,
         test_util::{
@@ -386,9 +386,7 @@ mod integration_tests {
             source: None,
             encoding: JsonSerializerConfig::default().into(),
             event_type: None,
-            host_key: OptionalTargetPath {
-                path: log_schema().host_key_target_path().cloned(),
-            },
+            host_key: config_host_key_target_path(),
             indexed_fields: vec![],
             index: None,
             compression: Compression::None,

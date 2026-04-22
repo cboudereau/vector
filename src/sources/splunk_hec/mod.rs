@@ -1356,7 +1356,7 @@ mod tests {
         schema::Definition,
         sensitive_string::SensitiveString,
     };
-    use vrl::{event_path, path::PathPrefix};
+    use vrl::event_path;
 
     use super::*;
     use crate::{
@@ -2315,12 +2315,7 @@ mod tests {
                 event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
                 message.into()
             );
-            assert!(
-                event
-                    .as_log()
-                    .get((PathPrefix::Event, log_schema().host_key().unwrap()))
-                    .is_none()
-            );
+            assert!(event.as_log().get("host").is_none());
         })
         .await;
     }

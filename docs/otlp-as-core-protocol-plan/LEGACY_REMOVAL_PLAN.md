@@ -126,11 +126,20 @@ across 66 files (`8cfd0ae`). Only 2 `host_key` callers intentionally remain:
 - `internal_metrics.rs` — metrics domain, not OtelLog
 - `dedupe/common.rs` — default match fields, works via record attribute fallback
 
-**Next steps (future release):**
-1. Add startup deprecation warning if user config sets `host_key`,
-   `source_type_key`, or `message_key` explicitly
-2. Delete `LogSchema` fields (keep only `metadata_key` if still needed)
-3. Document the migration in release notes
+### B.6 — Deprecate `log_schema` config + schema-aware VRL migration ✅
+
+Startup deprecation warnings emitted for non-default `log_schema` fields (`6e6d47b`).
+`GlobalOptions.log_schema` marked `#[configurable(deprecated)]`.
+
+VRL migrate tool enhanced with Pass 0 (LS-01..LS-05):
+- `--config` mode parses `[log_schema]`, rewrites custom field names in
+  VRL blocks, and strips the `[log_schema]` section from output
+- `--log-schema <config>` flag for standalone VRL file migration
+- 10 new tests covering all rule IDs and edge cases
+
+**Remaining (future release):**
+1. Delete unused `LogSchema` struct fields (`message_key`, `timestamp_key`, `source_type_key`)
+2. Document the migration in release notes
 
 ---
 
@@ -146,6 +155,7 @@ All tasks below are **DONE**. See git history for details.
 | B (schema defs) | Schema definitions → resource paths | `149f4c3` |
 | B (sink host_key fix) | Humio semantic fallback | `4bbf03d` |
 | B.5 (log_schema elimination) | Replace all message_key/timestamp_key callers | `8cfd0ae` |
+| B.6 (deprecate log_schema) | Startup warnings + schema-aware VRL migration | `6e6d47b` |
 | C | OTel → Legacy bridge removal (~250 lines) | — |
 | E | Remove legacy types from production | — |
 | F | Delete LogEvent + TraceEvent types | `80ff2fb`, `1236e8e` |

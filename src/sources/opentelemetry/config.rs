@@ -21,7 +21,7 @@ use futures::FutureExt;
 use futures_util::{TryFutureExt, future::join};
 use tonic::{codec::CompressionEncoding, service::RoutesBuilder};
 use vector_lib::{
-    config::{LegacyKey, LogNamespace, log_schema},
+    config::{LegacyKey, LogNamespace},
     configurable::configurable_component,
     internal_event::{BytesReceived, EventsReceived, Protocol},
     lookup::{OwnedTargetPath, owned_value_path},
@@ -308,7 +308,7 @@ impl SourceConfig for OpentelemetryConfig {
                 schema_definition.with_meaning(OwnedTargetPath::event_root(), "message")
             }
             LogNamespace::Legacy => {
-                schema_definition.with_meaning(log_schema().owned_message_path(), "message")
+                schema_definition.with_meaning(OwnedTargetPath::event(owned_value_path!("body")), "message")
             }
         };
 

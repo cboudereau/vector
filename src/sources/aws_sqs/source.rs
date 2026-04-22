@@ -228,7 +228,7 @@ mod tests {
     use super::*;
     use crate::{
         codecs::DecodingConfig,
-        config::{SourceConfig, log_schema},
+        config::SourceConfig,
         sources::aws_sqs::AwsSqsConfig,
     };
 
@@ -318,7 +318,7 @@ mod tests {
             events[0]
                 .clone()
                 .as_log()
-                .get(log_schema().message_key_target_path().unwrap())
+                .get("body")
                 .unwrap()
                 .to_string_lossy(),
             message

@@ -969,7 +969,7 @@ mod test {
     };
     use crate::{
         SourceSender,
-        config::{ComponentKey, log_schema},
+        config::ComponentKey,
         event::{Event, OtelLog},
         shutdown::SourceShutdownCoordinator,
         sources::util::net::SocketListenAddr,
@@ -1416,16 +1416,15 @@ mod test {
         //5 - send STOP frame
         send_control_frame(&mut sock_sink, create_control_frame(ControlHeader::Stop)).await;
 
-        let message_key = log_schema().message_key().unwrap().to_string();
         assert!(
             events
                 .iter()
-                .any(|e| e.as_log().get(message_key.as_str()).unwrap() == "hello".into())
+                .any(|e| e.as_log().get("body").unwrap() == "hello".into())
         );
         assert!(
             events
                 .iter()
-                .any(|e| e.as_log().get(message_key.as_str()).unwrap() == "world".into())
+                .any(|e| e.as_log().get("body").unwrap() == "world".into())
         );
 
         drop(sock_stream); //explicitly drop the stream so we don't get warnings about not using it
@@ -1685,11 +1684,11 @@ mod test {
         send_control_frame(&mut sock_sink, create_control_frame(ControlHeader::Stop)).await;
 
         assert_eq!(
-            events[0].as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+            events[0].as_log().get("body").unwrap(),
             "hello".into(),
         );
         assert_eq!(
-            events[1].as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+            events[1].as_log().get("body").unwrap(),
             "world".into(),
         );
 
@@ -1725,11 +1724,11 @@ mod test {
         send_control_frame(&mut sock_sink, create_control_frame(ControlHeader::Stop)).await;
 
         assert_eq!(
-            events[0].as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+            events[0].as_log().get("body").unwrap(),
             "hello".into(),
         );
         assert_eq!(
-            events[1].as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+            events[1].as_log().get("body").unwrap(),
             "world".into(),
         );
 

@@ -1,9 +1,10 @@
 use bytes::Bytes;
 use derivative::Derivative;
+use lookup::owned_value_path;
 use smallvec::{SmallVec, smallvec};
 use vector_config::configurable_component;
 use vector_core::{
-    config::{DataType, LogNamespace, log_schema},
+    config::{DataType, LogNamespace},
     event::{Event, OtelLog},
     schema,
 };
@@ -43,9 +44,10 @@ impl JsonDeserializerConfig {
                 let mut definition =
                     schema::Definition::empty_legacy_namespace().unknown_fields(Kind::json());
 
-                if let Some(timestamp_key) = log_schema().timestamp_key() {
+                {
+                    let timestamp_key = owned_value_path!("time_unix_nano");
                     definition = definition.try_with_field(
-                        timestamp_key,
+                        &timestamp_key,
                         Kind::json(),
                         Some("timestamp"),
                     );

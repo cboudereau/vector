@@ -991,9 +991,10 @@ mod tests {
         metric_tags,
     };
 
+    use vector_lib::lookup::{OwnedTargetPath, owned_value_path};
+
     use super::*;
     use crate::{
-        config::log_schema,
         event::{
             Event, OtelLog,
             metric::{MetricKind, MetricValue, StatisticKind},
@@ -1031,7 +1032,7 @@ mod tests {
         let mut log = Event::Log(OtelLog::from("i am a log"));
         log.as_mut_log().insert(key, value);
         log.as_mut_log()
-            .insert(log_schema().timestamp_key_target_path().unwrap(), ts());
+            .insert(&OwnedTargetPath::event(owned_value_path!("time_unix_nano")), ts());
         log
     }
 
@@ -1573,7 +1574,7 @@ mod tests {
         let mut event = Event::Log(OtelLog::from("i am a log"));
         event
             .as_mut_log()
-            .insert(log_schema().timestamp_key_target_path().unwrap(), ts());
+            .insert(&OwnedTargetPath::event(owned_value_path!("time_unix_nano")), ts());
         event.as_mut_log().insert("status", "42");
         event.as_mut_log().insert("backtrace", "message");
         let mut metadata =
@@ -1635,7 +1636,7 @@ mod tests {
         let mut event = Event::Log(OtelLog::from("i am a log"));
         event
             .as_mut_log()
-            .insert(log_schema().timestamp_key_target_path().unwrap(), ts());
+            .insert(&OwnedTargetPath::event(owned_value_path!("time_unix_nano")), ts());
         event.as_mut_log().insert("status", "42");
         event.as_mut_log().insert("backtrace", "message");
         event.as_mut_log().insert("host", "local");

@@ -13,7 +13,7 @@ use snafu::{ResultExt, Snafu};
 use tokio_util::codec::Decoder;
 use vector_lib::{
     codecs::{BytesDeserializerConfig, StreamDecodingError},
-    config::{LegacyKey, LogNamespace, log_schema},
+    config::{LegacyKey, LogNamespace},
     configurable::configurable_component,
     ipallowlist::IpAllowlistConfig,
     lookup::owned_value_path,
@@ -76,10 +76,7 @@ impl LogstashConfig {
     /// Builds the `schema::Definition` for this source using the provided `LogNamespace`.
     fn schema_definition(&self, log_namespace: LogNamespace) -> Definition {
         // `host_key` is only inserted if not present already.
-        let host_key = log_schema()
-            .host_key()
-            .cloned()
-            .map(LegacyKey::InsertIfEmpty);
+        let host_key = Some(LegacyKey::InsertIfEmpty(owned_value_path!("host")));
 
         let tls_client_metadata_path = self
             .tls

@@ -4,7 +4,7 @@ use futures::{future::ready, stream};
 use http::Response;
 use openssl::{base64, hash, pkey, sign};
 use tokio::time::timeout;
-use vector_lib::config::log_schema;
+use vector_lib::lookup::{OwnedTargetPath, owned_value_path};
 
 use super::{
     config::{AzureMonitorLogsConfig, default_host},
@@ -134,10 +134,10 @@ fn insert_timestamp_kv(log: &mut OtelLog) -> (String, String) {
     let now = chrono::Utc::now();
 
     let timestamp_value = now.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-    log.insert(log_schema().timestamp_key_target_path().unwrap(), now);
+    log.insert(&OwnedTargetPath::event(owned_value_path!("time_unix_nano")), now);
 
     (
-        log_schema().timestamp_key().unwrap().to_string(),
+        "time_unix_nano".to_string(),
         timestamp_value,
     )
 }
@@ -238,10 +238,9 @@ async fn correct_request() {
     assert_eq!(log_type.to_str().unwrap(), "Vector");
 
     let time_generated_field = headers.get("time-generated-field").unwrap();
-    let timestamp_key = log_schema().timestamp_key();
     assert_eq!(
         time_generated_field.to_str().unwrap(),
-        timestamp_key.unwrap().to_string().as_str()
+        "time_unix_nano"
     );
 
     let azure_resource_id = headers.get("x-ms-azureresourceid").unwrap();
@@ -263,7 +262,7 @@ fn encode_valid() {
     let (timestamp_key, timestamp_value) = insert_timestamp_kv(&mut log);
 
     let event = Event::from(log);
-    let encoder = JsonEncoding::new(Default::default(), log_schema().timestamp_key().cloned());
+    let encoder = JsonEncoding::new(Default::default(), Some(owned_value_path!("time_unix_nano")));
     let mut encoded = vec![];
     encoder.encode_input(vec![event], &mut encoded).unwrap();
     let expected_json = serde_json::json!([{

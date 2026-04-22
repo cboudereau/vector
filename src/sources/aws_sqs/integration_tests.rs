@@ -11,7 +11,7 @@ use tokio::time::timeout;
 use crate::{
     SourceSender,
     aws::{auth::AwsAuthentication, region::RegionOrEndpoint},
-    config::{SourceConfig, SourceContext, log_schema},
+    config::{SourceConfig, SourceContext},
     event::Event,
     sources::aws_sqs::config::AwsSqsConfig,
     test_util::{
@@ -109,7 +109,7 @@ pub(crate) async fn test() {
         for event in events {
             let message = event
                 .as_log()
-                .get(log_schema().message_key_target_path().unwrap())
+                .get("body")
                 .unwrap()
                 .to_string_lossy();
             if !expected_messages.remove(message.as_ref()) {

@@ -13,7 +13,7 @@ use vrl::value::{Kind, kind::Collection};
 
 use super::config::{LokiConfig, OutOfOrderAction};
 use crate::{
-    config::{SinkConfig, log_schema},
+    config::SinkConfig,
     event::Value,
     schema,
     sinks::{VectorSink, util::test::load_sink},
@@ -362,7 +362,7 @@ async fn many_streams() {
         let index = (i % 5) * 2;
         let message = lines[index]
             .as_log()
-            .get(log_schema().message_key_target_path().unwrap())
+            .get(vrl::event_path!("body"))
             .unwrap()
             .to_string_lossy();
         assert_eq!(output, &message);
@@ -372,7 +372,7 @@ async fn many_streams() {
         let index = ((i % 5) * 2) + 1;
         let message = lines[index]
             .as_log()
-            .get(log_schema().message_key_target_path().unwrap())
+            .get(vrl::event_path!("body"))
             .unwrap()
             .to_string_lossy();
         assert_eq!(output, &message);
@@ -419,7 +419,7 @@ async fn interpolate_stream_key() {
     for (i, output) in outputs.iter().enumerate() {
         let message = lines[i]
             .as_log()
-            .get(log_schema().message_key_target_path().unwrap())
+            .get(vrl::event_path!("body"))
             .unwrap()
             .to_string_lossy();
         assert_eq!(output, &message);
@@ -496,13 +496,13 @@ async fn out_of_order_drop() {
     for (i, event) in events.iter_mut().enumerate() {
         let log = event.as_mut_log();
         log.insert(
-            (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
+            (PathPrefix::Event, &owned_value_path!("time_unix_nano")),
             base + Duration::seconds(i as i64),
         );
     }
     // first event of the second batch is out-of-order.
     events[batch_size].as_mut_log().insert(
-        (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
+        (PathPrefix::Event, &owned_value_path!("time_unix_nano")),
         base,
     );
 
@@ -526,13 +526,13 @@ async fn out_of_order_accept() {
     for (i, event) in events.iter_mut().enumerate() {
         let log = event.as_mut_log();
         log.insert(
-            (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
+            (PathPrefix::Event, &owned_value_path!("time_unix_nano")),
             base + Duration::seconds(i as i64),
         );
     }
     // first event of the second batch is out-of-order.
     events[batch_size].as_mut_log().insert(
-        (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
+        (PathPrefix::Event, &owned_value_path!("time_unix_nano")),
         base - Duration::seconds(1),
     );
 
@@ -558,13 +558,13 @@ async fn out_of_order_rewrite() {
     for (i, event) in events.iter_mut().enumerate() {
         let log = event.as_mut_log();
         log.insert(
-            (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
+            (PathPrefix::Event, &owned_value_path!("time_unix_nano")),
             base + Duration::seconds(i as i64),
         );
     }
     // first event of the second batch is out-of-order.
     events[batch_size].as_mut_log().insert(
-        (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
+        (PathPrefix::Event, &owned_value_path!("time_unix_nano")),
         base,
     );
 
@@ -572,7 +572,7 @@ async fn out_of_order_rewrite() {
     let time = get_timestamp(&expected[batch_size - 1]);
     // timestamp is rewritten with latest timestamp of the first batch
     expected[batch_size].as_mut_log().insert(
-        (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
+        (PathPrefix::Event, &owned_value_path!("time_unix_nano")),
         time,
     );
 
@@ -600,7 +600,7 @@ async fn out_of_order_per_partition() {
     for (i, event) in events.iter_mut().enumerate() {
         let log = event.as_mut_log();
         log.insert(
-            (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
+            (PathPrefix::Event, &owned_value_path!("time_unix_nano")),
             base + Duration::seconds(i as i64),
         );
     }
@@ -648,7 +648,7 @@ async fn test_out_of_order_events(
         assert_eq!(
             &expected[i]
                 .as_log()
-                .get(log_schema().message_key_target_path().unwrap())
+                .get(vrl::event_path!("body"))
                 .unwrap()
                 .to_string_lossy(),
             output,
@@ -667,7 +667,7 @@ async fn test_out_of_order_events(
 fn get_timestamp(event: &Event) -> DateTime<Utc> {
     *event
         .as_log()
-        .get((PathPrefix::Event, log_schema().timestamp_key().unwrap()))
+        .get((PathPrefix::Event, &owned_value_path!("time_unix_nano")))
         .unwrap()
         .as_timestamp()
         .unwrap()

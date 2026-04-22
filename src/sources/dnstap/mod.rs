@@ -23,7 +23,7 @@ use super::util::framestream::{
 };
 use crate::{
     Result,
-    config::{DataType, SourceConfig, SourceContext, SourceOutput, log_schema},
+    config::{DataType, SourceConfig, SourceContext, SourceOutput},
     internal_events::DnstapParseError,
 };
 
@@ -122,10 +122,8 @@ impl DnstapConfig {
             LogNamespace::Legacy => {
                 let schema = vector_lib::schema::Definition::empty_legacy_namespace();
 
-                if self.raw_data_only()
-                    && let Some(message_key) = log_schema().message_key()
-                {
-                    return schema.with_event_field(message_key, Kind::bytes(), Some("message"));
+                if self.raw_data_only() {
+                    return schema.with_event_field(&owned_value_path!("body"), Kind::bytes(), Some("message"));
                 }
                 event_schema.schema_definition(schema)
             }

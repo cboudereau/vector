@@ -16,7 +16,7 @@ use vector_lib::opentelemetry::proto::{
 
 use super::tests::new_source;
 use crate::{
-    config::{SourceConfig, SourceContext, log_schema},
+    config::{SourceConfig, SourceContext},
     event::EventStatus,
     sources::opentelemetry::config::{
         GrpcConfig, HttpConfig, LOGS, METRICS, OpentelemetryConfig, TRACES,
@@ -105,8 +105,8 @@ async fn receive_logs_legacy_namespace() {
         let events = collect_n(logs_output, 2).await;
         assert_eq!(events.len(), 2);
         assert_eq!(
-            events[0].as_log()[log_schema().message_key().unwrap().to_string()],
-            events[1].as_log()[log_schema().message_key().unwrap().to_string()]
+            events[0].as_log()["body"],
+            events[1].as_log()["body"]
         );
     })
     .await;

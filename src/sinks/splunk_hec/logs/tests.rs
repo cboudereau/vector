@@ -5,7 +5,7 @@ use futures_util::StreamExt;
 use serde::{Deserialize, de};
 use vector_lib::{
     codecs::{JsonSerializerConfig, TextSerializerConfig},
-    config::{LegacyKey, LogNamespace, log_schema},
+    config::{LegacyKey, LogNamespace},
     event::{Event, EventMetadata, OtelLog, Value},
     lookup::lookup_v2::OptionalTargetPath,
     schema::{Definition, meaning},
@@ -208,12 +208,10 @@ fn splunk_encode_log_event_json() {
     assert_eq!(event.get("key").unwrap(), &serde_json::Value::from("value"));
     assert_eq!(event.get("int_val").unwrap(), &serde_json::Value::from(123));
     assert_eq!(
-        event
-            .get(&log_schema().message_key().unwrap().to_string())
-            .unwrap(),
+        event.get("body").unwrap(),
         &serde_json::Value::from("hello world")
     );
-    assert!(!event.contains_key(log_schema().timestamp_key().unwrap().to_string().as_str()));
+    assert!(!event.contains_key("time_unix_nano"));
 
     assert_eq!(hec_data.source, Some("test_source".to_string()));
     assert_eq!(hec_data.sourcetype, Some("test_sourcetype".to_string()));

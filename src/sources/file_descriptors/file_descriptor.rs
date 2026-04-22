@@ -127,7 +127,6 @@ mod tests {
     use super::*;
     use crate::{
         SourceSender,
-        config::log_schema,
         test_util::components::{
             COMPONENT_ERROR_TAGS, SOURCE_TAGS, assert_source_compliance, assert_source_error,
         },
@@ -161,16 +160,15 @@ mod tests {
             config.build(context).await.unwrap().await.unwrap();
 
             let event = stream.next().await;
-            let message_key = log_schema().message_key().unwrap().to_string();
             assert_eq!(
                 Some("hello world".into()),
-                event.map(|event| event.as_log().get(message_key.as_str()).unwrap().to_string_lossy().into_owned())
+                event.map(|event| event.as_log().get("body").unwrap().to_string_lossy().into_owned())
             );
 
             let event = stream.next().await;
             assert_eq!(
                 Some("hello world again".into()),
-                event.map(|event| event.as_log().get(message_key.as_str()).unwrap().to_string_lossy().into_owned())
+                event.map(|event| event.as_log().get("body").unwrap().to_string_lossy().into_owned())
             );
 
             let event = stream.next().await;

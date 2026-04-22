@@ -42,7 +42,7 @@ use super::util::MultilineConfig;
 use crate::{
     SourceSender,
     common::backoff::ExponentialBackoff,
-    config::{DataType, SourceConfig, SourceContext, SourceOutput, log_schema},
+    config::{DataType, SourceConfig, SourceContext, SourceOutput},
     docker::{DockerTlsConfig, docker},
     event::{self, EstimatedJsonEncodedSizeOf, Event, OtelLog, Value, merge_state::MergeState, string_value},
     internal_events::{
@@ -334,10 +334,7 @@ impl SourceConfig for DockerLogsConfig {
             )
             .with_source_metadata(
                 Self::NAME,
-                log_schema()
-                    .timestamp_key()
-                    .cloned()
-                    .map(LegacyKey::Overwrite),
+                Some(LegacyKey::Overwrite(owned_value_path!("time_unix_nano"))),
                 &owned_value_path!("timestamp"),
                 Kind::timestamp(),
                 Some("timestamp"),
@@ -1154,10 +1151,7 @@ impl ContainerLogInfo {
                         LogNamespace::Legacy => {
                             partial_event_merge_state.merge_in_next_event(
                                 log,
-                                &[log_schema()
-                                    .message_key()
-                                    .expect("global log_schema.message_key to be valid path")
-                                    .to_string()],
+                                &["body"],
                             );
                         }
                     }
@@ -1180,10 +1174,7 @@ impl ContainerLogInfo {
                     }
                     LogNamespace::Legacy => partial_event_merge_state.merge_in_final_event(
                         log,
-                        &[log_schema()
-                            .message_key()
-                            .expect("global log_schema.message_key to be valid path")
-                            .to_string()],
+                        &["body"],
                     ),
                 },
                 None => log,
@@ -1262,11 +1253,7 @@ fn line_agg_adapter(
                 .remove(event_path!())
                 .expect("`.` must exist in the event"),
             LogNamespace::Legacy => log
-                .remove(
-                    log_schema()
-                        .message_key_target_path()
-                        .expect("global log_schema.message_key to be valid path"),
-                )
+                .remove(event_path!("body"))
                 .expect("`message` must exist in the event"),
         };
         let stream_value = match log_namespace {
@@ -1287,9 +1274,7 @@ fn line_agg_adapter(
         match log_namespace {
             LogNamespace::Vector => log.insert(event_path!(), message),
             LogNamespace::Legacy => log.insert(
-                log_schema()
-                    .message_key_target_path()
-                    .expect("global log_schema.message_key to be valid path"),
+                event_path!("body"),
                 message,
             ),
         };

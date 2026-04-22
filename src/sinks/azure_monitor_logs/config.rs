@@ -1,8 +1,7 @@
 use openssl::{base64, pkey};
 use vector_lib::{
-    config::log_schema,
     configurable::configurable_component,
-    lookup::{OwnedValuePath, lookup_v2::OptionalValuePath},
+    lookup::{OwnedValuePath, lookup_v2::OptionalValuePath, owned_value_path},
     schema,
     sensitive_string::SensitiveString,
 };
@@ -147,7 +146,7 @@ impl AzureMonitorLogsConfig {
         self.time_generated_key
             .clone()
             .and_then(|k| k.path)
-            .or_else(|| log_schema().timestamp_key().cloned())
+            .or_else(|| Some(owned_value_path!("time_unix_nano")))
     }
 
     pub(super) async fn build_inner(

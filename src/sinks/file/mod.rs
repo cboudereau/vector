@@ -538,7 +538,6 @@ mod tests {
 
     use super::*;
     use crate::{
-        config::log_schema,
         test_util::{
             components::{FILE_SINK_TAGS, assert_sink_compliance},
             lines_from_file, lines_from_gzip_file, lines_from_zstd_file, random_events_with_stream,
@@ -684,37 +683,36 @@ mod tests {
             lines_from_file(directory.join("errors-2019-29-07.log")),
         ];
 
-        let message_key = log_schema().message_key().unwrap().to_string();
         assert_eq!(
-            input[0].as_log().get(message_key.as_str()).unwrap(),
+            input[0].as_log().get("body").unwrap(),
             Value::from(&output[0][0] as &str)
         );
         assert_eq!(
-            input[1].as_log().get(message_key.as_str()).unwrap(),
+            input[1].as_log().get("body").unwrap(),
             Value::from(&output[1][0] as &str)
         );
         assert_eq!(
-            input[2].as_log().get(message_key.as_str()).unwrap(),
+            input[2].as_log().get("body").unwrap(),
             Value::from(&output[0][1] as &str)
         );
         assert_eq!(
-            input[3].as_log().get(message_key.as_str()).unwrap(),
+            input[3].as_log().get("body").unwrap(),
             Value::from(&output[3][0] as &str)
         );
         assert_eq!(
-            input[4].as_log().get(message_key.as_str()).unwrap(),
+            input[4].as_log().get("body").unwrap(),
             Value::from(&output[2][0] as &str)
         );
         assert_eq!(
-            input[5].as_log().get(message_key.as_str()).unwrap(),
+            input[5].as_log().get("body").unwrap(),
             Value::from(&output[2][1] as &str)
         );
         assert_eq!(
-            input[6].as_log().get(message_key.as_str()).unwrap(),
+            input[6].as_log().get("body").unwrap(),
             Value::from(&output[4][0] as &str)
         );
         assert_eq!(
-            input[7].as_log().get(message_key.as_str()).unwrap(),
+            input[7].as_log().get("body").unwrap(),
             Value::from(&output[5][0] as &str)
         );
     }

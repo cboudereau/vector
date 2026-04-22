@@ -3,6 +3,8 @@ use std::{num::NonZeroUsize, time::Duration};
 use serde_with::serde_as;
 use vector_lib::{configurable::configurable_component, lookup::lookup_v2::ConfigTargetPath};
 
+use vector_lib::lookup::{OwnedTargetPath, owned_value_path};
+
 use crate::config::log_schema;
 
 /// Caching configuration for deduplication.
@@ -105,14 +107,10 @@ pub fn fill_default_fields_match(maybe_fields: Option<&FieldMatchConfig>) -> Fie
 //   in the future, or maybe the "semantic meaning" can be utilized here.
 fn default_match_fields() -> Vec<ConfigTargetPath> {
     let mut fields = Vec::new();
-    if let Some(message_key) = log_schema().message_key_target_path() {
-        fields.push(ConfigTargetPath(message_key.clone()));
-    }
+    fields.push(ConfigTargetPath(OwnedTargetPath::event(owned_value_path!("body"))));
     if let Some(host_key) = log_schema().host_key_target_path() {
         fields.push(ConfigTargetPath(host_key.clone()));
     }
-    if let Some(timestamp_key) = log_schema().timestamp_key_target_path() {
-        fields.push(ConfigTargetPath(timestamp_key.clone()));
-    }
+    fields.push(ConfigTargetPath(OwnedTargetPath::event(owned_value_path!("time_unix_nano"))));
     fields
 }

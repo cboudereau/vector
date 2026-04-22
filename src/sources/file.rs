@@ -812,7 +812,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        config::{Config, log_schema},
+        config::Config,
         event::{Event, EventStatus, Value},
         shutdown::ShutdownSignal,
         sources::file,
@@ -1097,7 +1097,7 @@ mod tests {
         let mut goodbye_i = 0;
 
         for event in received {
-            let val = event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap();
+            let val = event.as_log().get("body").unwrap();
             let line = val.to_string_lossy();
             if line.starts_with("hello") {
                 assert_eq!(line, format!("hello {}", hello_i));
@@ -1192,7 +1192,7 @@ mod tests {
                 path.to_str().unwrap()
             );
 
-            let val = event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap();
+            let val = event.as_log().get("body").unwrap();
             let line = val.to_string_lossy();
 
             if pre_trunc {
@@ -1257,7 +1257,7 @@ mod tests {
                 path.to_str().unwrap()
             );
 
-            let val = event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap();
+            let val = event.as_log().get("body").unwrap();
             let line = val.to_string_lossy();
 
             if pre_rot {
@@ -1313,7 +1313,7 @@ mod tests {
         let mut is = [0; 3];
 
         for event in received {
-            let val = event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap();
+            let val = event.as_log().get("body").unwrap();
             let line = val.to_string_lossy();
             let mut split = line.split(' ');
             let file = split.next().unwrap().parse::<usize>().unwrap();
@@ -1359,7 +1359,7 @@ mod tests {
         let mut is = [0; 1];
 
         for event in received {
-            let val = event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap();
+            let val = event.as_log().get("body").unwrap();
             let line = val.to_string_lossy();
             let mut split = line.split(' ');
             let file = split.next().unwrap().parse::<usize>().unwrap();
@@ -1749,14 +1749,14 @@ mod tests {
             .iter()
             .filter(|event| event.as_log().get("file").unwrap().to_string_lossy().ends_with("before"))
             .map(|event| {
-                event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap().to_string_lossy().into_owned()
+                event.as_log().get("body").unwrap().to_string_lossy().into_owned()
             })
             .collect();
         let after_lines: Vec<String> = received
             .iter()
             .filter(|event| event.as_log().get("file").unwrap().to_string_lossy().ends_with("after"))
             .map(|event| {
-                event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap().to_string_lossy().into_owned()
+                event.as_log().get("body").unwrap().to_string_lossy().into_owned()
             })
             .collect();
         assert_eq!(before_lines, vec!["second line"]);

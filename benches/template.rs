@@ -2,10 +2,8 @@ use std::convert::TryFrom;
 
 use chrono::Utc;
 use criterion::{BatchSize, Criterion, criterion_group};
-use vector::{
-    config::log_schema,
-    event::{Event, OtelLog},
-};
+use lookup::{OwnedTargetPath, owned_value_path};
+use vector::event::{Event, OtelLog};
 
 fn bench_elasticsearch_index(c: &mut Criterion) {
     use vector::template::Template;
@@ -16,7 +14,7 @@ fn bench_elasticsearch_index(c: &mut Criterion) {
         let index = Template::try_from("index-%Y.%m.%d").unwrap();
         let mut event = Event::Log(OtelLog::from("hello world"));
         event.as_mut_log().insert(
-            log_schema().timestamp_key_target_path().unwrap(),
+            &OwnedTargetPath::event(owned_value_path!("time_unix_nano")),
             Utc::now(),
         );
 
@@ -31,7 +29,7 @@ fn bench_elasticsearch_index(c: &mut Criterion) {
         let index = Template::try_from("index").unwrap();
         let mut event = Event::Log(OtelLog::from("hello world"));
         event.as_mut_log().insert(
-            log_schema().timestamp_key_target_path().unwrap(),
+            &OwnedTargetPath::event(owned_value_path!("time_unix_nano")),
             Utc::now(),
         );
 

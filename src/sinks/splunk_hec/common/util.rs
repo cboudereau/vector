@@ -145,9 +145,7 @@ pub fn config_host_key() -> OptionalValuePath {
 
 pub fn config_timestamp_key_target_path() -> OptionalTargetPath {
     OptionalTargetPath {
-        path: crate::config::log_schema()
-            .timestamp_key_target_path()
-            .cloned(),
+        path: Some(vector_lib::lookup::OwnedTargetPath::event(owned_value_path!("time_unix_nano"))),
     }
 }
 

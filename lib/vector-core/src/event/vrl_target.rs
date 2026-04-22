@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, marker::PhantomData};
 
-use lookup::{OwnedTargetPath, OwnedValuePath, PathPrefix};
+use lookup::{OwnedTargetPath, OwnedValuePath, PathPrefix, owned_value_path};
 use opentelemetry_proto::tonic::common::v1::{
     AnyValue as OtelAnyValue, ArrayValue as OtelArrayValue, KeyValue as OtelKeyValue,
     KeyValueList as OtelKeyValueList, InstrumentationScope as OtelScope,
@@ -16,7 +16,7 @@ use vrl::{
 
 use super::{Event, EventMetadata, OtelLog, OtelMetric, OtelSpan};
 use crate::{
-    config::{LogNamespace, log_schema},
+    config::LogNamespace,
     schema::Definition,
 };
 
@@ -738,10 +738,9 @@ fn move_field_definitions_into_message(mut definition: Definition) -> Definition
     message.remove_object();
     message.remove_array();
 
-    if !message.is_never()
-        && let Some(message_key) = log_schema().message_key()
-    {
-        // We need to add the given message type to a field called `message`
+    if !message.is_never() {
+        let message_key = owned_value_path!("body");
+        // We need to add the given message type to a field called `body`
         // in the event.
         let message = Kind::object(Collection::from(BTreeMap::from([(
             message_key.to_string().into(),
@@ -1030,21 +1029,21 @@ mod test {
             Definition::new_with_default_metadata(Kind::bytes(), [LogNamespace::Legacy]);
         assert_eq!(
             Definition::new_with_default_metadata(
-                Kind::object(BTreeMap::from([("message".into(), Kind::bytes())])),
+                Kind::object(BTreeMap::from([("body".into(), Kind::bytes())])),
                 [LogNamespace::Legacy]
             ),
             move_field_definitions_into_message(definition)
         );
 
-        // Test when a message field already exists.
+        // Test when a body field already exists.
         let definition = Definition::new_with_default_metadata(
-            Kind::object(BTreeMap::from([("message".into(), Kind::integer())])).or_bytes(),
+            Kind::object(BTreeMap::from([("body".into(), Kind::integer())])).or_bytes(),
             [LogNamespace::Legacy],
         );
         assert_eq!(
             Definition::new_with_default_metadata(
                 Kind::object(BTreeMap::from([(
-                    "message".into(),
+                    "body".into(),
                     Kind::bytes().or_integer()
                 )])),
                 [LogNamespace::Legacy]

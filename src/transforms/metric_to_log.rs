@@ -17,7 +17,7 @@ use vrl::{
 use crate::{
     config::{
         DataType, GenerateConfig, Input, OutputId, TransformConfig, TransformContext,
-        TransformOutput, log_schema,
+        TransformOutput,
     },
     event::{self, Event, OtelLog, OtelMetric},
     internal_events::MetricToLogSerializeError,
@@ -238,9 +238,10 @@ fn schema_definition(log_namespace: LogNamespace) -> Definition {
             );
         }
         LogNamespace::Legacy => {
-            if let Some(timestamp_key) = log_schema().timestamp_key() {
+            {
+                let timestamp_key = owned_value_path!("time_unix_nano");
                 schema_definition =
-                    schema_definition.with_event_field(timestamp_key, Kind::integer(), None);
+                    schema_definition.with_event_field(&timestamp_key, Kind::integer(), None);
             }
 
             schema_definition = schema_definition.with_event_field(

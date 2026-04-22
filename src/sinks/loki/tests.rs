@@ -1,4 +1,4 @@
-use vector_lib::config::{log_schema, proxy::ProxyConfig};
+use vector_lib::{config::proxy::ProxyConfig, lookup::{OwnedTargetPath, owned_value_path}};
 
 use super::{config::LokiConfig, healthcheck::healthcheck, sink::LokiSink};
 use crate::{
@@ -165,15 +165,13 @@ async fn timestamp_out_of_range() {
     let mut sink = LokiSink::new(config, client).unwrap();
 
     let mut e1 = OtelLog::from("hello world");
-    if let Some(timestamp_key) = log_schema().timestamp_key_target_path() {
-        let date = chrono::NaiveDate::from_ymd_opt(1677, 9, 21)
-            .unwrap()
-            .and_hms_nano_opt(0, 12, 43, 145_224_191)
-            .unwrap()
-            .and_local_timezone(chrono::Utc)
-            .unwrap();
-        e1.insert(timestamp_key, date);
-    }
+    let date = chrono::NaiveDate::from_ymd_opt(1677, 9, 21)
+        .unwrap()
+        .and_hms_nano_opt(0, 12, 43, 145_224_191)
+        .unwrap()
+        .and_local_timezone(chrono::Utc)
+        .unwrap();
+    e1.insert(&OwnedTargetPath::event(owned_value_path!("time_unix_nano")), date);
     let e1 = Event::from(e1);
 
     // Pre-epoch timestamps can't be represented as time_unix_nano;

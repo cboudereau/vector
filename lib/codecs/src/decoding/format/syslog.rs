@@ -8,7 +8,7 @@ use smallvec::{SmallVec, smallvec};
 use syslog_loose::{IncompleteDate, Message, ProcId, Protocol, Variant};
 use vector_config::configurable_component;
 use vector_core::{
-    config::{DataType, LegacyKey, LogNamespace, log_schema},
+    config::{DataType, LegacyKey, LogNamespace},
     event::{Event, EventMetadata, ObjectMap, OtelLog, Value},
     schema,
 };
@@ -66,18 +66,19 @@ impl SyslogDeserializerConfig {
                     // The `message` field is always defined. If parsing fails, the entire body becomes the
                     // message.
                     .with_event_field(
-                        log_schema().message_key().expect("valid message key"),
+                        &owned_value_path!("body"),
                         Kind::bytes(),
                         Some("message"),
                     );
 
-                if let Some(timestamp_key) = log_schema().timestamp_key() {
+                {
+                    let timestamp_key = owned_value_path!("time_unix_nano");
                     // All other fields are optional.
                     definition = definition.optional_field(
-                        timestamp_key,
+                        &timestamp_key,
                         Kind::integer(),
                         Some("timestamp"),
-                    )
+                    );
                 }
 
                 definition = definition
@@ -474,7 +475,7 @@ fn build_fields_from_syslog(
 
 #[cfg(test)]
 mod tests {
-    use vector_core::config::{LogSchema, init_log_schema, log_schema};
+    use vector_core::config::{LogSchema, init_log_schema};
 
     use super::*;
 
@@ -489,11 +490,11 @@ mod tests {
         let events = deserializer.parse(input, LogNamespace::Legacy).unwrap();
         assert_eq!(events.len(), 1);
         assert_eq!(
-            events[0].as_log()[log_schema().message_key().unwrap().to_string()],
+            events[0].as_log()["body"],
             "MSG".into()
         );
         assert!(
-            events[0].as_log()[log_schema().timestamp_key().unwrap().to_string()].is_timestamp()
+            events[0].as_log()["time_unix_nano"].is_timestamp()
         );
     }
 

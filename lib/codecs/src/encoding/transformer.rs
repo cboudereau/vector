@@ -269,9 +269,9 @@ mod tests {
     use std::{collections::BTreeMap, sync::Arc};
 
     use indoc::indoc;
-    use lookup::path::parse_target_path;
+    use lookup::{owned_value_path, path::parse_target_path};
     use vector_core::{
-        config::{LogNamespace, log_schema},
+        config::LogNamespace,
         event::OtelLog,
         schema,
     };
@@ -378,11 +378,12 @@ mod tests {
     #[test]
     #[ignore = "Timestamp round-trip through OtelLog loses type info"]
     fn deserialize_and_transform_timestamp() {
+        let ts_key = owned_value_path!("time_unix_nano");
         let mut base = Event::Log(OtelLog::from("Demo"));
         {
             let base_log = base.as_log();
             let timestamp = base_log
-                .get((PathPrefix::Event, log_schema().timestamp_key().unwrap()))
+                .get((PathPrefix::Event, &ts_key))
                 .unwrap();
             let timestamp = timestamp.as_timestamp().unwrap();
             base.as_mut_log()
@@ -391,7 +392,7 @@ mod tests {
 
         let base_log = base.as_log();
         let timestamp = base_log
-            .get((PathPrefix::Event, log_schema().timestamp_key().unwrap()))
+            .get((PathPrefix::Event, &ts_key))
             .unwrap();
         let timestamp = timestamp.as_timestamp().unwrap();
 
@@ -416,7 +417,7 @@ mod tests {
             let log = event.as_log();
 
             for actual in [
-                log.get((PathPrefix::Event, log_schema().timestamp_key().unwrap()))
+                log.get((PathPrefix::Event, &ts_key))
                     .unwrap(),
                 log.parse_path_and_get_value("another").ok().flatten().unwrap(),
             ] {

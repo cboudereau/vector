@@ -6,8 +6,9 @@ use derivative::Derivative;
 use prost_reflect::{DynamicMessage, MessageDescriptor};
 use smallvec::{SmallVec, smallvec};
 use vector_config::configurable_component;
+use lookup::owned_value_path;
 use vector_core::{
-    config::{DataType, LogNamespace, log_schema},
+    config::{DataType, LogNamespace},
     event::{Event, EventMetadata, OtelLog},
     schema,
 };
@@ -48,9 +49,10 @@ impl ProtobufDeserializerConfig {
                 let mut definition =
                     schema::Definition::empty_legacy_namespace().unknown_fields(Kind::any());
 
-                if let Some(timestamp_key) = log_schema().timestamp_key() {
+                {
+                    let timestamp_key = owned_value_path!("time_unix_nano");
                     definition = definition.try_with_field(
-                        timestamp_key,
+                        &timestamp_key,
                         Kind::any(),
                         Some("timestamp"),
                     );
@@ -173,7 +175,8 @@ mod tests {
 
     use std::{env, fs, path::PathBuf};
 
-    use vector_core::{config::log_schema, event::OtelLog};
+    use lookup::{OwnedTargetPath, owned_value_path};
+    use vector_core::event::OtelLog;
 
     use super::*;
 
@@ -200,7 +203,7 @@ mod tests {
                 let log = event.as_log();
                 validate_log(log);
                 assert_eq!(
-                    log.get(log_schema().timestamp_key_target_path().unwrap())
+                    log.get(&OwnedTargetPath::event(owned_value_path!("time_unix_nano")))
                         .is_some(),
                     namespace == LogNamespace::Legacy
                 );

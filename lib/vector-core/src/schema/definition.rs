@@ -5,7 +5,7 @@ use lookup::{
 };
 use vrl::value::{Kind, kind::Collection};
 
-use crate::config::{LegacyKey, LogNamespace, log_schema};
+use crate::config::{LegacyKey, LogNamespace};
 
 /// The definition of a schema.
 ///
@@ -154,9 +154,8 @@ impl Definition {
         );
 
         let legacy = if def.log_namespaces.contains(&LogNamespace::Legacy) {
-            log_schema().timestamp_key().map(|ts_key| {
-                def.clone().try_with_field(ts_key, Kind::integer(), None)
-            })
+            let ts_key = owned_value_path!("time_unix_nano");
+            Some(def.clone().try_with_field(&ts_key, Kind::integer(), None))
         } else {
             None
         };

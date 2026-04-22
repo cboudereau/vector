@@ -537,7 +537,6 @@ mod tests {
 mod integration_tests {
     use super::*;
     use crate::{
-        config::log_schema,
         test_util::{
             collect_n,
             components::{SOURCE_TAGS, assert_source_compliance},
@@ -679,7 +678,7 @@ mod integration_tests {
         .await;
 
         assert_eq!(
-            events[0].as_log()[log_schema().message_key().unwrap().to_string()],
+            events[0].as_log()["body"],
             msg.into()
         );
     }

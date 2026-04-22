@@ -1,8 +1,6 @@
 #![allow(clippy::print_stdout)]
 use async_nats::jetstream::stream::StorageType;
 use bytes::Bytes;
-use vector_lib::config::log_schema;
-
 use crate::{
     SourceSender,
     codecs::DecodingConfig,
@@ -83,7 +81,7 @@ async fn run_jetstream_test(conf: NatsSourceConfig) -> Result<(), crate::Error> 
     .await;
 
     assert_eq!(
-        events[0].as_log()[log_schema().message_key().unwrap().to_string()],
+        events[0].as_log()["body"],
         msg.into()
     );
 
@@ -125,7 +123,7 @@ async fn publish_and_check(conf: NatsSourceConfig) -> Result<(), BuildError> {
 
     println!("Received event  {:?}", events[0].as_log());
     assert_eq!(
-        events[0].as_log()[log_schema().message_key().unwrap().to_string()],
+        events[0].as_log()["body"],
         msg.into()
     );
     Ok(())
@@ -586,7 +584,7 @@ async fn nats_shutdown_drain_messages() {
         events.push(event);
     }
     assert_eq!(events.len(), 3);
-    let msg = &events[0].as_log()[log_schema().message_key().unwrap().to_string()];
+    let msg = &events[0].as_log()["body"];
     assert_eq!(*msg, "msg1".into());
 
     // Verify the source has completed its work and the shutdown is fully done.

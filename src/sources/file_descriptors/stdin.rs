@@ -117,7 +117,6 @@ mod tests {
     use super::*;
     use crate::{
         SourceSender,
-        config::log_schema,
         shutdown::ShutdownSignal,
         test_util::components::{SOURCE_TAGS, assert_source_compliance},
     };
@@ -146,7 +145,7 @@ mod tests {
             assert_eq!(
                 Some("hello world".into()),
                 event.map(
-                    |event| event.as_log().get(log_schema().message_key().unwrap().to_string().as_str())
+                    |event| event.as_log().get("body")
                         .unwrap()
                         .to_string_lossy()
                         .into_owned()
@@ -157,7 +156,7 @@ mod tests {
             assert_eq!(
                 Some("hello world again".into()),
                 event.map(
-                    |event| event.as_log().get(log_schema().message_key().unwrap().to_string().as_str())
+                    |event| event.as_log().get("body")
                         .unwrap()
                         .to_string_lossy()
                         .into_owned()

@@ -572,12 +572,12 @@ mod tests {
     use vector_lib::{
         codecs::JsonSerializerConfig,
         event::{Event, OtelLog, ObjectMap, Value},
-        lookup::PathPrefix,
+        lookup::{PathPrefix, owned_value_path},
     };
 
     use super::{EventEncoder, KeyPartitioner, RecordFilter};
     use crate::{
-        codecs::Encoder, config::log_schema, sinks::loki::config::OutOfOrderAction,
+        codecs::Encoder, sinks::loki::config::OutOfOrderAction,
         template::Template, test_util::random_lines,
     };
 
@@ -596,7 +596,7 @@ mod tests {
         let mut event = Event::Log(OtelLog::from("hello world"));
         let log = event.as_mut_log();
         log.insert(
-            (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
+            (PathPrefix::Event, &owned_value_path!("time_unix_nano")),
             chrono::Utc::now(),
         );
         let record = encoder.encode_event(event).unwrap();
@@ -643,7 +643,7 @@ mod tests {
         let mut event = Event::Log(OtelLog::from("hello world"));
         let log = event.as_mut_log();
         log.insert(
-            (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
+            (PathPrefix::Event, &owned_value_path!("time_unix_nano")),
             chrono::Utc::now(),
         );
         log.insert("name", "foo");
@@ -812,7 +812,7 @@ mod tests {
         let mut event = Event::Log(OtelLog::from("hello world"));
         let log = event.as_mut_log();
         log.insert(
-            (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
+            (PathPrefix::Event, &owned_value_path!("time_unix_nano")),
             chrono::Utc::now(),
         );
         let record = encoder.encode_event(event).unwrap();
@@ -848,7 +848,7 @@ mod tests {
         let mut event = Event::Log(OtelLog::from("hello world"));
         let log = event.as_mut_log();
         log.insert(
-            (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
+            (PathPrefix::Event, &owned_value_path!("time_unix_nano")),
             chrono::Utc::now(),
         );
         log.insert("name", "foo");
@@ -951,7 +951,7 @@ mod tests {
                     base + chrono::Duration::seconds(i as i64)
                 };
                 log.insert(
-                    (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
+                    (PathPrefix::Event, &owned_value_path!("time_unix_nano")),
                     ts,
                 );
                 event

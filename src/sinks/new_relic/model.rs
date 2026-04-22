@@ -8,7 +8,6 @@ use chrono::Utc;
 use ordered_float::NotNan;
 use serde::Serialize;
 use vector_lib::{
-    config::log_schema,
     event::ObjectMap,
     internal_event::{ComponentEventsDropped, INTENTIONAL, UNINTENTIONAL},
 };
@@ -279,7 +278,6 @@ impl TryFrom<Vec<Event>> for LogsApiModel {
     fn try_from(buf_events: Vec<Event>) -> Result<Self, Self::Error> {
         let mut num_non_log_events = 0;
         let mut num_non_object_events = 0;
-        let message_key = log_schema().message_key_target_path().unwrap();
 
         let logs_array: Vec<LogMessage> = buf_events
             .into_iter()
@@ -289,7 +287,7 @@ impl TryFrom<Vec<Event>> for LogsApiModel {
                     return None;
                 };
 
-                let message = get_message_string(otel_log.remove(message_key));
+                let message = get_message_string(otel_log.remove(event_path!("body")));
                 let timestamp = otel_log.remove_timestamp().and_then(map_timestamp_value);
 
                 let Some(mut attributes) = otel_log.as_map() else {

@@ -7,7 +7,7 @@ use futures::{StreamExt, future::ready, stream};
 use http::{Request, StatusCode};
 use serde_json::{Value, json};
 use vector_lib::{
-    config::{Tags, Telemetry, init_telemetry, log_schema},
+    config::{Tags, Telemetry, init_telemetry},
     event::{BatchNotifier, BatchStatus, Event, OtelLog},
 };
 
@@ -190,12 +190,7 @@ async fn structures_events_correctly() {
     input_event.insert("foo", "bar");
     drop(batch);
 
-    let timestamp = input_event[crate::config::log_schema()
-        .timestamp_key()
-        .unwrap()
-        .to_string()
-        .as_str()]
-    .clone();
+    let timestamp = input_event["time_unix_nano"].clone();
 
     run_and_assert_sink_compliance(
         sink,
@@ -721,7 +716,7 @@ async fn run_insert_tests_with_config(
                 obj.remove("data_stream");
                 // Un-rewrite the timestamp field
                 let timestamp = obj.remove(DATA_STREAM_TIMESTAMP_KEY).unwrap();
-                obj.insert(log_schema().timestamp_key().unwrap().to_string(), timestamp);
+                obj.insert("time_unix_nano".to_string(), timestamp);
             }
             assert!(input.contains(hit));
         }

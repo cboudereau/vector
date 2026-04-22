@@ -1,7 +1,7 @@
 use std::{convert::TryFrom, iter::zip};
 
 use vector_common::sensitive_string::SensitiveString;
-use vector_lib::lookup::PathPrefix;
+use vector_lib::lookup::{PathPrefix, owned_value_path};
 
 use crate::{
     codecs::Transformer,
@@ -27,7 +27,6 @@ fn parse_template(input: &str) -> Template {
 async fn sets_create_action_when_configured() {
     use chrono::{TimeZone, Utc};
 
-    use crate::config::log_schema;
 
     let config = ElasticsearchConfig {
         bulk: BulkConfig {
@@ -45,7 +44,7 @@ async fn sets_create_action_when_configured() {
 
     let mut log = OtelLog::from("hello there");
     log.insert(
-        (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
+        (PathPrefix::Event, &owned_value_path!("time_unix_nano")),
         Utc.with_ymd_and_hms(2020, 12, 1, 1, 2, 3)
             .single()
             .expect("invalid timestamp"),
@@ -92,7 +91,6 @@ async fn encoding_with_external_versioning_without_version_set_does_not_include_
 async fn encoding_with_external_versioning_with_version_set_includes_version() {
     use chrono::{TimeZone, Utc};
 
-    use crate::config::log_schema;
 
     let config = ElasticsearchConfig {
         bulk: BulkConfig {
@@ -113,7 +111,7 @@ async fn encoding_with_external_versioning_with_version_set_includes_version() {
 
     let mut log = OtelLog::from("hello there");
     log.insert(
-        (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
+        (PathPrefix::Event, &owned_value_path!("time_unix_nano")),
         Utc.with_ymd_and_hms(2020, 12, 1, 1, 2, 3)
             .single()
             .expect("invalid timestamp"),
@@ -142,7 +140,6 @@ async fn encoding_with_external_versioning_with_version_set_includes_version() {
 async fn encoding_with_external_gte_versioning_with_version_set_includes_version() {
     use chrono::{TimeZone, Utc};
 
-    use crate::config::log_schema;
 
     let config = ElasticsearchConfig {
         bulk: BulkConfig {
@@ -163,7 +160,7 @@ async fn encoding_with_external_gte_versioning_with_version_set_includes_version
 
     let mut log = OtelLog::from("hello there");
     log.insert(
-        (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
+        (PathPrefix::Event, &owned_value_path!("time_unix_nano")),
         Utc.with_ymd_and_hms(2020, 12, 1, 1, 2, 3)
             .single()
             .expect("invalid timestamp"),
@@ -229,7 +226,6 @@ fn assert_expected_is_encoded(expected: &str, encoded: &[u8]) {
 async fn encode_datastream_mode() {
     use chrono::{TimeZone, Utc};
 
-    use crate::config::log_schema;
 
     let config = ElasticsearchConfig {
         bulk: BulkConfig {
@@ -245,7 +241,7 @@ async fn encode_datastream_mode() {
 
     let mut log = OtelLog::from("hello there");
     log.insert(
-        (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
+        (PathPrefix::Event, &owned_value_path!("time_unix_nano")),
         Utc.with_ymd_and_hms(2020, 12, 1, 1, 2, 3)
             .single()
             .expect("invalid timestamp"),
@@ -280,7 +276,6 @@ async fn encode_datastream_mode() {
 async fn encode_datastream_mode_no_routing() {
     use chrono::{TimeZone, Utc};
 
-    use crate::config::log_schema;
 
     let config = ElasticsearchConfig {
         bulk: BulkConfig {
@@ -309,7 +304,7 @@ async fn encode_datastream_mode_no_routing() {
         ),
     );
     log.insert(
-        (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
+        (PathPrefix::Event, &owned_value_path!("time_unix_nano")),
         Utc.with_ymd_and_hms(2020, 12, 1, 1, 2, 3)
             .single()
             .expect("invalid timestamp"),
@@ -428,7 +423,6 @@ async fn decode_bulk_action() {
 async fn encode_datastream_mode_no_sync() {
     use chrono::{TimeZone, Utc};
 
-    use crate::config::log_schema;
 
     let config = ElasticsearchConfig {
         bulk: BulkConfig {
@@ -458,7 +452,7 @@ async fn encode_datastream_mode_no_sync() {
         ),
     );
     log.insert(
-        (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
+        (PathPrefix::Event, &owned_value_path!("time_unix_nano")),
         Utc.with_ymd_and_hms(2020, 12, 1, 1, 2, 3)
             .single()
             .expect("invalid timestamp"),

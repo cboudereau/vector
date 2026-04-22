@@ -1,10 +1,11 @@
 use bytes::{Buf, Bytes};
 use chrono::Utc;
+use lookup::owned_value_path;
 use serde::{Deserialize, Serialize};
 use smallvec::{SmallVec, smallvec};
 use vector_config::configurable_component;
 use vector_core::{
-    config::{DataType, LogNamespace, log_schema},
+    config::{DataType, LogNamespace},
     event::{Event, EventMetadata, OtelLog},
     schema,
 };
@@ -60,9 +61,10 @@ impl AvroDeserializerConfig {
                 let mut definition = schema::Definition::empty_legacy_namespace()
                     .unknown_fields(vrl::value::Kind::any());
 
-                if let Some(timestamp_key) = log_schema().timestamp_key() {
+                {
+                    let timestamp_key = owned_value_path!("time_unix_nano");
                     definition = definition.try_with_field(
-                        timestamp_key,
+                        &timestamp_key,
                         vrl::value::Kind::any(),
                         Some("timestamp"),
                     );

@@ -46,7 +46,6 @@ use crate::{
     SourceSender,
     config::{
         DataType, SourceAcknowledgementsConfig, SourceConfig, SourceContext, SourceOutput,
-        log_schema,
     },
     event::{BatchNotifier, BatchStatus, BatchStatusReceiver, Event, OtelLog},
     internal_events::{
@@ -962,9 +961,7 @@ fn create_log_event_from_record(
             .with_batch_notifier_option(batch);
 
             if let Some(message) = log.remove(event_path!(MESSAGE)) {
-                if let Some(key) = log_schema().message_key_target_path() {
-                    log.insert(key, message);
-                }
+                log.insert(event_path!("body"), message);
             }
 
             log

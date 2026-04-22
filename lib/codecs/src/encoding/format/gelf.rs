@@ -5,8 +5,9 @@ use ordered_float::NotNan;
 use snafu::Snafu;
 use tokio_util::codec::Encoder;
 use vector_config_macros::configurable_component;
+use lookup::{OwnedTargetPath, owned_value_path};
 use vector_core::{
-    config::{DataType, log_schema},
+    config::DataType,
     event::{Event, KeyString, OtelLog, Value},
     schema,
 };
@@ -171,12 +172,11 @@ fn to_gelf_event(log: &mut OtelLog) -> vector_common::Result<()> {
         err_missing_field(HOST)?;
     }
     if log.get(&GELF_TARGET_PATHS.short_message).is_none() {
-        if let Some(message_key) = log_schema().message_key_target_path() {
-            if log.get(message_key).is_some() {
-                log.rename_key(message_key, &GELF_TARGET_PATHS.short_message);
-            } else {
-                err_missing_field(SHORT_MESSAGE)?;
-            }
+        let body_path = OwnedTargetPath::event(owned_value_path!("body"));
+        if log.get(&body_path).is_some() {
+            log.rename_key(&body_path, &GELF_TARGET_PATHS.short_message);
+        } else {
+            err_missing_field(SHORT_MESSAGE)?;
         }
     }
 
@@ -348,7 +348,7 @@ mod tests {
             let event_fields = btreemap! {
                 VERSION => "1.1",
                 HOST => "example.org",
-                log_schema().message_key().unwrap().to_string() => "Some message",
+                "body" => "Some message",
             };
 
             let jsn = do_serialize(true, event_fields).unwrap();

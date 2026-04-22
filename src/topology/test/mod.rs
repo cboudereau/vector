@@ -70,12 +70,10 @@ fn basic_config_with_sink_failing_healthcheck() -> Config {
 }
 
 fn into_message(event: Event) -> String {
-    let message_key = crate::config::log_schema()
-        .message_key_target_path()
-        .unwrap();
+    let message_key = vector_lib::lookup::OwnedTargetPath::event(vector_lib::lookup::owned_value_path!("body"));
     event
         .as_log()
-        .get(message_key)
+        .get(&message_key)
         .unwrap()
         .to_string_lossy()
         .into_owned()
@@ -138,11 +136,7 @@ async fn topology_shutdown_while_active() {
         .flat_map(|item| EventArray::into_events(item.into()))
     {
         assert_eq!(
-            event.as_log().get(crate::config::log_schema()
-                .message_key()
-                .unwrap()
-                .to_string()
-                .as_str()).unwrap(),
+            event.as_log().get("body").unwrap(),
             "test transformed".to_owned().into()
         );
     }

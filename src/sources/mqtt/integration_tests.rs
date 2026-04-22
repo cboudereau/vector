@@ -10,7 +10,7 @@ use tokio::time::timeout;
 use crate::{
     SourceSender,
     common::mqtt::MqttCommonConfig,
-    config::{SourceConfig, SourceContext, log_schema},
+    config::{SourceConfig, SourceContext},
     event::Event,
     serde::OneOrMany,
     sources::mqtt::MqttSourceConfig,
@@ -106,7 +106,7 @@ async fn mqtt_one_topic_happy() {
         for event in events {
             let message = event
                 .as_log()
-                .get(log_schema().message_key_target_path().unwrap())
+                .get("body")
                 .unwrap()
                 .to_string_lossy();
             if !expected_messages.remove(message.as_ref()) {
@@ -172,7 +172,7 @@ async fn mqtt_many_topics_happy() {
         for event in events {
             let message = event
                 .as_log()
-                .get(log_schema().message_key_target_path().unwrap())
+                .get("body")
                 .unwrap()
                 .to_string_lossy();
             if !expected_messages.remove(message.as_ref()) {

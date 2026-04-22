@@ -18,12 +18,12 @@ use vector_lib::{
         Decoder, DecodingConfig, StreamDecodingError,
         decoding::{DeserializerConfig, FramingConfig},
     },
-    config::{LegacyKey, LogNamespace, log_schema},
+    config::{LegacyKey, LogNamespace},
     configurable::configurable_component,
     internal_event::{ByteSize, BytesReceived, InternalEventHandle as _, Protocol},
     lookup::owned_value_path,
 };
-use vrl::{path::OwnedValuePath, value::Kind};
+use vrl::value::Kind;
 use vrl::value::Value;
 
 use opentelemetry_proto::tonic::common::v1::AnyValue;
@@ -301,11 +301,7 @@ impl SourceConfig for ExecConfig {
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::InsertIfEmpty(
-                    log_schema()
-                        .host_key()
-                        .map_or(OwnedValuePath::root(), |key| key.clone()),
-                )),
+                Some(LegacyKey::InsertIfEmpty(owned_value_path!("host"))),
                 &owned_value_path!("host"),
                 Kind::bytes().or_undefined(),
                 Some("host"),

@@ -54,8 +54,7 @@ use crate::{
     SourceSender,
     codecs::{Decoder, DecodingConfig},
     config::{
-        LogSchema, SourceAcknowledgementsConfig, SourceConfig, SourceContext, SourceOutput,
-        log_schema,
+        SourceAcknowledgementsConfig, SourceConfig, SourceContext, SourceOutput,
     },
     event::{BatchNotifier, BatchStatus, Event, Value, string_value, int_value},
     internal_events::{
@@ -256,7 +255,7 @@ pub struct KafkaSourceConfig {
 
 impl KafkaSourceConfig {
     fn keys(&self) -> Keys {
-        Keys::from(log_schema(), self)
+        Keys::from(self)
     }
 }
 
@@ -1041,9 +1040,9 @@ struct Keys {
 }
 
 impl Keys {
-    fn from(schema: &LogSchema, config: &KafkaSourceConfig) -> Self {
+    fn from(config: &KafkaSourceConfig) -> Self {
         Self {
-            timestamp: schema.timestamp_key().cloned(),
+            timestamp: Some(owned_value_path!("time_unix_nano")),
             key_field: config.key_field.path.clone(),
             topic: config.topic_key.path.clone(),
             partition: config.partition_key.path.clone(),
@@ -1661,7 +1660,7 @@ mod integration_test {
         for (i, event) in events.into_iter().enumerate() {
             if let LogNamespace::Legacy = log_namespace {
                 assert_eq!(
-                    event.as_log()[log_schema().message_key().unwrap().to_string()],
+                    event.as_log()["body"],
                     format!("{TEXT} {i:03}").into()
                 );
                 assert_eq!(event.as_log()["message_key"], format!("{KEY} {i}").into());
@@ -1670,7 +1669,7 @@ mod integration_test {
                     "kafka".into()
                 );
                 assert_eq!(
-                    event.as_log()[log_schema().timestamp_key().unwrap().to_string()],
+                    event.as_log()["time_unix_nano"],
                     now.trunc_subsecs(3).into()
                 );
                 assert_eq!(event.as_log()["topic"], topic.clone().into());

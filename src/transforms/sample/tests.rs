@@ -6,7 +6,6 @@ use vrl::owned_value_path;
 
 use crate::{
     conditions::{Condition, ConditionalConfig, VrlConfig},
-    config::log_schema,
     event::{Event, EventMetadata, OtelLog, OtelSpan, Value},
     template::Template,
     test_util::{components::assert_transform_compliance, random_lines},
@@ -54,10 +53,10 @@ fn hash_samples_at_roughly_the_configured_rate() {
     let mut sampler = Sample::new(
         "sample".to_string(),
         SampleMode::new_rate(2),
-        log_schema().message_key().map(ToString::to_string),
+        Some("body".to_string()),
         None,
         Some(condition_contains(
-            log_schema().message_key().unwrap().to_string().as_str(),
+            "body",
             "na",
         )),
         default_sample_rate_key(),
@@ -77,10 +76,10 @@ fn hash_samples_at_roughly_the_configured_rate() {
     let mut sampler = Sample::new(
         "sample".to_string(),
         SampleMode::new_ratio(0.04),
-        log_schema().message_key().map(ToString::to_string),
+        Some("body".to_string()),
         None,
         Some(condition_contains(
-            log_schema().message_key().unwrap().to_string().as_str(),
+            "body",
             "na",
         )),
         default_sample_rate_key(),
@@ -103,10 +102,10 @@ fn hash_consistently_samples_the_same_events() {
     let mut sampler = Sample::new(
         "sample".to_string(),
         SampleMode::new_rate(2),
-        log_schema().message_key().map(ToString::to_string),
+        Some("body".to_string()),
         None,
         Some(condition_contains(
-            log_schema().message_key().unwrap().to_string().as_str(),
+            "body",
             "na",
         )),
         default_sample_rate_key(),
@@ -135,7 +134,7 @@ fn hash_consistently_samples_the_same_events() {
 
 #[test]
 fn always_passes_events_matching_pass_list() {
-    for key_field in &[None, log_schema().message_key().map(ToString::to_string)] {
+    for key_field in &[None, Some("body".to_string())] {
         let event = Event::Log(OtelLog::from("i am important"));
         let mut sampler = Sample::new(
             "sample".to_string(),
@@ -143,7 +142,7 @@ fn always_passes_events_matching_pass_list() {
             key_field.clone(),
             None,
             Some(condition_contains(
-                log_schema().message_key().unwrap().to_string().as_str(),
+                "body",
                 "important",
             )),
             default_sample_rate_key(),
@@ -167,10 +166,10 @@ fn handles_group_by() {
         let mut sampler = Sample::new(
             "sample".to_string(),
             SampleMode::new_rate(0),
-            log_schema().message_key().map(ToString::to_string),
+            Some("body".to_string()),
             group_by.clone(),
             Some(condition_contains(
-                log_schema().message_key().unwrap().to_string().as_str(),
+                "body",
                 "na",
             )),
             default_sample_rate_key(),
@@ -211,9 +210,9 @@ fn handles_key_field() {
 
 #[test]
 fn sampler_adds_sampling_rate_to_event() {
-    for key_field in &[None, log_schema().message_key().map(ToString::to_string)] {
+    for key_field in &[None, Some("body".to_string())] {
         let events = random_events(10000);
-        let message_key = log_schema().message_key().unwrap().to_string();
+        let message_key = "body".to_string();
         let mut sampler = Sample::new(
             "sample".to_string(),
             SampleMode::new_ratio(0.1),

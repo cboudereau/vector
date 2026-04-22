@@ -561,7 +561,7 @@ impl LogNamespace {
         }
         self.insert_vector_metadata(
             log,
-            log_schema().timestamp_key(),
+            Some(path!("time_unix_nano")),
             path!("ingest_timestamp"),
             now,
         );

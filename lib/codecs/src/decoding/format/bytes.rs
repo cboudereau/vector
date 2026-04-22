@@ -1,9 +1,9 @@
 use bytes::Bytes;
-use lookup::OwnedTargetPath;
+use lookup::{OwnedTargetPath, owned_value_path};
 use serde::{Deserialize, Serialize};
 use smallvec::{SmallVec, smallvec};
 use vector_core::{
-    config::{DataType, LogNamespace, log_schema},
+    config::{DataType, LogNamespace},
     event::{Event, OtelLog},
     schema,
     schema::meaning,
@@ -37,14 +37,12 @@ impl BytesDeserializerConfig {
         match log_namespace {
             LogNamespace::Legacy => {
                 let definition = schema::Definition::empty_legacy_namespace();
-                if let Some(message_key) = log_schema().message_key() {
-                    return definition.with_event_field(
-                        message_key,
-                        Kind::bytes(),
-                        Some(meaning::MESSAGE),
-                    );
-                }
-                definition
+                let message_key = owned_value_path!("body");
+                definition.with_event_field(
+                    &message_key,
+                    Kind::bytes(),
+                    Some(meaning::MESSAGE),
+                )
             }
             LogNamespace::Vector => {
                 schema::Definition::new_with_default_metadata(Kind::bytes(), [log_namespace])

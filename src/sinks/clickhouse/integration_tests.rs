@@ -19,13 +19,13 @@ use tokio::time::{Duration, timeout};
 use vector_lib::{
     codecs::encoding::{ArrowStreamSerializerConfig, BatchSerializerConfig},
     event::{BatchNotifier, BatchStatus, BatchStatusReceiver, Event, OtelLog},
-    lookup::PathPrefix,
+    lookup::{PathPrefix, owned_value_path},
 };
 use warp::Filter;
 
 use crate::{
     codecs::{TimestampFormat, Transformer},
-    config::{SinkConfig, SinkContext, log_schema},
+    config::{SinkConfig, SinkContext},
     sinks::{
         clickhouse::config::ClickhouseConfig,
         util::{BatchConfig, Compression, TowerRequestConfig},
@@ -178,7 +178,7 @@ async fn insert_events_unix_timestamps() {
 
     let exp_event = input_event.as_mut_log();
     exp_event.insert(
-        (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
+        (PathPrefix::Event, &owned_value_path!("time_unix_nano")),
         format!(
             "{}",
             exp_event
@@ -235,7 +235,7 @@ timestamp_format = "unix""#
 
     let exp_event = input_event.as_mut_log();
     exp_event.insert(
-        (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
+        (PathPrefix::Event, &owned_value_path!("time_unix_nano")),
         format!(
             "{}",
             exp_event

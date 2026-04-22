@@ -27,7 +27,7 @@ use super::util::net::{SocketListenAddr, TcpSource, TcpSourceAck, TcpSourceAcker
 use crate::{
     config::{
         DataType, GenerateConfig, Resource, SourceAcknowledgementsConfig, SourceConfig,
-        SourceContext, SourceOutput, log_schema,
+        SourceContext, SourceOutput,
     },
     event::{Event, OtelLog},
     internal_events::{FluentMessageDecodeError, FluentMessageReceived},
@@ -331,10 +331,7 @@ impl FluentConfig {
     /// Builds the `schema::Definition` for this source using the provided `LogNamespace`.
     fn schema_definition(&self, log_namespace: LogNamespace) -> Definition {
         // `host_key` is only inserted if not present already.
-        let host_key = log_schema()
-            .host_key()
-            .cloned()
-            .map(LegacyKey::InsertIfEmpty);
+        let host_key = Some(LegacyKey::InsertIfEmpty(owned_value_path!("host")));
 
         let tag_key = parse_value_path("tag").ok().map(LegacyKey::Overwrite);
 

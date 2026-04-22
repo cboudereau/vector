@@ -6,12 +6,12 @@ use aws_sdk_kms::Client as KMSClient;
 use chrono::Duration;
 use futures::{StreamExt, stream};
 use similar_asserts::assert_eq;
-use vector_lib::{codecs::TextSerializerConfig, lookup};
+use vector_lib::{codecs::TextSerializerConfig, lookup, lookup::{OwnedTargetPath, owned_value_path}};
 
 use super::*;
 use crate::{
     aws::{AwsAuthentication, ClientBuilder, RegionOrEndpoint, create_client},
-    config::{ProxyConfig, SinkConfig, SinkContext, log_schema},
+    config::{ProxyConfig, SinkConfig, SinkContext},
     event::{Event, OtelLog, Value},
     sinks::{aws_cloudwatch_logs::config::CloudwatchLogsClientBuilder, util::BatchConfig},
     template::Template,
@@ -137,7 +137,7 @@ async fn cloudwatch_insert_log_events_sorted() {
                 log.insert(
                     (
                         lookup::PathPrefix::Event,
-                        log_schema().timestamp_key().unwrap(),
+                        &owned_value_path!("time_unix_nano"),
                     ),
                     Value::Timestamp(timestamp),
                 );
@@ -210,7 +210,7 @@ async fn cloudwatch_insert_out_of_range_timestamp() {
         let line = input_lines.next().unwrap();
         let mut event = OtelLog::from(line.clone());
         event.insert(
-            log_schema().timestamp_key_target_path().unwrap(),
+            &OwnedTargetPath::event(owned_value_path!("time_unix_nano")),
             now + offset,
         );
         events.push(Event::from(event));

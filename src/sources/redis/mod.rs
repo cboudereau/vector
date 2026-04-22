@@ -299,7 +299,6 @@ mod integration_test {
     use super::*;
     use crate::{
         SourceSender,
-        config::log_schema,
         test_util::{
             collect_n,
             components::{SOURCE_TAGS, run_and_assert_source_compliance_n},
@@ -339,15 +338,15 @@ mod integration_test {
         let events = run_and_assert_source_compliance_n(config, 3, &SOURCE_TAGS).await;
 
         assert_eq!(
-            events[0].as_log()[log_schema().message_key().unwrap().to_string()],
+            events[0].as_log()["body"],
             "3".into()
         );
         assert_eq!(
-            events[1].as_log()[log_schema().message_key().unwrap().to_string()],
+            events[1].as_log()["body"],
             "2".into()
         );
         assert_eq!(
-            events[2].as_log()[log_schema().message_key().unwrap().to_string()],
+            events[2].as_log()["body"],
             "1".into()
         );
     }
@@ -421,15 +420,15 @@ mod integration_test {
         let events = run_and_assert_source_compliance_n(config, 3, &SOURCE_TAGS).await;
 
         assert_eq!(
-            events[0].as_log()[log_schema().message_key().unwrap().to_string()],
+            events[0].as_log()["body"],
             "1".into()
         );
         assert_eq!(
-            events[1].as_log()[log_schema().message_key().unwrap().to_string()],
+            events[1].as_log()["body"],
             "2".into()
         );
         assert_eq!(
-            events[2].as_log()[log_schema().message_key().unwrap().to_string()],
+            events[2].as_log()["body"],
             "3".into()
         );
     }
@@ -483,7 +482,7 @@ mod integration_test {
 
         for event in events {
             assert_eq!(
-                event.as_log()[log_schema().message_key().unwrap().to_string()],
+                event.as_log()["body"],
                 text.into()
             );
             assert_eq!(

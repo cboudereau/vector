@@ -68,11 +68,10 @@ impl FunctionTransform for BasicTransform {
     fn transform(&mut self, output: &mut OutputBuffer, mut event: Event) {
         match &mut event {
             Event::Log(otel_log) => {
-                if let Some(message_key) = crate::config::log_schema().message_key_target_path() {
-                    let mut v = otel_log.get(message_key).unwrap().to_string_lossy().into_owned();
-                    v.push_str(&self.suffix);
-                    otel_log.insert(message_key, Value::from(v));
-                }
+                let message_key = vector_lib::lookup::OwnedTargetPath::event(vector_lib::lookup::owned_value_path!("body"));
+                let mut v = otel_log.get(&message_key).unwrap().to_string_lossy().into_owned();
+                v.push_str(&self.suffix);
+                otel_log.insert(&message_key, Value::from(v));
             }
             Event::Metric(otel_metric) => {
                 use opentelemetry_proto::tonic::metrics::v1::{metric, number_data_point::Value as NDPValue};
@@ -98,15 +97,14 @@ impl FunctionTransform for BasicTransform {
                 }
             }
             Event::Trace(otel_span) => {
-                if let Some(message_key) = crate::config::log_schema().message_key_target_path() {
-                    let mut v = otel_span
-                        .get(message_key)
-                        .unwrap()
-                        .to_string_lossy()
-                        .into_owned();
-                    v.push_str(&self.suffix);
-                    otel_span.insert(message_key, Value::from(v));
-                }
+                let message_key = vector_lib::lookup::OwnedTargetPath::event(vector_lib::lookup::owned_value_path!("body"));
+                let mut v = otel_span
+                    .get(&message_key)
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned();
+                v.push_str(&self.suffix);
+                otel_span.insert(&message_key, Value::from(v));
             }
         };
         output.push(event);

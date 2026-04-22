@@ -40,7 +40,7 @@ mod integration_tests {
     use futures::{FutureExt, stream::TryStreamExt};
     use itertools::Itertools as _;
     use similar_asserts::assert_eq;
-    use vrl::value;
+    use vrl::{event_path, value};
 
     use crate::{
         SourceSender,
@@ -285,7 +285,7 @@ mod integration_tests {
         // Wait for before message
         let events = collect_n(out, 1).await;
         assert_eq!(
-            events[0].as_log()[log_schema().message_key().unwrap().to_string()],
+            events[0].as_log()["body"],
             "before".into()
         );
 
@@ -352,7 +352,7 @@ mod integration_tests {
                 .unwrap()
                 .assert_valid_for_event(&events[0]);
             assert_eq!(
-                events[0].as_log()[log_schema().message_key().unwrap().to_string()],
+                events[0].as_log()["body"],
                 message.into()
             );
         })
@@ -488,10 +488,9 @@ mod integration_tests {
             let definition = schema_definitions.unwrap();
 
             definition.assert_valid_for_event(&events[0]);
-            let message_key = log_schema().message_key().unwrap().to_string();
-            assert_eq!(events[0].as_log()[&message_key], message.into());
+            assert_eq!(events[0].as_log()["body"], message.into());
             definition.assert_valid_for_event(&events[1]);
-            assert_eq!(events[1].as_log()[message_key], message.into());
+            assert_eq!(events[1].as_log()["body"], message.into());
         })
         .await;
     }
@@ -525,7 +524,7 @@ mod integration_tests {
                 .unwrap()
                 .assert_valid_for_event(&events[0]);
             assert_eq!(
-                events[0].as_log()[log_schema().message_key().unwrap().to_string()],
+                events[0].as_log()["body"],
                 message.into()
             );
         })
@@ -573,11 +572,10 @@ mod integration_tests {
             let definition = schema_definitions.unwrap();
             definition.assert_valid_for_event(&events[0]);
 
-            let message_key = log_schema().message_key().unwrap().to_string();
-            assert_eq!(events[0].as_log()[&message_key], will_be_read.into());
+            assert_eq!(events[0].as_log()["body"], will_be_read.into());
 
             definition.assert_valid_for_event(&events[1]);
-            assert_eq!(events[1].as_log()[message_key], will_be_read.into());
+            assert_eq!(events[1].as_log()["body"], will_be_read.into());
         })
         .await;
     }
@@ -612,7 +610,7 @@ mod integration_tests {
                 .unwrap()
                 .assert_valid_for_event(&events[0]);
             assert_eq!(
-                events[0].as_log()[log_schema().message_key().unwrap().to_string()],
+                events[0].as_log()["body"],
                 message.into()
             );
         })
@@ -691,7 +689,7 @@ mod integration_tests {
                 .unwrap()
                 .assert_valid_for_event(&events[0]);
             assert_eq!(
-                events[0].as_log()[log_schema().message_key().unwrap().to_string()],
+                events[0].as_log()["body"],
                 message.into()
             );
         })
@@ -966,7 +964,7 @@ mod integration_tests {
 
                     event
                         .into_log()
-                        .remove(log_schema().message_key_target_path().unwrap())
+                        .remove(event_path!("body"))
                         .unwrap()
                         .to_string_lossy()
                         .into_owned()

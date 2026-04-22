@@ -33,7 +33,7 @@ use crate::{
     Result,
     config::{
         ComponentKey, DataType, Input, OutputId, TransformConfig, TransformContext,
-        TransformOutput, log_schema,
+        TransformOutput,
     },
     event::{Event, TargetEvents, VrlTarget},
     format_vrl_diagnostics,
@@ -342,7 +342,7 @@ impl TransformConfig for RemapConfig {
             let dropped_definition = Definition::combine_log_namespaces(
                 input_definition.log_namespaces(),
                 input_definition.clone().with_event_field(
-                    log_schema().metadata_key().expect("valid metadata key"),
+                    &owned_value_path!("metadata"),
                     Kind::object(BTreeMap::from([
                         ("reason".into(), Kind::bytes()),
                         ("message".into(), Kind::bytes()),
@@ -513,10 +513,7 @@ where
         match event {
             Event::Log(otel_log) => {
                 let dropped = self.dropped_data(reason, error);
-                let metadata_key = log_schema()
-                    .metadata_key()
-                    .expect("valid metadata key")
-                    .to_string();
+                let metadata_key = "metadata".to_string();
                 otel_log.insert(
                     metadata_key.as_str(),
                     serde_json::json!({ "dropped": dropped }),

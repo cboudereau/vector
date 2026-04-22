@@ -56,7 +56,7 @@ use self::{
 };
 use crate::{
     SourceSender,
-    config::{DataType, Resource, SourceConfig, SourceContext, SourceOutput, log_schema},
+    config::{DataType, Resource, SourceConfig, SourceContext, SourceOutput},
     event::{Event, EventMetadata, OtelLog, Value},
     http::{KeepaliveConfig, MaxConnectionAgeLayer, build_http_trace_layer},
     internal_events::{
@@ -223,15 +223,11 @@ impl SourceConfig for SplunkConfig {
                         None,
                     );
 
-                if let Some(message_key) = log_schema().message_key() {
-                    definition.with_event_field(
-                        message_key,
-                        Kind::bytes().or_undefined(),
-                        Some(meaning::MESSAGE),
-                    )
-                } else {
-                    definition
-                }
+                definition.with_event_field(
+                    &owned_value_path!("body"),
+                    Kind::bytes().or_undefined(),
+                    Some(meaning::MESSAGE),
+                )
             }
             LogNamespace::Vector => vector_lib::schema::Definition::new_with_default_metadata(
                 Kind::bytes().or_object(Collection::empty()),
@@ -242,10 +238,7 @@ impl SourceConfig for SplunkConfig {
         .with_standard_vector_source_metadata()
         .with_source_metadata(
             SplunkConfig::NAME,
-            log_schema()
-                .host_key()
-                .cloned()
-                .map(LegacyKey::InsertIfEmpty),
+            Some(LegacyKey::InsertIfEmpty(owned_value_path!("host"))),
             &owned_value_path!("host"),
             Kind::bytes(),
             Some(meaning::HOST),
@@ -899,9 +892,7 @@ impl<'de, R: JsonRead<'de>> EventIterator<'de, R> {
                     if string.is_empty() {
                         return Err(ApiError::EmptyEventField { event: self.events }.into());
                     }
-                    if let Some(key) = log_schema().message_key_target_path() {
-                        log.insert(key, string);
-                    }
+                    log.insert(&OwnedTargetPath::event(owned_value_path!("body")), string);
                 }
                 JsonValue::Object(mut object) => {
                     if object.is_empty() {
@@ -910,7 +901,7 @@ impl<'de, R: JsonRead<'de>> EventIterator<'de, R> {
 
                     // Batch all field insertions into a single legacy-layout
                     // round-trip to avoid O(N²) cost for large event objects.
-                    let message_key_path = log_schema().message_key().cloned();
+                    let message_key_path = Some(owned_value_path!("body"));
                     log.modify_as_value(|v| {
                         // Invariant: OtelLog::new(Default::default()) always
                         // produces Value::Object via to_value_canonical.
@@ -1118,9 +1109,7 @@ fn raw_event(
         LogNamespace::Vector => OtelLog::from_value_map(message, EventMetadata::default()),
         LogNamespace::Legacy => {
             let mut log = OtelLog::new(Default::default());
-            if let Some(key) = log_schema().message_key_target_path() {
-                log.insert(key, message);
-            }
+            log.insert(&OwnedTargetPath::event(owned_value_path!("body")), message);
             log
         }
     };
@@ -1363,7 +1352,7 @@ mod tests {
         SourceSender,
         codecs::{DecodingConfig, EncodingConfig},
         components::validation::prelude::*,
-        config::{SinkConfig, SinkContext, SourceConfig, SourceContext, log_schema},
+        config::{SinkConfig, SinkContext, SourceConfig, SourceContext},
         event::{Event, OtelLog},
         sinks::{
             Healthcheck, VectorSink,
@@ -1579,7 +1568,7 @@ mod tests {
         let event = channel_n(vec![message], sink, source).await.remove(0);
 
         assert_eq!(
-            event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+            event.as_log().get("body").unwrap(),
             message.into()
         );
         assert!(event.as_log().get_timestamp().is_some());
@@ -1603,7 +1592,7 @@ mod tests {
         let event = channel_n(vec![message], sink, source).await.remove(0);
 
         assert_eq!(
-            event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+            event.as_log().get("body").unwrap(),
             message.into()
         );
         assert!(event.as_log().get_timestamp().is_some());
@@ -1631,7 +1620,7 @@ mod tests {
 
         for (msg, event) in messages.into_iter().zip(events.into_iter()) {
             assert_eq!(
-                event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                event.as_log().get("body").unwrap(),
                 msg.into()
             );
             assert!(event.as_log().get_timestamp().is_some());
@@ -1656,7 +1645,7 @@ mod tests {
         let event = channel_n(vec![message], sink, source).await.remove(0);
 
         assert_eq!(
-            event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+            event.as_log().get("body").unwrap(),
             message.into()
         );
         assert!(event.as_log().get_timestamp().is_some());
@@ -1684,7 +1673,7 @@ mod tests {
 
         for (msg, event) in messages.into_iter().zip(events.into_iter()) {
             assert_eq!(
-                event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                event.as_log().get("body").unwrap(),
                 msg.into()
             );
             assert!(event.as_log().get_timestamp().is_some());
@@ -1758,7 +1747,7 @@ mod tests {
 
         let event = collect_n(source, 1).await.remove(0);
         assert_eq!(
-            event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+            event.as_log().get("body").unwrap(),
             "hello".into()
         );
         assert!(event.metadata().splunk_hec_token().is_none());
@@ -1774,7 +1763,7 @@ mod tests {
 
             let event = collect_n(source, 1).await.remove(0);
             assert_eq!(
-                event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                event.as_log().get("body").unwrap(),
                 message.into()
             );
             assert_eq!(event.as_log().get(super::CHANNEL).unwrap(), "channel".into());
@@ -2028,7 +2017,7 @@ mod tests {
             let event = channel_n(vec![message], sink, source).await.remove(0);
 
             assert_eq!(
-                event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                event.as_log().get("body").unwrap(),
                 message.into()
             );
             assert_eq!(
@@ -2049,7 +2038,7 @@ mod tests {
 
             let event = collect_n(source, 1).await.remove(0);
             assert_eq!(
-                event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                event.as_log().get("body").unwrap(),
                 message.into()
             );
             assert_eq!(event.as_log().get(super::CHANNEL).unwrap(), "channel".into());
@@ -2082,7 +2071,7 @@ mod tests {
             let event = channel_n(vec![message], sink, source).await.remove(0);
 
             assert_eq!(
-                event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                event.as_log().get("body").unwrap(),
                 message.into()
             );
             assert!(event.metadata().splunk_hec_token().is_none());
@@ -2106,7 +2095,7 @@ mod tests {
             let event = channel_n(vec![message], sink, source).await.remove(0);
 
             assert_eq!(
-                event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                event.as_log().get("body").unwrap(),
                 message.into()
             );
             assert_eq!(
@@ -2130,7 +2119,7 @@ mod tests {
 
             let event = collect_n(source, 1).await.remove(0);
             assert_eq!(
-                event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                event.as_log().get("body").unwrap(),
                 "first".into()
             );
             assert!(event.as_log().get_timestamp().is_some());
@@ -2157,7 +2146,7 @@ mod tests {
 
             let event = collect_n(source, 1).await.remove(0);
             assert_eq!(
-                event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                event.as_log().get("body").unwrap(),
                 "first".into()
             );
             assert!(event.as_log().get_timestamp().is_some());
@@ -2182,7 +2171,7 @@ mod tests {
 
             let event = collect_n(source, 1).await.remove(0);
             assert_eq!(
-                event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                event.as_log().get("body").unwrap(),
                 "first".into()
             );
             assert!(event.as_log().get_timestamp().is_some());
@@ -2214,7 +2203,7 @@ mod tests {
         assert_eq!(event.as_log().get("non").unwrap(), "A non UTF8 character �".into());
         assert_eq!(event.as_log().get("number").unwrap(), 2.into());
         assert_eq!(event.as_log().get("bool").unwrap(), true.into());
-        assert!(event.as_log().get((lookup::PathPrefix::Event, log_schema().timestamp_key().unwrap())).is_some());
+        assert!(event.as_log().get((lookup::PathPrefix::Event, &owned_value_path!("time_unix_nano"))).is_some());
         assert_eq!(
             event.as_log().get_source_type().unwrap(),
             "splunk_hec".into()
@@ -2236,19 +2225,19 @@ mod tests {
         let events = collect_n(source, 3).await;
 
         assert_eq!(
-            events[0].as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+            events[0].as_log().get("body").unwrap(),
             "first".into()
         );
         assert_eq!(events[0].as_log().get(super::SOURCE).unwrap(), "main".into());
 
         assert_eq!(
-            events[1].as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+            events[1].as_log().get("body").unwrap(),
             "second".into()
         );
         assert_eq!(events[1].as_log().get(super::SOURCE).unwrap(), "main".into());
 
         assert_eq!(
-            events[2].as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+            events[2].as_log().get("body").unwrap(),
             "third".into()
         );
         assert_eq!(events[2].as_log().get(super::SOURCE).unwrap(), "secondary".into());
@@ -2312,7 +2301,7 @@ mod tests {
             let event = channel_n(vec![message], sink, source).await.remove(0);
 
             assert_eq!(
-                event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                event.as_log().get("body").unwrap(),
                 message.into()
             );
             assert!(event.as_log().get("host").is_none());

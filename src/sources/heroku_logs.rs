@@ -27,7 +27,7 @@ use crate::{
     common::http::{ErrorMessage, server_auth::HttpServerAuthConfig},
     config::{
         GenerateConfig, Resource, SourceAcknowledgementsConfig, SourceConfig, SourceContext,
-        SourceOutput, log_schema,
+        SourceOutput,
     },
     event::{Event, OtelLog, string_value},
     http::KeepaliveConfig,
@@ -113,10 +113,7 @@ impl LogplexConfig {
             )
             .with_source_metadata(
                 LogplexConfig::NAME,
-                log_schema()
-                    .host_key()
-                    .cloned()
-                    .map(LegacyKey::InsertIfEmpty),
+                Some(LegacyKey::InsertIfEmpty(owned_value_path!("host"))),
                 &owned_value_path!("host"),
                 Kind::bytes(),
                 Some("host"),

@@ -263,7 +263,8 @@ mod tests {
     use serde_json::json;
     use similar_asserts::assert_eq;
     use smallvec::SmallVec;
-    use vector_core::{config::log_schema, event::Event};
+    use lookup::{OwnedTargetPath, owned_value_path};
+    use vector_core::event::Event;
     use vrl::value::Value;
 
     use super::*;
@@ -313,7 +314,7 @@ mod tests {
             Some(Value::Bytes(Bytes::from_static(b"example.org")))
         );
         assert_eq!(
-            log.get(log_schema().message_key_target_path().unwrap()),
+            log.get(&OwnedTargetPath::event(owned_value_path!("body"))),
             Some(Value::Bytes(Bytes::from_static(
                 b"A short message that helps you identify what is going on"
             )))
@@ -368,7 +369,7 @@ mod tests {
                 deserialize_gelf_input(&input, GelfDeserializerOptions::default()).unwrap();
             assert_eq!(events.len(), 1);
             let log = events[0].as_log();
-            assert!(log.contains(log_schema().message_key_target_path().unwrap()));
+            assert!(log.contains(&OwnedTargetPath::event(owned_value_path!("body"))));
         }
 
         // filter out id

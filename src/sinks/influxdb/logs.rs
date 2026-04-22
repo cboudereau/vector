@@ -5,7 +5,6 @@ use futures::SinkExt;
 use http::{Request, Uri};
 use indoc::indoc;
 use vector_lib::{
-    config::log_schema,
     configurable::configurable_component,
     lookup::{PathPrefix, lookup_v2::OptionalValuePath, owned_value_path},
     schema,
@@ -183,8 +182,7 @@ impl SinkConfig for InfluxDbLogsConfig {
             .message_key
             .as_ref()
             .and_then(|k| k.path.clone())
-            .or_else(|| log_schema().message_key().cloned())
-            .expect("global log_schema.message_key to be valid path");
+            .unwrap_or_else(|| owned_value_path!("body"));
 
         let source_type_key = self
             .source_type_key

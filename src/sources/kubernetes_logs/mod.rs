@@ -42,7 +42,7 @@ use crate::{
     built_info::{PKG_NAME, PKG_VERSION},
     config::{
         ComponentKey, DataType, GenerateConfig, GlobalOptions, SourceConfig, SourceContext,
-        SourceOutput, log_schema,
+        SourceOutput,
     },
     event::{Event, string_value},
     internal_events::{
@@ -534,10 +534,7 @@ impl SourceConfig for Config {
             )
             .with_source_metadata(
                 Self::NAME,
-                log_schema()
-                    .timestamp_key()
-                    .cloned()
-                    .map(LegacyKey::Overwrite),
+                Some(LegacyKey::Overwrite(owned_value_path!("time_unix_nano"))),
                 &owned_value_path!("timestamp"),
                 Kind::timestamp(),
                 Some("timestamp"),

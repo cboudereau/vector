@@ -1,8 +1,9 @@
 use bytes::Bytes;
 use chrono::{DateTime, TimeZone, Utc};
+use lookup::{OwnedTargetPath, owned_value_path};
 use prost::Message;
 use vector_core::{
-    config::{LegacyKey, LogNamespace, log_schema},
+    config::{LegacyKey, LogNamespace},
     event::{Event, EventMetadata, OtelLog},
 };
 use vrl::{core::Value, path};
@@ -260,7 +261,8 @@ impl ResourceLog {
             LogNamespace::Legacy => {
                 let mut log = OtelLog::default();
                 if let Some(v) = self.log_record.body.and_then(|av| av.value) {
-                    log.maybe_insert(log_schema().message_key_target_path(), v);
+                    let body_path = OwnedTargetPath::event(owned_value_path!("body"));
+                    log.maybe_insert(Some(&body_path), v);
                 }
                 log
             }

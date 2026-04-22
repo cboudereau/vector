@@ -371,7 +371,7 @@ mod test {
     use super::{SocketConfig, tcp::TcpConfig, udp::UdpConfig};
     use crate::{
         SourceSender,
-        config::{ComponentKey, GlobalOptions, SourceConfig, SourceContext, log_schema},
+        config::{ComponentKey, GlobalOptions, SourceConfig, SourceContext},
         event::{Event, OtelLog},
         shutdown::{ShutdownSignal, SourceShutdownCoordinator},
         sinks::util::tcp::TcpSinkConfig,
@@ -547,11 +547,11 @@ mod test {
 
             assert_eq!(events.len(), 2);
             assert_eq!(
-                events[0].as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                events[0].as_log().get("body").unwrap(),
                 "foo".into()
             );
             assert_eq!(
-                events[1].as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                events[1].as_log().get("body").unwrap(),
                 "bar".into()
             );
         })
@@ -612,13 +612,13 @@ mod test {
 
             let event = rx.next().await.unwrap();
             assert_eq!(
-                event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                event.as_log().get("body").unwrap(),
                 "short".into()
             );
 
             let event = rx.next().await.unwrap();
             assert_eq!(
-                event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                event.as_log().get("body").unwrap(),
                 "more short".into()
             );
         })
@@ -668,7 +668,7 @@ mod test {
 
             let event = rx.next().await.unwrap();
             assert_eq!(
-                event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                event.as_log().get("body").unwrap(),
                 "one line".into()
             );
 
@@ -680,7 +680,7 @@ mod test {
 
             let event = rx.next().await.unwrap();
             assert_eq!(
-                event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                event.as_log().get("body").unwrap(),
                 "another line".into()
             );
 
@@ -787,7 +787,7 @@ mod test {
 
             let event = rx.next().await.unwrap();
             assert_eq!(
-                event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                event.as_log().get("body").unwrap(),
                 "test".into()
             );
 
@@ -867,10 +867,9 @@ mod test {
             .collect::<Vec<_>>();
         assert_eq!(100, events.len());
 
-        let message_key = log_schema().message_key().unwrap().to_string();
         let expected_message = message.clone().into();
         for event in events.into_iter().flat_map(EventContainer::into_events) {
-            assert_eq!(event.as_log().get(message_key.as_str()).unwrap(), expected_message);
+            assert_eq!(event.as_log().get("body").unwrap(), expected_message);
         }
 
         // Now trigger shutdown on the source and ensure that it shuts down before or at the
@@ -1069,7 +1068,7 @@ mod test {
             let events = collect_n(rx, 1).await;
 
             assert_eq!(
-                events[0].as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                events[0].as_log().get("body").unwrap(),
                 "test".into()
             );
         })
@@ -1086,7 +1085,7 @@ mod test {
             let events = collect_n(rx, 1).await;
 
             assert_eq!(
-                events[0].as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                events[0].as_log().get("body").unwrap(),
                 "foo\nbar".into()
             );
         })
@@ -1103,11 +1102,11 @@ mod test {
             let events = collect_n(rx, 2).await;
 
             assert_eq!(
-                events[0].as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                events[0].as_log().get("body").unwrap(),
                 "test".into()
             );
             assert_eq!(
-                events[1].as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                events[1].as_log().get("body").unwrap(),
                 "test2".into()
             );
         })
@@ -1135,11 +1134,11 @@ mod test {
 
             let events = collect_n(rx, 2).await;
             assert_eq!(
-                events[0].as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                events[0].as_log().get("body").unwrap(),
                 "short line".into()
             );
             assert_eq!(
-                events[1].as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                events[1].as_log().get("body").unwrap(),
                 "a short un".into()
             );
         })
@@ -1174,11 +1173,11 @@ mod test {
 
             let events = collect_n(rx, 2).await;
             assert_eq!(
-                events[0].as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                events[0].as_log().get("body").unwrap(),
                 "test with".into()
             );
             assert_eq!(
-                events[1].as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                events[1].as_log().get("body").unwrap(),
                 "short one".into()
             );
         })
@@ -1208,11 +1207,11 @@ mod test {
 
             let events = collect_n(rx, 2).await;
             assert_eq!(
-                events[1].as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                events[1].as_log().get("body").unwrap(),
                 big_message.into()
             );
             assert_eq!(
-                events[0].as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                events[0].as_log().get("body").unwrap(),
                 another_big_message.into()
             );
         })
@@ -1299,7 +1298,7 @@ mod test {
             let events = collect_n(rx, 1).await;
 
             assert_eq!(
-                events[0].as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                events[0].as_log().get("body").unwrap(),
                 "test".into()
             );
 
@@ -1342,7 +1341,7 @@ mod test {
             assert_eq!(100, events.len());
             for event in events {
                 assert_eq!(
-                    event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                    event.as_log().get("body").unwrap(),
                     "test".into()
                 );
             }
@@ -1386,7 +1385,7 @@ mod test {
 
             let event = rx.next().await.expect("must receive an event");
             assert_eq!(
-                event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                event.as_log().get("body").unwrap(),
                 "test".into()
             );
         })
@@ -1419,7 +1418,7 @@ mod test {
 
                 let event = rx.next().await.expect("must receive an event");
                 assert_eq!(
-                    event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                    event.as_log().get("body").unwrap(),
                     multicast_ip_socket_address.to_string().into()
                 );
             }
@@ -1447,7 +1446,7 @@ mod test {
             );
             let event = rx.next().await.expect("must receive an event");
             assert_eq!(
-                event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                event.as_log().get("body").unwrap(),
                 "test".into()
             );
 
@@ -1460,7 +1459,7 @@ mod test {
             send_lines_udp_from(bind_unused_udp(), to, ["test".to_string()]);
             let event = rx.next().await.expect("must receive an event");
             assert_eq!(
-                event.as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                event.as_log().get("body").unwrap(),
                 "test".into()
             );
         })
@@ -1572,11 +1571,11 @@ mod test {
 
         assert_eq!(2, events.len());
         assert_eq!(
-            events[0].as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+            events[0].as_log().get("body").unwrap(),
             "test".into()
         );
         assert_eq!(
-            events[1].as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+            events[1].as_log().get("body").unwrap(),
             "test2".into()
         );
     }
@@ -1631,7 +1630,7 @@ mod test {
 
             assert_eq!(events.len(), 1);
             assert_eq!(
-                events[0].as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                events[0].as_log().get("body").unwrap(),
                 "test".into()
             );
             assert_eq!(
@@ -1713,11 +1712,11 @@ mod test {
 
             let events = collect_n(rx, 2).await;
             assert_eq!(
-                events[0].as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                events[0].as_log().get("body").unwrap(),
                 big_message.into()
             );
             assert_eq!(
-                events[1].as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                events[1].as_log().get("body").unwrap(),
                 another_big_message.into()
             );
         })
@@ -1758,7 +1757,7 @@ mod test {
 
             assert_eq!(events.len(), 1);
             assert_eq!(
-                events[0].as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                events[0].as_log().get("body").unwrap(),
                 "foo\nbar".into()
             );
             assert_eq!(
@@ -1845,7 +1844,7 @@ mod test {
 
             assert_eq!(1, events.len());
             assert_eq!(
-                events[0].as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                events[0].as_log().get("body").unwrap(),
                 "test".into()
             );
             assert_eq!(
@@ -1888,7 +1887,7 @@ mod test {
 
             assert_eq!(events.len(), 2);
             assert_eq!(
-                events[0].as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                events[0].as_log().get("body").unwrap(),
                 "foo".into()
             );
             assert_eq!(
@@ -1896,7 +1895,7 @@ mod test {
                 "socket".into()
             );
             assert_eq!(
-                events[1].as_log().get(log_schema().message_key().unwrap().to_string().as_str()).unwrap(),
+                events[1].as_log().get("body").unwrap(),
                 "bar".into()
             );
             assert_eq!(

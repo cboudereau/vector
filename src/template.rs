@@ -13,10 +13,9 @@ use vector_lib::{
     lookup::lookup_v2::parse_target_path,
 };
 
-use crate::{
-    config::log_schema,
-    event::{EventRef, OtelMetric},
-};
+use vector_lib::lookup::{OwnedTargetPath, owned_value_path};
+
+use crate::event::{EventRef, OtelMetric};
 
 static RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\{\{(?P<key>[^\}]+)\}\}").unwrap());
 
@@ -587,13 +586,12 @@ fn render_timestamp(
             .get_timestamp()
             .and_then(|v| v.as_timestamp().copied()),
         EventRef::Metric(metric) => metric.timestamp(),
-        EventRef::Trace(trace) => log_schema()
-            .timestamp_key_target_path()
-            .and_then(|timestamp_key| {
-                trace
-                    .get(timestamp_key)
-                    .and_then(|v| v.as_timestamp().copied())
-            }),
+        EventRef::Trace(trace) => {
+            let timestamp_key = OwnedTargetPath::event(owned_value_path!("time_unix_nano"));
+            trace
+                .get(&timestamp_key)
+                .and_then(|v| v.as_timestamp().copied())
+        }
     }
     .unwrap_or_else(Utc::now);
 
@@ -614,7 +612,7 @@ mod tests {
     use chrono::{Offset, TimeZone, Utc};
     use chrono_tz::Tz;
     use vector_lib::{
-        lookup::{PathPrefix, metadata_path},
+        lookup::metadata_path,
         metric_tags,
     };
     use vrl::path;
@@ -778,7 +776,7 @@ mod tests {
         let mut event = Event::Log(OtelLog::from("hello world"));
         event
             .as_mut_log()
-            .insert(log_schema().timestamp_key_target_path().unwrap(), ts);
+            .insert(&OwnedTargetPath::event(owned_value_path!("time_unix_nano")), ts);
 
         let template = Template::try_from("abcd-%F").unwrap();
 
@@ -823,7 +821,7 @@ mod tests {
         let mut event = Event::Log(OtelLog::from("hello world"));
         event
             .as_mut_log()
-            .insert(log_schema().timestamp_key_target_path().unwrap(), ts);
+            .insert(&OwnedTargetPath::event(owned_value_path!("time_unix_nano")), ts);
 
         let template = Template::try_from("abcd-%F_%T").unwrap();
 
@@ -843,7 +841,7 @@ mod tests {
         let mut event = Event::Log(OtelLog::from("hello world"));
         event.as_mut_log().insert("foo", "butts");
         event.as_mut_log().insert(
-            (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
+            &OwnedTargetPath::event(owned_value_path!("time_unix_nano")),
             ts,
         );
 
@@ -865,7 +863,7 @@ mod tests {
         let mut event = Event::Log(OtelLog::from("hello world"));
         event.as_mut_log().insert("format", "%F");
         event.as_mut_log().insert(
-            (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
+            &OwnedTargetPath::event(owned_value_path!("time_unix_nano")),
             ts,
         );
 
@@ -887,7 +885,7 @@ mod tests {
         let mut event = Event::Log(OtelLog::from("hello world"));
         event.as_mut_log().insert("\"%F\"", "foo");
         event.as_mut_log().insert(
-            (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
+            &OwnedTargetPath::event(owned_value_path!("time_unix_nano")),
             ts,
         );
 
@@ -974,7 +972,7 @@ mod tests {
         let template = Template::try_from("vector-%Y-%m-%d-%H.log").unwrap();
         let mut event = Event::Log(OtelLog::from("hello world"));
         event.as_mut_log().insert(
-            (PathPrefix::Event, log_schema().timestamp_key().unwrap()),
+            &OwnedTargetPath::event(owned_value_path!("time_unix_nano")),
             ts,
         );
 

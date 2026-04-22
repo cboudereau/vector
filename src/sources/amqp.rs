@@ -642,8 +642,6 @@ mod integration_test {
     use chrono::Utc;
     use lapin::{BasicProperties, options::*};
     use tokio::time::Duration;
-    use vector_lib::config::log_schema;
-
     use super::{test::*, *};
     use crate::{
         SourceSender,

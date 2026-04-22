@@ -1,3 +1,5 @@
+use vector_lib::config::LogSchema;
+
 use super::*;
 
 fn assert_migrates(input: &str, expected: &str) {
@@ -260,4 +262,124 @@ fn diff_empty_when_unchanged() {
     let input = ".foo = .bar";
     let d = diff(input, None);
     assert!(d.is_empty());
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Pass 0: Log schema rewrites
+// ═══════════════════════════════════════════════════════════════
+
+fn schema_with(field: &str, value: &str) -> LogSchema {
+    let toml = format!("{field} = \"{value}\"");
+    toml::from_str(&toml).unwrap()
+}
+
+fn assert_migrates_with_schema(input: &str, schema: &LogSchema, expected_fragment: &str) {
+    let output = migrate_with_log_schema(input, schema);
+    assert!(
+        output.text.contains(expected_fragment),
+        "\n--- input ---\n{input}\n--- expected fragment ---\n{expected_fragment}\n--- got ---\n{}",
+        output.text
+    );
+}
+
+#[test]
+fn ls01_custom_message_key() {
+    let schema = schema_with("message_key", "msg");
+    assert_migrates_with_schema(
+        ".foo = .msg",
+        &schema,
+        ".foo = .body",
+    );
+}
+
+#[test]
+fn ls02_custom_timestamp_key() {
+    let schema = schema_with("timestamp_key", "ts");
+    assert_migrates_with_schema(
+        ".t = .ts",
+        &schema,
+        ".t = .time_unix_nano",
+    );
+}
+
+#[test]
+fn ls03_custom_host_key() {
+    let schema = schema_with("host_key", "hostname");
+    assert_migrates_with_schema(
+        ".h = .hostname",
+        &schema,
+        r#".h = .resource.attributes."host.name""#,
+    );
+}
+
+#[test]
+fn ls04_custom_source_type_key() {
+    let schema = schema_with("source_type_key", "type");
+    assert_migrates_with_schema(
+        ".st = .type",
+        &schema,
+        r#".st = .attributes."pipeline.source_type""#,
+    );
+}
+
+#[test]
+fn ls05_custom_metadata_key_review() {
+    let schema = schema_with("metadata_key", "meta");
+    let output = migrate_with_log_schema(".m = .meta", &schema);
+    assert!(
+        output.reviews.iter().any(|r| r.rule_id == RuleId::Ls05),
+        "Expected REVIEW for LS-05, got: {:?}", output.reviews
+    );
+}
+
+#[test]
+fn ls_no_rewrite_when_custom_equals_default() {
+    // "message" is the old default handled by LOG-01, not LS-*
+    let schema = schema_with("message_key", "message");
+    let output = migrate_with_log_schema(".foo = .message", &schema);
+    assert!(
+        output.applied.iter().all(|a| a.rule_id != RuleId::Ls01),
+        "LS-01 should not fire when custom matches structural default"
+    );
+    // LOG-01 should still fire
+    assert!(output.text.contains(".body"));
+}
+
+#[test]
+fn ls_no_rewrite_when_custom_equals_canonical() {
+    // "body" is already the canonical name
+    let schema = schema_with("message_key", "body");
+    let output = migrate_with_log_schema(".foo = .body", &schema);
+    assert!(
+        output.applied.iter().all(|a| a.rule_id != RuleId::Ls01),
+        "LS-01 should not fire when custom matches canonical"
+    );
+}
+
+#[test]
+fn ls_custom_not_prefix_of_longer_ident() {
+    let schema = schema_with("message_key", "msg");
+    let output = migrate_with_log_schema(".msg_type = 1", &schema);
+    assert!(
+        !output.text.contains(".body"),
+        ".msg should not match .msg_type"
+    );
+}
+
+#[test]
+fn ls_combined_custom_and_structural() {
+    let toml = r#"
+        message_key = "payload"
+        host_key = "server"
+    "#;
+    let schema: LogSchema = toml::from_str(toml).unwrap();
+    let input = r#".out = .payload
+.h = .server
+.ts = .timestamp"#;
+    let output = migrate_with_log_schema(input, &schema);
+    // Pass 0: .payload → .body, .server → .resource.attributes."host.name"
+    // Pass 1: .timestamp → .time_unix_nano
+    assert!(output.text.contains(".out = .body"), "payload→body:\n{}", output.text);
+    assert!(output.text.contains(r#".resource.attributes."host.name""#), "server→host.name:\n{}", output.text);
+    assert!(output.text.contains(".time_unix_nano"), "timestamp→time_unix_nano:\n{}", output.text);
 }

@@ -187,6 +187,41 @@ impl LogSchema {
         self.metadata_key = OptionalTargetPath { path };
     }
 
+    /// Returns a list of `(field_name, custom_value, canonical_otel_path)` for each field
+    /// that differs from the default. Empty if the schema is fully default.
+    pub fn non_default_fields(&self) -> Vec<(&'static str, String, &'static str)> {
+        let defaults = &*LOG_SCHEMA_DEFAULT;
+        let mut out = Vec::new();
+
+        if self.message_key != defaults.message_key {
+            let val = self.message_key.path.as_ref()
+                .map(|p| p.path.to_string()).unwrap_or_default();
+            out.push(("message_key", val, ".body"));
+        }
+        if self.timestamp_key != defaults.timestamp_key {
+            let val = self.timestamp_key.path.as_ref()
+                .map(|p| p.path.to_string()).unwrap_or_default();
+            out.push(("timestamp_key", val, ".time_unix_nano"));
+        }
+        if self.host_key != defaults.host_key {
+            let val = self.host_key.path.as_ref()
+                .map(|p| p.path.to_string()).unwrap_or_default();
+            out.push(("host_key", val, r#".resource.attributes."host.name""#));
+        }
+        if self.source_type_key != defaults.source_type_key {
+            let val = self.source_type_key.path.as_ref()
+                .map(|p| p.path.to_string()).unwrap_or_default();
+            out.push(("source_type_key", val, r#".attributes."pipeline.source_type""#));
+        }
+        if self.metadata_key != defaults.metadata_key {
+            let val = self.metadata_key.path.as_ref()
+                .map(|p| p.path.to_string()).unwrap_or_default();
+            out.push(("metadata_key", val, ""));
+        }
+
+        out
+    }
+
     /// Merge two `LogSchema` instances together.
     ///
     /// # Errors
@@ -254,5 +289,36 @@ mod test {
             timestamp_key = "timestamp"
         "#;
         toml::from_str::<LogSchema>(toml).unwrap();
+    }
+
+    #[test]
+    fn non_default_fields_empty_for_defaults() {
+        let schema = LogSchema::default();
+        assert!(schema.non_default_fields().is_empty());
+    }
+
+    #[test]
+    fn non_default_fields_detects_custom_message() {
+        let toml = r#"message_key = "msg""#;
+        let schema: LogSchema = toml::from_str(toml).unwrap();
+        let fields = schema.non_default_fields();
+        assert_eq!(fields.len(), 1);
+        assert_eq!(fields[0].0, "message_key");
+        assert_eq!(fields[0].1, "msg");
+        assert_eq!(fields[0].2, ".body");
+    }
+
+    #[test]
+    fn non_default_fields_detects_all_custom() {
+        let toml = r#"
+            message_key = "msg"
+            timestamp_key = "ts"
+            host_key = "hostname"
+            source_type_key = "type"
+            metadata_key = "meta"
+        "#;
+        let schema: LogSchema = toml::from_str(toml).unwrap();
+        let fields = schema.non_default_fields();
+        assert_eq!(fields.len(), 5);
     }
 }

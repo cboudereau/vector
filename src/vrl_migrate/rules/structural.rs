@@ -17,13 +17,13 @@ pub static RULES: [Rule; 10] = [
     Rule { id: RuleId::Trc01, apply: apply_trc01 },
 ];
 
-fn is_ident_char(b: u8) -> bool {
+pub(super) fn is_ident_char(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b == b'_'
 }
 
 /// Returns true if the character after the match continues an identifier
 /// (i.e., the match is a prefix of a longer field name).
-fn followed_by_ident_or_dot(line: &str, end: usize) -> bool {
+pub(super) fn followed_by_ident_or_dot(line: &str, end: usize) -> bool {
     if let Some(&b) = line.as_bytes().get(end) {
         is_ident_char(b) || b == b'.' || b == b'['
     } else {
@@ -33,7 +33,7 @@ fn followed_by_ident_or_dot(line: &str, end: usize) -> bool {
 
 /// Replace field references that are NOT a prefix of a longer identifier.
 /// Returns true if the match is part of a metadata path (%vector.source_type).
-fn preceded_by_ident(line: &str, start: usize) -> bool {
+pub(super) fn preceded_by_ident(line: &str, start: usize) -> bool {
     if start > 0 {
         let b = line.as_bytes()[start - 1];
         is_ident_char(b) || b == b'%'
@@ -42,7 +42,7 @@ fn preceded_by_ident(line: &str, start: usize) -> bool {
     }
 }
 
-fn replace_field(line: &str, re: &Regex, replacement: &str) -> Option<String> {
+pub(super) fn replace_field(line: &str, re: &Regex, replacement: &str) -> Option<String> {
     let mut result = String::with_capacity(line.len());
     let mut last = 0;
     let mut changed = false;

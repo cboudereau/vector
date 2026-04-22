@@ -71,10 +71,13 @@ pub struct GlobalOptions {
 
     /// Default log schema for all events.
     ///
-    /// This is used if a component does not have its own specific log schema. All events use a log
-    /// schema, whether or not the default is used, to assign event fields on incoming events.
+    /// **Deprecated.** The `log_schema` configuration is deprecated and will be removed in a
+    /// future release. All events now use canonical OTLP field names (`body`, `time_unix_nano`,
+    /// etc.) directly. Run `vector vrl-migrate --config <your-config>` to automatically rewrite
+    /// VRL code to use canonical field names, then remove the `[log_schema]` section.
     #[serde(default, skip_serializing_if = "crate::serde::is_default")]
     #[configurable(metadata(docs::common = false, docs::required = false))]
+    #[configurable(deprecated)]
     pub log_schema: LogSchema,
 
     /// Telemetry options.

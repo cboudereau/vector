@@ -1,3 +1,4 @@
+pub mod log_schema;
 pub mod metric;
 pub mod semantic;
 pub mod structural;
@@ -11,6 +12,7 @@ pub enum RuleId {
     Meta01, Meta02,
     Sem01, Sem02, Sem03, Sem04, Sem05, Sem06, Sem07, Sem08, Sem09,
     Met01, Met02, Met03, Met04, Met05, Met06, Met07,
+    Ls01, Ls02, Ls03, Ls04, Ls05,
 }
 
 impl std::fmt::Display for RuleId {
@@ -27,6 +29,8 @@ impl std::fmt::Display for RuleId {
             Self::Met01 => "MET-01", Self::Met02 => "MET-02", Self::Met03 => "MET-03",
             Self::Met04 => "MET-04", Self::Met05 => "MET-05", Self::Met06 => "MET-06",
             Self::Met07 => "MET-07",
+            Self::Ls01 => "LS-01", Self::Ls02 => "LS-02", Self::Ls03 => "LS-03",
+            Self::Ls04 => "LS-04", Self::Ls05 => "LS-05",
         };
         f.write_str(s)
     }

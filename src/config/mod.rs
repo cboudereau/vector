@@ -917,7 +917,7 @@ mod tests {
             config.global.log_schema.message_key().unwrap().to_string()
         );
         assert_eq!(
-            "timestamp",
+            "time_unix_nano",
             config
                 .global
                 .log_schema

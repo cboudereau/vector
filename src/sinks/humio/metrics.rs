@@ -5,7 +5,6 @@ use indoc::indoc;
 use vector_lib::{
     codecs::JsonSerializerConfig,
     configurable::configurable_component,
-    lookup,
     lookup::lookup_v2::{ConfigValuePath, OptionalTargetPath, OptionalValuePath},
     sensitive_string::SensitiveString,
     sink::StreamSink,
@@ -180,11 +179,7 @@ impl SinkConfig for HumioMetricsConfig {
             tls: self.tls.clone(),
             timestamp_nanos_key: None,
             acknowledgements: Default::default(),
-            // hard coded as humio expects this format so no sense in making it configurable
-            timestamp_key: OptionalTargetPath::from(
-                vrl::path::PathPrefix::Event,
-                Some(lookup::owned_value_path!("timestamp")),
-            ),
+            timestamp_key: OptionalTargetPath::none(),
         };
 
         let (sink, healthcheck) = sink.clone().build(cx).await?;

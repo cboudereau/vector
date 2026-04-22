@@ -160,13 +160,10 @@ fn encode_inserts_timestamp() {
     let mut log = OtelLog::default();
     log.insert("body", Value::Bytes("hello world".into()));
     log.insert("anumber", Value::Bytes("100".into()));
-    log.insert(
-        "timestamp",
-        Value::Timestamp(
-            Utc.with_ymd_and_hms(2020, 1, 1, 12, 30, 0)
-                .single()
-                .expect("invalid timestamp"),
-        ),
+    log.set_timestamp(
+        Utc.with_ymd_and_hms(2020, 1, 1, 12, 30, 0)
+            .single()
+            .expect("invalid timestamp"),
     );
 
     let json = encoder.encode_event(Event::from(log)).unwrap();

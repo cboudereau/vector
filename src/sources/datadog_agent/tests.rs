@@ -1614,6 +1614,11 @@ fn test_config_outputs() {
                                 &owned_value_path!("source_type"),
                                 Kind::bytes(),
                                 None,
+                            )
+                            .with_event_field(
+                                &owned_value_path!("time_unix_nano"),
+                                Kind::integer(),
+                                None,
                             ),
                     ),
                 )]),
@@ -1667,6 +1672,11 @@ fn test_config_outputs() {
                                 &owned_value_path!("source_type"),
                                 Kind::bytes(),
                                 None,
+                            )
+                            .with_event_field(
+                                &owned_value_path!("time_unix_nano"),
+                                Kind::integer(),
+                                None,
                             ),
                     ),
                 )]),
@@ -1696,6 +1706,11 @@ fn test_config_outputs() {
                                     &owned_value_path!("timestamp"),
                                     Kind::timestamp(),
                                     Some("timestamp"),
+                                )
+                                .with_event_field(
+                                    &owned_value_path!("time_unix_nano"),
+                                    Kind::integer(),
+                                    None,
                                 )
                                 .with_event_field(
                                     &owned_value_path!("hostname"),
@@ -1749,6 +1764,7 @@ fn test_config_outputs() {
                             .with_event_field(&owned_value_path!("hostname"), Kind::json(), None)
                             .with_event_field(&owned_value_path!("service"), Kind::json(), None)
                             .with_event_field(&owned_value_path!("status"), Kind::json(), None)
+                            .with_event_field(&owned_value_path!("time_unix_nano"), Kind::json(), None)
                             .unknown_fields(Kind::json()),
                     ),
                 )]),
@@ -1787,6 +1803,7 @@ fn test_config_outputs() {
                                 )
                                 .with_event_field(&owned_value_path!("service"), Kind::json(), None)
                                 .with_event_field(&owned_value_path!("status"), Kind::json(), None)
+                                .with_event_field(&owned_value_path!("time_unix_nano"), Kind::json(), None)
                                 .unknown_fields(Kind::json()),
                         ),
                     ),
@@ -1811,9 +1828,14 @@ fn test_config_outputs() {
                                 Some("message"),
                             )
                             .with_event_field(
-                                &owned_value_path!("timestamp"),
-                                Kind::timestamp(),
+                                &owned_value_path!("time_unix_nano"),
+                                Kind::integer(),
                                 Some("timestamp"),
+                            )
+                            .with_event_field(
+                                &owned_value_path!("timestamp"),
+                                Kind::timestamp().or_object(Collection::from_unknown(Kind::bytes())),
+                                None,
                             )
                             .with_event_field(
                                 &owned_value_path!("hostname"),
@@ -1887,9 +1909,14 @@ fn test_config_outputs() {
                                     Some("message"),
                                 )
                                 .with_event_field(
-                                    &owned_value_path!("timestamp"),
-                                    Kind::timestamp(),
+                                    &owned_value_path!("time_unix_nano"),
+                                    Kind::integer(),
                                     Some("timestamp"),
+                                )
+                                .with_event_field(
+                                    &owned_value_path!("timestamp"),
+                                    Kind::timestamp().or_object(Collection::from_unknown(Kind::bytes())),
+                                    None,
                                 )
                                 .with_event_field(
                                     &owned_value_path!("hostname"),
@@ -2342,8 +2369,8 @@ fn test_output_schema_definition_json_legacy_namespace() {
         Some(
             Definition::new_with_default_metadata(Kind::json(), [LogNamespace::Legacy])
                 .with_event_field(
-                    &owned_value_path!("timestamp"),
-                    Kind::json().or_timestamp(),
+                    &owned_value_path!("time_unix_nano"),
+                    Kind::json(),
                     None
                 )
                 .with_event_field(&owned_value_path!("ddsource"), Kind::json(), None)
@@ -2352,6 +2379,11 @@ fn test_output_schema_definition_json_legacy_namespace() {
                 .with_event_field(&owned_value_path!("service"), Kind::json(), None)
                 .with_event_field(&owned_value_path!("source_type"), Kind::json(), None)
                 .with_event_field(&owned_value_path!("status"), Kind::json(), None)
+                .try_with_field(
+                    &owned_value_path!("timestamp"),
+                    Kind::timestamp(),
+                    Some("timestamp")
+                )
         )
     )
 }
@@ -2401,6 +2433,11 @@ fn test_output_schema_definition_bytes_legacy_namespace() {
                 &owned_value_path!("timestamp"),
                 Kind::timestamp(),
                 Some("timestamp")
+            )
+            .try_with_field(
+                &owned_value_path!("time_unix_nano"),
+                Kind::integer(),
+                None
             )
         )
     )

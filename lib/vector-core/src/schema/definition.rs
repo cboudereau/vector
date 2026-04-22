@@ -145,18 +145,34 @@ impl Definition {
     /// This function should be called in the same order as the values are actually inserted into the event.
     #[must_use]
     pub fn with_standard_vector_source_metadata(self) -> Self {
-        self.with_vector_metadata(
+        let def = self.with_vector_metadata(
             log_schema().source_type_key(),
             &owned_value_path!("source_type"),
             Kind::bytes(),
             None,
-        )
-        .with_vector_metadata(
-            log_schema().timestamp_key(),
-            &owned_value_path!("ingest_timestamp"),
-            Kind::timestamp(),
-            None,
-        )
+        );
+
+        let legacy = if def.log_namespaces.contains(&LogNamespace::Legacy) {
+            log_schema().timestamp_key().map(|ts_key| {
+                def.clone().try_with_field(ts_key, Kind::integer(), None)
+            })
+        } else {
+            None
+        };
+        let vector = if def.log_namespaces.contains(&LogNamespace::Vector) {
+            Some(def.clone().with_metadata_field(
+                &owned_value_path!("vector", "ingest_timestamp"),
+                Kind::timestamp(),
+                None,
+            ))
+        } else {
+            None
+        };
+        match (legacy, vector) {
+            (Some(a), Some(b)) => a.merge(b),
+            (Some(x), _) | (_, Some(x)) => x,
+            (None, None) => def,
+        }
     }
 
     /// This should be used wherever `LogNamespace::insert_source_metadata` is used to insert metadata.

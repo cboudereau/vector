@@ -7,7 +7,7 @@ static LOG_SCHEMA: OnceLock<LogSchema> = OnceLock::new();
 static LOG_SCHEMA_DEFAULT: LazyLock<LogSchema> = LazyLock::new(LogSchema::default);
 
 const MESSAGE: &str = "body";
-const TIMESTAMP: &str = "timestamp";
+const TIMESTAMP: &str = "time_unix_nano";
 const HOST: &str = "host";
 const SOURCE_TYPE: &str = "source_type";
 const METADATA: &str = "metadata";

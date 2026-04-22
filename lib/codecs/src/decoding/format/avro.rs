@@ -63,7 +63,7 @@ impl AvroDeserializerConfig {
                 if let Some(timestamp_key) = log_schema().timestamp_key() {
                     definition = definition.try_with_field(
                         timestamp_key,
-                        vrl::value::Kind::any().or_timestamp(),
+                        vrl::value::Kind::any(),
                         Some("timestamp"),
                     );
                 }

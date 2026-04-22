@@ -283,12 +283,12 @@ pub fn process_log(event: Event, data: &HecLogData) -> HecProcessedEvent {
             Some(user_path) => log.remove(user_path),
             None => log.remove_timestamp(),
         };
-        match removed {
-            Some(Value::Timestamp(ts)) => {
-                if let Some(key) = data.timestamp_nanos_key {
-                    log.try_insert(event_path!(key), ts.timestamp_subsec_nanos() % 1_000_000);
-                }
-                Some((ts.timestamp_millis() as f64) / 1000f64)
+        let ts_opt = match removed {
+            Some(Value::Timestamp(ts)) => Some(ts),
+            Some(Value::Integer(nanos)) => {
+                let secs = nanos / 1_000_000_000;
+                let nsecs = (nanos % 1_000_000_000) as u32;
+                chrono::DateTime::from_timestamp(secs, nsecs)
             }
             Some(value) => {
                 emit!(SplunkEventTimestampInvalidType {
@@ -300,7 +300,13 @@ pub fn process_log(event: Event, data: &HecLogData) -> HecProcessedEvent {
                 emit!(SplunkEventTimestampMissing {});
                 None
             }
-        }
+        };
+        ts_opt.map(|ts| {
+            if let Some(key) = data.timestamp_nanos_key {
+                log.try_insert(event_path!(key), ts.timestamp_subsec_nanos() % 1_000_000);
+            }
+            (ts.timestamp_millis() as f64) / 1000f64
+        })
     } else {
         None
     };

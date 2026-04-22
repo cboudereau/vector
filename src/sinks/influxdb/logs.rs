@@ -431,7 +431,7 @@ mod tests {
     fn test_encode_event_apply_rules() {
         let mut event = Event::Log(OtelLog::from("hello"));
         event.as_mut_log().insert("host", "aws.cloud.eur");
-        event.as_mut_log().insert("timestamp", ts());
+        event.as_mut_log().set_timestamp(ts());
 
         let mut sink = create_sink(
             "http://localhost:9999",
@@ -478,7 +478,7 @@ mod tests {
         event.as_mut_log().insert("float", 5.5);
         event.as_mut_log().insert("bool", true);
         event.as_mut_log().insert("string", "thisisastring");
-        event.as_mut_log().insert("timestamp", ts());
+        event.as_mut_log().set_timestamp(ts());
 
         let sink = create_sink(
             "http://localhost:9999",
@@ -523,7 +523,7 @@ mod tests {
         event.as_mut_log().insert("float", 5.5);
         event.as_mut_log().insert("bool", true);
         event.as_mut_log().insert("string", "thisisastring");
-        event.as_mut_log().insert("timestamp", ts());
+        event.as_mut_log().set_timestamp(ts());
 
         let sink = create_sink(
             "http://localhost:9999",
@@ -563,7 +563,7 @@ mod tests {
         let mut event = Event::Log(OtelLog::from("hello"));
 
         event.as_mut_log().insert("value", 100);
-        event.as_mut_log().insert("timestamp", ts());
+        event.as_mut_log().set_timestamp(ts());
 
         let mut sink = create_sink(
             "http://localhost:9999",
@@ -643,7 +643,7 @@ mod tests {
         event.as_mut_log().insert("source_type", "file");
 
         event.as_mut_log().insert("as_a_tag", 10);
-        event.as_mut_log().insert("timestamp", ts());
+        event.as_mut_log().set_timestamp(ts());
 
         let sink = create_sink(
             "http://localhost:9999",
@@ -771,7 +771,7 @@ mod tests {
                 .with_ymd_and_hms(1970, 1, 1, 0, 0, (i as u32) + 1)
                 .single()
                 .expect("invalid timestamp");
-            event.insert("timestamp", timestamp);
+            event.set_timestamp(timestamp);
             event.insert("source_type", "file");
 
             events.push(Event::from(event));

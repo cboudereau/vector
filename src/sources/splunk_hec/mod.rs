@@ -2750,7 +2750,7 @@ mod tests {
             Some("service"),
         )
         .with_event_field(&owned_value_path!("splunk_sourcetype"), Kind::bytes(), None)
-        .with_event_field(&owned_value_path!("timestamp"), Kind::timestamp(), None);
+        .with_event_field(&owned_value_path!("time_unix_nano"), Kind::integer(), None);
 
         assert_eq!(definitions, Some(expected_definition));
     }

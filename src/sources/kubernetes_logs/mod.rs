@@ -1551,7 +1551,7 @@ mod tests {
                 )
                 .with_event_field(&owned_value_path!("stream"), Kind::bytes(), None)
                 .with_event_field(
-                    &owned_value_path!("timestamp"),
+                    &owned_value_path!("time_unix_nano"),
                     Kind::timestamp(),
                     Some("timestamp")
                 )

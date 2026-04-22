@@ -617,7 +617,7 @@ mod tests {
         lookup::{PathPrefix, metadata_path},
         metric_tags,
     };
-    use vrl::{event_path, path};
+    use vrl::path;
 
     use super::*;
     use crate::event::{Event, OtelLog, MetricKind, OtelMetric};
@@ -992,7 +992,7 @@ mod tests {
 
         let template = UnsignedIntTemplate::try_from("%Y%m%d%H").unwrap();
         let mut event = Event::Log(OtelLog::from("hello world"));
-        event.as_mut_log().insert(event_path!("timestamp"), ts);
+        event.as_mut_log().set_timestamp(ts);
 
         let tz: Tz = "Asia/Singapore".parse().unwrap();
         let offset = Some(Utc::now().with_timezone(&tz).offset().fix());
@@ -1026,7 +1026,7 @@ mod tests {
         let ts = Utc.with_ymd_and_hms(2001, 2, 3, 4, 5, 6).unwrap();
 
         let mut event = Event::Log(OtelLog::from("hello world"));
-        event.as_mut_log().insert(event_path!("timestamp"), ts);
+        event.as_mut_log().set_timestamp(ts);
 
         assert_eq!(
             Err(TemplateRenderingError::NotNumeric {

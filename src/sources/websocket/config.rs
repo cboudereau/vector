@@ -263,7 +263,7 @@ mod test {
             Kind::bytes(),
             Some("message"),
         )
-        .with_event_field(&owned_value_path!("timestamp"), Kind::timestamp(), None)
+        .with_event_field(&owned_value_path!("time_unix_nano"), Kind::integer(), None)
         .with_event_field(&owned_value_path!("source_type"), Kind::bytes(), None);
 
         assert_eq!(definition, Some(expected_definition));

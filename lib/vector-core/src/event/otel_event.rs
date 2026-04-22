@@ -858,17 +858,6 @@ impl OtelLog {
             "observed_time_unix_nano" if self.record.observed_time_unix_nano != 0 => {
                 Some(Value::Integer(self.record.observed_time_unix_nano as i64))
             }
-            "timestamp" | "@timestamp" => {
-                if self.record.time_unix_nano != 0 {
-                    let nanos = self.record.time_unix_nano;
-                    let secs = (nanos / 1_000_000_000) as i64;
-                    let nsecs = (nanos % 1_000_000_000) as u32;
-                    chrono::DateTime::from_timestamp(secs, nsecs).map(Value::Timestamp)
-                } else {
-                    attribute_value(&self.record.attributes, field)
-                        .map(any_value_to_vrl)
-                }
-            }
             other => {
                 attribute_value(&self.record.attributes, other)
                     .map(any_value_to_vrl)
@@ -1045,42 +1034,25 @@ impl OtelLog {
             "time_unix_nano" => {
                 let old = if self.record.time_unix_nano == 0 { None }
                     else { Some(Value::Integer(self.record.time_unix_nano as i64)) };
-                if let Some(n) = value.as_integer() {
-                    self.record_mut().time_unix_nano = n as u64;
-                }
-                old
-            }
-            "timestamp" | "@timestamp" => {
                 match &value {
+                    Value::Integer(n) => {
+                        self.record_mut().time_unix_nano = *n as u64;
+                    }
                     Value::Timestamp(ts) => {
-                        let old = if self.record.time_unix_nano == 0 { None }
-                            else {
-                                let n = self.record.time_unix_nano;
-                                let s = (n / 1_000_000_000) as i64;
-                                let ns = (n % 1_000_000_000) as u32;
-                                chrono::DateTime::from_timestamp(s, ns).map(Value::Timestamp)
-                            };
                         self.record_mut().time_unix_nano =
                             ts.timestamp_nanos_opt().unwrap_or(0) as u64;
-                        old
-                    }
-                    Value::Integer(n) => {
-                        let old = if self.record.time_unix_nano == 0 { None }
-                            else { Some(Value::Integer(self.record.time_unix_nano as i64)) };
-                        self.record_mut().time_unix_nano = *n as u64;
-                        old
                     }
                     _ => {
-                        let old = remove_attribute(&mut self.record_mut().attributes, field)
-                            .map(|av| any_value_to_vrl(&av));
+                        // Non-numeric values (e.g. formatted strings from sinks):
+                        // store as attribute so they appear in JSON serialization.
                         set_attribute(
                             &mut self.record_mut().attributes,
-                            field.to_string(),
+                            "time_unix_nano".to_string(),
                             vrl_value_to_any_value(&value),
                         );
-                        old
                     }
                 }
+                old
             }
             "observed_time_unix_nano" => {
                 let old = if self.record.observed_time_unix_nano == 0 { None }
@@ -1317,19 +1289,6 @@ impl OtelLog {
                 let old = Some(Value::Integer(self.record.time_unix_nano as i64));
                 self.record_mut().time_unix_nano = 0;
                 old
-            }
-            "timestamp" | "@timestamp" => {
-                if self.record.time_unix_nano != 0 {
-                    let nanos = self.record.time_unix_nano;
-                    let secs = (nanos / 1_000_000_000) as i64;
-                    let nsecs = (nanos % 1_000_000_000) as u32;
-                    let old = chrono::DateTime::from_timestamp(secs, nsecs).map(Value::Timestamp);
-                    self.record_mut().time_unix_nano = 0;
-                    old
-                } else {
-                    remove_attribute(&mut self.record_mut().attributes, field)
-                        .map(|av| any_value_to_vrl(&av))
-                }
             }
             "observed_time_unix_nano" => {
                 if self.record.observed_time_unix_nano == 0 { return None; }

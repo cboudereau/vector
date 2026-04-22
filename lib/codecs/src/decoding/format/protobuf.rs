@@ -51,9 +51,7 @@ impl ProtobufDeserializerConfig {
                 if let Some(timestamp_key) = log_schema().timestamp_key() {
                     definition = definition.try_with_field(
                         timestamp_key,
-                        // The protobuf decoder will try to insert a new `timestamp`-type value into the
-                        // "timestamp_key" field, but only if that field doesn't already exist.
-                        Kind::any().or_timestamp(),
+                        Kind::any(),
                         Some("timestamp"),
                     );
                 }

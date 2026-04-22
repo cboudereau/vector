@@ -607,8 +607,8 @@ mod test {
             Some("message"),
         )
         .with_event_field(
-            &owned_value_path!("timestamp"),
-            Kind::timestamp(),
+            &owned_value_path!("time_unix_nano"),
+            Kind::integer(),
             Some("timestamp"),
         )
         .with_event_field(

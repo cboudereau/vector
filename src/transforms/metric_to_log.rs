@@ -240,7 +240,7 @@ fn schema_definition(log_namespace: LogNamespace) -> Definition {
         LogNamespace::Legacy => {
             if let Some(timestamp_key) = log_schema().timestamp_key() {
                 schema_definition =
-                    schema_definition.with_event_field(timestamp_key, Kind::timestamp(), None);
+                    schema_definition.with_event_field(timestamp_key, Kind::integer(), None);
             }
 
             schema_definition = schema_definition.with_event_field(

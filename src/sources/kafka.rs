@@ -1454,7 +1454,7 @@ mod test {
                         Some("message")
                     )
                     .with_event_field(
-                        &owned_value_path!("timestamp"),
+                        &owned_value_path!("time_unix_nano"),
                         Kind::timestamp(),
                         Some("timestamp")
                     )

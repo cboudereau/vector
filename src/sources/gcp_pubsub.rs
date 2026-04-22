@@ -819,6 +819,11 @@ mod tests {
             Some("timestamp"),
         )
         .with_event_field(&owned_value_path!("source_type"), Kind::bytes(), None)
+        .try_with_field(
+            &owned_value_path!("time_unix_nano"),
+            Kind::integer(),
+            None,
+        )
         .with_event_field(
             &owned_value_path!("attributes"),
             Kind::object(Collection::empty().with_unknown(Kind::bytes())),

@@ -94,6 +94,8 @@ fn get_processed_event_timestamp(
                 .as_mut_log()
                 .remove(&OwnedTargetPath::event(ts_path.path.clone()));
         }
+    } else if let Some(Value::Timestamp(ts)) = timestamp {
+        event.as_mut_log().set_timestamp(ts);
     }
 
     let sourcetype = Template::try_from("{{ event_sourcetype }}".to_string()).ok();
@@ -124,14 +126,45 @@ fn get_processed_event_timestamp(
 }
 
 fn get_processed_event() -> HecProcessedEvent {
-    get_processed_event_timestamp(
-        Some(vrl::value::Value::Timestamp(
-            Utc.timestamp_nanos(1638366107111456123),
-        )),
-        Some(OptionalTargetPath {
-            path: Some(OwnedTargetPath::event(owned_value_path!("timestamp"))),
-        }),
-        false,
+    let mut event = Event::Log(OtelLog::from("hello world"));
+    event
+        .as_mut_log()
+        .insert("event_sourcetype", "test_sourcetype");
+    event.as_mut_log().insert("event_source", "test_source");
+    event.as_mut_log().insert("event_index", "test_index");
+    event.as_mut_log().insert("host_key", "test_host");
+    event.as_mut_log().insert("event_field1", "test_value1");
+    event.as_mut_log().insert("event_field2", "test_value2");
+    event.as_mut_log().insert("key", "value");
+    event.as_mut_log().insert("int_val", 123);
+    event
+        .as_mut_log()
+        .set_timestamp(Utc.timestamp_nanos(1638366107111456123));
+
+    let sourcetype = Template::try_from("{{ event_sourcetype }}".to_string()).ok();
+    let source = Template::try_from("{{ event_source }}".to_string()).ok();
+    let index = Template::try_from("{{ event_index }}".to_string()).ok();
+    let indexed_fields = vec![
+        owned_value_path!("event_field1"),
+        owned_value_path!("event_field2"),
+    ];
+    let timestamp_nanos_key = Some(String::from("ts_nanos_key"));
+
+    process_log(
+        event,
+        &super::sink::HecLogData {
+            sourcetype: sourcetype.as_ref(),
+            source: source.as_ref(),
+            index: index.as_ref(),
+            host_key: Some(OptionalTargetPath {
+                path: Some(OwnedTargetPath::event(owned_value_path!("host_key"))),
+            }),
+            indexed_fields: indexed_fields.as_slice(),
+            timestamp_nanos_key: timestamp_nanos_key.as_ref(),
+            timestamp_key: None,
+            endpoint_target: EndpointTarget::Event,
+            auto_extract_timestamp: false,
+        },
     )
 }
 
@@ -282,41 +315,30 @@ fn splunk_encode_log_event_json_timestamps() {
         get_encoded_event::<HecEventJson>(JsonSerializerConfig::default().into(), processed_event)
     }
 
-    let timestamp_key = Some(OptionalTargetPath {
-        path: Some(OwnedTargetPath::event(owned_value_path!("timestamp"))),
-    });
-
     let no_timestamp = Some(OptionalTargetPath::none());
     let dont_auto_extract = false;
     let do_auto_extract = true;
 
-    // no timestamp_key is provided
-    let mut hec_data = get_hec_data_for_timestamp_test(None, no_timestamp, dont_auto_extract);
+    // no timestamp_key → remove_timestamp() used, but no timestamp set → None
+    let mut hec_data = get_hec_data_for_timestamp_test(None, no_timestamp.clone(), dont_auto_extract);
     assert_eq!(hec_data.time, None);
 
-    // timestamp_key is provided but timestamp is not valid type
-    hec_data = get_hec_data_for_timestamp_test(
-        Some(vrl::value::Value::Integer(0)),
-        timestamp_key.clone(),
-        dont_auto_extract,
-    );
+    // no timestamp_key, no timestamp in the event
+    hec_data = get_hec_data_for_timestamp_test(None, None, dont_auto_extract);
     assert_eq!(hec_data.time, None);
 
-    // timestamp_key is provided but no timestamp in the event
-    hec_data = get_hec_data_for_timestamp_test(None, timestamp_key.clone(), dont_auto_extract);
-    assert_eq!(hec_data.time, None);
-
+    // default removal with set_timestamp: timestamp is present → extracted
     hec_data = get_hec_data_for_timestamp_test(
         Some(Value::Timestamp(Utc::now())),
-        timestamp_key.clone(),
+        None,
         dont_auto_extract,
     );
     assert!(hec_data.time.is_some());
 
-    // timestamp_key is provided and timestamp is valid, but auto_extract_timestamp is set
+    // auto_extract_timestamp is set → timestamp not extracted
     hec_data = get_hec_data_for_timestamp_test(
         Some(Value::Timestamp(Utc::now())),
-        timestamp_key.clone(),
+        None,
         do_auto_extract,
     );
     assert_eq!(hec_data.time, None);

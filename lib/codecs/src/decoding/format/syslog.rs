@@ -75,7 +75,7 @@ impl SyslogDeserializerConfig {
                     // All other fields are optional.
                     definition = definition.optional_field(
                         timestamp_key,
-                        Kind::timestamp(),
+                        Kind::integer(),
                         Some("timestamp"),
                     )
                 }

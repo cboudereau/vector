@@ -12,7 +12,7 @@ pub mod proxy;
 mod telemetry;
 
 pub use global_options::{GlobalOptions, WildcardMatching};
-pub use log_schema::{LogSchema, init_log_schema, log_schema};
+pub use log_schema::{BODY, HOST, METADATA, SOURCE_TYPE, TIME_UNIX_NANO};
 use lookup::{PathPrefix, lookup_v2::ValuePath, path};
 pub use output_id::OutputId;
 use serde::{Deserialize, Serialize};
@@ -621,7 +621,7 @@ impl LogNamespace {
 #[cfg(test)]
 mod test {
     use chrono::Utc;
-    use lookup::{OwnedTargetPath, event_path, owned_value_path};
+    use lookup::{OwnedTargetPath, owned_value_path};
     use vector_common::btreemap;
     use vrl::value::Kind;
 
@@ -630,17 +630,11 @@ mod test {
 
     #[test]
     fn test_insert_standard_vector_source_metadata() {
-        let mut schema = LogSchema::default();
-        schema.set_source_type_key(Some(OwnedTargetPath::event(owned_value_path!(
-            "a", "b", "c", "d"
-        ))));
-        init_log_schema(schema, false);
-
         let namespace = LogNamespace::Legacy;
         let mut event = OtelLog::from("log");
         namespace.insert_standard_vector_source_metadata(&mut event, "source", Utc::now());
 
-        assert!(event.get(event_path!("a", "b", "c", "d")).is_some());
+        assert!(event.get_source_type().is_some());
     }
 
     #[test]

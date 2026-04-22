@@ -117,11 +117,9 @@ pub struct FileConfig {
 
     /// Overrides the name of the log field used to add the current hostname to each event.
     ///
-    /// By default, the [global `log_schema.host_key` option][global_host_key] is used.
+    /// By default, `host` is used.
     ///
     /// Set to `""` to suppress this key.
-    ///
-    /// [global_host_key]: https://vector.dev/docs/reference/configuration/global-options/#log_schema.host_key
     #[configurable(metadata(docs::examples = "hostname"))]
     pub host_key: Option<OptionalValuePath>,
 

@@ -68,9 +68,7 @@ pub struct HecMetricsSinkConfig {
 
     /// Overrides the name of the log field used to retrieve the hostname to send to Splunk HEC.
     ///
-    /// By default, the [global `log_schema.host_key` option][global_host_key] is used.
-    ///
-    /// [global_host_key]: https://vector.dev/docs/reference/configuration/global-options/#log_schema.host_key
+    /// By default, `host` is used.
     #[configurable(metadata(docs::advanced))]
     #[serde(default = "config_host_key")]
     pub host_key: OptionalValuePath,

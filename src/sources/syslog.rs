@@ -59,9 +59,7 @@ pub struct SyslogConfig {
     /// If using TCP or UDP, the value is the peer host's address, including the port. For example, `1.2.3.4:9000`. If using
     /// UDS, the value is the socket path itself.
     ///
-    /// By default, the [global `log_schema.host_key` option][global_host_key] is used.
-    ///
-    /// [global_host_key]: https://vector.dev/docs/reference/configuration/global-options/#log_schema.host_key
+    /// By default, `host` is used.
     host_key: Option<OptionalValuePath>,
 
     /// The namespace to use for logs. This overrides the global setting.

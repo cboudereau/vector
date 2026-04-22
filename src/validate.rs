@@ -156,7 +156,6 @@ pub fn validate_config(opts: &Opts, fmt: &mut Formatter) -> Option<Config> {
         .load_from_paths(&paths)
         .map_err(&mut report_error)
         .ok()?;
-    config::init_log_schema(builder.global.log_schema.clone(), true);
 
     // Build
     let (config, warnings) = builder

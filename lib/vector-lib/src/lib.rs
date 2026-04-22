@@ -35,10 +35,11 @@ pub use vrl;
 pub mod config {
     pub use vector_common::config::ComponentKey;
     pub use vector_core::config::{
-        AcknowledgementsConfig, DataType, GlobalOptions, Input, LegacyKey, LogNamespace, LogSchema,
-        MEMORY_BUFFER_DEFAULT_MAX_EVENTS, OutputId, SourceAcknowledgementsConfig, SourceOutput,
+        AcknowledgementsConfig, BODY, DataType, GlobalOptions, HOST, Input, LegacyKey,
+        LogNamespace, MEMORY_BUFFER_DEFAULT_MAX_EVENTS, METADATA, OutputId,
+        SOURCE_TYPE, SourceAcknowledgementsConfig, SourceOutput, TIME_UNIX_NANO,
         Tags, Telemetry, TransformOutput, WildcardMatching, clone_input_definitions,
-        init_log_schema, init_telemetry, log_schema, proxy, telemetry,
+        init_telemetry, proxy, telemetry,
     };
 }
 

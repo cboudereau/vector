@@ -53,9 +53,7 @@ pub struct DnstapConfig {
     ///
     /// The value is the socket path itself.
     ///
-    /// By default, the [global `log_schema.host_key` option][global_host_key] is used.
-    ///
-    /// [global_host_key]: https://vector.dev/docs/reference/configuration/global-options/#log_schema.host_key
+    /// By default, `host` is used.
     pub host_key: Option<OptionalValuePath>,
 
     /// Whether or not to skip parsing or decoding of DNSTAP frames.

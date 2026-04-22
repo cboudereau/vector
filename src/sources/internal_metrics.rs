@@ -9,12 +9,12 @@ use vector_lib::{
     config::LogNamespace,
     configurable::configurable_component,
     internal_event::{ByteSize, BytesReceived, CountByteSize, InternalEventHandle as _, Protocol},
-    lookup::lookup_v2::OptionalValuePath,
+    lookup::{lookup_v2::OptionalValuePath, owned_value_path},
 };
 
 use crate::{
     SourceSender,
-    config::{SourceConfig, SourceContext, SourceOutput, log_schema},
+    config::{SourceConfig, SourceContext, SourceOutput},
     event::{Event, OtelMetric},
     internal_events::{EventsReceived, StreamClosedError},
     metrics::Controller,
@@ -63,11 +63,9 @@ pub struct TagsConfig {
     ///
     /// The value is the peer host's address, including the port. For example, `1.2.3.4:9000`.
     ///
-    /// By default, the [global `log_schema.host_key` option][global_host_key] is used.
+    /// By default, `host` is used.
     ///
     /// Set to `""` to suppress this key.
-    ///
-    /// [global_host_key]: https://vector.dev/docs/reference/configuration/global-options/#log_schema.host_key
     pub host_key: Option<OptionalValuePath>,
 
     /// Sets the name of the tag to use to add the current process ID to each metric.
@@ -106,7 +104,7 @@ impl SourceConfig for InternalMetricsConfig {
             .tags
             .host_key
             .clone()
-            .unwrap_or(log_schema().host_key().cloned().into());
+            .unwrap_or(OptionalValuePath::from(owned_value_path!("host")));
 
         let pid_key = self
             .tags

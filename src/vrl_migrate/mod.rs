@@ -5,8 +5,8 @@ use std::fmt;
 use std::path::Path;
 
 pub use rules::{RewriteResult, Rule, RuleId};
+pub use rules::log_schema::MigrateLogSchema;
 use rules::log_schema::LogSchemaRules;
-use vector_lib::config::LogSchema;
 
 /// Migrates a VRL program from Vector field semantics to OTel field semantics.
 ///
@@ -23,7 +23,7 @@ pub fn migrate(source: &str) -> MigrationOutput {
 }
 
 /// Migrates VRL with log_schema-aware rewriting (Pass 0) before standard passes.
-pub fn migrate_with_log_schema(source: &str, schema: &LogSchema) -> MigrationOutput {
+pub fn migrate_with_log_schema(source: &str, schema: &MigrateLogSchema) -> MigrationOutput {
     let schema_rules = LogSchemaRules::from_schema(schema);
     let mut output = MigrationOutput::new(source);
     schema_rules.apply_to_output(&mut output);
@@ -41,7 +41,7 @@ pub fn diff(source: &str, path: Option<&Path>) -> String {
 }
 
 /// Produces a unified diff with log_schema-aware rewriting.
-pub fn diff_with_log_schema(source: &str, path: Option<&Path>, schema: &LogSchema) -> String {
+pub fn diff_with_log_schema(source: &str, path: Option<&Path>, schema: &MigrateLogSchema) -> String {
     let output = migrate_with_log_schema(source, schema);
     let label = path.map_or("input.vrl", |p| p.to_str().unwrap_or("input.vrl"));
     unified_diff(source, &output.text, label)

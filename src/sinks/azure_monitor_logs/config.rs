@@ -93,7 +93,7 @@ pub struct AzureMonitorLogsConfig {
 
     /// Use this option to customize the log field used as [`TimeGenerated`][1] in Azure.
     ///
-    /// The setting of `log_schema.timestamp_key`, usually `timestamp`, is used here by default.
+    /// The value `time_unix_nano` is used by default.
     /// This field should be used in rare cases where `TimeGenerated` should point to a specific log
     /// field. For example, use this field to set the log field `source_timestamp` as holding the
     /// value that should be used as `TimeGenerated` on the Azure side.

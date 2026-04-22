@@ -1,5 +1,5 @@
 use regex::Regex;
-use vector_lib::config::LogSchema;
+use serde::Deserialize;
 
 use super::RuleId;
 use super::structural::replace_field;
@@ -14,23 +14,68 @@ struct FieldMapping {
 const DEFAULT_NAMES: &[&str] = &["body", "time_unix_nano", "host", "source_type", "metadata"];
 const STRUCTURAL_DEFAULTS: &[&str] = &["message", "timestamp", "host", "source_type"];
 
+/// Minimal log_schema representation for the VRL migration tool.
+/// This replaces the dependency on `vector_lib::config::LogSchema`.
+#[derive(Deserialize, Default, Clone, Debug)]
+#[serde(default)]
+pub struct MigrateLogSchema {
+    #[serde(default = "default_message_key")]
+    pub message_key: String,
+    #[serde(default = "default_timestamp_key")]
+    pub timestamp_key: String,
+    #[serde(default = "default_host_key")]
+    pub host_key: String,
+    #[serde(default = "default_source_type_key")]
+    pub source_type_key: String,
+    #[serde(default = "default_metadata_key")]
+    pub metadata_key: String,
+}
+
+fn default_message_key() -> String { "body".into() }
+fn default_timestamp_key() -> String { "time_unix_nano".into() }
+fn default_host_key() -> String { "host".into() }
+fn default_source_type_key() -> String { "source_type".into() }
+fn default_metadata_key() -> String { "metadata".into() }
+
+impl MigrateLogSchema {
+    pub fn non_default_fields(&self) -> Vec<(&'static str, String, &'static str)> {
+        let mut out = Vec::new();
+
+        if self.message_key != "body" {
+            out.push(("message_key", self.message_key.clone(), ".body"));
+        }
+        if self.timestamp_key != "time_unix_nano" {
+            out.push(("timestamp_key", self.timestamp_key.clone(), ".time_unix_nano"));
+        }
+        if self.host_key != "host" {
+            out.push(("host_key", self.host_key.clone(), r#".resource.attributes."host.name""#));
+        }
+        if self.source_type_key != "source_type" {
+            out.push(("source_type_key", self.source_type_key.clone(), r#".attributes."pipeline.source_type""#));
+        }
+        if self.metadata_key != "metadata" {
+            out.push(("metadata_key", self.metadata_key.clone(), ""));
+        }
+
+        out
+    }
+}
+
 pub struct LogSchemaRules {
     mappings: Vec<FieldMapping>,
 }
 
 impl LogSchemaRules {
-    pub fn from_schema(schema: &LogSchema) -> Self {
+    pub fn from_schema(schema: &MigrateLogSchema) -> Self {
         let mut mappings = Vec::new();
 
         for (field_name, custom_value, canonical_path) in schema.non_default_fields() {
             if custom_value.is_empty() {
                 continue;
             }
-            // Skip if custom value is already the canonical name
             if DEFAULT_NAMES.contains(&custom_value.as_str()) {
                 continue;
             }
-            // Skip if structural rules (LOG-01..04) already handle this name
             if STRUCTURAL_DEFAULTS.contains(&custom_value.as_str()) {
                 continue;
             }
@@ -79,7 +124,6 @@ impl LogSchemaRules {
                 let re = Regex::new(&pattern).unwrap();
 
                 if mapping.canonical_path.is_empty() {
-                    // metadata_key: no OTLP mapping, flag for review
                     for m in re.find_iter(&current) {
                         if !super::in_string_or_comment(&current, m.start()) {
                             output.reviews.push(super::super::ReviewItem {

@@ -46,11 +46,9 @@ pub struct UnixConfig {
     ///
     /// The value will be the peer host's address, including the port i.e. `1.2.3.4:9000`.
     ///
-    /// By default, the [global `log_schema.host_key` option][global_host_key] is used.
+    /// By default, `host` is used.
     ///
     /// Set to `""` to suppress this key.
-    ///
-    /// [global_host_key]: https://vector.dev/docs/reference/configuration/global-options/#log_schema.host_key
     #[serde(default = "default_host_key")]
     pub host_key: OptionalValuePath,
 

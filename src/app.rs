@@ -628,26 +628,6 @@ pub async fn load_configs(
         })?;
     }
 
-    let non_defaults = config.global.log_schema.non_default_fields();
-    if !non_defaults.is_empty() {
-        for (field, value, canonical) in &non_defaults {
-            if canonical.is_empty() {
-                warn!(
-                    "DEPRECATED: `log_schema.{field}` is set to \"{value}\". \
-                     The `log_schema` configuration is deprecated and will be removed in a future release. \
-                     Run `vector vrl-migrate --config <your-config>` to update VRL code."
-                );
-            } else {
-                warn!(
-                    "DEPRECATED: `log_schema.{field}` is set to \"{value}\" (canonical: {canonical}). \
-                     The `log_schema` configuration is deprecated and will be removed in a future release. \
-                     Run `vector vrl-migrate --config <your-config>` to automatically rewrite VRL \
-                     to use canonical field names, then remove the [log_schema] section."
-                );
-            }
-        }
-    }
-    config::init_log_schema(config.global.log_schema.clone(), true);
     config::init_telemetry(config.global.telemetry.clone(), true);
 
     // Wire the buffer format toggle before any disk buffer is opened.

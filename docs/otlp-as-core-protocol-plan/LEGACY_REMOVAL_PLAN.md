@@ -19,26 +19,20 @@
 | `log_event!` macro | Renamed → `otel_event!` |
 | Virtual fast-path aliases | **DELETED** (T15) |
 
-### `log_schema()` indirection — nearly eliminated
+### `log_schema()` indirection — **DELETED**
 
-| Key | Default | Canonical OTLP location | `log_schema()` callers | Status |
-|-----|---------|-------------------------|----------------------|--------|
-| `message_key` | `"body"` | `body` (proto field) | **0** | ✅ All hardcoded |
-| `timestamp_key` | `"time_unix_nano"` | `time_unix_nano` (proto field) | **0** | ✅ All hardcoded |
-| `source_type_key` | `"source_type"` | `resource.attributes."source_type"` | **0** | ✅ All hardcoded |
-| `host_key` | `"host"` | `resource.attributes."host.name"` | **2** | Kept (internal_metrics, dedupe) |
-| `metadata_key` | `"metadata"` | *(no OTLP mapping)* | **13** files | Active (remap errors, sources) |
+| Key | Default | Canonical OTLP location | Status |
+|-----|---------|-------------------------|--------|
+| `message_key` | `"body"` | `body` (proto field) | ✅ **DELETED** — hardcoded |
+| `timestamp_key` | `"time_unix_nano"` | `time_unix_nano` (proto field) | ✅ **DELETED** — hardcoded |
+| `source_type_key` | `"source_type"` | `resource.attributes."source_type"` | ✅ **DELETED** — hardcoded |
+| `host_key` | `"host"` | `resource.attributes."host.name"` | ✅ **DELETED** — hardcoded |
+| `metadata_key` | `"metadata"` | *(no OTLP mapping)* | ✅ **DELETED** — hardcoded |
 
-The `log_schema` config is marked **`#[configurable(deprecated)]`** with
-startup warnings when non-default values are set (`6e6d47b`).
-
-### `LogSchema` struct — stays until breaking release
-
-The `LogSchema` struct (5 fields, accessors, setters, `merge()`) must
-remain while `[log_schema]` is accepted in user configs. The accessors
-are used by `merge()`, config parsing tests, and test setup in
-`lib/codecs` and `lib/vector-core`. Deletion requires a breaking release
-(B.7).
+The `LogSchema` struct, `init_log_schema()`, `log_schema()` global,
+`[log_schema]` config section, and all accessors/setters/`merge()` logic
+have been **completely removed**. Public constants (`BODY`, `TIME_UNIX_NANO`,
+`HOST`, `SOURCE_TYPE`, `METADATA`) are exported from `log_schema.rs`.
 
 ### Remaining legacy code
 
@@ -47,7 +41,6 @@ are used by `merge()`, config parsing tests, and test setup in
 | `normalize_for_eq` | `otel_event.rs` | **SIMPLIFIED** — only strips `observed_time_unix_nano` |
 | `get/set_source_type()` | `otel_event.rs` | ✅ OTLP-aligned (resource attribute) |
 | `get/set_host()` | `otel_event.rs` | ✅ OTLP-aligned (resource attribute) |
-| `LogSchema` struct | `log_schema.rs` | **DEPRECATED** — 2 `host_key` + 13 `metadata_key` callers remain |
 
 ---
 
@@ -69,7 +62,7 @@ B.3 (source_type migration)     ✅ DONE
 B.4 (normalize_for_eq cleanup)  ✅ DONE (already simplified)
 B.5 (eliminate log_schema callers) ✅ DONE — 2 host_key callers remain (internal_metrics, dedupe)
 B.6 (deprecate + VRL migration)  ✅ DONE — startup warnings + LS-01..05 rules
-B.7 (remove LogSchema struct)     DEFERRED — requires breaking release
+B.7 (remove LogSchema struct)     ✅ DONE
 ```
 
 ---
@@ -133,21 +126,18 @@ VRL migrate tool enhanced with Pass 0 (LS-01..LS-05):
 
 ---
 
-### B.7 — Remove `LogSchema` struct (DEFERRED — next breaking release)
+### B.7 — Remove `LogSchema` struct ✅
 
-The `LogSchema` struct, all 5 fields, accessors, setters, and `merge()`
-logic must stay while we still accept `[log_schema]` in user configs.
-The accessors are used by:
-- `merge()` — compares and merges config from multiple files
-- Config parsing tests in `src/config/mod.rs`
-- Test setup in `lib/codecs` and `lib/vector-core`
-
-**Removal requires a breaking release.** At that point:
-1. Delete the `[log_schema]` section from `GlobalOptions`
-2. Delete the `LogSchema` struct and all accessors
-3. Delete `init_log_schema()` / `log_schema()` global
-4. Hardcode the 2 remaining `host_key` callers (internal_metrics, dedupe)
-5. Document in release notes
+All items completed:
+1. ✅ Deleted `[log_schema]` field from `GlobalOptions`
+2. ✅ Deleted `LogSchema` struct, all accessors, setters, `merge()`, `non_default_fields()`
+3. ✅ Deleted `init_log_schema()` / `log_schema()` global
+4. ✅ Hardcoded 2 remaining callers (internal_metrics → `owned_value_path!("host")`, dedupe → hardcoded vec)
+5. ✅ Replaced `log_schema.rs` with public constants (`BODY`, `TIME_UNIX_NANO`, `HOST`, `SOURCE_TYPE`, `METADATA`)
+6. ✅ VRL migrate tool uses local `MigrateLogSchema` struct (no vector-lib dependency)
+7. ✅ Removed init calls from `app.rs`, `validate.rs`, `unit_test/mod.rs`
+8. ✅ Deleted config tests, integration tests, TOML fixtures for `[log_schema]`
+9. ✅ Updated doc comments in ~19 source/sink/transform files
 
 ---
 

@@ -10,10 +10,3 @@ no_proxy = "no-proxy.com"
 
 [acknowledgements]
 enabled = true
-
-[log_schema]
-message_key = "foo"
-timestamp_key = "bar"
-host_key = "baz"
-source_type_key = "foobar"
-metadata_key = "foobaz"

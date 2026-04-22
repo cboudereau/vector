@@ -5,7 +5,7 @@ use vector_common::TimeZone;
 use vector_config::{configurable_component, impl_generate_config_from_default};
 
 use super::{
-    super::default_data_dir, AcknowledgementsConfig, LogSchema, Telemetry,
+    super::default_data_dir, AcknowledgementsConfig, Telemetry,
     metrics_expiration::PerMetricSetExpiration, proxy::ProxyConfig,
 };
 use crate::{event::BufferFormat, serde::bool_or_struct};
@@ -68,17 +68,6 @@ pub struct GlobalOptions {
     #[serde(skip_serializing_if = "crate::serde::is_default")]
     #[configurable(metadata(docs::common = false, docs::required = false))]
     pub wildcard_matching: Option<WildcardMatching>,
-
-    /// Default log schema for all events.
-    ///
-    /// **Deprecated.** The `log_schema` configuration is deprecated and will be removed in a
-    /// future release. All events now use canonical OTLP field names (`body`, `time_unix_nano`,
-    /// etc.) directly. Run `vector vrl-migrate --config <your-config>` to automatically rewrite
-    /// VRL code to use canonical field names, then remove the `[log_schema]` section.
-    #[serde(default, skip_serializing_if = "crate::serde::is_default")]
-    #[configurable(metadata(docs::common = false, docs::required = false))]
-    #[configurable(deprecated)]
-    pub log_schema: LogSchema,
 
     /// Telemetry options.
     ///
@@ -308,13 +297,6 @@ impl GlobalOptions {
             self.data_dir.clone()
         };
 
-        // If the user has multiple config files, we must *merge* log schemas
-        // until we meet a conflict, then we are allowed to error.
-        let mut log_schema = self.log_schema.clone();
-        if let Err(merge_errors) = log_schema.merge(&with.log_schema) {
-            errors.extend(merge_errors);
-        }
-
         let mut telemetry = self.telemetry.clone();
         telemetry.merge(&with.telemetry);
 
@@ -345,7 +327,6 @@ impl GlobalOptions {
             Ok(Self {
                 data_dir,
                 wildcard_matching: self.wildcard_matching.or(with.wildcard_matching),
-                log_schema,
                 telemetry,
                 acknowledgements: self.acknowledgements.merge_default(&with.acknowledgements),
                 timezone: self.timezone.or(with.timezone),

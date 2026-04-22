@@ -3,9 +3,8 @@ use std::path::{Path, PathBuf};
 
 use clap::Parser;
 use serde::Deserialize;
-use vector_lib::config::LogSchema;
 
-use super::{diff, diff_with_log_schema, migrate, migrate_with_log_schema};
+use super::{MigrateLogSchema, diff, diff_with_log_schema, migrate, migrate_with_log_schema};
 
 #[derive(Parser, Debug, Clone)]
 #[command(rename_all = "kebab-case")]
@@ -205,10 +204,10 @@ fn migrate_config(path: &PathBuf, show_diff: bool, in_place: bool) -> exitcode::
 #[derive(Deserialize, Default)]
 struct PartialConfig {
     #[serde(default)]
-    log_schema: LogSchema,
+    log_schema: MigrateLogSchema,
 }
 
-fn parse_log_schema_from_toml(toml_source: &str) -> Option<LogSchema> {
+fn parse_log_schema_from_toml(toml_source: &str) -> Option<MigrateLogSchema> {
     let config: PartialConfig = toml::from_str(toml_source).ok()?;
     let non_defaults = config.log_schema.non_default_fields();
     if non_defaults.is_empty() {
@@ -218,7 +217,7 @@ fn parse_log_schema_from_toml(toml_source: &str) -> Option<LogSchema> {
     }
 }
 
-fn resolve_log_schema(path: Option<&Path>) -> Result<Option<LogSchema>, String> {
+fn resolve_log_schema(path: Option<&Path>) -> Result<Option<MigrateLogSchema>, String> {
     let Some(path) = path else { return Ok(None) };
     let source = fs::read_to_string(path)
         .map_err(|e| format!("{}: {e}", path.display()))?;

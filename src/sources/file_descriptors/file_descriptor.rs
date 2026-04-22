@@ -31,7 +31,7 @@ pub struct FileDescriptorSourceConfig {
     /// Overrides the name of the log field used to add the current hostname to each event.
     ///
     ///
-    /// By default, the [global `host_key` option](https://vector.dev/docs/reference/configuration//global-options#log_schema.host_key) is used.
+    /// By default, `host` is used.
     pub host_key: Option<OptionalValuePath>,
 
     #[configurable(derived)]

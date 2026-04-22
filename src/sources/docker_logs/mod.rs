@@ -78,9 +78,7 @@ static CONSOLE: LazyLock<Bytes> = LazyLock::new(|| "console".into());
 pub struct DockerLogsConfig {
     /// Overrides the name of the log field used to add the current hostname to each event.
     ///
-    /// By default, the [global `log_schema.host_key` option][global_host_key] is used.
-    ///
-    /// [global_host_key]: https://vector.dev/docs/reference/configuration/global-options/#log_schema.host_key
+    /// By default, `host` is used.
     host_key: Option<OptionalValuePath>,
 
     /// Docker host to connect to.

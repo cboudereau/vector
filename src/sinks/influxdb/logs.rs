@@ -67,8 +67,8 @@ pub struct InfluxDbLogsConfig {
 
     /// The list of names of log fields that should be added as tags to each measurement.
     ///
-    /// By default Vector adds `metric_type` as well as the configured `log_schema.host_key` and
-    /// `log_schema.source_type_key` options.
+    /// By default Vector adds `metric_type` as well as `host` and
+    /// `source_type`.
     #[serde(default)]
     #[configurable(metadata(docs::examples = "field1"))]
     #[configurable(metadata(docs::examples = "parent.child_field"))]
@@ -104,24 +104,23 @@ pub struct InfluxDbLogsConfig {
     acknowledgements: AcknowledgementsConfig,
 
     // `host_key`, `message_key`, and `source_type_key` are `Option` as we want `vector generate`
-    // to produce a config with these as `None`, to not accidentally override a users configured
-    // `log_schema`. Generating is constrained by build-time and can't account for changes to the
-    // default `log_schema`.
+    // to produce a config with these as `None`, to not accidentally override a user's configured
+    // defaults.
     /// Use this option to customize the key containing the hostname.
     ///
-    /// The setting of `log_schema.host_key`, usually `host`, is used here by default.
+    /// The value `host` is used by default.
     #[configurable(metadata(docs::examples = "hostname"))]
     pub host_key: Option<OptionalValuePath>,
 
     /// Use this option to customize the key containing the message.
     ///
-    /// The setting of `log_schema.message_key`, usually `message`, is used here by default.
+    /// The value `body` is used by default.
     #[configurable(metadata(docs::examples = "text"))]
     pub message_key: Option<OptionalValuePath>,
 
     /// Use this option to customize the key containing the source_type.
     ///
-    /// The setting of `log_schema.source_type_key`, usually `source_type`, is used here by default.
+    /// The value `source_type` is used by default.
     #[configurable(metadata(docs::examples = "source"))]
     pub source_type_key: Option<OptionalValuePath>,
 }
@@ -189,7 +188,7 @@ impl SinkConfig for InfluxDbLogsConfig {
             .as_ref()
             .and_then(|k| k.path.clone())
             .or_else(|| Some(owned_value_path!("source_type")))
-            .expect("global log_schema.source_type_key to be valid path");
+            .expect("source_type_key to be valid path");
 
         let sink = InfluxDbLogsSink {
             uri,

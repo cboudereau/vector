@@ -1,6 +1,5 @@
-use vector_lib::config::LogSchema;
-
 use super::*;
+use super::MigrateLogSchema;
 
 fn assert_migrates(input: &str, expected: &str) {
     let output = migrate(input);
@@ -268,12 +267,12 @@ fn diff_empty_when_unchanged() {
 // Pass 0: Log schema rewrites
 // ═══════════════════════════════════════════════════════════════
 
-fn schema_with(field: &str, value: &str) -> LogSchema {
+fn schema_with(field: &str, value: &str) -> MigrateLogSchema {
     let toml = format!("{field} = \"{value}\"");
     toml::from_str(&toml).unwrap()
 }
 
-fn assert_migrates_with_schema(input: &str, schema: &LogSchema, expected_fragment: &str) {
+fn assert_migrates_with_schema(input: &str, schema: &MigrateLogSchema, expected_fragment: &str) {
     let output = migrate_with_log_schema(input, schema);
     assert!(
         output.text.contains(expected_fragment),
@@ -372,7 +371,7 @@ fn ls_combined_custom_and_structural() {
         message_key = "payload"
         host_key = "server"
     "#;
-    let schema: LogSchema = toml::from_str(toml).unwrap();
+    let schema: MigrateLogSchema = toml::from_str(toml).unwrap();
     let input = r#".out = .payload
 .h = .server
 .ts = .timestamp"#;

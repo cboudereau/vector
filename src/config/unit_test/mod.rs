@@ -85,26 +85,10 @@ impl UnitTest {
     }
 }
 
-/// Loads Log Schema from configurations and sets global schema.
-/// Once this is done, configurations can be correctly loaded using
-/// configured log schema defaults.
-/// If deny is set, will panic if schema has already been set.
-fn init_log_schema_from_paths(
-    config_paths: &[ConfigPath],
-    deny_if_set: bool,
-) -> Result<(), Vec<String>> {
-    let builder = ConfigBuilderLoader::default()
-        .interpolate_env(true)
-        .load_from_paths(config_paths)?;
-    vector_lib::config::init_log_schema(builder.global.log_schema, deny_if_set);
-    Ok(())
-}
-
 pub async fn build_unit_tests_main(
     paths: &[ConfigPath],
     signal_handler: &mut signal::SignalHandler,
 ) -> Result<Vec<UnitTest>, Vec<String>> {
-    init_log_schema_from_paths(paths, false)?;
     let secrets_backends_loader = loading::loader_from_paths(
         loading::SecretBackendLoader::default().interpolate_env(true),
         paths,

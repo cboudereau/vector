@@ -70,8 +70,7 @@ pub use validation::warnings;
 pub use vars::{ENVIRONMENT_VARIABLE_INTERPOLATION_REGEX, interpolate};
 pub use vector_lib::{
     config::{
-        ComponentKey, LogSchema, OutputId, init_log_schema, init_telemetry, log_schema,
-        proxy::ProxyConfig, telemetry,
+        ComponentKey, OutputId, init_telemetry, proxy::ProxyConfig, telemetry,
     },
     id::Inputs,
 };
@@ -891,79 +890,6 @@ mod tests {
             Some(PathBuf::from("/var/lib/vector")),
             config.global.data_dir
         )
-    }
-
-    #[test]
-    fn default_schema() {
-        let config = load_from_str(
-            indoc! {r#"
-            [sources.in]
-            type = "test_basic"
-
-            [sinks.out]
-            type = "test_basic"
-            inputs = ["in"]
-            "#},
-            Format::Toml,
-        )
-        .unwrap();
-
-        assert_eq!(
-            "host",
-            config.global.log_schema.host_key().unwrap().to_string()
-        );
-        assert_eq!(
-            "body",
-            config.global.log_schema.message_key().unwrap().to_string()
-        );
-        assert_eq!(
-            "time_unix_nano",
-            config
-                .global
-                .log_schema
-                .timestamp_key()
-                .unwrap()
-                .to_string()
-        );
-    }
-
-    #[test]
-    fn custom_schema() {
-        let config = load_from_str(
-            indoc! {r#"
-                [log_schema]
-                  host_key = "this"
-                  message_key = "that"
-                  timestamp_key = "then"
-
-                [sources.in]
-                  type = "test_basic"
-
-                [sinks.out]
-                  type = "test_basic"
-                  inputs = ["in"]
-            "#},
-            Format::Toml,
-        )
-        .unwrap();
-
-        assert_eq!(
-            "this",
-            config.global.log_schema.host_key().unwrap().to_string()
-        );
-        assert_eq!(
-            "that",
-            config.global.log_schema.message_key().unwrap().to_string()
-        );
-        assert_eq!(
-            "then",
-            config
-                .global
-                .log_schema
-                .timestamp_key()
-                .unwrap()
-                .to_string()
-        );
     }
 
     #[test]

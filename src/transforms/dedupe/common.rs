@@ -5,8 +5,6 @@ use vector_lib::{configurable::configurable_component, lookup::lookup_v2::Config
 
 use vector_lib::lookup::{OwnedTargetPath, owned_value_path};
 
-use crate::config::log_schema;
-
 /// Caching configuration for deduplication.
 #[configurable_component]
 #[derive(Clone, Debug)]
@@ -41,9 +39,7 @@ pub const fn default_cache_config() -> CacheConfig {
 ///
 /// When no field matching configuration is specified, events are matched using the `timestamp`,
 /// `host`, and `message` fields from an event. The specific field names used are those set in
-/// the global [`log schema`][global_log_schema] configuration.
-///
-/// [global_log_schema]: https://vector.dev/docs/reference/configuration/global-options/#log_schema
+/// the OTLP canonical field defaults.
 // TODO: This enum renders correctly in terms of providing equivalent Cue output when using the
 // machine-generated stuff vs the previously-hand-written Cue... but what it _doesn't_ have in the
 // machine-generated output is any sort of blurb that these "fields" (`match` and `ignore`) are
@@ -106,11 +102,9 @@ pub fn fill_default_fields_match(maybe_fields: Option<&FieldMatchConfig>) -> Fie
 //   structure can vary significantly. This should probably either become a required field
 //   in the future, or maybe the "semantic meaning" can be utilized here.
 fn default_match_fields() -> Vec<ConfigTargetPath> {
-    let mut fields = Vec::new();
-    fields.push(ConfigTargetPath(OwnedTargetPath::event(owned_value_path!("body"))));
-    if let Some(host_key) = log_schema().host_key_target_path() {
-        fields.push(ConfigTargetPath(host_key.clone()));
-    }
-    fields.push(ConfigTargetPath(OwnedTargetPath::event(owned_value_path!("time_unix_nano"))));
-    fields
+    vec![
+        ConfigTargetPath(OwnedTargetPath::event(owned_value_path!("body"))),
+        ConfigTargetPath(OwnedTargetPath::event(owned_value_path!("host"))),
+        ConfigTargetPath(OwnedTargetPath::event(owned_value_path!("time_unix_nano"))),
+    ]
 }

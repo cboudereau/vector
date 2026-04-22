@@ -2,7 +2,7 @@ use chrono::Utc;
 use futures::{StreamExt, stream};
 use vector_lib::{
     codecs::BytesDeserializerConfig,
-    config::{LegacyKey, LogNamespace, log_schema},
+    config::{LegacyKey, LogNamespace},
     configurable::configurable_component,
     lookup::{OwnedValuePath, lookup_v2::OptionalValuePath, owned_value_path, path},
     schema::Definition,
@@ -68,12 +68,7 @@ impl Default for InternalLogsConfig {
 impl InternalLogsConfig {
     /// Generates the `schema::Definition` for this component.
     fn schema_definition(&self, log_namespace: LogNamespace) -> Definition {
-        let host_key = self
-            .host_key
-            .clone()
-            .unwrap_or(log_schema().host_key().cloned().into())
-            .path
-            .map(LegacyKey::Overwrite);
+        let host_key = Some(LegacyKey::Overwrite(owned_value_path!("resource", "host.name")));
         let pid_key = self.pid_key.clone().path.map(LegacyKey::Overwrite);
 
         // There is a global and per-source `log_namespace` config.
@@ -428,11 +423,11 @@ mod tests {
             Kind::bytes(),
             Some("message"),
         )
-        .with_event_field(&owned_value_path!("source_type"), Kind::bytes(), None)
+        .with_event_field(&owned_value_path!("resource", "source_type"), Kind::bytes(), None)
         .with_event_field(&owned_value_path!(pid_key), Kind::integer(), None)
         .with_event_field(&owned_value_path!("time_unix_nano"), Kind::integer(), None)
         .with_event_field(
-            &owned_value_path!("host"),
+            &owned_value_path!("resource", "host.name"),
             Kind::bytes().or_undefined(),
             Some("host"),
         );

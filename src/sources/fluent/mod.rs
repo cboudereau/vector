@@ -1229,7 +1229,7 @@ mod tests {
             Kind::bytes(),
             Some("message"),
         )
-        .with_event_field(&owned_value_path!("source_type"), Kind::bytes(), None)
+        .with_event_field(&owned_value_path!("resource", "source_type"), Kind::bytes(), None)
         .with_event_field(&owned_value_path!("tag"), Kind::bytes(), None)
         .with_event_field(&owned_value_path!("time_unix_nano"), Kind::integer(), None)
         .with_event_field(&owned_value_path!("host"), Kind::bytes(), Some("host"))

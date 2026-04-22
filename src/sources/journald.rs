@@ -294,7 +294,7 @@ impl JournaldConfig {
             )
             .with_source_metadata(
                 JournaldConfig::NAME,
-                log_schema().host_key().cloned().map(LegacyKey::Overwrite),
+                Some(LegacyKey::Overwrite(owned_value_path!("resource", "host.name"))),
                 &owned_value_path!("host"),
                 Kind::bytes().or_undefined(),
                 Some("host"),
@@ -1796,10 +1796,10 @@ mod tests {
             Kind::object(Collection::empty()),
             [LogNamespace::Legacy],
         )
-        .with_event_field(&owned_value_path!("source_type"), Kind::bytes(), None)
+        .with_event_field(&owned_value_path!("resource", "source_type"), Kind::bytes(), None)
         .with_event_field(&owned_value_path!("time_unix_nano"), Kind::integer(), None)
         .with_event_field(
-            &owned_value_path!("host"),
+            &owned_value_path!("resource", "host.name"),
             Kind::bytes().or_undefined(),
             Some("host"),
         )
@@ -1846,6 +1846,8 @@ mod tests {
             vector_lib::lookup::event_path!("timestamp"),
             vrl::value::Value::Timestamp(now),
         );
+        event.as_mut_log().set_host("my-host.local");
+        event.as_mut_log().set_source_type(JournaldConfig::NAME);
 
         let definitions = config.outputs(namespace).remove(0).schema_definition(true);
 

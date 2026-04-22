@@ -279,12 +279,7 @@ impl SourceConfig for DockerLogsConfig {
     }
 
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
-        let host_key = self
-            .host_key
-            .clone()
-            .unwrap_or(log_schema().host_key().cloned().into())
-            .path
-            .map(LegacyKey::Overwrite);
+        let host_key = Some(LegacyKey::Overwrite(owned_value_path!("resource", "host.name")));
 
         let schema_definition = BytesDeserializerConfig
             .schema_definition(global_log_namespace.merge(self.log_namespace))
@@ -348,7 +343,7 @@ impl SourceConfig for DockerLogsConfig {
                 Some("timestamp"),
             )
             .with_vector_metadata(
-                log_schema().source_type_key(),
+                Some(&owned_value_path!("resource", "source_type")),
                 &owned_value_path!("source_type"),
                 Kind::bytes(),
                 None,

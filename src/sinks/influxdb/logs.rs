@@ -7,7 +7,7 @@ use indoc::indoc;
 use vector_lib::{
     config::log_schema,
     configurable::configurable_component,
-    lookup::{PathPrefix, lookup_v2::OptionalValuePath},
+    lookup::{PathPrefix, lookup_v2::OptionalValuePath, owned_value_path},
     schema,
 };
 use vrl::{event_path, path::OwnedValuePath, value::Kind};
@@ -190,7 +190,7 @@ impl SinkConfig for InfluxDbLogsConfig {
             .source_type_key
             .as_ref()
             .and_then(|k| k.path.clone())
-            .or_else(|| log_schema().source_type_key().cloned())
+            .or_else(|| Some(owned_value_path!("source_type")))
             .expect("global log_schema.source_type_key to be valid path");
 
         let sink = InfluxDbLogsSink {

@@ -8,7 +8,7 @@ use snafu::{ResultExt, Snafu};
 use vector_lib::{
     config::proxy::ProxyConfig,
     event::EventRef,
-    lookup::lookup_v2::{OptionalTargetPath, OptionalValuePath},
+    lookup::{lookup_v2::{OptionalTargetPath, OptionalValuePath}, owned_value_path},
 };
 
 use super::{
@@ -139,7 +139,7 @@ pub fn build_uri(
 
 pub fn config_host_key() -> OptionalValuePath {
     OptionalValuePath {
-        path: crate::config::log_schema().host_key().cloned(),
+        path: Some(owned_value_path!("host")),
     }
 }
 

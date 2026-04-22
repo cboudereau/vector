@@ -1556,7 +1556,7 @@ mod tests {
                     Some("timestamp")
                 )
                 .with_event_field(
-                    &owned_value_path!("source_type"),
+                    &owned_value_path!("resource", "source_type"),
                     Kind::bytes(),
                     None
                 )

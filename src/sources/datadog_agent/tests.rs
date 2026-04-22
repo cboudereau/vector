@@ -1611,7 +1611,7 @@ fn test_config_outputs() {
                                 Some("tags"),
                             )
                             .with_event_field(
-                                &owned_value_path!("source_type"),
+                                &owned_value_path!("resource", "source_type"),
                                 Kind::bytes(),
                                 None,
                             )
@@ -1669,7 +1669,7 @@ fn test_config_outputs() {
                                 Some("tags"),
                             )
                             .with_event_field(
-                                &owned_value_path!("source_type"),
+                                &owned_value_path!("resource", "source_type"),
                                 Kind::bytes(),
                                 None,
                             )
@@ -1733,7 +1733,7 @@ fn test_config_outputs() {
                                     Some("tags"),
                                 )
                                 .with_event_field(
-                                    &owned_value_path!("source_type"),
+                                    &owned_value_path!("resource", "source_type"),
                                     Kind::bytes(),
                                     None,
                                 ),
@@ -1753,19 +1753,19 @@ fn test_config_outputs() {
                     None,
                     Some(
                         schema::Definition::empty_legacy_namespace()
+                            .unknown_fields(Kind::json())
                             .with_event_field(
                                 &owned_value_path!("timestamp"),
                                 Kind::json().or_timestamp(),
                                 None,
                             )
-                            .with_event_field(&owned_value_path!("source_type"), Kind::json(), None)
+                            .with_event_field(&owned_value_path!("resource", "source_type"), Kind::json(), None)
                             .with_event_field(&owned_value_path!("ddsource"), Kind::json(), None)
                             .with_event_field(&owned_value_path!("ddtags"), Kind::json(), None)
                             .with_event_field(&owned_value_path!("hostname"), Kind::json(), None)
                             .with_event_field(&owned_value_path!("service"), Kind::json(), None)
                             .with_event_field(&owned_value_path!("status"), Kind::json(), None)
-                            .with_event_field(&owned_value_path!("time_unix_nano"), Kind::json(), None)
-                            .unknown_fields(Kind::json()),
+                            .with_event_field(&owned_value_path!("time_unix_nano"), Kind::json(), None),
                     ),
                 )]),
             },
@@ -1780,13 +1780,14 @@ fn test_config_outputs() {
                         Some(LOGS),
                         Some(
                             schema::Definition::empty_legacy_namespace()
+                                .unknown_fields(Kind::json())
                                 .with_event_field(
                                     &owned_value_path!("timestamp"),
                                     Kind::json().or_timestamp(),
                                     None,
                                 )
                                 .with_event_field(
-                                    &owned_value_path!("source_type"),
+                                    &owned_value_path!("resource", "source_type"),
                                     Kind::json(),
                                     None,
                                 )
@@ -1803,8 +1804,7 @@ fn test_config_outputs() {
                                 )
                                 .with_event_field(&owned_value_path!("service"), Kind::json(), None)
                                 .with_event_field(&owned_value_path!("status"), Kind::json(), None)
-                                .with_event_field(&owned_value_path!("time_unix_nano"), Kind::json(), None)
-                                .unknown_fields(Kind::json()),
+                                .with_event_field(&owned_value_path!("time_unix_nano"), Kind::json(), None),
                         ),
                     ),
                     (Some(METRICS), None),
@@ -1860,9 +1860,12 @@ fn test_config_outputs() {
                                 Kind::integer().or_bytes(),
                                 None,
                             )
+                            .unknown_fields(Kind::object(
+                                vrl::value::kind::Collection::from_unknown(Kind::bytes()),
+                            ))
                             .with_event_field(
-                                &owned_value_path!("source_type"),
-                                Kind::bytes().or_object(Collection::from_unknown(Kind::bytes())),
+                                &owned_value_path!("resource", "source_type"),
+                                Kind::bytes(),
                                 None,
                             )
                             .with_event_field(
@@ -1884,10 +1887,7 @@ fn test_config_outputs() {
                                 &owned_value_path!("status"),
                                 Kind::bytes().or_object(Collection::from_unknown(Kind::bytes())),
                                 None,
-                            )
-                            .unknown_fields(Kind::object(
-                                vrl::value::kind::Collection::from_unknown(Kind::bytes()),
-                            )),
+                            ),
                     ),
                 )]),
             },
@@ -1945,10 +1945,12 @@ fn test_config_outputs() {
                                     Kind::integer().or_bytes(),
                                     None,
                                 )
+                                .unknown_fields(Kind::object(
+                                    vrl::value::kind::Collection::from_unknown(Kind::bytes()),
+                                ))
                                 .with_event_field(
-                                    &owned_value_path!("source_type"),
-                                    Kind::bytes()
-                                        .or_object(Collection::from_unknown(Kind::bytes())),
+                                    &owned_value_path!("resource", "source_type"),
+                                    Kind::bytes(),
                                     None,
                                 )
                                 .with_event_field(
@@ -1974,10 +1976,7 @@ fn test_config_outputs() {
                                     Kind::bytes()
                                         .or_object(Collection::from_unknown(Kind::bytes())),
                                     None,
-                                )
-                                .unknown_fields(Kind::object(
-                                    vrl::value::kind::Collection::from_unknown(Kind::bytes()),
-                                )),
+                                ),
                         ),
                     ),
                     (Some(METRICS), None),
@@ -2377,7 +2376,7 @@ fn test_output_schema_definition_json_legacy_namespace() {
                 .with_event_field(&owned_value_path!("ddtags"), Kind::json(), None)
                 .with_event_field(&owned_value_path!("hostname"), Kind::json(), None)
                 .with_event_field(&owned_value_path!("service"), Kind::json(), None)
-                .with_event_field(&owned_value_path!("source_type"), Kind::json(), None)
+                .with_event_field(&owned_value_path!("resource", "source_type"), Kind::json(), None)
                 .with_event_field(&owned_value_path!("status"), Kind::json(), None)
                 .try_with_field(
                     &owned_value_path!("timestamp"),
@@ -2423,7 +2422,7 @@ fn test_output_schema_definition_bytes_legacy_namespace() {
                 Kind::bytes(),
                 Some("service")
             )
-            .with_event_field(&owned_value_path!("source_type"), Kind::bytes(), None)
+            .with_event_field(&owned_value_path!("resource", "source_type"), Kind::bytes(), None)
             .with_event_field(
                 &owned_value_path!("status"),
                 Kind::bytes(),

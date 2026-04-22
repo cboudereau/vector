@@ -244,7 +244,7 @@ fn schema_definition(log_namespace: LogNamespace) -> Definition {
             }
 
             schema_definition = schema_definition.with_event_field(
-                log_schema().host_key().expect("valid host key"),
+                &owned_value_path!("resource", "host.name"),
                 Kind::bytes().or_undefined(),
                 None,
             );
@@ -270,10 +270,7 @@ impl MetricToLog {
     ) -> Self {
         Self {
             host_tag: host_tag.map_or(
-                log_schema().host_key().cloned().map(|mut key| {
-                    key.push_front_field("tags");
-                    key
-                }),
+                Some(owned_value_path!("tags", "host")),
                 |host| Some(owned_value_path!("tags", host)),
             ),
             timezone,

@@ -818,7 +818,7 @@ mod tests {
             Kind::timestamp().or_undefined(),
             Some("timestamp"),
         )
-        .with_event_field(&owned_value_path!("source_type"), Kind::bytes(), None)
+        .with_event_field(&owned_value_path!("resource", "source_type"), Kind::bytes(), None)
         .try_with_field(
             &owned_value_path!("time_unix_nano"),
             Kind::integer(),

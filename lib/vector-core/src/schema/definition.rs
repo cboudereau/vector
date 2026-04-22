@@ -145,8 +145,9 @@ impl Definition {
     /// This function should be called in the same order as the values are actually inserted into the event.
     #[must_use]
     pub fn with_standard_vector_source_metadata(self) -> Self {
+        let source_type_path = owned_value_path!("resource", "source_type");
         let def = self.with_vector_metadata(
-            log_schema().source_type_key(),
+            Some(&source_type_path),
             &owned_value_path!("source_type"),
             Kind::bytes(),
             None,

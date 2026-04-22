@@ -1467,7 +1467,7 @@ mod test {
                         Kind::object(Collection::empty().with_unknown(Kind::bytes())),
                         None
                     )
-                    .with_event_field(&owned_value_path!("source_type"), Kind::bytes(), None)
+                    .with_event_field(&owned_value_path!("resource", "source_type"), Kind::bytes(), None)
             )
         )
     }

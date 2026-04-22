@@ -716,7 +716,7 @@ impl<'de, R: JsonRead<'de>> From<EventIteratorGenerator<'de, R>> for EventIterat
                 // 3. Use the `remote`: SocketAddr value provided by warp
                 DefaultExtractor::new_with(
                     "host",
-                    log_schema().host_key().cloned().into(),
+                    OptionalValuePath { path: Some(owned_value_path!("host")) },
                     f.remote_addr
                         .or_else(|| f.remote.map(|addr| addr.to_string()))
                         .map(Value::from),
@@ -2751,7 +2751,7 @@ mod tests {
                 .or_undefined(),
             None,
         )
-        .with_event_field(&owned_value_path!("source_type"), Kind::bytes(), None)
+        .with_event_field(&owned_value_path!("resource", "source_type"), Kind::bytes(), None)
         .with_event_field(&owned_value_path!("splunk_channel"), Kind::bytes(), None)
         .with_event_field(&owned_value_path!("splunk_index"), Kind::bytes(), None)
         .with_event_field(

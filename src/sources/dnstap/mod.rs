@@ -235,23 +235,15 @@ struct CommonFrameHandler {
 
 impl CommonFrameHandler {
     pub fn new(config: &DnstapConfig, log_namespace: LogNamespace) -> Self {
-        let source_type_key = log_schema().source_type_key();
-        let timestamp_key = log_schema().timestamp_key();
-
-        let host_key = config
-            .host_key
-            .clone()
-            .map_or(log_schema().host_key().cloned(), |k| k.path);
-
         Self {
             max_frame_length: config.max_frame_length,
             content_type: "protobuf:dnstap.Dnstap".to_string(),
             raw_data_only: config.raw_data_only.unwrap_or(false),
             multithreaded: config.multithreaded.unwrap_or(false),
             max_frame_handling_tasks: config.max_frame_handling_tasks.unwrap_or(1000),
-            host_key,
-            timestamp_key: timestamp_key.cloned(),
-            source_type_key: source_type_key.cloned(),
+            host_key: None,
+            timestamp_key: None,
+            source_type_key: None,
             bytes_received: register!(BytesReceived::from(Protocol::from("protobuf"))),
             lowercase_hostnames: config.lowercase_hostnames,
             log_namespace,
@@ -314,12 +306,7 @@ impl FrameHandler for CommonFrameHandler {
                 .insert(path!("vector", "ingest_timestamp"), chrono::Utc::now());
         }
 
-        self.log_namespace.insert_vector_metadata(
-            &mut log,
-            self.source_type_key(),
-            path!("source_type"),
-            DnstapConfig::NAME,
-        );
+        log.set_source_type(DnstapConfig::NAME);
 
         Some(Event::Log(log))
     }

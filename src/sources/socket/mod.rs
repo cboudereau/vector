@@ -5,7 +5,7 @@ mod unix;
 
 use vector_lib::{
     codecs::decoding::DeserializerConfig,
-    config::{LegacyKey, LogNamespace, log_schema},
+    config::{LegacyKey, LogNamespace},
     configurable::configurable_component,
     lookup::{lookup_v2::OptionalValuePath, owned_value_path},
 };
@@ -313,7 +313,9 @@ impl SourceConfig for SocketConfig {
 }
 
 pub(crate) fn default_host_key() -> OptionalValuePath {
-    log_schema().host_key().cloned().into()
+    OptionalValuePath {
+        path: Some(owned_value_path!("resource", "host.name")),
+    }
 }
 
 #[cfg(test)]

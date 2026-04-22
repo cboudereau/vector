@@ -30,7 +30,6 @@ use crate::{
     SourceSender,
     config::{
         DataType, SourceAcknowledgementsConfig, SourceConfig, SourceContext, SourceOutput,
-        log_schema,
     },
     encoding_transcode::{Decoder, Encoder},
     event::{BatchNotifier, BatchStatus, OtelLog, string_value, int_value},
@@ -431,12 +430,7 @@ impl SourceConfig for FileConfig {
 
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
         let file_key = self.file_key.clone().path.map(LegacyKey::Overwrite);
-        let host_key = self
-            .host_key
-            .clone()
-            .unwrap_or(log_schema().host_key().cloned().into())
-            .path
-            .map(LegacyKey::Overwrite);
+        let host_key = Some(LegacyKey::Overwrite(owned_value_path!("resource", "host.name")));
 
         let offset_key = self
             .offset_key
@@ -818,7 +812,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        config::Config,
+        config::{Config, log_schema},
         event::{Event, EventStatus, Value},
         shutdown::ShutdownSignal,
         sources::file,
@@ -1004,10 +998,10 @@ mod tests {
                     Kind::bytes(),
                     Some("message")
                 )
-                .with_event_field(&owned_value_path!("source_type"), Kind::bytes(), None)
+                .with_event_field(&owned_value_path!("resource", "source_type"), Kind::bytes(), None)
                 .with_event_field(&owned_value_path!("time_unix_nano"), Kind::integer(), None)
                 .with_event_field(
-                    &owned_value_path!("host"),
+                    &owned_value_path!("resource", "host.name"),
                     Kind::bytes().or_undefined(),
                     Some("host")
                 )

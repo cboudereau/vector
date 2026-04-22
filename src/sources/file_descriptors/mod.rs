@@ -22,7 +22,7 @@ use vrl::value::Kind;
 use crate::{
     SourceSender,
     codecs::{Decoder, DecodingConfig},
-    config::{SourceOutput, log_schema},
+    config::SourceOutput,
     internal_events::{EventsReceived, FileDescriptorReadError, StreamClosedError},
     shutdown::ShutdownSignal,
 };
@@ -184,7 +184,6 @@ async fn process_stream(
 /// file_descriptor sources.
 fn outputs(
     log_namespace: LogNamespace,
-    host_key: &Option<OptionalValuePath>,
     decoding: &DeserializerConfig,
     source_name: &'static str,
 ) -> Vec<SourceOutput> {
@@ -192,10 +191,7 @@ fn outputs(
         .schema_definition(log_namespace)
         .with_source_metadata(
             source_name,
-            host_key
-                .clone()
-                .map_or(log_schema().host_key().cloned(), |key| key.path)
-                .map(LegacyKey::Overwrite),
+            Some(LegacyKey::Overwrite(owned_value_path!("resource", "host.name"))),
             &owned_value_path!("host"),
             Kind::bytes(),
             Some("host"),

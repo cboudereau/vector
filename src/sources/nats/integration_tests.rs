@@ -81,7 +81,7 @@ async fn run_jetstream_test(conf: NatsSourceConfig) -> Result<(), crate::Error> 
     .await;
 
     assert_eq!(
-        events[0].as_log()["body"],
+        events[0].as_log().get("body").unwrap(),
         msg.into()
     );
 
@@ -99,7 +99,7 @@ async fn publish_and_check(conf: NatsSourceConfig) -> Result<(), BuildError> {
         let decoder = DecodingConfig::new(
             conf.framing.clone(),
             conf.decoding.clone(),
-            LogNamespace::Legacy,
+            LogNamespace::Vector,
         )
         .build()
         .unwrap();
@@ -108,7 +108,7 @@ async fn publish_and_check(conf: NatsSourceConfig) -> Result<(), BuildError> {
             nc,
             sub,
             decoder,
-            LogNamespace::Legacy,
+            LogNamespace::Vector,
             ShutdownSignal::noop(),
             tx,
         ));
@@ -123,7 +123,7 @@ async fn publish_and_check(conf: NatsSourceConfig) -> Result<(), BuildError> {
 
     println!("Received event  {:?}", events[0].as_log());
     assert_eq!(
-        events[0].as_log()["body"],
+        events[0].as_log().get("body").unwrap(),
         msg.into()
     );
     Ok(())
@@ -534,7 +534,7 @@ async fn nats_shutdown_drain_messages() {
     let decoder = DecodingConfig::new(
         conf.framing.clone(),
         conf.decoding.clone(),
-        LogNamespace::Legacy,
+        LogNamespace::Vector,
     )
     .build()
     .unwrap();
@@ -544,7 +544,7 @@ async fn nats_shutdown_drain_messages() {
         nc,
         sub,
         decoder,
-        LogNamespace::Legacy,
+        LogNamespace::Vector,
         shutdown_signal,
         tx,
     ));
@@ -584,8 +584,8 @@ async fn nats_shutdown_drain_messages() {
         events.push(event);
     }
     assert_eq!(events.len(), 3);
-    let msg = &events[0].as_log()["body"];
-    assert_eq!(*msg, "msg1".into());
+    let msg = events[0].as_log().get("body").unwrap();
+    assert_eq!(msg, "msg1".into());
 
     // Verify the source has completed its work and the shutdown is fully done.
     source_handle.await.unwrap().expect("Source task failed");

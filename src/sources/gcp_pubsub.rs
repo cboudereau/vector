@@ -800,13 +800,13 @@ mod tests {
         let config = PubsubConfig::default();
 
         let definitions = config
-            .outputs(LogNamespace::Legacy)
+            .outputs(LogNamespace::Vector)
             .remove(0)
             .schema_definition(true);
 
         let expected_definition = Definition::new_with_default_metadata(
             Kind::object(Collection::empty()),
-            [LogNamespace::Legacy],
+            [LogNamespace::Vector],
         )
         .with_event_field(
             &owned_value_path!("body"),
@@ -1173,8 +1173,8 @@ mod integration_tests {
         assert_eq!(events.len(), lines.len());
         for (message, event) in lines.into_iter().zip(events) {
             let log = event.into_log();
-            assert_eq!(log.get("body"), Some(&message.into()));
-            assert_eq!(log.get("source_type"), Some(&"gcp_pubsub".into()));
+            assert_eq!(log.get("body"), Some(message.into()));
+            assert_eq!(log.get("source_type"), Some("gcp_pubsub".into()));
             assert!(log.get("timestamp").unwrap().as_timestamp().unwrap() >= &start);
             assert!(log.get("timestamp").unwrap().as_timestamp().unwrap() <= &end);
             assert!(

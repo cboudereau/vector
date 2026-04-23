@@ -16,7 +16,7 @@ mod integration_tests {
             DockerLogsConfig::default(),
             tx,
             ShutdownSignal::noop(),
-            LogNamespace::Legacy,
+            LogNamespace::Vector,
         )
         .unwrap();
         source.hostname = Some("451062c59603".to_owned());
@@ -285,7 +285,7 @@ mod integration_tests {
         // Wait for before message
         let events = collect_n(out, 1).await;
         assert_eq!(
-            events[0].as_log()["body"],
+            events[0].as_log().get("body").unwrap(),
             "before".into()
         );
 
@@ -321,7 +321,7 @@ mod integration_tests {
             schema_definitions
                 .unwrap()
                 .assert_valid_for_event(&events[0]);
-            assert_eq!(events[0].as_log().get(".").unwrap(), &value!(message));
+            assert_eq!(events[0].as_log().get(".").unwrap(), value!(message));
         })
         .await;
     }
@@ -330,7 +330,7 @@ mod integration_tests {
     async fn container_with_tty_legacy_namespace() {
         trace_init();
         let schema_definitions = DockerLogsConfig::default()
-            .outputs(LogNamespace::Legacy)
+            .outputs(LogNamespace::Vector)
             .first()
             .unwrap()
             .schema_definition
@@ -352,7 +352,7 @@ mod integration_tests {
                 .unwrap()
                 .assert_valid_for_event(&events[0]);
             assert_eq!(
-                events[0].as_log()["body"],
+                events[0].as_log().get("body").unwrap(),
                 message.into()
             );
         })
@@ -388,7 +388,7 @@ mod integration_tests {
 
             let log = events[0].as_log();
             let meta = log.metadata().value();
-            assert_eq!(log.get(".").unwrap(), &value!(message));
+            assert_eq!(log.get(".").unwrap(), value!(message));
             assert_eq!(
                 meta.get(path!(DockerLogsConfig::NAME, CONTAINER)).unwrap(),
                 &value!(id)
@@ -426,7 +426,7 @@ mod integration_tests {
     async fn newly_started_legacy_namespace() {
         trace_init();
         let schema_definitions = DockerLogsConfig::default()
-            .outputs(LogNamespace::Legacy)
+            .outputs(LogNamespace::Vector)
             .first()
             .unwrap()
             .schema_definition
@@ -449,12 +449,12 @@ mod integration_tests {
                 .unwrap()
                 .assert_valid_for_event(&events[0]);
             let log = events[0].as_log();
-            assert_eq!(*log.get_body().unwrap(), message.into());
-            assert_eq!(log[CONTAINER], id.into());
+            assert_eq!(log.get_body().unwrap(), message.into());
+            assert_eq!(log.get(CONTAINER).unwrap(), id.into());
             assert!(log.get(CREATED_AT).is_some());
-            assert_eq!(log[IMAGE], "busybox".into());
+            assert_eq!(log.get(IMAGE).unwrap(), "busybox".into());
             assert!(log.get(format!("label.{label}").as_str()).is_some());
-            assert_eq!(events[0].as_log()[&NAME], name.into());
+            assert_eq!(events[0].as_log().get(NAME).unwrap(), name.into());
             assert_eq!(
                 events[0].as_log().get_source_type().unwrap(),
                 DockerLogsConfig::NAME.into()
@@ -467,7 +467,7 @@ mod integration_tests {
     async fn restart_legacy_namespace() {
         trace_init();
         let schema_definitions = DockerLogsConfig::default()
-            .outputs(LogNamespace::Legacy)
+            .outputs(LogNamespace::Vector)
             .first()
             .unwrap()
             .schema_definition
@@ -488,9 +488,9 @@ mod integration_tests {
             let definition = schema_definitions.unwrap();
 
             definition.assert_valid_for_event(&events[0]);
-            assert_eq!(events[0].as_log()["body"], message.into());
+            assert_eq!(events[0].as_log().get("body").unwrap(), message.into());
             definition.assert_valid_for_event(&events[1]);
-            assert_eq!(events[1].as_log()["body"], message.into());
+            assert_eq!(events[1].as_log().get("body").unwrap(), message.into());
         })
         .await;
     }
@@ -499,7 +499,7 @@ mod integration_tests {
     async fn include_containers_legacy_namespace() {
         trace_init();
         let schema_definitions = DockerLogsConfig::default()
-            .outputs(LogNamespace::Legacy)
+            .outputs(LogNamespace::Vector)
             .first()
             .unwrap()
             .schema_definition
@@ -524,7 +524,7 @@ mod integration_tests {
                 .unwrap()
                 .assert_valid_for_event(&events[0]);
             assert_eq!(
-                events[0].as_log()["body"],
+                events[0].as_log().get("body").unwrap(),
                 message.into()
             );
         })
@@ -535,7 +535,7 @@ mod integration_tests {
     async fn exclude_containers_legacy_namespace() {
         trace_init();
         let schema_definitions = DockerLogsConfig::default()
-            .outputs(LogNamespace::Legacy)
+            .outputs(LogNamespace::Vector)
             .first()
             .unwrap()
             .schema_definition
@@ -572,10 +572,10 @@ mod integration_tests {
             let definition = schema_definitions.unwrap();
             definition.assert_valid_for_event(&events[0]);
 
-            assert_eq!(events[0].as_log()["body"], will_be_read.into());
+            assert_eq!(events[0].as_log().get("body").unwrap(), will_be_read.into());
 
             definition.assert_valid_for_event(&events[1]);
-            assert_eq!(events[1].as_log()["body"], will_be_read.into());
+            assert_eq!(events[1].as_log().get("body").unwrap(), will_be_read.into());
         })
         .await;
     }
@@ -584,7 +584,7 @@ mod integration_tests {
     async fn include_labels_legacy_namespace() {
         trace_init();
         let schema_definitions = DockerLogsConfig::default()
-            .outputs(LogNamespace::Legacy)
+            .outputs(LogNamespace::Vector)
             .first()
             .unwrap()
             .schema_definition
@@ -610,7 +610,7 @@ mod integration_tests {
                 .unwrap()
                 .assert_valid_for_event(&events[0]);
             assert_eq!(
-                events[0].as_log()["body"],
+                events[0].as_log().get("body").unwrap(),
                 message.into()
             );
         })
@@ -621,7 +621,7 @@ mod integration_tests {
     async fn currently_running_legacy_namespace() {
         trace_init();
         let schema_definitions = DockerLogsConfig::default()
-            .outputs(LogNamespace::Legacy)
+            .outputs(LogNamespace::Vector)
             .first()
             .unwrap()
             .schema_definition
@@ -644,12 +644,12 @@ mod integration_tests {
                 .unwrap()
                 .assert_valid_for_event(&events[0]);
             let log = events[0].as_log();
-            assert_eq!(*log.get_body().unwrap(), message.into());
-            assert_eq!(log[CONTAINER], id.into());
+            assert_eq!(log.get_body().unwrap(), message.into());
+            assert_eq!(log.get(CONTAINER).unwrap(), id.into());
             assert!(log.get(CREATED_AT).is_some());
-            assert_eq!(log[IMAGE], "busybox".into());
+            assert_eq!(log.get(IMAGE).unwrap(), "busybox".into());
             assert!(log.get(format!("label.{label}").as_str()).is_some());
-            assert_eq!(events[0].as_log()[&NAME], name.into());
+            assert_eq!(events[0].as_log().get(NAME).unwrap(), name.into());
             assert_eq!(
                 events[0].as_log().get_source_type().unwrap(),
                 DockerLogsConfig::NAME.into()
@@ -662,7 +662,7 @@ mod integration_tests {
     async fn include_image_legacy_namespace() {
         trace_init();
         let schema_definitions = DockerLogsConfig::default()
-            .outputs(LogNamespace::Legacy)
+            .outputs(LogNamespace::Vector)
             .first()
             .unwrap()
             .schema_definition
@@ -689,7 +689,7 @@ mod integration_tests {
                 .unwrap()
                 .assert_valid_for_event(&events[0]);
             assert_eq!(
-                events[0].as_log()["body"],
+                events[0].as_log().get("body").unwrap(),
                 message.into()
             );
         })
@@ -756,7 +756,7 @@ mod integration_tests {
     async fn flat_labels_legacy_namespace() {
         trace_init();
         let schema_definitions = DockerLogsConfig::default()
-            .outputs(LogNamespace::Legacy)
+            .outputs(LogNamespace::Vector)
             .first()
             .unwrap()
             .schema_definition
@@ -779,10 +779,10 @@ mod integration_tests {
                 .unwrap()
                 .assert_valid_for_event(&events[0]);
             let log = events[0].as_log();
-            assert_eq!(*log.get_body().unwrap(), message.into());
-            assert_eq!(log[CONTAINER], id.into());
+            assert_eq!(log.get_body().unwrap(), message.into());
+            assert_eq!(log.get(CONTAINER).unwrap(), id.into());
             assert!(log.get(CREATED_AT).is_some());
-            assert_eq!(log[IMAGE], "busybox".into());
+            assert_eq!(log.get(IMAGE).unwrap(), "busybox".into());
             assert!(
                 log.get("label")
                     .unwrap()
@@ -791,7 +791,7 @@ mod integration_tests {
                     .get(label)
                     .is_some()
             );
-            assert_eq!(events[0].as_log()[&NAME], name.into());
+            assert_eq!(events[0].as_log().get(NAME).unwrap(), name.into());
             assert_eq!(
                 events[0].as_log().get_source_type().unwrap(),
                 DockerLogsConfig::NAME.into()
@@ -804,7 +804,7 @@ mod integration_tests {
     async fn log_longer_than_16kb_legacy_namespace() {
         trace_init();
         let schema_definitions = DockerLogsConfig::default()
-            .outputs(LogNamespace::Legacy)
+            .outputs(LogNamespace::Vector)
             .first()
             .unwrap()
             .schema_definition
@@ -829,7 +829,7 @@ mod integration_tests {
                 .unwrap()
                 .assert_valid_for_event(&events[0]);
             let log = events[0].as_log();
-            assert_eq!(*log.get_body().unwrap(), message.into());
+            assert_eq!(log.get_body().unwrap(), message.into());
         })
         .await;
     }
@@ -910,7 +910,7 @@ mod integration_tests {
         assert_source_compliance(&SOURCE_TAGS, async {
             trace_init();
             let schema_definitions = DockerLogsConfig::default()
-                .outputs(LogNamespace::Legacy)
+                .outputs(LogNamespace::Vector)
                 .first()
                 .unwrap()
                 .schema_definition

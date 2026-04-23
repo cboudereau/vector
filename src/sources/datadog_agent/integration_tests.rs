@@ -149,7 +149,8 @@ async fn wait_for_traces() {
 
     assert_eq!(events.len(), 1);
     let trace = events.first().unwrap().as_trace();
-    let spans = trace.get("spans").unwrap().as_array().unwrap();
+    let spans_val = trace.get("spans").unwrap();
+    let spans = spans_val.as_array().unwrap();
     assert_eq!(spans.len(), 1);
     let span = spans.first().unwrap();
     assert_eq!(span.get("name"), Some(&Value::from("a_name")));

@@ -295,10 +295,10 @@ pub mod tests {
 
         test_util::test_parser(
             || Docker {
-                log_namespace: LogNamespace::Legacy,
+                log_namespace: LogNamespace::Vector,
             },
             |bytes| Event::Log(OtelLog::from(bytes)),
-            valid_cases(LogNamespace::Legacy),
+            valid_cases(LogNamespace::Vector),
         );
     }
 
@@ -325,7 +325,7 @@ pub mod tests {
         let cases = invalid_cases();
 
         for bytes in cases {
-            let mut parser = Docker::new(LogNamespace::Legacy);
+            let mut parser = Docker::new(LogNamespace::Vector);
             let input = OtelLog::from(bytes);
             let mut output = OutputBuffer::default();
             parser.transform(&mut output, input.into());

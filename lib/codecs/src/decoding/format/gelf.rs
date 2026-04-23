@@ -276,7 +276,7 @@ mod tests {
         let config = GelfDeserializerConfig::new(options);
         let deserializer = config.build();
         let buffer = Bytes::from(serde_json::to_vec(&input).unwrap());
-        deserializer.parse(buffer, LogNamespace::Legacy)
+        deserializer.parse(buffer, LogNamespace::Vector)
     }
 
     /// Validates all the spec'd fields of GELF are deserialized correctly.

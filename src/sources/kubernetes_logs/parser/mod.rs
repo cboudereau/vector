@@ -164,9 +164,9 @@ mod tests {
     fn test_parsing_valid_legacy_namespace() {
         trace_init();
         test_util::test_parser(
-            || Parser::new(LogNamespace::Legacy),
+            || Parser::new(LogNamespace::Vector),
             |bytes| Event::Log(OtelLog::from(bytes)),
-            valid_cases(LogNamespace::Legacy),
+            valid_cases(LogNamespace::Vector),
         );
     }
 
@@ -177,7 +177,7 @@ mod tests {
         let cases = invalid_cases();
 
         for bytes in cases {
-            let mut parser = Parser::new(LogNamespace::Legacy);
+            let mut parser = Parser::new(LogNamespace::Vector);
             let input = OtelLog::from(bytes);
             let mut output = OutputBuffer::default();
             parser.transform(&mut output, input.into());
@@ -192,7 +192,7 @@ mod tests {
 
         let cases = vec![
             // No `message` field.
-            (OtelLog::default(), LogNamespace::Legacy),
+            (OtelLog::default(), LogNamespace::Vector),
             // Non-bytes `message` field.
             (OtelLog::from(value!(123)), LogNamespace::Vector),
             (
@@ -201,7 +201,7 @@ mod tests {
                     input.insert(event_path!("body"), 123);
                     input
                 },
-                LogNamespace::Legacy,
+                LogNamespace::Vector,
             ),
         ];
 

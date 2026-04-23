@@ -227,7 +227,7 @@ impl SourceConfig for StatsdConfig {
                     config.connection_limit,
                     config.permit_origin.clone().map(Into::into),
                     StatsdConfig::NAME,
-                    LogNamespace::Legacy,
+                    LogNamespace::Vector,
                 )
             }
             #[cfg(unix)]

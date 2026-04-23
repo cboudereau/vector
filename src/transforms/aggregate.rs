@@ -420,7 +420,7 @@ mod tests {
             .with_source_id(Arc::new(ComponentKey::from("in")))
             .with_upstream_id(Arc::new(OutputId::from("transform")));
         event.metadata_mut().set_schema_definition(&Arc::new(
-            Definition::new_with_default_metadata(Kind::any_object(), [LogNamespace::Legacy]),
+            Definition::new_with_default_metadata(Kind::any_object(), [LogNamespace::Vector]),
         ));
 
         event.metadata_mut().set_source_type("unit_test_stream");

@@ -76,7 +76,7 @@ impl Definition {
             event_kind: Kind::any(),
             metadata_kind: Kind::any(),
             meaning: BTreeMap::default(),
-            log_namespaces: [LogNamespace::Legacy, LogNamespace::Vector].into(),
+            log_namespaces: [LogNamespace::Vector].into(),
         }
     }
 
@@ -111,29 +111,16 @@ impl Definition {
         }
     }
 
-    /// An object with any fields, and the `Legacy` namespace.
-    /// This is the default schema for a source that does not explicitly provide one yet.
     pub fn default_legacy_namespace() -> Self {
-        Self::new_with_default_metadata(Kind::any_object(), [LogNamespace::Legacy])
+        Self::new_with_default_metadata(Kind::any(), [LogNamespace::Vector])
     }
 
-    /// An object with no fields, and the `Legacy` namespace.
-    /// This is what most sources use for the legacy namespace.
     pub fn empty_legacy_namespace() -> Self {
-        Self::new_with_default_metadata(Kind::object(Collection::empty()), [LogNamespace::Legacy])
+        Self::new_with_default_metadata(Kind::object(Collection::empty()), [LogNamespace::Vector])
     }
 
-    /// Returns the source schema for a source that produce the listed log namespaces,
-    /// but an explicit schema was not provided.
-    pub fn default_for_namespace(log_namespaces: &BTreeSet<LogNamespace>) -> Self {
-        let is_legacy = log_namespaces.contains(&LogNamespace::Legacy);
-        let is_vector = log_namespaces.contains(&LogNamespace::Vector);
-        match (is_legacy, is_vector) {
-            (false, false) => Self::new_with_default_metadata(Kind::any(), []),
-            (true, false) => Self::default_legacy_namespace(),
-            (false, true) => Self::new_with_default_metadata(Kind::any(), [LogNamespace::Vector]),
-            (true, true) => Self::any(),
-        }
+    pub fn default_for_namespace(_log_namespaces: &BTreeSet<LogNamespace>) -> Self {
+        Self::new_with_default_metadata(Kind::any(), [LogNamespace::Vector])
     }
 
     /// The set of possible log namespaces that events can use. When merged, this is the union of all inputs.
@@ -153,26 +140,11 @@ impl Definition {
             None,
         );
 
-        let legacy = if def.log_namespaces.contains(&LogNamespace::Legacy) {
-            let ts_key = owned_value_path!("time_unix_nano");
-            Some(def.clone().try_with_field(&ts_key, Kind::integer(), None))
-        } else {
-            None
-        };
-        let vector = if def.log_namespaces.contains(&LogNamespace::Vector) {
-            Some(def.clone().with_metadata_field(
-                &owned_value_path!("vector", "ingest_timestamp"),
-                Kind::timestamp(),
-                None,
-            ))
-        } else {
-            None
-        };
-        match (legacy, vector) {
-            (Some(a), Some(b)) => a.merge(b),
-            (Some(x), _) | (_, Some(x)) => x,
-            (None, None) => def,
-        }
+        def.with_metadata_field(
+            &owned_value_path!("vector", "ingest_timestamp"),
+            Kind::timestamp(),
+            None,
+        )
     }
 
     /// This should be used wherever `LogNamespace::insert_source_metadata` is used to insert metadata.
@@ -217,45 +189,16 @@ impl Definition {
     fn with_namespaced_metadata(
         self,
         prefix: &str,
-        legacy_path: Option<LegacyKey<OwnedValuePath>>,
+        _legacy_path: Option<LegacyKey<OwnedValuePath>>,
         vector_path: &OwnedValuePath,
         kind: Kind,
         meaning: Option<&str>,
     ) -> Self {
-        let legacy_definition = legacy_path.and_then(|legacy_path| {
-            if self.log_namespaces.contains(&LogNamespace::Legacy) {
-                match legacy_path {
-                    LegacyKey::InsertIfEmpty(legacy_path) => Some(self.clone().try_with_field(
-                        &legacy_path,
-                        kind.clone(),
-                        meaning,
-                    )),
-                    LegacyKey::Overwrite(legacy_path) => Some(self.clone().with_event_field(
-                        &legacy_path,
-                        kind.clone(),
-                        meaning,
-                    )),
-                }
-            } else {
-                None
-            }
-        });
-
-        let vector_definition = if self.log_namespaces.contains(&LogNamespace::Vector) {
-            Some(self.clone().with_metadata_field(
-                &vector_path.with_field_prefix(prefix),
-                kind,
-                meaning,
-            ))
-        } else {
-            None
-        };
-
-        match (legacy_definition, vector_definition) {
-            (Some(a), Some(b)) => a.merge(b),
-            (Some(x), _) | (_, Some(x)) => x,
-            (None, None) => self,
-        }
+        self.with_metadata_field(
+            &vector_path.with_field_prefix(prefix),
+            kind,
+            meaning,
+        )
     }
 
     /// Add type information for an event or metadata field.
@@ -477,15 +420,11 @@ impl Definition {
     /// definitions for each `LogNamespace`.
     pub fn combine_log_namespaces(
         log_namespaces: &BTreeSet<LogNamespace>,
-        legacy: Self,
+        _legacy: Self,
         vector: Self,
     ) -> Self {
         let mut combined =
             Definition::new_with_default_metadata(Kind::never(), log_namespaces.clone());
-
-        if log_namespaces.contains(&LogNamespace::Legacy) {
-            combined = combined.merge(legacy);
-        }
         if log_namespaces.contains(&LogNamespace::Vector) {
             combined = combined.merge(vector);
         }
@@ -651,7 +590,7 @@ mod tests {
         } in [
             TestCase {
                 title: "match",
-                definition: Definition::new(Kind::any(), Kind::any(), [LogNamespace::Legacy]),
+                definition: Definition::new(Kind::any(), Kind::any(), [LogNamespace::Vector]),
                 event: Event::Log(OtelLog::from(Value::Object(BTreeMap::new()))),
                 valid: true,
             },
@@ -660,7 +599,7 @@ mod tests {
                 definition: Definition::new(
                     Kind::object(Collection::empty()),
                     Kind::any(),
-                    [LogNamespace::Legacy],
+                    [LogNamespace::Vector],
                 ),
                 event: Event::Log(OtelLog::from(Value::Object(BTreeMap::from([("foo".into(), 4.into())])))),
                 valid: false,
@@ -670,7 +609,7 @@ mod tests {
                 definition: Definition::new(
                     Kind::any(),
                     Kind::object(Collection::empty()),
-                    [LogNamespace::Legacy],
+                    [LogNamespace::Vector],
                 ),
                 event: Event::Log(OtelLog::from_value_map(
                     Value::Object(BTreeMap::new()),
@@ -691,7 +630,7 @@ mod tests {
                 definition: Definition::new(
                     Kind::object(Collection::empty()),
                     Kind::any(),
-                    [LogNamespace::Legacy],
+                    [LogNamespace::Vector],
                 ),
                 event: Event::Log(OtelLog::from(Value::Object(BTreeMap::from([(
                     "foo".into(),
@@ -904,7 +843,7 @@ mod tests {
         let def = Definition::new(
             Kind::object(Collection::empty()),
             Kind::object(Collection::empty()),
-            [LogNamespace::Legacy],
+            [LogNamespace::Vector],
         )
         .with_event_field(
             &owned_value_path!("foo"),

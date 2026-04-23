@@ -190,7 +190,7 @@ async fn structures_events_correctly() {
     input_event.insert("foo", "bar");
     drop(batch);
 
-    let timestamp = input_event["time_unix_nano"].clone();
+    let timestamp = input_event.get("time_unix_nano").unwrap().clone();
 
     run_and_assert_sink_compliance(
         sink,

@@ -79,15 +79,8 @@ impl VrlDeserializerConfig {
     }
 
     /// The schema produced by the deserializer.
-    pub fn schema_definition(&self, log_namespace: LogNamespace) -> schema::Definition {
-        match log_namespace {
-            LogNamespace::Legacy => {
-                schema::Definition::empty_legacy_namespace().unknown_fields(Kind::any())
-            }
-            LogNamespace::Vector => {
-                schema::Definition::new_with_default_metadata(Kind::any(), [log_namespace])
-            }
-        }
+    pub fn schema_definition(&self, _log_namespace: LogNamespace) -> schema::Definition {
+        schema::Definition::empty_legacy_namespace().unknown_fields(Kind::any())
     }
 }
 
@@ -98,19 +91,10 @@ pub struct VrlDeserializer {
     timezone: TimeZone,
 }
 
-fn parse_bytes(bytes: Bytes, log_namespace: LogNamespace) -> Event {
-    use lookup::{OwnedTargetPath, owned_value_path};
+fn parse_bytes(bytes: Bytes, _log_namespace: LogNamespace) -> Event {
     use vector_core::event::{EventMetadata, OtelLog};
     let value = vrl::value::Value::from(bytes);
-    let log = match log_namespace {
-        LogNamespace::Vector => OtelLog::from_value_map(value, EventMetadata::default()),
-        LogNamespace::Legacy => {
-            let mut log = OtelLog::new(Default::default());
-            let body_path = OwnedTargetPath::event(owned_value_path!("body"));
-            log.maybe_insert(Some(&body_path), value);
-            log
-        }
-    };
+    let log = OtelLog::from_value_map(value, EventMetadata::default());
     Event::Log(log)
 }
 

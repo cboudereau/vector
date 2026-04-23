@@ -352,28 +352,11 @@ impl Event {
     }
 
     /// Creates an Event from a JSON value.
-    ///
-    /// # Errors
-    /// If a non-object JSON value is passed in with the `Legacy` namespace, this will return an error.
     pub fn from_json_value(
         value: serde_json::Value,
-        log_namespace: LogNamespace,
+        _log_namespace: LogNamespace,
     ) -> crate::Result<Self> {
-        match log_namespace {
-            LogNamespace::Vector => Ok(Event::Log(OtelLog::from(Value::from(value)))),
-            LogNamespace::Legacy => match value {
-                serde_json::Value::Object(fields) => {
-                    let map: ObjectMap = fields
-                        .into_iter()
-                        .map(|(k, v)| (k.into(), v.into()))
-                        .collect();
-                    Ok(Event::Log(OtelLog::from(map)))
-                }
-                _ => Err(crate::Error::from(
-                    "Attempted to convert non-Object JSON into an Event.",
-                )),
-            },
-        }
+        Ok(Event::Log(OtelLog::from(Value::from(value))))
     }
 }
 

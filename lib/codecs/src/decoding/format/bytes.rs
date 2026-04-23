@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use lookup::{OwnedTargetPath, owned_value_path};
+use lookup::owned_value_path;
 use serde::{Deserialize, Serialize};
 use smallvec::{SmallVec, smallvec};
 use vector_core::{
@@ -33,22 +33,14 @@ impl BytesDeserializerConfig {
     }
 
     /// The schema produced by the deserializer.
-    pub fn schema_definition(&self, log_namespace: LogNamespace) -> schema::Definition {
-        match log_namespace {
-            LogNamespace::Legacy => {
-                let definition = schema::Definition::empty_legacy_namespace();
-                let message_key = owned_value_path!("body");
-                definition.with_event_field(
-                    &message_key,
-                    Kind::bytes(),
-                    Some(meaning::MESSAGE),
-                )
-            }
-            LogNamespace::Vector => {
-                schema::Definition::new_with_default_metadata(Kind::bytes(), [log_namespace])
-                    .with_meaning(OwnedTargetPath::event_root(), "message")
-            }
-        }
+    pub fn schema_definition(&self, _log_namespace: LogNamespace) -> schema::Definition {
+        let definition = schema::Definition::empty_legacy_namespace();
+        let message_key = owned_value_path!("body");
+        definition.with_event_field(
+            &message_key,
+            Kind::bytes(),
+            Some(meaning::MESSAGE),
+        )
     }
 }
 
@@ -86,7 +78,7 @@ mod tests {
         let input = Bytes::from("foo");
         let deserializer = BytesDeserializer;
 
-        for namespace in [LogNamespace::Legacy, LogNamespace::Vector] {
+        for namespace in [LogNamespace::Vector, LogNamespace::Vector] {
             let events = deserializer.parse(input.clone(), namespace).unwrap();
             assert_eq!(events.len(), 1);
 

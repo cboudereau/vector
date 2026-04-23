@@ -1437,15 +1437,15 @@ mod test {
 
     #[test]
     fn test_output_schema_definition_legacy_namespace() {
-        let definitions = make_config("topic", "group", LogNamespace::Legacy, None)
-            .outputs(LogNamespace::Legacy)
+        let definitions = make_config("topic", "group", LogNamespace::Vector, None)
+            .outputs(LogNamespace::Vector)
             .remove(0)
             .schema_definition(true);
 
         assert_eq!(
             definitions,
             Some(
-                Definition::new_with_default_metadata(Kind::json(), [LogNamespace::Legacy])
+                Definition::new_with_default_metadata(Kind::json(), [LogNamespace::Vector])
                     .unknown_fields(Kind::undefined())
                     .with_event_field(
                         &owned_value_path!("body"),
@@ -1473,7 +1473,7 @@ mod test {
 
     #[tokio::test]
     async fn consumer_create_ok() {
-        let config = make_config("topic", "group", LogNamespace::Legacy, None);
+        let config = make_config("topic", "group", LogNamespace::Vector, None);
         assert!(create_consumer(&config, true).is_ok());
     }
 
@@ -1481,7 +1481,7 @@ mod test {
     async fn consumer_create_incorrect_auto_offset_reset() {
         let config = KafkaSourceConfig {
             auto_offset_reset: "incorrect-auto-offset-reset".to_string(),
-            ..make_config("topic", "group", LogNamespace::Legacy, None)
+            ..make_config("topic", "group", LogNamespace::Vector, None)
         };
         assert!(create_consumer(&config, true).is_err());
     }
@@ -1508,7 +1508,7 @@ mod integration_test {
     use stream_cancel::{Trigger, Tripwire};
     use tokio::time::sleep;
     use vector_lib::event::EventStatus;
-    use vrl::{event_path, value};
+    use vrl::{event_path, path, value};
 
     use super::{test::*, *};
     use crate::{
@@ -1586,7 +1586,7 @@ mod integration_test {
 
     #[tokio::test]
     async fn consumes_event_with_acknowledgements() {
-        send_receive(true, |_| false, 10, LogNamespace::Legacy).await;
+        send_receive(true, |_| false, 10, LogNamespace::Vector).await;
     }
 
     #[tokio::test]
@@ -1596,7 +1596,7 @@ mod integration_test {
 
     #[tokio::test]
     async fn consumes_event_without_acknowledgements() {
-        send_receive(false, |_| false, 10, LogNamespace::Legacy).await;
+        send_receive(false, |_| false, 10, LogNamespace::Vector).await;
     }
 
     #[tokio::test]
@@ -1606,7 +1606,7 @@ mod integration_test {
 
     #[tokio::test]
     async fn handles_one_negative_acknowledgement() {
-        send_receive(true, |n| n == 2, 10, LogNamespace::Legacy).await;
+        send_receive(true, |n| n == 2, 10, LogNamespace::Vector).await;
     }
 
     #[tokio::test]
@@ -1616,7 +1616,7 @@ mod integration_test {
 
     #[tokio::test]
     async fn handles_permanent_negative_acknowledgement() {
-        send_receive(true, |n| n >= 2, 2, LogNamespace::Legacy).await;
+        send_receive(true, |n| n >= 2, 2, LogNamespace::Vector).await;
     }
 
     #[tokio::test]
@@ -1658,26 +1658,26 @@ mod integration_test {
 
         assert_eq!(events.len(), SEND_COUNT);
         for (i, event) in events.into_iter().enumerate() {
-            if let LogNamespace::Legacy = log_namespace {
+            if let LogNamespace::Vector = log_namespace {
                 assert_eq!(
-                    event.as_log()["body"],
+                    event.as_log().get("body").unwrap(),
                     format!("{TEXT} {i:03}").into()
                 );
-                assert_eq!(event.as_log()["message_key"], format!("{KEY} {i}").into());
+                assert_eq!(event.as_log().get("message_key").unwrap(), format!("{KEY} {i}").into());
                 assert_eq!(
                     event.as_log().get_source_type().unwrap(),
                     "kafka".into()
                 );
                 assert_eq!(
-                    event.as_log()["time_unix_nano"],
+                    event.as_log().get("time_unix_nano").unwrap(),
                     now.trunc_subsecs(3).into()
                 );
-                assert_eq!(event.as_log()["topic"], topic.clone().into());
+                assert_eq!(event.as_log().get("topic").unwrap(), topic.clone().into());
                 assert!(event.as_log().contains("partition"));
                 assert!(event.as_log().contains("offset"));
                 let mut expected_headers = ObjectMap::new();
                 expected_headers.insert(HEADER_KEY.into(), Value::from(HEADER_VALUE));
-                assert_eq!(event.as_log()["headers"], Value::from(expected_headers));
+                assert_eq!(event.as_log().get("headers").unwrap(), Value::from(expected_headers));
             } else {
                 let meta = event.as_log().metadata().value();
 
@@ -1693,7 +1693,7 @@ mod integration_test {
 
                 assert_eq!(
                     event.as_log().value(),
-                    &value!(format!("{} {:03}", TEXT, i))
+                    value!(format!("{} {:03}", TEXT, i))
                 );
                 assert_eq!(
                     meta.get(path!("kafka", "message_key")).unwrap(),
@@ -1724,7 +1724,7 @@ mod integration_test {
     fn make_rand_config() -> (String, String, KafkaSourceConfig) {
         let topic = format!("test-topic-{}", random_string(10));
         let group_id = format!("test-group-{}", random_string(10));
-        let config = make_config(&topic, &group_id, LogNamespace::Legacy, None);
+        let config = make_config(&topic, &group_id, LogNamespace::Vector, None);
         (topic, group_id, config)
     }
 
@@ -1856,14 +1856,14 @@ mod integration_test {
 
         let (tx, rx1) = delay_pipeline(1, Duration::from_millis(200), EventStatus::Delivered);
         let (trigger_shutdown1, shutdown_done1) =
-            spawn_kafka(tx, config.clone(), true, false, LogNamespace::Legacy);
+            spawn_kafka(tx, config.clone(), true, false, LogNamespace::Vector);
         let events1 = tokio::spawn(collect_n(rx1, NEVENTS));
 
         sleep(Duration::from_secs(1)).await;
 
         let (tx, rx2) = delay_pipeline(2, Duration::from_millis(DELAY), EventStatus::Delivered);
         let (trigger_shutdown2, shutdown_done2) =
-            spawn_kafka(tx, config, true, false, LogNamespace::Legacy);
+            spawn_kafka(tx, config, true, false, LogNamespace::Vector);
         let events2 = tokio::spawn(collect_n(rx2, NEVENTS));
 
         sleep(Duration::from_secs(5)).await;
@@ -1932,10 +1932,10 @@ mod integration_test {
         opts.insert("enable.partition.eof".into(), "true".into());
         opts.insert("fetch.message.max.bytes".into(), kafka_max_bytes());
         let events1 = {
-            let config = make_config(&topic, &group_id, LogNamespace::Legacy, Some(opts.clone()));
+            let config = make_config(&topic, &group_id, LogNamespace::Vector, Some(opts.clone()));
             let (tx, rx) = SourceSender::new_test_errors(|_| false);
             let (trigger_shutdown, shutdown_done) =
-                spawn_kafka(tx, config, true, false, LogNamespace::Legacy);
+                spawn_kafka(tx, config, true, false, LogNamespace::Vector);
             let (events, _) = tokio::join!(rx.collect::<Vec<Event>>(), async move {
                 sleep(Duration::from_millis(delay_ms)).await;
                 drop(trigger_shutdown);
@@ -1953,10 +1953,10 @@ mod integration_test {
 
         // 4. Run the kafka source again to finish reading the events
         let events2 = {
-            let config = make_config(&topic, &group_id, LogNamespace::Legacy, Some(opts));
+            let config = make_config(&topic, &group_id, LogNamespace::Vector, Some(opts));
             let (tx, rx) = SourceSender::new_test_errors(|_| false);
             let (trigger_shutdown, shutdown_done) =
-                spawn_kafka(tx, config, true, true, LogNamespace::Legacy);
+                spawn_kafka(tx, config, true, true, LogNamespace::Vector);
             let events = rx.collect::<Vec<Event>>().await;
             drop(trigger_shutdown);
             shutdown_done.await;
@@ -2012,7 +2012,7 @@ mod integration_test {
         let config1 = make_config(
             &topic,
             &group_id,
-            LogNamespace::Legacy,
+            LogNamespace::Vector,
             Some(kafka_options.clone()),
         );
         let config2 = config1.clone();
@@ -2023,7 +2023,7 @@ mod integration_test {
             async move {
                 let (tx, rx) = SourceSender::new_test_errors(|_| false);
                 let (_trigger_shutdown, _shutdown_done) =
-                    spawn_kafka(tx, config1, true, true, LogNamespace::Legacy);
+                    spawn_kafka(tx, config1, true, true, LogNamespace::Vector);
 
                 rx.collect::<Vec<Event>>().await
             },
@@ -2031,7 +2031,7 @@ mod integration_test {
                 sleep(Duration::from_millis(delay_ms)).await;
                 let (tx, rx) = SourceSender::new_test_errors(|_| false);
                 let (_trigger_shutdown, _shutdown_done) =
-                    spawn_kafka(tx, config2, true, true, LogNamespace::Legacy);
+                    spawn_kafka(tx, config2, true, true, LogNamespace::Vector);
 
                 rx.collect::<Vec<Event>>().await
             },
@@ -2039,7 +2039,7 @@ mod integration_test {
                 sleep(Duration::from_millis(delay_ms * 2)).await;
                 let (tx, rx) = SourceSender::new_test_errors(|_| false);
                 let (_trigger_shutdown, _shutdown_done) =
-                    spawn_kafka(tx, config3, true, true, LogNamespace::Legacy);
+                    spawn_kafka(tx, config3, true, true, LogNamespace::Vector);
 
                 rx.collect::<Vec<Event>>().await
             }
@@ -2048,7 +2048,7 @@ mod integration_test {
         let unconsumed = async move {
             let (tx, rx) = SourceSender::new_test_errors(|_| false);
             let (_trigger_shutdown, _shutdown_done) =
-                spawn_kafka(tx, config4, true, true, LogNamespace::Legacy);
+                spawn_kafka(tx, config4, true, true, LogNamespace::Vector);
 
             rx.collect::<Vec<Event>>().await
         }
@@ -2113,10 +2113,10 @@ mod integration_test {
             let log = event.into_log();
             format!(
                 "{} {} {} {}",
-                log["message"].to_string_lossy(),
-                log["topic"].to_string_lossy(),
-                log["partition"].to_string_lossy(),
-                log["offset"].to_string_lossy(),
+                log.get("message").unwrap().to_string_lossy(),
+                log.get("topic").unwrap().to_string_lossy(),
+                log.get("partition").unwrap().to_string_lossy(),
+                log.get("offset").unwrap().to_string_lossy(),
             )
         })
     }

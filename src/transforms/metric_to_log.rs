@@ -218,37 +218,20 @@ fn schema_definition(log_namespace: LogNamespace) -> Definition {
             None,
         );
 
-    match log_namespace {
-        LogNamespace::Vector => {
-            // from serializing the Metric (Legacy moves it to another field)
-            schema_definition = schema_definition.with_event_field(
-                &owned_value_path!("timestamp"),
-                Kind::bytes().or_undefined(),
-                None,
-            );
+    // from serializing the Metric (Legacy moves it to another field)
+    schema_definition = schema_definition.with_event_field(
+        &owned_value_path!("timestamp"),
+        Kind::bytes().or_undefined(),
+        None,
+    );
 
-            // This is added as a "marker" field to determine which namespace is being used at runtime.
-            // This is normally handled automatically by sources, but this is a special case.
-            schema_definition = schema_definition.with_metadata_field(
-                &owned_value_path!("vector"),
-                Kind::object(Collection::empty()),
-                None,
-            );
-        }
-        LogNamespace::Legacy => {
-            {
-                let timestamp_key = owned_value_path!("time_unix_nano");
-                schema_definition =
-                    schema_definition.with_event_field(&timestamp_key, Kind::integer(), None);
-            }
-
-            schema_definition = schema_definition.with_event_field(
-                &owned_value_path!("resource", "host.name"),
-                Kind::bytes().or_undefined(),
-                None,
-            );
-        }
-    }
+    // This is added as a "marker" field to determine which namespace is being used at runtime.
+    // This is normally handled automatically by sources, but this is a special case.
+    schema_definition = schema_definition.with_metadata_field(
+        &owned_value_path!("vector"),
+        Kind::object(Collection::empty()),
+        None,
+    );
     schema_definition
 }
 
@@ -268,10 +251,9 @@ impl MetricToLog {
         tag_values: MetricTagValues,
     ) -> Self {
         Self {
-            host_tag: host_tag.map_or(
-                Some(owned_value_path!("tags", "host")),
-                |host| Some(owned_value_path!("tags", host)),
-            ),
+            host_tag: host_tag.map_or(Some(owned_value_path!("tags", "host")), |host| {
+                Some(owned_value_path!("tags", host))
+            }),
             timezone,
             log_namespace,
             tag_values,
@@ -295,54 +277,54 @@ impl MetricToLog {
             #[serde(flatten)]
             data: &'a event::metric::MetricData,
         }
-        serde_json::to_value(&MetricJson { series: &series, data: &data })
-            .map_err(|error| emit!(MetricToLogSerializeError { error }))
-            .ok()
-            .and_then(|value| match value {
-                Value::Object(object) => {
-                    let fields: vrl::value::ObjectMap = object
-                        .into_iter()
-                        .map(|(k, v)| (k.into(), event::Value::from(v)))
-                        .collect();
-                    let mut log = OtelLog::from_value_map(
-                        event::Value::Object(fields),
-                        metadata,
-                    );
+        serde_json::to_value(&MetricJson {
+            series: &series,
+            data: &data,
+        })
+        .map_err(|error| emit!(MetricToLogSerializeError { error }))
+        .ok()
+        .and_then(|value| match value {
+            Value::Object(object) => {
+                let fields: vrl::value::ObjectMap = object
+                    .into_iter()
+                    .map(|(k, v)| (k.into(), event::Value::from(v)))
+                    .collect();
+                let mut log = OtelLog::from_value_map(event::Value::Object(fields), metadata);
 
-                    if self.log_namespace == LogNamespace::Legacy {
-                        // "Vector" namespace just leaves the `timestamp` in place.
+                if self.log_namespace == LogNamespace::Vector {
+                    // "Vector" namespace just leaves the `timestamp` in place.
 
-                        let timestamp = log
-                            .remove(event_path!("timestamp"))
-                            .and_then(|value| {
-                                Conversion::Timestamp(self.timezone)
-                                    .convert(value.coerce_to_bytes())
-                                    .ok()
-                            })
-                            .unwrap_or_else(|| event::Value::Timestamp(Utc::now()));
+                    let timestamp = log
+                        .remove(event_path!("timestamp"))
+                        .and_then(|value| {
+                            Conversion::Timestamp(self.timezone)
+                                .convert(value.coerce_to_bytes())
+                                .ok()
+                        })
+                        .unwrap_or_else(|| event::Value::Timestamp(Utc::now()));
 
-                        if let Some(ts) = timestamp.as_timestamp() {
-                            log.set_timestamp(*ts);
-                        }
-
-                        if let Some(host_tag) = &self.host_tag
-                            && let Some(host_value) =
-                                log.remove_prune((PathPrefix::Event, host_tag), true)
-                        {
-                            log.set_host(host_value);
-                        }
+                    if let Some(ts) = timestamp.as_timestamp() {
+                        log.set_timestamp(*ts);
                     }
-                    if self.log_namespace == LogNamespace::Vector {
-                        // Create vector metadata since this is used as a marker to see which namespace is used at runtime.
-                        // This can be removed once metrics support namespacing.
-                        log.metadata_mut()
-                            .value_mut()
-                            .insert(path!("vector"), vrl::value::Value::Object(BTreeMap::new()));
+
+                    if let Some(host_tag) = &self.host_tag
+                        && let Some(host_value) =
+                            log.remove_prune((PathPrefix::Event, host_tag), true)
+                    {
+                        log.set_host(host_value);
                     }
-                    Some(log)
                 }
-                _ => None,
-            })
+                if self.log_namespace == LogNamespace::Vector {
+                    // Create vector metadata since this is used as a marker to see which namespace is used at runtime.
+                    // This can be removed once metrics support namespacing.
+                    log.metadata_mut()
+                        .value_mut()
+                        .insert(path!("vector"), vrl::value::Value::Object(BTreeMap::new()));
+                }
+                Some(log)
+            }
+            _ => None,
+        })
     }
 }
 
@@ -376,7 +358,10 @@ mod tests {
     use crate::{
         event::{
             KeyString, OtelLog, OtelMetric, Value,
-            metric::{MetricData, MetricKind, MetricName, MetricSeries, MetricTags, MetricTime, MetricValue, StatisticKind, TagValue, TagValueSet},
+            metric::{
+                MetricData, MetricKind, MetricName, MetricSeries, MetricTags, MetricTime,
+                MetricValue, StatisticKind, TagValue, TagValueSet,
+            },
         },
         test_util::{components::assert_transform_compliance, random_string},
         transforms::test::create_topology,
@@ -432,21 +417,38 @@ mod tests {
 
     fn make_metric(name: &str, kind: MetricKind, value: MetricValue) -> OtelMetric {
         OtelMetric::from_metric_parts(
-            MetricSeries { name: MetricName { name: name.into(), namespace: None }, tags: None },
-            MetricData { time: MetricTime { timestamp: None, interval_ms: None }, kind, value },
+            MetricSeries {
+                name: MetricName {
+                    name: name.into(),
+                    namespace: None,
+                },
+                tags: None,
+            },
+            MetricData {
+                time: MetricTime {
+                    timestamp: None,
+                    interval_ms: None,
+                },
+                kind,
+                value,
+            },
             event_metadata(),
         )
     }
 
     #[tokio::test]
     async fn transform_counter() {
-        let counter = make_metric("counter", MetricKind::Absolute, MetricValue::Counter { value: 1.0 })
-            .with_tags(Some(tags()))
-            .with_timestamp(Some(ts()));
+        let counter = make_metric(
+            "counter",
+            MetricKind::Absolute,
+            MetricValue::Counter { value: 1.0 },
+        )
+        .with_tags(Some(tags()))
+        .with_timestamp(Some(ts()));
         let mut metadata = counter.metadata().clone();
         metadata.set_source_id(Arc::new(ComponentKey::from("in")));
         metadata.set_upstream_id(Arc::new(OutputId::from("transform")));
-        metadata.set_schema_definition(&Arc::new(schema_definition(LogNamespace::Legacy)));
+        metadata.set_schema_definition(&Arc::new(schema_definition(LogNamespace::Vector)));
 
         let log = do_transform(counter).await.unwrap();
         let collected: Vec<_> = log.all_event_fields().unwrap();
@@ -457,11 +459,15 @@ mod tests {
                 (KeyString::from("counter.value"), Value::from(1.0)),
                 (KeyString::from("kind"), Value::from("absolute")),
                 (KeyString::from("name"), Value::from("counter")),
-                (KeyString::from("resource.\"host.name\""), Value::from("localhost")),
+                (
+                    KeyString::from("resource.\"host.name\""),
+                    Value::from("localhost")
+                ),
                 (KeyString::from("tags.some_tag"), Value::from("some_value")),
-                (KeyString::from("time_unix_nano"), Value::Integer(
-                    ts().timestamp_nanos_opt().unwrap() as i64
-                )),
+                (
+                    KeyString::from("time_unix_nano"),
+                    Value::Integer(ts().timestamp_nanos_opt().unwrap() as i64)
+                ),
             ]
         );
         assert_eq!(log.metadata(), &metadata);
@@ -469,12 +475,16 @@ mod tests {
 
     #[tokio::test]
     async fn transform_gauge() {
-        let gauge = make_metric("gauge", MetricKind::Absolute, MetricValue::Gauge { value: 1.0 })
-            .with_timestamp(Some(ts()));
+        let gauge = make_metric(
+            "gauge",
+            MetricKind::Absolute,
+            MetricValue::Gauge { value: 1.0 },
+        )
+        .with_timestamp(Some(ts()));
         let mut metadata = gauge.metadata().clone();
         metadata.set_source_id(Arc::new(ComponentKey::from("in")));
         metadata.set_upstream_id(Arc::new(OutputId::from("transform")));
-        metadata.set_schema_definition(&Arc::new(schema_definition(LogNamespace::Legacy)));
+        metadata.set_schema_definition(&Arc::new(schema_definition(LogNamespace::Vector)));
 
         let log = do_transform(gauge).await.unwrap();
         let collected: Vec<_> = log.all_event_fields().unwrap();
@@ -485,9 +495,10 @@ mod tests {
                 (KeyString::from("gauge.value"), Value::from(1.0)),
                 (KeyString::from("kind"), Value::from("absolute")),
                 (KeyString::from("name"), Value::from("gauge")),
-                (KeyString::from("time_unix_nano"), Value::Integer(
-                    ts().timestamp_nanos_opt().unwrap() as i64
-                )),
+                (
+                    KeyString::from("time_unix_nano"),
+                    Value::Integer(ts().timestamp_nanos_opt().unwrap() as i64)
+                ),
             ]
         );
         assert_eq!(log.metadata(), &metadata);
@@ -496,14 +507,18 @@ mod tests {
     #[tokio::test]
     #[ignore = "Metric round-trip through OtelMetric is lossy"]
     async fn transform_set() {
-        let set = make_metric("set", MetricKind::Absolute, MetricValue::Set {
+        let set = make_metric(
+            "set",
+            MetricKind::Absolute,
+            MetricValue::Set {
                 values: vec!["one".into(), "two".into()].into_iter().collect(),
-            })
-            .with_timestamp(Some(ts()));
+            },
+        )
+        .with_timestamp(Some(ts()));
         let mut metadata = set.metadata().clone();
         metadata.set_source_id(Arc::new(ComponentKey::from("in")));
         metadata.set_upstream_id(Arc::new(OutputId::from("transform")));
-        metadata.set_schema_definition(&Arc::new(schema_definition(LogNamespace::Legacy)));
+        metadata.set_schema_definition(&Arc::new(schema_definition(LogNamespace::Vector)));
 
         let log = do_transform(set).await.unwrap();
         let collected: Vec<_> = log.all_event_fields().unwrap();
@@ -524,15 +539,19 @@ mod tests {
     #[tokio::test]
     #[ignore = "Metric round-trip through OtelMetric is lossy"]
     async fn transform_distribution() {
-        let distro = make_metric("distro", MetricKind::Absolute, MetricValue::Distribution {
+        let distro = make_metric(
+            "distro",
+            MetricKind::Absolute,
+            MetricValue::Distribution {
                 samples: vector_lib::samples![1.0 => 10, 2.0 => 20],
                 statistic: StatisticKind::Histogram,
-            })
-            .with_timestamp(Some(ts()));
+            },
+        )
+        .with_timestamp(Some(ts()));
         let mut metadata = distro.metadata().clone();
         metadata.set_source_id(Arc::new(ComponentKey::from("in")));
         metadata.set_upstream_id(Arc::new(OutputId::from("transform")));
-        metadata.set_schema_definition(&Arc::new(schema_definition(LogNamespace::Legacy)));
+        metadata.set_schema_definition(&Arc::new(schema_definition(LogNamespace::Vector)));
 
         let log = do_transform(distro).await.unwrap();
         let collected: Vec<_> = log.all_event_fields().unwrap();
@@ -570,16 +589,20 @@ mod tests {
 
     #[tokio::test]
     async fn transform_histogram() {
-        let histo = make_metric("histo", MetricKind::Absolute, MetricValue::AggregatedHistogram {
+        let histo = make_metric(
+            "histo",
+            MetricKind::Absolute,
+            MetricValue::AggregatedHistogram {
                 buckets: vector_lib::buckets![1.0 => 10, 2.0 => 20],
                 count: 30,
                 sum: 50.0,
-            })
-            .with_timestamp(Some(ts()));
+            },
+        )
+        .with_timestamp(Some(ts()));
         let mut metadata = histo.metadata().clone();
         metadata.set_source_id(Arc::new(ComponentKey::from("in")));
         metadata.set_upstream_id(Arc::new(OutputId::from("transform")));
-        metadata.set_schema_definition(&Arc::new(schema_definition(LogNamespace::Legacy)));
+        metadata.set_schema_definition(&Arc::new(schema_definition(LogNamespace::Vector)));
 
         let log = do_transform(histo).await.unwrap();
         let collected: Vec<_> = log.all_event_fields().unwrap();
@@ -613,9 +636,10 @@ mod tests {
                 ),
                 (KeyString::from("kind"), Value::from("absolute")),
                 (KeyString::from("name"), Value::from("histo")),
-                (KeyString::from("time_unix_nano"), Value::Integer(
-                    ts().timestamp_nanos_opt().unwrap() as i64
-                )),
+                (
+                    KeyString::from("time_unix_nano"),
+                    Value::Integer(ts().timestamp_nanos_opt().unwrap() as i64)
+                ),
             ]
         );
         assert_eq!(log.metadata(), &metadata);
@@ -623,16 +647,20 @@ mod tests {
 
     #[tokio::test]
     async fn transform_summary() {
-        let summary = make_metric("summary", MetricKind::Absolute, MetricValue::AggregatedSummary {
+        let summary = make_metric(
+            "summary",
+            MetricKind::Absolute,
+            MetricValue::AggregatedSummary {
                 quantiles: vector_lib::quantiles![50.0 => 10.0, 90.0 => 20.0],
                 count: 30,
                 sum: 50.0,
-            })
-            .with_timestamp(Some(ts()));
+            },
+        )
+        .with_timestamp(Some(ts()));
         let mut metadata = summary.metadata().clone();
         metadata.set_source_id(Arc::new(ComponentKey::from("in")));
         metadata.set_upstream_id(Arc::new(OutputId::from("transform")));
-        metadata.set_schema_definition(&Arc::new(schema_definition(LogNamespace::Legacy)));
+        metadata.set_schema_definition(&Arc::new(schema_definition(LogNamespace::Vector)));
 
         let log = do_transform(summary).await.unwrap();
         let collected: Vec<_> = log.all_event_fields().unwrap();
@@ -640,10 +668,7 @@ mod tests {
         assert_eq!(
             collected,
             vec![
-                (
-                    KeyString::from("aggregated_summary.count"),
-                    Value::from(30)
-                ),
+                (KeyString::from("aggregated_summary.count"), Value::from(30)),
                 (
                     KeyString::from("aggregated_summary.quantiles[0].quantile"),
                     Value::from(50.0)
@@ -660,15 +685,13 @@ mod tests {
                     KeyString::from("aggregated_summary.quantiles[1].value"),
                     Value::from(20.0)
                 ),
-                (
-                    KeyString::from("aggregated_summary.sum"),
-                    Value::from(50.0)
-                ),
+                (KeyString::from("aggregated_summary.sum"), Value::from(50.0)),
                 (KeyString::from("kind"), Value::from("absolute")),
                 (KeyString::from("name"), Value::from("summary")),
-                (KeyString::from("time_unix_nano"), Value::Integer(
-                    ts().timestamp_nanos_opt().unwrap() as i64
-                )),
+                (
+                    KeyString::from("time_unix_nano"),
+                    Value::Integer(ts().timestamp_nanos_opt().unwrap() as i64)
+                ),
             ]
         );
         assert_eq!(log.metadata(), &metadata);
@@ -730,6 +753,12 @@ mod tests {
         .transform(&mut output, Event::Metric(counter));
 
         assert_eq!(output.len(), 1);
-        output.into_events().next().unwrap().into_log().get("tags").unwrap()
+        output
+            .into_events()
+            .next()
+            .unwrap()
+            .into_log()
+            .get("tags")
+            .unwrap()
     }
 }

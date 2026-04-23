@@ -604,7 +604,7 @@ mod tests {
                 FieldsSpec::default(),
                 ObjectMeta::default(),
                 OtelLog::default(),
-                LogNamespace::Legacy,
+                LogNamespace::Vector,
             ),
             (
                 FieldsSpec::default(),
@@ -716,7 +716,7 @@ mod tests {
                     );
                     log
                 },
-                LogNamespace::Legacy,
+                LogNamespace::Vector,
             ),
             (
                 FieldsSpec {
@@ -759,7 +759,7 @@ mod tests {
                     log.insert(event_path!("labels", "sandbox0-label1"), "val1");
                     log
                 },
-                LogNamespace::Legacy,
+                LogNamespace::Vector,
             ),
             // Ensure we properly handle labels with `.` as flat fields.
             (
@@ -852,7 +852,7 @@ mod tests {
                     );
                     log
                 },
-                LogNamespace::Legacy,
+                LogNamespace::Vector,
             ),
         ];
 
@@ -896,7 +896,7 @@ mod tests {
                     );
                     log
                 },
-                LogNamespace::Legacy,
+                LogNamespace::Vector,
             ),
             (
                 FieldsSpec {
@@ -910,7 +910,7 @@ mod tests {
                     log.insert(event_path!("container_name"), "sandbox0-container0-name");
                     log
                 },
-                LogNamespace::Legacy,
+                LogNamespace::Vector,
             ),
         ];
 
@@ -930,7 +930,7 @@ mod tests {
                 FieldsSpec::default(),
                 PodSpec::default(),
                 OtelLog::default(),
-                LogNamespace::Legacy,
+                LogNamespace::Vector,
             ),
             (
                 FieldsSpec::default(),
@@ -946,7 +946,7 @@ mod tests {
                     );
                     log
                 },
-                LogNamespace::Legacy,
+                LogNamespace::Vector,
             ),
             (
                 FieldsSpec {
@@ -962,7 +962,7 @@ mod tests {
                     log.insert(event_path!("node_name"), "sandbox0-node-name");
                     log
                 },
-                LogNamespace::Legacy,
+                LogNamespace::Vector,
             ),
         ];
 
@@ -981,7 +981,7 @@ mod tests {
                 FieldsSpec::default(),
                 PodStatus::default(),
                 OtelLog::default(),
-                LogNamespace::Legacy,
+                LogNamespace::Vector,
             ),
             (
                 FieldsSpec::default(),
@@ -994,7 +994,7 @@ mod tests {
                     log.insert(event_path!("kubernetes", "pod_ip"), "192.168.1.2");
                     log
                 },
-                LogNamespace::Legacy,
+                LogNamespace::Vector,
             ),
             (
                 FieldsSpec::default(),
@@ -1010,7 +1010,7 @@ mod tests {
                     log.insert(event_path!("kubernetes", "pod_ips"), ips_vec);
                     log
                 },
-                LogNamespace::Legacy,
+                LogNamespace::Vector,
             ),
             (
                 FieldsSpec {
@@ -1045,7 +1045,7 @@ mod tests {
                     log.insert(event_path!("kubernetes", "custom_pod_ips"), ips_vec);
                     log
                 },
-                LogNamespace::Legacy,
+                LogNamespace::Vector,
             ),
             (
                 FieldsSpec {
@@ -1071,7 +1071,7 @@ mod tests {
                     log.insert(event_path!("kubernetes", "pod_ips"), ips_vec);
                     log
                 },
-                LogNamespace::Legacy,
+                LogNamespace::Vector,
             ),
         ];
 
@@ -1094,7 +1094,7 @@ mod tests {
                     log.insert(event_path!("kubernetes", "container_image_id"), "");
                     log
                 },
-                LogNamespace::Legacy,
+                LogNamespace::Vector,
             ),
             (
                 FieldsSpec {
@@ -1117,7 +1117,7 @@ mod tests {
                     );
                     log
                 },
-                LogNamespace::Legacy,
+                LogNamespace::Vector,
             ),
         ];
         for (fields_spec, container_status, expected, log_namespace) in cases.into_iter() {
@@ -1140,7 +1140,7 @@ mod tests {
                 FieldsSpec::default(),
                 Container::default(),
                 OtelLog::default(),
-                LogNamespace::Legacy,
+                LogNamespace::Vector,
             ),
             (
                 FieldsSpec::default(),
@@ -1156,7 +1156,7 @@ mod tests {
                     );
                     log
                 },
-                LogNamespace::Legacy,
+                LogNamespace::Vector,
             ),
             (
                 FieldsSpec {
@@ -1173,7 +1173,7 @@ mod tests {
                     log.insert(event_path!("container_image"), "sandbox0-container-image");
                     log
                 },
-                LogNamespace::Legacy,
+                LogNamespace::Vector,
             ),
         ];
 

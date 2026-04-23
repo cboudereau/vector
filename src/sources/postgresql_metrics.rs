@@ -1076,7 +1076,7 @@ mod integration_tests {
                     .find(|e| e.name() == "up")
                     .unwrap()
                     .value(),
-                &gauge!(1)
+                gauge!(1)
             );
 
             // test namespace and tags

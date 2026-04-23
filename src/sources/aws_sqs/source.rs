@@ -291,7 +291,7 @@ mod tests {
             ..Default::default()
         };
         let definitions = config
-            .outputs(LogNamespace::Legacy)
+            .outputs(LogNamespace::Vector)
             .remove(0)
             .schema_definition(true);
 
@@ -301,7 +301,7 @@ mod tests {
             DecodingConfig::new(
                 config.framing.clone(),
                 config.decoding,
-                LogNamespace::Legacy,
+                LogNamespace::Vector,
             )
             .build()
             .unwrap(),
@@ -309,7 +309,7 @@ mod tests {
             b"test",
             Some(now),
             &None,
-            LogNamespace::Legacy,
+            LogNamespace::Vector,
             &register!(EventsReceived),
         )
         .collect();

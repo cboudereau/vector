@@ -1058,7 +1058,7 @@ mod test {
                 host_key: Some(owned_value_path!("test_framestream")),
                 timestamp_key: Some(owned_value_path!("my_timestamp")),
                 source_type_key: Some(owned_value_path!("source_type")),
-                log_namespace: LogNamespace::Legacy,
+                log_namespace: LogNamespace::Vector,
             }
         }
     }

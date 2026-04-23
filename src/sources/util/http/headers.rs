@@ -101,7 +101,7 @@ mod tests {
             &mut events,
             &header_names,
             &headers,
-            LogNamespace::Legacy,
+            LogNamespace::Vector,
             "test",
         );
 
@@ -126,7 +126,7 @@ mod tests {
             &mut events,
             &header_names,
             &headers,
-            LogNamespace::Legacy,
+            LogNamespace::Vector,
             "test",
         );
 

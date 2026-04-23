@@ -301,14 +301,8 @@ impl SourceConfig for OpentelemetryConfig {
             )
             .with_standard_vector_source_metadata();
 
-        let schema_definition = match log_namespace {
-            LogNamespace::Vector => {
-                schema_definition.with_meaning(OwnedTargetPath::event_root(), "message")
-            }
-            LogNamespace::Legacy => {
-                schema_definition.with_meaning(OwnedTargetPath::event(owned_value_path!("body")), "message")
-            }
-        };
+        let schema_definition =
+            schema_definition.with_meaning(OwnedTargetPath::event_root(), "message");
 
         vec![
             SourceOutput::new_maybe_logs(DataType::Log, schema_definition).with_port(LOGS),

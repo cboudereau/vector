@@ -219,7 +219,7 @@ impl SourceConfig for AwsS3Config {
             );
 
         // for metadata that is added to the events dynamically from the metadata
-        if log_namespace == LogNamespace::Legacy {
+        if log_namespace == LogNamespace::Vector {
             schema_definition = schema_definition.unknown_fields(Kind::bytes());
         }
 

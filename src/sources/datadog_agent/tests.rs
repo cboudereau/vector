@@ -109,7 +109,7 @@ fn test_decode_log_body() {
             decoder,
             "http",
             Some(test_logs_schema_definition()),
-            LogNamespace::Legacy,
+            LogNamespace::Vector,
             false,
             true,
         );
@@ -177,7 +177,7 @@ fn test_decode_log_body_parse_ddtags() {
         decoder,
         "http",
         Some(test_logs_schema_definition()),
-        LogNamespace::Legacy,
+        LogNamespace::Vector,
         true,
         true,
     );
@@ -217,7 +217,7 @@ fn test_decode_log_body_empty_object() {
         decoder,
         "http",
         Some(test_logs_schema_definition()),
-        LogNamespace::Legacy,
+        LogNamespace::Vector,
         false,
         true,
     );
@@ -1534,7 +1534,7 @@ fn test_config_outputs_with_disabled_data_types() {
         };
 
         let outputs: Vec<DataType> = config
-            .outputs(LogNamespace::Legacy)
+            .outputs(LogNamespace::Vector)
             .into_iter()
             .map(|output| output.ty)
             .collect();
@@ -2004,7 +2004,7 @@ fn test_config_outputs() {
         };
 
         let mut outputs = config
-            .outputs(LogNamespace::Legacy)
+            .outputs(LogNamespace::Vector)
             .into_iter()
             .map(|output| (output.port.clone(), output.schema_definition(true)))
             .collect::<HashMap<_, _>>();
@@ -2359,14 +2359,14 @@ fn test_output_schema_definition_json_legacy_namespace() {
             decoding.codec = "json"
         "#})
     .unwrap()
-    .outputs(LogNamespace::Legacy)
+    .outputs(LogNamespace::Vector)
     .remove(0)
     .schema_definition(true);
 
     assert_eq!(
         definition,
         Some(
-            Definition::new_with_default_metadata(Kind::json(), [LogNamespace::Legacy])
+            Definition::new_with_default_metadata(Kind::json(), [LogNamespace::Vector])
                 .with_event_field(
                     &owned_value_path!("time_unix_nano"),
                     Kind::json(),
@@ -2394,7 +2394,7 @@ fn test_output_schema_definition_bytes_legacy_namespace() {
             decoding.codec = "bytes"
         "#})
     .unwrap()
-    .outputs(LogNamespace::Legacy)
+    .outputs(LogNamespace::Vector)
     .remove(0)
     .schema_definition(true);
 
@@ -2403,7 +2403,7 @@ fn test_output_schema_definition_bytes_legacy_namespace() {
         Some(
             Definition::new_with_default_metadata(
                 Kind::object(Collection::empty()),
-                [LogNamespace::Legacy]
+                [LogNamespace::Vector]
             )
             .with_event_field(
                 &owned_value_path!("ddsource"),

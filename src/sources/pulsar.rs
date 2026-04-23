@@ -557,7 +557,7 @@ mod integration_tests {
         pulsar_send_receive(
             &pulsar_address("pulsar", 6650),
             true,
-            LogNamespace::Legacy,
+            LogNamespace::Vector,
             None,
         )
         .await;
@@ -579,7 +579,7 @@ mod integration_tests {
         pulsar_send_receive(
             &pulsar_address("pulsar", 6650),
             false,
-            LogNamespace::Legacy,
+            LogNamespace::Vector,
             None,
         )
         .await;
@@ -652,7 +652,7 @@ mod integration_tests {
         let decoder = DecodingConfig::new(
             cnf.framing.clone(),
             cnf.decoding.clone(),
-            LogNamespace::Legacy,
+            LogNamespace::Vector,
         )
         .build()
         .unwrap();
@@ -678,7 +678,7 @@ mod integration_tests {
         .await;
 
         assert_eq!(
-            events[0].as_log()["body"],
+            events[0].as_log().get("body").unwrap(),
             msg.into()
         );
     }

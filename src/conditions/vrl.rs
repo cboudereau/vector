@@ -91,7 +91,7 @@ impl Vrl {
         let log_namespace = event
             .maybe_as_log()
             .map(|log| log.namespace())
-            .unwrap_or(LogNamespace::Legacy);
+            .unwrap_or(LogNamespace::Vector);
         let mut target = VrlTarget::new(event, self.program.info(), false);
         // TODO: use timezone from remap config
         let timezone = TimeZone::default();

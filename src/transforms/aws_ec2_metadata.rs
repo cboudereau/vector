@@ -1129,7 +1129,7 @@ mod integration_tests {
 
                 assert_eq!(
                     event.as_log().get("ec2.metadata.\"availability-zone\""),
-                    Some(&"us-east-1a".into())
+                    Some("us-east-1a".into())
                 );
 
                 drop(tx);
@@ -1162,7 +1162,7 @@ mod integration_tests {
                 let event = out.recv().await.unwrap();
                 assert_eq!(
                     event.as_log().get(event_path!(AVAILABILITY_ZONE_KEY)),
-                    Some(&"us-east-1a".into())
+                    Some("us-east-1a".into())
                 );
 
                 drop(tx);

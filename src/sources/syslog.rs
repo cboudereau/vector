@@ -18,7 +18,6 @@ use vector_lib::{
     configurable::configurable_component,
     internal_event::{ByteSize, BytesReceived, InternalEventHandle as _, Protocol},
     ipallowlist::IpAllowlistConfig,
-    lookup::lookup_v2::OptionalValuePath,
 };
 
 #[cfg(unix)]
@@ -53,14 +52,6 @@ pub struct SyslogConfig {
     #[serde(default = "crate::serde::default_max_length")]
     #[configurable(metadata(docs::type_unit = "bytes"))]
     max_length: usize,
-
-    /// Overrides the name of the log field used to add the peer host to each event.
-    ///
-    /// If using TCP or UDP, the value is the peer host's address, including the port. For example, `1.2.3.4:9000`. If using
-    /// UDS, the value is the socket path itself.
-    ///
-    /// By default, `host` is used.
-    host_key: Option<OptionalValuePath>,
 
     /// The namespace to use for logs. This overrides the global setting.
     #[configurable(metadata(docs::hidden))]
@@ -135,7 +126,6 @@ impl SyslogConfig {
     pub fn from_mode(mode: Mode) -> Self {
         Self {
             mode,
-            host_key: None,
             max_length: crate::serde::default_max_length(),
             log_namespace: None,
         }
@@ -153,7 +143,6 @@ impl Default for SyslogConfig {
                 receive_buffer_bytes: None,
                 connection_limit: None,
             },
-            host_key: None,
             max_length: crate::serde::default_max_length(),
             log_namespace: None,
         }
@@ -457,13 +446,11 @@ mod test {
     };
 
     fn event_from_bytes(
-        _host_key: &str,
         default_host: Option<Bytes>,
         bytes: Bytes,
-        _log_namespace: LogNamespace,
     ) -> Option<Event> {
         let parser = SyslogDeserializerConfig::from_source(SyslogConfig::NAME).build();
-        let mut events = parser.parse(bytes, LogNamespace::Legacy).ok()?;
+        let mut events = parser.parse(bytes, LogNamespace::Vector).ok()?;
         handle_events(
             &mut events,
             default_host,
@@ -567,13 +554,13 @@ mod test {
         let config = SyslogConfig::default();
 
         let definitions = config
-            .outputs(LogNamespace::Legacy)
+            .outputs(LogNamespace::Vector)
             .remove(0)
             .schema_definition(true);
 
         let expected_definition = Definition::new_with_default_metadata(
             Kind::object(Collection::empty()),
-            [LogNamespace::Legacy],
+            [LogNamespace::Vector],
         )
         .with_event_field(
             &owned_value_path!("body"),
@@ -817,10 +804,8 @@ mod test {
 
         assert_event_data_eq!(
             event_from_bytes(
-                "host",
                 Some(Bytes::from("192.168.0.254")),
                 raw.into(),
-                LogNamespace::Legacy
             )
             .unwrap(),
             expected
@@ -857,10 +842,8 @@ mod test {
         }
 
         let event = event_from_bytes(
-            "host",
             Some(Bytes::from("192.168.0.254")),
             raw.into(),
-            LogNamespace::Legacy,
         )
         .unwrap();
         assert_event_data_eq!(event, expected);
@@ -871,10 +854,8 @@ mod test {
         );
 
         let event = event_from_bytes(
-            "host",
             Some(Bytes::from("192.168.0.254")),
             raw.into(),
-            LogNamespace::Legacy,
         )
         .unwrap();
         assert_event_data_eq!(event, expected);
@@ -895,7 +876,7 @@ mod test {
             r"[empty]"
         );
 
-        let event = event_from_bytes("host", None, msg.into(), LogNamespace::Legacy).unwrap();
+        let event = event_from_bytes(None, msg.into()).unwrap();
         assert!(there_is_map_called_empty(event));
 
         let msg = format!(
@@ -903,7 +884,7 @@ mod test {
             r#"[non_empty x="1"][empty]"#
         );
 
-        let event = event_from_bytes("host", None, msg.into(), LogNamespace::Legacy).unwrap();
+        let event = event_from_bytes(None, msg.into()).unwrap();
         assert!(there_is_map_called_empty(event));
 
         let msg = format!(
@@ -911,7 +892,7 @@ mod test {
             r#"[empty][non_empty x="1"]"#
         );
 
-        let event = event_from_bytes("host", None, msg.into(), LogNamespace::Legacy).unwrap();
+        let event = event_from_bytes(None, msg.into()).unwrap();
         assert!(there_is_map_called_empty(event));
 
         let msg = format!(
@@ -919,7 +900,7 @@ mod test {
             r#"[empty not_really="testing the test"]"#
         );
 
-        let event = event_from_bytes("host", None, msg.into(), LogNamespace::Legacy).unwrap();
+        let event = event_from_bytes(None, msg.into()).unwrap();
         assert!(there_is_map_called_empty(event));
     }
 
@@ -932,12 +913,10 @@ mod test {
         let cleaned = r#"<13>1 2019-02-13T19:48:34+00:00 74794bfb6795 root 8449 - [meta sequenceId="1"] i am foobar"#;
 
         assert_event_data_eq!(
-            event_from_bytes("host", None, raw.to_owned().into(), LogNamespace::Legacy).unwrap(),
+            event_from_bytes(None, raw.to_owned().into()).unwrap(),
             event_from_bytes(
-                "host",
                 None,
                 cleaned.to_owned().into(),
-                LogNamespace::Legacy
             )
             .unwrap()
         );
@@ -948,7 +927,7 @@ mod test {
         let raw =
             r#"<190>Feb 13 21:31:56 74794bfb6795 liblogging-stdlog:  [origin foo.bar="baz"] hello"#;
         let event =
-            event_from_bytes("host", None, raw.to_owned().into(), LogNamespace::Legacy).unwrap();
+            event_from_bytes(None, raw.to_owned().into()).unwrap();
         assert_eq!(
             event.as_log().get(r#"origin."foo.bar""#),
             Some(Value::from("baz"))
@@ -960,10 +939,8 @@ mod test {
         let msg = "i am foobar";
         let raw = format!(r#"<13>Feb 13 20:07:26 74794bfb6795 root[8539]: {msg}"#);
         let event = event_from_bytes(
-            "host",
             Some(Bytes::from("192.168.0.254")),
             raw.into(),
-            LogNamespace::Legacy,
         )
         .unwrap();
 
@@ -1007,10 +984,8 @@ mod test {
             r#"<190>Feb 13 21:31:56 74794bfb6795 liblogging-stdlog:  [origin software="rsyslogd" swVersion="8.24.0" x-pid="8979" x-info="http://www.rsyslog.com"] {msg}"#
         );
         let event = event_from_bytes(
-            "host",
             Some(Bytes::from("192.168.0.254")),
             raw.into(),
-            LogNamespace::Legacy,
         )
         .unwrap();
 
@@ -1080,7 +1055,7 @@ mod test {
         }
 
         assert_event_data_eq!(
-            event_from_bytes("host", None, raw.into(), LogNamespace::Legacy).unwrap(),
+            event_from_bytes(None, raw.into()).unwrap(),
             expected
         );
     }

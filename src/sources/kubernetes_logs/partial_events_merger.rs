@@ -193,7 +193,7 @@ mod test {
         e_1.insert("foo", 1);
 
         let input_stream = futures::stream::iter([e_1.into()]);
-        let output_stream = merge_partial_events(input_stream, LogNamespace::Legacy, None);
+        let output_stream = merge_partial_events(input_stream, LogNamespace::Vector, None);
 
         let output: Vec<Event> = output_stream.collect().await;
         assert_eq!(output.len(), 1);
@@ -209,7 +209,7 @@ mod test {
         e_1.insert("foo", 1);
 
         let input_stream = futures::stream::iter([e_1.into()]);
-        let output_stream = merge_partial_events(input_stream, LogNamespace::Legacy, Some(1));
+        let output_stream = merge_partial_events(input_stream, LogNamespace::Vector, Some(1));
 
         let output: Vec<Event> = output_stream.collect().await;
         assert_eq!(output.len(), 0);
@@ -225,7 +225,7 @@ mod test {
         e_2.insert("foo2", 1);
 
         let input_stream = futures::stream::iter([e_1.into(), e_2.into()]);
-        let output_stream = merge_partial_events(input_stream, LogNamespace::Legacy, None);
+        let output_stream = merge_partial_events(input_stream, LogNamespace::Vector, None);
 
         let output: Vec<Event> = output_stream.collect().await;
         assert_eq!(output.len(), 1);
@@ -246,7 +246,7 @@ mod test {
 
         let input_stream = futures::stream::iter([e_1.into(), e_2.into()]);
         // 24 > length of first message but less than the two combined
-        let output_stream = merge_partial_events(input_stream, LogNamespace::Legacy, Some(24));
+        let output_stream = merge_partial_events(input_stream, LogNamespace::Vector, Some(24));
 
         let output: Vec<Event> = output_stream.collect().await;
         assert_eq!(output.len(), 0);
@@ -263,7 +263,7 @@ mod test {
         e_1.insert("_partial", true);
 
         let input_stream = futures::stream::iter([e_1.into(), e_2.into()]);
-        let output_stream = merge_partial_events(input_stream, LogNamespace::Legacy, None);
+        let output_stream = merge_partial_events(input_stream, LogNamespace::Vector, None);
 
         let output: Vec<Event> = output_stream.collect().await;
         assert_eq!(output.len(), 1);
@@ -285,7 +285,7 @@ mod test {
 
         let input_stream = futures::stream::iter([e_1.into(), e_2.into()]);
         // 24 > length of first message but less than the two combined
-        let output_stream = merge_partial_events(input_stream, LogNamespace::Legacy, Some(24));
+        let output_stream = merge_partial_events(input_stream, LogNamespace::Vector, Some(24));
 
         let output: Vec<Event> = output_stream.collect().await;
         assert_eq!(output.len(), 0);
@@ -307,7 +307,7 @@ mod test {
 
         let output_stream = merge_partial_events_with_custom_expiration(
             input_stream,
-            LogNamespace::Legacy,
+            LogNamespace::Vector,
             Duration::from_secs(1),
             None,
         );

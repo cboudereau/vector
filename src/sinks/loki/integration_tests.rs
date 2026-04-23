@@ -313,7 +313,7 @@ async fn logfmt() {
     let (_, outputs) = fetch_stream(stream.to_string(), "default").await;
     assert_eq!(lines.len(), outputs.len());
     for (i, output) in outputs.iter().enumerate() {
-        let expected_logfmt = encode_logfmt::encode_value(lines[i].as_log().value()).unwrap();
+        let expected_logfmt = encode_logfmt::encode_value(&lines[i].as_log().value()).unwrap();
         assert_eq!(output, &expected_logfmt);
     }
 }
@@ -360,21 +360,15 @@ async fn many_streams() {
 
     for (i, output) in outputs1.iter().enumerate() {
         let index = (i % 5) * 2;
-        let message = lines[index]
-            .as_log()
-            .get(vrl::event_path!("body"))
-            .unwrap()
-            .to_string_lossy();
+        let body = lines[index].as_log().get(vrl::event_path!("body")).unwrap();
+        let message = body.to_string_lossy();
         assert_eq!(output, &message);
     }
 
     for (i, output) in outputs2.iter().enumerate() {
         let index = ((i % 5) * 2) + 1;
-        let message = lines[index]
-            .as_log()
-            .get(vrl::event_path!("body"))
-            .unwrap()
-            .to_string_lossy();
+        let body = lines[index].as_log().get(vrl::event_path!("body")).unwrap();
+        let message = body.to_string_lossy();
         assert_eq!(output, &message);
     }
 }
@@ -417,11 +411,8 @@ async fn interpolate_stream_key() {
     assert_eq!(outputs.len(), lines.len());
 
     for (i, output) in outputs.iter().enumerate() {
-        let message = lines[i]
-            .as_log()
-            .get(vrl::event_path!("body"))
-            .unwrap()
-            .to_string_lossy();
+        let body = lines[i].as_log().get(vrl::event_path!("body")).unwrap();
+        let message = body.to_string_lossy();
         assert_eq!(output, &message);
     }
 }

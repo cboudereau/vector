@@ -38,7 +38,7 @@ use crate::{
 
 mod message;
 use self::message::{
-    FluentEntry, FluentEventTime, FluentMessage, FluentRecord, FluentTag, FluentTimestamp,
+    FluentEntry, FluentMessage, FluentRecord, FluentTag, FluentTimestamp,
 };
 
 /// Configuration for the `fluent` source.
@@ -389,7 +389,7 @@ impl FluentConfig {
             );
 
         // for metadata that is added to the events dynamically
-        if log_namespace == LogNamespace::Legacy {
+        if log_namespace == LogNamespace::Vector {
             schema_definition = schema_definition.unknown_fields(Kind::bytes());
         }
 
@@ -753,34 +753,16 @@ impl From<FluentEvent<'_>> for Event {
 
         let mut log = OtelLog::new(Default::default());
 
-        match log_namespace {
-            LogNamespace::Vector => {
-                log.metadata_mut()
-                    .value_mut()
-                    .insert(path!("vector", "source_type"), FluentConfig::NAME);
-            }
-            LogNamespace::Legacy => {
-                log.try_set_source_type(Bytes::from_static(FluentConfig::NAME.as_bytes()));
-            }
-        }
+        log.metadata_mut()
+            .value_mut()
+            .insert(path!("vector", "source_type"), FluentConfig::NAME);
 
-        match log_namespace {
-            LogNamespace::Vector => {
-                log.metadata_mut()
-                    .value_mut()
-                    .insert(path!(FluentConfig::NAME, "timestamp"), timestamp);
-                log.metadata_mut()
-                    .value_mut()
-                    .insert(path!("vector", "ingest_timestamp"), Utc::now());
-            }
-            LogNamespace::Legacy => {
-                let ts = match timestamp {
-                    FluentTimestamp::Unix(ts)
-                    | FluentTimestamp::Ext(FluentEventTime(ts)) => ts,
-                };
-                log.set_timestamp(ts);
-            }
-        }
+        log.metadata_mut()
+            .value_mut()
+            .insert(path!(FluentConfig::NAME, "timestamp"), timestamp);
+        log.metadata_mut()
+            .value_mut()
+            .insert(path!("vector", "ingest_timestamp"), Utc::now());
 
         log_namespace.insert_source_metadata(
             FluentConfig::NAME,
@@ -1213,13 +1195,13 @@ mod tests {
         };
 
         let definitions = config
-            .outputs(LogNamespace::Legacy)
+            .outputs(LogNamespace::Vector)
             .remove(0)
             .schema_definition(true);
 
         let expected_definition = Definition::new_with_default_metadata(
             Kind::object(Collection::empty()),
-            [LogNamespace::Legacy],
+            [LogNamespace::Vector],
         )
         .with_event_field(
             &owned_value_path!("body"),
@@ -1243,6 +1225,8 @@ mod integration_tests {
     use futures::Stream;
     use tokio::time::sleep;
     use vector_lib::event::{Event, EventStatus};
+
+    use vrl::event_path;
 
     use crate::{
         SourceSender,
@@ -1333,8 +1317,8 @@ mod integration_tests {
 
             assert_eq!(events.len(), 1);
             let log = events[0].as_log();
-            assert_eq!(log["tag"], "http.0".into());
-            assert_eq!(log["message"], msg.into());
+            assert_eq!(log.get("tag").unwrap(), "http.0".into());
+            assert_eq!(log.get("message").unwrap(), msg.into());
             assert!(log.get("timestamp").is_some());
             assert!(log.get(event_path!("resource", "host.name")).is_some());
         })
@@ -1412,8 +1396,8 @@ mod integration_tests {
                 .await;
 
             assert_eq!(events.len(), 1);
-            assert_eq!(events[0].as_log()["tag"], "".into());
-            assert_eq!(events[0].as_log()["message"], msg.into());
+            assert_eq!(events[0].as_log().get("tag").unwrap(), "".into());
+            assert_eq!(events[0].as_log().get("message").unwrap(), msg.into());
             assert!(events[0].as_log().get("timestamp").is_some());
             assert!(events[0].as_log().get(event_path!("resource", "host.name")).is_some());
         })

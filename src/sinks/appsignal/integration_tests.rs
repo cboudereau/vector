@@ -4,7 +4,7 @@ use http::header::AUTHORIZATION;
 use hyper::StatusCode;
 use indoc::indoc;
 use vector_lib::event::{
-    BatchNotifier, BatchStatus, Event, OtelLog, Metric, MetricKind, MetricValue, OtelMetric,
+    BatchNotifier, BatchStatus, Event, OtelLog, MetricKind, OtelMetric,
 };
 
 use crate::{

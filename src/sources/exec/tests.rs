@@ -29,7 +29,7 @@ fn test_scheduled_handle_event() {
         &data_stream,
         pid,
         &mut event,
-        LogNamespace::Legacy,
+        LogNamespace::Vector,
     );
     let log = event.as_log();
 
@@ -106,7 +106,7 @@ fn test_streaming_create_event() {
         &data_stream,
         pid,
         &mut event,
-        LogNamespace::Legacy,
+        LogNamespace::Vector,
     );
     let log = event.as_log();
 
@@ -317,7 +317,7 @@ async fn test_drop_receiver() {
             decoder,
             shutdown,
             tx,
-            LogNamespace::Legacy,
+            LogNamespace::Vector,
         ),
     );
 
@@ -353,7 +353,7 @@ async fn test_run_command_linux() {
                     decoder,
                     shutdown,
                     tx,
-                    LogNamespace::Legacy,
+                    LogNamespace::Vector,
                 ),
             )
             .await;
@@ -406,7 +406,7 @@ async fn test_graceful_shutdown() {
         decoder,
         shutdown,
         tx,
-        LogNamespace::Legacy,
+        LogNamespace::Vector,
     ));
 
     tokio::time::sleep(Duration::from_secs(1)).await; // let the source start the command

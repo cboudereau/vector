@@ -30,7 +30,7 @@ impl Default for Decoder {
         Self {
             framer: Framer::NewlineDelimited(NewlineDelimitedDecoder::new()),
             deserializer: Deserializer::Bytes(BytesDeserializer),
-            log_namespace: LogNamespace::Legacy,
+            log_namespace: LogNamespace::Vector,
         }
     }
 }
@@ -43,7 +43,7 @@ impl Decoder {
         Self {
             framer,
             deserializer,
-            log_namespace: LogNamespace::Legacy,
+            log_namespace: LogNamespace::Vector,
         }
     }
 

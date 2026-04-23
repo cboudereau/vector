@@ -1,7 +1,6 @@
 use std::{fmt, sync::Arc};
 
 use vector_lib::{
-    config::LogNamespace,
     lookup::{OwnedValuePath, PathPrefix, event_path, lookup_v2::OptionalTargetPath},
     schema::meaning,
 };
@@ -194,17 +193,11 @@ impl Partitioner for EventPartitioner {
                 .as_ref()
                 .and_then(|path| item.event.get(path))
                 .and_then(|value| value.as_str().map(|s| s.to_string())),
-            None => match item.event.namespace() {
-                LogNamespace::Vector => item
-                    .event
-                    .find_key_by_meaning(meaning::HOST)
-                    .and_then(|path| item.event.get(path))
-                    .and_then(|value| value.as_str().map(|s| s.to_string())),
-                LogNamespace::Legacy => item
-                    .event
-                    .get_host()
-                    .and_then(|value| value.as_str().map(|s| s.to_string())),
-            },
+            None => item
+                .event
+                .find_key_by_meaning(meaning::HOST)
+                .and_then(|path| item.event.get(path))
+                .and_then(|value| value.as_str().map(|s| s.to_string())),
         };
 
         Some(Partitioned {
@@ -256,16 +249,10 @@ pub fn process_log(event: Event, data: &HecLogData) -> HecProcessedEvent {
         .and_then(|index| render_template_string(index, &log, INDEX_FIELD));
 
     let host = match data.host_key.as_ref() {
-        Some(maybe_key) => maybe_key
-            .path
-            .as_ref()
+        Some(maybe_key) => maybe_key.path.as_ref().and_then(|path| log.get(path)),
+        None => log
+            .find_key_by_meaning(meaning::HOST)
             .and_then(|path| log.get(path)),
-        None => match log.namespace() {
-            LogNamespace::Vector => log
-                .find_key_by_meaning(meaning::HOST)
-                .and_then(|path| log.get(path)),
-            LogNamespace::Legacy => log.get_host(),
-        },
     };
 
     // only extract the timestamp if this is the Event endpoint, and if the setting

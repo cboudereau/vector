@@ -215,7 +215,7 @@ mod test {
         let output_names = vec!["first", "second", "third", UNMATCHED_ROUTE];
         let event = Event::from_json_value(
             serde_json::json!({"body": "hello world", "second": "second", "third": "third"}),
-            LogNamespace::Legacy,
+            LogNamespace::Vector,
         )
         .unwrap();
         let config = toml::from_str::<RouteConfig>(
@@ -261,7 +261,7 @@ mod test {
         let output_names = vec!["first", "second", "third", UNMATCHED_ROUTE];
         let event = Event::from_json_value(
             serde_json::json!({"body": "hello world"}),
-            LogNamespace::Legacy,
+            LogNamespace::Vector,
         )
         .unwrap();
         let config = toml::from_str::<RouteConfig>(
@@ -305,7 +305,7 @@ mod test {
     fn route_pass_no_route_condition() {
         let output_names = vec!["first", "second", "third", UNMATCHED_ROUTE];
         let event =
-            Event::from_json_value(serde_json::json!({"message": "NOPE"}), LogNamespace::Legacy)
+            Event::from_json_value(serde_json::json!({"message": "NOPE"}), LogNamespace::Vector)
                 .unwrap();
         let config = toml::from_str::<RouteConfig>(
             r#"
@@ -348,7 +348,7 @@ mod test {
     fn route_no_unmatched_output() {
         let output_names = vec!["first", "second", "third", UNMATCHED_ROUTE];
         let event =
-            Event::from_json_value(serde_json::json!({"message": "NOPE"}), LogNamespace::Legacy)
+            Event::from_json_value(serde_json::json!({"message": "NOPE"}), LogNamespace::Vector)
                 .unwrap();
         let config = toml::from_str::<RouteConfig>(
             r#"

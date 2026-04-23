@@ -509,16 +509,14 @@ mod tests {
 
     fn create_simple_log() -> OtelLog {
         let mut log = OtelLog::from("original message");
-        log.insert(
-            event_path!("timestamp"),
-            NaiveDate::from_ymd_opt(2025, 8, 28)
-                .unwrap()
-                .and_hms_micro_opt(18, 30, 00, 123456)
-                .unwrap()
-                .and_local_timezone(Utc)
-                .unwrap(),
-        );
-        log.insert(event_path!("host"), "test-host.com");
+        let ts = NaiveDate::from_ymd_opt(2025, 8, 28)
+            .unwrap()
+            .and_hms_micro_opt(18, 30, 00, 123456)
+            .unwrap()
+            .and_local_timezone(Utc)
+            .unwrap();
+        log.set_timestamp(ts);
+        log.set_host("test-host.com");
         log
     }
 

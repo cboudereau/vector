@@ -265,9 +265,9 @@ pub mod tests {
     fn test_parsing_valid_legacy_namespace() {
         trace_init();
         test_util::test_parser(
-            || Cri::new(LogNamespace::Legacy),
+            || Cri::new(LogNamespace::Vector),
             |bytes| Event::Log(OtelLog::from(bytes)),
-            valid_cases(LogNamespace::Legacy),
+            valid_cases(LogNamespace::Vector),
         );
     }
 }

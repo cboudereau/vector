@@ -920,7 +920,7 @@ mod integration_tests {
         config::{SinkConfig, SinkContext},
         event::{
             Event, OtelMetric,
-            metric::{Metric, MetricKind, MetricValue},
+            metric::{MetricKind, MetricValue},
         },
         http::HttpClient,
         sinks::influxdb::{

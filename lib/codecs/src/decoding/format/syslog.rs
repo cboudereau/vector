@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use bytes::Bytes;
 use chrono::{DateTime, Datelike, Utc};
 use derivative::Derivative;
-use lookup::{OwnedTargetPath, OwnedValuePath, owned_value_path};
+use lookup::{OwnedValuePath, owned_value_path};
 use smallvec::{SmallVec, smallvec};
 use syslog_loose::{IncompleteDate, Message, ProcId, Protocol, Variant};
 use vector_config::configurable_component;
@@ -59,180 +59,55 @@ impl SyslogDeserializerConfig {
     }
 
     /// The schema produced by the deserializer.
-    pub fn schema_definition(&self, log_namespace: LogNamespace) -> schema::Definition {
-        match (log_namespace, self.source) {
-            (LogNamespace::Legacy, _) => {
-                let mut definition = schema::Definition::empty_legacy_namespace()
-                    // The `message` field is always defined. If parsing fails, the entire body becomes the
-                    // message.
-                    .with_event_field(
-                        &owned_value_path!("body"),
-                        Kind::bytes(),
-                        Some("message"),
-                    );
+    pub fn schema_definition(&self, _log_namespace: LogNamespace) -> schema::Definition {
+        let mut definition = schema::Definition::empty_legacy_namespace()
+            // The `message` field is always defined. If parsing fails, the entire body becomes the
+            // message.
+            .with_event_field(
+                &owned_value_path!("body"),
+                Kind::bytes(),
+                Some("message"),
+            );
 
-                {
-                    let timestamp_key = owned_value_path!("time_unix_nano");
-                    // All other fields are optional.
-                    definition = definition.optional_field(
-                        &timestamp_key,
-                        Kind::integer(),
-                        Some("timestamp"),
-                    );
-                }
+        {
+            let timestamp_key = owned_value_path!("time_unix_nano");
+            // All other fields are optional.
+            definition = definition.optional_field(
+                &timestamp_key,
+                Kind::integer(),
+                Some("timestamp"),
+            );
+        }
 
-                definition = definition
-                    .optional_field(&owned_value_path!("hostname"), Kind::bytes(), Some("host"))
-                    .optional_field(
-                        &owned_value_path!("severity"),
-                        Kind::bytes(),
-                        Some("severity"),
-                    )
-                    .optional_field(&owned_value_path!("facility"), Kind::bytes(), None)
-                    .optional_field(&owned_value_path!("version"), Kind::integer(), None)
-                    .optional_field(
-                        &owned_value_path!("appname"),
-                        Kind::bytes(),
-                        Some("service"),
-                    )
-                    .optional_field(&owned_value_path!("msgid"), Kind::bytes(), None)
-                    .optional_field(
-                        &owned_value_path!("procid"),
-                        Kind::integer().or_bytes(),
-                        None,
-                    )
-                    // "structured data" is placed at the root. It will always be a map of strings
-                    .unknown_fields(Kind::object(Collection::from_unknown(Kind::bytes())));
+        definition = definition
+            .optional_field(&owned_value_path!("hostname"), Kind::bytes(), Some("host"))
+            .optional_field(
+                &owned_value_path!("severity"),
+                Kind::bytes(),
+                Some("severity"),
+            )
+            .optional_field(&owned_value_path!("facility"), Kind::bytes(), None)
+            .optional_field(&owned_value_path!("version"), Kind::integer(), None)
+            .optional_field(
+                &owned_value_path!("appname"),
+                Kind::bytes(),
+                Some("service"),
+            )
+            .optional_field(&owned_value_path!("msgid"), Kind::bytes(), None)
+            .optional_field(
+                &owned_value_path!("procid"),
+                Kind::integer().or_bytes(),
+                None,
+            )
+            // "structured data" is placed at the root. It will always be a map of strings
+            .unknown_fields(Kind::object(Collection::from_unknown(Kind::bytes())));
 
-                if self.source.is_some() {
-                    // This field is added by the syslog source. It will not be present if the data
-                    // is coming from the codec.
-                    definition.optional_field(&owned_value_path!("source_ip"), Kind::bytes(), None)
-                } else {
-                    definition
-                }
-            }
-            (LogNamespace::Vector, None) => {
-                schema::Definition::new_with_default_metadata(
-                    Kind::object(Collection::empty()),
-                    [log_namespace],
-                )
-                .with_event_field(
-                    &owned_value_path!("body"),
-                    Kind::bytes(),
-                    Some("message"),
-                )
-                .optional_field(
-                    &owned_value_path!("timestamp"),
-                    Kind::timestamp(),
-                    Some("timestamp"),
-                )
-                .optional_field(&owned_value_path!("hostname"), Kind::bytes(), Some("host"))
-                .optional_field(
-                    &owned_value_path!("severity"),
-                    Kind::bytes(),
-                    Some("severity"),
-                )
-                .optional_field(&owned_value_path!("facility"), Kind::bytes(), None)
-                .optional_field(&owned_value_path!("version"), Kind::integer(), None)
-                .optional_field(
-                    &owned_value_path!("appname"),
-                    Kind::bytes(),
-                    Some("service"),
-                )
-                .optional_field(&owned_value_path!("msgid"), Kind::bytes(), None)
-                .optional_field(
-                    &owned_value_path!("procid"),
-                    Kind::integer().or_bytes(),
-                    None,
-                )
-                // "structured data" is placed at the root. It will always be a map strings
-                .unknown_fields(Kind::object(Collection::from_unknown(Kind::bytes())))
-            }
-            (LogNamespace::Vector, Some(source)) => {
-                schema::Definition::new_with_default_metadata(Kind::bytes(), [log_namespace])
-                    .with_meaning(OwnedTargetPath::event_root(), "message")
-                    .with_source_metadata(
-                        source,
-                        None,
-                        &owned_value_path!("timestamp"),
-                        Kind::timestamp(),
-                        Some("timestamp"),
-                    )
-                    .with_source_metadata(
-                        source,
-                        None,
-                        &owned_value_path!("hostname"),
-                        Kind::bytes().or_undefined(),
-                        Some("host"),
-                    )
-                    .with_source_metadata(
-                        source,
-                        None,
-                        &owned_value_path!("source_ip"),
-                        Kind::bytes().or_undefined(),
-                        None,
-                    )
-                    .with_source_metadata(
-                        source,
-                        None,
-                        &owned_value_path!("severity"),
-                        Kind::bytes().or_undefined(),
-                        Some("severity"),
-                    )
-                    .with_source_metadata(
-                        source,
-                        None,
-                        &owned_value_path!("facility"),
-                        Kind::bytes().or_undefined(),
-                        None,
-                    )
-                    .with_source_metadata(
-                        source,
-                        None,
-                        &owned_value_path!("version"),
-                        Kind::integer().or_undefined(),
-                        None,
-                    )
-                    .with_source_metadata(
-                        source,
-                        None,
-                        &owned_value_path!("appname"),
-                        Kind::bytes().or_undefined(),
-                        Some("service"),
-                    )
-                    .with_source_metadata(
-                        source,
-                        None,
-                        &owned_value_path!("msgid"),
-                        Kind::bytes().or_undefined(),
-                        None,
-                    )
-                    .with_source_metadata(
-                        source,
-                        None,
-                        &owned_value_path!("procid"),
-                        Kind::integer().or_bytes().or_undefined(),
-                        None,
-                    )
-                    .with_source_metadata(
-                        source,
-                        None,
-                        &owned_value_path!("structured_data"),
-                        Kind::object(Collection::from_unknown(Kind::object(
-                            Collection::from_unknown(Kind::bytes()),
-                        ))),
-                        None,
-                    )
-                    .with_source_metadata(
-                        source,
-                        None,
-                        &owned_value_path!("tls_client_metadata"),
-                        Kind::object(Collection::empty().with_unknown(Kind::bytes()))
-                            .or_undefined(),
-                        None,
-                    )
-            }
+        if self.source.is_some() {
+            // This field is added by the syslog source. It will not be present if the data
+            // is coming from the codec.
+            definition.optional_field(&owned_value_path!("source_ip"), Kind::bytes(), None)
+        } else {
+            definition
         }
     }
 }
@@ -483,7 +358,7 @@ mod tests {
             Bytes::from("<34>1 2003-10-11T22:14:15.003Z mymachine.example.com su - ID47 - MSG");
         let deserializer = SyslogDeserializer::default();
 
-        let events = deserializer.parse(input, LogNamespace::Legacy).unwrap();
+        let events = deserializer.parse(input, LogNamespace::Vector).unwrap();
         assert_eq!(events.len(), 1);
         let log = events[0].as_log();
         assert_eq!(log.get_body(), Some("MSG".into()));

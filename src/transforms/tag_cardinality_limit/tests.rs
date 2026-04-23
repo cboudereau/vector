@@ -149,10 +149,10 @@ async fn drop_event(config: TagCardinalityLimitConfig) {
         event2.set_upstream_id(Arc::new(OutputId::from("transform")));
 
         event1.metadata_mut().set_schema_definition(&Arc::new(
-            Definition::new_with_default_metadata(Kind::any_object(), [LogNamespace::Legacy]),
+            Definition::new_with_default_metadata(Kind::any_object(), [LogNamespace::Vector]),
         ));
         event2.metadata_mut().set_schema_definition(&Arc::new(
-            Definition::new_with_default_metadata(Kind::any_object(), [LogNamespace::Legacy]),
+            Definition::new_with_default_metadata(Kind::any_object(), [LogNamespace::Vector]),
         ));
 
         assert_eq!(new_event1, Some(event1));
@@ -207,13 +207,13 @@ async fn drop_tag(config: TagCardinalityLimitConfig) {
         event3.set_upstream_id(Arc::new(OutputId::from("transform")));
 
         event1.metadata_mut().set_schema_definition(&Arc::new(
-            Definition::new_with_default_metadata(Kind::any_object(), [LogNamespace::Legacy]),
+            Definition::new_with_default_metadata(Kind::any_object(), [LogNamespace::Vector]),
         ));
         event2.metadata_mut().set_schema_definition(&Arc::new(
-            Definition::new_with_default_metadata(Kind::any_object(), [LogNamespace::Legacy]),
+            Definition::new_with_default_metadata(Kind::any_object(), [LogNamespace::Vector]),
         ));
         event3.metadata_mut().set_schema_definition(&Arc::new(
-            Definition::new_with_default_metadata(Kind::any_object(), [LogNamespace::Legacy]),
+            Definition::new_with_default_metadata(Kind::any_object(), [LogNamespace::Vector]),
         ));
 
         assert_eq!(new_event1, Some(event1));
@@ -295,13 +295,13 @@ async fn drop_tag_multi_value(config: TagCardinalityLimitConfig) {
 
         // definitions aren't valid for metrics yet, it's just set to the default (anything).
         event1.metadata_mut().set_schema_definition(&Arc::new(
-            Definition::new_with_default_metadata(Kind::any_object(), [LogNamespace::Legacy]),
+            Definition::new_with_default_metadata(Kind::any_object(), [LogNamespace::Vector]),
         ));
         event2.metadata_mut().set_schema_definition(&Arc::new(
-            Definition::new_with_default_metadata(Kind::any_object(), [LogNamespace::Legacy]),
+            Definition::new_with_default_metadata(Kind::any_object(), [LogNamespace::Vector]),
         ));
         event3.metadata_mut().set_schema_definition(&Arc::new(
-            Definition::new_with_default_metadata(Kind::any_object(), [LogNamespace::Legacy]),
+            Definition::new_with_default_metadata(Kind::any_object(), [LogNamespace::Vector]),
         ));
 
         drop(tx);
@@ -360,13 +360,13 @@ async fn separate_value_limit_per_tag(config: TagCardinalityLimitConfig) {
 
         // definitions aren't valid for metrics yet, it's just set to the default (anything).
         event1.metadata_mut().set_schema_definition(&Arc::new(
-            Definition::new_with_default_metadata(Kind::any_object(), [LogNamespace::Legacy]),
+            Definition::new_with_default_metadata(Kind::any_object(), [LogNamespace::Vector]),
         ));
         event2.metadata_mut().set_schema_definition(&Arc::new(
-            Definition::new_with_default_metadata(Kind::any_object(), [LogNamespace::Legacy]),
+            Definition::new_with_default_metadata(Kind::any_object(), [LogNamespace::Vector]),
         ));
         event3.metadata_mut().set_schema_definition(&Arc::new(
-            Definition::new_with_default_metadata(Kind::any_object(), [LogNamespace::Legacy]),
+            Definition::new_with_default_metadata(Kind::any_object(), [LogNamespace::Vector]),
         ));
 
         assert_eq!(new_event1, Some(event1));
@@ -528,7 +528,7 @@ async fn separate_value_limit_per_metric_name(config: TagCardinalityLimitConfig)
             event.set_source_id(Arc::new(ComponentKey::from("in")));
             event.set_upstream_id(Arc::new(OutputId::from("transform")));
             event.metadata_mut().set_schema_definition(&Arc::new(
-                Definition::new_with_default_metadata(Kind::any_object(), [LogNamespace::Legacy]),
+                Definition::new_with_default_metadata(Kind::any_object(), [LogNamespace::Vector]),
             ));
         }
 

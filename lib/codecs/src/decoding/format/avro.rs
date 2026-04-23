@@ -55,27 +55,19 @@ impl AvroDeserializerConfig {
     }
 
     /// The schema required by the serializer.
-    pub fn schema_definition(&self, log_namespace: LogNamespace) -> schema::Definition {
-        match log_namespace {
-            LogNamespace::Legacy => {
-                let mut definition = schema::Definition::empty_legacy_namespace()
-                    .unknown_fields(vrl::value::Kind::any());
+    pub fn schema_definition(&self, _log_namespace: LogNamespace) -> schema::Definition {
+        let mut definition = schema::Definition::empty_legacy_namespace()
+            .unknown_fields(vrl::value::Kind::any());
 
-                {
-                    let timestamp_key = owned_value_path!("time_unix_nano");
-                    definition = definition.try_with_field(
-                        &timestamp_key,
-                        vrl::value::Kind::any(),
-                        Some("timestamp"),
-                    );
-                }
-                definition
-            }
-            LogNamespace::Vector => schema::Definition::new_with_default_metadata(
+        {
+            let timestamp_key = owned_value_path!("time_unix_nano");
+            definition = definition.try_with_field(
+                &timestamp_key,
                 vrl::value::Kind::any(),
-                [log_namespace],
-            ),
+                Some("timestamp"),
+            );
         }
+        definition
     }
 }
 
@@ -161,7 +153,7 @@ impl Deserializer for AvroDeserializer {
         }
         let mut log = OtelLog::from_value_map(VrlValue::Object(map), EventMetadata::default());
 
-        if log_namespace == LogNamespace::Legacy {
+        if log_namespace == LogNamespace::Vector {
             log.try_set_timestamp(Utc::now());
         }
         Ok(smallvec![Event::Log(log)])
@@ -283,7 +275,7 @@ mod tests {
 
         let log = events[0].as_log();
         assert_eq!(
-            log.parse_path_and_get_value("body").ok().flatten().unwrap(),
+            log.get("message").unwrap(),
             VrlValue::from("hello from avro")
         );
     }
@@ -310,7 +302,7 @@ mod tests {
 
         let log = events[0].as_log();
         assert_eq!(
-            log.parse_path_and_get_value("body").ok().flatten().unwrap(),
+            log.get("message").unwrap(),
             VrlValue::from("hello from avro")
         );
     }
@@ -338,7 +330,7 @@ mod tests {
         assert_eq!(events.len(), 1);
         let log = events[0].as_log();
         assert_eq!(
-            log.parse_path_and_get_value("body").ok().flatten().unwrap(),
+            log.get("message").unwrap(),
             VrlValue::from(uuid)
         );
     }

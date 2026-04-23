@@ -843,13 +843,13 @@ mod test {
         let config = LogstashConfig::default();
 
         let definitions = config
-            .outputs(LogNamespace::Legacy)
+            .outputs(LogNamespace::Vector)
             .remove(0)
             .schema_definition(true);
 
         let expected_definition = Definition::new_with_default_metadata(
             Kind::object(Collection::empty()),
-            [LogNamespace::Legacy],
+            [LogNamespace::Vector],
         )
         .with_event_field(
             &owned_value_path!("body"),
@@ -905,9 +905,9 @@ mod integration_tests {
         let log = events[0].as_log();
         assert_eq!(
             log.get("@metadata.beat"),
-            Some(String::from("heartbeat").into()).as_ref()
+            Some(String::from("heartbeat").into())
         );
-        assert_eq!(log.get("summary.up"), Some(1.into()).as_ref());
+        assert_eq!(log.get("summary.up"), Some(1.into()));
         assert!(log.get_timestamp().is_some());
         assert!(log.get_host().is_some());
     }

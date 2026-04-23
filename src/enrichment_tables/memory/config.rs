@@ -206,14 +206,10 @@ impl SourceConfig for MemoryConfig {
 
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
         let log_namespace = global_log_namespace.merge(self.log_namespace);
-        let schema_definition = match log_namespace {
-            LogNamespace::Legacy => schema::Definition::default_legacy_namespace(),
-            LogNamespace::Vector => {
-                schema::Definition::new_with_default_metadata(Kind::any_object(), [log_namespace])
-                    .with_meaning(OwnedTargetPath::event_root(), "message")
-            }
-        }
-        .with_standard_vector_source_metadata();
+        let schema_definition =
+            schema::Definition::new_with_default_metadata(Kind::any_object(), [log_namespace])
+                .with_meaning(OwnedTargetPath::event_root(), "message")
+                .with_standard_vector_source_metadata();
 
         if self
             .source_config

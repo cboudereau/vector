@@ -1459,7 +1459,7 @@ mod tests {
     fn test_output_schema_definition_legacy_namespace() {
         let definitions = toml::from_str::<Config>("")
             .unwrap()
-            .outputs(LogNamespace::Legacy)
+            .outputs(LogNamespace::Vector)
             .remove(0)
             .schema_definition(true);
 
@@ -1468,7 +1468,7 @@ mod tests {
             Some(
                 Definition::new_with_default_metadata(
                     Kind::object(Collection::empty()),
-                    [LogNamespace::Legacy]
+                    [LogNamespace::Vector]
                 )
                 .with_event_field(&owned_value_path!("file"), Kind::bytes(), None)
                 .with_event_field(

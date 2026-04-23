@@ -955,32 +955,18 @@ fn handle_single_log(
         }
     }
 
-    match log_namespace {
-        LogNamespace::Vector => {
-            log.metadata_mut()
-                .value_mut()
-                .insert(path!("vector", "source_type"), AwsS3Config::NAME);
-        }
-        LogNamespace::Legacy => {
-            log.try_set_source_type(Bytes::from_static(AwsS3Config::NAME.as_bytes()));
-        }
-    }
+    log.metadata_mut()
+        .value_mut()
+        .insert(path!("vector", "source_type"), AwsS3Config::NAME);
 
     // This handles the transition from the original timestamp logic. Originally the
     // `timestamp_key` was populated by the `last_modified` time on the object, falling
     // back to calling `now()`.
-    match log_namespace {
-        LogNamespace::Vector => {
-            if let Some(timestamp) = timestamp {
-                log.insert(metadata_path!(AwsS3Config::NAME, "timestamp"), timestamp);
-            }
+    if let Some(timestamp) = timestamp {
+        log.insert(metadata_path!(AwsS3Config::NAME, "timestamp"), timestamp);
+    }
 
-            log.insert(metadata_path!("vector", "ingest_timestamp"), Utc::now());
-        }
-        LogNamespace::Legacy => {
-            log.try_set_timestamp(timestamp.unwrap_or_else(Utc::now));
-        }
-    };
+    log.insert(metadata_path!("vector", "ingest_timestamp"), Utc::now());
 }
 
 // https://docs.aws.amazon.com/sns/latest/dg/sns-sqs-as-subscriber.html

@@ -34,10 +34,7 @@ use vector_lib::{
     source_sender::SendError,
     tls::MaybeTlsIncomingStream,
 };
-use vrl::{
-    path::OwnedTargetPath,
-    value::{Kind, kind::Collection},
-};
+use vrl::value::{Kind, kind::Collection};
 use warp::{
     Filter, Reply,
     filters::BoxedFilter,
@@ -210,30 +207,23 @@ impl SourceConfig for SplunkConfig {
     }
 
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
-        let log_namespace = global_log_namespace.merge(self.log_namespace);
+        let _log_namespace = global_log_namespace.merge(self.log_namespace);
 
-        let schema_definition = match log_namespace {
-            LogNamespace::Legacy => {
-                let definition = vector_lib::schema::Definition::empty_legacy_namespace()
-                    .with_event_field(
-                        &owned_value_path!("line"),
-                        Kind::object(Collection::empty())
-                            .or_array(Collection::empty())
-                            .or_undefined(),
-                        None,
-                    );
+        let schema_definition = {
+            let definition = vector_lib::schema::Definition::empty_legacy_namespace()
+                .with_event_field(
+                    &owned_value_path!("line"),
+                    Kind::object(Collection::empty())
+                        .or_array(Collection::empty())
+                        .or_undefined(),
+                    None,
+                );
 
-                definition.with_event_field(
-                    &owned_value_path!("body"),
-                    Kind::bytes().or_undefined(),
-                    Some(meaning::MESSAGE),
-                )
-            }
-            LogNamespace::Vector => vector_lib::schema::Definition::new_with_default_metadata(
-                Kind::bytes().or_object(Collection::empty()),
-                [log_namespace],
+            definition.with_event_field(
+                &owned_value_path!("body"),
+                Kind::bytes().or_undefined(),
+                Some(meaning::MESSAGE),
             )
-            .with_meaning(OwnedTargetPath::event_root(), meaning::MESSAGE),
         }
         .with_standard_vector_source_metadata()
         .with_source_metadata(
@@ -734,21 +724,11 @@ impl<'de, R: JsonRead<'de>> From<EventIteratorGenerator<'de, R>> for EventIterat
 impl<'de, R: JsonRead<'de>> EventIterator<'de, R> {
     fn build_event(&mut self, mut json: JsonValue) -> Result<Event, Rejection> {
         // Construct Event from parsed json event
-        let mut log: OtelLog = match self.log_namespace {
-            LogNamespace::Vector => self.build_log_vector(&mut json)?,
-            LogNamespace::Legacy => self.build_log_legacy(&mut json)?,
-        };
+        let mut log: OtelLog = self.build_log_vector(&mut json)?;
 
-        match self.log_namespace {
-            LogNamespace::Vector => {
-                log.metadata_mut()
-                    .value_mut()
-                    .insert(lookup::path!("vector", "source_type"), SplunkConfig::NAME);
-            }
-            LogNamespace::Legacy => {
-                log.try_set_source_type(SplunkConfig::NAME);
-            }
-        }
+        log.metadata_mut()
+            .value_mut()
+            .insert(lookup::path!("vector", "source_type"), SplunkConfig::NAME);
 
         // Process channel field
         let channel_path = owned_value_path!(CHANNEL);
@@ -820,16 +800,9 @@ impl<'de, R: JsonRead<'de>> EventIterator<'de, R> {
             Time::Now(time) => time,
         };
 
-        match self.log_namespace {
-            LogNamespace::Vector => {
-                log.metadata_mut()
-                    .value_mut()
-                    .insert(lookup::path!(SplunkConfig::NAME, "timestamp"), timestamp);
-            }
-            LogNamespace::Legacy => {
-                log.set_timestamp(timestamp);
-            }
-        }
+        log.metadata_mut()
+            .value_mut()
+            .insert(lookup::path!(SplunkConfig::NAME, "timestamp"), timestamp);
 
         // Extract default extracted fields
         for de in self.extractors.iter_mut() {
@@ -863,16 +836,9 @@ impl<'de, R: JsonRead<'de>> EventIterator<'de, R> {
                 self.events_received
                     .emit(CountByteSize(1, log.estimated_json_encoded_size_of()));
 
-                match self.log_namespace {
-                    LogNamespace::Vector => {
-                        log.metadata_mut()
-                            .value_mut()
-                            .insert(lookup::path!("vector", "ingest_timestamp"), chrono::Utc::now());
-                    }
-                    LogNamespace::Legacy => {
-                        log.try_set_timestamp(chrono::Utc::now());
-                    }
-                }
+                log.metadata_mut()
+                    .value_mut()
+                    .insert(lookup::path!("vector", "ingest_timestamp"), chrono::Utc::now());
 
                 Ok(log)
             }
@@ -880,74 +846,6 @@ impl<'de, R: JsonRead<'de>> EventIterator<'de, R> {
         }
     }
 
-    /// Build the log event for the legacy namespace.
-    /// If the event is a string, or the event contains a field called `line` that is a string
-    /// (the docker splunk logger places the message in the event.line field) that string
-    /// is placed in the message field.
-    fn build_log_legacy(&mut self, json: &mut JsonValue) -> Result<OtelLog, Rejection> {
-        let mut log = OtelLog::new(Default::default());
-        match json.get_mut("event") {
-            Some(event) => match event.take() {
-                JsonValue::String(string) => {
-                    if string.is_empty() {
-                        return Err(ApiError::EmptyEventField { event: self.events }.into());
-                    }
-                    log.insert(&OwnedTargetPath::event(owned_value_path!("body")), string);
-                }
-                JsonValue::Object(mut object) => {
-                    if object.is_empty() {
-                        return Err(ApiError::EmptyEventField { event: self.events }.into());
-                    }
-
-                    // Batch all field insertions into a single legacy-layout
-                    // round-trip to avoid O(N²) cost for large event objects.
-                    let message_key_path = Some(owned_value_path!("body"));
-                    log.modify_as_value(|v| {
-                        // Invariant: OtelLog::new(Default::default()) always
-                        // produces Value::Object via to_value_canonical.
-                        // If this ever becomes a scalar (e.g., upstream
-                        // deserialization change), fail loudly in tests
-                        // rather than silently drop all field insertions.
-                        debug_assert!(
-                            matches!(v, Value::Object(_)),
-                            "splunk_hec: OtelLog legacy layout must be Value::Object"
-                        );
-                        let Some(map) = v.as_object_mut() else {
-                            return;
-                        };
-                        // Add 'line' value as 'event::schema().message_key'
-                        if let Some(line) = object.remove("line") {
-                            match line {
-                                // Arrays/objects don't fit message_key — store at top-level "line"
-                                JsonValue::Array(_) | JsonValue::Object(_) => {
-                                    map.insert("line".into(), Value::from(line));
-                                }
-                                _ => {
-                                    if let Some(ref key_path) = message_key_path {
-                                        let key: vrl::prelude::KeyString =
-                                            key_path.to_string().into();
-                                        map.insert(key, Value::from(line));
-                                    }
-                                }
-                            }
-                        }
-
-                        for (key, value) in object {
-                            map.insert(key.into(), Value::from(value));
-                        }
-                    });
-                }
-                _ => return Err(ApiError::InvalidDataFormat { event: self.events }.into()),
-            },
-            None => return Err(ApiError::MissingEventField { event: self.events }.into()),
-        };
-
-        // EstimatedJsonSizeOf must be calculated before enrichment
-        self.events_received
-            .emit(CountByteSize(1, log.estimated_json_encoded_size_of()));
-
-        Ok(log)
-    }
 }
 
 impl<'de, R: JsonRead<'de>> Iterator for EventIterator<'de, R> {
@@ -1105,14 +1003,7 @@ fn raw_event(
     };
 
     // Construct event
-    let mut log = match log_namespace {
-        LogNamespace::Vector => OtelLog::from_value_map(message, EventMetadata::default()),
-        LogNamespace::Legacy => {
-            let mut log = OtelLog::new(Default::default());
-            log.insert(&OwnedTargetPath::event(owned_value_path!("body")), message);
-            log
-        }
-    };
+    let mut log = OtelLog::from_value_map(message, EventMetadata::default());
     // We need to calculate the estimated json size of the event BEFORE enrichment.
     events_received.emit(CountByteSize(1, log.estimated_json_encoded_size_of()));
 
@@ -1135,16 +1026,9 @@ fn raw_event(
     };
 
     if let Some(host) = host {
-        match log_namespace {
-            LogNamespace::Vector => {
-                log.metadata_mut()
-                    .value_mut()
-                    .insert(lookup::path!(SplunkConfig::NAME, "host"), host);
-            }
-            LogNamespace::Legacy => {
-                log.try_set_host(host);
-            }
-        }
+        log.metadata_mut()
+            .value_mut()
+            .insert(lookup::path!(SplunkConfig::NAME, "host"), host);
     }
 
     log_namespace.insert_standard_vector_source_metadata(&mut log, SplunkConfig::NAME, Utc::now());
@@ -1345,7 +1229,7 @@ mod tests {
         schema::Definition,
         sensitive_string::SensitiveString,
     };
-    use vrl::event_path;
+    use vrl::{event_path, path::OwnedTargetPath};
 
     use super::*;
     use crate::{
@@ -2714,13 +2598,13 @@ mod tests {
     fn output_schema_definition_legacy_namespace() {
         let config = SplunkConfig::default();
         let definitions = config
-            .outputs(LogNamespace::Legacy)
+            .outputs(LogNamespace::Vector)
             .remove(0)
             .schema_definition(true);
 
         let expected_definition = Definition::new_with_default_metadata(
             Kind::object(Collection::empty()),
-            [LogNamespace::Legacy],
+            [LogNamespace::Vector],
         )
         .with_event_field(&owned_value_path!("host"), Kind::bytes(), Some("host"))
         .with_event_field(

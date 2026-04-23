@@ -17,7 +17,7 @@ use vector_common::{
     json_size::JsonSize,
     request_metadata::GetEventCountTags,
 };
-use vrl::value::{ObjectMap, Value};
+use vrl::value::{KeyString, ObjectMap, Value};
 
 use super::{
     BatchNotifier, EstimatedJsonEncodedSizeOf, EventFinalizer, EventMetadata,
@@ -56,6 +56,27 @@ pub fn json_to_any_value(value: serde_json::Value) -> AnyValue {
         }
     };
     AnyValue { value: kind }
+}
+
+fn json_to_vrl_value(value: serde_json::Value) -> Value {
+    match value {
+        serde_json::Value::Null => Value::Null,
+        serde_json::Value::Bool(b) => Value::Boolean(b),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Value::Integer(i)
+            } else {
+                Value::Float(ordered_float::NotNan::new(n.as_f64().unwrap_or(0.0)).unwrap_or_default())
+            }
+        }
+        serde_json::Value::String(s) => Value::Bytes(bytes::Bytes::from(s)),
+        serde_json::Value::Array(arr) => {
+            Value::Array(arr.into_iter().map(json_to_vrl_value).collect())
+        }
+        serde_json::Value::Object(map) => {
+            Value::Object(map.into_iter().map(|(k, v)| (KeyString::from(k), json_to_vrl_value(v))).collect())
+        }
+    }
 }
 
 /// Create a string `AnyValue`.
@@ -463,27 +484,18 @@ impl OtelLog {
         }
     }
 
-    /// Create an `OtelLog` from a JSON value, setting `record.body` to a kvlist
-    /// if the value is an object, or a string/int/float/bool/array otherwise.
+    /// Create an `OtelLog` from a JSON value.
+    /// Objects are routed through `from_value_map` so canonical keys (`body`,
+    /// `time_unix_nano`, `resource`, etc.) are restored to their proto slots.
+    /// Scalars/arrays become the record body directly.
     pub fn from_json_value(value: serde_json::Value) -> Self {
         match value {
             serde_json::Value::Object(map) => {
-                let attributes: Vec<KeyValue> = map
+                let vrl_map: ObjectMap = map
                     .into_iter()
-                    .map(|(k, v)| KeyValue {
-                        key: k,
-                        value: Some(json_to_any_value(v)),
-                    })
+                    .map(|(k, v)| (KeyString::from(k), json_to_vrl_value(v)))
                     .collect();
-                Self {
-                    record: LogRecord {
-                        attributes,
-                        ..Default::default()
-                    },
-                    resource: None,
-                    scope: None,
-                    metadata: EventMetadata::default(),
-                }
+                Self::from_value_map(Value::Object(vrl_map), EventMetadata::default())
             }
             other => {
                 let body = json_to_any_value(other);
@@ -1418,8 +1430,7 @@ impl OtelLog {
     /// ```
     ///
     /// All mutations happen on a single owned `Value` tree, with a
-    /// single round-trip on entry and exit. See `LEGACY_REMOVAL_PLAN.md`
-    /// — "Performance findings" for details.
+    /// single round-trip on entry and exit.
     pub fn modify_as_value<F, R>(&mut self, f: F) -> R
     where
         F: FnOnce(&mut Value) -> R,
@@ -1738,13 +1749,8 @@ impl OtelLog {
         Ok(self.get(&target_path))
     }
 
-    /// Get the LogNamespace from metadata.
     pub fn namespace(&self) -> crate::config::LogNamespace {
-        if self.metadata.value().get(lookup::path!("vector")).is_some() {
-            crate::config::LogNamespace::Vector
-        } else {
-            crate::config::LogNamespace::Legacy
-        }
+        crate::config::LogNamespace::Vector
     }
 
     /// Iterate all event fields (flattened, dotted keys). Owned values.
@@ -3256,23 +3262,22 @@ impl OtelMetric {
 
     pub fn set_data_point_attribute(&mut self, key: String, value: AnyValue) {
         use opentelemetry_proto::tonic::metrics::v1::metric::Data as MetricData;
-        let attr = KeyValue { key, value: Some(value) };
         if let Some(data) = self.metric.data.as_mut() {
             match data {
                 MetricData::Sum(s) => {
-                    for dp in &mut s.data_points { dp.attributes.push(attr.clone()); }
+                    for dp in &mut s.data_points { set_attribute(&mut dp.attributes, key.clone(), value.clone()); }
                 }
                 MetricData::Gauge(g) => {
-                    for dp in &mut g.data_points { dp.attributes.push(attr.clone()); }
+                    for dp in &mut g.data_points { set_attribute(&mut dp.attributes, key.clone(), value.clone()); }
                 }
                 MetricData::Histogram(h) => {
-                    for dp in &mut h.data_points { dp.attributes.push(attr.clone()); }
+                    for dp in &mut h.data_points { set_attribute(&mut dp.attributes, key.clone(), value.clone()); }
                 }
                 MetricData::Summary(s) => {
-                    for dp in &mut s.data_points { dp.attributes.push(attr.clone()); }
+                    for dp in &mut s.data_points { set_attribute(&mut dp.attributes, key.clone(), value.clone()); }
                 }
                 MetricData::ExponentialHistogram(e) => {
-                    for dp in &mut e.data_points { dp.attributes.push(attr.clone()); }
+                    for dp in &mut e.data_points { set_attribute(&mut dp.attributes, key.clone(), value.clone()); }
                 }
             }
         }
@@ -3573,7 +3578,7 @@ impl OtelMetric {
         Option<chrono::DateTime<chrono::Utc>>,
         Option<Vec<KeyValue>>,
     ) {
-        use chrono::{TimeZone, Utc};
+        use chrono::Utc;
         use opentelemetry_proto::tonic::metrics::v1::{
             metric, number_data_point::Value as NDPValue, AggregationTemporality,
         };
@@ -3581,7 +3586,13 @@ impl OtelMetric {
         use super::metric::{Bucket, Quantile};
 
         let nanos_to_ts = |nanos: u64| -> Option<chrono::DateTime<Utc>> {
-            if nanos == 0 { None } else { Some(Utc.timestamp_nanos(nanos as i64)) }
+            if nanos == 0 {
+                None
+            } else {
+                let secs = (nanos / 1_000_000_000) as i64;
+                let nsecs = (nanos % 1_000_000_000) as u32;
+                chrono::DateTime::from_timestamp(secs, nsecs)
+            }
         };
 
         match self.metric.data.as_ref() {
@@ -3861,8 +3872,10 @@ macro_rules! impl_otel_event_traits {
 
         impl EstimatedJsonEncodedSizeOf for $ty {
             fn estimated_json_encoded_size_of(&self) -> JsonSize {
-                // Approximate: proto encoded_len * 2 (JSON overhead for field names + quoting)
-                JsonSize::new(self.$proto_field.encoded_len() * 2)
+                // Approximate: proto encoded_len * 3 accounts for JSON overhead
+                // (field names, quoting, braces). For OtelLog/OtelSpan this should
+                // closely match `to_value_canonical().estimated_json_encoded_size_of()`.
+                JsonSize::new(self.$proto_field.encoded_len() * 3)
             }
         }
 

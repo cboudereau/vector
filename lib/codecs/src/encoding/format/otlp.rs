@@ -304,16 +304,17 @@ mod tests {
     #[test]
     fn encodes_otel_metric_event() {
         use opentelemetry_proto::tonic::metrics::v1::{
-            Gauge, NumberDataPoint, Metric as OtelMetric,
-            metric::Data as OtelMetricData,
+            Gauge, NumberDataPoint,
+            metric::Data as MetricData,
             number_data_point::Value as NdpValue,
         };
 
-        let metric = OtelMetric {
+        let proto_metric = opentelemetry_proto::tonic::metrics::v1::Metric {
             name: "cpu.usage".into(),
             description: "CPU usage".into(),
             unit: "1".into(),
-            data: Some(OtelMetricData::Gauge(Gauge {
+            metadata: vec![],
+            data: Some(MetricData::Gauge(Gauge {
                 data_points: vec![NumberDataPoint {
                     value: Some(NdpValue::AsDouble(0.85)),
                     ..Default::default()
@@ -321,7 +322,7 @@ mod tests {
             })),
         };
         let event = Event::Metric(OtelMetric::from_parts(
-            metric,
+            proto_metric,
             None,
             None,
             EventMetadata::default(),

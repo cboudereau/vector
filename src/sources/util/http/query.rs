@@ -100,7 +100,7 @@ mod tests {
             &mut events,
             &query_params_names,
             &query_params,
-            LogNamespace::Legacy,
+            LogNamespace::Vector,
             "test",
         );
 
@@ -125,7 +125,7 @@ mod tests {
             &mut events,
             &query_params_names,
             &query_params,
-            LogNamespace::Legacy,
+            LogNamespace::Vector,
             "test",
         );
 

@@ -345,7 +345,7 @@ mod tests {
 
             ValidationConfiguration::from_sink(
                 Self::NAME,
-                LogNamespace::Legacy,
+                LogNamespace::Vector,
                 vec![ComponentTestCaseConfig::from_sink(
                     config,
                     None,

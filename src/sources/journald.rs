@@ -37,10 +37,7 @@ use vector_lib::{
     lookup::{owned_value_path, path},
     schema::Definition,
 };
-use vrl::{
-    event_path,
-    value::{Kind, Value, kind::Collection},
-};
+use vrl::value::{Kind, Value, kind::Collection};
 
 use crate::{
     SourceSender,
@@ -263,16 +260,10 @@ impl JournaldConfig {
 
     /// Builds the `schema::Definition` for this source using the provided `LogNamespace`.
     fn schema_definition(&self, log_namespace: LogNamespace) -> Definition {
-        let schema_definition = match log_namespace {
-            LogNamespace::Vector => Definition::new_with_default_metadata(
-                Kind::bytes().or_null(),
-                [LogNamespace::Vector],
-            ),
-            LogNamespace::Legacy => Definition::new_with_default_metadata(
-                Kind::object(Collection::empty()),
-                [LogNamespace::Legacy],
-            ),
-        };
+        let schema_definition = Definition::new_with_default_metadata(
+            Kind::bytes().or_null(),
+            [LogNamespace::Vector],
+        );
 
         let mut schema_definition = schema_definition
             .with_standard_vector_source_metadata()
@@ -300,7 +291,7 @@ impl JournaldConfig {
             );
 
         // for metadata that is added to the events dynamically through the Record
-        if log_namespace == LogNamespace::Legacy {
+        if log_namespace == LogNamespace::Vector {
             schema_definition = schema_definition.unknown_fields(Kind::bytes());
         }
 
@@ -841,43 +832,29 @@ async fn get_systemd_version_from_journalctl(journalctl_path: &PathBuf) -> crate
         })?)
 }
 
-fn enrich_log_event(log: &mut OtelLog, log_namespace: LogNamespace) {
-    match log_namespace {
-        LogNamespace::Vector => {
-            let host = log
-                .metadata()
-                .value()
-                .get(path!(JournaldConfig::NAME, "metadata"))
-                .and_then(|meta| meta.get(HOSTNAME))
-                .cloned();
-            if let Some(host) = host {
-                log.metadata_mut()
-                    .value_mut()
-                    .insert(path!(JournaldConfig::NAME, "host"), host);
-            }
-        }
-        LogNamespace::Legacy => {
-            if let Some(host) = log.remove(event_path!(HOSTNAME)) {
-                log.set_host(host);
-            }
-        }
+fn enrich_log_event(log: &mut OtelLog, _log_namespace: LogNamespace) {
+    let host = log
+        .metadata()
+        .value()
+        .get(path!(JournaldConfig::NAME, "metadata"))
+        .and_then(|meta| meta.get(HOSTNAME))
+        .cloned();
+    if let Some(host) = host {
+        log.metadata_mut()
+            .value_mut()
+            .insert(path!(JournaldConfig::NAME, "host"), host);
     }
 
     // Create a Utc timestamp from an existing log field if present.
-    let timestamp_value: Option<Value> = match log_namespace {
-        LogNamespace::Vector => log
-            .metadata()
-            .value()
-            .get(path!(JournaldConfig::NAME, "metadata"))
-            .and_then(|meta| {
-                meta.get(SOURCE_TIMESTAMP)
-                    .or_else(|| meta.get(RECEIVED_TIMESTAMP))
-            })
-            .cloned(),
-        LogNamespace::Legacy => log
-            .get(event_path!(SOURCE_TIMESTAMP))
-            .or_else(|| log.get(event_path!(RECEIVED_TIMESTAMP))),
-    };
+    let timestamp_value: Option<Value> = log
+        .metadata()
+        .value()
+        .get(path!(JournaldConfig::NAME, "metadata"))
+        .and_then(|meta| {
+            meta.get(SOURCE_TIMESTAMP)
+                .or_else(|| meta.get(RECEIVED_TIMESTAMP))
+        })
+        .cloned();
 
     let timestamp = timestamp_value
         .as_ref()
@@ -891,82 +868,45 @@ fn enrich_log_event(log: &mut OtelLog, log_namespace: LogNamespace) {
         });
 
     // Add timestamp.
-    match log_namespace {
-        LogNamespace::Vector => {
-            log.metadata_mut()
-                .value_mut()
-                .insert(path!("vector", "ingest_timestamp"), Utc::now());
+    log.metadata_mut()
+        .value_mut()
+        .insert(path!("vector", "ingest_timestamp"), Utc::now());
 
-            if let Some(ts) = timestamp {
-                log.metadata_mut()
-                    .value_mut()
-                    .insert(path!(JournaldConfig::NAME, "timestamp"), ts);
-            }
-        }
-        LogNamespace::Legacy => {
-            if let Some(ts) = timestamp {
-                log.set_timestamp(ts);
-            }
-        }
+    if let Some(ts) = timestamp {
+        log.metadata_mut()
+            .value_mut()
+            .insert(path!(JournaldConfig::NAME, "timestamp"), ts);
     }
 
-    match log_namespace {
-        LogNamespace::Vector => {
-            log.metadata_mut()
-                .value_mut()
-                .insert(path!("vector", "source_type"), JournaldConfig::NAME);
-        }
-        LogNamespace::Legacy => {
-            log.try_set_source_type(JournaldConfig::NAME);
-        }
-    }
+    log.metadata_mut()
+        .value_mut()
+        .insert(path!("vector", "source_type"), JournaldConfig::NAME);
 }
 
 fn create_log_event_from_record(
     mut record: Record,
     batch: &Option<BatchNotifier>,
-    log_namespace: LogNamespace,
+    _log_namespace: LogNamespace,
 ) -> OtelLog {
-    match log_namespace {
-        LogNamespace::Vector => {
-            let message_value = record
-                .remove(MESSAGE)
-                .map(|msg| Value::Bytes(Bytes::from(msg)))
-                .unwrap_or(Value::Null);
+    let message_value = record
+        .remove(MESSAGE)
+        .map(|msg| Value::Bytes(Bytes::from(msg)))
+        .unwrap_or(Value::Null);
 
-            let mut log = OtelLog::from_value_map(
-                message_value,
-                crate::event::EventMetadata::default(),
-            )
-            .with_batch_notifier_option(batch);
+    let mut log = OtelLog::from_value_map(
+        message_value,
+        crate::event::EventMetadata::default(),
+    )
+    .with_batch_notifier_option(batch);
 
-            // Add the remaining fields from the Record to the log event into an object to avoid collisions.
-            record.iter().for_each(|(key, value)| {
-                log.metadata_mut()
-                    .value_mut()
-                    .insert(path!(JournaldConfig::NAME, "metadata", key), value.as_str());
-            });
+    // Add the remaining fields from the Record to the log event into an object to avoid collisions.
+    record.iter().for_each(|(key, value)| {
+        log.metadata_mut()
+            .value_mut()
+            .insert(path!(JournaldConfig::NAME, "metadata", key), value.as_str());
+    });
 
-            log
-        }
-        LogNamespace::Legacy => {
-            let fields: vrl::value::ObjectMap = record
-                .into_iter()
-                .map(|(k, v)| (k.into(), Value::Bytes(Bytes::from(v))))
-                .collect();
-            let mut log = OtelLog::from_value_map(
-                Value::Object(fields),
-                crate::event::EventMetadata::default(),
-            )
-            .with_batch_notifier_option(batch);
-
-            if let Some(message) = log.remove(event_path!(MESSAGE)) {
-                log.insert(event_path!("body"), message);
-            }
-
-            log
-        }
-    }
+    log
 }
 
 /// Map the given unit name into a valid systemd unit
@@ -1785,13 +1725,13 @@ mod tests {
         let config = JournaldConfig::default();
 
         let definitions = config
-            .outputs(LogNamespace::Legacy)
+            .outputs(LogNamespace::Vector)
             .remove(0)
             .schema_definition(true);
 
         let expected_definition = Definition::new_with_default_metadata(
             Kind::object(Collection::empty()),
-            [LogNamespace::Legacy],
+            [LogNamespace::Vector],
         )
         .with_event_field(&owned_value_path!("resource", "source_type"), Kind::bytes(), None)
         .with_event_field(&owned_value_path!("time_unix_nano"), Kind::integer(), None)
@@ -1874,6 +1814,6 @@ mod tests {
     fn matches_schema_legacy() {
         let config = JournaldConfig::default();
 
-        matches_schema(&config, LogNamespace::Legacy)
+        matches_schema(&config, LogNamespace::Vector)
     }
 }

@@ -15,7 +15,7 @@ use vector_lib::{
 };
 use vrl::{
     path::OwnedValuePath,
-    value::{Kind, kind::Collection},
+    value::Kind,
 };
 
 use super::util::framestream::{
@@ -113,36 +113,15 @@ impl DnstapConfig {
         self.raw_data_only.unwrap_or(false)
     }
 
-    pub fn schema_definition(&self, log_namespace: LogNamespace) -> vector_lib::schema::Definition {
+    pub fn schema_definition(&self, _log_namespace: LogNamespace) -> vector_lib::schema::Definition {
         let event_schema = DnstapEventSchema;
 
-        match self.log_namespace() {
-            LogNamespace::Legacy => {
-                let schema = vector_lib::schema::Definition::empty_legacy_namespace();
+        let schema = vector_lib::schema::Definition::empty_legacy_namespace();
 
-                if self.raw_data_only() {
-                    return schema.with_event_field(&owned_value_path!("body"), Kind::bytes(), Some("message"));
-                }
-                event_schema.schema_definition(schema)
-            }
-            LogNamespace::Vector => {
-                let schema = vector_lib::schema::Definition::new_with_default_metadata(
-                    Kind::object(Collection::empty()),
-                    [log_namespace],
-                )
-                .with_standard_vector_source_metadata();
-
-                if self.raw_data_only() {
-                    schema.with_event_field(
-                        &owned_value_path!("body"),
-                        Kind::bytes(),
-                        Some("message"),
-                    )
-                } else {
-                    event_schema.schema_definition(schema)
-                }
-            }
+        if self.raw_data_only() {
+            return schema.with_event_field(&owned_value_path!("body"), Kind::bytes(), Some("message"));
         }
+        event_schema.schema_definition(schema)
     }
 }
 
@@ -529,12 +508,12 @@ mod integration_tests {
                 events
                     .iter()
                     .any(|v| v.as_log().get("messageType")
-                        == Some(&Value::Bytes("ClientQuery".into()))),
+                        == Some(Value::Bytes("ClientQuery".into()))),
                 "No ClientQuery event!"
             );
             assert!(
                 events.iter().any(|v| v.as_log().get("messageType")
-                    == Some(&Value::Bytes("ClientResponse".into()))),
+                    == Some(Value::Bytes("ClientResponse".into()))),
                 "No ClientResponse event!"
             );
         } else if query_event == "update" {
@@ -543,26 +522,26 @@ mod integration_tests {
                 events
                     .iter()
                     .any(|v| v.as_log().get("messageType")
-                        == Some(&Value::Bytes("UpdateQuery".into()))),
+                        == Some(Value::Bytes("UpdateQuery".into()))),
                 "No UpdateQuery event!"
             );
             assert!(
                 events.iter().any(|v| v.as_log().get("messageType")
-                    == Some(&Value::Bytes("UpdateResponse".into()))),
+                    == Some(Value::Bytes("UpdateResponse".into()))),
                 "No UpdateResponse event!"
             );
             assert!(
                 events
                     .iter()
                     .any(|v| v.as_log().get("messageType")
-                        == Some(&Value::Bytes("AuthQuery".into()))),
+                        == Some(Value::Bytes("AuthQuery".into()))),
                 "No UpdateQuery event!"
             );
             assert!(
                 events
                     .iter()
                     .any(|v| v.as_log().get("messageType")
-                        == Some(&Value::Bytes("AuthResponse".into()))),
+                        == Some(Value::Bytes("AuthResponse".into()))),
                 "No UpdateResponse event!"
             );
         }

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{Connection, FromRow, PgConnection};
 use vector_lib::event::{
     BatchNotifier, BatchStatus, BatchStatusReceiver, Event, OtelLog, MetricKind,
-    MetricValue, OtelMetric,
+    OtelMetric,
 };
 use vrl::event_path;
 
@@ -38,7 +38,7 @@ fn create_event(id: i64) -> Event {
     let mut event = OtelLog::from("raw log line");
     event.insert("id", id);
     event.insert("host", "example.com");
-    let event_payload = event.clone().into_parts().0;
+    let event_payload = event.clone().to_value_canonical();
     event.insert("payload", event_payload);
     event.insert("timestamp", timestamp());
     event.into()

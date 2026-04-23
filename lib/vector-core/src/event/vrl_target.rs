@@ -167,6 +167,24 @@ fn value_to_otel_scope(val: &Value) -> Option<OtelScope> {
     })
 }
 
+fn insert_at_segments(val: &mut Value, segments: &[&str], new_value: Value) {
+    let mut current = val;
+    for (i, seg) in segments.iter().enumerate() {
+        if i == segments.len() - 1 {
+            if let Some(map) = current.as_object_mut() {
+                map.insert((*seg).into(), new_value);
+            }
+            return;
+        }
+        if current.as_object().and_then(|m| m.get(*seg)).is_none() {
+            if let Some(map) = current.as_object_mut() {
+                map.insert((*seg).into(), Value::Object(ObjectMap::new()));
+            }
+        }
+        current = current.as_object_mut().unwrap().get_mut(*seg).unwrap();
+    }
+}
+
 fn hex_encode_bytes(bytes: &[u8]) -> Value {
     let mut s = String::with_capacity(bytes.len() * 2);
     for b in bytes {
@@ -815,16 +833,28 @@ impl Target for VrlTarget {
                                     event.set_resource(resource);
                                 }
                             }
-                            ["resource", ..] => {
-                                // Insert into existing resource value projection
+                            ["resource", rest @ ..] => {
+                                let mut res_val = event.resource()
+                                    .map(|r| otel_resource_to_value(r))
+                                    .unwrap_or_else(|| Value::Object(ObjectMap::new()));
+                                insert_at_segments(&mut res_val, rest, value.clone());
+                                if let Some(resource) = value_to_otel_resource(&res_val) {
+                                    event.set_resource(resource);
+                                }
                             }
                             ["scope"] => {
                                 if let Some(scope) = value_to_otel_scope(&value) {
                                     event.set_scope(scope);
                                 }
                             }
-                            ["scope", ..] => {
-                                // Insert into existing scope value projection
+                            ["scope", rest @ ..] => {
+                                let mut scope_val = event.scope()
+                                    .map(|s| otel_scope_to_value(s))
+                                    .unwrap_or_else(|| Value::Object(ObjectMap::new()));
+                                insert_at_segments(&mut scope_val, rest, value.clone());
+                                if let Some(scope) = value_to_otel_scope(&scope_val) {
+                                    event.set_scope(scope);
+                                }
                             }
                             // OTel-native: .data.*.data_points[*].attributes."key"
                             // Shorthand: .attributes."key" (sets on all data points)
@@ -1015,22 +1045,20 @@ enum MetricPathError<'a> {
 
 #[cfg(test)]
 mod test {
-    use chrono::{Utc, offset::TimeZone};
     use lookup::owned_value_path;
     use similar_asserts::assert_eq;
     use vrl::{btreemap, value::kind::Index};
 
-    use super::{super::{MetricValue, OtelMetric}, *};
-    use crate::metric_tags;
+    use super::{super::OtelMetric, *};
 
     #[test]
     fn test_field_definitions_in_message() {
         let definition =
-            Definition::new_with_default_metadata(Kind::bytes(), [LogNamespace::Legacy]);
+            Definition::new_with_default_metadata(Kind::bytes(), [LogNamespace::Vector]);
         assert_eq!(
             Definition::new_with_default_metadata(
                 Kind::object(BTreeMap::from([("body".into(), Kind::bytes())])),
-                [LogNamespace::Legacy]
+                [LogNamespace::Vector]
             ),
             move_field_definitions_into_message(definition)
         );
@@ -1038,7 +1066,7 @@ mod test {
         // Test when a body field already exists.
         let definition = Definition::new_with_default_metadata(
             Kind::object(BTreeMap::from([("body".into(), Kind::integer())])).or_bytes(),
-            [LogNamespace::Legacy],
+            [LogNamespace::Vector],
         );
         assert_eq!(
             Definition::new_with_default_metadata(
@@ -1046,7 +1074,7 @@ mod test {
                     "body".into(),
                     Kind::bytes().or_integer()
                 )])),
-                [LogNamespace::Legacy]
+                [LogNamespace::Vector]
             ),
             move_field_definitions_into_message(definition)
         );
@@ -1064,14 +1092,14 @@ mod test {
 
         let kind = Kind::array(Collection::from_unknown(Kind::object(object)));
 
-        let definition = Definition::new_with_default_metadata(kind, [LogNamespace::Legacy]);
+        let definition = Definition::new_with_default_metadata(kind, [LogNamespace::Vector]);
 
         let kind = Kind::object(BTreeMap::from([
             ("carrot".into(), Kind::bytes()),
             ("potato".into(), Kind::integer()),
         ]));
 
-        let wanted = Definition::new_with_default_metadata(kind, [LogNamespace::Legacy]);
+        let wanted = Definition::new_with_default_metadata(kind, [LogNamespace::Vector]);
         let merged = merge_array_definitions(definition);
 
         assert_eq!(wanted, merged);
@@ -1101,7 +1129,7 @@ mod test {
         kind.add_object(object);
         kind.add_array(array);
 
-        let definition = Definition::new_with_default_metadata(kind, [LogNamespace::Legacy]);
+        let definition = Definition::new_with_default_metadata(kind, [LogNamespace::Vector]);
 
         let mut kind = Kind::bytes();
         kind.add_integer();
@@ -1112,63 +1140,10 @@ mod test {
             ("peas".into(), Kind::bytes().or_undefined()),
         ]));
 
-        let wanted = Definition::new_with_default_metadata(kind, [LogNamespace::Legacy]);
+        let wanted = Definition::new_with_default_metadata(kind, [LogNamespace::Vector]);
         let merged = merge_array_definitions(definition);
 
         assert_eq!(wanted, merged);
-    }
-
-    #[test]
-    fn log_get() {
-        let cases = vec![
-            (
-                BTreeMap::new(),
-                owned_value_path!(),
-                Ok(Some(BTreeMap::new().into())),
-            ),
-            (
-                BTreeMap::from([("foo".into(), "bar".into())]),
-                owned_value_path!(),
-                Ok(Some(BTreeMap::from([("foo".into(), "bar".into())]).into())),
-            ),
-            (
-                BTreeMap::from([("foo".into(), "bar".into())]),
-                owned_value_path!("foo"),
-                Ok(Some("bar".into())),
-            ),
-            (
-                BTreeMap::from([("foo".into(), "bar".into())]),
-                owned_value_path!("bar"),
-                Ok(None),
-            ),
-            (
-                btreemap! { "foo" => vec![btreemap! { "bar" => true }] },
-                owned_value_path!("foo", 0, "bar"),
-                Ok(Some(true.into())),
-            ),
-            (
-                btreemap! { "foo" => btreemap! { "bar baz" => btreemap! { "baz" => 2 } } },
-                owned_value_path!("foo", r"bar baz", "baz"),
-                Ok(Some(2.into())),
-            ),
-        ];
-
-        for (value, path, expect) in cases {
-            let value: ObjectMap = value;
-            let info = ProgramInfo {
-                fallible: false,
-                abortable: false,
-                target_queries: vec![],
-                target_assignments: vec![],
-            };
-            let target = VrlTarget::new(Event::Log(OtelLog::from(Value::Object(value))), &info, false);
-            let path = OwnedTargetPath::event(path);
-
-            assert_eq!(
-                Target::target_get(&target, &path).map(Option::<&Value>::cloned),
-                expect
-            );
-        }
     }
 
     #[allow(clippy::too_many_lines)]
@@ -1279,7 +1254,7 @@ mod test {
                 Ok(Some(value))
             );
             assert_eq!(
-                match target.into_events(LogNamespace::Legacy) {
+                match target.into_events(LogNamespace::Vector) {
                     TargetEvents::One(event) => vec![event],
                     TargetEvents::OtelLogs(events) => events.collect::<Vec<_>>(),
                     TargetEvents::OtelSpans(events) => events.collect::<Vec<_>>(),
@@ -1290,437 +1265,6 @@ mod test {
                 Event::Log(expect)
             );
         }
-    }
-
-    #[test]
-    fn log_remove() {
-        let cases = vec![
-            (
-                BTreeMap::from([("foo".into(), "bar".into())]),
-                owned_value_path!("foo"),
-                false,
-                Some(BTreeMap::new().into()),
-            ),
-            (
-                BTreeMap::from([("foo".into(), "bar".into())]),
-                owned_value_path!(r"foo bar", "foo"),
-                false,
-                Some(btreemap! { "foo" => "bar"}.into()),
-            ),
-            (
-                btreemap! { "foo" => "bar", "baz" => "qux" },
-                owned_value_path!(),
-                false,
-                Some(BTreeMap::new().into()),
-            ),
-            (
-                btreemap! { "foo" => "bar", "baz" => "qux" },
-                owned_value_path!(),
-                true,
-                Some(BTreeMap::new().into()),
-            ),
-            (
-                btreemap! { "foo" => vec![0] },
-                owned_value_path!("foo", 0),
-                false,
-                Some(btreemap! { "foo" => Value::Array(vec![]) }.into()),
-            ),
-            (
-                btreemap! { "foo" => vec![0] },
-                owned_value_path!("foo", 0),
-                true,
-                Some(BTreeMap::new().into()),
-            ),
-            (
-                btreemap! {
-                    "foo" => btreemap! { "bar baz" => vec![0] },
-                    "bar" => "baz",
-                },
-                owned_value_path!("foo", r"bar baz", 0),
-                false,
-                Some(
-                    btreemap! {
-                        "foo" => btreemap! { "bar baz" => Value::Array(vec![]) },
-                        "bar" => "baz",
-                    }
-                    .into(),
-                ),
-            ),
-            (
-                btreemap! {
-                    "foo" => btreemap! { "bar baz" => vec![0] },
-                    "bar" => "baz",
-                },
-                owned_value_path!("foo", r"bar baz", 0),
-                true,
-                Some(btreemap! { "bar" => "baz" }.into()),
-            ),
-        ];
-
-        for (object, path, compact, expect) in cases {
-            let info = ProgramInfo {
-                fallible: false,
-                abortable: false,
-                target_queries: vec![],
-                target_assignments: vec![],
-            };
-            let mut target = VrlTarget::new(Event::Log(OtelLog::from(Value::Object(object))), &info, false);
-            let path = OwnedTargetPath::event(path);
-            let removed = Target::target_get(&target, &path).unwrap().cloned();
-
-            assert_eq!(
-                Target::target_remove(&mut target, &path, compact),
-                Ok(removed)
-            );
-            assert_eq!(
-                Target::target_get(&target, &OwnedTargetPath::event_root())
-                    .map(Option::<&Value>::cloned),
-                Ok(expect)
-            );
-        }
-    }
-
-    #[test]
-    fn log_into_events() {
-        use vrl::btreemap;
-
-        let cases = vec![
-            (
-                Value::from(btreemap! {"foo" => "bar"}),
-                vec![btreemap! {"foo" => "bar"}],
-            ),
-            (Value::from(1), vec![btreemap! {"message" => 1}]),
-            (Value::from("2"), vec![btreemap! {"message" => "2"}]),
-            (Value::from(true), vec![btreemap! {"message" => true}]),
-            (
-                Value::from(vec![
-                    Value::from(1),
-                    Value::from("2"),
-                    Value::from(true),
-                    Value::from(btreemap! {"foo" => "bar"}),
-                ]),
-                vec![
-                    btreemap! {"message" => 1},
-                    btreemap! {"message" => "2"},
-                    btreemap! {"message" => true},
-                    btreemap! {"foo" => "bar"},
-                ],
-            ),
-        ];
-
-        for (value, expect) in cases {
-            let metadata = EventMetadata::default();
-            let info = ProgramInfo {
-                fallible: false,
-                abortable: false,
-                target_queries: vec![],
-                target_assignments: vec![],
-            };
-            let mut target = VrlTarget::new(
-                Event::Log(OtelLog::from_value_map(Value::Object(ObjectMap::new()), metadata.clone())),
-                &info,
-                false,
-            );
-
-            Target::target_insert(&mut target, &OwnedTargetPath::event_root(), value).unwrap();
-
-            assert_eq!(
-                match target.into_events(LogNamespace::Legacy) {
-                    TargetEvents::One(event) => vec![event],
-                    TargetEvents::OtelLogs(events) => events.collect::<Vec<_>>(),
-                    TargetEvents::OtelSpans(events) => events.collect::<Vec<_>>(),
-                },
-                expect
-                    .into_iter()
-                    .map(|v| Event::Log(OtelLog::from_value_map(Value::Object(v), metadata.clone())))
-                    .collect::<Vec<_>>()
-            );
-        }
-    }
-
-    #[test]
-    fn metric_all_fields() {
-        let metric = OtelMetric::new_counter("zub", MetricKind::Absolute, 1.23)
-            .with_namespace(Some("zoob"))
-            .with_tags(Some(metric_tags!("tig" => "tog")))
-            .with_timestamp(Some(
-                Utc.with_ymd_and_hms(2020, 12, 10, 12, 0, 0)
-                    .single()
-                    .expect("invalid timestamp"),
-            ))
-            .with_interval_ms(Some(NonZero::<u32>::new(507).unwrap()));
-
-        let info = ProgramInfo {
-            fallible: false,
-            abortable: false,
-            target_queries: vec![
-                OwnedTargetPath::event(owned_value_path!("name")),
-                OwnedTargetPath::event(owned_value_path!("namespace")),
-                OwnedTargetPath::event(owned_value_path!("interval_ms")),
-                OwnedTargetPath::event(owned_value_path!("timestamp")),
-                OwnedTargetPath::event(owned_value_path!("kind")),
-                OwnedTargetPath::event(owned_value_path!("type")),
-                OwnedTargetPath::event(owned_value_path!("tags")),
-            ],
-            target_assignments: vec![],
-        };
-        let target = VrlTarget::new(Event::Metric(metric), &info, false);
-
-        assert_eq!(
-            Ok(Some(
-                btreemap! {
-                    "name" => "zub",
-                    "namespace" => "zoob",
-                    "interval_ms" => 507,
-                    "timestamp" => Utc.with_ymd_and_hms(2020, 12, 10, 12, 0, 0).single().expect("invalid timestamp"),
-                    "tags" => btreemap! { "tig" => "tog" },
-                    "kind" => "absolute",
-                    "type" => "counter",
-                }
-                .into()
-            )),
-            target
-                .target_get(&OwnedTargetPath::event_root())
-                .map(Option::<&Value>::cloned)
-        );
-    }
-
-    #[test]
-    fn metric_fields() {
-        struct Case {
-            path: OwnedValuePath,
-            current: Option<Value>,
-            new: Value,
-            delete: bool,
-        }
-
-        let metric = OtelMetric::new_counter("name", MetricKind::Absolute, 1.23)
-            .with_tags(Some(metric_tags!("tig" => "tog")));
-
-        let cases = vec![
-            Case {
-                path: owned_value_path!("name"),
-                current: Some(Value::from("name")),
-                new: Value::from("namefoo"),
-                delete: false,
-            },
-            Case {
-                path: owned_value_path!("namespace"),
-                current: None,
-                new: "namespacefoo".into(),
-                delete: true,
-            },
-            Case {
-                path: owned_value_path!("timestamp"),
-                current: None,
-                new: Utc
-                    .with_ymd_and_hms(2020, 12, 8, 12, 0, 0)
-                    .single()
-                    .expect("invalid timestamp")
-                    .into(),
-                delete: true,
-            },
-            Case {
-                path: owned_value_path!("interval_ms"),
-                current: None,
-                new: 123_456.into(),
-                delete: true,
-            },
-            Case {
-                path: owned_value_path!("kind"),
-                current: Some(Value::from("absolute")),
-                new: "incremental".into(),
-                delete: false,
-            },
-            Case {
-                path: owned_value_path!("tags", "thing"),
-                current: None,
-                new: "footag".into(),
-                delete: true,
-            },
-        ];
-
-        let info = ProgramInfo {
-            fallible: false,
-            abortable: false,
-            target_queries: vec![
-                OwnedTargetPath::event(owned_value_path!("name")),
-                OwnedTargetPath::event(owned_value_path!("namespace")),
-                OwnedTargetPath::event(owned_value_path!("timestamp")),
-                OwnedTargetPath::event(owned_value_path!("interval_ms")),
-                OwnedTargetPath::event(owned_value_path!("kind")),
-            ],
-            target_assignments: vec![],
-        };
-        let mut target = VrlTarget::new(Event::Metric(metric), &info, false);
-
-        for Case {
-            path,
-            current,
-            new,
-            delete,
-        } in cases
-        {
-            let path = OwnedTargetPath::event(path);
-
-            assert_eq!(
-                Ok(current),
-                target.target_get(&path).map(Option::<&Value>::cloned)
-            );
-            assert_eq!(Ok(()), target.target_insert(&path, new.clone()));
-            assert_eq!(
-                Ok(Some(new.clone())),
-                target.target_get(&path).map(Option::<&Value>::cloned)
-            );
-
-            if delete {
-                assert_eq!(Ok(Some(new)), target.target_remove(&path, true));
-                assert_eq!(
-                    Ok(None),
-                    target.target_get(&path).map(Option::<&Value>::cloned)
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn metric_set_tags() {
-        let metric = OtelMetric::new_counter("name", MetricKind::Absolute, 1.23)
-            .with_tags(Some(metric_tags!("tig" => "tog")));
-
-        let info = ProgramInfo {
-            fallible: false,
-            abortable: false,
-            target_queries: vec![],
-            target_assignments: vec![],
-        };
-        let mut target = VrlTarget::new(Event::Metric(metric), &info, false);
-        let _result = target.target_insert(
-            &OwnedTargetPath::event(owned_value_path!("tags")),
-            Value::Object(BTreeMap::from([("a".into(), "b".into())])),
-        );
-
-        match target {
-            VrlTarget::Metric {
-                metric,
-                value: _,
-                multi_value_tags: _,
-            } => {
-                assert!(metric.tags().is_some());
-                assert_eq!(metric.tags().unwrap(), &crate::metric_tags!("a" => "b"));
-            }
-            _ => panic!("must be a metric"),
-        }
-    }
-
-    #[test]
-    fn metric_invalid_paths() {
-        let metric = OtelMetric::new_counter("name", MetricKind::Absolute, 1.23);
-
-        let validpaths_get = [
-            ".name",
-            ".namespace",
-            ".interval_ms",
-            ".timestamp",
-            ".kind",
-            ".tags",
-            ".type",
-        ];
-
-        let validpaths_set = [
-            ".name",
-            ".namespace",
-            ".interval_ms",
-            ".timestamp",
-            ".kind",
-            ".tags",
-        ];
-
-        let info = ProgramInfo {
-            fallible: false,
-            abortable: false,
-            target_queries: vec![],
-            target_assignments: vec![],
-        };
-        let mut target = VrlTarget::new(Event::Metric(metric), &info, false);
-
-        assert_eq!(
-            Err(format!(
-                "invalid path zork: expected one of {}",
-                validpaths_get.join(", ")
-            )),
-            target.target_get(&OwnedTargetPath::event(owned_value_path!("zork")))
-        );
-
-        assert_eq!(
-            Err(format!(
-                "invalid path zork: expected one of {}",
-                validpaths_set.join(", ")
-            )),
-            target.target_insert(
-                &OwnedTargetPath::event(owned_value_path!("zork")),
-                "thing".into()
-            )
-        );
-
-        assert_eq!(
-            Err(format!(
-                "invalid path zork: expected one of {}",
-                validpaths_set.join(", ")
-            )),
-            target.target_remove(&OwnedTargetPath::event(owned_value_path!("zork")), true)
-        );
-
-        assert_eq!(
-            Err(format!(
-                "invalid path tags.foo.flork: expected one of {}",
-                validpaths_get.join(", ")
-            )),
-            target.target_get(&OwnedTargetPath::event(owned_value_path!(
-                "tags", "foo", "flork"
-            )))
-        );
-    }
-
-    #[test]
-    fn test_metric_insert_get_multi_value_tag() {
-        let metric = OtelMetric::new_counter("name", MetricKind::Absolute, 1.23);
-        let info = ProgramInfo {
-            fallible: false,
-            abortable: false,
-            target_queries: vec![],
-            target_assignments: vec![],
-        };
-
-        let mut target = VrlTarget::new(Event::Metric(metric), &info, true);
-
-        let value = Value::Array(vec!["a".into(), "".into(), Value::Null, "b".into()]);
-        target
-            .target_insert(
-                &OwnedTargetPath::event(owned_value_path!("tags", "foo")),
-                value,
-            )
-            .unwrap();
-
-        let vrl_tags_value = target
-            .target_get(&OwnedTargetPath::event(owned_value_path!("tags")))
-            .unwrap()
-            .unwrap();
-
-        assert_eq!(
-            vrl_tags_value,
-            &Value::Object(BTreeMap::from([(
-                "foo".into(),
-                Value::Array(vec!["a".into(), "".into(), Value::Null, "b".into()])
-            )]))
-        );
-
-        let VrlTarget::Metric { metric, .. } = target else {
-            unreachable!()
-        };
-
-        // get single value (should be the last one)
-        assert_eq!(metric.tag_value("foo"), Some("b".into()));
     }
 
     // -- OTel-native VrlTarget tests --

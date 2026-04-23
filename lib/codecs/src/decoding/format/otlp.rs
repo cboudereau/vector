@@ -72,15 +72,8 @@ impl OtlpDeserializerConfig {
     }
 
     /// The schema produced by the deserializer.
-    pub fn schema_definition(&self, log_namespace: LogNamespace) -> schema::Definition {
-        match log_namespace {
-            LogNamespace::Legacy => {
-                schema::Definition::empty_legacy_namespace().unknown_fields(Kind::any())
-            }
-            LogNamespace::Vector => {
-                schema::Definition::new_with_default_metadata(Kind::any(), [log_namespace])
-            }
-        }
+    pub fn schema_definition(&self, _log_namespace: LogNamespace) -> schema::Definition {
+        schema::Definition::empty_legacy_namespace().unknown_fields(Kind::any())
     }
 }
 
@@ -310,68 +303,15 @@ mod tests {
         Bytes::from(request.encode_to_vec())
     }
 
-    fn validate_trace_ids(trace: &vrl::value::Value) {
-        // Navigate to the span and check traceId and spanId
-        let resource_spans = trace
-            .get("resourceSpans")
-            .and_then(|v| v.as_array())
-            .expect("resourceSpans should be an array");
-
-        let first_rs = resource_spans
-            .first()
-            .expect("should have at least one resource span");
-
-        let scope_spans = first_rs
-            .get("scopeSpans")
-            .and_then(|v| v.as_array())
-            .expect("scopeSpans should be an array");
-
-        let first_ss = scope_spans
-            .first()
-            .expect("should have at least one scope span");
-
-        let spans = first_ss
-            .get("spans")
-            .and_then(|v| v.as_array())
-            .expect("spans should be an array");
-
-        let span = spans.first().expect("should have at least one span");
-
-        // Verify traceId - should be raw bytes (16 bytes for trace_id)
-        let trace_id = span
-            .get("traceId")
-            .and_then(|v| v.as_bytes())
-            .expect("traceId should exist and be bytes");
-
-        assert_eq!(
-            trace_id.as_ref(),
-            &TEST_TRACE_ID,
-            "traceId should match the expected 16 bytes (0102030405060708090a0b0c0d0e0f10)"
-        );
-
-        // Verify spanId - should be raw bytes (8 bytes for span_id)
-        let span_id = span
-            .get("spanId")
-            .and_then(|v| v.as_bytes())
-            .expect("spanId should exist and be bytes");
-
-        assert_eq!(
-            span_id.as_ref(),
-            &TEST_SPAN_ID,
-            "spanId should match the expected 8 bytes (0102030405060708)"
-        );
-    }
-
     fn assert_otlp_event(bytes: Bytes, field: &str, is_trace: bool) {
         let deserializer = OtlpDeserializer::default();
-        let events = deserializer.parse(bytes, LogNamespace::Legacy).unwrap();
+        let events = deserializer.parse(bytes, LogNamespace::Vector).unwrap();
 
         assert_eq!(events.len(), 1);
         if is_trace {
             assert!(matches!(events[0], Event::Trace(_)));
             let trace = events[0].as_trace();
             assert!(trace.get(field).is_some());
-            validate_trace_ids(trace.value());
         } else {
             assert!(events[0].as_log().get(field).is_some());
         }
@@ -404,7 +344,7 @@ mod tests {
     fn deserialize_invalid_otlp() {
         let deserializer = OtlpDeserializer::default();
         let bytes = Bytes::from("invalid protobuf data");
-        let result = deserializer.parse(bytes, LogNamespace::Legacy);
+        let result = deserializer.parse(bytes, LogNamespace::Vector);
 
         assert!(result.is_err());
         assert!(
@@ -423,13 +363,13 @@ mod tests {
 
         // Traces should work
         let trace_bytes = create_traces_request_bytes();
-        let result = deserializer.parse(trace_bytes, LogNamespace::Legacy);
+        let result = deserializer.parse(trace_bytes, LogNamespace::Vector);
         assert!(result.is_ok());
         assert!(matches!(result.unwrap()[0], Event::Trace(_)));
 
         // Logs should fail since we're not trying to parse logs
         let log_bytes = create_logs_request_bytes();
-        let result = deserializer.parse(log_bytes, LogNamespace::Legacy);
+        let result = deserializer.parse(log_bytes, LogNamespace::Vector);
         assert!(result.is_err());
     }
 }

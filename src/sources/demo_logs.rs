@@ -354,7 +354,7 @@ mod tests {
             let decoder = DecodingConfig::new(
                 default_framing_message_based(),
                 default_decoding(),
-                LogNamespace::Legacy,
+                LogNamespace::Vector,
             )
             .build()
             .unwrap();
@@ -365,7 +365,7 @@ mod tests {
                 decoder,
                 ShutdownSignal::noop(),
                 tx,
-                LogNamespace::Legacy,
+                LogNamespace::Vector,
             )
             .await
             .unwrap();

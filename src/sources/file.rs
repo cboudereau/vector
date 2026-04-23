@@ -115,14 +115,6 @@ pub struct FileConfig {
     #[configurable(metadata(docs::type_unit = "bytes"))]
     pub max_line_bytes: usize,
 
-    /// Overrides the name of the log field used to add the current hostname to each event.
-    ///
-    /// By default, `host` is used.
-    ///
-    /// Set to `""` to suppress this key.
-    #[configurable(metadata(docs::examples = "hostname"))]
-    pub host_key: Option<OptionalValuePath>,
-
     /// The directory used to persist file checkpoint positions.
     ///
     /// By default, the [global `data_dir` option][global_data_dir] is used.
@@ -364,7 +356,6 @@ impl Default for FileConfig {
             max_line_bytes: default_max_line_bytes(),
             fingerprint: FingerprintConfig::default(),
             ignore_not_found: false,
-            host_key: None,
             offset_key: None,
             data_dir: None,
             glob_minimum_cooldown_ms: default_glob_minimum_cooldown_ms(),
@@ -980,7 +971,7 @@ mod tests {
     #[test]
     fn output_schema_definition_legacy_namespace() {
         let definitions = FileConfig::default()
-            .outputs(LogNamespace::Legacy)
+            .outputs(LogNamespace::Vector)
             .remove(0)
             .schema_definition(true);
 
@@ -989,7 +980,7 @@ mod tests {
             Some(
                 Definition::new_with_default_metadata(
                     Kind::object(Collection::empty()),
-                    [LogNamespace::Legacy]
+                    [LogNamespace::Vector]
                 )
                 .with_event_field(
                     &owned_value_path!("body"),
@@ -1018,7 +1009,7 @@ mod tests {
         let meta = EventMetadata {
             hostname: Some("Some.Machine".to_string()),
         };
-        let otel_log = create_event(line, offset, file, &meta, LogNamespace::Legacy, false, "file", Some("offset"));
+        let otel_log = create_event(line, offset, file, &meta, LogNamespace::Vector, false, "file", Some("offset"));
 
         assert_eq!(otel_log.body_string(), "hello world");
 
@@ -1075,7 +1066,7 @@ mod tests {
         let path1 = dir.path().join("file1");
         let path2 = dir.path().join("file2");
 
-        let received = run_file_source(&config, false, NoAcks, LogNamespace::Legacy, async {
+        let received = run_file_source(&config, false, NoAcks, LogNamespace::Vector, async {
             let mut file1 = File::create(&path1).unwrap();
             let mut file2 = File::create(&path2).unwrap();
 
@@ -1130,7 +1121,7 @@ mod tests {
 
         let path = dir.path().join("file");
 
-        let received = run_file_source(&config, false, NoAcks, LogNamespace::Legacy, async {
+        let received = run_file_source(&config, false, NoAcks, LogNamespace::Vector, async {
             let mut file = File::create(&path).unwrap();
 
             writeln!(&mut file, "line for checkpointing").unwrap();
@@ -1156,7 +1147,7 @@ mod tests {
             ..test_default_file_config(&dir)
         };
         let path = dir.path().join("file");
-        let received = run_file_source(&config, false, NoAcks, LogNamespace::Legacy, async {
+        let received = run_file_source(&config, false, NoAcks, LogNamespace::Vector, async {
             let mut file = File::create(&path).unwrap();
 
             for i in 0..n {
@@ -1219,7 +1210,7 @@ mod tests {
 
         let path = dir.path().join("file");
         let archive_path = dir.path().join("file");
-        let received = run_file_source(&config, false, NoAcks, LogNamespace::Legacy, async {
+        let received = run_file_source(&config, false, NoAcks, LogNamespace::Vector, async {
             let mut file = File::create(&path).unwrap();
 
             for i in 0..n {
@@ -1287,7 +1278,7 @@ mod tests {
         let path2 = dir.path().join("b.txt");
         let path3 = dir.path().join("a.log");
         let path4 = dir.path().join("a.ignore.txt");
-        let received = run_file_source(&config, false, NoAcks, LogNamespace::Legacy, async {
+        let received = run_file_source(&config, false, NoAcks, LogNamespace::Vector, async {
             let mut file1 = File::create(&path1).unwrap();
             let mut file2 = File::create(&path2).unwrap();
             let mut file3 = File::create(&path3).unwrap();
@@ -1338,7 +1329,7 @@ mod tests {
 
         let path1 = dir.path().join("a//b/a.log.1");
         let path2 = dir.path().join("a//b/test.log.1");
-        let received = run_file_source(&config, false, NoAcks, LogNamespace::Legacy, async {
+        let received = run_file_source(&config, false, NoAcks, LogNamespace::Vector, async {
             std::fs::create_dir_all(dir.path().join("a/b")).unwrap();
             let mut file1 = File::create(&path1).unwrap();
             let mut file2 = File::create(&path2).unwrap();
@@ -1391,7 +1382,7 @@ mod tests {
             };
 
             let path = dir.path().join("file");
-            let received = run_file_source(&config, true, acks, LogNamespace::Legacy, async {
+            let received = run_file_source(&config, true, acks, LogNamespace::Vector, async {
                 let mut file = File::create(&path).unwrap();
 
                 writeln!(&mut file, "hello there").unwrap();
@@ -1418,7 +1409,7 @@ mod tests {
             };
 
             let path = dir.path().join("file");
-            let received = run_file_source(&config, true, acks, LogNamespace::Legacy, async {
+            let received = run_file_source(&config, true, acks, LogNamespace::Vector, async {
                 let mut file = File::create(&path).unwrap();
 
                 writeln!(&mut file, "hello there").unwrap();
@@ -1444,7 +1435,7 @@ mod tests {
             };
 
             let path = dir.path().join("file");
-            let received = run_file_source(&config, true, acks, LogNamespace::Legacy, async {
+            let received = run_file_source(&config, true, acks, LogNamespace::Vector, async {
                 let mut file = File::create(&path).unwrap();
 
                 writeln!(&mut file, "hello there").unwrap();
@@ -1490,7 +1481,7 @@ mod tests {
 
         // First time server runs it picks up existing lines.
         {
-            let received = run_file_source(&config, true, acking, LogNamespace::Legacy, async {
+            let received = run_file_source(&config, true, acking, LogNamespace::Vector, async {
                 sleep_500_millis().await;
                 writeln!(&mut file, "first line").unwrap();
                 file.flush().unwrap();
@@ -1503,7 +1494,7 @@ mod tests {
         }
         // Restart server, read file from checkpoint.
         {
-            let received = run_file_source(&config, true, acking, LogNamespace::Legacy, async {
+            let received = run_file_source(&config, true, acking, LogNamespace::Vector, async {
                 sleep_500_millis().await;
                 writeln!(&mut file, "second line").unwrap();
                 file.flush().unwrap();
@@ -1522,7 +1513,7 @@ mod tests {
                 read_from: ReadFromConfig::Beginning,
                 ..test_default_file_config(&dir)
             };
-            let received = run_file_source(&config, false, acking, LogNamespace::Legacy, async {
+            let received = run_file_source(&config, false, acking, LogNamespace::Vector, async {
                 sleep_500_millis().await;
                 writeln!(&mut file, "third line").unwrap();
                 file.flush().unwrap();
@@ -1559,7 +1550,7 @@ mod tests {
             &config,
             false,
             Unfinalized,
-            LogNamespace::Legacy,
+            LogNamespace::Vector,
             sleep(Duration::from_secs(10)),
         )
         .await;
@@ -1571,7 +1562,7 @@ mod tests {
             &config,
             false,
             Unfinalized,
-            LogNamespace::Legacy,
+            LogNamespace::Vector,
             sleep(Duration::from_secs(10)),
         )
         .await;
@@ -1601,7 +1592,7 @@ mod tests {
             &config,
             true,
             Acks,
-            LogNamespace::Legacy,
+            LogNamespace::Vector,
             // shutdown signal is sent after this duration
             sleep_500_millis(),
         )
@@ -1617,7 +1608,7 @@ mod tests {
             &config,
             true,
             Acks,
-            LogNamespace::Legacy,
+            LogNamespace::Vector,
             sleep(Duration::from_secs(5)),
         )
         .await;
@@ -1648,7 +1639,7 @@ mod tests {
         let path_for_old_file = dir.path().join("file.old");
         // Run server first time, collect some lines.
         {
-            let received = run_file_source(&config, true, acking, LogNamespace::Legacy, async {
+            let received = run_file_source(&config, true, acking, LogNamespace::Vector, async {
                 let mut file = File::create(&path).unwrap();
                 writeln!(&mut file, "first line").unwrap();
                 file.flush().unwrap();
@@ -1664,7 +1655,7 @@ mod tests {
         // Restart the server and make sure it does not re-read the old file
         // even though it has a new name.
         {
-            let received = run_file_source(&config, false, acking, LogNamespace::Legacy, async {
+            let received = run_file_source(&config, false, acking, LogNamespace::Vector, async {
                 let mut file = File::create(&path).unwrap();
                 writeln!(&mut file, "second line").unwrap();
                 file.flush().unwrap();
@@ -1732,7 +1723,7 @@ mod tests {
         before_file.sync_all().unwrap();
         after_file.sync_all().unwrap();
 
-        let received = run_file_source(&config, false, NoAcks, LogNamespace::Legacy, async {
+        let received = run_file_source(&config, false, NoAcks, LogNamespace::Vector, async {
             sleep_500_millis().await;
             writeln!(&mut before_file, "second line").unwrap();
             writeln!(&mut after_file, "_second line").unwrap();
@@ -1771,7 +1762,7 @@ mod tests {
         };
 
         let path = dir.path().join("file");
-        let received = run_file_source(&config, false, NoAcks, LogNamespace::Legacy, async {
+        let received = run_file_source(&config, false, NoAcks, LogNamespace::Vector, async {
             let mut file = File::create(&path).unwrap();
 
             writeln!(&mut file, "short").unwrap();
@@ -1813,7 +1804,7 @@ mod tests {
         };
 
         let path = dir.path().join("file");
-        let received = run_file_source(&config, false, NoAcks, LogNamespace::Legacy, async {
+        let received = run_file_source(&config, false, NoAcks, LogNamespace::Vector, async {
             let mut file = File::create(&path).unwrap();
 
             writeln!(&mut file, "leftover foo").unwrap();
@@ -1873,7 +1864,7 @@ mod tests {
         };
 
         let path = dir.path().join("file");
-        let received = run_file_source(&config, false, NoAcks, LogNamespace::Legacy, async {
+        let received = run_file_source(&config, false, NoAcks, LogNamespace::Vector, async {
             let mut file = File::create(&path).unwrap();
 
             writeln!(&mut file, "leftover foo").unwrap();
@@ -1946,7 +1937,7 @@ mod tests {
             &config,
             false,
             Acks,
-            LogNamespace::Legacy,
+            LogNamespace::Vector,
             sleep_500_millis(),
         )
         .await;
@@ -1958,7 +1949,7 @@ mod tests {
 
         // After restart, we should not see any part of the previously aggregated lines
         let received_after_restart =
-            run_file_source(&config, false, Acks, LogNamespace::Legacy, async {
+            run_file_source(&config, false, Acks, LogNamespace::Vector, async {
                 writeln!(&mut file, "INFO goodbye").unwrap();
                 file.flush().unwrap();
                 sleep_500_millis().await;
@@ -2002,7 +1993,7 @@ mod tests {
             &config,
             false,
             NoAcks,
-            LogNamespace::Legacy,
+            LogNamespace::Vector,
             sleep_500_millis(),
         )
         .await;
@@ -2064,7 +2055,7 @@ mod tests {
             &config,
             false,
             NoAcks,
-            LogNamespace::Legacy,
+            LogNamespace::Vector,
             sleep_500_millis(),
         )
         .await;
@@ -2099,7 +2090,7 @@ mod tests {
         writeln!(&mut file, "hello i am a normal line").unwrap();
         file.sync_all().unwrap();
 
-        let received = run_file_source(&config, false, NoAcks, LogNamespace::Legacy, async {
+        let received = run_file_source(&config, false, NoAcks, LogNamespace::Vector, async {
             sleep_500_millis().await;
 
             write!(&mut file, "i am not a full line").unwrap();
@@ -2145,7 +2136,7 @@ mod tests {
             &config,
             false,
             NoAcks,
-            LogNamespace::Legacy,
+            LogNamespace::Vector,
             sleep_500_millis(),
         )
         .await;
@@ -2177,7 +2168,7 @@ mod tests {
             &config,
             false,
             NoAcks,
-            LogNamespace::Legacy,
+            LogNamespace::Vector,
             sleep_500_millis(),
         )
         .await;
@@ -2206,7 +2197,7 @@ mod tests {
         };
 
         let path = dir.path().join("file");
-        let received = run_file_source(&config, false, NoAcks, LogNamespace::Legacy, async {
+        let received = run_file_source(&config, false, NoAcks, LogNamespace::Vector, async {
             let mut file = File::create(&path).unwrap();
 
             write!(&mut file, "hello i am a line\r\n").unwrap();
@@ -2245,7 +2236,7 @@ mod tests {
         };
 
         let path = dir.path().join("file");
-        let received = run_file_source(&config, false, NoAcks, LogNamespace::Legacy, async {
+        let received = run_file_source(&config, false, NoAcks, LogNamespace::Vector, async {
             let mut file = File::create(&path).unwrap();
 
             sleep_500_millis().await;
@@ -2334,7 +2325,7 @@ mod tests {
         };
 
         let path = dir.path().join("file");
-        let received = run_file_source(&config, false, Acks, LogNamespace::Legacy, async {
+        let received = run_file_source(&config, false, Acks, LogNamespace::Vector, async {
             let mut file = File::create(&path).unwrap();
 
             for i in 0..n {

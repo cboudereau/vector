@@ -218,7 +218,7 @@ impl SimpleHttpConfig {
             .with_standard_vector_source_metadata();
 
         // for metadata that is added to the events dynamically from config options
-        if log_namespace == LogNamespace::Legacy {
+        if log_namespace == LogNamespace::Vector {
             schema_definition = schema_definition.unknown_fields(Kind::bytes());
         }
 
@@ -1654,13 +1654,13 @@ mod tests {
         let config = SimpleHttpConfig::default();
 
         let definitions = config
-            .outputs(LogNamespace::Legacy)
+            .outputs(LogNamespace::Vector)
             .remove(0)
             .schema_definition(true);
 
         let expected_definition = Definition::new_with_default_metadata(
             Kind::object(Collection::empty()),
-            [LogNamespace::Legacy],
+            [LogNamespace::Vector],
         )
         .with_event_field(
             &owned_value_path!("body"),

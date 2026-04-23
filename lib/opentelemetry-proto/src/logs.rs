@@ -1,6 +1,5 @@
 use bytes::Bytes;
 use chrono::{DateTime, TimeZone, Utc};
-use lookup::{OwnedTargetPath, owned_value_path};
 use prost::Message;
 use vector_core::{
     config::{LegacyKey, LogNamespace},
@@ -250,22 +249,10 @@ struct ResourceLog {
 // https://github.com/open-telemetry/opentelemetry-specification/blob/v1.15.0/specification/logs/data-model.md
 impl ResourceLog {
     fn into_event(self, log_namespace: LogNamespace, now: DateTime<Utc>) -> Event {
-        let mut log = match log_namespace {
-            LogNamespace::Vector => {
-                if let Some(v) = self.log_record.body.and_then(|av| av.value) {
-                    OtelLog::from(<PBValue as Into<Value>>::into(v))
-                } else {
-                    OtelLog::from(Value::Null)
-                }
-            }
-            LogNamespace::Legacy => {
-                let mut log = OtelLog::default();
-                if let Some(v) = self.log_record.body.and_then(|av| av.value) {
-                    let body_path = OwnedTargetPath::event(owned_value_path!("body"));
-                    log.maybe_insert(Some(&body_path), v);
-                }
-                log
-            }
+        let mut log = if let Some(v) = self.log_record.body.and_then(|av| av.value) {
+            OtelLog::from(<PBValue as Into<Value>>::into(v))
+        } else {
+            OtelLog::from(Value::Null)
         };
 
         // Insert instrumentation scope (scope name, version, and attributes)
@@ -409,29 +396,13 @@ impl ResourceLog {
         } else {
             observed_timestamp
         };
-        match log_namespace {
-            LogNamespace::Vector => {
-                log.metadata_mut()
-                    .value_mut()
-                    .insert(path!(SOURCE_NAME, "timestamp"), timestamp);
-            }
-            LogNamespace::Legacy => {
-                if let Value::Timestamp(ts) = &timestamp {
-                    log.set_timestamp(*ts);
-                }
-            }
-        }
+        log.metadata_mut()
+            .value_mut()
+            .insert(path!(SOURCE_NAME, "timestamp"), timestamp);
 
-        match log_namespace {
-            LogNamespace::Vector => {
-                log.metadata_mut()
-                    .value_mut()
-                    .insert(path!("vector", "source_type"), SOURCE_NAME);
-            }
-            LogNamespace::Legacy => {
-                log.try_set_source_type(Bytes::from_static(SOURCE_NAME.as_bytes()));
-            }
-        }
+        log.metadata_mut()
+            .value_mut()
+            .insert(path!("vector", "source_type"), SOURCE_NAME);
         if log_namespace == LogNamespace::Vector {
             log.metadata_mut()
                 .value_mut()

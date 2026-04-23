@@ -1,7 +1,6 @@
 use std::{collections::HashMap, fmt, num::NonZeroUsize, sync::Arc};
 
 use bitmask_enum::bitmask;
-use bytes::Bytes;
 use chrono::{DateTime, Utc};
 
 mod global_options;
@@ -450,31 +449,19 @@ pub enum LogNamespace {
     ///
     /// Deserialized data is placed in the root of the event.
     /// Extra data is placed in "event metadata"
-    Vector,
-
-    /// This is the legacy namespacing.
-    ///
-    /// All data is set in the root of the event. Since this can lead
-    /// to collisions, deserialized data has priority over metadata
     #[default]
-    Legacy,
+    Vector,
 }
 
-/// The user-facing config for log namespace is a bool (enabling or disabling the "Log Namespacing" feature).
-/// Internally, this is converted to a enum.
 impl From<bool> for LogNamespace {
-    fn from(x: bool) -> Self {
-        if x {
-            LogNamespace::Vector
-        } else {
-            LogNamespace::Legacy
-        }
+    fn from(_x: bool) -> Self {
+        LogNamespace::Vector
     }
 }
 
 impl From<LogNamespace> for bool {
-    fn from(x: LogNamespace) -> Self {
-        x == LogNamespace::Vector
+    fn from(_x: LogNamespace) -> Self {
+        true
     }
 }
 
@@ -496,26 +483,13 @@ impl LogNamespace {
         &self,
         source_name: &'a str,
         log: &mut impl MetadataInsertable,
-        legacy_key: Option<LegacyKey<impl ValuePath<'a>>>,
+        _legacy_key: Option<LegacyKey<impl ValuePath<'a>>>,
         metadata_key: impl ValuePath<'a>,
         value: impl Into<Value>,
     ) {
-        match self {
-            LogNamespace::Vector => {
-                log.event_metadata_mut()
-                    .value_mut()
-                    .insert(path!(source_name).concat(metadata_key), value);
-            }
-            LogNamespace::Legacy => match legacy_key {
-                None => { /* don't insert */ }
-                Some(LegacyKey::Overwrite(key)) => {
-                    log.insert_by_path(key, value);
-                }
-                Some(LegacyKey::InsertIfEmpty(key)) => {
-                    log.try_insert_by_path(key, value);
-                }
-            },
-        }
+        log.event_metadata_mut()
+            .value_mut()
+            .insert(path!(source_name).concat(metadata_key), value);
     }
 
     /// Vector: This is retrieved from the "event metadata", nested under the source name.
@@ -525,17 +499,13 @@ impl LogNamespace {
         &self,
         source_name: &'a str,
         log: &OtelLog,
-        legacy_key: impl ValuePath<'a>,
+        _legacy_key: impl ValuePath<'a>,
         metadata_key: impl ValuePath<'a>,
     ) -> Option<Value> {
-        match self {
-            LogNamespace::Vector => log
-                .metadata()
-                .value()
-                .get(path!(source_name).concat(metadata_key))
-                .cloned(),
-            LogNamespace::Legacy => log.get((PathPrefix::Event, legacy_key)),
-        }
+        log.metadata()
+            .value()
+            .get(path!(source_name).concat(metadata_key))
+            .cloned()
     }
 
     /// Vector: The `ingest_timestamp`, and `source_type` fields are added to "event metadata", nested
@@ -549,16 +519,9 @@ impl LogNamespace {
         source_name: &'static str,
         now: DateTime<Utc>,
     ) {
-        match self {
-            LogNamespace::Vector => {
-                log.event_metadata_mut()
-                    .value_mut()
-                    .insert(path!("vector", "source_type"), source_name);
-            }
-            LogNamespace::Legacy => {
-                log.try_set_source_type(Bytes::from_static(source_name.as_bytes()));
-            }
-        }
+        log.event_metadata_mut()
+            .value_mut()
+            .insert(path!("vector", "source_type"), source_name);
         self.insert_vector_metadata(
             log,
             Some(path!("time_unix_nano")),
@@ -574,22 +537,13 @@ impl LogNamespace {
     pub fn insert_vector_metadata<'a>(
         &self,
         log: &mut impl MetadataInsertable,
-        legacy_key: Option<impl ValuePath<'a>>,
+        _legacy_key: Option<impl ValuePath<'a>>,
         metadata_key: impl ValuePath<'a>,
         value: impl Into<Value>,
     ) {
-        match self {
-            LogNamespace::Vector => {
-                log.event_metadata_mut()
-                    .value_mut()
-                    .insert(path!("vector").concat(metadata_key), value);
-            }
-            LogNamespace::Legacy => {
-                if let Some(legacy_key) = legacy_key {
-                    log.try_insert_by_path(legacy_key, value);
-                }
-            }
-        }
+        log.event_metadata_mut()
+            .value_mut()
+            .insert(path!("vector").concat(metadata_key), value);
     }
 
     /// Vector: This is retrieved from the "event metadata", nested under the name "vector".
@@ -598,17 +552,13 @@ impl LogNamespace {
     pub fn get_vector_metadata<'a>(
         &self,
         log: &OtelLog,
-        legacy_key: impl ValuePath<'a>,
+        _legacy_key: impl ValuePath<'a>,
         metadata_key: impl ValuePath<'a>,
     ) -> Option<Value> {
-        match self {
-            LogNamespace::Vector => log
-                .metadata()
-                .value()
-                .get(path!("vector").concat(metadata_key))
-                .cloned(),
-            LogNamespace::Legacy => log.get((PathPrefix::Event, legacy_key)),
-        }
+        log.metadata()
+            .value()
+            .get(path!("vector").concat(metadata_key))
+            .cloned()
     }
 
     // combine a global (self) and local value to get the actual namespace
@@ -630,7 +580,7 @@ mod test {
 
     #[test]
     fn test_insert_standard_vector_source_metadata() {
-        let namespace = LogNamespace::Legacy;
+        let namespace = LogNamespace::Vector;
         let mut event = OtelLog::from("log");
         namespace.insert_standard_vector_source_metadata(&mut event, "source", Utc::now());
 

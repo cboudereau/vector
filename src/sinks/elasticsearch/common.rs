@@ -131,7 +131,7 @@ impl ElasticsearchCommon {
         let metric_to_log = MetricToLog::new(
             metric_config.host_tag.as_deref(),
             metric_config.timezone.unwrap_or_default(),
-            LogNamespace::Legacy,
+            LogNamespace::Vector,
             metric_config.metric_tag_values,
         );
 

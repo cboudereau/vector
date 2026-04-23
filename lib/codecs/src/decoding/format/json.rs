@@ -38,26 +38,19 @@ impl JsonDeserializerConfig {
     }
 
     /// The schema produced by the deserializer.
-    pub fn schema_definition(&self, log_namespace: LogNamespace) -> schema::Definition {
-        match log_namespace {
-            LogNamespace::Legacy => {
-                let mut definition =
-                    schema::Definition::empty_legacy_namespace().unknown_fields(Kind::json());
+    pub fn schema_definition(&self, _log_namespace: LogNamespace) -> schema::Definition {
+        let mut definition =
+            schema::Definition::empty_legacy_namespace().unknown_fields(Kind::json());
 
-                {
-                    let timestamp_key = owned_value_path!("time_unix_nano");
-                    definition = definition.try_with_field(
-                        &timestamp_key,
-                        Kind::json(),
-                        Some("timestamp"),
-                    );
-                }
-                definition
-            }
-            LogNamespace::Vector => {
-                schema::Definition::new_with_default_metadata(Kind::json(), [log_namespace])
-            }
+        {
+            let timestamp_key = owned_value_path!("time_unix_nano");
+            definition = definition.try_with_field(
+                &timestamp_key,
+                Kind::json(),
+                Some("timestamp"),
+            );
         }
+        definition
     }
 }
 
@@ -148,7 +141,7 @@ mod tests {
         let input = Bytes::from(r#"{ "foo": 123 }"#);
         let deserializer = JsonDeserializer::default();
 
-        for namespace in [LogNamespace::Legacy, LogNamespace::Vector] {
+        for namespace in [LogNamespace::Vector, LogNamespace::Vector] {
             let events = deserializer.parse(input.clone(), namespace).unwrap();
             assert_eq!(events.len(), 1);
 
@@ -165,7 +158,7 @@ mod tests {
         let input = Bytes::from(r#"[{ "foo": 123 }, { "bar": 456 }]"#);
         let deserializer = JsonDeserializer::default();
 
-        for namespace in [LogNamespace::Legacy, LogNamespace::Vector] {
+        for namespace in [LogNamespace::Vector, LogNamespace::Vector] {
             let events = deserializer.parse(input.clone(), namespace).unwrap();
             assert_eq!(events.len(), 2);
 
@@ -185,7 +178,7 @@ mod tests {
         let input = Bytes::from("");
         let deserializer = JsonDeserializer::default();
 
-        for namespace in [LogNamespace::Legacy, LogNamespace::Vector] {
+        for namespace in [LogNamespace::Vector, LogNamespace::Vector] {
             let events = deserializer.parse(input.clone(), namespace).unwrap();
             assert!(events.is_empty());
         }
@@ -196,7 +189,7 @@ mod tests {
         let input = Bytes::from("{ foo");
         let deserializer = JsonDeserializer::default();
 
-        for namespace in [LogNamespace::Legacy, LogNamespace::Vector] {
+        for namespace in [LogNamespace::Vector, LogNamespace::Vector] {
             assert!(deserializer.parse(input.clone(), namespace).is_err());
         }
     }
@@ -206,7 +199,7 @@ mod tests {
         let input = Bytes::from(b"{ \"foo\": \"Hello \xF0\x90\x80World\" }".as_slice());
         let deserializer = JsonDeserializer::new(false);
 
-        for namespace in [LogNamespace::Legacy, LogNamespace::Vector] {
+        for namespace in [LogNamespace::Vector, LogNamespace::Vector] {
             assert!(deserializer.parse(input.clone(), namespace).is_err());
         }
     }
@@ -216,7 +209,7 @@ mod tests {
         let input = Bytes::from(b"{ \"foo\": \"Hello \xF0\x90\x80World\" }".as_slice());
         let deserializer = JsonDeserializer::new(true);
 
-        for namespace in [LogNamespace::Legacy, LogNamespace::Vector] {
+        for namespace in [LogNamespace::Vector, LogNamespace::Vector] {
             let events = deserializer.parse(input.clone(), namespace).unwrap();
             assert_eq!(events.len(), 1);
             assert!(matches!(&events[0], Event::Log(_)));

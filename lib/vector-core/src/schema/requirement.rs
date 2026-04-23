@@ -263,13 +263,13 @@ mod tests {
 
         // We get an error if we have a connected component with the Vector namespace.
         let definition =
-            Definition::default_for_namespace(&[LogNamespace::Vector, LogNamespace::Legacy].into())
+            Definition::default_for_namespace(&[LogNamespace::Vector, LogNamespace::Vector].into())
                 .with_event_field(&owned_value_path!("foo"), Kind::integer(), Some("foo"));
 
         assert_ne!(Ok(()), requirement.validate(&definition, true));
 
         // We don't get an error if we have a connected component with just the Legacy namespace.
-        let definition = Definition::default_for_namespace(&[LogNamespace::Legacy].into())
+        let definition = Definition::default_for_namespace(&[LogNamespace::Vector].into())
             .with_event_field(&owned_value_path!("foo"), Kind::integer(), Some("foo"));
 
         assert_eq!(Ok(()), requirement.validate(&definition, true));

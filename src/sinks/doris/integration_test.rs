@@ -50,14 +50,14 @@ fn assert_fields_match(
 ) {
     for field in fields {
         // Get field value from event
-        let event_value = event_log.get(*field).cloned().unwrap_or(Value::Null);
+        let event_value = event_log.get(*field).unwrap_or(Value::Null);
 
         // Get field value from database row
         let db_value = db_row.get(*field).cloned().unwrap_or(DbValue::Null);
 
         // Convert event value to string
         let event_str = match &event_value {
-            Value::Bytes(bytes) => String::from_utf8_lossy(bytes).to_string(),
+            Value::Bytes(bytes) => String::from_utf8_lossy(&bytes).to_string(),
             other => other.to_string(),
         };
         // Database value already has Display implementation, use directly

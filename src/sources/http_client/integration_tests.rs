@@ -85,7 +85,7 @@ async fn collected_logs_bytes() {
     // panics if not log event
     let log = events[0].as_log();
     assert_eq!(
-        *log.get_source_type().unwrap(),
+        log.get_source_type().unwrap(),
         HttpClientConfig::NAME.into()
     );
 }
@@ -111,7 +111,7 @@ async fn collected_logs_json() {
     // panics if not log event
     let log = events[0].as_log();
     assert_eq!(
-        *log.get_source_type().unwrap(),
+        log.get_source_type().unwrap(),
         HttpClientConfig::NAME.into()
     );
 }
@@ -168,7 +168,7 @@ async fn collected_trace_native_json() {
 
     let trace = events[0].as_trace();
     assert_eq!(
-        trace.as_map()["source_type"],
+        trace.get("source_type").unwrap(),
         HttpClientConfig::NAME.into()
     );
 }

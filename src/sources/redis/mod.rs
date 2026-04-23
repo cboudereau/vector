@@ -294,7 +294,7 @@ mod test {
 #[cfg(all(test, feature = "redis-integration-tests"))]
 mod integration_test {
     use redis::AsyncCommands;
-    use vrl::value;
+    use vrl::{path, value};
 
     use super::*;
     use crate::{
@@ -338,15 +338,15 @@ mod integration_test {
         let events = run_and_assert_source_compliance_n(config, 3, &SOURCE_TAGS).await;
 
         assert_eq!(
-            events[0].as_log()["body"],
+            events[0].as_log().get("body").unwrap(),
             "3".into()
         );
         assert_eq!(
-            events[1].as_log()["body"],
+            events[1].as_log().get("body").unwrap(),
             "2".into()
         );
         assert_eq!(
-            events[2].as_log()["body"],
+            events[2].as_log().get("body").unwrap(),
             "1".into()
         );
     }
@@ -381,7 +381,7 @@ mod integration_test {
         let log_event = events[0].as_log();
         let meta = log_event.metadata();
 
-        assert_eq!(log_event.value(), &"1".into());
+        assert_eq!(log_event.value(), "1".into());
         assert_eq!(
             meta.value()
                 .get(path!(RedisSourceConfig::NAME, "key"))
@@ -420,15 +420,15 @@ mod integration_test {
         let events = run_and_assert_source_compliance_n(config, 3, &SOURCE_TAGS).await;
 
         assert_eq!(
-            events[0].as_log()["body"],
+            events[0].as_log().get("body").unwrap(),
             "1".into()
         );
         assert_eq!(
-            events[1].as_log()["body"],
+            events[1].as_log().get("body").unwrap(),
             "2".into()
         );
         assert_eq!(
-            events[2].as_log()["body"],
+            events[2].as_log().get("body").unwrap(),
             "3".into()
         );
     }
@@ -482,7 +482,7 @@ mod integration_test {
 
         for event in events {
             assert_eq!(
-                event.as_log()["body"],
+                event.as_log().get("body").unwrap(),
                 text.into()
             );
             assert_eq!(

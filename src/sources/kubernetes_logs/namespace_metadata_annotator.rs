@@ -134,7 +134,7 @@ mod tests {
                 FieldsSpec::default(),
                 ObjectMeta::default(),
                 OtelLog::default(),
-                LogNamespace::Legacy,
+                LogNamespace::Vector,
             ),
             (
                 FieldsSpec::default(),
@@ -192,7 +192,7 @@ mod tests {
                     );
                     log
                 },
-                LogNamespace::Legacy,
+                LogNamespace::Vector,
             ),
             (
                 FieldsSpec {
@@ -217,7 +217,7 @@ mod tests {
                     log.insert(event_path!("ns_labels", "sandbox0-label1"), "val1");
                     log
                 },
-                LogNamespace::Legacy,
+                LogNamespace::Vector,
             ),
             // Ensure we properly handle labels with `.` as flat fields.
             (
@@ -302,7 +302,7 @@ mod tests {
                     );
                     log
                 },
-                LogNamespace::Legacy,
+                LogNamespace::Vector,
             ),
         ];
 

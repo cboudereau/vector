@@ -285,35 +285,21 @@ fn populate_log_event(
         keys.delivery_tag,
     );
 
-    match log_namespace {
-        LogNamespace::Vector => {
-            log.metadata_mut()
-                .value_mut()
-                .insert(path!("vector", "source_type"), AmqpSourceConfig::NAME);
-        }
-        LogNamespace::Legacy => {
-            log.try_set_source_type(Bytes::from_static(AmqpSourceConfig::NAME.as_bytes()));
-        }
-    }
+    log.metadata_mut()
+        .value_mut()
+        .insert(path!("vector", "source_type"), AmqpSourceConfig::NAME);
 
     // This handles the transition from the original timestamp logic. Originally the
     // `timestamp_key` was populated by the `properties.timestamp()` time on the message, falling
     // back to calling `now()`.
-    match log_namespace {
-        LogNamespace::Vector => {
-            if let Some(timestamp) = timestamp {
-                log.insert(
-                    metadata_path!(AmqpSourceConfig::NAME, "timestamp"),
-                    timestamp,
-                );
-            };
-
-            log.insert(metadata_path!("vector", "ingest_timestamp"), Utc::now());
-        }
-        LogNamespace::Legacy => {
-            log.try_set_timestamp(timestamp.unwrap_or_else(Utc::now));
-        }
+    if let Some(timestamp) = timestamp {
+        log.insert(
+            metadata_path!(AmqpSourceConfig::NAME, "timestamp"),
+            timestamp,
+        );
     };
+
+    log.insert(metadata_path!("vector", "ingest_timestamp"), Utc::now());
 }
 
 /// Receives an event from `AMQP` and pushes it along the pipeline.
@@ -612,13 +598,13 @@ pub mod test {
         let config = AmqpSourceConfig::default();
 
         let definition = config
-            .outputs(LogNamespace::Legacy)
+            .outputs(LogNamespace::Vector)
             .remove(0)
             .schema_definition(true);
 
         let expected_definition = Definition::new_with_default_metadata(
             Kind::object(Collection::empty()),
-            [LogNamespace::Legacy],
+            [LogNamespace::Vector],
         )
         .with_event_field(
             &owned_value_path!("body"),
@@ -662,7 +648,7 @@ mod integration_test {
                 &config,
                 ShutdownSignal::noop(),
                 SourceSender::new_test().0,
-                LogNamespace::Legacy,
+                LogNamespace::Vector,
                 false,
             )
             .await
@@ -680,7 +666,7 @@ mod integration_test {
                 &config,
                 ShutdownSignal::noop(),
                 SourceSender::new_test().0,
-                LogNamespace::Legacy,
+                LogNamespace::Vector,
                 false,
             )
             .await
@@ -781,12 +767,13 @@ mod integration_test {
 
         let log = events[0].as_log();
         trace!("{:?}", log);
-        assert_eq!(*log.get_body().unwrap(), "my message".into());
-        assert_eq!(log["routing"], routing_key.into());
-        assert_eq!(*log.get_source_type().unwrap(), "amqp".into());
-        let log_ts = log.get_timestamp().unwrap().as_timestamp().unwrap();
+        assert_eq!(log.get_body().unwrap(), "my message".into());
+        assert_eq!(log.get("routing").unwrap(), routing_key.into());
+        assert_eq!(log.get_source_type().unwrap(), "amqp".into());
+        let ts_val = log.get_timestamp().unwrap();
+        let log_ts = ts_val.as_timestamp().unwrap();
         assert!(log_ts.signed_duration_since(now) < chrono::Duration::seconds(1));
-        assert_eq!(log["exchange"], exchange.into());
+        assert_eq!(log.get("exchange").unwrap(), exchange.into());
     }
 
     #[tokio::test]

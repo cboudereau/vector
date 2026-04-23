@@ -132,7 +132,7 @@ mod tests {
             let buf = Cursor::new("hello world\nhello world again");
 
             config
-                .source(buf, ShutdownSignal::noop(), tx, LogNamespace::Legacy)
+                .source(buf, ShutdownSignal::noop(), tx, LogNamespace::Vector)
                 .unwrap()
                 .await
                 .unwrap();

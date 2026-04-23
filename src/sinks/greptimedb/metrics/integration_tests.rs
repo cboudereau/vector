@@ -1,7 +1,7 @@
 use chrono::{DateTime, Duration, Utc};
 use futures::stream;
 use vector_lib::{
-    event::{Event, MetricKind, MetricValue, OtelMetric},
+    event::{Event, MetricKind, OtelMetric},
     metric_tags,
 };
 

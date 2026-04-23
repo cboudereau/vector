@@ -142,7 +142,7 @@ impl LogplexConfig {
             );
 
         // for metadata that is added to the events dynamically from config options
-        if log_namespace == LogNamespace::Legacy {
+        if log_namespace == LogNamespace::Vector {
             schema_definition = schema_definition.unknown_fields(Kind::bytes());
         }
 
@@ -659,7 +659,7 @@ mod tests {
 
     #[test]
     fn logplex_handles_normal_lines() {
-        let log_namespace = LogNamespace::Legacy;
+        let log_namespace = LogNamespace::Vector;
         let body = "267 <158>1 2020-01-08T22:33:57.353034+00:00 host heroku router - foo bar baz";
         let events = super::line_to_events(Default::default(), log_namespace, body.into());
         let log = events[0].as_log();
@@ -678,7 +678,7 @@ mod tests {
 
     #[test]
     fn logplex_handles_malformed_lines() {
-        let log_namespace = LogNamespace::Legacy;
+        let log_namespace = LogNamespace::Vector;
         let body = "what am i doing here";
         let events = super::line_to_events(Default::default(), log_namespace, body.into());
         let log = events[0].as_log();
@@ -690,7 +690,7 @@ mod tests {
 
     #[test]
     fn logplex_doesnt_blow_up_on_bad_framing() {
-        let log_namespace = LogNamespace::Legacy;
+        let log_namespace = LogNamespace::Vector;
         let body = "1000000 <158>1 2020-01-08T22:33:57.353034+00:00 host heroku router - i'm not that long";
         let events = super::line_to_events(Default::default(), log_namespace, body.into());
         let log = events[0].as_log();
@@ -766,13 +766,13 @@ mod tests {
         let config = LogplexConfig::default();
 
         let definitions = config
-            .outputs(LogNamespace::Legacy)
+            .outputs(LogNamespace::Vector)
             .remove(0)
             .schema_definition(true);
 
         let expected_definition = Definition::new_with_default_metadata(
             Kind::object(Collection::empty()),
-            [LogNamespace::Legacy],
+            [LogNamespace::Vector],
         )
         .with_event_field(
             &owned_value_path!("body"),

@@ -1142,17 +1142,7 @@ impl ContainerLogInfo {
                 if let Some(partial_event_merge_state) = partial_event_merge_state {
                     // Depending on the log namespace the actual contents of the log "message" will be
                     // found in either the root of the event ("."), or at the globally configured "message_key".
-                    match log_namespace {
-                        LogNamespace::Vector => {
-                            partial_event_merge_state.merge_in_next_event(log, &["."]);
-                        }
-                        LogNamespace::Legacy => {
-                            partial_event_merge_state.merge_in_next_event(
-                                log,
-                                &["body"],
-                            );
-                        }
-                    }
+                    partial_event_merge_state.merge_in_next_event(log, &["."]);
                 } else {
                     *partial_event_merge_state = Some(MergeState::new(log));
                 };
@@ -1166,15 +1156,9 @@ impl ContainerLogInfo {
             match partial_event_merge_state.take() {
                 // Depending on the log namespace the actual contents of the log "message" will be
                 // found in either the root of the event ("."), or at the globally configured "message_key".
-                Some(partial_event_merge_state) => match log_namespace {
-                    LogNamespace::Vector => {
-                        partial_event_merge_state.merge_in_final_event(log, &["."])
-                    }
-                    LogNamespace::Legacy => partial_event_merge_state.merge_in_final_event(
-                        log,
-                        &["body"],
-                    ),
-                },
+                Some(partial_event_merge_state) => {
+                    partial_event_merge_state.merge_in_final_event(log, &["."])
+                }
                 None => log,
             }
         } else {
@@ -1243,25 +1227,15 @@ impl ContainerMetadata {
 fn line_agg_adapter(
     inner: impl Stream<Item = OtelLog> + Unpin,
     logic: line_agg::Logic<Bytes, OtelLog>,
-    log_namespace: LogNamespace,
+    _log_namespace: LogNamespace,
 ) -> impl Stream<Item = OtelLog> {
     let line_agg_in = inner.map(move |mut log| {
-        let message_value = match log_namespace {
-            LogNamespace::Vector => log
-                .remove(event_path!())
-                .expect("`.` must exist in the event"),
-            LogNamespace::Legacy => log
-                .remove(event_path!("body"))
-                .expect("`message` must exist in the event"),
-        };
-        let stream_value = match log_namespace {
-            LogNamespace::Vector => log
-                .get(metadata_path!(DockerLogsConfig::NAME, STREAM))
-                .expect("`docker_logs.stream` must exist in the metadata"),
-            LogNamespace::Legacy => log
-                .get(event_path!(STREAM))
-                .expect("stream must exist in the event"),
-        };
+        let message_value = log
+            .remove(event_path!())
+            .expect("`.` must exist in the event");
+        let stream_value = log
+            .get(metadata_path!(DockerLogsConfig::NAME, STREAM))
+            .expect("`docker_logs.stream` must exist in the metadata");
 
         let stream = stream_value.coerce_to_bytes();
         let message = message_value.coerce_to_bytes();
@@ -1269,13 +1243,7 @@ fn line_agg_adapter(
     });
     let line_agg_out = LineAgg::<_, Bytes, OtelLog>::new(line_agg_in, logic);
     line_agg_out.map(move |(_, message, mut log, _)| {
-        match log_namespace {
-            LogNamespace::Vector => log.insert(event_path!(), message),
-            LogNamespace::Legacy => log.insert(
-                event_path!("body"),
-                message,
-            ),
-        };
+        log.insert(event_path!(), message);
         log
     })
 }

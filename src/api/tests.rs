@@ -205,7 +205,7 @@ async fn integration_test_source_metric() {
         &["in"],
         LogToMetricConfig {
             metrics: Some(vec![MetricConfig {
-                field: "message".try_into().expect("Fixed template string"),
+                field: "body".try_into().expect("Fixed template string"),
                 name: None,
                 namespace: None,
                 tags: None,
@@ -391,7 +391,7 @@ async fn integration_test_sink() {
         "transform",
         &["in"],
         RemapConfig {
-            source: Some(".message = \"new message\"".to_string()),
+            source: Some(".body = \"new message\"".to_string()),
             ..Default::default()
         },
     );
@@ -449,7 +449,7 @@ async fn integration_test_tap_non_default_output() {
         "transform",
         &["in"],
         RemapConfig {
-            source: Some("assert_eq!(.message, \"test1\")".to_string()),
+            source: Some("assert_eq!(.body, \"test1\")".to_string()),
             drop_on_error: true,
             reroute_dropped: true,
             ..Default::default()
@@ -524,7 +524,7 @@ async fn integration_test_tap_multiple_outputs() {
         "transform",
         &["in*"],
         RemapConfig {
-            source: Some("assert_eq!(.message, \"test1\")".to_string()),
+            source: Some("assert_eq!(.body, \"test1\")".to_string()),
             drop_on_error: true,
             reroute_dropped: true,
             ..Default::default()

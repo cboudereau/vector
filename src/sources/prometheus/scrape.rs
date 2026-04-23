@@ -833,7 +833,7 @@ mod integration_tests {
 
         let go_info = find_metric("go_info");
         assert!(matches!(go_info.kind(), MetricKind::Absolute));
-        assert!(matches!(go_info.value(), &MetricValue::Gauge { .. }));
+        assert!(matches!(go_info.value(), MetricValue::Gauge { .. }));
         assert!(go_info.tags().unwrap().contains_key("version"));
         assert_eq!(
             go_info.tag_value("instance"),

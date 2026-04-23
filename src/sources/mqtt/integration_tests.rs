@@ -104,11 +104,8 @@ async fn mqtt_one_topic_happy() {
             .unwrap();
 
         for event in events {
-            let message = event
-                .as_log()
-                .get("body")
-                .unwrap()
-                .to_string_lossy();
+            let body = event.as_log().get("body").unwrap();
+            let message = body.to_string_lossy();
             if !expected_messages.remove(message.as_ref()) {
                 panic!("Received unexpected message: {message:?}");
             }
@@ -170,11 +167,8 @@ async fn mqtt_many_topics_happy() {
             .unwrap();
 
         for event in events {
-            let message = event
-                .as_log()
-                .get("body")
-                .unwrap()
-                .to_string_lossy();
+            let body = event.as_log().get("body").unwrap();
+            let message = body.to_string_lossy();
             if !expected_messages.remove(message.as_ref()) {
                 panic!("Received unexpected message: {message:?}");
             }

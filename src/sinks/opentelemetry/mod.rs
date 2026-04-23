@@ -1,4 +1,4 @@
-mod grpc;
+pub(crate) mod grpc;
 pub mod load_balancing;
 
 use indoc::indoc;

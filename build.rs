@@ -119,13 +119,7 @@ fn main() {
         println!("cargo:rerun-if-changed=proto/vector/dd_metric.proto");
         println!("cargo:rerun-if-changed=proto/vector/dd_trace.proto");
         println!("cargo:rerun-if-changed=proto/vector/ddsketch_full.proto");
-        println!("cargo:rerun-if-changed=proto/vector/vector.proto");
 
-        // Create and store the "file descriptor set" from the compiled Protocol Buffers packages.
-        //
-        // This allows us to use runtime reflection to manually build Protocol Buffers payloads
-        // in a type-safe way, which is necessary for incrementally building certain payloads, like
-        // the ones generated in the `datadog_metrics` sink.
         let protobuf_fds_path =
             Path::new(&std::env::var("OUT_DIR").expect("OUT_DIR environment variable not set"))
                 .join("protobuf-fds.bin");
@@ -140,18 +134,15 @@ fn main() {
             .compile_protos_with_config(
                 prost_build,
                 &[
-                    "lib/vector-core/proto/event.proto",
                     "proto/vector/ddsketch_full.proto",
                     "proto/vector/dd_metric.proto",
                     "proto/vector/dd_trace.proto",
                     "proto/third-party/google/pubsub/v1/pubsub.proto",
                     "proto/third-party/google/rpc/status.proto",
-                    "proto/vector/vector.proto",
                 ],
                 &[
                     "proto/third-party",
                     "proto/vector",
-                    "lib/vector-core/proto/",
                 ],
             )
             .unwrap();

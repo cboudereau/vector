@@ -32,7 +32,6 @@ pub mod lua;
 pub mod merge_state;
 mod metadata;
 pub mod metric;
-pub mod proto;
 mod r#ref;
 mod ser;
 pub mod otel_event;
@@ -42,9 +41,7 @@ pub use otel_event::{OtelLog, OtelMetric, OtelSpan, json_to_any_value, string_va
 pub use opentelemetry_proto::tonic::common::v1::any_value::Value as OtelValueKind;
 
 pub use otlp::{OtlpCodec, register_otlp_codec};
-pub use ser::{
-    BufferFormat, BUFFER_FORMAT, EventEncodableMetadata, EventEncodableMetadataFlags,
-};
+pub use ser::EventEncodableMetadata;
 #[cfg(test)]
 mod test;
 pub mod util;
@@ -53,9 +50,9 @@ mod vrl_target;
 
 pub const PARTIAL: &str = "_partial";
 
-// Event is Serialize-only; no production path deserializes it (OTLP bodies
-// use proto, disk buffers use proto via OtlpCodec, OTLP HTTP uses the
-// otel_json module directly). Adding Deserialize required per-variant
+// Event is Serialize-only; no production path deserializes it (disk buffers
+// use OtlpCodec, OTLP HTTP uses the otel_json module directly).
+// Adding Deserialize required per-variant
 // Deserialize impls on OtelLog/OtelSpan/OtelMetric which had zero live
 // callers — removed for clarity.
 #[derive(PartialEq, Debug, Clone, Serialize)]
@@ -414,77 +411,6 @@ impl TryInto<serde_json::Value> for Event {
     }
 }
 
-impl From<proto::StatisticKind> for StatisticKind {
-    fn from(kind: proto::StatisticKind) -> Self {
-        match kind {
-            proto::StatisticKind::Histogram => StatisticKind::Histogram,
-            proto::StatisticKind::Summary => StatisticKind::Summary,
-        }
-    }
-}
-
-impl From<metric::Sample> for proto::DistributionSample {
-    fn from(sample: metric::Sample) -> Self {
-        Self {
-            value: sample.value,
-            rate: sample.rate,
-        }
-    }
-}
-
-impl From<proto::DistributionSample> for metric::Sample {
-    fn from(sample: proto::DistributionSample) -> Self {
-        Self {
-            value: sample.value,
-            rate: sample.rate,
-        }
-    }
-}
-
-impl From<proto::HistogramBucket> for metric::Bucket {
-    fn from(bucket: proto::HistogramBucket) -> Self {
-        Self {
-            upper_limit: bucket.upper_limit,
-            count: u64::from(bucket.count),
-        }
-    }
-}
-
-impl From<metric::Bucket> for proto::HistogramBucket3 {
-    fn from(bucket: metric::Bucket) -> Self {
-        Self {
-            upper_limit: bucket.upper_limit,
-            count: bucket.count,
-        }
-    }
-}
-
-impl From<proto::HistogramBucket3> for metric::Bucket {
-    fn from(bucket: proto::HistogramBucket3) -> Self {
-        Self {
-            upper_limit: bucket.upper_limit,
-            count: bucket.count,
-        }
-    }
-}
-
-impl From<metric::Quantile> for proto::SummaryQuantile {
-    fn from(quantile: metric::Quantile) -> Self {
-        Self {
-            quantile: quantile.quantile,
-            value: quantile.value,
-        }
-    }
-}
-
-impl From<proto::SummaryQuantile> for metric::Quantile {
-    fn from(quantile: proto::SummaryQuantile) -> Self {
-        Self {
-            quantile: quantile.quantile,
-            value: quantile.value,
-        }
-    }
-}
 
 impl From<OtelLog> for Event {
     fn from(e: OtelLog) -> Self {

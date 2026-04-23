@@ -23,8 +23,7 @@ static OTLP_CODEC: OnceLock<Box<dyn OtlpCodec>> = OnceLock::new();
 
 /// Register the OTLP codec implementation.
 ///
-/// Must be called once at process startup, before any disk buffer that uses
-/// `BufferFormat::Otlp` or `BufferFormat::Migrate` is opened.
+/// Must be called once at process startup, before any disk buffer is opened.
 /// Subsequent calls are silently ignored (idempotency for tests).
 pub fn register_otlp_codec(codec: Box<dyn OtlpCodec>) {
     let _ = OTLP_CODEC.set(codec);

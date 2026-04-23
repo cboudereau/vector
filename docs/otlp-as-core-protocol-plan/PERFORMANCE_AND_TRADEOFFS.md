@@ -375,7 +375,7 @@ The DataDog APM stats subsystem (`~514 lines` of algorithm) is being backported 
 vendor-neutral `apm_stats` transform that emits standard OTel metrics (`spans.hits`,
 `spans.errors`, `spans.duration.ok`, `spans.duration.error` as `ExponentialHistogram`).
 The `AgentDDSketch` dependency is replaced by an OTel-native accumulator at scale 7.
-See `APM_STATS_OTLP_BACKPORT.md` for the full specification.
+This was implemented as the `span_metrics` transform (Step 4c).
 
 #### `Timestamp` and `Null` type gaps require pervasive VRL changes
 
@@ -492,8 +492,8 @@ only do head-based or probabilistic sampling via the `sample` transform.
 `trace_id`, detects completeness, hard-evicts after a deadline) and `tail_sample` (evaluates
 VRL policies against the assembled trace, explodes kept spans back to individual events).
 Span-level routing after sampling reuses the existing `route` transform unchanged.
-See `TAIL_SAMPLING_BACKPORT.md` for the full specification. After implementation, Vector
-gains capabilities that exceed otel-col-contrib in this area (VRL policies, enrichment table
+This was implemented as the `tail_sampling` transform (Step 4b). Vector now
+exceeds otel-col-contrib in this area (VRL policies, enrichment table
 lookups, span-level routing, durable disk buffering).
 
 #### Schema management with OTLP schema URL

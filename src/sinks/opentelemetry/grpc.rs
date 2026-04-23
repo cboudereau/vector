@@ -581,7 +581,7 @@ impl StreamSink<Event> for LoadBalancedOtlpGrpcSink {
 
 /// Reconstruct a `ResourceMetrics` (opentelemetry-proto types) from an
 /// `OtelMetric` (otel-proto-types) via protobuf encode→decode.
-fn otel_metric_event_to_resource_metrics(
+pub(crate) fn otel_metric_event_to_resource_metrics(
     metric_event: &vector_lib::event::OtelMetric,
 ) -> vector_lib::opentelemetry::proto::metrics::v1::ResourceMetrics {
     use prost::Message;
@@ -618,7 +618,7 @@ fn otel_metric_event_to_resource_metrics(
 
 /// Reconstruct a `ResourceLogs` (opentelemetry-proto types) from an
 /// `OtelLog` (otel-proto-types) via protobuf encode→decode.
-fn otel_log_event_to_resource_logs(
+pub(crate) fn otel_log_event_to_resource_logs(
     log_event: &vector_lib::event::OtelLog,
 ) -> vector_lib::opentelemetry::proto::logs::v1::ResourceLogs {
     use prost::Message;
@@ -655,7 +655,7 @@ fn otel_log_event_to_resource_logs(
 
 /// Reconstruct a `ResourceSpans` (opentelemetry-proto types) from an
 /// `OtelSpan` (otel-proto-types) via protobuf encode→decode.
-fn otel_span_event_to_resource_spans(
+pub(crate) fn otel_span_event_to_resource_spans(
     span_event: &vector_lib::event::OtelSpan,
 ) -> vector_lib::opentelemetry::proto::trace::v1::ResourceSpans {
     use prost::Message;

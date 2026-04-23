@@ -697,10 +697,10 @@ sources-opentelemetry = [
   "vector-lib/opentelemetry",
   "dep:prost",
   "dep:prost-types",
+  "dep:tonic",
   "sources-http_server",
   "sources-utils-http",
   "sources-utils-http-headers",
-  "sources-vector",
 ]
 sources-postgresql_metrics = ["dep:postgres-openssl", "dep:tokio-postgres"]
 sources-prometheus = ["sources-prometheus-scrape", "sources-prometheus-remote-write", "sources-prometheus-pushgateway"]
@@ -728,7 +728,7 @@ sources-utils-net-udp = ["listenfd"]
 sources-utils-net-unix = []
 sources-websocket = ["dep:tokio-tungstenite"]
 
-sources-vector = ["dep:prost", "dep:tonic", "protobuf-build"]
+sources-vector = ["dep:tonic", "vector-lib/opentelemetry"]
 
 # Transforms
 transforms = ["transforms-logs", "transforms-metrics"]
@@ -1047,7 +1047,7 @@ vector-unit-test-tests = [
 ]
 
 component-validation-runner = ["dep:tonic", "sources-internal_logs", "sources-internal_metrics", "sources-vector", "sinks-vector"]
-sinks-vector = ["sinks-utils-udp", "dep:tonic", "protobuf-build", "dep:prost"]
+sinks-vector = ["dep:tonic", "sinks-opentelemetry"]
 # For now, only include components that implement ValidatableComponent.
 # In the future, this can change to simply reference the targets `sources`, `transforms`, `sinks`
 component-validation-tests = [

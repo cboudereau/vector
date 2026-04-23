@@ -8,7 +8,7 @@ use super::{
     super::default_data_dir, AcknowledgementsConfig, Telemetry,
     metrics_expiration::PerMetricSetExpiration, proxy::ProxyConfig,
 };
-use crate::{event::BufferFormat, serde::bool_or_struct};
+use crate::serde::bool_or_struct;
 
 #[derive(Debug, Snafu)]
 pub(crate) enum DataDirError {
@@ -166,21 +166,6 @@ pub struct GlobalOptions {
     #[serde(default, skip_serializing_if = "crate::serde::is_default")]
     pub metrics_storage_refresh_period: Option<f64>,
 
-    /// On-disk buffer encoding format.
-    ///
-    /// Controls how new disk-buffer records are serialised:
-    ///
-    /// - `vector` (default): Vector's native protobuf format. No change from previous behaviour.
-    /// - `otlp`: OTLP protobuf format. Use only after all existing buffers have been drained.
-    /// - `migrate`: Writes OTLP records but reads both formats, enabling a zero-downtime
-    ///   transition away from the legacy encoding.
-    ///
-    /// **Important**: switching directly from `vector` to `otlp` on a non-empty buffer will
-    /// cause decode failures. Always use `migrate` first, then switch to `otlp` once the
-    /// old records have been drained.
-    #[serde(default, skip_serializing_if = "crate::serde::is_default")]
-    #[configurable(metadata(docs::advanced))]
-    pub buffer_format: BufferFormat,
 }
 
 impl_generate_config_from_default!(GlobalOptions);
@@ -300,7 +285,7 @@ impl GlobalOptions {
         let mut telemetry = self.telemetry.clone();
         telemetry.merge(&with.telemetry);
 
-        let merged_expire_metrics_per_metric_set = match (
+        let merged_expire_metrics_per_metric_set: Option<Vec<PerMetricSetExpiration>> = match (
             &self.expire_metrics_per_metric_set,
             &with.expire_metrics_per_metric_set,
         ) {
@@ -308,19 +293,6 @@ impl GlobalOptions {
             (Some(a), None) => Some(a.clone()),
             (None, Some(b)) => Some(b.clone()),
             (None, None) => None,
-        };
-
-        if self.buffer_format != BufferFormat::default()
-            && with.buffer_format != BufferFormat::default()
-            && self.buffer_format != with.buffer_format
-        {
-            errors.push("conflicting values for 'buffer_format' found".to_owned());
-        }
-
-        let buffer_format = if self.buffer_format != BufferFormat::default() {
-            self.buffer_format
-        } else {
-            with.buffer_format
         };
 
         if errors.is_empty() {
@@ -341,7 +313,6 @@ impl GlobalOptions {
                 metrics_storage_refresh_period: self
                     .metrics_storage_refresh_period
                     .or(with.metrics_storage_refresh_period),
-                buffer_format,
             })
         } else {
             Err(errors)

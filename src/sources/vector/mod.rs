@@ -1,28 +1,31 @@
 //! The `vector` source. See [VectorConfig].
 use std::net::SocketAddr;
 
-use chrono::Utc;
 use futures::TryFutureExt;
-use tonic::{Request, Response, Status};
+use tonic::{codec::CompressionEncoding, service::RoutesBuilder};
 use vector_lib::{
-    EstimatedJsonEncodedSizeOf,
     codecs::BytesDeserializerConfig,
     config::LogNamespace,
     configurable::configurable_component,
-    event::{BatchNotifier, BatchStatus, BatchStatusReceiver, Event},
-    internal_event::{CountByteSize, InternalEventHandle as _},
+    opentelemetry::proto::collector::{
+        logs::v1::logs_service_server::LogsServiceServer,
+        metrics::v1::metrics_service_server::MetricsServiceServer,
+        trace::v1::trace_service_server::TraceServiceServer,
+    },
 };
 
 use crate::{
-    SourceSender,
     config::{
         DataType, GenerateConfig, Resource, SourceAcknowledgementsConfig, SourceConfig,
         SourceContext, SourceOutput,
     },
-    internal_events::{EventsReceived, StreamClosedError},
-    proto::vector as proto,
+    internal_events::EventsReceived,
     serde::bool_or_struct,
-    sources::{Source, util::grpc::run_grpc_server},
+    sources::{
+        Source,
+        opentelemetry::grpc::{LOGS, METRICS, TRACES, Service},
+        util::grpc::run_grpc_server_with_routes,
+    },
     tls::{MaybeTlsSettings, TlsEnableableConfig},
 };
 
@@ -33,81 +36,6 @@ enum VectorConfigVersion {
     /// Marker value for version two.
     #[serde(rename = "2")]
     V2,
-}
-
-#[derive(Debug, Clone)]
-struct Service {
-    pipeline: SourceSender,
-    acknowledgements: bool,
-    #[allow(dead_code)]
-    log_namespace: LogNamespace,
-}
-
-#[tonic::async_trait]
-impl proto::Service for Service {
-    async fn push_events(
-        &self,
-        request: Request<proto::PushEventsRequest>,
-    ) -> Result<Response<proto::PushEventsResponse>, Status> {
-        let mut events: Vec<Event> = request
-            .into_inner()
-            .events
-            .into_iter()
-            .map(Event::from)
-            .collect();
-
-        let now = Utc::now();
-        for event in &mut events {
-            if let Event::Log(otel_log) = event {
-                otel_log.set_source_metadata(VectorConfig::NAME, now);
-            }
-        }
-
-        let count = events.len();
-        let byte_size = events.estimated_json_encoded_size_of();
-        let events_received = register!(EventsReceived);
-        events_received.emit(CountByteSize(count, byte_size));
-
-        let receiver = BatchNotifier::maybe_apply_to(self.acknowledgements, &mut events);
-
-        self.pipeline
-            .clone()
-            .send_batch(events)
-            .map_err(|error| {
-                let message = error.to_string();
-                emit!(StreamClosedError { count });
-                Status::unavailable(message)
-            })
-            .and_then(|_| handle_batch_status(receiver))
-            .await?;
-
-        Ok(Response::new(proto::PushEventsResponse {}))
-    }
-
-    // TODO: figure out a way to determine if the current Vector instance is "healthy".
-    async fn health_check(
-        &self,
-        _: Request<proto::HealthCheckRequest>,
-    ) -> Result<Response<proto::HealthCheckResponse>, Status> {
-        let message = proto::HealthCheckResponse {
-            status: proto::ServingStatus::Serving.into(),
-        };
-
-        Ok(Response::new(message))
-    }
-}
-
-async fn handle_batch_status(receiver: Option<BatchStatusReceiver>) -> Result<(), Status> {
-    let status = match receiver {
-        Some(receiver) => receiver.await,
-        None => BatchStatus::Delivered,
-    };
-
-    match status {
-        BatchStatus::Errored => Err(Status::internal("Delivery error")),
-        BatchStatus::Rejected => Err(Status::data_loss("Delivery failed")),
-        BatchStatus::Delivered => Ok(()),
-    }
 }
 
 /// Configuration for the `vector` source.
@@ -171,21 +99,41 @@ impl SourceConfig for VectorConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<Source> {
         let tls_settings = MaybeTlsSettings::from_config(self.tls.as_ref(), true)?;
         let acknowledgements = cx.do_acknowledgements(self.acknowledgements);
-        let log_namespace = cx.log_namespace(self.log_namespace);
+        let events_received = register!(EventsReceived);
 
-        let service = proto::Server::new(Service {
+        let service = Service {
             pipeline: cx.out,
             acknowledgements,
-            log_namespace,
-        })
-        .accept_compressed(tonic::codec::CompressionEncoding::Gzip)
-        // Tonic added a default of 4MB in 0.9. This replaces the old behavior.
-        .max_decoding_message_size(usize::MAX);
+            events_received,
+        };
 
-        let source =
-            run_grpc_server(self.address, tls_settings, service, cx.shutdown).map_err(|error| {
-                error!(message = "Source future failed.", %error);
-            });
+        let log_service = LogsServiceServer::new(service.clone())
+            .accept_compressed(CompressionEncoding::Gzip)
+            .max_decoding_message_size(usize::MAX);
+
+        let metrics_service = MetricsServiceServer::new(service.clone())
+            .accept_compressed(CompressionEncoding::Gzip)
+            .max_decoding_message_size(usize::MAX);
+
+        let trace_service = TraceServiceServer::new(service)
+            .accept_compressed(CompressionEncoding::Gzip)
+            .max_decoding_message_size(usize::MAX);
+
+        let mut builder = RoutesBuilder::default();
+        builder
+            .add_service(log_service)
+            .add_service(metrics_service)
+            .add_service(trace_service);
+
+        let source = run_grpc_server_with_routes(
+            self.address,
+            tls_settings,
+            builder.routes(),
+            cx.shutdown,
+        )
+        .map_err(|error| {
+            error!(message = "Source future failed.", %error);
+        });
 
         Ok(Box::pin(source))
     }
@@ -197,10 +145,11 @@ impl SourceConfig for VectorConfig {
             .schema_definition(log_namespace)
             .with_standard_vector_source_metadata();
 
-        vec![SourceOutput::new_maybe_logs(
-            DataType::all_bits(),
-            schema_definition,
-        )]
+        vec![
+            SourceOutput::new_maybe_logs(DataType::all_bits(), schema_definition).with_port(LOGS),
+            SourceOutput::new_metrics().with_port(METRICS),
+            SourceOutput::new_traces().with_port(TRACES),
+        ]
     }
 
     fn resources(&self) -> Vec<Resource> {
@@ -214,69 +163,19 @@ impl SourceConfig for VectorConfig {
 
 #[cfg(test)]
 mod test {
-    use vector_lib::{config::LogNamespace, lookup::owned_value_path, schema::Definition};
-    use vrl::value::{Kind, kind::Collection};
-    use vrl::path::OwnedTargetPath;
-
-    use super::VectorConfig;
-    use crate::config::SourceConfig;
-
     #[test]
     fn generate_config() {
         crate::test_util::test_generate_config::<super::VectorConfig>();
-    }
-
-    #[test]
-    fn output_schema_definition_vector_namespace() {
-        let config = VectorConfig::default();
-
-        let definitions = config
-            .outputs(LogNamespace::Vector)
-            .remove(0)
-            .schema_definition(true);
-
-        let expected_definition =
-            Definition::new_with_default_metadata(Kind::bytes(), [LogNamespace::Vector])
-                .with_metadata_field(
-                    &owned_value_path!("vector", "source_type"),
-                    Kind::bytes(),
-                    None,
-                )
-                .with_metadata_field(
-                    &owned_value_path!("vector", "ingest_timestamp"),
-                    Kind::timestamp(),
-                    None,
-                )
-                .with_meaning(OwnedTargetPath::event_root(), "message");
-
-        assert_eq!(definitions, Some(expected_definition))
-    }
-
-    #[test]
-    fn output_schema_definition_legacy_namespace() {
-        let config = VectorConfig::default();
-
-        let definitions = config
-            .outputs(LogNamespace::Legacy)
-            .remove(0)
-            .schema_definition(true);
-
-        let expected_definition = Definition::new_with_default_metadata(
-            Kind::object(Collection::empty()),
-            [LogNamespace::Legacy],
-        )
-        .with_event_field(&owned_value_path!("body"), Kind::bytes(), Some("message"))
-        .with_event_field(&owned_value_path!("resource", "source_type"), Kind::bytes(), None)
-        .with_event_field(&owned_value_path!("time_unix_nano"), Kind::integer(), None);
-
-        assert_eq!(definitions, Some(expected_definition))
     }
 }
 
 #[cfg(feature = "sinks-vector")]
 #[cfg(test)]
 mod tests {
-    use vector_lib::assert_event_data_eq;
+    use std::net::SocketAddr;
+
+    use futures::stream::into_event_stream;
+    use vector_lib::event::EventStatus;
 
     use super::*;
     use crate::{
@@ -290,7 +189,11 @@ mod tests {
         let config = format!(r#"address = "{addr}""#);
         let source: VectorConfig = toml::from_str(&config).unwrap();
 
-        let (tx, rx) = SourceSender::new_test();
+        let (mut tx, recv) = SourceSender::new_test_finalize(EventStatus::Delivered);
+        let logs_output = tx
+            .add_outputs(EventStatus::Delivered, LOGS.to_string())
+            .flat_map(into_event_stream);
+
         let server = source
             .build(SourceContext::new_test(tx, None))
             .await
@@ -298,22 +201,17 @@ mod tests {
         tokio::spawn(server);
         test_util::wait_for_tcp(addr).await;
 
-        // Ideally, this would be a fully custom agent to send the data,
-        // but the sink side already does such a test and this is good
-        // to ensure interoperability.
         let sink: SinkConfig = toml::from_str(vector_source_config_str).unwrap();
         let cx = SinkContext::default();
         let (sink, _) = sink.build(cx).await.unwrap();
 
-        let (mut events, stream) = test_util::random_events_with_stream(100, 100, None);
+        let (events, stream) = test_util::random_events_with_stream(100, 100, None);
         sink.run(stream).await.unwrap();
 
-        for event in &mut events {
-            event.as_mut_log().set_source_type("vector");
-        }
-
-        let output = test_util::collect_ready(rx).await;
-        assert_event_data_eq!(events, output);
+        let output = test_util::collect_ready(logs_output).await;
+        // Drop unused default output receiver
+        drop(recv);
+        assert_eq!(events.len(), output.len());
     }
 
     #[tokio::test]

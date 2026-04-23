@@ -22,11 +22,14 @@ use vector_lib::{
 use crate::{
     SourceSender,
     internal_events::{EventsReceived, StreamClosedError},
-    sources::opentelemetry::config::{LOGS, METRICS, TRACES},
 };
 
+pub const LOGS: &str = "logs";
+pub const METRICS: &str = "metrics";
+pub const TRACES: &str = "traces";
+
 #[derive(Clone)]
-pub(super) struct Service {
+pub(crate) struct Service {
     pub pipeline: SourceSender,
     pub acknowledgements: bool,
     pub events_received: Registered<EventsReceived>,

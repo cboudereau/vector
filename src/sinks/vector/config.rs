@@ -1,31 +1,14 @@
 use http::Uri;
-use hyper::client::HttpConnector;
-use hyper_openssl::HttpsConnector;
-use hyper_proxy::ProxyConnector;
-use tonic::body::BoxBody;
-use tower::ServiceBuilder;
 use vector_lib::configurable::configurable_component;
 
-use super::{
-    VectorSinkError,
-    service::{VectorRequest, VectorResponse, VectorService},
-    sink::VectorSink,
-};
 use crate::{
-    config::{
-        AcknowledgementsConfig, GenerateConfig, Input, ProxyConfig, SinkConfig, SinkContext,
-        SinkHealthcheckOptions,
-    },
-    http::build_proxy_connector,
-    proto::vector as proto,
+    config::{AcknowledgementsConfig, GenerateConfig, Input, SinkConfig, SinkContext},
     sinks::{
         Healthcheck, VectorSink as VectorSinkType,
-        util::{
-            BatchConfig, RealtimeEventBasedDefaultBatchSettings, ServiceBuilderExt,
-            TowerRequestConfig, retries::RetryLogic,
-        },
+        opentelemetry::GrpcConfig,
+        util::{BatchConfig, RealtimeEventBasedDefaultBatchSettings, TowerRequestConfig},
     },
-    tls::{MaybeTlsSettings, TlsEnableableConfig},
+    tls::TlsEnableableConfig,
 };
 
 /// Configuration for the `vector` sink.
@@ -34,8 +17,6 @@ use crate::{
 #[serde(deny_unknown_fields)]
 pub struct VectorConfig {
     /// Version of the configuration.
-    // NOTE: this option is deprecated and has already been removed from the "old" docs.
-    // At some point in the future we will remove it entirely as a breaking change.
     #[configurable(metadata(docs::hidden))]
     version: Option<super::VectorConfigVersion>,
 
@@ -109,36 +90,20 @@ fn default_config(address: &str) -> VectorConfig {
 #[typetag::serde(name = "vector")]
 impl SinkConfig for VectorConfig {
     async fn build(&self, cx: SinkContext) -> crate::Result<(VectorSinkType, Healthcheck)> {
-        let tls = MaybeTlsSettings::from_config(self.tls.as_ref(), false)?;
-        let uri = with_default_scheme(&self.address, tls.is_tls())?;
+        let tls_is_enabled = self.tls.as_ref().is_some_and(|t| t.enabled.unwrap_or(false));
+        let endpoint = with_default_scheme(&self.address, tls_is_enabled)?;
 
-        let client = new_client(&tls, cx.proxy())?;
-
-        let healthcheck_uri = cx
-            .healthcheck
-            .uri
-            .clone()
-            .map(|uri| uri.uri)
-            .unwrap_or_else(|| uri.clone());
-        let healthcheck_client = VectorService::new(client.clone(), healthcheck_uri, false);
-        let healthcheck = healthcheck(healthcheck_client, cx.healthcheck);
-        let service = VectorService::new(client, uri, self.compression);
-        let request_settings = self.request.into_settings();
-        let batch_settings = self.batch.into_batcher_settings()?;
-
-        let service = ServiceBuilder::new()
-            .settings(request_settings, VectorGrpcRetryLogic)
-            .service(service);
-
-        let sink = VectorSink {
-            batch_settings,
-            service,
+        let grpc_config = GrpcConfig {
+            endpoint: endpoint.to_string(),
+            load_balancing: None,
+            compression: self.compression,
+            batch: self.batch.clone(),
+            request: self.request,
+            tls: self.tls.clone(),
+            acknowledgements: self.acknowledgements.clone(),
         };
 
-        Ok((
-            VectorSinkType::from_event_streamsink(sink),
-            Box::pin(healthcheck),
-        ))
+        grpc_config.build(cx).await
     }
 
     fn input(&self) -> Input {
@@ -150,34 +115,11 @@ impl SinkConfig for VectorConfig {
     }
 }
 
-/// Check to see if the remote service accepts new events.
-async fn healthcheck(
-    mut service: VectorService,
-    options: SinkHealthcheckOptions,
-) -> crate::Result<()> {
-    if !options.enabled {
-        return Ok(());
-    }
-
-    let request = service.client.health_check(proto::HealthCheckRequest {});
-    match request.await {
-        Ok(response) => match proto::ServingStatus::try_from(response.into_inner().status) {
-            Ok(proto::ServingStatus::Serving) => Ok(()),
-            Ok(status) => Err(Box::new(VectorSinkError::Health {
-                status: Some(status.as_str_name()),
-            })),
-            Err(_) => Err(Box::new(VectorSinkError::Health { status: None })),
-        },
-        Err(source) => Err(Box::new(VectorSinkError::Request { source })),
-    }
-}
-
 /// grpc doesn't like an address without a scheme, so we default to http or https if one isn't
 /// specified in the address.
 pub fn with_default_scheme(address: &str, tls: bool) -> crate::Result<Uri> {
     let uri: Uri = address.parse()?;
     if uri.scheme().is_none() {
-        // Default the scheme to http or https.
         let mut parts = uri.into_parts();
 
         parts.scheme = if tls {
@@ -203,45 +145,5 @@ pub fn with_default_scheme(address: &str, tls: bool) -> crate::Result<Uri> {
         Ok(Uri::from_parts(parts)?)
     } else {
         Ok(uri)
-    }
-}
-
-fn new_client(
-    tls_settings: &MaybeTlsSettings,
-    proxy_config: &ProxyConfig,
-) -> crate::Result<hyper::Client<ProxyConnector<HttpsConnector<HttpConnector>>, BoxBody>> {
-    let proxy = build_proxy_connector(tls_settings.clone(), proxy_config)?;
-
-    Ok(hyper::Client::builder().http2_only(true).build(proxy))
-}
-
-#[derive(Debug, Clone)]
-struct VectorGrpcRetryLogic;
-
-impl RetryLogic for VectorGrpcRetryLogic {
-    type Error = VectorSinkError;
-    type Request = VectorRequest;
-    type Response = VectorResponse;
-
-    fn is_retriable_error(&self, err: &Self::Error) -> bool {
-        use tonic::Code::*;
-
-        match err {
-            VectorSinkError::Request { source } => !matches!(
-                source.code(),
-                // List taken from
-                //
-                // <https://github.com/grpc/grpc/blob/ed1b20777c69bd47e730a63271eafc1b299f6ca0/doc/statuscodes.md>
-                NotFound
-                    | InvalidArgument
-                    | AlreadyExists
-                    | PermissionDenied
-                    | OutOfRange
-                    | Unimplemented
-                    | Unauthenticated
-                    | DataLoss
-            ),
-            _ => true,
-        }
     }
 }

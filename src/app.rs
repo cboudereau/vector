@@ -5,7 +5,7 @@ use std::os::unix::process::ExitStatusExt;
 use std::os::windows::process::ExitStatusExt;
 use std::{
     num::{NonZeroU64, NonZeroUsize},
-    path::{Path, PathBuf},
+    path::PathBuf,
     process::ExitStatus,
     sync::atomic::{AtomicUsize, Ordering},
     time::Duration,
@@ -630,16 +630,6 @@ pub async fn load_configs(
 
     config::init_telemetry(config.global.telemetry.clone(), true);
 
-    // Wire the buffer format toggle before any disk buffer is opened.
-    // If the operator set `buffer_format = "otlp"` but existing Vector-encoded
-    // buffer data files are present on disk, auto-downgrade to `migrate` mode so
-    // those records can still be drained instead of causing decode failures.
-    let effective_buffer_format = maybe_force_migrate_mode(
-        config.global.buffer_format,
-        config.global.data_dir.as_deref(),
-        &config,
-    );
-    vector_lib::event::BUFFER_FORMAT.store(effective_buffer_format);
     #[cfg(feature = "sources-opentelemetry")]
     vector_lib::opentelemetry::buffer_codec::init();
 
@@ -652,61 +642,6 @@ pub async fn load_configs(
     Ok(config)
 }
 
-/// If the operator requests `buffer_format = "otlp"` but any sink's disk buffer
-/// directory already contains `.dat` data files (written by the Vector-native
-/// encoder), silently downgrade to `Migrate` so those records can still be
-/// drained. `Vector` and `Migrate` are returned unchanged.
-fn maybe_force_migrate_mode(
-    requested: vector_lib::event::BufferFormat,
-    global_data_dir: Option<&Path>,
-    config: &Config,
-) -> vector_lib::event::BufferFormat {
-    use vector_lib::event::BufferFormat;
-
-    if requested != BufferFormat::Otlp {
-        return requested;
-    }
-
-    let Some(data_dir) = global_data_dir else {
-        return requested;
-    };
-
-    let has_existing_buffer_data = config.sinks().any(|(id, sink)| {
-        sink.buffer.stages().iter().any(|stage| {
-            if let vector_lib::buffers::config::BufferType::DiskV2 { .. } = stage {
-                let buf_dir = data_dir.join("buffer").join("v2").join(id.id());
-                has_dat_files(&buf_dir)
-            } else {
-                false
-            }
-        })
-    });
-
-    if has_existing_buffer_data {
-        warn!(
-            message = "buffer_format is \"otlp\" but existing Vector-encoded buffer data was \
-                        detected on disk. Automatically switching to \"migrate\" mode to drain \
-                        old records. Set buffer_format = \"migrate\" explicitly to silence \
-                        this warning.",
-        );
-        BufferFormat::Migrate
-    } else {
-        requested
-    }
-}
-
-fn has_dat_files(dir: &Path) -> bool {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return false;
-    };
-    entries
-        .filter_map(Result::ok)
-        .any(|e| {
-            e.file_name()
-                .to_str()
-                .is_some_and(|name| name.ends_with(".dat"))
-        })
-}
 
 pub fn init_logging(color: bool, format: LogFormat, log_level: &str, rate: u64) {
     let level = get_log_levels(log_level);

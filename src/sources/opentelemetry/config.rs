@@ -41,9 +41,7 @@ use vector_lib::{
 };
 use vrl::value::{Kind, kind::Collection};
 
-pub const LOGS: &str = "logs";
-pub const METRICS: &str = "metrics";
-pub const TRACES: &str = "traces";
+pub use super::grpc::{LOGS, METRICS, TRACES};
 
 /// Configuration for the `opentelemetry` source.
 #[configurable_component(source("opentelemetry", "Receive OTLP data through gRPC or HTTP."))]

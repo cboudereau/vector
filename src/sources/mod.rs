@@ -66,7 +66,7 @@ pub mod nats;
 pub mod nginx_metrics;
 #[cfg(feature = "sources-okta")]
 pub mod okta;
-#[cfg(feature = "sources-opentelemetry")]
+#[cfg(any(feature = "sources-opentelemetry", feature = "sources-vector"))]
 pub mod opentelemetry;
 #[cfg(feature = "sources-postgresql_metrics")]
 pub mod postgresql_metrics;

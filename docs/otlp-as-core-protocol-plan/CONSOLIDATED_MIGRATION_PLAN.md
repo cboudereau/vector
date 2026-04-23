@@ -22,11 +22,18 @@ pub enum Event {
 - `AgentDDSketch` — moved to DD source adapter, not in core.
 - `DatadogMetricOriginMetadata` — no longer in core event metadata.
 - `use_otlp_decoding` flag — eliminated (source always emits OTel-native).
-- DD sinks (`src/sinks/datadog/`) and Vector sink (`src/sinks/vector/`) — removed.
+- DD sinks (`src/sinks/datadog/`) — removed (DD accepts OTLP natively).
+- Vector source/sink — migrated from native proto to OTLP gRPC (3-service model).
 - DD source — clean OTel adapter: emits `OtelMetric`/`OtelSpan` directly.
 - VRL migration tool (`vector vrl-migrate`) — ships with ~91% auto-rewrite coverage.
 - OTLP HTTP JSON ingestion — native support in the `opentelemetry` source.
 - Zero-conversion OTLP path: OTel source → OTel sink (gRPC + HTTP) for all 3 signals.
+- `LogNamespace::Legacy` — removed; only `Vector` namespace remains.
+- `LogSchema` struct + `log_schema()` — deleted.
+- `event.proto`, `vector.proto` — deleted; disk buffers use `otlp_buffer.proto` only.
+- `BufferFormat` enum (Vector/Otlp/Migrate) — collapsed to OTLP-only.
+- `Serialize for OtelLog/OtelSpan` — OTLP-native JSON (proto3 camelCase).
+- `EventDataEq for OtelLog/OtelSpan` — direct proto comparison.
 
 ---
 
@@ -38,9 +45,9 @@ Sources (input adapters)       Core (OTel-native only)              Sinks (outpu
 opentelemetry (gRPC + HTTP)    OTel LogRecord                        opentelemetry (gRPC + HTTP)
 datadog_agent  ─────────────►  OTel Metric                     ────► prometheus
   DD proto → OTel at boundary    (Sum/Gauge/Histogram/           ────► influxdb, loki, kafka, …
-vector (gRPC)  ─────────────►    ExponentialHistogram/Summary)
-  native → OTel at boundary    OTel Span
-kafka, syslog, …  ──────────►  Resource + InstrumentationScope
+vector (OTLP gRPC)  ────────►    ExponentialHistogram/Summary)
+kafka, syslog, …  ──────────►  OTel Span
+                               Resource + InstrumentationScope
                                Disk buffer: OtlpBufferBatch proto
 ```
 
@@ -68,7 +75,8 @@ kafka, syslog, …  ──────────►  Resource + Instrumentatio
 | `Vec<KeyValue>` attribute lookup | O(n) acceptable for non-VRL paths. VRL adapter copies to `BTreeMap` during program execution. |
 | Migration strategy | Wrapper types (incremental, always-compilable) over big-bang replacement. |
 | DD sink | Not re-added — DD accepts OTLP natively. Users point OTel sink at DD's OTLP endpoint. |
-| Native codecs | Deleted. `proto/vector/vector.proto` retained for Vector source backward compat. |
+| Native codecs + protos | Fully deleted. Vector source/sink speak OTLP gRPC natively. |
+| Legacy metric types | Retained as internal computation layer — MetricValue/MetricKind/MetricTags provide arithmetic and type-safe operations that OTLP proto lacks. |
 
 ---
 
@@ -101,8 +109,12 @@ kafka, syslog, …  ──────────►  Resource + Instrumentatio
 | **4a** | Load-balancing sink (consistent hash, static/DNS/K8s resolvers) | — |
 | **4b** | Tail sampling transform (8 policy types, decision cache) | 10 tests |
 | **4c** | Pipeline telemetry — `span_metrics` transform (RED metrics) | 6 tests |
+| **P1-3** | Vector source/sink → OTLP gRPC + delete native proto/event.proto | −7,862 lines |
+| **P4** | Collapse LogNamespace to Vector-only (remove Legacy variant) | 90 files, −1,152 lines |
+| **P5** | OTLP-native Serialize + direct EventDataEq | — |
+| **P8** | Delete log_schema constants, clean stale docs | — |
 
-**Net code change:** ~−11,500 lines (removed ~19,500, added ~8,000).
+**Net code change:** ~−20,500 lines removed.
 
 ---
 
@@ -110,17 +122,19 @@ kafka, syslog, …  ──────────►  Resource + Instrumentatio
 
 | Component | Why it stays |
 |-----------|-------------|
-| `LogEvent` / `TraceEvent` types | Used by bridge methods (`from_log_event`/`to_log_event`) for backward-compat serializers. Remove once all serializers use OTLP natively. |
-| `LogSchema` struct + `log_schema()` | `host_key` (2 callers: internal_metrics, dedupe), `metadata_key` (13 callers: remap error handling). User config + merge logic. |
-| `proto/vector/vector.proto` | Vector source backward compat with older upstream instances. |
+| `LegacyKey` type + `_legacy_key` params | In 199 call sites across sources. No-op but avoids churn. Remove in future cleanup pass. |
+| `to_value_canonical()` / `from_value_map()` | VRL path access (get/insert/remove) and legacy-format encoders (GELF, Avro) depend on Value↔proto bridge. |
+| `modify_as_value()` | Performance optimization for dnstap (batched mutations). |
+| Legacy metric types (MetricValue, MetricKind, MetricTags, etc.) | Internal computation layer for metric sinks/transforms — arithmetic, filtering, cardinality. OTLP proto lacks these operations natively. |
+| `log_namespace: Option<bool>` config fields (38 sources) | Config backward compatibility — parsed but ignored (always Vector namespace). |
 
 ---
 
 ## Deferred to Future Release
 
-1. Startup deprecation warning if user config sets `host_key`, `source_type_key`, or `message_key` explicitly.
-2. Delete unused `LogSchema` fields (`message_key`, `timestamp_key`, `source_type_key`).
-3. Migrate remaining serializers to OTLP-native (remove `to_log_event()`/`to_legacy_metric()` bridges).
+1. Remove `LegacyKey` type and all `_legacy_key` parameters (~199 call sites).
+2. Replace `to_value_canonical()` bridge with direct proto access in GELF/Avro encoders.
+3. Migrate metric sinks to work directly with OTLP proto types (requires implementing arithmetic on proto).
 4. Document the migration in release notes.
 
 ---

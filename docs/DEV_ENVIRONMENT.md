@@ -111,6 +111,12 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 # Format check
 cargo fmt --all -- --check
+
+# Test vector
+cargo test -p vector --all-features
+
+# To log output:
+cargo test -p vector --all-features | tee tests.log
 ```
 
 ### Cargo aliases

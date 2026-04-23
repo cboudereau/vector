@@ -4,14 +4,12 @@ use bitmask_enum::bitmask;
 use chrono::{DateTime, Utc};
 
 mod global_options;
-mod log_schema;
 pub(crate) mod metrics_expiration;
 pub mod output_id;
 pub mod proxy;
 mod telemetry;
 
 pub use global_options::{GlobalOptions, WildcardMatching};
-pub use log_schema::{BODY, HOST, METADATA, SOURCE_TYPE, TIME_UNIX_NANO};
 use lookup::{PathPrefix, lookup_v2::ValuePath, path};
 pub use output_id::OutputId;
 use serde::{Deserialize, Serialize};
@@ -476,9 +474,7 @@ pub enum LegacyKey<T> {
 }
 
 impl LogNamespace {
-    /// Vector: This is added to "event metadata", nested under the source name.
-    ///
-    /// Legacy: This is stored on the event root, only if a field with that name doesn't already exist.
+    /// Adds metadata to "event metadata", nested under the source name.
     pub fn insert_source_metadata<'a>(
         &self,
         source_name: &'a str,
@@ -492,9 +488,7 @@ impl LogNamespace {
             .insert(path!(source_name).concat(metadata_key), value);
     }
 
-    /// Vector: This is retrieved from the "event metadata", nested under the source name.
-    ///
-    /// Legacy: This is retrieved from the event.
+    /// Retrieves metadata from "event metadata", nested under the source name.
     pub fn get_source_metadata<'a>(
         &self,
         source_name: &'a str,
@@ -508,11 +502,7 @@ impl LogNamespace {
             .cloned()
     }
 
-    /// Vector: The `ingest_timestamp`, and `source_type` fields are added to "event metadata", nested
-    /// under the name "vector". This data will be marked as read-only in VRL.
-    ///
-    /// Legacy: The values of `source_type_key`, and `timestamp_key` are stored as keys on the event root,
-    /// only if a field with that name doesn't already exist.
+    /// Adds `source_type` and `ingest_timestamp` to "event metadata" under "vector".
     pub fn insert_standard_vector_source_metadata(
         &self,
         log: &mut impl MetadataInsertable,
@@ -530,10 +520,7 @@ impl LogNamespace {
         );
     }
 
-    /// Vector: This is added to the "event metadata", nested under the name "vector". This data
-    /// will be marked as read-only in VRL.
-    ///
-    /// Legacy: This is stored on the event root, only if a field with that name doesn't already exist.
+    /// Adds metadata to "event metadata" under "vector".
     pub fn insert_vector_metadata<'a>(
         &self,
         log: &mut impl MetadataInsertable,
@@ -546,9 +533,7 @@ impl LogNamespace {
             .insert(path!("vector").concat(metadata_key), value);
     }
 
-    /// Vector: This is retrieved from the "event metadata", nested under the name "vector".
-    ///
-    /// Legacy: This is retrieved from the event.
+    /// Retrieves metadata from "event metadata" under "vector".
     pub fn get_vector_metadata<'a>(
         &self,
         log: &OtelLog,

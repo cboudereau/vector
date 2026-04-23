@@ -3962,29 +3962,27 @@ impl GetEventCountTags for OtelMetric {
     }
 }
 
-fn normalize_for_eq(v: &mut Value) {
-    if let Value::Object(map) = v {
-        map.remove("observed_time_unix_nano");
-    }
-}
-
 impl EventDataEq for OtelLog {
     fn event_data_eq(&self, other: &Self) -> bool {
-        let mut a = self.to_value_canonical();
-        let mut b = other.to_value_canonical();
-        normalize_for_eq(&mut a);
-        normalize_for_eq(&mut b);
-        a == b
+        self.record.body == other.record.body
+            && self.record.severity_text == other.record.severity_text
+            && self.record.severity_number == other.record.severity_number
+            && self.record.time_unix_nano == other.record.time_unix_nano
+            && self.record.flags == other.record.flags
+            && self.record.trace_id == other.record.trace_id
+            && self.record.span_id == other.record.span_id
+            && self.record.attributes == other.record.attributes
+            && self.record.dropped_attributes_count == other.record.dropped_attributes_count
+            && self.resource == other.resource
+            && self.scope == other.scope
     }
 }
 
 impl EventDataEq for OtelSpan {
     fn event_data_eq(&self, other: &Self) -> bool {
-        let mut a = self.to_value_canonical();
-        let mut b = other.to_value_canonical();
-        normalize_for_eq(&mut a);
-        normalize_for_eq(&mut b);
-        a == b
+        self.span == other.span
+            && self.resource == other.resource
+            && self.scope == other.scope
     }
 }
 
@@ -4048,13 +4046,13 @@ impl From<std::collections::HashMap<vrl::prelude::KeyString, Value>> for OtelLog
 
 impl Serialize for OtelLog {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        self.to_value_canonical().serialize(serializer)
+        super::otel_json::OtlpJsonLog(self).serialize(serializer)
     }
 }
 
 impl Serialize for OtelSpan {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        self.to_value_canonical().serialize(serializer)
+        super::otel_json::OtlpJsonSpan(self).serialize(serializer)
     }
 }
 

@@ -116,7 +116,7 @@ cargo fmt --all -- --check
 cargo test -p vector --all-features
 
 # To log output:
-cargo test -p vector --all-features | tee tests.log
+cargo test -p vector --all-features 2>&1 | tee tests.log
 ```
 
 ### Cargo aliases

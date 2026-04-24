@@ -225,8 +225,8 @@ impl SourceConfig for SyslogConfig {
         }
     }
 
-    fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
-        let log_namespace = global_log_namespace;
+    fn outputs(&self) -> Vec<SourceOutput> {
+        let log_namespace = LogNamespace::Vector;
         let schema_definition = SyslogDeserializerConfig::from_source(SyslogConfig::NAME)
             .schema_definition(log_namespace)
             .with_standard_vector_source_metadata();
@@ -461,7 +461,7 @@ mod test {
         };
 
         let definitions = config
-            .outputs(LogNamespace::Vector)
+            .outputs()
             .remove(0)
             .schema_definition(true);
 

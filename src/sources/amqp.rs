@@ -147,8 +147,8 @@ impl SourceConfig for AmqpSourceConfig {
         amqp_source(self, cx.shutdown, cx.out, log_namespace, acknowledgements).await
     }
 
-    fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
-        let log_namespace = global_log_namespace;
+    fn outputs(&self) -> Vec<SourceOutput> {
+        let log_namespace = LogNamespace::Vector;
         let schema_definition = self
             .decoding
             .schema_definition(log_namespace)
@@ -543,7 +543,7 @@ pub mod test {
         };
 
         let definition = config
-            .outputs(LogNamespace::Vector)
+            .outputs()
             .remove(0)
             .schema_definition(true);
 

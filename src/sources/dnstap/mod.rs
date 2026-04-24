@@ -167,9 +167,9 @@ impl SourceConfig for DnstapConfig {
         }
     }
 
-    fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
+    fn outputs(&self) -> Vec<SourceOutput> {
         let schema_definition = self
-            .schema_definition(global_log_namespace)
+            .schema_definition(LogNamespace::Vector)
             .with_standard_vector_source_metadata();
         vec![SourceOutput::new_maybe_logs(
             DataType::Log,

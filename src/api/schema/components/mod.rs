@@ -274,13 +274,13 @@ pub fn update_config(config: &Config) {
                 // until we decide how we want to change the rest of the usages.
                 output_type: source
                     .inner
-                    .outputs(LogNamespace::Vector)
+                    .outputs()
                     .pop()
                     .unwrap()
                     .ty,
                 outputs: source
                     .inner
-                    .outputs(LogNamespace::Vector)
+                    .outputs()
                     .into_iter()
                     .map(|output| output.port.unwrap_or_else(|| DEFAULT_OUTPUT.to_string()))
                     .collect(),

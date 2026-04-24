@@ -412,9 +412,9 @@ impl SourceConfig for FileConfig {
         ))
     }
 
-    fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
+    fn outputs(&self) -> Vec<SourceOutput> {
         let schema_definition = BytesDeserializerConfig
-            .schema_definition(global_log_namespace)
+            .schema_definition(LogNamespace::Vector)
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 Self::NAME,
@@ -917,7 +917,7 @@ mod tests {
     #[test]
     fn output_schema_definition_vector_namespace() {
         let definitions = FileConfig::default()
-            .outputs(LogNamespace::Vector)
+            .outputs()
             .remove(0)
             .schema_definition(true);
 

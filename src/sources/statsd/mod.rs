@@ -235,7 +235,7 @@ impl SourceConfig for StatsdConfig {
         }
     }
 
-    fn outputs(&self, _global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
+    fn outputs(&self) -> Vec<SourceOutput> {
         vec![SourceOutput::new_metrics()]
     }
 

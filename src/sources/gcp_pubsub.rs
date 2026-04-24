@@ -332,8 +332,8 @@ impl SourceConfig for PubsubConfig {
         Ok(Box::pin(source))
     }
 
-    fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
-        let log_namespace = global_log_namespace;
+    fn outputs(&self) -> Vec<SourceOutput> {
+        let log_namespace = LogNamespace::Vector;
         let schema_definition = self
             .decoding
             .schema_definition(log_namespace)
@@ -751,7 +751,7 @@ mod tests {
         };
 
         let definitions = config
-            .outputs(LogNamespace::Vector)
+            .outputs()
             .remove(0)
             .schema_definition(true);
 

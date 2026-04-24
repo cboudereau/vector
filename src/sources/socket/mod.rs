@@ -69,8 +69,8 @@ impl SocketConfig {
         }
     }
 
-    fn log_namespace(&self, global_log_namespace: LogNamespace) -> LogNamespace {
-        global_log_namespace
+    fn log_namespace(&self, LogNamespace::Vector: LogNamespace) -> LogNamespace {
+        LogNamespace::Vector
     }
 }
 
@@ -191,8 +191,8 @@ impl SourceConfig for SocketConfig {
         }
     }
 
-    fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
-        let log_namespace = self.log_namespace(global_log_namespace);
+    fn outputs(&self) -> Vec<SourceOutput> {
+        let log_namespace = self.log_namespace(LogNamespace::Vector);
 
         let schema_definition = self
             .decoding()

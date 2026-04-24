@@ -299,8 +299,8 @@ impl SourceConfig for FluentConfig {
         }
     }
 
-    fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
-        let log_namespace = global_log_namespace;
+    fn outputs(&self) -> Vec<SourceOutput> {
+        let log_namespace = LogNamespace::Vector;
         let schema_definition = self.schema_definition(log_namespace);
 
         vec![SourceOutput::new_maybe_logs(
@@ -1131,7 +1131,7 @@ mod tests {
         };
 
         let definitions = config
-            .outputs(LogNamespace::Vector)
+            .outputs()
             .remove(0)
             .schema_definition(true);
 

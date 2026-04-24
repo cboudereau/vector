@@ -55,8 +55,8 @@ impl SourceConfig for HttpConfig {
         self.0.build(cx).await
     }
 
-    fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
-        self.0.outputs(global_log_namespace)
+    fn outputs(&self) -> Vec<SourceOutput> {
+        self.0.outputs()
     }
 
     fn resources(&self) -> Vec<Resource> {
@@ -379,10 +379,10 @@ impl SourceConfig for SimpleHttpConfig {
         )
     }
 
-    fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
+    fn outputs(&self) -> Vec<SourceOutput> {
         // There is a global and per-source `log_namespace` config.
         // The source config overrides the global setting and is merged here.
-        let log_namespace = global_log_namespace;
+        let log_namespace = LogNamespace::Vector;
 
         let schema_definition = self.schema_definition(log_namespace);
 
@@ -1597,7 +1597,7 @@ mod tests {
         };
 
         let definitions = config
-            .outputs(LogNamespace::Vector)
+            .outputs()
             .remove(0)
             .schema_definition(true);
 

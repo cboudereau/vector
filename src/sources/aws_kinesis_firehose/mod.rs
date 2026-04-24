@@ -208,10 +208,10 @@ impl SourceConfig for AwsKinesisFirehoseConfig {
         }))
     }
 
-    fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
+    fn outputs(&self) -> Vec<SourceOutput> {
         let schema_definition = self
             .decoding
-            .schema_definition(global_log_namespace)
+            .schema_definition(LogNamespace::Vector)
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 Self::NAME,

@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use vector_lib::{
-    config::{DataType, LogNamespace, SourceOutput},
+    config::{DataType, SourceOutput},
     configurable::configurable_component,
     schema::Definition,
     source::Source,
@@ -25,7 +25,7 @@ impl SourceConfig for PanicSourceConfig {
         Ok(Box::pin(async { panic!() }))
     }
 
-    fn outputs(&self, _global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
+    fn outputs(&self) -> Vec<SourceOutput> {
         vec![SourceOutput::new_maybe_logs(
             DataType::Log,
             Definition::default_legacy_namespace(),

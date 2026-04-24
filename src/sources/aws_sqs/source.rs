@@ -238,7 +238,7 @@ mod tests {
             ..Default::default()
         };
         let definitions = config
-            .outputs(LogNamespace::Vector)
+            .outputs()
             .remove(0)
             .schema_definition(true);
 
@@ -312,7 +312,7 @@ mod tests {
             ..Default::default()
         };
         let definitions = config
-            .outputs(LogNamespace::Vector)
+            .outputs()
             .remove(0)
             .schema_definition(true);
 

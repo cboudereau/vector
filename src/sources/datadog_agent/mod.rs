@@ -260,10 +260,10 @@ impl SourceConfig for DatadogAgentConfig {
         }))
     }
 
-    fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
+    fn outputs(&self) -> Vec<SourceOutput> {
         let definition = self
             .decoding
-            .schema_definition(global_log_namespace)
+            .schema_definition(LogNamespace::Vector)
             // NOTE: "status" is intentionally semantically mapped to "severity",
             //       since that is what DD designates as the semantic meaning of status
             // https://docs.datadoghq.com/logs/log_configuration/attributes_naming_convention/?s=severity#reserved-attributes

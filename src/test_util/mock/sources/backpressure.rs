@@ -6,7 +6,7 @@ use std::sync::{
 use async_trait::async_trait;
 use futures_util::FutureExt;
 use vector_lib::{
-    config::{DataType, LogNamespace, SourceOutput},
+    config::{DataType, SourceOutput},
     configurable::configurable_component,
     event::{Event, OtelLog},
     schema::Definition,
@@ -60,7 +60,7 @@ impl SourceConfig for BackpressureSourceConfig {
         .boxed())
     }
 
-    fn outputs(&self, _global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
+    fn outputs(&self) -> Vec<SourceOutput> {
         vec![SourceOutput::new_maybe_logs(
             DataType::all_bits(),
             Definition::default_legacy_namespace(),

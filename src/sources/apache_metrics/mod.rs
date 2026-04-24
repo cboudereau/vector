@@ -24,7 +24,6 @@ use crate::{
 mod parser;
 
 pub use parser::ParseError;
-use vector_lib::config::LogNamespace;
 
 /// Configuration for the `apache_metrics` source.
 #[serde_as]
@@ -90,7 +89,7 @@ impl SourceConfig for ApacheMetricsConfig {
         ))
     }
 
-    fn outputs(&self, _global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
+    fn outputs(&self) -> Vec<SourceOutput> {
         vec![SourceOutput::new_metrics()]
     }
 

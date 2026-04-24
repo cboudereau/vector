@@ -271,9 +271,9 @@ impl SourceConfig for DockerLogsConfig {
         }))
     }
 
-    fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
+    fn outputs(&self) -> Vec<SourceOutput> {
         let schema_definition = BytesDeserializerConfig
-            .schema_definition(global_log_namespace)
+            .schema_definition(LogNamespace::Vector)
             .with_source_metadata(
                 Self::NAME,
                 &owned_value_path!("host"),

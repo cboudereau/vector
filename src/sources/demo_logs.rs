@@ -294,10 +294,10 @@ impl SourceConfig for DemoLogsConfig {
         )))
     }
 
-    fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
+    fn outputs(&self) -> Vec<SourceOutput> {
         // There is a global and per-source `log_namespace` config. The source config overrides the global setting,
         // and is merged here.
-        let log_namespace = global_log_namespace;
+        let log_namespace = LogNamespace::Vector;
 
         let schema_definition = self
             .decoding

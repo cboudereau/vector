@@ -202,8 +202,8 @@ impl SourceConfig for SplunkConfig {
         }))
     }
 
-    fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
-        let _log_namespace = global_log_namespace;
+    fn outputs(&self) -> Vec<SourceOutput> {
+        let _log_namespace = LogNamespace::Vector;
 
         let schema_definition = {
             let definition = vector_lib::schema::Definition::empty_legacy_namespace()
@@ -2535,7 +2535,7 @@ mod tests {
         };
 
         let definition = config
-            .outputs(LogNamespace::Vector)
+            .outputs()
             .remove(0)
             .schema_definition(true);
 

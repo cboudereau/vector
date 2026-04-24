@@ -395,9 +395,9 @@ impl SourceConfig for JournaldConfig {
         ))
     }
 
-    fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
+    fn outputs(&self) -> Vec<SourceOutput> {
         let schema_definition =
-            self.schema_definition(global_log_namespace);
+            self.schema_definition(LogNamespace::Vector);
 
         vec![SourceOutput::new_maybe_logs(
             DataType::Log,
@@ -1705,7 +1705,7 @@ mod tests {
         };
 
         let definitions = config
-            .outputs(LogNamespace::Vector)
+            .outputs()
             .remove(0)
             .schema_definition(true);
 

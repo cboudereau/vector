@@ -3,7 +3,7 @@ use std::{collections::HashMap, net::SocketAddr};
 use bytes::Bytes;
 use prost::Message;
 use vector_lib::{
-    config::LogNamespace, configurable::configurable_component, prometheus::parser::proto,
+    configurable::configurable_component, prometheus::parser::proto,
 };
 use warp::http::{HeaderMap, StatusCode};
 
@@ -143,7 +143,7 @@ impl SourceConfig for PrometheusRemoteWriteConfig {
         )
     }
 
-    fn outputs(&self, _global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
+    fn outputs(&self) -> Vec<SourceOutput> {
         vec![SourceOutput::new_metrics()]
     }
 

@@ -1534,7 +1534,7 @@ fn test_config_outputs_with_disabled_data_types() {
         };
 
         let outputs: Vec<DataType> = config
-            .outputs(LogNamespace::Vector)
+            .outputs()
             .into_iter()
             .map(|output| output.ty)
             .collect();
@@ -1848,7 +1848,7 @@ fn test_config_outputs() {
         };
 
         let mut outputs = config
-            .outputs(LogNamespace::Vector)
+            .outputs()
             .into_iter()
             .map(|output| (output.port.clone(), output.schema_definition(true)))
             .collect::<HashMap<_, _>>();
@@ -2084,7 +2084,7 @@ fn test_output_schema_definition_json_vector_namespace() {
             decoding.codec = "json"
         "#})
     .unwrap()
-    .outputs(LogNamespace::Vector)
+    .outputs()
     .remove(0)
     .schema_definition(true);
 
@@ -2148,7 +2148,7 @@ fn test_output_schema_definition_bytes_vector_namespace() {
             decoding.codec = "bytes"
         "#})
     .unwrap()
-    .outputs(LogNamespace::Vector)
+    .outputs()
     .remove(0)
     .schema_definition(true);
 

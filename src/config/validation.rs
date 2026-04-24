@@ -196,7 +196,7 @@ pub fn check_values(config: &ConfigBuilder) -> Result<(), Vec<String>> {
 pub fn check_outputs(config: &ConfigBuilder) -> Result<(), Vec<String>> {
     let mut errors = Vec::new();
     for (key, source) in config.sources.iter() {
-        let outputs = source.inner.outputs(LogNamespace::Vector);
+        let outputs = source.inner.outputs();
         if outputs
             .iter()
             .map(|output| output.port.as_deref().unwrap_or(""))
@@ -379,7 +379,7 @@ pub fn warnings(config: &Config) -> Vec<String> {
         .flat_map(|(key, source)| {
             source
                 .inner
-                .outputs(LogNamespace::Vector)
+                .outputs()
                 .iter()
                 .map(|output| {
                     if let Some(port) = &output.port {

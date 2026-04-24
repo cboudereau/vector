@@ -343,8 +343,8 @@ impl SourceConfig for Config {
         ))
     }
 
-    fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
-        let log_namespace = global_log_namespace;
+    fn outputs(&self) -> Vec<SourceOutput> {
+        let log_namespace = LogNamespace::Vector;
         let schema_definition = BytesDeserializerConfig
             .schema_definition(log_namespace)
             .with_source_metadata(
@@ -1253,7 +1253,7 @@ mod tests {
     fn test_output_schema_definition_vector_namespace() {
         let definitions = toml::from_str::<Config>("")
             .unwrap()
-            .outputs(LogNamespace::Vector)
+            .outputs()
             .remove(0)
             .schema_definition(true);
 

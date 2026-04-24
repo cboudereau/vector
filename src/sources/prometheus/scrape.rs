@@ -5,7 +5,7 @@ use futures_util::FutureExt;
 use http::{Uri, response::Parts};
 use serde_with::serde_as;
 use snafu::ResultExt;
-use vector_lib::{config::LogNamespace, configurable::configurable_component, event::Event};
+use vector_lib::{configurable::configurable_component, event::Event};
 
 use super::parser;
 use crate::{
@@ -164,7 +164,7 @@ impl SourceConfig for PrometheusScrapeConfig {
         Ok(call(inputs, builder, cx.out, HttpMethod::Get).boxed())
     }
 
-    fn outputs(&self, _global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
+    fn outputs(&self) -> Vec<SourceOutput> {
         vec![SourceOutput::new_metrics()]
     }
 

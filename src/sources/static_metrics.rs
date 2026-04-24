@@ -7,7 +7,6 @@ use tokio::time;
 use tokio_stream::wrappers::IntervalStream;
 use vector_lib::{
     ByteSizeOf, EstimatedJsonEncodedSizeOf,
-    config::LogNamespace,
     configurable::configurable_component,
     internal_event::{ByteSize, BytesReceived, CountByteSize, InternalEventHandle as _, Protocol},
 };
@@ -115,7 +114,7 @@ impl SourceConfig for StaticMetricsConfig {
         ))
     }
 
-    fn outputs(&self, _global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
+    fn outputs(&self) -> Vec<SourceOutput> {
         vec![SourceOutput::new_metrics()]
     }
 

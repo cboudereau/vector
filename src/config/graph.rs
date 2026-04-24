@@ -4,7 +4,6 @@ use std::{
 };
 
 use indexmap::{IndexMap, set::IndexSet};
-use vector_lib::config::LogNamespace;
 
 use super::{
     ComponentKey, DataType, OutputId, SinkOuter, SourceOuter, SourceOutput, TransformContext,
@@ -102,7 +101,7 @@ impl Graph {
             graph.nodes.insert(
                 id.clone(),
                 Node::Source {
-                    outputs: config.inner.outputs(LogNamespace::Vector),
+                    outputs: config.inner.outputs(),
                 },
             );
         }

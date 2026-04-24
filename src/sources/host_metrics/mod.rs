@@ -15,7 +15,6 @@ use tokio::time;
 use tokio_stream::wrappers::IntervalStream;
 use vector_lib::{
     EstimatedJsonEncodedSizeOf,
-    config::LogNamespace,
     configurable::configurable_component,
     internal_event::{
         ByteSize, BytesReceived, CountByteSize, InternalEventHandle as _, Protocol, Registered,
@@ -306,7 +305,7 @@ impl SourceConfig for HostMetricsConfig {
         Ok(Box::pin(config.run(cx.out, cx.shutdown)))
     }
 
-    fn outputs(&self, _global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
+    fn outputs(&self) -> Vec<SourceOutput> {
         vec![SourceOutput::new_metrics()]
     }
 

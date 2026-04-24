@@ -28,7 +28,6 @@ use crate::{
 
 pub mod parser;
 use parser::NginxStubStatus;
-use vector_lib::config::LogNamespace;
 
 macro_rules! counter {
     ($value:expr_2021) => {
@@ -146,7 +145,7 @@ impl SourceConfig for NginxMetricsConfig {
         }))
     }
 
-    fn outputs(&self, _global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
+    fn outputs(&self) -> Vec<SourceOutput> {
         vec![SourceOutput::new_metrics()]
     }
 

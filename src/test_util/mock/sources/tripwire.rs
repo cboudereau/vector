@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use futures_util::{FutureExt, future};
 use stream_cancel::{Trigger, Tripwire};
 use vector_lib::{
-    config::{DataType, LogNamespace, SourceOutput},
+    config::{DataType, SourceOutput},
     configurable::configurable_component,
     schema::Definition,
     source::Source,
@@ -65,7 +65,7 @@ impl SourceConfig for TripwireSourceConfig {
         ))
     }
 
-    fn outputs(&self, _global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
+    fn outputs(&self) -> Vec<SourceOutput> {
         vec![SourceOutput::new_maybe_logs(
             DataType::Log,
             Definition::default_legacy_namespace(),

@@ -12,7 +12,7 @@ use vector_lib::{
         config::MemoryBufferSize,
         topology::channel::{LimitedReceiver, limited},
     },
-    config::{DataType, LogNamespace, SourceOutput},
+    config::{DataType, SourceOutput},
     configurable::configurable_component,
     event::EventContainer,
     schema::Definition,
@@ -140,7 +140,7 @@ impl SourceConfig for BasicSourceConfig {
         }))
     }
 
-    fn outputs(&self, _global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
+    fn outputs(&self) -> Vec<SourceOutput> {
         vec![SourceOutput::new_maybe_logs(
             self.data_type.unwrap(),
             Definition::default_legacy_namespace(),

@@ -30,7 +30,6 @@ use crate::{
 
 mod types;
 use types::{CommandBuildInfo, CommandIsMaster, CommandServerStatus, NodeType};
-use vector_lib::config::LogNamespace;
 
 macro_rules! tags {
     ($tags:expr_2021) => { $tags.clone() };
@@ -159,7 +158,7 @@ impl SourceConfig for MongoDbMetricsConfig {
         }))
     }
 
-    fn outputs(&self, _global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
+    fn outputs(&self) -> Vec<SourceOutput> {
         vec![SourceOutput::new_metrics()]
     }
 

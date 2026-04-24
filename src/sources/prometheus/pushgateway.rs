@@ -16,7 +16,7 @@ use std::{collections::HashMap, net::SocketAddr};
 use base64::{Engine, prelude::BASE64_URL_SAFE};
 use bytes::Bytes;
 use itertools::Itertools;
-use vector_lib::{config::LogNamespace, configurable::configurable_component};
+use vector_lib::{configurable::configurable_component};
 use warp::http::HeaderMap;
 
 use super::parser;
@@ -106,7 +106,7 @@ impl SourceConfig for PrometheusPushgatewayConfig {
         )
     }
 
-    fn outputs(&self, _global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
+    fn outputs(&self) -> Vec<SourceOutput> {
         vec![SourceOutput::new_metrics()]
     }
 

@@ -27,7 +27,6 @@ use tokio_postgres::{
 use tokio_stream::wrappers::IntervalStream;
 use vector_lib::{
     ByteSizeOf, EstimatedJsonEncodedSizeOf,
-    config::LogNamespace,
     configurable::configurable_component,
     internal_event::{CountByteSize, InternalEventHandle as _, Registered},
     json_size::JsonSize,
@@ -240,7 +239,7 @@ impl SourceConfig for PostgresqlMetricsConfig {
         }))
     }
 
-    fn outputs(&self, _global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
+    fn outputs(&self) -> Vec<SourceOutput> {
         vec![SourceOutput::new_metrics()]
     }
 

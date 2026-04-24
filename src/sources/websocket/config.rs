@@ -177,8 +177,8 @@ impl SourceConfig for WebSocketConfig {
         Ok(Box::pin(source.run(cx).map_err(|_err| ())))
     }
 
-    fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
-        let log_namespace = global_log_namespace;
+    fn outputs(&self) -> Vec<SourceOutput> {
+        let log_namespace = LogNamespace::Vector;
 
         let schema_definition = self
             .decoding
@@ -218,7 +218,7 @@ mod test {
         };
 
         let definition = config
-            .outputs(LogNamespace::Vector)
+            .outputs()
             .remove(0)
             .schema_definition(true);
 

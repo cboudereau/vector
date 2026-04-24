@@ -346,8 +346,8 @@ impl SourceConfig for KafkaSourceConfig {
         )))
     }
 
-    fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
-        let log_namespace = global_log_namespace;
+    fn outputs(&self) -> Vec<SourceOutput> {
+        let log_namespace = LogNamespace::Vector;
 
         let schema_definition = self
             .decoding
@@ -1345,7 +1345,7 @@ mod test {
     #[test]
     fn test_output_schema_definition_vector_namespace() {
         let definitions = make_config("topic", "group", None)
-            .outputs(LogNamespace::Vector)
+            .outputs()
             .remove(0)
             .schema_definition(true);
 

@@ -171,8 +171,8 @@ impl SourceConfig for AwsS3Config {
         }
     }
 
-    fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
-        let log_namespace = global_log_namespace;
+    fn outputs(&self) -> Vec<SourceOutput> {
+        let log_namespace = LogNamespace::Vector;
         let mut schema_definition = self
             .decoding
             .schema_definition(log_namespace)
@@ -930,7 +930,7 @@ mod integration_tests {
             assert_eq!(expected_lines.len(), events.len());
             for (i, event) in events.iter().enumerate() {
 
-                if let Some(schema_definition) = config.outputs(namespace).pop().unwrap().schema_definition {
+                if let Some(schema_definition) = config.outputs().pop().unwrap().schema_definition {
                     schema_definition.is_valid_for_event(event).unwrap();
                 }
 

@@ -4,7 +4,7 @@ use futures::{Sink, Stream, stream};
 use futures_util::{FutureExt, StreamExt, future, stream::BoxStream};
 use tokio::sync::{Mutex, oneshot};
 use vector_lib::{
-    config::{DataType, Input, LogNamespace},
+    config::{DataType, Input},
     configurable::configurable_component,
     event::Event,
     schema,
@@ -45,7 +45,7 @@ impl SourceConfig for UnitTestSourceConfig {
         }))
     }
 
-    fn outputs(&self, _global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
+    fn outputs(&self) -> Vec<SourceOutput> {
         vec![SourceOutput::new_maybe_logs(
             DataType::all_bits(),
             schema::Definition::default_legacy_namespace(),
@@ -102,7 +102,7 @@ impl SourceConfig for UnitTestStreamSourceConfig {
         }))
     }
 
-    fn outputs(&self, _global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
+    fn outputs(&self) -> Vec<SourceOutput> {
         vec![SourceOutput::new_maybe_logs(
             DataType::all_bits(),
             schema::Definition::default_legacy_namespace(),

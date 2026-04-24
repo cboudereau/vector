@@ -84,8 +84,8 @@ impl SourceConfig for StdinConfig {
         )
     }
 
-    fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
-        let log_namespace = global_log_namespace;
+    fn outputs(&self) -> Vec<SourceOutput> {
+        let log_namespace = LogNamespace::Vector;
 
         outputs(log_namespace, &self.decoding, Self::NAME)
     }

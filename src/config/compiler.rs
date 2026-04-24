@@ -159,7 +159,7 @@ pub(crate) fn expand_globs(config: &mut ConfigBuilder) {
         .iter()
         .flat_map(|(key, s)| {
             s.inner
-                .outputs(LogNamespace::Vector)
+                .outputs()
                 .into_iter()
                 .map(|output| OutputId {
                     component: key.clone(),

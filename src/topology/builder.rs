@@ -18,7 +18,6 @@ use tokio::{
 use tracing::Instrument;
 use vector_lib::{
     EstimatedJsonEncodedSizeOf,
-    config::LogNamespace,
     buffers::{
         BufferType, WhenFull,
         topology::{
@@ -249,7 +248,7 @@ impl<'a> Builder<'a> {
             debug!(component_id = %key, "Building new source.");
 
             let typetag = source.inner.get_component_name();
-            let source_outputs = source.inner.outputs(LogNamespace::Vector);
+            let source_outputs = source.inner.outputs();
 
             let span = error_span!(
                 "source",

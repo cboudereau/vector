@@ -299,7 +299,7 @@ mod integration_tests {
     async fn container_with_tty_vector_namespace() {
         trace_init();
         let schema_definitions = DockerLogsConfig::default()
-            .outputs(LogNamespace::Vector)
+            .outputs()
             .first()
             .unwrap()
             .schema_definition
@@ -329,7 +329,7 @@ mod integration_tests {
     async fn container_with_tty_legacy_namespace() {
         trace_init();
         let schema_definitions = DockerLogsConfig::default()
-            .outputs(LogNamespace::Vector)
+            .outputs()
             .first()
             .unwrap()
             .schema_definition
@@ -362,7 +362,7 @@ mod integration_tests {
     async fn newly_started_vector_namespace() {
         trace_init();
         let schema_definitions = DockerLogsConfig::default()
-            .outputs(LogNamespace::Vector)
+            .outputs()
             .first()
             .unwrap()
             .schema_definition
@@ -425,7 +425,7 @@ mod integration_tests {
     async fn newly_started_legacy_namespace() {
         trace_init();
         let schema_definitions = DockerLogsConfig::default()
-            .outputs(LogNamespace::Vector)
+            .outputs()
             .first()
             .unwrap()
             .schema_definition
@@ -466,7 +466,7 @@ mod integration_tests {
     async fn restart_legacy_namespace() {
         trace_init();
         let schema_definitions = DockerLogsConfig::default()
-            .outputs(LogNamespace::Vector)
+            .outputs()
             .first()
             .unwrap()
             .schema_definition
@@ -498,7 +498,7 @@ mod integration_tests {
     async fn include_containers_legacy_namespace() {
         trace_init();
         let schema_definitions = DockerLogsConfig::default()
-            .outputs(LogNamespace::Vector)
+            .outputs()
             .first()
             .unwrap()
             .schema_definition
@@ -534,7 +534,7 @@ mod integration_tests {
     async fn exclude_containers_legacy_namespace() {
         trace_init();
         let schema_definitions = DockerLogsConfig::default()
-            .outputs(LogNamespace::Vector)
+            .outputs()
             .first()
             .unwrap()
             .schema_definition
@@ -583,7 +583,7 @@ mod integration_tests {
     async fn include_labels_legacy_namespace() {
         trace_init();
         let schema_definitions = DockerLogsConfig::default()
-            .outputs(LogNamespace::Vector)
+            .outputs()
             .first()
             .unwrap()
             .schema_definition
@@ -620,7 +620,7 @@ mod integration_tests {
     async fn currently_running_legacy_namespace() {
         trace_init();
         let schema_definitions = DockerLogsConfig::default()
-            .outputs(LogNamespace::Vector)
+            .outputs()
             .first()
             .unwrap()
             .schema_definition
@@ -661,7 +661,7 @@ mod integration_tests {
     async fn include_image_legacy_namespace() {
         trace_init();
         let schema_definitions = DockerLogsConfig::default()
-            .outputs(LogNamespace::Vector)
+            .outputs()
             .first()
             .unwrap()
             .schema_definition
@@ -755,7 +755,7 @@ mod integration_tests {
     async fn flat_labels_legacy_namespace() {
         trace_init();
         let schema_definitions = DockerLogsConfig::default()
-            .outputs(LogNamespace::Vector)
+            .outputs()
             .first()
             .unwrap()
             .schema_definition
@@ -803,7 +803,7 @@ mod integration_tests {
     async fn log_longer_than_16kb_legacy_namespace() {
         trace_init();
         let schema_definitions = DockerLogsConfig::default()
-            .outputs(LogNamespace::Vector)
+            .outputs()
             .first()
             .unwrap()
             .schema_definition
@@ -838,7 +838,7 @@ mod integration_tests {
         assert_source_compliance(&SOURCE_TAGS, async {
             trace_init();
             let schema_definitions = DockerLogsConfig::default()
-                .outputs(LogNamespace::Vector)
+                .outputs()
                 .first()
                 .unwrap()
                 .schema_definition
@@ -908,7 +908,7 @@ mod integration_tests {
         assert_source_compliance(&SOURCE_TAGS, async {
             trace_init();
             let schema_definitions = DockerLogsConfig::default()
-                .outputs(LogNamespace::Vector)
+                .outputs()
                 .first()
                 .unwrap()
                 .schema_definition

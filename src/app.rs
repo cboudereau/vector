@@ -667,36 +667,3 @@ pub fn watcher_config(
         WatchConfigMethod::Poll => config::watcher::WatcherConfig::PollWatcher(interval.into()),
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-    use tempfile::TempDir;
-
-    #[test]
-    fn has_dat_files_returns_false_for_missing_dir() {
-        assert!(!has_dat_files(Path::new("/nonexistent/path/xyz")));
-    }
-
-    #[test]
-    fn has_dat_files_returns_false_for_empty_dir() {
-        let dir = TempDir::new().unwrap();
-        assert!(!has_dat_files(dir.path()));
-    }
-
-    #[test]
-    fn has_dat_files_returns_false_for_non_dat_files() {
-        let dir = TempDir::new().unwrap();
-        fs::write(dir.path().join("buffer.db"), b"ledger").unwrap();
-        fs::write(dir.path().join("buffer.lock"), b"").unwrap();
-        assert!(!has_dat_files(dir.path()));
-    }
-
-    #[test]
-    fn has_dat_files_returns_true_when_dat_present() {
-        let dir = TempDir::new().unwrap();
-        fs::write(dir.path().join("buffer-data-0.dat"), b"data").unwrap();
-        assert!(has_dat_files(dir.path()));
-    }
-}

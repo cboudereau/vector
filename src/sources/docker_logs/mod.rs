@@ -25,7 +25,7 @@ use tokio::sync::mpsc;
 use tracing_futures::Instrument;
 use vector_lib::{
     codecs::{BytesDeserializer, BytesDeserializerConfig},
-    config::LogNamespace,
+    config::{LogNamespace, insert_source_metadata},
     configurable::configurable_component,
     internal_event::{ByteSize, BytesReceived, InternalEventHandle as _, Protocol, Registered},
     lookup::{
@@ -1149,7 +1149,7 @@ impl ContainerLogInfo {
             if is_partial {
                 // Only add partial event marker field if it's requested.
                 if partial_event_marker_field.is_some() {
-                    log_namespace.insert_source_metadata(
+                    insert_source_metadata(
                         DockerLogsConfig::NAME,
                         &mut log,
                         path!(event::PARTIAL),

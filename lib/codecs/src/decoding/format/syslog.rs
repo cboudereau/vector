@@ -8,7 +8,7 @@ use smallvec::{SmallVec, smallvec};
 use syslog_loose::{IncompleteDate, Message, ProcId, Protocol, Variant};
 use vector_config::configurable_component;
 use vector_core::{
-    config::{DataType, LogNamespace},
+    config::{DataType, LogNamespace, insert_source_metadata},
     event::{Event, EventMetadata, ObjectMap, OtelLog, Value},
     schema,
 };
@@ -198,11 +198,11 @@ fn insert_metadata_fields_from_syslog(
     log: &mut OtelLog,
     source: &'static str,
     parsed: Message<&str>,
-    log_namespace: LogNamespace,
+    _log_namespace: LogNamespace,
 ) {
     if let Some(timestamp) = parsed.timestamp {
         let timestamp = DateTime::<Utc>::from(timestamp);
-        log_namespace.insert_source_metadata(
+        insert_source_metadata(
             source,
             log,
             &owned_value_path!("timestamp"),
@@ -210,7 +210,7 @@ fn insert_metadata_fields_from_syslog(
         );
     }
     if let Some(host) = parsed.hostname {
-        log_namespace.insert_source_metadata(
+        insert_source_metadata(
             source,
             log,
             &owned_value_path!("hostname"),
@@ -218,7 +218,7 @@ fn insert_metadata_fields_from_syslog(
         );
     }
     if let Some(severity) = parsed.severity {
-        log_namespace.insert_source_metadata(
+        insert_source_metadata(
             source,
             log,
             &owned_value_path!("severity"),
@@ -226,7 +226,7 @@ fn insert_metadata_fields_from_syslog(
         );
     }
     if let Some(facility) = parsed.facility {
-        log_namespace.insert_source_metadata(
+        insert_source_metadata(
             source,
             log,
             &owned_value_path!("facility"),
@@ -234,7 +234,7 @@ fn insert_metadata_fields_from_syslog(
         );
     }
     if let Protocol::RFC5424(version) = parsed.protocol {
-        log_namespace.insert_source_metadata(
+        insert_source_metadata(
             source,
             log,
             &owned_value_path!("version"),
@@ -242,7 +242,7 @@ fn insert_metadata_fields_from_syslog(
         );
     }
     if let Some(app_name) = parsed.appname {
-        log_namespace.insert_source_metadata(
+        insert_source_metadata(
             source,
             log,
             &owned_value_path!("appname"),
@@ -250,7 +250,7 @@ fn insert_metadata_fields_from_syslog(
         );
     }
     if let Some(msg_id) = parsed.msgid {
-        log_namespace.insert_source_metadata(
+        insert_source_metadata(
             source,
             log,
             &owned_value_path!("msgid"),
@@ -262,7 +262,7 @@ fn insert_metadata_fields_from_syslog(
             ProcId::PID(pid) => pid.into(),
             ProcId::Name(name) => name.to_string().into(),
         };
-        log_namespace.insert_source_metadata(
+        insert_source_metadata(
             source,
             log,
             &owned_value_path!("procid"),
@@ -281,7 +281,7 @@ fn insert_metadata_fields_from_syslog(
         sdata.insert(element.id.into(), data.into());
     }
 
-    log_namespace.insert_source_metadata(
+    insert_source_metadata(
         source,
         log,
         &owned_value_path!("structured_data"),

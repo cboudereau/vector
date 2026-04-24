@@ -957,7 +957,7 @@ mod test {
     };
     use tokio_util::codec::{Framed, length_delimited};
     use vector_lib::{
-        config::LogNamespace,
+        config::insert_source_metadata,
         lookup::{OwnedValuePath, owned_value_path, path},
         tcp::TcpKeepaliveConfig,
         tls::{CertificateMetadata, MaybeTls, MaybeTlsSettings},
@@ -986,7 +986,6 @@ mod test {
         host_key: Option<OwnedValuePath>,
         timestamp_key: Option<OwnedValuePath>,
         source_type_key: Option<OwnedValuePath>,
-        log_namespace: LogNamespace,
     }
 
     #[derive(Clone)]
@@ -1058,7 +1057,6 @@ mod test {
                 host_key: Some(owned_value_path!("test_framestream")),
                 timestamp_key: Some(owned_value_path!("my_timestamp")),
                 source_type_key: Some(owned_value_path!("source_type")),
-                log_namespace: LogNamespace::Vector,
             }
         }
     }
@@ -1076,7 +1074,7 @@ mod test {
 
             log_event.set_source_type("framestream");
             if let Some(host) = received_from {
-                self.log_namespace.insert_source_metadata(
+                insert_source_metadata(
                     "framestream",
                     &mut log_event,
                     path!("host"),

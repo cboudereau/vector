@@ -31,7 +31,7 @@ use tokio_util::codec::FramedRead;
 use tracing::Instrument;
 use vector_lib::{
     codecs::decoding::FramingError,
-    config::LogNamespace,
+    config::{LogNamespace, insert_source_metadata},
     configurable::configurable_component,
     internal_event::{
         ByteSize, BytesReceived, CountByteSize, InternalEventHandle as _, Protocol, Registered,
@@ -915,25 +915,25 @@ impl IngestorProcess {
 #[allow(dead_code)]
 fn handle_single_log(
     log: &mut OtelLog,
-    log_namespace: LogNamespace,
+    _log_namespace: LogNamespace,
     s3_event: &S3EventRecord,
     metadata: &Option<HashMap<String, String>>,
     timestamp: Option<DateTime<Utc>>,
 ) {
-    log_namespace.insert_source_metadata(
+    insert_source_metadata(
         AwsS3Config::NAME,
         log,
         path!("bucket"),
         Bytes::from(s3_event.s3.bucket.name.as_bytes().to_vec()),
     );
 
-    log_namespace.insert_source_metadata(
+    insert_source_metadata(
         AwsS3Config::NAME,
         log,
         path!("object"),
         Bytes::from(s3_event.s3.object.key.as_bytes().to_vec()),
     );
-    log_namespace.insert_source_metadata(
+    insert_source_metadata(
         AwsS3Config::NAME,
         log,
         path!("region"),
@@ -942,7 +942,7 @@ fn handle_single_log(
 
     if let Some(metadata) = metadata {
         for (key, value) in metadata {
-            log_namespace.insert_source_metadata(
+            insert_source_metadata(
                 AwsS3Config::NAME,
                 log,
                 path!("metadata", key.as_str()),

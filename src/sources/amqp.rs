@@ -13,7 +13,7 @@ use tokio_util::codec::FramedRead;
 use vector_lib::{
     EstimatedJsonEncodedSizeOf,
     codecs::decoding::{DeserializerConfig, FramingConfig},
-    config::{LogNamespace, SourceAcknowledgementsConfig},
+    config::{LogNamespace, SourceAcknowledgementsConfig, insert_source_metadata},
     configurable::configurable_component,
     event::{Event, OtelLog},
     finalizer::UnorderedFinalizer,
@@ -242,23 +242,23 @@ fn populate_log_event(
     log: &mut OtelLog,
     timestamp: Option<chrono::DateTime<Utc>>,
     keys: &Keys<'_>,
-    log_namespace: LogNamespace,
+    _log_namespace: LogNamespace,
 ) {
-    log_namespace.insert_source_metadata(
+    insert_source_metadata(
         AmqpSourceConfig::NAME,
         log,
         path!("routing"),
         keys.routing.to_string(),
     );
 
-    log_namespace.insert_source_metadata(
+    insert_source_metadata(
         AmqpSourceConfig::NAME,
         log,
         path!("exchange"),
         keys.exchange.to_string(),
     );
 
-    log_namespace.insert_source_metadata(
+    insert_source_metadata(
         AmqpSourceConfig::NAME,
         log,
         path!("offset"),

@@ -8,7 +8,7 @@ use k8s_openapi::{
 };
 use kube::runtime::reflector::{ObjectRef, store::Store};
 use vector_lib::{
-    config::LogNamespace,
+    config::{LogNamespace, insert_source_metadata},
     configurable::configurable_component,
     lookup::{
         OwnedTargetPath,
@@ -238,9 +238,9 @@ impl PodMetadataAnnotator {
 fn annotate_from_file_info(
     log: &mut OtelLog,
     file_info: &LogFileInfo<'_>,
-    log_namespace: LogNamespace,
+    _log_namespace: LogNamespace,
 ) {
-    log_namespace.insert_source_metadata(
+    insert_source_metadata(
         Config::NAME,
         log,
         path!("container_name"),
@@ -252,7 +252,7 @@ fn annotate_from_file_info(
 fn annotate_from_metadata(
     log: &mut OtelLog,
     metadata: &ObjectMeta,
-    log_namespace: LogNamespace,
+    _log_namespace: LogNamespace,
 ) {
     for (metadata_key, value) in [
         (path!("pod_name"), &metadata.name),
@@ -265,7 +265,7 @@ fn annotate_from_metadata(
     .iter()
     {
         if let Some(value) = value {
-            log_namespace.insert_source_metadata(
+            insert_source_metadata(
                 Config::NAME,
                 log,
                 *metadata_key,
@@ -275,7 +275,7 @@ fn annotate_from_metadata(
     }
 
     if let Some(owner_references) = &metadata.owner_references {
-        log_namespace.insert_source_metadata(
+        insert_source_metadata(
             Config::NAME,
             log,
             path!("pod_owner"),
@@ -285,7 +285,7 @@ fn annotate_from_metadata(
 
     if let Some(labels) = &metadata.labels {
         for (key, value) in labels.iter() {
-            log_namespace.insert_source_metadata(
+            insert_source_metadata(
                 Config::NAME,
                 log,
                 path!("pod_labels", key),
@@ -296,7 +296,7 @@ fn annotate_from_metadata(
 
     if let Some(annotations) = &metadata.annotations {
         for (key, value) in annotations.iter() {
-            log_namespace.insert_source_metadata(
+            insert_source_metadata(
                 Config::NAME,
                 log,
                 path!("pod_annotations", key),
@@ -310,10 +310,10 @@ fn annotate_from_metadata(
 fn annotate_from_pod_spec(
     log: &mut OtelLog,
     pod_spec: &PodSpec,
-    log_namespace: LogNamespace,
+    _log_namespace: LogNamespace,
 ) {
     if let Some(value) = &pod_spec.node_name {
-        log_namespace.insert_source_metadata(
+        insert_source_metadata(
             Config::NAME,
             log,
             path!("pod_node_name"),
@@ -326,10 +326,10 @@ fn annotate_from_pod_spec(
 fn annotate_from_pod_status(
     log: &mut OtelLog,
     pod_status: &PodStatus,
-    log_namespace: LogNamespace,
+    _log_namespace: LogNamespace,
 ) {
     if let Some(value) = &pod_status.pod_ip {
-        log_namespace.insert_source_metadata(
+        insert_source_metadata(
             Config::NAME,
             log,
             path!("pod_ip"),
@@ -343,7 +343,7 @@ fn annotate_from_pod_status(
             .filter_map(|k| k.ip.clone())
             .collect::<Vec<String>>();
 
-        log_namespace.insert_source_metadata(Config::NAME, log, path!("pod_ips"), value)
+        insert_source_metadata(Config::NAME, log, path!("pod_ips"), value)
     }
 }
 
@@ -351,10 +351,10 @@ fn annotate_from_pod_status(
 fn annotate_from_container_status(
     log: &mut OtelLog,
     container_status: &ContainerStatus,
-    log_namespace: LogNamespace,
+    _log_namespace: LogNamespace,
 ) {
     if let Some(value) = &container_status.container_id {
-        log_namespace.insert_source_metadata(
+        insert_source_metadata(
             Config::NAME,
             log,
             path!("container_id"),
@@ -362,7 +362,7 @@ fn annotate_from_container_status(
         )
     }
 
-    log_namespace.insert_source_metadata(
+    insert_source_metadata(
         Config::NAME,
         log,
         path!("container_image_id"),
@@ -374,10 +374,10 @@ fn annotate_from_container_status(
 fn annotate_from_container(
     log: &mut OtelLog,
     container: &Container,
-    log_namespace: LogNamespace,
+    _log_namespace: LogNamespace,
 ) {
     if let Some(value) = &container.image {
-        log_namespace.insert_source_metadata(
+        insert_source_metadata(
             Config::NAME,
             log,
             path!("container_image"),

@@ -15,7 +15,7 @@ use smallvec::{SmallVec, smallvec};
 use tokio_util::codec::Decoder;
 use vector_lib::{
     codecs::{BytesDeserializerConfig, StreamDecodingError},
-    config::LogNamespace,
+    config::{LogNamespace, insert_source_metadata},
     configurable::configurable_component,
     ipallowlist::IpAllowlistConfig,
     lookup::{owned_value_path, path},
@@ -722,7 +722,7 @@ impl From<FluentEvent<'_>> for Event {
             tag,
             timestamp,
             record,
-            log_namespace,
+            log_namespace: _log_namespace,
         } = frame;
 
         let mut log = OtelLog::new(Default::default());
@@ -738,7 +738,7 @@ impl From<FluentEvent<'_>> for Event {
             .value_mut()
             .insert(path!("vector", "ingest_timestamp"), Utc::now());
 
-        log_namespace.insert_source_metadata(
+        insert_source_metadata(
             FluentConfig::NAME,
             &mut log,
             path!("tag"),
@@ -747,7 +747,7 @@ impl From<FluentEvent<'_>> for Event {
 
         for (key, value) in record.into_iter() {
             let value: Value = value.into();
-            log_namespace.insert_source_metadata(
+            insert_source_metadata(
                 FluentConfig::NAME,
                 &mut log,
                 path!("record", key.as_str()),

@@ -17,7 +17,7 @@ use tokio::{
 };
 use tokio_util::codec::Encoder as _;
 use vector_lib::{
-    EstimatedJsonEncodedSizeOf, codecs::encoding, config::LogNamespace, event::Event,
+    EstimatedJsonEncodedSizeOf, codecs::encoding, config::{LogNamespace, insert_standard_vector_source_metadata}, event::Event,
 };
 
 pub use self::config::TopologyBuilder;
@@ -587,7 +587,7 @@ fn spawn_input_driver(
             if component_type != ComponentType::Source
                 && let Event::Log(log) = input_event.get_event()
             {
-                log_namespace.insert_standard_vector_source_metadata(log, "vector", now);
+                insert_standard_vector_source_metadata(log, "vector", now);
             }
 
             let (failure_case, mut event) = input_event.clone().get();

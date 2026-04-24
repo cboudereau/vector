@@ -2,7 +2,7 @@ use chrono::Utc;
 use futures::{StreamExt, stream};
 use vector_lib::{
     codecs::BytesDeserializerConfig,
-    config::LogNamespace,
+    config::{LogNamespace, insert_source_metadata, insert_standard_vector_source_metadata},
     configurable::configurable_component,
     lookup::{lookup_v2::OptionalValuePath, owned_value_path, path},
     schema::Definition,
@@ -116,7 +116,7 @@ async fn run(
     mut subscription: TraceSubscription,
     mut out: SourceSender,
     shutdown: ShutdownSignal,
-    log_namespace: LogNamespace,
+    _log_namespace: LogNamespace,
 ) -> Result<(), ()> {
     let hostname = crate::get_hostname();
     let pid = std::process::id();
@@ -146,14 +146,14 @@ async fn run(
             log.set_host(hostname.to_owned());
         }
 
-        log_namespace.insert_source_metadata(
+        insert_source_metadata(
             InternalLogsConfig::NAME,
             &mut log,
             path!("pid"),
             pid,
         );
 
-        log_namespace.insert_standard_vector_source_metadata(
+        insert_standard_vector_source_metadata(
             &mut log,
             InternalLogsConfig::NAME,
             Utc::now(),

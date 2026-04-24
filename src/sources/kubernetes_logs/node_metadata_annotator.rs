@@ -5,7 +5,7 @@
 use k8s_openapi::{api::core::v1::Node, apimachinery::pkg::apis::meta::v1::ObjectMeta};
 use kube::runtime::reflector::{ObjectRef, store::Store};
 use vector_lib::{
-    config::LogNamespace,
+    config::{LogNamespace, insert_source_metadata},
     configurable::configurable_component,
     lookup::{
         OwnedTargetPath,
@@ -83,13 +83,13 @@ fn annotate_from_metadata(
     log: &mut OtelLog,
     fields_spec: &FieldsSpec,
     metadata: &ObjectMeta,
-    log_namespace: LogNamespace,
+    _log_namespace: LogNamespace,
 ) {
     if let Some(labels) = &metadata.labels
         && fields_spec.node_labels.path.is_some()
     {
         for (key, value) in labels.iter() {
-            log_namespace.insert_source_metadata(
+            insert_source_metadata(
                 Config::NAME,
                 log,
                 path!("node_labels", key),

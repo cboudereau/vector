@@ -24,7 +24,7 @@ use tower::ServiceBuilder;
 use tracing::Span;
 use vector_lib::{
     EstimatedJsonEncodedSizeOf,
-    config::LogNamespace,
+    config::{LogNamespace, insert_source_metadata, insert_standard_vector_source_metadata},
     configurable::configurable_component,
     event::BatchNotifier,
     internal_event::{CountByteSize, InternalEventHandle as _, Registered},
@@ -321,7 +321,7 @@ impl SplunkSource {
         let protocol = self.protocol;
         let idx_ack = self.idx_ack.clone();
         let store_hec_token = self.store_hec_token;
-        let log_namespace = self.log_namespace;
+        let _log_namespace = self.log_namespace;
         let events_received = self.events_received.clone();
 
         warp::post()
@@ -392,7 +392,6 @@ impl SplunkSource {
                             remote_addr,
                             batch,
                             token: token.filter(|_| store_hec_token).map(Into::into),
-                            log_namespace,
                             events_received,
                         }
                         .into();
@@ -658,8 +657,6 @@ struct EventIterator<'de, R: JsonRead<'de>> {
     batch: Option<BatchNotifier>,
     /// Splunk HEC Token for passthrough
     token: Option<Arc<str>>,
-    /// Lognamespace to put the events in
-    log_namespace: LogNamespace,
     /// handle to EventsReceived registry
     events_received: Registered<EventsReceived>,
 }
@@ -670,7 +667,6 @@ struct EventIteratorGenerator<'de, R: JsonRead<'de>> {
     channel: Option<String>,
     batch: Option<BatchNotifier>,
     token: Option<Arc<str>>,
-    log_namespace: LogNamespace,
     events_received: Registered<EventsReceived>,
     remote: Option<SocketAddr>,
     remote_addr: Option<String>,
@@ -694,19 +690,16 @@ impl<'de, R: JsonRead<'de>> From<EventIteratorGenerator<'de, R>> for EventIterat
                     f.remote_addr
                         .or_else(|| f.remote.map(|addr| addr.to_string()))
                         .map(Value::from),
-                    f.log_namespace,
                 ),
-                DefaultExtractor::new("index", OptionalValuePath::new(INDEX), f.log_namespace),
-                DefaultExtractor::new("source", OptionalValuePath::new(SOURCE), f.log_namespace),
+                DefaultExtractor::new("index", OptionalValuePath::new(INDEX)),
+                DefaultExtractor::new("source", OptionalValuePath::new(SOURCE)),
                 DefaultExtractor::new(
                     "sourcetype",
                     OptionalValuePath::new(SOURCETYPE),
-                    f.log_namespace,
                 ),
             ],
             batch: f.batch,
             token: f.token,
-            log_namespace: f.log_namespace,
             events_received: f.events_received,
         }
     }
@@ -723,14 +716,14 @@ impl<'de, R: JsonRead<'de>> EventIterator<'de, R> {
 
         // Process channel field
         if let Some(JsonValue::String(guid)) = json.get_mut("channel").map(JsonValue::take) {
-            self.log_namespace.insert_source_metadata(
+            insert_source_metadata(
                 SplunkConfig::NAME,
                 &mut log,
                 lookup::path!(CHANNEL),
                 guid,
             );
         } else if let Some(guid) = self.channel.as_ref() {
-            self.log_namespace.insert_source_metadata(
+            insert_source_metadata(
                 SplunkConfig::NAME,
                 &mut log,
                 lookup::path!(CHANNEL),
@@ -741,7 +734,7 @@ impl<'de, R: JsonRead<'de>> EventIterator<'de, R> {
         // Process fields field
         if let Some(JsonValue::Object(object)) = json.get_mut("fields").map(JsonValue::take) {
             for (key, value) in object {
-                self.log_namespace.insert_source_metadata(
+                insert_source_metadata(
                     SplunkConfig::NAME,
                     &mut log,
                     lookup::path!(key.as_str()),
@@ -899,20 +892,17 @@ struct DefaultExtractor {
     field: &'static str,
     to_field: OptionalValuePath,
     value: Option<Value>,
-    log_namespace: LogNamespace,
 }
 
 impl DefaultExtractor {
     const fn new(
         field: &'static str,
         to_field: OptionalValuePath,
-        log_namespace: LogNamespace,
     ) -> Self {
         DefaultExtractor {
             field,
             to_field,
             value: None,
-            log_namespace,
         }
     }
 
@@ -920,13 +910,11 @@ impl DefaultExtractor {
         field: &'static str,
         to_field: OptionalValuePath,
         value: impl Into<Option<Value>>,
-        log_namespace: LogNamespace,
     ) -> Self {
         DefaultExtractor {
             field,
             to_field,
             value: value.into(),
-            log_namespace,
         }
     }
 
@@ -941,7 +929,7 @@ impl DefaultExtractor {
             if self.field == "host" {
                 log.set_host(val.clone());
             } else if self.to_field.path.is_some() {
-                self.log_namespace.insert_source_metadata(
+                insert_source_metadata(
                     SplunkConfig::NAME,
                     log,
                     &self.to_field.path.clone().unwrap_or(owned_value_path!("")),
@@ -970,7 +958,7 @@ fn raw_event(
     remote: Option<SocketAddr>,
     xff: Option<String>,
     batch: Option<BatchNotifier>,
-    log_namespace: LogNamespace,
+    _log_namespace: LogNamespace,
     events_received: &Registered<EventsReceived>,
 ) -> Result<Event, Rejection> {
     // Process gzip
@@ -994,7 +982,7 @@ fn raw_event(
     events_received.emit(CountByteSize(1, log.estimated_json_encoded_size_of()));
 
     // Add channel
-    log_namespace.insert_source_metadata(
+    insert_source_metadata(
         SplunkConfig::NAME,
         &mut log,
         lookup::path!(CHANNEL),
@@ -1016,7 +1004,7 @@ fn raw_event(
             .insert(lookup::path!(SplunkConfig::NAME, "host"), host);
     }
 
-    log_namespace.insert_standard_vector_source_metadata(&mut log, SplunkConfig::NAME, Utc::now());
+    insert_standard_vector_source_metadata(&mut log, SplunkConfig::NAME, Utc::now());
 
     if let Some(batch) = batch {
         log = log.with_batch_notifier(&batch);

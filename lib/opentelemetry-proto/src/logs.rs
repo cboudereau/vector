@@ -2,7 +2,7 @@ use bytes::Bytes;
 use chrono::{DateTime, TimeZone, Utc};
 use prost::Message;
 use vector_core::{
-    config::LogNamespace,
+    config::{LogNamespace, insert_source_metadata},
     event::{Event, EventMetadata, OtelLog},
 };
 use vrl::{core::Value, path};
@@ -258,7 +258,7 @@ impl ResourceLog {
         // Insert instrumentation scope (scope name, version, and attributes)
         if let Some(scope) = self.scope {
             if !scope.name.is_empty() {
-                log_namespace.insert_source_metadata(
+                insert_source_metadata(
                     SOURCE_NAME,
                     &mut log,
                     path!(SCOPE_KEY, NAME_KEY),
@@ -266,7 +266,7 @@ impl ResourceLog {
                 );
             }
             if !scope.version.is_empty() {
-                log_namespace.insert_source_metadata(
+                insert_source_metadata(
                     SOURCE_NAME,
                     &mut log,
                     path!(SCOPE_KEY, VERSION_KEY),
@@ -274,7 +274,7 @@ impl ResourceLog {
                 );
             }
             if !scope.attributes.is_empty() {
-                log_namespace.insert_source_metadata(
+                insert_source_metadata(
                     SOURCE_NAME,
                     &mut log,
                     path!(SCOPE_KEY, ATTRIBUTES_KEY),
@@ -282,7 +282,7 @@ impl ResourceLog {
                 );
             }
             if scope.dropped_attributes_count > 0 {
-                log_namespace.insert_source_metadata(
+                insert_source_metadata(
                     SOURCE_NAME,
                     &mut log,
                     path!(SCOPE_KEY, DROPPED_ATTRIBUTES_COUNT_KEY),
@@ -295,7 +295,7 @@ impl ResourceLog {
         if let Some(resource) = self.resource
             && !resource.attributes.is_empty()
         {
-            log_namespace.insert_source_metadata(
+            insert_source_metadata(
                 SOURCE_NAME,
                 &mut log,
                 path!(RESOURCE_KEY),
@@ -303,7 +303,7 @@ impl ResourceLog {
             );
         }
         if !self.log_record.attributes.is_empty() {
-            log_namespace.insert_source_metadata(
+            insert_source_metadata(
                 SOURCE_NAME,
                 &mut log,
                 path!(ATTRIBUTES_KEY),
@@ -311,7 +311,7 @@ impl ResourceLog {
             );
         }
         if !self.log_record.trace_id.is_empty() {
-            log_namespace.insert_source_metadata(
+            insert_source_metadata(
                 SOURCE_NAME,
                 &mut log,
                 path!(TRACE_ID_KEY),
@@ -319,7 +319,7 @@ impl ResourceLog {
             );
         }
         if !self.log_record.span_id.is_empty() {
-            log_namespace.insert_source_metadata(
+            insert_source_metadata(
                 SOURCE_NAME,
                 &mut log,
                 path!(SPAN_ID_KEY),
@@ -327,7 +327,7 @@ impl ResourceLog {
             );
         }
         if !self.log_record.severity_text.is_empty() {
-            log_namespace.insert_source_metadata(
+            insert_source_metadata(
                 SOURCE_NAME,
                 &mut log,
                 path!(SEVERITY_TEXT_KEY),
@@ -335,7 +335,7 @@ impl ResourceLog {
             );
         }
         if self.log_record.severity_number != SeverityNumber::Unspecified as i32 {
-            log_namespace.insert_source_metadata(
+            insert_source_metadata(
                 SOURCE_NAME,
                 &mut log,
                 path!(SEVERITY_NUMBER_KEY),
@@ -343,7 +343,7 @@ impl ResourceLog {
             );
         }
         if self.log_record.flags > 0 {
-            log_namespace.insert_source_metadata(
+            insert_source_metadata(
                 SOURCE_NAME,
                 &mut log,
                 path!(FLAGS_KEY),
@@ -351,7 +351,7 @@ impl ResourceLog {
             );
         }
 
-        log_namespace.insert_source_metadata(
+        insert_source_metadata(
             SOURCE_NAME,
             &mut log,
             path!(DROPPED_ATTRIBUTES_COUNT_KEY),
@@ -366,7 +366,7 @@ impl ResourceLog {
         } else {
             Value::Timestamp(now)
         };
-        log_namespace.insert_source_metadata(
+        insert_source_metadata(
             SOURCE_NAME,
             &mut log,
             path!(OBSERVED_TIMESTAMP_KEY),

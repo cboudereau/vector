@@ -441,30 +441,29 @@ impl From<bool> for AcknowledgementsConfig {
     }
 }
 
+/// Backwards-compatible alias — `LogNamespace` was a two-variant enum that
+/// has been collapsed to a single variant. Kept temporarily so existing
+/// call-sites compile while being migrated.  New code should call the free
+/// functions (`insert_source_metadata`, etc.) directly.
 #[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize, PartialOrd, Ord, Eq, Default)]
 pub enum LogNamespace {
-    /// Vector native namespacing
-    ///
-    /// Deserialized data is placed in the root of the event.
-    /// Extra data is placed in "event metadata"
     #[default]
     Vector,
 }
 
 impl From<bool> for LogNamespace {
-    fn from(_x: bool) -> Self {
+    fn from(_: bool) -> Self {
         LogNamespace::Vector
     }
 }
 
 impl From<LogNamespace> for bool {
-    fn from(_x: LogNamespace) -> Self {
+    fn from(_: LogNamespace) -> Self {
         true
     }
 }
 
 impl LogNamespace {
-    /// Adds metadata to "event metadata", nested under the source name.
     pub fn insert_source_metadata<'a>(
         &self,
         source_name: &'a str,
@@ -472,65 +471,101 @@ impl LogNamespace {
         metadata_key: impl ValuePath<'a>,
         value: impl Into<Value>,
     ) {
-        log.event_metadata_mut()
-            .value_mut()
-            .insert(path!(source_name).concat(metadata_key), value);
+        insert_source_metadata(source_name, log, metadata_key, value);
     }
 
-    /// Retrieves metadata from "event metadata", nested under the source name.
     pub fn get_source_metadata<'a>(
         &self,
         source_name: &'a str,
         log: &OtelLog,
         metadata_key: impl ValuePath<'a>,
     ) -> Option<Value> {
-        log.metadata()
-            .value()
-            .get(path!(source_name).concat(metadata_key))
-            .cloned()
+        get_source_metadata(source_name, log, metadata_key)
     }
 
-    /// Adds `source_type` and `ingest_timestamp` to "event metadata" under "vector".
     pub fn insert_standard_vector_source_metadata(
         &self,
         log: &mut impl MetadataInsertable,
         source_name: &'static str,
         now: DateTime<Utc>,
     ) {
-        log.event_metadata_mut()
-            .value_mut()
-            .insert(path!("vector", "source_type"), source_name);
-        self.insert_vector_metadata(
-            log,
-            path!("ingest_timestamp"),
-            now,
-        );
+        insert_standard_vector_source_metadata(log, source_name, now);
     }
 
-    /// Adds metadata to "event metadata" under "vector".
     pub fn insert_vector_metadata<'a>(
         &self,
         log: &mut impl MetadataInsertable,
         metadata_key: impl ValuePath<'a>,
         value: impl Into<Value>,
     ) {
-        log.event_metadata_mut()
-            .value_mut()
-            .insert(path!("vector").concat(metadata_key), value);
+        insert_vector_metadata(log, metadata_key, value);
     }
 
-    /// Retrieves metadata from "event metadata" under "vector".
     pub fn get_vector_metadata<'a>(
         &self,
         log: &OtelLog,
         metadata_key: impl ValuePath<'a>,
     ) -> Option<Value> {
-        log.metadata()
-            .value()
-            .get(path!("vector").concat(metadata_key))
-            .cloned()
+        get_vector_metadata(log, metadata_key)
     }
+}
 
+/// Adds metadata to "event metadata", nested under the source name.
+pub fn insert_source_metadata<'a>(
+    source_name: &'a str,
+    log: &mut impl MetadataInsertable,
+    metadata_key: impl ValuePath<'a>,
+    value: impl Into<Value>,
+) {
+    log.event_metadata_mut()
+        .value_mut()
+        .insert(path!(source_name).concat(metadata_key), value);
+}
+
+/// Retrieves metadata from "event metadata", nested under the source name.
+pub fn get_source_metadata<'a>(
+    source_name: &'a str,
+    log: &OtelLog,
+    metadata_key: impl ValuePath<'a>,
+) -> Option<Value> {
+    log.metadata()
+        .value()
+        .get(path!(source_name).concat(metadata_key))
+        .cloned()
+}
+
+/// Adds `source_type` and `ingest_timestamp` to "event metadata" under "vector".
+pub fn insert_standard_vector_source_metadata(
+    log: &mut impl MetadataInsertable,
+    source_name: &'static str,
+    now: DateTime<Utc>,
+) {
+    log.event_metadata_mut()
+        .value_mut()
+        .insert(path!("vector", "source_type"), source_name);
+    insert_vector_metadata(log, path!("ingest_timestamp"), now);
+}
+
+/// Adds metadata to "event metadata" under "vector".
+pub fn insert_vector_metadata<'a>(
+    log: &mut impl MetadataInsertable,
+    metadata_key: impl ValuePath<'a>,
+    value: impl Into<Value>,
+) {
+    log.event_metadata_mut()
+        .value_mut()
+        .insert(path!("vector").concat(metadata_key), value);
+}
+
+/// Retrieves metadata from "event metadata" under "vector".
+pub fn get_vector_metadata<'a>(
+    log: &OtelLog,
+    metadata_key: impl ValuePath<'a>,
+) -> Option<Value> {
+    log.metadata()
+        .value()
+        .get(path!("vector").concat(metadata_key))
+        .cloned()
 }
 
 #[cfg(test)]

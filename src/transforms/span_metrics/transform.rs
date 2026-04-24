@@ -98,7 +98,7 @@ impl SpanMetrics {
         use opentelemetry_proto::tonic::trace::v1::span::SpanKind;
 
         let span = otel_span.span();
-        let resource = otel_span.resource();
+        let resource_attrs = otel_span.resource_attrs();
         let mut dims = Vec::new();
 
         let excluded = &self.config.exclude_dimensions;
@@ -110,11 +110,12 @@ impl SpanMetrics {
             }
             let value = match dim_name {
                 "service.name" => {
-                    resource.and_then(|r| {
-                        r.attributes.iter()
-                            .find(|kv| kv.key == "service.name")
-                            .and_then(|kv| extract_string_value(kv))
-                    }).unwrap_or_default()
+                    resource_attrs.get("service.name")
+                        .and_then(|av| match &av.value {
+                            Some(opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(s)) => Some(s.clone()),
+                            _ => None,
+                        })
+                        .unwrap_or_default()
                 }
                 "span.name" => span.name.clone(),
                 "span.kind" => match SpanKind::try_from(span.kind) {
@@ -148,11 +149,11 @@ impl SpanMetrics {
                     _ => None,
                 })
                 .or_else(|| {
-                    resource.and_then(|r| {
-                        r.attributes.iter()
-                            .find(|kv| kv.key == dim_config.name)
-                            .and_then(extract_string_value)
-                    })
+                    resource_attrs.get(&dim_config.name)
+                        .and_then(|av| match &av.value {
+                            Some(opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(s)) => Some(s.clone()),
+                            _ => None,
+                        })
                 })
                 .or_else(|| dim_config.default.clone())
                 .unwrap_or_default();
@@ -231,17 +232,6 @@ impl SpanMetrics {
 
         events
     }
-}
-
-/// Extract a string value from a KeyValue.
-fn extract_string_value(kv: &KeyValue) -> Option<String> {
-    kv.value.as_ref().and_then(|v| {
-        if let Some(opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(s)) = &v.value {
-            Some(s.clone())
-        } else {
-            None
-        }
-    })
 }
 
 impl TaskTransform<Event> for SpanMetrics {

@@ -348,16 +348,16 @@ pub fn extract_routing_key(event: &Event, routing_key: &RoutingKey) -> Vec<u8> {
     match routing_key {
         RoutingKey::TraceID => match event {
             Event::Trace(span) => span.span().trace_id.clone(),
-            Event::Log(log) => service_name_from_resource(log.resource()).into_bytes(),
-            Event::Metric(metric) => service_name_from_resource(metric.resource()).into_bytes(),
+            Event::Log(log) => service_name_from_resource(log.resource_proto().as_ref()).into_bytes(),
+            Event::Metric(metric) => service_name_from_resource(metric.resource_proto().as_ref()).into_bytes(),
         },
         RoutingKey::Service => {
             let resource = match event {
-                Event::Trace(span) => span.resource(),
-                Event::Log(log) => log.resource(),
-                Event::Metric(metric) => metric.resource(),
+                Event::Trace(span) => span.resource_proto(),
+                Event::Log(log) => log.resource_proto(),
+                Event::Metric(metric) => metric.resource_proto(),
             };
-            service_name_from_resource(resource).into_bytes()
+            service_name_from_resource(resource.as_ref()).into_bytes()
         }
     }
 }

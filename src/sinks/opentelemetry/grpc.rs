@@ -595,12 +595,12 @@ pub(crate) fn otel_metric_event_to_resource_metrics(
     let sink_metric = SinkMetric::decode(bytes::Bytes::from(metric_bytes))
         .expect("Metric proto roundtrip");
 
-    let resource = metric_event.resource().map(|r| {
+    let resource = metric_event.resource_proto().map(|r| {
         let b = r.encode_to_vec();
         SinkResource::decode(bytes::Bytes::from(b)).expect("Resource proto roundtrip")
     });
 
-    let scope = metric_event.scope().map(|s| {
+    let scope = metric_event.scope_proto().map(|s| {
         let b = s.encode_to_vec();
         SinkScope::decode(bytes::Bytes::from(b)).expect("Scope proto roundtrip")
     });
@@ -633,12 +633,12 @@ pub(crate) fn otel_log_event_to_resource_logs(
     let sink_record = SinkLogRecord::decode(bytes::Bytes::from(record_bytes))
         .expect("LogRecord proto roundtrip");
 
-    let resource = log_event.resource().map(|r| {
+    let resource = log_event.resource_proto().map(|r| {
         let b = r.encode_to_vec();
         SinkResource::decode(bytes::Bytes::from(b)).expect("Resource proto roundtrip")
     });
 
-    let scope = log_event.scope().map(|s| {
+    let scope = log_event.scope_proto().map(|s| {
         let b = s.encode_to_vec();
         SinkScope::decode(bytes::Bytes::from(b)).expect("Scope proto roundtrip")
     });
@@ -670,12 +670,12 @@ pub(crate) fn otel_span_event_to_resource_spans(
     let sink_span =
         SinkSpan::decode(bytes::Bytes::from(span_bytes)).expect("Span proto roundtrip");
 
-    let resource = span_event.resource().map(|r| {
+    let resource = span_event.resource_proto().map(|r| {
         let b = r.encode_to_vec();
         SinkResource::decode(bytes::Bytes::from(b)).expect("Resource proto roundtrip")
     });
 
-    let scope = span_event.scope().map(|s| {
+    let scope = span_event.scope_proto().map(|s| {
         let b = s.encode_to_vec();
         SinkScope::decode(bytes::Bytes::from(b)).expect("Scope proto roundtrip")
     });

@@ -1226,7 +1226,7 @@ async fn decode_traces() {
             }
         }
         fn resource_attr_str(span: &OtelSpan, key: &str) -> String {
-            let resource = span.resource().expect("resource should be set");
+            let resource = span.resource_proto().expect("resource should be set");
             attr_str(&resource.attributes, key)
         }
 

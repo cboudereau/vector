@@ -599,7 +599,7 @@ mod tests {
         let events: Vec<_> = rm.into_otel_event_iter().collect();
 
         let m = events[0].as_otel_metric();
-        let resource = m.resource().expect("resource must be present");
+        let resource = m.resource_proto().expect("resource must be present");
         assert_eq!(resource.attributes.len(), 1);
         assert_eq!(resource.attributes[0].key, "service.name");
     }

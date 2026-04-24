@@ -35,7 +35,7 @@ pub enum Event {
 - `BufferFormat` enum (Vector/Otlp/Migrate) — collapsed to OTLP-only.
 - `Serialize for OtelLog/OtelSpan` — canonical flat format via `to_value_canonical()` (flat keys, compatible with generic sinks like Elasticsearch, console, HTTP). OTLP-native JSON available via `OtlpJsonLog`/`OtlpJsonSpan` wrappers for OTLP HTTP sinks.
 - `EventDataEq for OtelLog/OtelSpan` — direct proto + `OtelAttributes` comparison (deterministic ordering).
-- `OtelAttributes` — BTreeMap-backed attribute container for O(log n) lookup. Used by OtelLog (record attrs) and OtelSpan (span attrs). Converts to/from `Vec<KeyValue>` at proto boundaries only.
+- `OtelAttributes` — BTreeMap-backed attribute container for O(log n) lookup. Used by all three event types for record/span attrs, resource attrs, and scope attrs. Converts to/from `Vec<KeyValue>` at proto boundaries only.
 
 ---
 

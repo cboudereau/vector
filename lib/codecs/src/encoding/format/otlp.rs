@@ -140,8 +140,8 @@ fn proto_convert<S: Message, D: Message + Default>(src: &S) -> D {
 fn otel_log_to_export_request(log_event: &OtelLog) -> ExportLogsServiceRequest {
     let proto_record = log_event.record_to_proto();
     let record: ProtoLogRecord = proto_convert(&proto_record);
-    let resource = log_event.resource().map(|r| proto_convert::<_, ProtoResource>(r));
-    let scope = log_event.scope().map(|s| proto_convert::<_, ProtoScope>(s));
+    let resource = log_event.resource_proto().map(|r| proto_convert::<_, ProtoResource>(&r));
+    let scope = log_event.scope_proto().map(|s| proto_convert::<_, ProtoScope>(&s));
 
     ExportLogsServiceRequest {
         resource_logs: vec![ResourceLogs {
@@ -158,8 +158,8 @@ fn otel_log_to_export_request(log_event: &OtelLog) -> ExportLogsServiceRequest {
 
 fn otel_metric_to_export_request(metric_event: &OtelMetric) -> ExportMetricsServiceRequest {
     let metric: ProtoMetric = proto_convert(metric_event.metric());
-    let resource = metric_event.resource().map(|r| proto_convert::<_, ProtoResource>(r));
-    let scope = metric_event.scope().map(|s| proto_convert::<_, ProtoScope>(s));
+    let resource = metric_event.resource_proto().map(|r| proto_convert::<_, ProtoResource>(&r));
+    let scope = metric_event.scope_proto().map(|s| proto_convert::<_, ProtoScope>(&s));
 
     ExportMetricsServiceRequest {
         resource_metrics: vec![ResourceMetrics {
@@ -176,8 +176,8 @@ fn otel_metric_to_export_request(metric_event: &OtelMetric) -> ExportMetricsServ
 
 fn otel_span_to_export_request(span_event: &OtelSpan) -> ExportTraceServiceRequest {
     let span: ProtoSpan = proto_convert(&span_event.span_to_proto());
-    let resource = span_event.resource().map(|r| proto_convert::<_, ProtoResource>(r));
-    let scope = span_event.scope().map(|s| proto_convert::<_, ProtoScope>(s));
+    let resource = span_event.resource_proto().map(|r| proto_convert::<_, ProtoResource>(&r));
+    let scope = span_event.scope_proto().map(|s| proto_convert::<_, ProtoScope>(&s));
 
     ExportTraceServiceRequest {
         resource_spans: vec![ResourceSpans {

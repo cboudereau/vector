@@ -272,11 +272,11 @@ fn otel_log_event_to_value(event: &OtelLog) -> Value {
         );
     }
 
-    if let Some(resource) = event.resource() {
-        map.insert("resource".into(), otel_resource_to_value(resource));
+    if let Some(resource) = event.resource_proto() {
+        map.insert("resource".into(), otel_resource_to_value(&resource));
     }
-    if let Some(scope) = event.scope() {
-        map.insert("scope".into(), otel_scope_to_value(scope));
+    if let Some(scope) = event.scope_proto() {
+        map.insert("scope".into(), otel_scope_to_value(&scope));
     }
 
     Value::Object(map)
@@ -399,11 +399,11 @@ fn otel_span_event_to_value(event: &OtelSpan) -> Value {
         map.insert("status".into(), Value::Object(sm));
     }
 
-    if let Some(resource) = event.resource() {
-        map.insert("resource".into(), otel_resource_to_value(resource));
+    if let Some(resource) = event.resource_proto() {
+        map.insert("resource".into(), otel_resource_to_value(&resource));
     }
-    if let Some(scope) = event.scope() {
-        map.insert("scope".into(), otel_scope_to_value(scope));
+    if let Some(scope) = event.scope_proto() {
+        map.insert("scope".into(), otel_scope_to_value(&scope));
     }
 
     Value::Object(map)
@@ -513,11 +513,11 @@ fn precompute_otel_metric_value(
         map.insert("unit".into(), Value::Bytes(event.metric().unit.clone().into()));
     }
 
-    if let Some(resource) = event.resource() {
-        map.insert("resource".into(), otel_resource_to_value(resource));
+    if let Some(resource) = event.resource_proto() {
+        map.insert("resource".into(), otel_resource_to_value(&resource));
     }
-    if let Some(scope) = event.scope() {
-        map.insert("scope".into(), otel_scope_to_value(scope));
+    if let Some(scope) = event.scope_proto() {
+        map.insert("scope".into(), otel_scope_to_value(&scope));
     }
 
     // .attributes — shorthand for first data point's attributes
@@ -835,8 +835,8 @@ impl Target for VrlTarget {
                                 }
                             }
                             ["resource", rest @ ..] => {
-                                let mut res_val = event.resource()
-                                    .map(|r| otel_resource_to_value(r))
+                                let mut res_val = event.resource_proto()
+                                    .map(|r| otel_resource_to_value(&r))
                                     .unwrap_or_else(|| Value::Object(ObjectMap::new()));
                                 insert_at_segments(&mut res_val, rest, value.clone());
                                 if let Some(resource) = value_to_otel_resource(&res_val) {
@@ -849,8 +849,8 @@ impl Target for VrlTarget {
                                 }
                             }
                             ["scope", rest @ ..] => {
-                                let mut scope_val = event.scope()
-                                    .map(|s| otel_scope_to_value(s))
+                                let mut scope_val = event.scope_proto()
+                                    .map(|s| otel_scope_to_value(&s))
                                     .unwrap_or_else(|| Value::Object(ObjectMap::new()));
                                 insert_at_segments(&mut scope_val, rest, value.clone());
                                 if let Some(scope) = value_to_otel_scope(&scope_val) {
@@ -952,8 +952,8 @@ impl Target for VrlTarget {
                             ["name"] => { event.metric_mut().name = String::new(); }
                             ["description"] => { event.metric_mut().description = String::new(); }
                             ["unit"] => { event.metric_mut().unit = String::new(); }
-                            ["resource"] => { *event.resource_mut() = Default::default(); }
-                            ["scope"] => { event.set_scope(Default::default()); } // sets Some(empty)
+                            ["resource"] => { event.set_resource(Default::default()); }
+                            ["scope"] => { event.set_scope(Default::default()); }
                             ["attributes", attr_key] => {
                                 event.remove_data_point_attribute(attr_key);
                             }

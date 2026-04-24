@@ -26,7 +26,6 @@ use vector_lib::{
 };
 use vrl::value::{Kind, kind::Collection};
 
-use opentelemetry_proto::tonic::common::v1::KeyValue;
 use vector_lib::event::string_value;
 
 use crate::{
@@ -331,23 +330,19 @@ impl Ec2MetadataTransform {
                 });
             }
             Event::Metric(ref mut otel_metric) => {
-                let resource = otel_metric.resource_mut();
                 state.iter().for_each(|(k, v)| {
-                    let kv = KeyValue {
-                        key: k.metric_tag.clone(),
-                        value: Some(string_value(String::from_utf8_lossy(v).into_owned())),
-                    };
-                    resource.attributes.push(kv);
+                    otel_metric.set_resource_attribute(
+                        k.metric_tag.clone(),
+                        string_value(String::from_utf8_lossy(v).into_owned()),
+                    );
                 });
             }
             Event::Trace(ref mut otel_span) => {
-                let resource = otel_span.resource_mut();
                 state.iter().for_each(|(k, v)| {
-                    let kv = KeyValue {
-                        key: k.metric_tag.clone(),
-                        value: Some(string_value(String::from_utf8_lossy(v).into_owned())),
-                    };
-                    resource.attributes.push(kv);
+                    otel_span.set_resource_attribute(
+                        k.metric_tag.clone(),
+                        string_value(String::from_utf8_lossy(v).into_owned()),
+                    );
                 });
             }
         }

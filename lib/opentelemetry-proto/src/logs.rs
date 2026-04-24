@@ -185,7 +185,7 @@ mod tests {
         let events: Vec<_> = rl.into_otel_event_iter().collect();
 
         let log = events[0].as_otel_log();
-        let resource = log.resource().expect("resource must be present");
+        let resource = log.resource_proto().expect("resource must be present");
         assert_eq!(resource.attributes.len(), 1);
         assert_eq!(resource.attributes[0].key, "service.name");
     }

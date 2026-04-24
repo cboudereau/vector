@@ -108,8 +108,8 @@ fn otel_logs_to_export(otel_logs: &OtelLogArray) -> ExportLogsServiceRequest {
             .map(|otel| {
                 let proto_record = otel.record_to_proto();
                 let record: LogRecord = transcode(&proto_record);
-                let resource: Option<Resource> = otel.resource().map(|r| transcode(r));
-                let scope: Option<InstrumentationScope> = otel.scope().map(|s| transcode(s));
+                let resource: Option<Resource> = otel.resource_proto().map(|r| transcode(&r));
+                let scope: Option<InstrumentationScope> = otel.scope_proto().map(|s| transcode(&s));
                 ResourceLogs {
                     resource,
                     scope_logs: vec![ScopeLogs {
@@ -134,8 +134,8 @@ fn otel_metrics_to_export(otel_metrics: &OtelMetricArray) -> ExportMetricsServic
             .iter()
             .map(|otel| {
                 let metric: Metric = transcode(otel.metric());
-                let resource: Option<Resource> = otel.resource().map(|r| transcode(r));
-                let scope: Option<InstrumentationScope> = otel.scope().map(|s| transcode(s));
+                let resource: Option<Resource> = otel.resource_proto().map(|r| transcode(&r));
+                let scope: Option<InstrumentationScope> = otel.scope_proto().map(|s| transcode(&s));
                 ResourceMetrics {
                     resource,
                     scope_metrics: vec![ScopeMetrics {
@@ -158,8 +158,8 @@ fn otel_spans_to_export(otel_spans: &OtelSpanArray) -> ExportTraceServiceRequest
             .iter()
             .map(|otel| {
                 let span: Span = transcode(&otel.span_to_proto());
-                let resource: Option<Resource> = otel.resource().map(|r| transcode(r));
-                let scope: Option<InstrumentationScope> = otel.scope().map(|s| transcode(s));
+                let resource: Option<Resource> = otel.resource_proto().map(|r| transcode(&r));
+                let scope: Option<InstrumentationScope> = otel.scope_proto().map(|s| transcode(&s));
                 ResourceSpans {
                     resource,
                     scope_spans: vec![ScopeSpans {

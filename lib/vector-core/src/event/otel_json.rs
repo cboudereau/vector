@@ -52,10 +52,10 @@ impl Serialize for OtlpJsonLog<'_> {
             let kvs = log.attributes().to_key_values();
             map.serialize_entry("attributes", &SerializableAttributes(&kvs))?;
         }
-        if let Some(ref res) = log.resource() {
+        if let Some(ref res) = log.resource_proto() {
             map.serialize_entry("resource", &SerializableResource(res))?;
         }
-        if let Some(ref scope) = log.scope() {
+        if let Some(ref scope) = log.scope_proto() {
             map.serialize_entry("scope", &SerializableScope(scope))?;
         }
         map.end()
@@ -103,10 +103,10 @@ impl Serialize for OtlpJsonSpan<'_> {
                 "message": status.message,
             }))?;
         }
-        if let Some(ref res) = span.resource() {
+        if let Some(ref res) = span.resource_proto() {
             map.serialize_entry("resource", &SerializableResource(res))?;
         }
-        if let Some(ref scope) = span.scope() {
+        if let Some(ref scope) = span.scope_proto() {
             map.serialize_entry("scope", &SerializableScope(scope))?;
         }
         map.end()

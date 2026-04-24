@@ -117,12 +117,12 @@ async fn receive_grpc_logs_vector_namespace() {
         assert!(body_debug.contains("log body"));
 
         // Resource
-        let resource = otel_log.resource().expect("resource must exist");
+        let resource = otel_log.resource_proto().expect("resource must exist");
         assert_eq!(resource.attributes.len(), 1);
         assert_eq!(resource.attributes[0].key, "res_key");
 
         // Scope
-        let scope = otel_log.scope().expect("scope must exist");
+        let scope = otel_log.scope_proto().expect("scope must exist");
         assert_eq!(scope.name, "some.scope.name");
         assert_eq!(scope.version, "1.2.3");
         assert_eq!(scope.attributes.len(), 1);
@@ -179,10 +179,10 @@ async fn receive_grpc_logs_legacy_namespace() {
         let body_debug = format!("{:?}", otel_log.body().unwrap());
         assert!(body_debug.contains("log body"));
 
-        let resource = otel_log.resource().expect("resource must exist");
+        let resource = otel_log.resource_proto().expect("resource must exist");
         assert_eq!(resource.attributes[0].key, "res_key");
 
-        let scope = otel_log.scope().expect("scope must exist");
+        let scope = otel_log.scope_proto().expect("scope must exist");
         assert_eq!(scope.name, "some.scope.name");
         assert_eq!(scope.version, "1.2.3");
     })
@@ -276,9 +276,9 @@ async fn receive_sum_metric() {
             }
             other => panic!("expected Sum, got {:?}", other),
         }
-        let resource = otel_metric.resource().expect("resource must exist");
+        let resource = otel_metric.resource_proto().expect("resource must exist");
         assert_eq!(resource.attributes[0].key, "service.name");
-        let scope = otel_metric.scope().expect("scope must exist");
+        let scope = otel_metric.scope_proto().expect("scope must exist");
         assert_eq!(scope.name, "vector-collector-instrumentation");
         assert_eq!(scope.version, "0.111.0");
     })
@@ -368,9 +368,9 @@ async fn receive_sum_non_monotonic_metric() {
             }
             other => panic!("expected Sum, got {:?}", other),
         }
-        let resource = otel_metric.resource().expect("resource must exist");
+        let resource = otel_metric.resource_proto().expect("resource must exist");
         assert_eq!(resource.attributes[0].key, "service.name");
-        let scope = otel_metric.scope().expect("scope must exist");
+        let scope = otel_metric.scope_proto().expect("scope must exist");
         assert_eq!(scope.name, "vector-collector-instrumentation");
     })
         .await;
@@ -454,9 +454,9 @@ async fn receive_gauge_metric() {
             }
             other => panic!("expected Gauge, got {:?}", other),
         }
-        let resource = otel_metric.resource().expect("resource must exist");
+        let resource = otel_metric.resource_proto().expect("resource must exist");
         assert_eq!(resource.attributes[0].key, "service.name");
-        let scope = otel_metric.scope().expect("scope must exist");
+        let scope = otel_metric.scope_proto().expect("scope must exist");
         assert_eq!(scope.name, "vector-collector-instrumentation");
     })
         .await;
@@ -554,9 +554,9 @@ async fn receive_histogram_metric() {
             }
             other => panic!("expected Histogram, got {:?}", other),
         }
-        let resource = otel_metric.resource().expect("resource must exist");
+        let resource = otel_metric.resource_proto().expect("resource must exist");
         assert_eq!(resource.attributes[0].key, "service.name");
-        let scope = otel_metric.scope().expect("scope must exist");
+        let scope = otel_metric.scope_proto().expect("scope must exist");
         assert_eq!(scope.name, "vector-collector-instrumentation");
     })
     .await;
@@ -654,9 +654,9 @@ async fn receive_histogram_delta_metric() {
             }
             other => panic!("expected Histogram, got {:?}", other),
         }
-        let resource = otel_metric.resource().expect("resource must exist");
+        let resource = otel_metric.resource_proto().expect("resource must exist");
         assert_eq!(resource.attributes[0].key, "service.name");
-        let scope = otel_metric.scope().expect("scope must exist");
+        let scope = otel_metric.scope_proto().expect("scope must exist");
         assert_eq!(scope.name, "vector-collector-instrumentation");
     })
     .await;
@@ -769,9 +769,9 @@ async fn receive_expontential_histogram_metric() {
             }
             other => panic!("expected ExponentialHistogram, got {:?}", other),
         }
-        let resource = otel_metric.resource().expect("resource must exist");
+        let resource = otel_metric.resource_proto().expect("resource must exist");
         assert_eq!(resource.attributes[0].key, "service.name");
-        let scope = otel_metric.scope().expect("scope must exist");
+        let scope = otel_metric.scope_proto().expect("scope must exist");
         assert_eq!(scope.name, "vector-collector-instrumentation");
     })
     .await;
@@ -879,9 +879,9 @@ async fn receive_summary_metric() {
             }
             other => panic!("expected Summary, got {:?}", other),
         }
-        let resource = otel_metric.resource().expect("resource must exist");
+        let resource = otel_metric.resource_proto().expect("resource must exist");
         assert_eq!(resource.attributes[0].key, "service.name");
-        let scope = otel_metric.scope().expect("scope must exist");
+        let scope = otel_metric.scope_proto().expect("scope must exist");
         assert_eq!(scope.name, "vector-collector-instrumentation");
     })
     .await;
@@ -1124,10 +1124,10 @@ async fn http_json_logs() {
         let body_debug = format!("{:?}", otel_log.body().unwrap());
         assert!(body_debug.contains("hello from json"));
 
-        let resource = otel_log.resource().expect("resource must exist");
+        let resource = otel_log.resource_proto().expect("resource must exist");
         assert_eq!(resource.attributes[0].key, "service.name");
 
-        let scope = otel_log.scope().expect("scope must exist");
+        let scope = otel_log.scope_proto().expect("scope must exist");
         assert_eq!(scope.name, "test.scope");
         assert_eq!(scope.version, "0.1.0");
 
@@ -1221,9 +1221,9 @@ async fn http_json_metrics() {
             other => panic!("expected Sum, got {:?}", other),
         }
 
-        let resource = otel_metric.resource().expect("resource must exist");
+        let resource = otel_metric.resource_proto().expect("resource must exist");
         assert_eq!(resource.attributes[0].key, "service.name");
-        let scope = otel_metric.scope().expect("scope must exist");
+        let scope = otel_metric.scope_proto().expect("scope must exist");
         assert_eq!(scope.name, "test.metric.scope");
     })
     .await;
@@ -1299,9 +1299,9 @@ async fn http_json_traces() {
             str_into_hex_bytes("0b9e4bda2a55530d")
         );
 
-        let resource = otel_span.resource().expect("resource must exist");
+        let resource = otel_span.resource_proto().expect("resource must exist");
         assert_eq!(resource.attributes[0].key, "service.name");
-        let scope = otel_span.scope().expect("scope must exist");
+        let scope = otel_span.scope_proto().expect("scope must exist");
         assert_eq!(scope.name, "test.trace.scope");
         assert_eq!(scope.version, "2.0.0");
     })

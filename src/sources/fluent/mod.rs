@@ -827,7 +827,6 @@ mod tests {
         log.metadata_mut()
             .value_mut()
             .insert(path!(FluentConfig::NAME, "record", "message"), Value::from(name));
-        let _ = name; // suppress unused warning
         Event::Log(log)
     }
 

@@ -34,7 +34,8 @@ pub enum Event {
 - `event.proto`, `vector.proto` — deleted; disk buffers use `otlp_buffer.proto` only.
 - `BufferFormat` enum (Vector/Otlp/Migrate) — collapsed to OTLP-only.
 - `Serialize for OtelLog/OtelSpan` — canonical flat format via `to_value_canonical()` (flat keys, compatible with generic sinks like Elasticsearch, console, HTTP). OTLP-native JSON available via `OtlpJsonLog`/`OtlpJsonSpan` wrappers for OTLP HTTP sinks.
-- `EventDataEq for OtelLog/OtelSpan` — direct proto comparison.
+- `EventDataEq for OtelLog/OtelSpan` — direct proto + `OtelAttributes` comparison (deterministic ordering).
+- `OtelAttributes` — BTreeMap-backed attribute container for O(log n) lookup. Used by OtelLog (record attrs) and OtelSpan (span attrs). Converts to/from `Vec<KeyValue>` at proto boundaries only.
 
 ---
 
@@ -107,7 +108,7 @@ kafka, syslog, …  ──────────►  OTel Span
 | DDSketch vs ExponentialHistogram | ExponentialHistogram in core (tighter error at scale 7: ±0.27% vs ±0.78%). DDSketch only in DD adapter. |
 | Core value type | `AnyValue` (OTel proto). `Value` is VRL-boundary only. |
 | `EventMetadata` | Retained as pipeline sidecar (finalizers, source_id, schema). Not merged into `Resource.attributes`. |
-| `Vec<KeyValue>` attribute lookup | O(n) linear scan — same approach as otelcontribcol. Acceptable for their OTTL (iteration-dominated, 3–5 statements), but causes 15–25% regression for VRL (lookup-dominated, 10–20 reads). Planned fix: `OtelAttributes` BTreeMap wrapper shared across all 3 signals. |
+| `Vec<KeyValue>` attribute lookup | O(n) linear scan was same approach as otelcontribcol. Caused 15–25% regression for VRL (lookup-dominated, 10–20 reads). **Fixed in P11–P12:** `OtelAttributes` BTreeMap wrapper for OtelLog + OtelSpan. OtelMetric data-point attributes remain `Vec<KeyValue>` (deferred). |
 | Migration strategy | Wrapper types (incremental, always-compilable) over big-bang replacement. |
 | DD sink | Not re-added — DD accepts OTLP natively. Users point OTel sink at DD's OTLP endpoint. |
 | Native codecs + protos | Fully deleted. Vector source/sink speak OTLP gRPC natively. |
@@ -150,6 +151,8 @@ kafka, syslog, …  ──────────►  OTel Span
 | **P8** | Delete log_schema constants, LegacyKey type, clean stale docs | 41 files, −500 lines |
 | **P9** | Align test suite with OTLP-native model (value→canonical, schema defs, metadata paths, backpressure timeouts) | 39 files, −738 lines |
 | **P10** | Add `protobuf-build` to `sources-opentelemetry` feature (fix Docker build) | 1 file |
+| **P11** | `OtelAttributes` BTreeMap for OtelLog — O(log n) attribute lookup | 9 files, +160/−61 lines |
+| **P12** | `OtelAttributes` BTreeMap for OtelSpan — O(log n) attribute lookup, tail sampling + span_metrics use direct get | 10 files, +96/−91 lines |
 
 **Net code change:** ~−22,000 lines removed.
 
@@ -159,10 +162,13 @@ kafka, syslog, …  ──────────►  OTel Span
 
 | Component | Why it stays | Planned resolution |
 |-----------|-------------|-------------------|
-| `to_value_canonical()` / `from_value_map()` | VRL path access and flat-format encoders (GELF, Avro) depend on Value↔proto bridge. | `OtelAttributes` BTreeMap reduces need; direct proto access for encoders eliminates rest. |
-| `modify_as_value()` | Performance optimization for dnstap (batched mutations). | `OtelAttributes` with direct BTreeMap mutation may make this unnecessary. |
-| Legacy metric types (MetricValue, MetricKind, MetricTags, etc.) | Internal computation layer for metric sinks/transforms — arithmetic, filtering, cardinality. | `OtelAttributes` replaces `MetricTags`; arithmetic methods on `OtelMetric` replace `MetricValue` ops. |
-| `log_namespace: Option<bool>` config fields (38 sources) | Config backward compatibility — parsed but ignored (always Vector namespace). | Remove after deprecation period. |
+| `to_value_canonical()` / `from_value_map()` | VRL path access and flat-format encoders (GELF, Avro, protobuf, syslog, Lua) depend on Value↔proto bridge. 12 call sites across 8 codec files. | Direct proto access for encoders eliminates most; `OtelAttributes::to_object_map()` already covers attribute portion. |
+| `modify_as_value()` | Used by dnstap source/parser for batched mutations (1 production call site + tests). | Replace with direct `OtelAttributes` mutation or sequential `insert()` calls. Low priority. |
+| Legacy metric types (~2,164 lines) | `MetricValue` (Counter/Gauge/Set/Distribution/Histogram/Summary arithmetic), `MetricKind` (Incremental/Absolute temporality), `MetricTags` (multi-value tag support, 780 lines), `MetricSeries`/`MetricData` — used by all metric transforms/sinks. | `OtelAttributes` replaces `MetricTags`; arithmetic methods on `OtelMetric` replace `MetricValue` ops. Largest remaining cleanup. |
+| `log_namespace: Option<bool>` (37 sources) | Config backward compatibility — parsed but ignored (always Vector namespace). | Remove after deprecation period. Mechanical but touches 37 source files. |
+| OtelMetric data-point attributes (`Vec<KeyValue>`) | Each data point (NumberDataPoint, HistogramDataPoint, etc.) has its own `Vec<KeyValue>`. Not a single field like OtelLog/OtelSpan — multiple data points per metric. | Wrap per-data-point attributes in `OtelAttributes`. More complex than Log/Span because metrics have N data points each with their own attribute set. |
+| Resource/scope `attribute_value()` free functions | OtelLog and OtelSpan record attributes migrated to `OtelAttributes`, but resource and scope attributes remain `Vec<KeyValue>` with linear scan helpers. Resource/scope attributes are typically small (3–10 entries). | Migrate resource/scope to `OtelAttributes` for consistency. Low perf impact (small lists) but improves code uniformity. |
+| `kvlist_to_object_map()` (10 call sites) | Converts `Vec<KeyValue>` to VRL `ObjectMap`. Used at serialization boundaries and VRL target projection. | Replaced by `OtelAttributes::to_object_map()` for record attrs; remaining calls are for resource/scope attrs. |
 
 ---
 
@@ -177,9 +183,9 @@ VRL .foo  →  BTreeMap::get("foo")  →  &Value (borrowed, zero alloc)
 VRL .foo = v  →  BTreeMap::insert("foo", v)  →  in-place O(log n)
 ```
 
-### After migration
+### After migration (before OtelAttributes optimization)
 
-`OtelLog` stores data as protobuf types (`LogRecord`, `Resource`, `Vec<KeyValue>`). VRL access goes through an adapter that converts proto → `Value` per access.
+`OtelLog` stored data as protobuf types (`LogRecord`, `Resource`, `Vec<KeyValue>`). VRL access went through an adapter that converts proto → `Value` per access.
 
 ```
 VRL .body           →  direct match  →  any_value_to_vrl clone  →  O(1) + 1 alloc
@@ -188,7 +194,7 @@ VRL .resource.x     →  direct resource + linear scan             →  O(m) + 1
 VRL .[0] / complex  →  full to_value_canonical() rebuild         →  O(n+m) + many allocs
 ```
 
-### Estimated regression
+### Regression before OtelAttributes fix
 
 | Workload | Regression | Why |
 |----------|------------|-----|
@@ -201,6 +207,17 @@ Two root causes:
 1. **O(n) linear scan** of `Vec<KeyValue>` for attribute lookup (vs O(log n) BTreeMap)
 2. **Owned `Value` return** on every `get()` — allocates and clones (vs `&Value` borrow)
 
+### After OtelAttributes fix (current, P11–P12)
+
+| Workload | Regression | Why |
+|----------|------------|-----|
+| Body-only (`.body`, `.severity_text`) | ~5% | Clone overhead vs borrow; direct field match is fast (unchanged) |
+| Typical remap (5–10 reads, ~15 attrs) | ~5% | BTreeMap O(log n) + per-access alloc (linear scan eliminated) |
+| Attribute-heavy (20+ reads, 30+ attrs) | ~8–10% | BTreeMap scales well; only clone overhead remains |
+| Complex paths (array index, unnest) | ~100–200% | Full `to_value_canonical()` per access (rare; unchanged) |
+
+Remaining root cause: **Owned `Value` return** on every `get()` — allocates and clones (vs `&Value` borrow). Fixing this would require VRL to operate on `AnyValue` directly (architecture-level change).
+
 ### otelcontribcol comparison
 
 The Go OpenTelemetry Collector has the same issue: `pdata/pcommon.Map` wraps a `*[]KeyValue` slice. `Get()` does a linear scan. They accepted the tradeoff because:
@@ -210,41 +227,47 @@ The Go OpenTelemetry Collector has the same issue: `pdata/pcommon.Map` wraps a `
 
 Vector's situation differs: VRL programs do **10–20 point lookups** per event (conditionals, branches, assignments each read fields). More lookups × O(n) = bigger impact. And we already pay a per-access conversion cost (`any_value_to_vrl` clone), so the otelcontribcol zero-copy argument doesn't apply.
 
-### Planned optimization: `OtelAttributes` type
+### Applied optimization: `OtelAttributes` type (P11–P12)
 
-A shared `BTreeMap`-backed attribute container used across all 3 signals:
+`OtelAttributes` is a `BTreeMap<String, AnyValue>` wrapper that replaces `Vec<KeyValue>` for record-level attributes in `OtelLog` and `OtelSpan`:
 
 ```rust
-/// Shared attribute container for all OTLP signals.
-/// BTreeMap for O(log n) lookup + borrowed access.
-/// Converts to/from Vec<KeyValue> at proto boundaries only.
 pub struct OtelAttributes {
     inner: BTreeMap<String, AnyValue>,
 }
 ```
 
-Used by `OtelLog`, `OtelMetric`, and `OtelSpan` for both record attributes and resource attributes.
+**Conversion boundary:** `from_key_values(Vec<KeyValue>)` at source ingestion (one-time O(n log n)), `to_key_values()` / `record_to_proto()` / `span_to_proto()` at sink egress (one-time O(n)). Amortized once per event lifetime vs N times per VRL access before.
 
-**Conversion boundary:** `OtelAttributes::from(Vec<KeyValue>)` at source ingestion (one-time O(n log n)), `.to_key_values()` at sink egress (one-time O(n)). Amortized once per event lifetime vs N times per VRL access today.
+**After optimization — OtelLog and OtelSpan:**
+```
+VRL .body           →  direct match  →  any_value_to_vrl clone  →  O(1) + 1 alloc
+VRL .my_attr        →  BTreeMap::get  →  clone                  →  O(log n) + 1 alloc  (was O(n))
+VRL .resource.x     →  direct resource + linear scan             →  O(m) + 1 alloc  (resource still Vec<KeyValue>)
+```
 
-| Problem | How `OtelAttributes` fixes it |
-|---------|-------------------------------|
-| VRL O(n) lookup (all 3 signals) | BTreeMap O(log n) + `&AnyValue` borrow |
-| Metric arithmetic (merge, diff) | Methods on the type: `merge()`, `intersect()`, `subtract_tags()` |
-| Tag cardinality limiting | `len()`, `remove()`, `retain()` — all O(log n) |
-| `EventDataEq` ordering fragility | BTreeMap is sorted — comparison is deterministic regardless of insertion order |
-| `to_value_canonical()` cost | Attributes already indexed — skip the linear scan during conversion |
-| Legacy metric types (deferred) | `OtelAttributes` replaces `MetricTags` for tag operations on metric data points |
+| Problem | Status |
+|---------|--------|
+| VRL O(n) lookup (logs + traces) | **Fixed** — BTreeMap O(log n) via `OtelAttributes::get()` |
+| `EventDataEq` ordering fragility (logs + traces) | **Fixed** — BTreeMap is sorted; comparison is deterministic |
+| `to_value_canonical()` attribute portion | **Fixed** — iterates sorted BTreeMap, no linear scan |
+| Tail sampling / span_metrics attribute access | **Fixed** — uses `attribute()` O(log n) instead of iterating `Vec<KeyValue>` |
+| Metric data-point attributes | **Not yet** — multiple data points per metric, each with `Vec<KeyValue>` |
+| Resource/scope attributes | **Not yet** — still `Vec<KeyValue>` (small lists, low impact) |
+| Legacy metric types (MetricTags) | **Not yet** — separate refactor to replace MetricTags with OtelAttributes |
 
-**Estimated result:** typical remap regression drops from ~15–25% to ~5% (just the `AnyValue` → `Value` clone overhead on access, no more linear scan).
+**Estimated result:** typical remap regression drops from ~15–25% to ~5% for logs and traces (just the `AnyValue` → `Value` clone overhead on access, no more linear scan).
 
 ---
 
 ## Deferred to Future Release
 
-1. **`OtelAttributes` type** — BTreeMap-backed attribute container shared across all 3 signals. Fixes VRL performance regression, metric arithmetic, tag cardinality, and `EventDataEq` ordering. Replaces legacy `MetricTags`.
-2. Replace `to_value_canonical()` bridge with direct proto access in GELF/Avro encoders.
-3. Remove `log_namespace: Option<bool>` config fields once deprecation period ends.
+1. **`OtelAttributes` for OtelMetric data points** — Each data point has its own `Vec<KeyValue>`. More complex than Log/Span (N data points per metric × M attributes). Needed for O(log n) metric tag operations.
+2. **`OtelAttributes` for resource/scope attributes** — Currently `Vec<KeyValue>` with linear scan helpers. Low perf impact (small lists) but improves code uniformity.
+3. **Legacy metric types removal** (~2,164 lines) — Replace `MetricTags` with `OtelAttributes`, add arithmetic methods to `OtelMetric`, eliminate `MetricValue`/`MetricKind`/`MetricSeries`/`MetricData`. Largest remaining cleanup.
+4. **Replace `to_value_canonical()` bridge** — Direct proto access in GELF/Avro/protobuf/syslog encoders. 12 call sites across 8 codec files.
+5. **Remove `log_namespace: Option<bool>`** config fields once deprecation period ends (37 source files).
+6. **Remove `modify_as_value()`** — Replace dnstap usage with direct `OtelAttributes` mutation or sequential inserts.
 
 ---
 

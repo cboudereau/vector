@@ -129,10 +129,6 @@ pub struct RedisSourceConfig {
     #[derivative(Default(value = "default_decoding()"))]
     decoding: DeserializerConfig,
 
-    /// The namespace to use for logs. This overrides the global setting.
-    #[configurable(metadata(docs::hidden))]
-    #[serde(default)]
-    log_namespace: Option<bool>,
 }
 
 impl GenerateConfig for RedisSourceConfig {
@@ -154,7 +150,7 @@ impl GenerateConfig for RedisSourceConfig {
 #[typetag::serde(name = "redis")]
 impl SourceConfig for RedisSourceConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
-        let log_namespace = cx.log_namespace(self.log_namespace);
+        let log_namespace = cx.log_namespace();
 
         // A key must be specified to actually query i.e. the list to pop from, or the channel to subscribe to.
         if self.key.is_empty() {
@@ -193,7 +189,7 @@ impl SourceConfig for RedisSourceConfig {
     }
 
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
-        let log_namespace = global_log_namespace.merge(self.log_namespace);
+        let log_namespace = global_log_namespace;
 
         let schema_definition = self
             .decoding
@@ -325,7 +321,6 @@ mod integration_test {
             redis_key: None,
             framing: default_framing_message_based(),
             decoding: default_decoding(),
-            log_namespace: Some(false),
         };
 
         let events = run_and_assert_source_compliance_n(config, 3, &SOURCE_TAGS).await;
@@ -366,7 +361,6 @@ mod integration_test {
             redis_key: Some(OptionalValuePath::from(owned_value_path!("remapped_key"))),
             framing: default_framing_message_based(),
             decoding: default_decoding(),
-            log_namespace: Some(true),
         };
 
         let events = run_and_assert_source_compliance_n(config, 1, &SOURCE_TAGS).await;
@@ -407,7 +401,6 @@ mod integration_test {
             redis_key: None,
             framing: default_framing_message_based(),
             decoding: default_decoding(),
-            log_namespace: Some(false),
         };
 
         let events = run_and_assert_source_compliance_n(config, 3, &SOURCE_TAGS).await;
@@ -440,7 +433,6 @@ mod integration_test {
             redis_key: None,
             framing: default_framing_message_based(),
             decoding: default_decoding(),
-            log_namespace: Some(false),
         };
 
         let (tx, rx) = SourceSender::new_test();

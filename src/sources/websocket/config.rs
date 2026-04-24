@@ -125,10 +125,6 @@ pub struct WebSocketConfig {
     #[serde(default)]
     pub pong_message: Option<PongMessage>,
 
-    /// The namespace to use for logs. This overrides the global setting.
-    #[configurable(metadata(docs::hidden))]
-    #[serde(default)]
-    pub log_namespace: Option<bool>,
 }
 
 const fn default_connect_timeout_secs() -> Duration {
@@ -150,7 +146,6 @@ impl Default for WebSocketConfig {
             initial_message_timeout_secs: default_initial_message_timeout_secs(),
             ping_message: None,
             pong_message: None,
-            log_namespace: None,
         }
     }
 }
@@ -166,7 +161,7 @@ impl SourceConfig for WebSocketConfig {
         let connector =
             WebSocketConnector::new(self.common.uri.clone(), tls, self.common.auth.clone())?;
 
-        let log_namespace = cx.log_namespace(self.log_namespace);
+        let log_namespace = cx.log_namespace();
         let decoder =
             DecodingConfig::new(self.framing.clone(), self.decoding.clone(), log_namespace)
                 .build()?;
@@ -183,7 +178,7 @@ impl SourceConfig for WebSocketConfig {
     }
 
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
-        let log_namespace = global_log_namespace.merge(self.log_namespace);
+        let log_namespace = global_log_namespace;
 
         let schema_definition = self
             .decoding
@@ -219,7 +214,6 @@ mod test {
     #[test]
     fn output_schema_definition_vector_namespace() {
         let config = WebSocketConfig {
-            log_namespace: Some(true),
             ..Default::default()
         };
 

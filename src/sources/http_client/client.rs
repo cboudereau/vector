@@ -131,10 +131,6 @@ pub struct HttpClientConfig {
     #[configurable(derived)]
     pub auth: Option<Auth>,
 
-    /// The namespace to use for logs. This overrides the global setting.
-    #[configurable(metadata(docs::hidden))]
-    #[serde(default)]
-    pub log_namespace: Option<bool>,
 }
 
 const fn default_http_method() -> HttpMethod {
@@ -226,7 +222,6 @@ impl Default for HttpClientConfig {
             body: None,
             tls: None,
             auth: None,
-            log_namespace: None,
         }
     }
 }
@@ -354,7 +349,7 @@ impl SourceConfig for HttpClientConfig {
 
         let tls = TlsSettings::from_options(self.tls.as_ref())?;
 
-        let log_namespace = cx.log_namespace(self.log_namespace);
+        let log_namespace = cx.log_namespace();
 
         // build the decoder
         let decoder = self.get_decoding_config(Some(log_namespace)).build()?;
@@ -389,7 +384,7 @@ impl SourceConfig for HttpClientConfig {
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
         // There is a global and per-source `log_namespace` config. The source config overrides the global setting,
         // and is merged here.
-        let log_namespace = global_log_namespace.merge(self.log_namespace);
+        let log_namespace = global_log_namespace;
 
         let schema_definition = self
             .decoding
@@ -411,8 +406,7 @@ impl HttpClientConfig {
     pub fn get_decoding_config(&self, log_namespace: Option<LogNamespace>) -> DecodingConfig {
         let decoding = self.decoding.clone();
         let framing = self.framing.clone();
-        let log_namespace =
-            log_namespace.unwrap_or_else(|| self.log_namespace.unwrap_or(false).into());
+        let log_namespace = log_namespace.unwrap_or(LogNamespace::Vector);
 
         DecodingConfig::new(framing, decoding, log_namespace)
     }

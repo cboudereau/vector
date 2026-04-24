@@ -222,7 +222,6 @@ impl ConfigBuilder {
 
         self.schema.append(with.schema, &mut errors);
 
-        self.schema.log_namespace = self.schema.log_namespace.or(with.schema.log_namespace);
 
         self.healthchecks.merge(with.healthchecks);
 

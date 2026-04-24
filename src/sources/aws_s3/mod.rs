@@ -118,10 +118,6 @@ pub struct AwsS3Config {
     #[configurable(derived)]
     tls_options: Option<TlsConfig>,
 
-    /// The namespace to use for logs. This overrides the global setting.
-    #[configurable(metadata(docs::hidden))]
-    #[serde(default)]
-    log_namespace: Option<bool>,
 
     #[configurable(derived)]
     #[serde(default = "default_framing")]
@@ -158,7 +154,7 @@ impl_generate_config_from_default!(AwsS3Config);
 #[typetag::serde(name = "aws_s3")]
 impl SourceConfig for AwsS3Config {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
-        let log_namespace = cx.log_namespace(self.log_namespace);
+        let log_namespace = cx.log_namespace();
 
         let multiline_config: Option<line_agg::Config> = self
             .multiline
@@ -176,7 +172,7 @@ impl SourceConfig for AwsS3Config {
     }
 
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
-        let log_namespace = global_log_namespace.merge(self.log_namespace);
+        let log_namespace = global_log_namespace;
         let mut schema_definition = self
             .decoding
             .schema_definition(log_namespace)

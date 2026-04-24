@@ -243,10 +243,6 @@ pub struct KafkaSourceConfig {
     #[serde(default, deserialize_with = "bool_or_struct")]
     acknowledgements: SourceAcknowledgementsConfig,
 
-    /// The namespace to use for logs. This overrides the global setting.
-    #[configurable(metadata(docs::hidden))]
-    #[serde(default)]
-    log_namespace: Option<bool>,
 
     #[configurable(derived)]
     #[serde(default)]
@@ -319,7 +315,7 @@ impl_generate_config_from_default!(KafkaSourceConfig);
 #[typetag::serde(name = "kafka")]
 impl SourceConfig for KafkaSourceConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
-        let log_namespace = cx.log_namespace(self.log_namespace);
+        let log_namespace = cx.log_namespace();
 
         let decoder =
             DecodingConfig::new(self.framing.clone(), self.decoding.clone(), log_namespace)
@@ -351,7 +347,7 @@ impl SourceConfig for KafkaSourceConfig {
     }
 
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
-        let log_namespace = global_log_namespace.merge(self.log_namespace);
+        let log_namespace = global_log_namespace;
 
         let schema_definition = self
             .decoding
@@ -1325,7 +1321,6 @@ mod test {
     pub(super) fn make_config(
         topic: &str,
         group: &str,
-        log_namespace: LogNamespace,
         librdkafka_options: Option<HashMap<String, String>>,
     ) -> KafkaSourceConfig {
         KafkaSourceConfig {
@@ -1343,14 +1338,13 @@ mod test {
             headers_key: default_headers_key(),
             socket_timeout_ms: Duration::from_millis(60000),
             fetch_wait_max_ms: Duration::from_millis(100),
-            log_namespace: Some(log_namespace == LogNamespace::Vector),
             ..Default::default()
         }
     }
 
     #[test]
     fn test_output_schema_definition_vector_namespace() {
-        let definitions = make_config("topic", "group", LogNamespace::Vector, None)
+        let definitions = make_config("topic", "group", None)
             .outputs(LogNamespace::Vector)
             .remove(0)
             .schema_definition(true);
@@ -1401,7 +1395,7 @@ mod test {
 
     #[tokio::test]
     async fn consumer_create_ok() {
-        let config = make_config("topic", "group", LogNamespace::Vector, None);
+        let config = make_config("topic", "group", None);
         assert!(create_consumer(&config, true).is_ok());
     }
 
@@ -1409,7 +1403,7 @@ mod test {
     async fn consumer_create_incorrect_auto_offset_reset() {
         let config = KafkaSourceConfig {
             auto_offset_reset: "incorrect-auto-offset-reset".to_string(),
-            ..make_config("topic", "group", LogNamespace::Vector, None)
+            ..make_config("topic", "group", None)
         };
         assert!(create_consumer(&config, true).is_err());
     }
@@ -1562,7 +1556,7 @@ mod integration_test {
 
         let topic = format!("test-topic-{}", random_string(10));
         let group_id = format!("test-group-{}", random_string(10));
-        let config = make_config(&topic, &group_id, log_namespace, None);
+        let config = make_config(&topic, &group_id, None);
 
         let now = send_events(topic.clone(), 1, 10).await;
 
@@ -1652,7 +1646,7 @@ mod integration_test {
     fn make_rand_config() -> (String, String, KafkaSourceConfig) {
         let topic = format!("test-topic-{}", random_string(10));
         let group_id = format!("test-group-{}", random_string(10));
-        let config = make_config(&topic, &group_id, LogNamespace::Vector, None);
+        let config = make_config(&topic, &group_id, None);
         (topic, group_id, config)
     }
 
@@ -1860,7 +1854,7 @@ mod integration_test {
         opts.insert("enable.partition.eof".into(), "true".into());
         opts.insert("fetch.message.max.bytes".into(), kafka_max_bytes());
         let events1 = {
-            let config = make_config(&topic, &group_id, LogNamespace::Vector, Some(opts.clone()));
+            let config = make_config(&topic, &group_id, Some(opts.clone()));
             let (tx, rx) = SourceSender::new_test_errors(|_| false);
             let (trigger_shutdown, shutdown_done) =
                 spawn_kafka(tx, config, true, false, LogNamespace::Vector);
@@ -1881,7 +1875,7 @@ mod integration_test {
 
         // 4. Run the kafka source again to finish reading the events
         let events2 = {
-            let config = make_config(&topic, &group_id, LogNamespace::Vector, Some(opts));
+            let config = make_config(&topic, &group_id, Some(opts));
             let (tx, rx) = SourceSender::new_test_errors(|_| false);
             let (trigger_shutdown, shutdown_done) =
                 spawn_kafka(tx, config, true, true, LogNamespace::Vector);
@@ -1940,7 +1934,6 @@ mod integration_test {
         let config1 = make_config(
             &topic,
             &group_id,
-            LogNamespace::Vector,
             Some(kafka_options.clone()),
         );
         let config2 = config1.clone();

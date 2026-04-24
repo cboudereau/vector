@@ -116,9 +116,6 @@ pub struct SplunkConfig {
     acknowledgements: HecAcknowledgementsConfig,
 
     /// The namespace to use for logs. This overrides the global settings.
-    #[configurable(metadata(docs::hidden))]
-    #[serde(default)]
-    log_namespace: Option<bool>,
 
     #[configurable(derived)]
     #[serde(default)]
@@ -136,7 +133,6 @@ impl Default for SplunkConfig {
             tls: None,
             acknowledgements: Default::default(),
             store_hec_token: false,
-            log_namespace: None,
             keepalive: Default::default(),
         }
     }
@@ -207,7 +203,7 @@ impl SourceConfig for SplunkConfig {
     }
 
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
-        let _log_namespace = global_log_namespace.merge(self.log_namespace);
+        let _log_namespace = global_log_namespace;
 
         let schema_definition = {
             let definition = vector_lib::schema::Definition::empty_legacy_namespace()
@@ -285,7 +281,7 @@ struct SplunkSource {
 
 impl SplunkSource {
     fn new(config: &SplunkConfig, protocol: &'static str, cx: SourceContext) -> Self {
-        let log_namespace = cx.log_namespace(config.log_namespace);
+        let log_namespace = cx.log_namespace();
         let acknowledgements = cx.do_acknowledgements(config.acknowledgements.enabled.into());
         let shutdown = cx.shutdown;
         let valid_tokens = config
@@ -1282,7 +1278,6 @@ mod tests {
                 tls: None,
                 acknowledgements: acknowledgements.unwrap_or_default(),
                 store_hec_token,
-                log_namespace: None,
                 keepalive: Default::default(),
             }
             .build(cx)
@@ -2548,7 +2543,6 @@ mod tests {
     #[test]
     fn output_schema_definition_vector_namespace() {
         let config = SplunkConfig {
-            log_namespace: Some(true),
             ..Default::default()
         };
 
@@ -2622,7 +2616,7 @@ mod tests {
             let listen_addr_http = format!("http://{}/services/collector/event", config.address);
             let uri = Uri::try_from(&listen_addr_http).expect("should not fail to parse URI");
 
-            let log_namespace: LogNamespace = config.log_namespace.unwrap_or_default().into();
+            let log_namespace = LogNamespace::Vector;
             let framing = BytesDecoderConfig::new().into();
             let decoding = DeserializerConfig::Json(Default::default());
 

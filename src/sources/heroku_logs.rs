@@ -87,10 +87,6 @@ pub struct LogplexConfig {
     #[serde(default, deserialize_with = "bool_or_struct")]
     acknowledgements: SourceAcknowledgementsConfig,
 
-    /// The namespace to use for logs. This overrides the global setting.
-    #[configurable(metadata(docs::hidden))]
-    #[serde(default)]
-    log_namespace: Option<bool>,
 
     #[configurable(derived)]
     #[serde(default)]
@@ -155,7 +151,6 @@ impl Default for LogplexConfig {
             framing: default_framing_message_based(),
             decoding: default_decoding(),
             acknowledgements: SourceAcknowledgementsConfig::default(),
-            log_namespace: None,
             keepalive: KeepaliveConfig::default(),
         }
     }
@@ -171,7 +166,7 @@ impl GenerateConfig for LogplexConfig {
 #[typetag::serde(name = "heroku_logs")]
 impl SourceConfig for LogplexConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
-        let log_namespace = cx.log_namespace(self.log_namespace);
+        let log_namespace = cx.log_namespace();
 
         let decoder =
             DecodingConfig::new(self.framing.clone(), self.decoding.clone(), log_namespace)
@@ -203,7 +198,7 @@ impl SourceConfig for LogplexConfig {
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
         // There is a global and per-source `log_namespace` config.
         // The source config overrides the global setting and is merged here.
-        let schema_def = self.schema_definition(global_log_namespace.merge(self.log_namespace));
+        let schema_def = self.schema_definition(global_log_namespace);
         vec![SourceOutput::new_maybe_logs(DataType::Log, schema_def)]
     }
 
@@ -453,7 +448,6 @@ mod tests {
                 framing: default_framing_message_based(),
                 decoding: default_decoding(),
                 acknowledgements: acknowledgements.into(),
-                log_namespace: None,
                 keepalive: Default::default(),
             }
             .build(context)
@@ -705,7 +699,6 @@ mod tests {
     #[test]
     fn output_schema_definition_vector_namespace() {
         let config = LogplexConfig {
-            log_namespace: Some(true),
             ..Default::default()
         };
 

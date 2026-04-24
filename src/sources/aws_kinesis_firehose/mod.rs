@@ -96,10 +96,6 @@ pub struct AwsKinesisFirehoseConfig {
     #[serde(default, deserialize_with = "bool_or_struct")]
     acknowledgements: SourceAcknowledgementsConfig,
 
-    /// The namespace to use for logs. This overrides the global setting.
-    #[configurable(metadata(docs::hidden))]
-    #[serde(default)]
-    log_namespace: Option<bool>,
 
     #[configurable(derived)]
     #[serde(default)]
@@ -151,7 +147,7 @@ impl fmt::Display for Compression {
 #[typetag::serde(name = "aws_kinesis_firehose")]
 impl SourceConfig for AwsKinesisFirehoseConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
-        let log_namespace = cx.log_namespace(self.log_namespace);
+        let log_namespace = cx.log_namespace();
         let decoder =
             DecodingConfig::new(self.framing.clone(), self.decoding.clone(), log_namespace)
                 .build()?;
@@ -215,7 +211,7 @@ impl SourceConfig for AwsKinesisFirehoseConfig {
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
         let schema_definition = self
             .decoding
-            .schema_definition(global_log_namespace.merge(self.log_namespace))
+            .schema_definition(global_log_namespace)
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 Self::NAME,
@@ -257,7 +253,6 @@ impl GenerateConfig for AwsKinesisFirehoseConfig {
             framing: default_framing_message_based(),
             decoding: default_decoding(),
             acknowledgements: Default::default(),
-            log_namespace: None,
             keepalive: Default::default(),
         })
         .unwrap()
@@ -331,7 +326,6 @@ mod tests {
         store_access_key: bool,
         record_compression: Compression,
         delivered: bool,
-        log_namespace: bool,
     ) -> (impl Stream<Item = Event> + Unpin, SocketAddr, PortGuard) {
         use EventStatus::*;
         let status = if delivered { Delivered } else { Rejected };
@@ -349,7 +343,6 @@ mod tests {
                 framing: default_framing_message_based(),
                 decoding: default_decoding(),
                 acknowledgements: true.into(),
-                log_namespace: Some(log_namespace),
                 keepalive: Default::default(),
             }
             .build(cx)
@@ -513,7 +506,7 @@ mod tests {
             ),
         ] {
             let (rx, addr, _guard) =
-                source(None, None, false, source_record_compression, true, false).await;
+                source(None, None, false, source_record_compression, true).await;
 
             let timestamp: DateTime<Utc> = Utc::now();
 
@@ -620,7 +613,7 @@ mod tests {
             ),
         ] {
             let (rx, addr, _guard) =
-                source(None, None, false, source_record_compression, true, true).await;
+                source(None, None, false, source_record_compression, true).await;
 
             let timestamp: DateTime<Utc> = Utc::now();
 
@@ -693,7 +686,7 @@ mod tests {
     async fn aws_kinesis_firehose_forwards_events_gzip_request() {
         assert_source_compliance(&SOURCE_TAGS, async move {
             let (rx, addr, _guard) =
-                source(None, None, false, Default::default(), true, false).await;
+                source(None, None, false, Default::default(), true).await;
 
             let timestamp: DateTime<Utc> = Utc::now();
 
@@ -742,7 +735,6 @@ mod tests {
             Default::default(),
             Default::default(),
             true,
-            false,
         )
         .await;
 
@@ -770,7 +762,6 @@ mod tests {
             Default::default(),
             Default::default(),
             true,
-            false,
         )
         .await;
 
@@ -800,7 +791,6 @@ mod tests {
             Default::default(),
             Default::default(),
             true,
-            false,
         )
         .await;
 
@@ -834,7 +824,6 @@ mod tests {
             Default::default(),
             Default::default(),
             true,
-            false,
         )
         .await;
 
@@ -859,7 +848,7 @@ mod tests {
     async fn handles_acknowledgement_failure() {
         let expected = RECORD.as_bytes().to_owned();
 
-        let (rx, addr, _guard) = source(None, None, false, Compression::None, false, false).await;
+        let (rx, addr, _guard) = source(None, None, false, Compression::None, false).await;
 
         let timestamp: DateTime<Utc> = Utc::now();
 
@@ -907,7 +896,6 @@ mod tests {
             true,
             Default::default(),
             true,
-            true,
         )
         .await;
 
@@ -934,7 +922,7 @@ mod tests {
 
     #[tokio::test]
     async fn no_authorization_access_key_passthrough_enabled() {
-        let (rx, address, _guard) = source(None, None, true, Default::default(), true, true).await;
+        let (rx, address, _guard) = source(None, None, true, Default::default(), true).await;
 
         let timestamp: DateTime<Utc> = Utc::now();
 

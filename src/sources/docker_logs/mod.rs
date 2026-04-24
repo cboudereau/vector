@@ -170,10 +170,6 @@ pub struct DockerLogsConfig {
     #[configurable(derived)]
     tls: Option<DockerTlsConfig>,
 
-    /// The namespace to use for logs. This overrides the global setting.
-    #[serde(default)]
-    #[configurable(metadata(docs::hidden))]
-    pub log_namespace: Option<bool>,
 }
 
 impl Default for DockerLogsConfig {
@@ -190,7 +186,6 @@ impl Default for DockerLogsConfig {
             auto_partial_merge: true,
             multiline: None,
             retry_backoff_secs: default_retry_backoff_secs(),
-            log_namespace: None,
         }
     }
 }
@@ -245,7 +240,7 @@ impl_generate_config_from_default!(DockerLogsConfig);
 #[typetag::serde(name = "docker_logs")]
 impl SourceConfig for DockerLogsConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
-        let log_namespace = cx.log_namespace(self.log_namespace);
+        let log_namespace = cx.log_namespace();
         let source = DockerLogsSource::new(
             self.clone().with_empty_partial_event_marker_field_as_none(),
             cx.out,
@@ -278,7 +273,7 @@ impl SourceConfig for DockerLogsConfig {
 
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
         let schema_definition = BytesDeserializerConfig
-            .schema_definition(global_log_namespace.merge(self.log_namespace))
+            .schema_definition(global_log_namespace)
             .with_source_metadata(
                 Self::NAME,
                 &owned_value_path!("host"),

@@ -48,10 +48,6 @@ pub struct FluentConfig {
     #[serde(flatten)]
     mode: FluentMode,
 
-    /// The namespace to use for logs. This overrides the global setting.
-    #[configurable(metadata(docs::hidden))]
-    #[serde(default)]
-    log_namespace: Option<bool>,
 }
 
 /// Listening mode for the `fluent` source.
@@ -286,7 +282,6 @@ impl GenerateConfig for FluentConfig {
                 acknowledgements: Default::default(),
                 connection_limit: Some(2),
             }),
-            log_namespace: None,
         })
         .unwrap()
     }
@@ -296,7 +291,7 @@ impl GenerateConfig for FluentConfig {
 #[typetag::serde(name = "fluent")]
 impl SourceConfig for FluentConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
-        let log_namespace = cx.log_namespace(self.log_namespace);
+        let log_namespace = cx.log_namespace();
         match &self.mode {
             FluentMode::Tcp(t) => t.build(cx, log_namespace),
             #[cfg(unix)]
@@ -305,7 +300,7 @@ impl SourceConfig for FluentConfig {
     }
 
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
-        let log_namespace = global_log_namespace.merge(self.log_namespace);
+        let log_namespace = global_log_namespace;
         let schema_definition = self.schema_definition(log_namespace);
 
         vec![SourceOutput::new_maybe_logs(
@@ -1056,7 +1051,6 @@ mod tests {
                 acknowledgements: true.into(),
                 connection_limit: None,
             }),
-            log_namespace: None,
         }
         .build(SourceContext::new_test(sender, None))
         .await
@@ -1134,7 +1128,6 @@ mod tests {
                 acknowledgements: false.into(),
                 connection_limit: None,
             }),
-            log_namespace: Some(true),
         };
 
         let definitions = config
@@ -1387,7 +1380,6 @@ mod integration_tests {
                     acknowledgements: false.into(),
                     connection_limit: None,
                 }),
-                log_namespace: None,
             }
             .build(SourceContext::new_test(sender, None))
             .await

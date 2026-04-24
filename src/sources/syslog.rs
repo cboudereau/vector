@@ -53,10 +53,6 @@ pub struct SyslogConfig {
     #[configurable(metadata(docs::type_unit = "bytes"))]
     max_length: usize,
 
-    /// The namespace to use for logs. This overrides the global setting.
-    #[configurable(metadata(docs::hidden))]
-    #[serde(default)]
-    pub log_namespace: Option<bool>,
 }
 
 /// Listener mode for the `syslog` source.
@@ -127,7 +123,6 @@ impl SyslogConfig {
         Self {
             mode,
             max_length: crate::serde::default_max_length(),
-            log_namespace: None,
         }
     }
 }
@@ -144,7 +139,6 @@ impl Default for SyslogConfig {
                 connection_limit: None,
             },
             max_length: crate::serde::default_max_length(),
-            log_namespace: None,
         }
     }
 }
@@ -159,7 +153,7 @@ impl GenerateConfig for SyslogConfig {
 #[typetag::serde(name = "syslog")]
 impl SourceConfig for SyslogConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
-        let log_namespace = cx.log_namespace(self.log_namespace);
+        let log_namespace = cx.log_namespace();
         match self.mode.clone() {
             Mode::Tcp {
                 address,
@@ -232,7 +226,7 @@ impl SourceConfig for SyslogConfig {
     }
 
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
-        let log_namespace = global_log_namespace.merge(self.log_namespace);
+        let log_namespace = global_log_namespace;
         let schema_definition = SyslogDeserializerConfig::from_source(SyslogConfig::NAME)
             .schema_definition(log_namespace)
             .with_standard_vector_source_metadata();
@@ -463,7 +457,6 @@ mod test {
     #[test]
     fn output_schema_definition_vector_namespace() {
         let config = SyslogConfig {
-            log_namespace: Some(true),
             ..Default::default()
         };
 

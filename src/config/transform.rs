@@ -179,16 +179,12 @@ impl TransformContext {
         }
     }
 
-    /// Gets the log namespacing to use. The passed in value is from the transform itself
-    /// and will override any global default if it's set.
+    /// Gets the log namespacing to use. Always returns `LogNamespace::Vector`.
     ///
     /// This should only be used for transforms that don't originate from a log (eg: `metric_to_log`)
     /// Most transforms will keep the log_namespace value that already exists on the event.
-    pub fn log_namespace(&self, namespace: Option<bool>) -> LogNamespace {
-        namespace
-            .or(self.schema.log_namespace)
-            .unwrap_or(false)
-            .into()
+    pub fn log_namespace(&self) -> LogNamespace {
+        LogNamespace::Vector
     }
 }
 
@@ -269,15 +265,12 @@ dyn_clone::clone_trait_object!(TransformConfig);
 pub fn get_transform_output_ids<T: TransformConfig + ?Sized>(
     transform: &T,
     key: ComponentKey,
-    global_log_namespace: LogNamespace,
+    _global_log_namespace: LogNamespace,
 ) -> impl Iterator<Item = OutputId> + '_ {
     transform
         .outputs(
             &TransformContext {
-                schema: SchemaOptions {
-                    log_namespace: Some(global_log_namespace.into()),
-                    ..Default::default()
-                },
+                schema: SchemaOptions::default(),
                 ..Default::default()
             },
             &[(key.clone().into(), schema::Definition::any())],

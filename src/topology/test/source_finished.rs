@@ -14,7 +14,7 @@ async fn sources_finished() {
 
     let mut old_config = Config::builder();
     let demo_logs =
-        DemoLogsConfig::repeat(vec!["text".to_owned()], 1, Duration::from_secs(0), None);
+        DemoLogsConfig::repeat(vec!["text".to_owned()], 1, Duration::from_secs(0));
     old_config.add_source("in", demo_logs);
     old_config.add_sink(
         "out",

@@ -82,10 +82,6 @@ pub struct AmqpSourceConfig {
     #[derivative(Default(value = "default_offset_key()"))]
     pub(crate) offset_key: OptionalValuePath,
 
-    /// The namespace to use for logs. This overrides the global setting.
-    #[configurable(metadata(docs::hidden))]
-    #[serde(default)]
-    pub log_namespace: Option<bool>,
 
     #[configurable(derived)]
     #[serde(default = "default_framing_message_based")]
@@ -145,14 +141,14 @@ impl AmqpSourceConfig {
 #[typetag::serde(name = "amqp")]
 impl SourceConfig for AmqpSourceConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
-        let log_namespace = cx.log_namespace(self.log_namespace);
+        let log_namespace = cx.log_namespace();
         let acknowledgements = cx.do_acknowledgements(self.acknowledgements);
 
         amqp_source(self, cx.shutdown, cx.out, log_namespace, acknowledgements).await
     }
 
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
-        let log_namespace = global_log_namespace.merge(self.log_namespace);
+        let log_namespace = global_log_namespace;
         let schema_definition = self
             .decoding
             .schema_definition(log_namespace)
@@ -543,7 +539,6 @@ pub mod test {
     #[test]
     fn output_schema_definition_vector_namespace() {
         let config = AmqpSourceConfig {
-            log_namespace: Some(true),
             ..Default::default()
         };
 

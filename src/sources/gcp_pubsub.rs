@@ -202,10 +202,6 @@ pub struct PubsubConfig {
     #[configurable(metadata(docs::human_name = "Keepalive"))]
     pub keepalive_secs: Duration,
 
-    /// The namespace to use for logs. This overrides the global setting.
-    #[configurable(metadata(docs::hidden))]
-    #[serde(default)]
-    pub log_namespace: Option<bool>,
 
     #[configurable(derived)]
     #[serde(default = "default_framing_message_based")]
@@ -254,7 +250,7 @@ const fn default_poll_time() -> Duration {
 #[typetag::serde(name = "gcp_pubsub")]
 impl SourceConfig for PubsubConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<crate::sources::Source> {
-        let log_namespace = cx.log_namespace(self.log_namespace);
+        let log_namespace = cx.log_namespace();
         let ack_deadline_secs = match self.ack_deadline_seconds {
             None => self.ack_deadline_secs,
             Some(ads) => {
@@ -337,7 +333,7 @@ impl SourceConfig for PubsubConfig {
     }
 
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
-        let log_namespace = global_log_namespace.merge(self.log_namespace);
+        let log_namespace = global_log_namespace;
         let schema_definition = self
             .decoding
             .schema_definition(log_namespace)
@@ -751,7 +747,6 @@ mod tests {
     #[test]
     fn output_schema_definition_vector_namespace() {
         let config = PubsubConfig {
-            log_namespace: Some(true),
             ..Default::default()
         };
 

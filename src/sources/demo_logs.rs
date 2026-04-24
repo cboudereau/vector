@@ -74,10 +74,6 @@ pub struct DemoLogsConfig {
     #[serde(default = "default_decoding")]
     pub decoding: DeserializerConfig,
 
-    /// The namespace to use for logs. This overrides the global setting.
-    #[serde(default)]
-    #[configurable(metadata(docs::hidden))]
-    pub log_namespace: Option<bool>,
 }
 
 const fn default_interval() -> Duration {
@@ -192,7 +188,6 @@ impl DemoLogsConfig {
         lines: Vec<String>,
         count: usize,
         interval: Duration,
-        log_namespace: Option<bool>,
     ) -> Self {
         Self {
             count,
@@ -203,7 +198,6 @@ impl DemoLogsConfig {
             },
             framing: default_framing_message_based(),
             decoding: default_decoding(),
-            log_namespace,
         }
     }
 }
@@ -283,7 +277,7 @@ impl_generate_config_from_default!(DemoLogsConfig);
 #[typetag::serde(name = "demo_logs")]
 impl SourceConfig for DemoLogsConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
-        let log_namespace = cx.log_namespace(self.log_namespace);
+        let log_namespace = cx.log_namespace();
 
         self.format.validate()?;
         let decoder =
@@ -303,7 +297,7 @@ impl SourceConfig for DemoLogsConfig {
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
         // There is a global and per-source `log_namespace` config. The source config overrides the global setting,
         // and is merged here.
-        let log_namespace = global_log_namespace.merge(self.log_namespace);
+        let log_namespace = global_log_namespace;
 
         let schema_definition = self
             .decoding

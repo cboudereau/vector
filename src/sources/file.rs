@@ -217,10 +217,6 @@ pub struct FileConfig {
     #[serde(default, deserialize_with = "bool_or_struct")]
     acknowledgements: SourceAcknowledgementsConfig,
 
-    /// The namespace to use for logs. This overrides the global setting.
-    #[configurable(metadata(docs::hidden))]
-    #[serde(default)]
-    log_namespace: Option<bool>,
 
     #[configurable(derived)]
     #[serde(default)]
@@ -368,7 +364,6 @@ impl Default for FileConfig {
             line_delimiter: default_line_delimiter(),
             encoding: None,
             acknowledgements: Default::default(),
-            log_namespace: None,
             internal_metrics: Default::default(),
             rotate_wait: default_rotate_wait(),
         }
@@ -405,7 +400,7 @@ impl SourceConfig for FileConfig {
 
         let acknowledgements = cx.do_acknowledgements(self.acknowledgements);
 
-        let log_namespace = cx.log_namespace(self.log_namespace);
+        let log_namespace = cx.log_namespace();
 
         Ok(file_source(
             self,
@@ -419,7 +414,7 @@ impl SourceConfig for FileConfig {
 
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
         let schema_definition = BytesDeserializerConfig
-            .schema_definition(global_log_namespace.merge(self.log_namespace))
+            .schema_definition(global_log_namespace)
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 Self::NAME,

@@ -131,10 +131,6 @@ pub struct NatsSourceConfig {
     /// The NATS queue group to join.
     pub queue: Option<String>,
 
-    /// The namespace to use for logs. This overrides the global setting.
-    #[configurable(metadata(docs::hidden))]
-    #[serde(default)]
-    pub log_namespace: Option<bool>,
 
     #[configurable(derived)]
     pub tls: Option<TlsEnableableConfig>,
@@ -197,7 +193,7 @@ impl GenerateConfig for NatsSourceConfig {
 #[typetag::serde(name = "nats")]
 impl SourceConfig for NatsSourceConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<Source> {
-        let log_namespace = cx.log_namespace(self.log_namespace);
+        let log_namespace = cx.log_namespace();
         let decoder =
             DecodingConfig::new(self.framing.clone(), self.decoding.clone(), log_namespace)
                 .build()?;
@@ -252,7 +248,7 @@ impl SourceConfig for NatsSourceConfig {
     }
 
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
-        let log_namespace = global_log_namespace.merge(self.log_namespace);
+        let log_namespace = global_log_namespace;
         let schema_definition = self
             .decoding
             .schema_definition(log_namespace)
@@ -339,7 +335,6 @@ mod tests {
     #[test]
     fn output_schema_definition_vector_namespace() {
         let config = NatsSourceConfig {
-            log_namespace: Some(true),
             subject_key_field: default_subject_key_field(),
             ..Default::default()
         };

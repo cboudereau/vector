@@ -97,7 +97,7 @@ fn generate_config() {
 #[tokio::test]
 async fn receive_grpc_logs_vector_namespace() {
     assert_source_compliance(&SOURCE_TAGS, async {
-        let env = build_otlp_test_env(LOGS, Some(true)).await;
+        let env = build_otlp_test_env(LOGS).await;
 
         let mut client = LogsServiceClient::connect(format!("http://{}", env.grpc_addr))
             .await
@@ -155,7 +155,7 @@ async fn receive_grpc_logs_vector_namespace() {
 #[tokio::test]
 async fn receive_grpc_logs_legacy_namespace() {
     assert_source_compliance(&SOURCE_TAGS, async {
-        let env = build_otlp_test_env(LOGS, None).await;
+        let env = build_otlp_test_env(LOGS).await;
 
         let mut client = LogsServiceClient::connect(format!("http://{}", env.grpc_addr))
             .await
@@ -192,7 +192,7 @@ async fn receive_grpc_logs_legacy_namespace() {
 #[tokio::test]
 async fn receive_sum_metric() {
     assert_source_compliance(&SOURCE_TAGS, async {
-        let env = build_otlp_test_env(METRICS, None).await;
+        let env = build_otlp_test_env(METRICS).await;
 
         // send request via grpc client
         let mut client = MetricsServiceClient::connect(format!("http://{}", env.grpc_addr))
@@ -288,7 +288,7 @@ async fn receive_sum_metric() {
 #[tokio::test]
 async fn receive_sum_non_monotonic_metric() {
     assert_source_compliance(&SOURCE_TAGS, async {
-        let env = build_otlp_test_env(METRICS, None).await;
+        let env = build_otlp_test_env(METRICS).await;
 
         // send request via grpc client
         let mut client = MetricsServiceClient::connect(format!("http://{}", env.grpc_addr))
@@ -379,7 +379,7 @@ async fn receive_sum_non_monotonic_metric() {
 #[tokio::test]
 async fn receive_gauge_metric() {
     assert_source_compliance(&SOURCE_TAGS, async {
-        let env = build_otlp_test_env(METRICS, None).await;
+        let env = build_otlp_test_env(METRICS).await;
 
         // send request via grpc client
         let mut client = MetricsServiceClient::connect(format!("http://{}", env.grpc_addr))
@@ -465,7 +465,7 @@ async fn receive_gauge_metric() {
 #[tokio::test]
 async fn receive_histogram_metric() {
     assert_source_compliance(&SOURCE_TAGS, async {
-        let env = build_otlp_test_env(METRICS, None).await;
+        let env = build_otlp_test_env(METRICS).await;
 
         // send request via grpc client
         let mut client = MetricsServiceClient::connect(format!("http://{}", env.grpc_addr))
@@ -565,7 +565,7 @@ async fn receive_histogram_metric() {
 #[tokio::test]
 async fn receive_histogram_delta_metric() {
     assert_source_compliance(&SOURCE_TAGS, async {
-        let env = build_otlp_test_env(METRICS, None).await;
+        let env = build_otlp_test_env(METRICS).await;
 
         // send request via grpc client
         let mut client = MetricsServiceClient::connect(format!("http://{}", env.grpc_addr))
@@ -665,7 +665,7 @@ async fn receive_histogram_delta_metric() {
 #[tokio::test]
 async fn receive_expontential_histogram_metric() {
     assert_source_compliance(&SOURCE_TAGS, async {
-        let env = build_otlp_test_env(METRICS, None).await;
+        let env = build_otlp_test_env(METRICS).await;
 
         // send request via grpc client
         let mut client = MetricsServiceClient::connect(format!("http://{}", env.grpc_addr))
@@ -780,7 +780,7 @@ async fn receive_expontential_histogram_metric() {
 #[tokio::test]
 async fn receive_summary_metric() {
     assert_source_compliance(&SOURCE_TAGS, async {
-        let env = build_otlp_test_env(METRICS, None).await;
+        let env = build_otlp_test_env(METRICS).await;
 
         // send request via grpc client
         let mut client = MetricsServiceClient::connect(format!("http://{}", env.grpc_addr))
@@ -907,7 +907,6 @@ fn get_source_config_with_headers(
             ],
         },
         acknowledgements: Default::default(),
-        log_namespace: Default::default(),
     }
 }
 
@@ -988,7 +987,6 @@ pub struct OTelTestEnv {
 
 pub async fn build_otlp_test_env(
     event_name: &'static str,
-    log_namespace: Option<bool>,
 ) -> OTelTestEnv {
     let (_guard_0, grpc_addr) = next_addr();
     let (_guard_1, http_addr) = next_addr();
@@ -1005,7 +1003,6 @@ pub async fn build_otlp_test_env(
             headers: Default::default(),
         },
         acknowledgements: Default::default(),
-        log_namespace,
     };
 
     let (sender, output, _) = new_source(EventStatus::Delivered, event_name.to_string());
@@ -1064,7 +1061,7 @@ fn current_time_and_nanos() -> (SystemTime, u64) {
 #[tokio::test]
 async fn http_json_logs() {
     assert_source_compliance(&SOURCE_TAGS, async {
-        let env = build_otlp_test_env(LOGS, Some(true)).await;
+        let env = build_otlp_test_env(LOGS).await;
 
         let payload = serde_json::json!({
             "resourceLogs": [{
@@ -1152,7 +1149,7 @@ async fn http_json_logs() {
 #[tokio::test]
 async fn http_json_metrics() {
     assert_source_compliance(&SOURCE_TAGS, async {
-        let env = build_otlp_test_env(METRICS, None).await;
+        let env = build_otlp_test_env(METRICS).await;
 
         let payload = serde_json::json!({
             "resourceMetrics": [{
@@ -1235,7 +1232,7 @@ async fn http_json_metrics() {
 #[tokio::test]
 async fn http_json_traces() {
     assert_source_compliance(&SOURCE_TAGS, async {
-        let env = build_otlp_test_env(TRACES, None).await;
+        let env = build_otlp_test_env(TRACES).await;
 
         let payload = serde_json::json!({
             "resourceSpans": [{
@@ -1314,7 +1311,7 @@ async fn http_json_traces() {
 #[tokio::test]
 async fn http_unsupported_content_type_returns_415() {
     assert_source_compliance(&SOURCE_TAGS, async {
-        let env = build_otlp_test_env(LOGS, None).await;
+        let env = build_otlp_test_env(LOGS).await;
 
         let client = reqwest::Client::new();
         let res = client
@@ -1332,7 +1329,7 @@ async fn http_unsupported_content_type_returns_415() {
 #[tokio::test]
 async fn http_protobuf_response_content_type() {
     assert_source_compliance(&SOURCE_TAGS, async {
-        let env = build_otlp_test_env(LOGS, None).await;
+        let env = build_otlp_test_env(LOGS).await;
 
         let req = ExportLogsServiceRequest {
             resource_logs: vec![ResourceLogs {

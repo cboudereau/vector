@@ -85,10 +85,6 @@ pub struct TcpConfig {
     #[serde(default = "default_decoding")]
     pub(super) decoding: DeserializerConfig,
 
-    /// The namespace to use for logs. This overrides the global setting.
-    #[serde(default)]
-    #[configurable(metadata(docs::hidden))]
-    pub log_namespace: Option<bool>,
 }
 
 const fn default_shutdown_timeout_secs() -> Duration {
@@ -114,7 +110,6 @@ impl TcpConfig {
             framing: None,
             decoding: default_decoding(),
             connection_limit: None,
-            log_namespace: None,
         }
     }
 
@@ -179,10 +174,6 @@ impl TcpConfig {
         self
     }
 
-    pub const fn set_log_namespace(&mut self, val: Option<bool>) -> &mut Self {
-        self.log_namespace = val;
-        self
-    }
 }
 
 #[derive(Clone)]

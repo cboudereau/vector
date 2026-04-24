@@ -17,19 +17,11 @@ use crate::{
 #[configurable_component(transform("trace_to_log", "Convert trace events to log events."))]
 #[derive(Clone, Debug, Default)]
 #[serde(deny_unknown_fields)]
-pub struct TraceToLogConfig {
-    /// The namespace to use for logs. This overrides the global setting.
-    #[serde(default)]
-    #[configurable(metadata(docs::hidden))]
-    pub log_namespace: Option<bool>,
-}
+pub struct TraceToLogConfig {}
 
 impl GenerateConfig for TraceToLogConfig {
     fn generate_config() -> toml::Value {
-        toml::Value::try_from(Self {
-            log_namespace: None,
-        })
-        .unwrap()
+        toml::Value::try_from(Self {}).unwrap()
     }
 }
 
@@ -98,9 +90,7 @@ mod tests {
 
     async fn do_transform(trace: OtelSpan) -> Option<OtelLog> {
         assert_transform_compliance(async move {
-            let config = TraceToLogConfig {
-                log_namespace: Some(false),
-            };
+            let config = TraceToLogConfig {};
             let (tx, rx) = mpsc::channel(1);
             let (topology, mut out) = create_topology(ReceiverStream::new(rx), config).await;
 

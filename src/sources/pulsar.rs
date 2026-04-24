@@ -96,10 +96,6 @@ pub struct PulsarSourceConfig {
     #[serde(default, deserialize_with = "bool_or_struct")]
     acknowledgements: SourceAcknowledgementsConfig,
 
-    /// The namespace to use for logs. This overrides the global setting.
-    #[configurable(metadata(docs::hidden))]
-    #[serde(default)]
-    log_namespace: Option<bool>,
 
     #[configurable(derived)]
     #[serde(default)]
@@ -207,7 +203,7 @@ impl_generate_config_from_default!(PulsarSourceConfig);
 #[typetag::serde(name = "pulsar")]
 impl SourceConfig for PulsarSourceConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
-        let log_namespace = cx.log_namespace(self.log_namespace);
+        let log_namespace = cx.log_namespace();
 
         let consumer = self.create_consumer().await?;
         let decoder =
@@ -226,7 +222,7 @@ impl SourceConfig for PulsarSourceConfig {
     }
 
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
-        let log_namespace = global_log_namespace.merge(self.log_namespace);
+        let log_namespace = global_log_namespace;
 
         let schema_definition = self
             .decoding
@@ -629,7 +625,6 @@ mod integration_tests {
             framing: FramingConfig::Bytes,
             decoding: DeserializerConfig::Bytes,
             acknowledgements: acknowledgements.into(),
-            log_namespace: None,
             tls: tls.clone(),
         };
         let mut builder = Pulsar::<TokioExecutor>::builder(&cnf.endpoint, TokioExecutor);

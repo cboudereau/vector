@@ -46,7 +46,7 @@ impl ValidatableComponent for OktaConfig {
             timeout: Duration::from_secs(1),
             ..Default::default()
         };
-        let log_namespace: LogNamespace = config.log_namespace.unwrap_or_default().into();
+        let log_namespace = LogNamespace::Vector;
 
         ValidationConfiguration::from_source(
             Self::NAME,
@@ -93,7 +93,6 @@ async fn okta_compliance() {
         token: "token".to_string(),
         interval: INTERVAL,
         timeout: TIMEOUT,
-        log_namespace: None,
         ..Default::default()
     })
     .await;
@@ -161,7 +160,6 @@ async fn okta_follows_rel() {
         token: "token".to_string(),
         interval: INTERVAL,
         timeout: TIMEOUT,
-        log_namespace: None,
         ..Default::default()
     })
     .await;

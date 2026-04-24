@@ -48,11 +48,6 @@ pub struct MetricToLogConfig {
     /// [tz_database]: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
     pub timezone: Option<TimeZone>,
 
-    /// The namespace to use for logs. This overrides the global setting.
-    #[serde(default)]
-    #[configurable(metadata(docs::hidden))]
-    pub log_namespace: Option<bool>,
-
     /// Controls how metric tag values are encoded.
     ///
     /// When set to `single`, only the last non-bare value of tags is displayed with the
@@ -69,7 +64,7 @@ impl MetricToLogConfig {
         MetricToLog::new(
             self.host_tag.as_deref(),
             self.timezone.unwrap_or_else(|| context.globals.timezone()),
-            context.log_namespace(self.log_namespace),
+            context.log_namespace(),
             self.metric_tag_values,
         )
     }
@@ -80,7 +75,6 @@ impl GenerateConfig for MetricToLogConfig {
         toml::Value::try_from(Self {
             host_tag: Some("host-tag".to_string()),
             timezone: None,
-            log_namespace: None,
             metric_tag_values: MetricTagValues::Single,
         })
         .unwrap()
@@ -103,7 +97,7 @@ impl TransformConfig for MetricToLogConfig {
         context: &TransformContext,
         input_definitions: &[(OutputId, Definition)],
     ) -> Vec<TransformOutput> {
-        let log_namespace = context.schema.log_namespace().merge(self.log_namespace);
+        let log_namespace = context.log_namespace();
         let schema_definition = schema_definition(log_namespace);
 
         vec![TransformOutput::new(
@@ -377,7 +371,6 @@ mod tests {
             let config = MetricToLogConfig {
                 host_tag: Some("host".into()),
                 timezone: None,
-                log_namespace: Some(false),
                 ..Default::default()
             };
             let (tx, rx) = mpsc::channel(1);

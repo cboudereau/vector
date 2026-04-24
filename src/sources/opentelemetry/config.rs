@@ -58,10 +58,6 @@ pub struct OpentelemetryConfig {
     #[serde(default, deserialize_with = "bool_or_struct")]
     pub acknowledgements: SourceAcknowledgementsConfig,
 
-    /// The namespace to use for logs. This overrides the global setting.
-    #[configurable(metadata(docs::hidden))]
-    #[serde(default)]
-    pub log_namespace: Option<bool>,
 }
 
 /// Configuration for the `opentelemetry` gRPC server.
@@ -138,7 +134,6 @@ impl GenerateConfig for OpentelemetryConfig {
             grpc: example_grpc_config(),
             http: example_http_config(),
             acknowledgements: Default::default(),
-            log_namespace: None,
         })
         .unwrap()
     }
@@ -150,7 +145,7 @@ impl SourceConfig for OpentelemetryConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<Source> {
         let acknowledgements = cx.do_acknowledgements(self.acknowledgements);
         let events_received = register!(EventsReceived);
-        let log_namespace = cx.log_namespace(self.log_namespace);
+        let log_namespace = cx.log_namespace();
 
         let grpc_tls_settings = MaybeTlsSettings::from_config(self.grpc.tls.as_ref(), true)?;
 
@@ -223,7 +218,7 @@ impl SourceConfig for OpentelemetryConfig {
     // TODO: appropriately handle "severity" meaning across both "severity_text" and "severity_number",
     // as both are optional and can be converted to/from.
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
-        let log_namespace = global_log_namespace.merge(self.log_namespace);
+        let log_namespace = global_log_namespace;
         let schema_definition = Definition::new_with_default_metadata(Kind::any(), [log_namespace])
             .with_source_metadata(
                 Self::NAME,

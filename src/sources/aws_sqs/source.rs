@@ -235,7 +235,6 @@ mod tests {
     #[tokio::test]
     async fn test_decode_vector_namespace() {
         let config = AwsSqsConfig {
-            log_namespace: Some(true),
             ..Default::default()
         };
         let definitions = config
@@ -310,7 +309,6 @@ mod tests {
     #[tokio::test]
     async fn test_decode_legacy_namespace() {
         let config = AwsSqsConfig {
-            log_namespace: None,
             ..Default::default()
         };
         let definitions = config

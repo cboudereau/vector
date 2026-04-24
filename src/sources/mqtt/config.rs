@@ -48,10 +48,6 @@ pub struct MqttSourceConfig {
     #[derivative(Default(value = "default_decoding()"))]
     pub decoding: DeserializerConfig,
 
-    /// The namespace to use for logs. This overrides the global setting.
-    #[configurable(metadata(docs::hidden))]
-    #[serde(default)]
-    pub log_namespace: Option<bool>,
 
     /// Overrides the name of the log field used to add the topic to each event.
     ///
@@ -75,7 +71,7 @@ fn default_topic_key() -> OptionalValuePath {
 #[typetag::serde(name = "mqtt")]
 impl SourceConfig for MqttSourceConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<crate::sources::Source> {
-        let log_namespace = cx.log_namespace(self.log_namespace);
+        let log_namespace = cx.log_namespace();
 
         let connector = self.build_connector()?;
 
@@ -90,7 +86,7 @@ impl SourceConfig for MqttSourceConfig {
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
         let schema_definition = self
             .decoding
-            .schema_definition(global_log_namespace.merge(self.log_namespace))
+            .schema_definition(global_log_namespace)
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 Self::NAME,

@@ -60,10 +60,6 @@ pub struct UnixConfig {
     #[serde(default = "default_decoding")]
     pub decoding: DeserializerConfig,
 
-    /// The namespace to use for logs. This overrides the global setting.
-    #[serde(default)]
-    #[configurable(metadata(docs::hidden))]
-    pub log_namespace: Option<bool>,
 }
 
 impl UnixConfig {
@@ -74,7 +70,6 @@ impl UnixConfig {
             host_key: default_host_key(),
             framing: None,
             decoding: default_decoding(),
-            log_namespace: None,
         }
     }
 

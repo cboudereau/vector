@@ -90,10 +90,6 @@ pub struct ExecConfig {
     #[serde(default = "default_decoding")]
     decoding: DeserializerConfig,
 
-    /// The namespace to use for logs. This overrides the global setting.
-    #[configurable(metadata(docs::hidden))]
-    #[serde(default)]
-    log_namespace: Option<bool>,
 }
 
 /// Mode of operation for running the command.
@@ -159,7 +155,6 @@ impl Default for ExecConfig {
             maximum_buffer_size_bytes: default_maximum_buffer_size(),
             framing: None,
             decoding: default_decoding(),
-            log_namespace: None,
         }
     }
 }
@@ -252,7 +247,7 @@ impl SourceConfig for ExecConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
         self.validate()?;
         let hostname = get_hostname();
-        let log_namespace = cx.log_namespace(self.log_namespace);
+        let log_namespace = cx.log_namespace();
 
         let framing = self
             .framing
@@ -293,7 +288,7 @@ impl SourceConfig for ExecConfig {
     }
 
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
-        let log_namespace = global_log_namespace.merge(Some(self.log_namespace.unwrap_or(false)));
+        let log_namespace = global_log_namespace;
 
         let schema_definition = self
             .decoding

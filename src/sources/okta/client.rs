@@ -77,10 +77,6 @@ pub struct OktaConfig {
     #[configurable(derived)]
     pub tls: Option<TlsConfig>,
 
-    /// The namespace to use for logs. This overrides the global setting.
-    #[configurable(metadata(docs::hidden))]
-    #[serde(default)]
-    pub log_namespace: Option<bool>,
 }
 
 impl Default for OktaConfig {
@@ -92,7 +88,6 @@ impl Default for OktaConfig {
             timeout: default_timeout(),
             since: None,
             tls: None,
-            log_namespace: None,
         }
     }
 }
@@ -150,7 +145,7 @@ impl SourceConfig for OktaConfig {
 
         let tls = TlsSettings::from_options(self.tls.as_ref())?;
 
-        let log_namespace = cx.log_namespace(self.log_namespace);
+        let log_namespace = cx.log_namespace();
 
         warn_if_interval_too_low(self.timeout, self.interval);
 
@@ -171,7 +166,7 @@ impl SourceConfig for OktaConfig {
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
         // There is a global and per-source `log_namespace` config. The source config overrides the global setting,
         // and is merged here.
-        let log_namespace = global_log_namespace.merge(self.log_namespace);
+        let log_namespace = global_log_namespace;
 
         vec![SourceOutput::new_maybe_logs(
             JsonDeserializerConfig::default().output_type(),

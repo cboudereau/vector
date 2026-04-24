@@ -1529,7 +1529,6 @@ fn test_config_outputs_with_disabled_data_types() {
             disable_traces,
             parse_ddtags: false,
             split_metric_namespace: true,
-            log_namespace: Some(false),
             keepalive: Default::default(),
             send_timeout_secs: None,
         };
@@ -1844,7 +1843,6 @@ fn test_config_outputs() {
             disable_traces: false,
             parse_ddtags: false,
             split_metric_namespace: true,
-            log_namespace: Some(false),
             keepalive: Default::default(),
             send_timeout_secs: None,
         };
@@ -2346,12 +2344,11 @@ impl ValidatableComponent for DatadogAgentConfig {
             disable_traces: false,
             parse_ddtags: false,
             split_metric_namespace: true,
-            log_namespace: Some(false),
             keepalive: Default::default(),
             send_timeout_secs: None,
         };
 
-        let log_namespace: LogNamespace = config.log_namespace.unwrap_or_default().into();
+        let log_namespace = LogNamespace::Vector;
 
         // TODO set up separate test cases for metrics and traces endpoints
 

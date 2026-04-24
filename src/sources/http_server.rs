@@ -167,10 +167,6 @@ pub struct SimpleHttpConfig {
     #[serde(default, deserialize_with = "bool_or_struct")]
     acknowledgements: SourceAcknowledgementsConfig,
 
-    /// The namespace to use for logs. This overrides the global setting.
-    #[configurable(metadata(docs::hidden))]
-    #[serde(default)]
-    log_namespace: Option<bool>,
 
     #[configurable(derived)]
     #[serde(default)]
@@ -257,7 +253,7 @@ impl SimpleHttpConfig {
         Ok(DecodingConfig::new(
             framing,
             decoding,
-            self.log_namespace.unwrap_or(false).into(),
+            LogNamespace::Vector,
         ))
     }
 }
@@ -280,7 +276,6 @@ impl Default for SimpleHttpConfig {
             framing: None,
             decoding: Some(default_decoding()),
             acknowledgements: SourceAcknowledgementsConfig::default(),
-            log_namespace: None,
             keepalive: KeepaliveConfig::default(),
         }
     }
@@ -353,7 +348,7 @@ pub fn build_param_matcher(list: &[String]) -> crate::Result<Vec<HttpConfigParam
 #[typetag::serde(name = "http_server")]
 impl SourceConfig for SimpleHttpConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
-        let log_namespace = cx.log_namespace(self.log_namespace);
+        let log_namespace = cx.log_namespace();
         let decoder = self
             .get_decoding_config()?
             .build()?
@@ -387,7 +382,7 @@ impl SourceConfig for SimpleHttpConfig {
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
         // There is a global and per-source `log_namespace` config.
         // The source config overrides the global setting and is merged here.
-        let log_namespace = global_log_namespace.merge(self.log_namespace);
+        let log_namespace = global_log_namespace;
 
         let schema_definition = self.schema_definition(log_namespace);
 
@@ -600,7 +595,6 @@ mod tests {
                 framing,
                 decoding,
                 acknowledgements: acknowledgements.into(),
-                log_namespace: None,
                 keepalive: Default::default(),
             }
             .build(context)
@@ -1599,7 +1593,6 @@ mod tests {
     #[test]
     fn output_schema_definition_vector_namespace() {
         let config = SimpleHttpConfig {
-            log_namespace: Some(true),
             ..Default::default()
         };
 
@@ -1688,7 +1681,7 @@ mod tests {
                 ..Default::default()
             };
 
-            let log_namespace: LogNamespace = config.log_namespace.unwrap_or(false).into();
+            let log_namespace = LogNamespace::Vector;
 
             let listen_addr_http = format!("http://{}/", config.address);
             let uri = Uri::try_from(&listen_addr_http).expect("should not fail to parse URI");

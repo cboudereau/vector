@@ -3,7 +3,7 @@ use std::{collections::HashMap, path::PathBuf};
 use futures_util::{FutureExt, StreamExt, TryFutureExt, TryStreamExt, stream};
 use heim::{disk::Partition, units::information::byte};
 use indexmap::IndexMap;
-use vector_lib::{buffers::config::DiskUsage, internal_event::DEFAULT_OUTPUT};
+use vector_lib::{buffers::config::DiskUsage, config::LogNamespace, internal_event::DEFAULT_OUTPUT};
 
 use super::{
     ComponentKey, Config, OutputId, Resource, builder::ConfigBuilder,
@@ -196,7 +196,7 @@ pub fn check_values(config: &ConfigBuilder) -> Result<(), Vec<String>> {
 pub fn check_outputs(config: &ConfigBuilder) -> Result<(), Vec<String>> {
     let mut errors = Vec::new();
     for (key, source) in config.sources.iter() {
-        let outputs = source.inner.outputs(config.schema.log_namespace());
+        let outputs = source.inner.outputs(LogNamespace::Vector);
         if outputs
             .iter()
             .map(|output| output.port.as_deref().unwrap_or(""))
@@ -219,7 +219,7 @@ pub fn check_outputs(config: &ConfigBuilder) -> Result<(), Vec<String>> {
         if get_transform_output_ids(
             transform.inner.as_ref(),
             key.clone(),
-            config.schema.log_namespace(),
+            LogNamespace::Vector,
         )
         .any(|output| matches!(output.port, Some(output) if output == DEFAULT_OUTPUT))
         {
@@ -379,7 +379,7 @@ pub fn warnings(config: &Config) -> Vec<String> {
         .flat_map(|(key, source)| {
             source
                 .inner
-                .outputs(config.schema.log_namespace())
+                .outputs(LogNamespace::Vector)
                 .iter()
                 .map(|output| {
                     if let Some(port) = &output.port {
@@ -394,7 +394,7 @@ pub fn warnings(config: &Config) -> Vec<String> {
         get_transform_output_ids(
             transform.inner.as_ref(),
             key.clone(),
-            config.schema.log_namespace(),
+            LogNamespace::Vector,
         )
         .map(|output| ("transform", output))
         .collect::<Vec<_>>()

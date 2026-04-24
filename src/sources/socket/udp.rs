@@ -96,10 +96,6 @@ pub struct UdpConfig {
     #[serde(default = "default_decoding")]
     pub(super) decoding: DeserializerConfig,
 
-    /// The namespace to use for logs. This overrides the global setting.
-    #[serde(default)]
-    #[configurable(metadata(docs::hidden))]
-    pub log_namespace: Option<bool>,
 }
 
 fn default_port_key() -> OptionalValuePath {
@@ -137,14 +133,9 @@ impl UdpConfig {
             receive_buffer_bytes: None,
             framing: None,
             decoding: default_decoding(),
-            log_namespace: None,
         }
     }
 
-    pub const fn set_log_namespace(&mut self, val: Option<bool>) -> &mut Self {
-        self.log_namespace = val;
-        self
-    }
 }
 
 pub(super) fn udp(

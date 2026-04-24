@@ -226,7 +226,6 @@ fn test_build_command() {
         maximum_buffer_size_bytes: default_maximum_buffer_size(),
         framing: None,
         decoding: default_decoding(),
-        log_namespace: None,
     };
 
     let command = build_command(&config);
@@ -260,7 +259,6 @@ fn test_build_command_custom_environment() {
         maximum_buffer_size_bytes: default_maximum_buffer_size(),
         framing: None,
         decoding: default_decoding(),
-        log_namespace: None,
     };
 
     let command = build_command(&config);
@@ -290,7 +288,6 @@ fn test_build_command_clear_environment() {
         maximum_buffer_size_bytes: default_maximum_buffer_size(),
         framing: None,
         decoding: default_decoding(),
-        log_namespace: None,
     };
 
     let command = build_command(&config);
@@ -513,6 +510,5 @@ fn standard_streaming_test_config() -> ExecConfig {
         maximum_buffer_size_bytes: default_maximum_buffer_size(),
         framing: None,
         decoding: default_decoding(),
-        log_namespace: None,
     }
 }

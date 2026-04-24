@@ -70,14 +70,7 @@ impl SocketConfig {
     }
 
     fn log_namespace(&self, global_log_namespace: LogNamespace) -> LogNamespace {
-        match &self.mode {
-            Mode::Tcp(config) => global_log_namespace.merge(config.log_namespace),
-            Mode::Udp(config) => global_log_namespace.merge(config.log_namespace),
-            #[cfg(unix)]
-            Mode::UnixDatagram(config) => global_log_namespace.merge(config.log_namespace),
-            #[cfg(unix)]
-            Mode::UnixStream(config) => global_log_namespace.merge(config.log_namespace),
-        }
+        global_log_namespace
     }
 }
 
@@ -113,7 +106,7 @@ impl SourceConfig for SocketConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
         match self.mode.clone() {
             Mode::Tcp(config) => {
-                let log_namespace = cx.log_namespace(config.log_namespace);
+                let log_namespace = cx.log_namespace();
 
                 let decoding = config.decoding().clone();
                 let decoder = DecodingConfig::new(
@@ -151,7 +144,7 @@ impl SourceConfig for SocketConfig {
                 )
             }
             Mode::Udp(config) => {
-                let log_namespace = cx.log_namespace(config.log_namespace);
+                let log_namespace = cx.log_namespace();
                 let decoding = config.decoding().clone();
                 let framing = config
                     .framing()
@@ -168,7 +161,7 @@ impl SourceConfig for SocketConfig {
             }
             #[cfg(unix)]
             Mode::UnixDatagram(config) => {
-                let log_namespace = cx.log_namespace(config.log_namespace);
+                let log_namespace = cx.log_namespace();
                 let decoding = config.decoding.clone();
                 let framing = config
                     .framing
@@ -180,7 +173,7 @@ impl SourceConfig for SocketConfig {
             }
             #[cfg(unix)]
             Mode::UnixStream(config) => {
-                let log_namespace = cx.log_namespace(config.log_namespace);
+                let log_namespace = cx.log_namespace();
 
                 let decoding = config.decoding().clone();
                 let decoder = DecodingConfig::new(
@@ -471,8 +464,7 @@ mod test {
         assert_source_compliance(&SOCKET_PUSH_SOURCE_TAGS, async {
             let (tx, mut rx) = SourceSender::new_test();
             let (guard, addr) = next_addr();
-            let mut conf = TcpConfig::from_address(addr.into());
-            conf.set_log_namespace(Some(true));
+            let conf = TcpConfig::from_address(addr.into());
 
             let server = SocketConfig::from(conf)
                 .build(SourceContext::new_test(tx, None))
@@ -699,8 +691,6 @@ mod test {
                 },
                 client_metadata_key: None,
             }));
-            config.log_namespace = Some(true);
-
             let server = SocketConfig::from(config)
                 .build(SourceContext::new_test(tx, None))
                 .await
@@ -996,9 +986,9 @@ mod test {
         source_key: &ComponentKey,
         shutdown_signal: ShutdownSignal,
         config: Option<UdpConfig>,
-        use_vector_namespace: bool,
+        _use_vector_namespace: bool,
     ) -> (SocketAddr, JoinHandle<Result<(), ()>>) {
-        let (guard, address, mut config) = match config {
+        let (guard, address, config) = match config {
             Some(config) => match config.address() {
                 SocketListenAddr::SocketAddr(addr) => (None, addr, config),
                 _ => panic!("listen address should not be systemd FD offset in tests"),
@@ -1011,13 +1001,6 @@ mod test {
                     UdpConfig::from_address(address.into()),
                 )
             }
-        };
-
-        let config = if use_vector_namespace {
-            config.set_log_namespace(Some(true));
-            config
-        } else {
-            config
         };
 
         let server = SocketConfig::from(config)
@@ -1492,18 +1475,14 @@ mod test {
     async fn init_unix_inner(
         sender: SourceSender,
         stream: bool,
-        use_vector_namespace: bool,
+        _use_vector_namespace: bool,
         config: Option<UnixConfig>,
     ) -> PathBuf {
-        let mut config = config.unwrap_or_else(|| {
+        let config = config.unwrap_or_else(|| {
             UnixConfig::new(tempfile::tempdir().unwrap().keep().join("unix_test"))
         });
 
         let in_path = config.path.clone();
-
-        if use_vector_namespace {
-            config.log_namespace = Some(true);
-        }
 
         let mode = if stream {
             Mode::UnixStream(config)

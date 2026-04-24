@@ -11,7 +11,7 @@ use std::{
 
 use async_graphql::{Enum, InputObject, Interface, Object, Subscription};
 use tokio_stream::{Stream, StreamExt, wrappers::BroadcastStream};
-use vector_lib::internal_event::DEFAULT_OUTPUT;
+use vector_lib::{config::LogNamespace, internal_event::DEFAULT_OUTPUT};
 
 use crate::{
     api::schema::{
@@ -274,13 +274,13 @@ pub fn update_config(config: &Config) {
                 // until we decide how we want to change the rest of the usages.
                 output_type: source
                     .inner
-                    .outputs(config.schema.log_namespace())
+                    .outputs(LogNamespace::Vector)
                     .pop()
                     .unwrap()
                     .ty,
                 outputs: source
                     .inner
-                    .outputs(config.schema.log_namespace())
+                    .outputs(LogNamespace::Vector)
                     .into_iter()
                     .map(|output| output.port.unwrap_or_else(|| DEFAULT_OUTPUT.to_string()))
                     .collect(),
@@ -299,7 +299,7 @@ pub fn update_config(config: &Config) {
                 outputs: get_transform_output_ids(
                     transform.inner.as_ref(),
                     "".into(),
-                    config.schema.log_namespace(),
+                    LogNamespace::Vector,
                 )
                 .map(|output| output.port.unwrap_or_else(|| DEFAULT_OUTPUT.to_string()))
                 .collect(),

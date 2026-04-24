@@ -71,11 +71,6 @@ pub struct DnstapConfig {
     /// Whether to downcase all DNSTAP hostnames received for consistency
     #[serde(default = "crate::serde::default_false")]
     pub lowercase_hostnames: bool,
-
-    /// The namespace to use for logs. This overrides the global settings.
-    #[configurable(metadata(docs::hidden))]
-    #[serde(default)]
-    pub log_namespace: Option<bool>,
 }
 
 fn default_max_frame_length() -> usize {
@@ -103,10 +98,6 @@ impl DnstapConfig {
             mode: Mode::Unix(unix::UnixConfig::new(socket_path)),
             ..Default::default()
         }
-    }
-
-    fn log_namespace(&self) -> LogNamespace {
-        self.log_namespace.unwrap_or(false).into()
     }
 
     fn raw_data_only(&self) -> bool {
@@ -141,7 +132,6 @@ impl Default for DnstapConfig {
             multithreaded: None,
             max_frame_handling_tasks: None,
             lowercase_hostnames: false,
-            log_namespace: None,
         }
     }
 }
@@ -152,8 +142,8 @@ impl_generate_config_from_default!(DnstapConfig);
 #[typetag::serde(name = "dnstap")]
 impl SourceConfig for DnstapConfig {
     async fn build(&self, cx: SourceContext) -> Result<super::Source> {
-        let log_namespace = cx.log_namespace(self.log_namespace);
-        let common_frame_handler = CommonFrameHandler::new(self, log_namespace);
+        let log_namespace = cx.log_namespace();
+        let common_frame_handler = CommonFrameHandler::new(self);
         match &self.mode {
             Mode::Tcp(config) => {
                 let tls_config = config.tls().as_ref().map(|tls| tls.tls_config.clone());
@@ -178,9 +168,8 @@ impl SourceConfig for DnstapConfig {
     }
 
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
-        let log_namespace = global_log_namespace.merge(Some(self.log_namespace()));
         let schema_definition = self
-            .schema_definition(log_namespace)
+            .schema_definition(global_log_namespace)
             .with_standard_vector_source_metadata();
         vec![SourceOutput::new_maybe_logs(
             DataType::Log,
@@ -205,11 +194,10 @@ struct CommonFrameHandler {
     source_type_key: Option<OwnedValuePath>,
     bytes_received: Registered<BytesReceived>,
     lowercase_hostnames: bool,
-    log_namespace: LogNamespace,
 }
 
 impl CommonFrameHandler {
-    pub fn new(config: &DnstapConfig, log_namespace: LogNamespace) -> Self {
+    pub fn new(config: &DnstapConfig) -> Self {
         Self {
             max_frame_length: config.max_frame_length,
             content_type: "protobuf:dnstap.Dnstap".to_string(),
@@ -221,7 +209,6 @@ impl CommonFrameHandler {
             source_type_key: None,
             bytes_received: register!(BytesReceived::from(Protocol::from("protobuf"))),
             lowercase_hostnames: config.lowercase_hostnames,
-            log_namespace,
         }
     }
 }
@@ -275,11 +262,9 @@ impl FrameHandler for CommonFrameHandler {
             return None;
         }
 
-        if self.log_namespace == LogNamespace::Vector {
-            log.metadata_mut()
-                .value_mut()
-                .insert(path!("vector", "ingest_timestamp"), chrono::Utc::now());
-        }
+        log.metadata_mut()
+            .value_mut()
+            .insert(path!("vector", "ingest_timestamp"), chrono::Utc::now());
 
         log.set_source_type(DnstapConfig::NAME);
 
@@ -432,7 +417,6 @@ mod integration_tests {
                     multithreaded: Some(false),
                     max_frame_handling_tasks: Some(100000),
                     lowercase_hostnames: false,
-                    log_namespace: None,
                 }
                 .build(SourceContext::new_test(sender, None))
                 .await

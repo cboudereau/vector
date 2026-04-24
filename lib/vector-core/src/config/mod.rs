@@ -531,11 +531,6 @@ impl LogNamespace {
             .cloned()
     }
 
-    // combine a global (self) and local value to get the actual namespace
-    #[must_use]
-    pub fn merge(&self, override_value: Option<impl Into<LogNamespace>>) -> LogNamespace {
-        override_value.map_or(*self, Into::into)
-    }
 }
 
 #[cfg(test)]

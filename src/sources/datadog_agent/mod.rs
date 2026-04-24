@@ -130,11 +130,6 @@ pub struct DatadogAgentConfig {
     #[serde(default = "crate::serde::default_true")]
     split_metric_namespace: bool,
 
-    /// The namespace to use for logs. This overrides the global setting.
-    #[serde(default)]
-    #[configurable(metadata(docs::hidden))]
-    log_namespace: Option<bool>,
-
     #[configurable(derived)]
     tls: Option<TlsEnableableConfig>,
 
@@ -182,7 +177,6 @@ impl GenerateConfig for DatadogAgentConfig {
             multiple_outputs: false,
             parse_ddtags: false,
             split_metric_namespace: true,
-            log_namespace: Some(false),
             keepalive: KeepaliveConfig::default(),
             send_timeout_secs: None,
         })
@@ -194,7 +188,7 @@ impl GenerateConfig for DatadogAgentConfig {
 #[typetag::serde(name = "datadog_agent")]
 impl SourceConfig for DatadogAgentConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<sources::Source> {
-        let log_namespace = cx.log_namespace(self.log_namespace);
+        let log_namespace = cx.log_namespace();
 
         let logs_schema_definition = cx
             .schema_definitions
@@ -269,7 +263,7 @@ impl SourceConfig for DatadogAgentConfig {
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
         let definition = self
             .decoding
-            .schema_definition(global_log_namespace.merge(self.log_namespace))
+            .schema_definition(global_log_namespace)
             // NOTE: "status" is intentionally semantically mapped to "severity",
             //       since that is what DD designates as the semantic meaning of status
             // https://docs.datadoghq.com/logs/log_configuration/attributes_naming_convention/?s=severity#reserved-attributes

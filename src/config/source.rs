@@ -214,12 +214,8 @@ impl SourceContext {
             .enabled()
     }
 
-    /// Gets the log namespacing to use. The passed in value is from the source itself
-    /// and will override any global default if it's set.
-    pub fn log_namespace(&self, namespace: Option<bool>) -> LogNamespace {
-        namespace
-            .or(self.schema.log_namespace)
-            .unwrap_or(false)
-            .into()
+    /// Gets the log namespacing to use. Always returns `LogNamespace::Vector`.
+    pub fn log_namespace(&self) -> LogNamespace {
+        LogNamespace::Vector
     }
 }

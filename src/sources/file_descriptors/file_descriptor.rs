@@ -46,10 +46,6 @@ pub struct FileDescriptorSourceConfig {
     #[configurable(metadata(docs::human_name = "File Descriptor Number"))]
     pub fd: u32,
 
-    /// The namespace to use for logs. This overrides the global setting.
-    #[configurable(metadata(docs::hidden))]
-    #[serde(default)]
-    log_namespace: Option<bool>,
 }
 
 impl FileDescriptorConfig for FileDescriptorSourceConfig {
@@ -97,13 +93,13 @@ pub(crate) fn null_fd() -> crate::Result<RawFd> {
 impl SourceConfig for FileDescriptorSourceConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<crate::sources::Source> {
         let pipe = io::BufReader::new(unsafe { File::from_raw_fd(self.fd as i32) });
-        let log_namespace = cx.log_namespace(self.log_namespace);
+        let log_namespace = cx.log_namespace();
 
         self.source(pipe, cx.shutdown, cx.out, log_namespace)
     }
 
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
-        let log_namespace = global_log_namespace.merge(self.log_namespace);
+        let log_namespace = global_log_namespace;
 
         outputs(log_namespace, &self.decoding, Self::NAME)
     }
@@ -148,7 +144,6 @@ mod tests {
                 framing: None,
                 decoding: default_decoding(),
                 fd: read_fd as u32,
-                log_namespace: None,
             };
 
             let mut stream = rx;
@@ -188,7 +183,6 @@ mod tests {
                 framing: None,
                 decoding: default_decoding(),
                 fd: read_fd as u32,
-                log_namespace: Some(true),
             };
 
             let mut stream = rx;
@@ -238,7 +232,6 @@ mod tests {
                 framing: None,
                 decoding: default_decoding(),
                 fd: write_fd as u32, // intentionally giving the source a write-only fd
-                log_namespace: None,
             };
 
             let mut stream = rx;

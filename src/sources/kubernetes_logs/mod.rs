@@ -263,10 +263,6 @@ pub struct Config {
     #[configurable(metadata(docs::human_name = "Delay Deletion"))]
     delay_deletion_ms: Duration,
 
-    /// The namespace to use for logs. This overrides the global setting.
-    #[configurable(metadata(docs::hidden))]
-    #[serde(default)]
-    log_namespace: Option<bool>,
 
     #[configurable(derived)]
     #[serde(default)]
@@ -323,7 +319,6 @@ impl Default for Config {
             kube_config_file: None,
             use_apiserver_cache: false,
             delay_deletion_ms: default_delay_deletion_ms(),
-            log_namespace: None,
             internal_metrics: Default::default(),
             rotate_wait: default_rotate_wait(),
         }
@@ -334,7 +329,7 @@ impl Default for Config {
 #[typetag::serde(name = "kubernetes_logs")]
 impl SourceConfig for Config {
     async fn build(&self, cx: SourceContext) -> crate::Result<sources::Source> {
-        let log_namespace = cx.log_namespace(self.log_namespace);
+        let log_namespace = cx.log_namespace();
         let source = Source::new(self, &cx.globals, &cx.key).await?;
 
         Ok(Box::pin(
@@ -349,7 +344,7 @@ impl SourceConfig for Config {
     }
 
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
-        let log_namespace = global_log_namespace.merge(self.log_namespace);
+        let log_namespace = global_log_namespace;
         let schema_definition = BytesDeserializerConfig
             .schema_definition(log_namespace)
             .with_source_metadata(

@@ -57,7 +57,6 @@ mod integration_tests {
     async fn source_with<'a, L: Into<Option<&'a str>>>(
         names: &[&str],
         label: L,
-        log_namespace: Option<bool>,
     ) -> impl Stream<Item = Event> + use<L> {
         source_with_config(DockerLogsConfig {
             include_containers: Some(names.iter().map(|&s| s.to_owned()).collect()),
@@ -866,7 +865,6 @@ mod integration_tests {
                     mode: line_agg::Mode::ContinueThrough,
                     timeout_ms: Duration::from_millis(10),
                 }),
-                log_namespace: Some(true),
                 ..DockerLogsConfig::default()
             };
 

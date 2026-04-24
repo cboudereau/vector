@@ -66,10 +66,6 @@ pub struct LogstashConfig {
     #[serde(default, deserialize_with = "bool_or_struct")]
     acknowledgements: SourceAcknowledgementsConfig,
 
-    /// The namespace to use for logs. This overrides the global setting.
-    #[configurable(metadata(docs::hidden))]
-    #[serde(default)]
-    log_namespace: Option<bool>,
 }
 
 impl LogstashConfig {
@@ -109,7 +105,6 @@ impl Default for LogstashConfig {
             receive_buffer_bytes: None,
             acknowledgements: Default::default(),
             connection_limit: None,
-            log_namespace: None,
         }
     }
 }
@@ -124,7 +119,7 @@ impl GenerateConfig for LogstashConfig {
 #[typetag::serde(name = "logstash")]
 impl SourceConfig for LogstashConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
-        let log_namespace = cx.log_namespace(self.log_namespace);
+        let log_namespace = cx.log_namespace();
         let source = LogstashSource {
             timestamp_converter: types::Conversion::Timestamp(cx.globals.timezone()),
             log_namespace,
@@ -160,7 +155,7 @@ impl SourceConfig for LogstashConfig {
         // The source config overrides the global setting and is merged here.
         vec![SourceOutput::new_maybe_logs(
             DataType::Log,
-            self.schema_definition(global_log_namespace.merge(self.log_namespace)),
+            self.schema_definition(global_log_namespace),
         )]
     }
 
@@ -699,7 +694,6 @@ mod test {
             receive_buffer_bytes: None,
             acknowledgements: true.into(),
             connection_limit: None,
-            log_namespace: None,
         }
         .build(SourceContext::new_test(sender, None))
         .await
@@ -783,7 +777,6 @@ mod test {
     #[test]
     fn output_schema_definition_vector_namespace() {
         let config = LogstashConfig {
-            log_namespace: Some(true),
             ..Default::default()
         };
 
@@ -937,7 +930,6 @@ mod integration_tests {
                 receive_buffer_bytes: None,
                 acknowledgements: false.into(),
                 connection_limit: None,
-                log_namespace: None,
             }
             .build(SourceContext::new_test(sender, None))
             .await

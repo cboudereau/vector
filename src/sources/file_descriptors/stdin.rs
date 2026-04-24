@@ -38,10 +38,6 @@ pub struct StdinConfig {
     #[serde(default = "default_decoding")]
     pub decoding: DeserializerConfig,
 
-    /// The namespace to use for logs. This overrides the global setting.
-    #[configurable(metadata(docs::hidden))]
-    #[serde(default)]
-    log_namespace: Option<bool>,
 }
 
 impl FileDescriptorConfig for StdinConfig {
@@ -69,7 +65,6 @@ impl Default for StdinConfig {
             host_key: Default::default(),
             framing: None,
             decoding: default_decoding(),
-            log_namespace: None,
         }
     }
 }
@@ -80,7 +75,7 @@ impl_generate_config_from_default!(StdinConfig);
 #[typetag::serde(name = "stdin")]
 impl SourceConfig for StdinConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<crate::sources::Source> {
-        let log_namespace = cx.log_namespace(self.log_namespace);
+        let log_namespace = cx.log_namespace();
         self.source(
             io::BufReader::new(io::stdin()),
             cx.shutdown,
@@ -90,7 +85,7 @@ impl SourceConfig for StdinConfig {
     }
 
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
-        let log_namespace = global_log_namespace.merge(self.log_namespace);
+        let log_namespace = global_log_namespace;
 
         outputs(log_namespace, &self.decoding, Self::NAME)
     }

@@ -41,10 +41,6 @@ pub struct InternalLogsConfig {
     #[serde(default = "default_pid_key")]
     pid_key: OptionalValuePath,
 
-    /// The namespace to use for logs. This overrides the global setting.
-    #[configurable(metadata(docs::hidden))]
-    #[serde(default)]
-    log_namespace: Option<bool>,
 }
 
 fn default_pid_key() -> OptionalValuePath {
@@ -58,7 +54,6 @@ impl Default for InternalLogsConfig {
         InternalLogsConfig {
             host_key: None,
             pid_key: default_pid_key(),
-            log_namespace: None,
         }
     }
 }
@@ -92,7 +87,7 @@ impl SourceConfig for InternalLogsConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
         let subscription = TraceSubscription::subscribe();
 
-        let log_namespace = cx.log_namespace(self.log_namespace);
+        let log_namespace = cx.log_namespace();
 
         Ok(Box::pin(run(
             subscription,
@@ -104,7 +99,7 @@ impl SourceConfig for InternalLogsConfig {
 
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
         let schema_definition =
-            self.schema_definition(global_log_namespace.merge(self.log_namespace));
+            self.schema_definition(global_log_namespace);
 
         vec![SourceOutput::new_maybe_logs(
             DataType::Log,

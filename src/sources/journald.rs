@@ -213,10 +213,6 @@ pub struct JournaldConfig {
     )]
     remap_priority: bool,
 
-    /// The namespace to use for logs. This overrides the global setting.
-    #[configurable(metadata(docs::hidden))]
-    #[serde(default)]
-    log_namespace: Option<bool>,
 
     /// Whether to emit the [__CURSOR field][cursor]. See also [sd_journal_get_cursor][get_cursor].
     ///
@@ -313,7 +309,6 @@ impl Default for JournaldConfig {
             extra_args: vec![],
             acknowledgements: Default::default(),
             remap_priority: false,
-            log_namespace: None,
             emit_cursor: false,
         }
     }
@@ -381,7 +376,7 @@ impl SourceConfig for JournaldConfig {
 
         let batch_size = self.batch_size;
         let acknowledgements = cx.do_acknowledgements(self.acknowledgements);
-        let log_namespace = cx.log_namespace(self.log_namespace);
+        let log_namespace = cx.log_namespace();
 
         Ok(Box::pin(
             JournaldSource {
@@ -402,7 +397,7 @@ impl SourceConfig for JournaldConfig {
 
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
         let schema_definition =
-            self.schema_definition(global_log_namespace.merge(self.log_namespace));
+            self.schema_definition(global_log_namespace);
 
         vec![SourceOutput::new_maybe_logs(
             DataType::Log,
@@ -1706,7 +1701,6 @@ mod tests {
     #[test]
     fn output_schema_definition_vector_namespace() {
         let config = JournaldConfig {
-            log_namespace: Some(true),
             ..Default::default()
         };
 

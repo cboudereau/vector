@@ -52,10 +52,6 @@ pub struct MemoryConfig {
     /// By default, there is no size limit.
     #[serde(skip_serializing_if = "vector_lib::serde::is_default")]
     pub max_byte_size: Option<u64>,
-    /// The namespace to use for logs. This overrides the global setting.
-    #[configurable(metadata(docs::hidden))]
-    #[serde(default)]
-    pub log_namespace: Option<bool>,
     /// Configuration of internal metrics
     #[configurable(derived)]
     #[serde(default)]
@@ -119,7 +115,6 @@ impl Default for MemoryConfig {
             flush_interval: None,
             memory: Arc::new(Mutex::new(None)),
             max_byte_size: None,
-            log_namespace: None,
             source_config: None,
             internal_metrics: InternalMetricsConfig::default(),
             ttl_field: OptionalValuePath::none(),
@@ -197,7 +192,7 @@ impl SourceConfig for MemoryConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<Source> {
         let memory = self.get_or_build_memory().await;
 
-        let log_namespace = cx.log_namespace(self.log_namespace);
+        let log_namespace = cx.log_namespace();
 
         Ok(Box::pin(
             memory.as_source(cx.shutdown, cx.out, log_namespace).run(),
@@ -205,7 +200,7 @@ impl SourceConfig for MemoryConfig {
     }
 
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
-        let log_namespace = global_log_namespace.merge(self.log_namespace);
+        let log_namespace = global_log_namespace;
         let schema_definition =
             schema::Definition::new_with_default_metadata(Kind::any_object(), [log_namespace])
                 .with_meaning(OwnedTargetPath::event_root(), "message")

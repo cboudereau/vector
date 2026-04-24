@@ -273,7 +273,7 @@ impl SourceConfig for DockerLogsConfig {
 
     fn outputs(&self) -> Vec<SourceOutput> {
         let schema_definition = BytesDeserializerConfig
-            .schema_definition(LogNamespace::Vector)
+            .schema_definition()
             .with_source_metadata(
                 Self::NAME,
                 &owned_value_path!("host"),
@@ -990,7 +990,7 @@ impl ContainerLogInfo {
         auto_partial_merge: bool,
         partial_event_merge_state: &mut Option<MergeState>,
         bytes_received: &Registered<BytesReceived>,
-        log_namespace: LogNamespace,
+        _log_namespace: LogNamespace,
     ) -> Option<OtelLog> {
         let (stream, mut bytes_message) = match log_output {
             LogOutput::StdErr { message } => (STDERR.clone(), message),
@@ -1087,7 +1087,7 @@ impl ContainerLogInfo {
 
         // Build the OtelLog event.
         let deserializer = BytesDeserializer;
-        let mut otel_log = deserializer.parse_single(bytes_message, log_namespace);
+        let mut otel_log = deserializer.parse_single(bytes_message);
 
         otel_log.set_source_metadata(DockerLogsConfig::NAME, Utc::now());
 

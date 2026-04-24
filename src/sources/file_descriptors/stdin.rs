@@ -2,7 +2,6 @@ use std::io;
 
 use vector_lib::{
     codecs::decoding::{DeserializerConfig, FramingConfig},
-    config::LogNamespace,
     configurable::configurable_component,
     lookup::lookup_v2::OptionalValuePath,
 };
@@ -85,9 +84,7 @@ impl SourceConfig for StdinConfig {
     }
 
     fn outputs(&self) -> Vec<SourceOutput> {
-        let log_namespace = LogNamespace::Vector;
-
-        outputs(log_namespace, &self.decoding, Self::NAME)
+        outputs(&self.decoding, Self::NAME)
     }
 
     fn resources(&self) -> Vec<Resource> {
@@ -104,7 +101,7 @@ mod tests {
     use std::io::Cursor;
 
     use futures::StreamExt;
-    use vector_lib::lookup::path;
+    use vector_lib::{config::LogNamespace, lookup::path};
     use vrl::value;
 
     use super::*;

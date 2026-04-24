@@ -11,7 +11,6 @@ use vector_lib::{
     TimeZone,
     codecs::MetricTagValues,
     compile_vrl,
-    config::LogNamespace,
     configurable::configurable_component,
     enrichment::TableRegistry,
     lookup::owned_value_path,
@@ -553,11 +552,6 @@ where
             None
         };
 
-        let log_namespace = event
-            .maybe_as_log()
-            .map(|log| log.namespace())
-            .unwrap_or(LogNamespace::Vector);
-
         let mut target = VrlTarget::new(
             event,
             self.program.info(),
@@ -569,7 +563,7 @@ where
         let result = self.run_vrl(&mut target);
 
         match result {
-            Ok(_) => match target.into_events(log_namespace) {
+            Ok(_) => match target.into_events() {
                 TargetEvents::One(event) => push_default(event, output),
                 TargetEvents::OtelLogs(events) => {
                     events.for_each(|event| push_default(event, output))
@@ -646,7 +640,7 @@ mod tests {
     use indoc::{formatdoc, indoc};
     use tokio::sync::mpsc;
     use tokio_stream::wrappers::ReceiverStream;
-    use vector_lib::{config::GlobalOptions, event::EventMetadata, metric_tags};
+    use vector_lib::{config::{GlobalOptions, LogNamespace}, event::EventMetadata, metric_tags};
     use vrl::{btreemap, event_path, value::kind::Collection};
 
     use super::*;

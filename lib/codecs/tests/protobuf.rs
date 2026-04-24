@@ -13,7 +13,7 @@ use codecs::{
     encoding::{ProtobufSerializer, ProtobufSerializerConfig, ProtobufSerializerOptions},
 };
 use tokio_util::codec::Encoder;
-use vector_core::config::LogNamespace;
+
 
 fn test_data_dir() -> PathBuf {
     PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap()).join("tests/data/protobuf")
@@ -60,7 +60,7 @@ fn roundtrip_coding() {
     let (mut serializer, deserializer) = build_serializer_pair(desc_file, message_type, false);
 
     let events_original = deserializer
-        .parse(protobuf_message, LogNamespace::Vector)
+        .parse(protobuf_message)
         .unwrap();
     assert_eq!(1, events_original.len());
     let mut new_message = BytesMut::new();
@@ -69,7 +69,7 @@ fn roundtrip_coding() {
         .unwrap();
     let protobuf_message: Bytes = new_message.into();
     let events_encoded = deserializer
-        .parse(protobuf_message, LogNamespace::Vector)
+        .parse(protobuf_message)
         .unwrap();
     assert_eq!(events_original, events_encoded);
 }
@@ -86,7 +86,7 @@ fn roundtrip_coding_with_json_names() {
         build_serializer_pair(desc_file.clone(), message_type.clone(), false);
 
     let events_snake_case = deserializer_snake_case
-        .parse(protobuf_message.clone(), LogNamespace::Vector)
+        .parse(protobuf_message.clone())
         .unwrap();
     assert_eq!(1, events_snake_case.len());
 
@@ -111,7 +111,7 @@ fn roundtrip_coding_with_json_names() {
         .encode(events_snake_case[0].clone(), &mut new_message)
         .unwrap();
     let events_encoded = deserializer_snake_case
-        .parse(new_message.into(), LogNamespace::Vector)
+        .parse(new_message.into())
         .unwrap();
     assert_eq!(events_snake_case, events_encoded);
 
@@ -120,7 +120,7 @@ fn roundtrip_coding_with_json_names() {
         build_serializer_pair(desc_file, message_type, true);
 
     let events_camel_case = deserializer_camel_case
-        .parse(protobuf_message, LogNamespace::Vector)
+        .parse(protobuf_message)
         .unwrap();
     assert_eq!(1, events_camel_case.len());
 
@@ -145,7 +145,7 @@ fn roundtrip_coding_with_json_names() {
         .encode(events_camel_case[0].clone(), &mut new_message)
         .unwrap();
     let events_encoded = deserializer_camel_case
-        .parse(new_message.into(), LogNamespace::Vector)
+        .parse(new_message.into())
         .unwrap();
     assert_eq!(events_camel_case, events_encoded);
 }

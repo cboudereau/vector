@@ -15,10 +15,7 @@ use vrl::{
 };
 
 use super::{Event, EventMetadata, OtelLog, OtelMetric, OtelSpan};
-use crate::{
-    config::LogNamespace,
-    schema::Definition,
-};
+use crate::schema::Definition;
 
 const VALID_OTEL_METRIC_PATHS_SET: &str = ".name, .description, .unit, .resource, .scope, .attributes, .data.*.data_points[*].attributes";
 const VALID_OTEL_METRIC_PATHS_GET: &str =
@@ -703,7 +700,7 @@ impl VrlTarget {
     ///
     /// This returns an iterator of events as one event can be turned into multiple by assigning an
     /// array to `.` in VRL.
-    pub fn into_events(self, _log_namespace: LogNamespace) -> TargetEvents {
+    pub fn into_events(self) -> TargetEvents {
         match self {
             VrlTarget::OtelLog(value, metadata) => match value {
                 value @ Value::Object(_) => {
@@ -1051,6 +1048,7 @@ mod test {
     use vrl::{btreemap, value::kind::Index};
 
     use super::{super::OtelMetric, *};
+    use crate::config::LogNamespace;
 
     #[test]
     fn test_field_definitions_in_message() {
@@ -1255,7 +1253,7 @@ mod test {
                 Ok(Some(value))
             );
             assert_eq!(
-                match target.into_events(LogNamespace::Vector) {
+                match target.into_events() {
                     TargetEvents::One(event) => vec![event],
                     TargetEvents::OtelLogs(events) => events.collect::<Vec<_>>(),
                     TargetEvents::OtelSpans(events) => events.collect::<Vec<_>>(),
@@ -1362,7 +1360,7 @@ mod test {
         let info = make_empty_info();
         let target = VrlTarget::new(Event::Log(event), &info, false);
 
-        let events: Vec<Event> = match target.into_events(LogNamespace::Vector) {
+        let events: Vec<Event> = match target.into_events() {
             TargetEvents::One(e) => vec![e],
             _ => panic!("expected one event"),
         };
@@ -1392,7 +1390,7 @@ mod test {
         let path = OwnedTargetPath::event(owned_value_path!("severity_text"));
         Target::target_insert(&mut target, &path, Value::Bytes("WARN".into())).unwrap();
 
-        let events: Vec<Event> = match target.into_events(LogNamespace::Vector) {
+        let events: Vec<Event> = match target.into_events() {
             TargetEvents::One(e) => vec![e],
             _ => panic!("expected one event"),
         };
@@ -1437,7 +1435,7 @@ mod test {
         let info = make_empty_info();
         let target = VrlTarget::new(Event::Trace(event), &info, false);
 
-        let events: Vec<Event> = match target.into_events(LogNamespace::Vector) {
+        let events: Vec<Event> = match target.into_events() {
             TargetEvents::One(e) => vec![e],
             _ => panic!("expected one event"),
         };
@@ -1486,7 +1484,7 @@ mod test {
         let path = OwnedTargetPath::event(owned_value_path!("name"));
         Target::target_insert(&mut target, &path, Value::Bytes("new.name".into())).unwrap();
 
-        let events: Vec<Event> = match target.into_events(LogNamespace::Vector) {
+        let events: Vec<Event> = match target.into_events() {
             TargetEvents::One(e) => vec![e],
             _ => panic!("expected one event"),
         };
@@ -1528,7 +1526,7 @@ mod test {
         let result = Target::target_get(&target, &path).unwrap();
         assert_eq!(result, Some(&Value::Bytes("my-lib".into())));
 
-        let events: Vec<Event> = match target.into_events(LogNamespace::Vector) {
+        let events: Vec<Event> = match target.into_events() {
             TargetEvents::One(e) => vec![e],
             _ => panic!("expected one event"),
         };

@@ -99,7 +99,6 @@ async fn publish_and_check(conf: NatsSourceConfig) -> Result<(), BuildError> {
         let decoder = DecodingConfig::new(
             conf.framing.clone(),
             conf.decoding.clone(),
-            LogNamespace::Vector,
         )
         .build()
         .unwrap();
@@ -534,7 +533,6 @@ async fn nats_shutdown_drain_messages() {
     let decoder = DecodingConfig::new(
         conf.framing.clone(),
         conf.decoding.clone(),
-        LogNamespace::Vector,
     )
     .build()
     .unwrap();

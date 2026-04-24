@@ -382,13 +382,9 @@ impl SourceConfig for HttpClientConfig {
     }
 
     fn outputs(&self) -> Vec<SourceOutput> {
-        // There is a global and per-source `log_namespace` config. The source config overrides the global setting,
-        // and is merged here.
-        let log_namespace = LogNamespace::Vector;
-
         let schema_definition = self
             .decoding
-            .schema_definition(log_namespace)
+            .schema_definition()
             .with_standard_vector_source_metadata();
 
         vec![SourceOutput::new_maybe_logs(
@@ -403,12 +399,11 @@ impl SourceConfig for HttpClientConfig {
 }
 
 impl HttpClientConfig {
-    pub fn get_decoding_config(&self, log_namespace: Option<LogNamespace>) -> DecodingConfig {
+    pub fn get_decoding_config(&self, _log_namespace: Option<LogNamespace>) -> DecodingConfig {
         let decoding = self.decoding.clone();
         let framing = self.framing.clone();
-        let log_namespace = log_namespace.unwrap_or(LogNamespace::Vector);
 
-        DecodingConfig::new(framing, decoding, log_namespace)
+        DecodingConfig::new(framing, decoding)
     }
 }
 

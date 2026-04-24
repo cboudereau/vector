@@ -60,11 +60,11 @@ impl Default for InternalLogsConfig {
 
 impl InternalLogsConfig {
     /// Generates the `schema::Definition` for this component.
-    fn schema_definition(&self, log_namespace: LogNamespace) -> Definition {
+    fn schema_definition(&self) -> Definition {
         // There is a global and per-source `log_namespace` config.
         // The source config overrides the global setting and is merged here.
         BytesDeserializerConfig
-            .schema_definition(log_namespace)
+            .schema_definition()
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 InternalLogsConfig::NAME,
@@ -99,7 +99,7 @@ impl SourceConfig for InternalLogsConfig {
 
     fn outputs(&self) -> Vec<SourceOutput> {
         let schema_definition =
-            self.schema_definition(LogNamespace::Vector);
+            self.schema_definition();
 
         vec![SourceOutput::new_maybe_logs(
             DataType::Log,

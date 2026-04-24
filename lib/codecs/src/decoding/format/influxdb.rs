@@ -43,10 +43,10 @@ impl InfluxdbDeserializerConfig {
     }
 
     /// The schema produced by the deserializer.
-    pub fn schema_definition(&self, log_namespace: LogNamespace) -> schema::Definition {
+    pub fn schema_definition(&self) -> schema::Definition {
         schema::Definition::new_with_default_metadata(
             Kind::object(Collection::empty()),
-            [log_namespace],
+            [LogNamespace::Vector],
         )
     }
 }
@@ -88,7 +88,6 @@ impl Deserializer for InfluxdbDeserializer {
     fn parse(
         &self,
         bytes: Bytes,
-        _log_namespace: LogNamespace,
     ) -> vector_common::Result<SmallVec<[Event; 1]>> {
         let line: Cow<str> = match self.lossy {
             true => String::from_utf8_lossy(&bytes),
@@ -156,10 +155,7 @@ impl From<&InfluxdbDeserializerConfig> for InfluxdbDeserializer {
 #[cfg(test)]
 mod tests {
     use bytes::Bytes;
-    use vector_core::{
-        config::LogNamespace,
-        event::{MetricKind, MetricValue},
-    };
+    use vector_core::event::{MetricKind, MetricValue};
 
     use crate::decoding::format::{Deserializer, InfluxdbDeserializer};
 
@@ -171,7 +167,7 @@ mod tests {
         let buffer = Bytes::from(format!(
             "cpu,host=A,region=west usage_system=64i,usage_user=10i {now_timestamp_nanos}"
         ));
-        let events = deser.parse(buffer, LogNamespace::default()).unwrap();
+        let events = deser.parse(buffer).unwrap();
         assert_eq!(events.len(), 2);
 
         let m0 = events[0].as_metric();
@@ -195,6 +191,6 @@ mod tests {
     fn deserialize_error() {
         let deser = InfluxdbDeserializer::new(true);
         let buffer = Bytes::from("some invalid string");
-        assert!(deser.parse(buffer, LogNamespace::default()).is_err());
+        assert!(deser.parse(buffer).is_err());
     }
 }

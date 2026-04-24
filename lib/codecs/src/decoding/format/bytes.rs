@@ -3,7 +3,7 @@ use lookup::owned_value_path;
 use serde::{Deserialize, Serialize};
 use smallvec::{SmallVec, smallvec};
 use vector_core::{
-    config::{DataType, LogNamespace},
+    config::DataType,
     event::{Event, OtelLog},
     schema,
     schema::meaning,
@@ -33,7 +33,7 @@ impl BytesDeserializerConfig {
     }
 
     /// The schema produced by the deserializer.
-    pub fn schema_definition(&self, _log_namespace: LogNamespace) -> schema::Definition {
+    pub fn schema_definition(&self) -> schema::Definition {
         let definition = schema::Definition::empty_legacy_namespace();
         let message_key = owned_value_path!("body");
         definition.with_event_field(
@@ -53,7 +53,7 @@ pub struct BytesDeserializer;
 
 impl BytesDeserializer {
     /// Deserializes the given bytes, which will always produce a single `OtelLog`.
-    pub fn parse_single(&self, bytes: Bytes, _log_namespace: LogNamespace) -> OtelLog {
+    pub fn parse_single(&self, bytes: Bytes) -> OtelLog {
         OtelLog::from_bytes(bytes)
     }
 }
@@ -62,9 +62,8 @@ impl Deserializer for BytesDeserializer {
     fn parse(
         &self,
         bytes: Bytes,
-        log_namespace: LogNamespace,
     ) -> vector_common::Result<SmallVec<[Event; 1]>> {
-        let otel_log = self.parse_single(bytes, log_namespace);
+        let otel_log = self.parse_single(bytes);
         Ok(smallvec![Event::Log(otel_log)])
     }
 }
@@ -78,18 +77,16 @@ mod tests {
         let input = Bytes::from("foo");
         let deserializer = BytesDeserializer;
 
-        for namespace in [LogNamespace::Vector, LogNamespace::Vector] {
-            let events = deserializer.parse(input.clone(), namespace).unwrap();
-            assert_eq!(events.len(), 1);
+        let events = deserializer.parse(input).unwrap();
+        assert_eq!(events.len(), 1);
 
-            let event = &events[0];
-            assert!(matches!(event, Event::Log(_)), "expected Log(OtelLog)");
+        let event = &events[0];
+        assert!(matches!(event, Event::Log(_)), "expected Log(OtelLog)");
 
-            let otel_log = match event {
-                Event::Log(log) => log,
-                _ => panic!("expected Log(OtelLog)"),
-            };
-            assert_eq!(otel_log.body_string(), "foo");
-        }
+        let otel_log = match event {
+            Event::Log(log) => log,
+            _ => panic!("expected Log(OtelLog)"),
+        };
+        assert_eq!(otel_log.body_string(), "foo");
     }
 }

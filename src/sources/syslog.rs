@@ -14,7 +14,6 @@ use vector_lib::{
         BytesDecoder, OctetCountingDecoder, SyslogDeserializerConfig,
         decoding::{Deserializer, Framer},
     },
-    config::LogNamespace,
     configurable::configurable_component,
     internal_event::{ByteSize, BytesReceived, InternalEventHandle as _, Protocol},
     ipallowlist::IpAllowlistConfig,
@@ -226,9 +225,8 @@ impl SourceConfig for SyslogConfig {
     }
 
     fn outputs(&self) -> Vec<SourceOutput> {
-        let log_namespace = LogNamespace::Vector;
         let schema_definition = SyslogDeserializerConfig::from_source(SyslogConfig::NAME)
-            .schema_definition(log_namespace)
+            .schema_definition()
             .with_standard_vector_source_metadata();
 
         vec![SourceOutput::new_maybe_logs(
@@ -419,7 +417,7 @@ mod test {
     use vector_lib::{
         assert_event_data_eq,
         codecs::decoding::format::Deserializer,
-        config::ComponentKey,
+        config::{ComponentKey, LogNamespace},
         lookup::owned_value_path,
         schema::Definition,
     };
@@ -441,7 +439,7 @@ mod test {
         bytes: Bytes,
     ) -> Option<Event> {
         let parser = SyslogDeserializerConfig::from_source(SyslogConfig::NAME).build();
-        let mut events = parser.parse(bytes, LogNamespace::Vector).ok()?;
+        let mut events = parser.parse(bytes).ok()?;
         handle_events(
             &mut events,
             default_host,

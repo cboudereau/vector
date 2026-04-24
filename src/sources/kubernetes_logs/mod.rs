@@ -344,9 +344,8 @@ impl SourceConfig for Config {
     }
 
     fn outputs(&self) -> Vec<SourceOutput> {
-        let log_namespace = LogNamespace::Vector;
         let schema_definition = BytesDeserializerConfig
-            .schema_definition(log_namespace)
+            .schema_definition()
             .with_source_metadata(
                 Self::NAME,
                 &owned_value_path!("file"),
@@ -906,10 +905,10 @@ fn create_event(
     line: Bytes,
     file: &str,
     _ingestion_timestamp_field: Option<&OwnedTargetPath>,
-    log_namespace: LogNamespace,
+    _log_namespace: LogNamespace,
 ) -> Event {
     let deserializer = BytesDeserializer;
-    let mut log = deserializer.parse_single(line, log_namespace);
+    let mut log = deserializer.parse_single(line);
 
     log.set_source_metadata(Config::NAME, Utc::now());
 

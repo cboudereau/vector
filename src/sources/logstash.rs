@@ -69,10 +69,10 @@ pub struct LogstashConfig {
 }
 
 impl LogstashConfig {
-    /// Builds the `schema::Definition` for this source using the provided `LogNamespace`.
-    fn schema_definition(&self, log_namespace: LogNamespace) -> Definition {
+    /// Builds the `schema::Definition` for this source.
+    fn schema_definition(&self) -> Definition {
         BytesDeserializerConfig
-            .schema_definition(log_namespace)
+            .schema_definition()
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 LogstashConfig::NAME,
@@ -155,7 +155,7 @@ impl SourceConfig for LogstashConfig {
         // The source config overrides the global setting and is merged here.
         vec![SourceOutput::new_maybe_logs(
             DataType::Log,
-            self.schema_definition(LogNamespace::Vector),
+            self.schema_definition(),
         )]
     }
 

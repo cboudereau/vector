@@ -72,10 +72,10 @@ impl GelfDeserializerConfig {
     }
 
     /// The schema produced by the deserializer.
-    pub fn schema_definition(&self, log_namespace: LogNamespace) -> schema::Definition {
+    pub fn schema_definition(&self) -> schema::Definition {
         schema::Definition::new_with_default_metadata(
             Kind::object(Collection::empty()),
-            [log_namespace],
+            [LogNamespace::Vector],
         )
         .with_event_field(&owned_value_path!(VERSION), Kind::bytes(), None)
         .with_event_field(&owned_value_path!(HOST), Kind::bytes(), None)
@@ -244,7 +244,6 @@ impl Deserializer for GelfDeserializer {
     fn parse(
         &self,
         bytes: Bytes,
-        _log_namespace: LogNamespace,
     ) -> vector_common::Result<SmallVec<[Event; 1]>> {
         let parsed: GelfMessage = match self.lossy {
             true => serde_json::from_str(&String::from_utf8_lossy(&bytes)),
@@ -276,7 +275,7 @@ mod tests {
         let config = GelfDeserializerConfig::new(options);
         let deserializer = config.build();
         let buffer = Bytes::from(serde_json::to_vec(&input).unwrap());
-        deserializer.parse(buffer, LogNamespace::Vector)
+        deserializer.parse(buffer)
     }
 
     /// Validates all the spec'd fields of GELF are deserialized correctly.

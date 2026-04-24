@@ -6,7 +6,6 @@ use std::{
 
 use vector_lib::{
     codecs::decoding::{DeserializerConfig, FramingConfig},
-    config::LogNamespace,
     configurable::configurable_component,
     lookup::lookup_v2::OptionalValuePath,
 };
@@ -99,9 +98,7 @@ impl SourceConfig for FileDescriptorSourceConfig {
     }
 
     fn outputs(&self) -> Vec<SourceOutput> {
-        let log_namespace = LogNamespace::Vector;
-
-        outputs(log_namespace, &self.decoding, Self::NAME)
+        outputs(&self.decoding, Self::NAME)
     }
 
     fn resources(&self) -> Vec<Resource> {

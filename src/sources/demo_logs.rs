@@ -281,7 +281,7 @@ impl SourceConfig for DemoLogsConfig {
 
         self.format.validate()?;
         let decoder =
-            DecodingConfig::new(self.framing.clone(), self.decoding.clone(), log_namespace)
+            DecodingConfig::new(self.framing.clone(), self.decoding.clone())
                 .build()?;
         Ok(Box::pin(demo_logs_source(
             self.interval,
@@ -295,13 +295,9 @@ impl SourceConfig for DemoLogsConfig {
     }
 
     fn outputs(&self) -> Vec<SourceOutput> {
-        // There is a global and per-source `log_namespace` config. The source config overrides the global setting,
-        // and is merged here.
-        let log_namespace = LogNamespace::Vector;
-
         let schema_definition = self
             .decoding
-            .schema_definition(log_namespace)
+            .schema_definition()
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 DemoLogsConfig::NAME,
@@ -347,7 +343,6 @@ mod tests {
             let decoder = DecodingConfig::new(
                 default_framing_message_based(),
                 default_decoding(),
-                LogNamespace::Vector,
             )
             .build()
             .unwrap();

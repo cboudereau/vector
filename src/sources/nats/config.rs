@@ -5,7 +5,6 @@ use async_nats::jetstream::{
 use snafu::{ResultExt, Snafu};
 use vector_lib::{
     codecs::decoding::{DeserializerConfig, FramingConfig},
-    config::LogNamespace,
     configurable::configurable_component,
     lookup::{lookup_v2::OptionalValuePath, owned_value_path},
 };
@@ -195,7 +194,7 @@ impl SourceConfig for NatsSourceConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<Source> {
         let log_namespace = cx.log_namespace();
         let decoder =
-            DecodingConfig::new(self.framing.clone(), self.decoding.clone(), log_namespace)
+            DecodingConfig::new(self.framing.clone(), self.decoding.clone())
                 .build()?;
 
         match self.mode() {
@@ -248,10 +247,9 @@ impl SourceConfig for NatsSourceConfig {
     }
 
     fn outputs(&self) -> Vec<SourceOutput> {
-        let log_namespace = LogNamespace::Vector;
         let schema_definition = self
             .decoding
-            .schema_definition(log_namespace)
+            .schema_definition()
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 NatsSourceConfig::NAME,
@@ -319,6 +317,7 @@ mod tests {
     #![allow(clippy::print_stdout)]
 
     use vector_lib::{
+        config::LogNamespace,
         lookup::owned_value_path,
         schema::Definition,
     };

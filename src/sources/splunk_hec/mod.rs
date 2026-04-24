@@ -2614,7 +2614,7 @@ mod tests {
                     X_SPLUNK_REQUEST_CHANNEL.to_string(),
                     "channel".to_string(),
                 )])),
-                DecodingConfig::new(framing, decoding, false.into()),
+                DecodingConfig::new(framing, decoding),
             );
 
             ValidationConfiguration::from_source(

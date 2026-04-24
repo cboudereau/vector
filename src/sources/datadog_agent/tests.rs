@@ -1744,7 +1744,7 @@ fn test_config_outputs() {
                     None,
                     Some(
                         DeserializerConfig::Json(Default::default())
-                            .schema_definition(LogNamespace::Vector)
+                            .schema_definition()
                             .with_source_metadata("datadog_agent", &owned_value_path!("status"), Kind::bytes(), Some("severity"))
                             .with_source_metadata("datadog_agent", &owned_value_path!("timestamp"), Kind::timestamp(), Some("timestamp"))
                             .with_source_metadata("datadog_agent", &owned_value_path!("hostname"), Kind::bytes(), Some("host"))
@@ -1766,7 +1766,7 @@ fn test_config_outputs() {
                         Some(LOGS),
                         Some(
                             DeserializerConfig::Json(Default::default())
-                                .schema_definition(LogNamespace::Vector)
+                                .schema_definition()
                                 .with_source_metadata("datadog_agent", &owned_value_path!("status"), Kind::bytes(), Some("severity"))
                                 .with_source_metadata("datadog_agent", &owned_value_path!("timestamp"), Kind::timestamp(), Some("timestamp"))
                                 .with_source_metadata("datadog_agent", &owned_value_path!("hostname"), Kind::bytes(), Some("host"))
@@ -1791,7 +1791,7 @@ fn test_config_outputs() {
                     None,
                     Some(
                         DeserializerConfig::Syslog(Default::default())
-                            .schema_definition(LogNamespace::Vector)
+                            .schema_definition()
                             .with_source_metadata("datadog_agent", &owned_value_path!("status"), Kind::bytes(), Some("severity"))
                             .with_source_metadata("datadog_agent", &owned_value_path!("timestamp"), Kind::timestamp(), Some("timestamp"))
                             .with_source_metadata("datadog_agent", &owned_value_path!("hostname"), Kind::bytes(), Some("host"))
@@ -1814,7 +1814,7 @@ fn test_config_outputs() {
                         Some(LOGS),
                         Some(
                             DeserializerConfig::Syslog(Default::default())
-                                .schema_definition(LogNamespace::Vector)
+                                .schema_definition()
                                 .with_source_metadata("datadog_agent", &owned_value_path!("status"), Kind::bytes(), Some("severity"))
                                 .with_source_metadata("datadog_agent", &owned_value_path!("timestamp"), Kind::timestamp(), Some("timestamp"))
                                 .with_source_metadata("datadog_agent", &owned_value_path!("hostname"), Kind::bytes(), Some("host"))
@@ -2358,7 +2358,6 @@ impl ValidatableComponent for DatadogAgentConfig {
         let decoder = DecodingConfig::new(
             config.framing.clone(),
             DeserializerConfig::Json(Default::default()),
-            false.into(),
         );
 
         let external_resource = ExternalResource::new(

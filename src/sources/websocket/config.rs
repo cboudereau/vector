@@ -6,7 +6,7 @@ use snafu::ResultExt;
 use vector_config::configurable_component;
 use vector_lib::{
     codecs::decoding::{DeserializerConfig, FramingConfig},
-    config::{LogNamespace, SourceOutput},
+    config::SourceOutput,
 };
 
 use super::source::{WebSocketSource, WebSocketSourceParams};
@@ -163,7 +163,7 @@ impl SourceConfig for WebSocketConfig {
 
         let log_namespace = cx.log_namespace();
         let decoder =
-            DecodingConfig::new(self.framing.clone(), self.decoding.clone(), log_namespace)
+            DecodingConfig::new(self.framing.clone(), self.decoding.clone())
                 .build()?;
 
         let params = WebSocketSourceParams {
@@ -178,11 +178,9 @@ impl SourceConfig for WebSocketConfig {
     }
 
     fn outputs(&self) -> Vec<SourceOutput> {
-        let log_namespace = LogNamespace::Vector;
-
         let schema_definition = self
             .decoding
-            .schema_definition(log_namespace)
+            .schema_definition()
             .with_standard_vector_source_metadata();
 
         vec![SourceOutput::new_maybe_logs(

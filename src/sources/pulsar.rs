@@ -207,7 +207,7 @@ impl SourceConfig for PulsarSourceConfig {
 
         let consumer = self.create_consumer().await?;
         let decoder =
-            DecodingConfig::new(self.framing.clone(), self.decoding.clone(), log_namespace)
+            DecodingConfig::new(self.framing.clone(), self.decoding.clone())
                 .build()?;
         let acknowledgements = cx.do_acknowledgements(self.acknowledgements);
 
@@ -222,11 +222,9 @@ impl SourceConfig for PulsarSourceConfig {
     }
 
     fn outputs(&self) -> Vec<SourceOutput> {
-        let log_namespace = LogNamespace::Vector;
-
         let schema_definition = self
             .decoding
-            .schema_definition(log_namespace)
+            .schema_definition()
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 Self::NAME,
@@ -644,7 +642,6 @@ mod integration_tests {
         let decoder = DecodingConfig::new(
             cnf.framing.clone(),
             cnf.decoding.clone(),
-            LogNamespace::Vector,
         )
         .build()
         .unwrap();

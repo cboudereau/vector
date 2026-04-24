@@ -4,7 +4,7 @@ use smallvec::{SmallVec, smallvec};
 use vector_config_macros::configurable_component;
 use vector_core::{
     compile_vrl,
-    config::{DataType, LogNamespace},
+    config::DataType,
     event::{Event, TargetEvents, VrlTarget},
     schema,
 };
@@ -79,7 +79,7 @@ impl VrlDeserializerConfig {
     }
 
     /// The schema produced by the deserializer.
-    pub fn schema_definition(&self, _log_namespace: LogNamespace) -> schema::Definition {
+    pub fn schema_definition(&self) -> schema::Definition {
         schema::Definition::empty_legacy_namespace().unknown_fields(Kind::any())
     }
 }
@@ -91,7 +91,7 @@ pub struct VrlDeserializer {
     timezone: TimeZone,
 }
 
-fn parse_bytes(bytes: Bytes, _log_namespace: LogNamespace) -> Event {
+fn parse_bytes(bytes: Bytes) -> Event {
     use vector_core::event::{EventMetadata, OtelLog};
     let value = vrl::value::Value::from(bytes);
     let log = OtelLog::from_value_map(value, EventMetadata::default());
@@ -102,10 +102,9 @@ impl Deserializer for VrlDeserializer {
     fn parse(
         &self,
         bytes: Bytes,
-        log_namespace: LogNamespace,
     ) -> vector_common::Result<SmallVec<[Event; 1]>> {
-        let event = parse_bytes(bytes, log_namespace);
-        match self.run_vrl(event, log_namespace) {
+        let event = parse_bytes(bytes);
+        match self.run_vrl(event) {
             Ok(events) => Ok(events),
             Err(e) => Err(e),
         }
@@ -116,12 +115,11 @@ impl VrlDeserializer {
     fn run_vrl(
         &self,
         event: Event,
-        log_namespace: LogNamespace,
     ) -> vector_common::Result<SmallVec<[Event; 1]>> {
         let mut runtime = Runtime::default();
         let mut target = VrlTarget::new(event, self.program.info(), true);
         match runtime.resolve(&mut target, &self.program, &self.timezone) {
-            Ok(_) => match target.into_events(log_namespace) {
+            Ok(_) => match target.into_events() {
                 TargetEvents::One(event) => Ok(smallvec![event]),
                 TargetEvents::OtelLogs(events_iter) => Ok(SmallVec::from_iter(events_iter)),
                 TargetEvents::OtelSpans(_) => Err("trace targets are not supported".into()),
@@ -164,7 +162,7 @@ mod tests {
         let decoder = make_decoder(source);
 
         let log_bytes = Bytes::from(r#"{ "message": "Hello VRL" }"#);
-        let result = decoder.parse(log_bytes, LogNamespace::Vector).unwrap();
+        let result = decoder.parse(log_bytes).unwrap();
         assert_eq!(result.len(), 1);
         let event = result.first().unwrap();
         let log = event.as_log();
@@ -191,7 +189,7 @@ mod tests {
         let decoder = make_decoder(source);
 
         let log_bytes = Bytes::from("some bytes");
-        let result = decoder.parse(log_bytes, LogNamespace::Vector).unwrap();
+        let result = decoder.parse(log_bytes).unwrap();
         assert_eq!(result.len(), 1);
         let event = result.first().unwrap();
         let log = event.as_log();
@@ -207,7 +205,7 @@ mod tests {
         let source = indoc!(". = [0,1,2]");
         let decoder = make_decoder(source);
         let log_bytes = Bytes::from("some bytes");
-        let result = decoder.parse(log_bytes, LogNamespace::Vector).unwrap();
+        let result = decoder.parse(log_bytes).unwrap();
         assert_eq!(result.len(), 3);
         for (i, event) in result.iter().enumerate() {
             let log = event.as_log();
@@ -236,7 +234,7 @@ mod tests {
         let syslog_bytes = Bytes::from(
             "<34>1 2024-02-06T15:04:05.000Z mymachine.example.com su - ID47 - 'su root' failed for user on /dev/pts/8",
         );
-        let result = decoder.parse(syslog_bytes, LogNamespace::Vector).unwrap();
+        let result = decoder.parse(syslog_bytes).unwrap();
         assert_eq!(result.len(), 1);
         let syslog_event = result.first().unwrap();
         let syslog_log = syslog_event.as_log();
@@ -259,7 +257,7 @@ mod tests {
         let cef_bytes = Bytes::from(
             "CEF:0|Security|Threat Manager|1.0|100|worm successfully stopped|10|src=10.0.0.1 dst=2.1.2.2 spt=1232",
         );
-        let result = decoder.parse(cef_bytes, LogNamespace::Vector).unwrap();
+        let result = decoder.parse(cef_bytes).unwrap();
         assert_eq!(result.len(), 1);
         let cef_event = result.first().unwrap();
         let cef_log = cef_event.as_log();
@@ -280,7 +278,7 @@ mod tests {
             .into()
         );
         let random_bytes = Bytes::from("a|- -| x");
-        let result = decoder.parse(random_bytes, LogNamespace::Vector).unwrap();
+        let result = decoder.parse(random_bytes).unwrap();
         let random_event = result.first().unwrap();
         assert_eq!(result.len(), 1);
         let random_log = random_event.as_log();
@@ -309,7 +307,7 @@ mod tests {
         let decoder = make_decoder("abort");
         let log_bytes = Bytes::from(r#"{ "message": "Hello VRL" }"#);
         let error = decoder
-            .parse(log_bytes, LogNamespace::Vector)
+            .parse(log_bytes)
             .unwrap_err()
             .to_string();
         assert!(error.contains("aborted"));

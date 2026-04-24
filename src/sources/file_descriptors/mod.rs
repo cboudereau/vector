@@ -56,7 +56,7 @@ pub trait FileDescriptorConfig: NamedComponent {
         let framing = self
             .framing()
             .unwrap_or_else(|| decoding.default_stream_framing());
-        let decoder = DecodingConfig::new(framing, decoding, log_namespace).build()?;
+        let decoder = DecodingConfig::new(framing, decoding).build()?;
 
         let (sender, receiver) = mpsc::channel(1024);
 
@@ -183,12 +183,11 @@ async fn process_stream(
 /// Builds the `vector_lib::config::Outputs` for stdin and
 /// file_descriptor sources.
 fn outputs(
-    log_namespace: LogNamespace,
     decoding: &DeserializerConfig,
     source_name: &'static str,
 ) -> Vec<SourceOutput> {
     let schema_definition = decoding
-        .schema_definition(log_namespace)
+        .schema_definition()
         .with_source_metadata(
             source_name,
             &owned_value_path!("host"),

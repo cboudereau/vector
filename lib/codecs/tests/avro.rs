@@ -15,7 +15,7 @@ use codecs::{
 use rstest::*;
 use similar_asserts::assert_eq;
 use tokio_util::codec::Encoder;
-use vector_core::{config::LogNamespace, event::Event};
+use vector_core::event::Event;
 
 #[rstest]
 #[case(true)]
@@ -48,7 +48,7 @@ fn roundtrip_avro(data_path: PathBuf, schema_path: PathBuf, reserialize: bool) {
         serializer.encode(event.clone(), &mut buf).unwrap();
         // Deserialize the event from these bytes
         let new_events = deserializer
-            .parse(buf.into(), LogNamespace::Vector)
+            .parse(buf.into())
             .unwrap();
 
         // Ensure we have the same event.
@@ -73,7 +73,7 @@ fn load_deserialize(path: &Path, deserializer: &dyn Deserializer) -> (Bytes, Eve
     let buf = load_file(path);
 
     let mut events = deserializer
-        .parse(buf.clone(), LogNamespace::Vector)
+        .parse(buf.clone())
         .unwrap();
     assert_eq!(events.len(), 1);
     (buf, events.pop().unwrap())

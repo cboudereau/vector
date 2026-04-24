@@ -161,7 +161,7 @@ impl SourceConfig for RedisSourceConfig {
         let client = redis::Client::open(self.url.as_str()).context(ClientSnafu {})?;
         let connection_info = ConnectionInfo::from(client.get_connection_info());
         let decoder =
-            DecodingConfig::new(self.framing.clone(), self.decoding.clone(), log_namespace)
+            DecodingConfig::new(self.framing.clone(), self.decoding.clone())
                 .build()?;
 
         let bytes_received = register!(BytesReceived::from(Protocol::from(
@@ -189,11 +189,9 @@ impl SourceConfig for RedisSourceConfig {
     }
 
     fn outputs(&self) -> Vec<SourceOutput> {
-        let log_namespace = LogNamespace::Vector;
-
         let schema_definition = self
             .decoding
-            .schema_definition(log_namespace)
+            .schema_definition()
             .with_source_metadata(
                 Self::NAME,
                 &owned_value_path!("key"),

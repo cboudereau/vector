@@ -312,7 +312,6 @@ impl SourceConfig for PubsubConfig {
             decoder: DecodingConfig::new(
                 self.framing.clone(),
                 self.decoding.clone(),
-                log_namespace,
             )
             .build()?,
             acknowledgements: cx.do_acknowledgements(self.acknowledgements),
@@ -333,10 +332,9 @@ impl SourceConfig for PubsubConfig {
     }
 
     fn outputs(&self) -> Vec<SourceOutput> {
-        let log_namespace = LogNamespace::Vector;
         let schema_definition = self
             .decoding
-            .schema_definition(log_namespace)
+            .schema_definition()
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 PubsubConfig::NAME,

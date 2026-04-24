@@ -132,8 +132,8 @@ fn default_offset_key() -> OptionalValuePath {
 impl_generate_config_from_default!(AmqpSourceConfig);
 
 impl AmqpSourceConfig {
-    fn decoder(&self, log_namespace: LogNamespace) -> vector_lib::Result<Decoder> {
-        DecodingConfig::new(self.framing.clone(), self.decoding.clone(), log_namespace).build()
+    fn decoder(&self, _log_namespace: LogNamespace) -> vector_lib::Result<Decoder> {
+        DecodingConfig::new(self.framing.clone(), self.decoding.clone()).build()
     }
 }
 
@@ -148,10 +148,9 @@ impl SourceConfig for AmqpSourceConfig {
     }
 
     fn outputs(&self) -> Vec<SourceOutput> {
-        let log_namespace = LogNamespace::Vector;
         let schema_definition = self
             .decoding
-            .schema_definition(log_namespace)
+            .schema_definition()
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 AmqpSourceConfig::NAME,

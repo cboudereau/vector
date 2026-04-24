@@ -8,7 +8,7 @@ use smallvec::{SmallVec, smallvec};
 use syslog_loose::{IncompleteDate, Message, ProcId, Protocol, Variant};
 use vector_config::configurable_component;
 use vector_core::{
-    config::{DataType, LogNamespace, insert_source_metadata},
+    config::{DataType, insert_source_metadata},
     event::{Event, EventMetadata, ObjectMap, OtelLog, Value},
     schema,
 };
@@ -59,7 +59,7 @@ impl SyslogDeserializerConfig {
     }
 
     /// The schema produced by the deserializer.
-    pub fn schema_definition(&self, _log_namespace: LogNamespace) -> schema::Definition {
+    pub fn schema_definition(&self) -> schema::Definition {
         let mut definition = schema::Definition::empty_legacy_namespace()
             // The `message` field is always defined. If parsing fails, the entire body becomes the
             // message.
@@ -147,7 +147,6 @@ impl Deserializer for SyslogDeserializer {
     fn parse(
         &self,
         bytes: Bytes,
-        log_namespace: LogNamespace,
     ) -> vector_common::Result<SmallVec<[Event; 1]>> {
         let line: Cow<str> = match self.lossy {
             true => String::from_utf8_lossy(&bytes),
@@ -157,19 +156,17 @@ impl Deserializer for SyslogDeserializer {
         let parsed =
             syslog_loose::parse_message_with_year_exact(line, resolve_year, Variant::Either)?;
 
-        let log = match (self.source, log_namespace) {
-            (Some(source), LogNamespace::Vector) => {
+        let log = match self.source {
+            Some(source) => {
                 let mut log = OtelLog::from_value_map(
                     Value::Bytes(Bytes::from(parsed.msg.to_string())),
                     EventMetadata::default(),
                 );
-                insert_metadata_fields_from_syslog(&mut log, source, parsed, log_namespace);
+                insert_metadata_fields_from_syslog(&mut log, source, parsed);
                 log
             }
-            _ => {
-                // Build the full Value tree in one pass, then convert once.
-                // Avoids the per-insert to_value_canonical round-trip.
-                let map = build_fields_from_syslog(parsed, log_namespace);
+            None => {
+                let map = build_fields_from_syslog(parsed);
                 OtelLog::from_value_map(Value::Object(map), EventMetadata::default())
             }
         };
@@ -198,7 +195,6 @@ fn insert_metadata_fields_from_syslog(
     log: &mut OtelLog,
     source: &'static str,
     parsed: Message<&str>,
-    _log_namespace: LogNamespace,
 ) {
     if let Some(timestamp) = parsed.timestamp {
         let timestamp = DateTime::<Utc>::from(timestamp);
@@ -291,7 +287,6 @@ fn insert_metadata_fields_from_syslog(
 
 fn build_fields_from_syslog(
     parsed: Message<&str>,
-    _log_namespace: LogNamespace,
 ) -> ObjectMap {
     let mut map = ObjectMap::new();
 
@@ -344,25 +339,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn deserialize_syslog_legacy_namespace() {
+    fn deserialize_syslog() {
         let input =
             Bytes::from("<34>1 2003-10-11T22:14:15.003Z mymachine.example.com su - ID47 - MSG");
         let deserializer = SyslogDeserializer::default();
 
-        let events = deserializer.parse(input, LogNamespace::Vector).unwrap();
-        assert_eq!(events.len(), 1);
-        let log = events[0].as_log();
-        assert_eq!(log.get_body(), Some("MSG".into()));
-        assert!(log.get_timestamp().is_some());
-    }
-
-    #[test]
-    fn deserialize_syslog_vector_namespace() {
-        let input =
-            Bytes::from("<34>1 2003-10-11T22:14:15.003Z mymachine.example.com su - ID47 - MSG");
-        let deserializer = SyslogDeserializer::default();
-
-        let events = deserializer.parse(input, LogNamespace::Vector).unwrap();
+        let events = deserializer.parse(input).unwrap();
         assert_eq!(events.len(), 1);
         let log = events[0].as_log();
         assert_eq!(log.get_body(), Some("MSG".into()));

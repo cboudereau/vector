@@ -35,7 +35,7 @@ pub use framing::{
 use smallvec::SmallVec;
 use vector_config::configurable_component;
 use vector_core::{
-    config::{DataType, LogNamespace},
+    config::DataType,
     event::Event,
     schema,
 };
@@ -408,22 +408,22 @@ impl DeserializerConfig {
     }
 
     /// The schema produced by the deserializer.
-    pub fn schema_definition(&self, log_namespace: LogNamespace) -> schema::Definition {
+    pub fn schema_definition(&self) -> schema::Definition {
         match self {
             DeserializerConfig::Avro { avro } => AvroDeserializerConfig {
                 avro_options: avro.clone(),
             }
-            .schema_definition(log_namespace),
-            DeserializerConfig::Bytes => BytesDeserializerConfig.schema_definition(log_namespace),
-            DeserializerConfig::Json(config) => config.schema_definition(log_namespace),
-            DeserializerConfig::Protobuf(config) => config.schema_definition(log_namespace),
+            .schema_definition(),
+            DeserializerConfig::Bytes => BytesDeserializerConfig.schema_definition(),
+            DeserializerConfig::Json(config) => config.schema_definition(),
+            DeserializerConfig::Protobuf(config) => config.schema_definition(),
             #[cfg(feature = "opentelemetry")]
-            DeserializerConfig::Otlp(config) => config.schema_definition(log_namespace),
+            DeserializerConfig::Otlp(config) => config.schema_definition(),
             #[cfg(feature = "syslog")]
-            DeserializerConfig::Syslog(config) => config.schema_definition(log_namespace),
-            DeserializerConfig::Gelf(config) => config.schema_definition(log_namespace),
-            DeserializerConfig::Influxdb(config) => config.schema_definition(log_namespace),
-            DeserializerConfig::Vrl(config) => config.schema_definition(log_namespace),
+            DeserializerConfig::Syslog(config) => config.schema_definition(),
+            DeserializerConfig::Gelf(config) => config.schema_definition(),
+            DeserializerConfig::Influxdb(config) => config.schema_definition(),
+            DeserializerConfig::Vrl(config) => config.schema_definition(),
         }
     }
 
@@ -497,21 +497,20 @@ impl format::Deserializer for Deserializer {
     fn parse(
         &self,
         bytes: Bytes,
-        log_namespace: LogNamespace,
     ) -> vector_common::Result<SmallVec<[Event; 1]>> {
         match self {
-            Deserializer::Avro(deserializer) => deserializer.parse(bytes, log_namespace),
-            Deserializer::Bytes(deserializer) => deserializer.parse(bytes, log_namespace),
-            Deserializer::Json(deserializer) => deserializer.parse(bytes, log_namespace),
-            Deserializer::Protobuf(deserializer) => deserializer.parse(bytes, log_namespace),
+            Deserializer::Avro(deserializer) => deserializer.parse(bytes),
+            Deserializer::Bytes(deserializer) => deserializer.parse(bytes),
+            Deserializer::Json(deserializer) => deserializer.parse(bytes),
+            Deserializer::Protobuf(deserializer) => deserializer.parse(bytes),
             #[cfg(feature = "opentelemetry")]
-            Deserializer::Otlp(deserializer) => deserializer.parse(bytes, log_namespace),
+            Deserializer::Otlp(deserializer) => deserializer.parse(bytes),
             #[cfg(feature = "syslog")]
-            Deserializer::Syslog(deserializer) => deserializer.parse(bytes, log_namespace),
-            Deserializer::Boxed(deserializer) => deserializer.parse(bytes, log_namespace),
-            Deserializer::Gelf(deserializer) => deserializer.parse(bytes, log_namespace),
-            Deserializer::Influxdb(deserializer) => deserializer.parse(bytes, log_namespace),
-            Deserializer::Vrl(deserializer) => deserializer.parse(bytes, log_namespace),
+            Deserializer::Syslog(deserializer) => deserializer.parse(bytes),
+            Deserializer::Boxed(deserializer) => deserializer.parse(bytes),
+            Deserializer::Gelf(deserializer) => deserializer.parse(bytes),
+            Deserializer::Influxdb(deserializer) => deserializer.parse(bytes),
+            Deserializer::Vrl(deserializer) => deserializer.parse(bytes),
         }
     }
 }

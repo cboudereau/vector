@@ -172,10 +172,9 @@ impl SourceConfig for AwsS3Config {
     }
 
     fn outputs(&self) -> Vec<SourceOutput> {
-        let log_namespace = LogNamespace::Vector;
         let mut schema_definition = self
             .decoding
-            .schema_definition(log_namespace)
+            .schema_definition()
             .with_source_metadata(
                 Self::NAME,
                 &owned_value_path!("bucket"),
@@ -210,9 +209,7 @@ impl SourceConfig for AwsS3Config {
             );
 
         // for metadata that is added to the events dynamically from the metadata
-        if log_namespace == LogNamespace::Vector {
-            schema_definition = schema_definition.unknown_fields(Kind::bytes());
-        }
+        schema_definition = schema_definition.unknown_fields(Kind::bytes());
 
         vec![SourceOutput::new_maybe_logs(
             self.decoding.output_type(),
@@ -230,7 +227,7 @@ impl AwsS3Config {
         &self,
         multiline: Option<line_agg::Config>,
         proxy: &ProxyConfig,
-        log_namespace: LogNamespace,
+        _log_namespace: LogNamespace,
     ) -> crate::Result<sqs::Ingestor> {
         let region = self.region.region();
         let endpoint = self.region.endpoint();
@@ -249,7 +246,7 @@ impl AwsS3Config {
         .await?;
 
         let decoder =
-            DecodingConfig::new(self.framing.clone(), self.decoding.clone(), log_namespace)
+            DecodingConfig::new(self.framing.clone(), self.decoding.clone())
                 .build()?;
 
         match self.sqs {

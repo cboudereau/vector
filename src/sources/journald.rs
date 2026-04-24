@@ -254,8 +254,8 @@ impl JournaldConfig {
         matches
     }
 
-    /// Builds the `schema::Definition` for this source using the provided `LogNamespace`.
-    fn schema_definition(&self, log_namespace: LogNamespace) -> Definition {
+    /// Builds the `schema::Definition` for this source.
+    fn schema_definition(&self) -> Definition {
         let schema_definition = Definition::new_with_default_metadata(
             Kind::bytes().or_null(),
             [LogNamespace::Vector],
@@ -284,9 +284,7 @@ impl JournaldConfig {
             );
 
         // for metadata that is added to the events dynamically through the Record
-        if log_namespace == LogNamespace::Vector {
-            schema_definition = schema_definition.unknown_fields(Kind::bytes());
-        }
+        schema_definition = schema_definition.unknown_fields(Kind::bytes());
 
         schema_definition
     }
@@ -397,7 +395,7 @@ impl SourceConfig for JournaldConfig {
 
     fn outputs(&self) -> Vec<SourceOutput> {
         let schema_definition =
-            self.schema_definition(LogNamespace::Vector);
+            self.schema_definition();
 
         vec![SourceOutput::new_maybe_logs(
             DataType::Log,

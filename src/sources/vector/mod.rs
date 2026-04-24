@@ -5,7 +5,6 @@ use futures::TryFutureExt;
 use tonic::{codec::CompressionEncoding, service::RoutesBuilder};
 use vector_lib::{
     codecs::BytesDeserializerConfig,
-    config::LogNamespace,
     configurable::configurable_component,
     opentelemetry::proto::collector::{
         logs::v1::logs_service_server::LogsServiceServer,
@@ -134,10 +133,8 @@ impl SourceConfig for VectorConfig {
     }
 
     fn outputs(&self) -> Vec<SourceOutput> {
-        let log_namespace = LogNamespace::Vector;
-
         let schema_definition = BytesDeserializerConfig
-            .schema_definition(log_namespace)
+            .schema_definition()
             .with_standard_vector_source_metadata();
 
         vec![

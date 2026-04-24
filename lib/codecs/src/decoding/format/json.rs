@@ -4,7 +4,7 @@ use lookup::owned_value_path;
 use smallvec::{SmallVec, smallvec};
 use vector_config::configurable_component;
 use vector_core::{
-    config::{DataType, LogNamespace},
+    config::DataType,
     event::{Event, OtelLog},
     schema,
 };
@@ -38,7 +38,7 @@ impl JsonDeserializerConfig {
     }
 
     /// The schema produced by the deserializer.
-    pub fn schema_definition(&self, _log_namespace: LogNamespace) -> schema::Definition {
+    pub fn schema_definition(&self) -> schema::Definition {
         let mut definition =
             schema::Definition::empty_legacy_namespace().unknown_fields(Kind::json());
 
@@ -91,7 +91,6 @@ impl Deserializer for JsonDeserializer {
     fn parse(
         &self,
         bytes: Bytes,
-        _log_namespace: LogNamespace,
     ) -> vector_common::Result<SmallVec<[Event; 1]>> {
         if bytes.is_empty() {
             return Ok(smallvec![]);
@@ -141,16 +140,14 @@ mod tests {
         let input = Bytes::from(r#"{ "foo": 123 }"#);
         let deserializer = JsonDeserializer::default();
 
-        for namespace in [LogNamespace::Vector, LogNamespace::Vector] {
-            let events = deserializer.parse(input.clone(), namespace).unwrap();
-            assert_eq!(events.len(), 1);
+        let events = deserializer.parse(input).unwrap();
+        assert_eq!(events.len(), 1);
 
-            let event = &events[0];
-            assert!(matches!(event, Event::Log(_)), "expected Log(OtelLog)");
+        let event = &events[0];
+        assert!(matches!(event, Event::Log(_)), "expected Log(OtelLog)");
 
-            let val = get_attribute_value(event, "foo");
-            assert_eq!(val, Some(Value::Integer(123)));
-        }
+        let val = get_attribute_value(event, "foo");
+        assert_eq!(val, Some(Value::Integer(123)));
     }
 
     #[test]
@@ -158,61 +155,47 @@ mod tests {
         let input = Bytes::from(r#"[{ "foo": 123 }, { "bar": 456 }]"#);
         let deserializer = JsonDeserializer::default();
 
-        for namespace in [LogNamespace::Vector, LogNamespace::Vector] {
-            let events = deserializer.parse(input.clone(), namespace).unwrap();
-            assert_eq!(events.len(), 2);
+        let events = deserializer.parse(input).unwrap();
+        assert_eq!(events.len(), 2);
 
-            assert!(matches!(&events[0], Event::Log(_)));
-            assert!(matches!(&events[1], Event::Log(_)));
+        assert!(matches!(&events[0], Event::Log(_)));
+        assert!(matches!(&events[1], Event::Log(_)));
 
-            let foo = get_attribute_value(&events[0], "foo");
-            assert_eq!(foo, Some(Value::Integer(123)));
+        let foo = get_attribute_value(&events[0], "foo");
+        assert_eq!(foo, Some(Value::Integer(123)));
 
-            let bar = get_attribute_value(&events[1], "bar");
-            assert_eq!(bar, Some(Value::Integer(456)));
-        }
+        let bar = get_attribute_value(&events[1], "bar");
+        assert_eq!(bar, Some(Value::Integer(456)));
     }
 
     #[test]
     fn deserialize_skip_empty() {
         let input = Bytes::from("");
         let deserializer = JsonDeserializer::default();
-
-        for namespace in [LogNamespace::Vector, LogNamespace::Vector] {
-            let events = deserializer.parse(input.clone(), namespace).unwrap();
-            assert!(events.is_empty());
-        }
+        let events = deserializer.parse(input).unwrap();
+        assert!(events.is_empty());
     }
 
     #[test]
     fn deserialize_error_invalid_json() {
         let input = Bytes::from("{ foo");
         let deserializer = JsonDeserializer::default();
-
-        for namespace in [LogNamespace::Vector, LogNamespace::Vector] {
-            assert!(deserializer.parse(input.clone(), namespace).is_err());
-        }
+        assert!(deserializer.parse(input).is_err());
     }
 
     #[test]
     fn deserialize_non_lossy_error_invalid_utf8() {
         let input = Bytes::from(b"{ \"foo\": \"Hello \xF0\x90\x80World\" }".as_slice());
         let deserializer = JsonDeserializer::new(false);
-
-        for namespace in [LogNamespace::Vector, LogNamespace::Vector] {
-            assert!(deserializer.parse(input.clone(), namespace).is_err());
-        }
+        assert!(deserializer.parse(input).is_err());
     }
 
     #[test]
     fn deserialize_lossy_replace_invalid_utf8() {
         let input = Bytes::from(b"{ \"foo\": \"Hello \xF0\x90\x80World\" }".as_slice());
         let deserializer = JsonDeserializer::new(true);
-
-        for namespace in [LogNamespace::Vector, LogNamespace::Vector] {
-            let events = deserializer.parse(input.clone(), namespace).unwrap();
-            assert_eq!(events.len(), 1);
-            assert!(matches!(&events[0], Event::Log(_)));
-        }
+        let events = deserializer.parse(input).unwrap();
+        assert_eq!(events.len(), 1);
+        assert!(matches!(&events[0], Event::Log(_)));
     }
 }

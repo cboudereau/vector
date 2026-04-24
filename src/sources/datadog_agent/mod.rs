@@ -197,7 +197,7 @@ impl SourceConfig for DatadogAgentConfig {
             .cloned();
 
         let decoder =
-            DecodingConfig::new(self.framing.clone(), self.decoding.clone(), log_namespace)
+            DecodingConfig::new(self.framing.clone(), self.decoding.clone())
                 .build()?;
 
         let tls = MaybeTlsSettings::from_config(self.tls.as_ref(), true)?;
@@ -263,7 +263,7 @@ impl SourceConfig for DatadogAgentConfig {
     fn outputs(&self) -> Vec<SourceOutput> {
         let definition = self
             .decoding
-            .schema_definition(LogNamespace::Vector)
+            .schema_definition()
             // NOTE: "status" is intentionally semantically mapped to "severity",
             //       since that is what DD designates as the semantic meaning of status
             // https://docs.datadoghq.com/logs/log_configuration/attributes_naming_convention/?s=severity#reserved-attributes

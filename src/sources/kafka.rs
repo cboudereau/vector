@@ -318,7 +318,7 @@ impl SourceConfig for KafkaSourceConfig {
         let log_namespace = cx.log_namespace();
 
         let decoder =
-            DecodingConfig::new(self.framing.clone(), self.decoding.clone(), log_namespace)
+            DecodingConfig::new(self.framing.clone(), self.decoding.clone())
                 .build()?;
         let acknowledgements = cx.do_acknowledgements(self.acknowledgements);
 
@@ -347,11 +347,9 @@ impl SourceConfig for KafkaSourceConfig {
     }
 
     fn outputs(&self) -> Vec<SourceOutput> {
-        let log_namespace = LogNamespace::Vector;
-
         let schema_definition = self
             .decoding
-            .schema_definition(log_namespace)
+            .schema_definition()
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 Self::NAME,
@@ -1685,7 +1683,6 @@ mod integration_test {
         let decoder = DecodingConfig::new(
             config.framing.clone(),
             config.decoding.clone(),
-            log_namespace,
         )
         .build()
         .unwrap();

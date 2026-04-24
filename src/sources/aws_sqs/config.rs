@@ -2,7 +2,6 @@ use std::num::NonZeroUsize;
 
 use vector_lib::{
     codecs::decoding::{DeserializerConfig, FramingConfig},
-    config::LogNamespace,
     configurable::configurable_component,
     lookup::owned_value_path,
 };
@@ -108,7 +107,7 @@ impl SourceConfig for AwsSqsConfig {
 
         let client = self.build_client(&cx).await?;
         let decoder =
-            DecodingConfig::new(self.framing.clone(), self.decoding.clone(), log_namespace)
+            DecodingConfig::new(self.framing.clone(), self.decoding.clone())
                 .build()?;
         let acknowledgements = cx.do_acknowledgements(self.acknowledgements);
 
@@ -134,7 +133,7 @@ impl SourceConfig for AwsSqsConfig {
     fn outputs(&self) -> Vec<SourceOutput> {
         let schema_definition = self
             .decoding
-            .schema_definition(LogNamespace::Vector)
+            .schema_definition()
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 Self::NAME,

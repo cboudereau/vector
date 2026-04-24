@@ -5,7 +5,6 @@ use rumqttc::{MqttOptions, TlsConfiguration, Transport};
 use snafu::ResultExt;
 use vector_lib::{
     codecs::decoding::{DeserializerConfig, FramingConfig},
-    config::LogNamespace,
     configurable::configurable_component,
     lookup::{lookup_v2::OptionalValuePath, owned_value_path},
     tls::MaybeTlsSettings,
@@ -76,7 +75,7 @@ impl SourceConfig for MqttSourceConfig {
         let connector = self.build_connector()?;
 
         let decoder =
-            DecodingConfig::new(self.framing.clone(), self.decoding.clone(), log_namespace)
+            DecodingConfig::new(self.framing.clone(), self.decoding.clone())
                 .build()?;
 
         let sink = MqttSource::new(connector.clone(), decoder, log_namespace, self.clone())?;
@@ -86,7 +85,7 @@ impl SourceConfig for MqttSourceConfig {
     fn outputs(&self) -> Vec<SourceOutput> {
         let schema_definition = self
             .decoding
-            .schema_definition(LogNamespace::Vector)
+            .schema_definition()
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 Self::NAME,

@@ -7,7 +7,6 @@ use tower::ServiceBuilder;
 use tracing::Span;
 use vector_lib::{
     codecs::decoding::{DeserializerConfig, FramingConfig},
-    config::LogNamespace,
     configurable::configurable_component,
     lookup::owned_value_path,
     sensitive_string::SensitiveString,
@@ -149,7 +148,7 @@ impl SourceConfig for AwsKinesisFirehoseConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
         let log_namespace = cx.log_namespace();
         let decoder =
-            DecodingConfig::new(self.framing.clone(), self.decoding.clone(), log_namespace)
+            DecodingConfig::new(self.framing.clone(), self.decoding.clone())
                 .build()?;
 
         let acknowledgements = cx.do_acknowledgements(self.acknowledgements);
@@ -211,7 +210,7 @@ impl SourceConfig for AwsKinesisFirehoseConfig {
     fn outputs(&self) -> Vec<SourceOutput> {
         let schema_definition = self
             .decoding
-            .schema_definition(LogNamespace::Vector)
+            .schema_definition()
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 Self::NAME,

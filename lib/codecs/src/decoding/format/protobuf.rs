@@ -8,7 +8,7 @@ use smallvec::{SmallVec, smallvec};
 use vector_config::configurable_component;
 use lookup::owned_value_path;
 use vector_core::{
-    config::{DataType, LogNamespace},
+    config::DataType,
     event::{Event, EventMetadata, OtelLog},
     schema,
 };
@@ -43,7 +43,7 @@ impl ProtobufDeserializerConfig {
     }
 
     /// The schema produced by the deserializer.
-    pub fn schema_definition(&self, _log_namespace: LogNamespace) -> schema::Definition {
+    pub fn schema_definition(&self) -> schema::Definition {
         let mut definition =
             schema::Definition::empty_legacy_namespace().unknown_fields(Kind::any());
 
@@ -135,14 +135,10 @@ impl Deserializer for ProtobufDeserializer {
     fn parse(
         &self,
         bytes: Bytes,
-        log_namespace: LogNamespace,
     ) -> vector_common::Result<SmallVec<[Event; 1]>> {
         let vrl_value = extract_vrl_value(bytes, &self.message_descriptor, &self.options)?;
         let mut log = OtelLog::from_value_map(vrl_value, EventMetadata::default());
-
-        if log_namespace == LogNamespace::Vector {
-            log.try_set_timestamp(Utc::now());
-        }
+        log.try_set_timestamp(Utc::now());
 
         Ok(smallvec![Event::Log(log)])
     }
@@ -187,23 +183,20 @@ mod tests {
         let message_descriptor = get_message_descriptor(&protobuf_desc_path, message_type).unwrap();
         let deserializer = ProtobufDeserializer::new(message_descriptor);
 
-        for namespace in [LogNamespace::Vector, LogNamespace::Vector] {
-            let events = deserializer.parse(input.clone(), namespace).unwrap();
-            let mut events = events.into_iter();
+        let events = deserializer.parse(input).unwrap();
+        let mut events = events.into_iter();
 
-            {
-                let event = events.next().unwrap();
-                let log = event.as_log();
-                validate_log(log);
-                assert_eq!(
-                    log.get(&OwnedTargetPath::event(owned_value_path!("time_unix_nano")))
-                        .is_some(),
-                    namespace == LogNamespace::Vector
-                );
-            }
-
-            assert_eq!(events.next(), None);
+        {
+            let event = events.next().unwrap();
+            let log = event.as_log();
+            validate_log(log);
+            assert!(
+                log.get(&OwnedTargetPath::event(owned_value_path!("time_unix_nano")))
+                    .is_some()
+            );
         }
+
+        assert_eq!(events.next(), None);
     }
 
     #[test]
@@ -295,9 +288,6 @@ mod tests {
         )
         .unwrap();
         let deserializer = ProtobufDeserializer::new(message_descriptor);
-
-        for namespace in [LogNamespace::Vector, LogNamespace::Vector] {
-            assert!(deserializer.parse(input.clone(), namespace).is_err());
-        }
+        assert!(deserializer.parse(input).is_err());
     }
 }

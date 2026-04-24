@@ -7,7 +7,7 @@ use vector_opentelemetry_proto::proto::{
 use smallvec::{SmallVec, smallvec};
 use vector_config::{configurable_component, indexmap::IndexSet};
 use vector_core::{
-    config::{DataType, LogNamespace},
+    config::DataType,
     event::{Event, OtelSpan},
     schema,
 };
@@ -72,7 +72,7 @@ impl OtlpDeserializerConfig {
     }
 
     /// The schema produced by the deserializer.
-    pub fn schema_definition(&self, _log_namespace: LogNamespace) -> schema::Definition {
+    pub fn schema_definition(&self) -> schema::Definition {
         schema::Definition::empty_legacy_namespace().unknown_fields(Kind::any())
     }
 }
@@ -148,13 +148,11 @@ impl Deserializer for OtlpDeserializer {
     fn parse(
         &self,
         bytes: Bytes,
-        log_namespace: LogNamespace,
     ) -> vector_common::Result<SmallVec<[Event; 1]>> {
-        // Try parsing in the priority order specified
         for signal_type in &self.signals {
             match signal_type {
                 OtlpSignalType::Logs => {
-                    if let Ok(events) = self.logs_deserializer.parse(bytes.clone(), log_namespace)
+                    if let Ok(events) = self.logs_deserializer.parse(bytes.clone())
                         && let Some(event) = events.first()
                         && event.as_log().parse_path_and_get_value(RESOURCE_LOGS_JSON_FIELD).ok().flatten().is_some()
                     {
@@ -164,7 +162,7 @@ impl Deserializer for OtlpDeserializer {
                 OtlpSignalType::Metrics => {
                     if let Ok(events) = self
                         .metrics_deserializer
-                        .parse(bytes.clone(), log_namespace)
+                        .parse(bytes.clone())
                         && let Some(event) = events.first()
                         && event.as_log().parse_path_and_get_value(RESOURCE_METRICS_JSON_FIELD).ok().flatten().is_some()
                     {
@@ -173,7 +171,7 @@ impl Deserializer for OtlpDeserializer {
                 }
                 OtlpSignalType::Traces => {
                     if let Ok(mut events) =
-                        self.traces_deserializer.parse(bytes.clone(), log_namespace)
+                        self.traces_deserializer.parse(bytes.clone())
                         && let Some(event) = events.first()
                         && event.as_log().parse_path_and_get_value(RESOURCE_SPANS_JSON_FIELD).ok().flatten().is_some()
                     {
@@ -305,7 +303,7 @@ mod tests {
 
     fn assert_otlp_event(bytes: Bytes, field: &str, is_trace: bool) {
         let deserializer = OtlpDeserializer::default();
-        let events = deserializer.parse(bytes, LogNamespace::Vector).unwrap();
+        let events = deserializer.parse(bytes).unwrap();
 
         assert_eq!(events.len(), 1);
         if is_trace {
@@ -344,7 +342,7 @@ mod tests {
     fn deserialize_invalid_otlp() {
         let deserializer = OtlpDeserializer::default();
         let bytes = Bytes::from("invalid protobuf data");
-        let result = deserializer.parse(bytes, LogNamespace::Vector);
+        let result = deserializer.parse(bytes);
 
         assert!(result.is_err());
         assert!(
@@ -363,13 +361,13 @@ mod tests {
 
         // Traces should work
         let trace_bytes = create_traces_request_bytes();
-        let result = deserializer.parse(trace_bytes, LogNamespace::Vector);
+        let result = deserializer.parse(trace_bytes);
         assert!(result.is_ok());
         assert!(matches!(result.unwrap()[0], Event::Trace(_)));
 
         // Logs should fail since we're not trying to parse logs
         let log_bytes = create_logs_request_bytes();
-        let result = deserializer.parse(log_bytes, LogNamespace::Vector);
+        let result = deserializer.parse(log_bytes);
         assert!(result.is_err());
     }
 }

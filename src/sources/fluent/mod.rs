@@ -300,8 +300,7 @@ impl SourceConfig for FluentConfig {
     }
 
     fn outputs(&self) -> Vec<SourceOutput> {
-        let log_namespace = LogNamespace::Vector;
-        let schema_definition = self.schema_definition(log_namespace);
+        let schema_definition = self.schema_definition();
 
         vec![SourceOutput::new_maybe_logs(
             DataType::Log,
@@ -323,12 +322,12 @@ impl SourceConfig for FluentConfig {
 }
 
 impl FluentConfig {
-    /// Builds the `schema::Definition` for this source using the provided `LogNamespace`.
-    fn schema_definition(&self, log_namespace: LogNamespace) -> Definition {
+    /// Builds the `schema::Definition` for this source.
+    fn schema_definition(&self) -> Definition {
         // There is a global and per-source `log_namespace` config.
         // The source config overrides the global setting and is merged here.
         let mut schema_definition = BytesDeserializerConfig
-            .schema_definition(log_namespace)
+            .schema_definition()
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 FluentConfig::NAME,
@@ -363,9 +362,7 @@ impl FluentConfig {
             );
 
         // for metadata that is added to the events dynamically
-        if log_namespace == LogNamespace::Vector {
-            schema_definition = schema_definition.unknown_fields(Kind::bytes());
-        }
+        schema_definition = schema_definition.unknown_fields(Kind::bytes());
 
         schema_definition
     }

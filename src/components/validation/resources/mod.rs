@@ -105,7 +105,7 @@ impl ResourceCodec {
     ///
     /// The decoder is generated as an inverse to the input codec: if an encoding configuration was
     /// given, we generate a decoder that satisfies that encoding configuration, and vice versa.
-    pub fn into_decoder(&self, log_namespace: LogNamespace) -> vector_lib::Result<Decoder> {
+    pub fn into_decoder(&self, _log_namespace: LogNamespace) -> vector_lib::Result<Decoder> {
         let (framer, deserializer) = match self {
             Self::Decoding(config) => return config.build(),
             Self::Encoding(config) => (
@@ -122,7 +122,7 @@ impl ResourceCodec {
             }
         };
 
-        Ok(Decoder::new(framer, deserializer).with_log_namespace(log_namespace))
+        Ok(Decoder::new(framer, deserializer))
     }
 }
 

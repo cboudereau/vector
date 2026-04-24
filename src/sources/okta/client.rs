@@ -164,13 +164,9 @@ impl SourceConfig for OktaConfig {
     }
 
     fn outputs(&self) -> Vec<SourceOutput> {
-        // There is a global and per-source `log_namespace` config. The source config overrides the global setting,
-        // and is merged here.
-        let log_namespace = LogNamespace::Vector;
-
         vec![SourceOutput::new_maybe_logs(
             JsonDeserializerConfig::default().output_type(),
-            JsonDeserializerConfig::default().schema_definition(log_namespace),
+            JsonDeserializerConfig::default().schema_definition(),
         )]
     }
 
@@ -293,7 +289,6 @@ async fn run(
     let decoder = DecodingConfig::new(
         FramingConfig::Bytes,
         DeserializerConfig::Json(JsonDeserializerConfig::default()),
-        log_namespace,
     )
     .build()
     .map_err(|ref e| {

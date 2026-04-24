@@ -5,7 +5,6 @@ mod unix;
 
 use vector_lib::{
     codecs::decoding::DeserializerConfig,
-    config::LogNamespace,
     configurable::configurable_component,
     lookup::{lookup_v2::OptionalValuePath, owned_value_path},
 };
@@ -69,9 +68,6 @@ impl SocketConfig {
         }
     }
 
-    fn log_namespace(&self, LogNamespace::Vector: LogNamespace) -> LogNamespace {
-        LogNamespace::Vector
-    }
 }
 
 impl From<tcp::TcpConfig> for SocketConfig {
@@ -115,7 +111,6 @@ impl SourceConfig for SocketConfig {
                         .clone()
                         .unwrap_or_else(|| decoding.default_stream_framing()),
                     decoding,
-                    log_namespace,
                 )
                 .build()?;
 
@@ -150,7 +145,7 @@ impl SourceConfig for SocketConfig {
                     .framing()
                     .clone()
                     .unwrap_or_else(|| decoding.default_message_based_framing());
-                let decoder = DecodingConfig::new(framing, decoding, log_namespace).build()?;
+                let decoder = DecodingConfig::new(framing, decoding).build()?;
                 Ok(udp::udp(
                     config,
                     decoder,
@@ -167,7 +162,7 @@ impl SourceConfig for SocketConfig {
                     .framing
                     .clone()
                     .unwrap_or_else(|| decoding.default_message_based_framing());
-                let decoder = DecodingConfig::new(framing, decoding, log_namespace).build()?;
+                let decoder = DecodingConfig::new(framing, decoding).build()?;
 
                 unix::unix_datagram(config, decoder, cx.shutdown, cx.out, log_namespace)
             }
@@ -182,7 +177,6 @@ impl SourceConfig for SocketConfig {
                         .clone()
                         .unwrap_or_else(|| decoding.default_stream_framing()),
                     decoding,
-                    log_namespace,
                 )
                 .build()?;
 
@@ -192,11 +186,9 @@ impl SourceConfig for SocketConfig {
     }
 
     fn outputs(&self) -> Vec<SourceOutput> {
-        let log_namespace = self.log_namespace(LogNamespace::Vector);
-
         let schema_definition = self
             .decoding()
-            .schema_definition(log_namespace)
+            .schema_definition()
             .with_standard_vector_source_metadata();
 
         let schema_definition = match &self.mode {

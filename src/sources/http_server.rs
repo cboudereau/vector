@@ -174,13 +174,13 @@ pub struct SimpleHttpConfig {
 }
 
 impl SimpleHttpConfig {
-    /// Builds the `schema::Definition` for this source using the provided `LogNamespace`.
-    fn schema_definition(&self, log_namespace: LogNamespace) -> Definition {
+    /// Builds the `schema::Definition` for this source.
+    fn schema_definition(&self) -> Definition {
         let mut schema_definition = self
             .decoding
             .as_ref()
             .unwrap_or(&default_decoding())
-            .schema_definition(log_namespace)
+            .schema_definition()
             .with_source_metadata(
                 SimpleHttpConfig::NAME,
                 &owned_value_path!("path"),
@@ -210,9 +210,7 @@ impl SimpleHttpConfig {
             .with_standard_vector_source_metadata();
 
         // for metadata that is added to the events dynamically from config options
-        if log_namespace == LogNamespace::Vector {
-            schema_definition = schema_definition.unknown_fields(Kind::bytes());
-        }
+        schema_definition = schema_definition.unknown_fields(Kind::bytes());
 
         schema_definition
     }
@@ -253,7 +251,6 @@ impl SimpleHttpConfig {
         Ok(DecodingConfig::new(
             framing,
             decoding,
-            LogNamespace::Vector,
         ))
     }
 }
@@ -351,8 +348,7 @@ impl SourceConfig for SimpleHttpConfig {
         let log_namespace = cx.log_namespace();
         let decoder = self
             .get_decoding_config()?
-            .build()?
-            .with_log_namespace(log_namespace);
+            .build()?;
 
         let source = SimpleHttpSource {
             headers: build_param_matcher(&remove_duplicates(self.headers.clone(), "headers"))?,
@@ -380,11 +376,7 @@ impl SourceConfig for SimpleHttpConfig {
     }
 
     fn outputs(&self) -> Vec<SourceOutput> {
-        // There is a global and per-source `log_namespace` config.
-        // The source config overrides the global setting and is merged here.
-        let log_namespace = LogNamespace::Vector;
-
-        let schema_definition = self.schema_definition(log_namespace);
+        let schema_definition = self.schema_definition();
 
         vec![SourceOutput::new_maybe_logs(
             self.decoding

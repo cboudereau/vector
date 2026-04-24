@@ -292,7 +292,6 @@ impl decoding::format::Deserializer for StatsdDeserializer {
     fn parse(
         &self,
         bytes: Bytes,
-        _log_namespace: LogNamespace,
     ) -> crate::Result<SmallVec<[Event; 1]>> {
         // The other modes already emit BytesReceived
         if let Some(mode) = self.socket_mode

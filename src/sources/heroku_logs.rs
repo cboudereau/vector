@@ -94,11 +94,11 @@ pub struct LogplexConfig {
 }
 
 impl LogplexConfig {
-    /// Builds the `schema::Definition` for this source using the provided `LogNamespace`.
-    fn schema_definition(&self, log_namespace: LogNamespace) -> Definition {
+    /// Builds the `schema::Definition` for this source.
+    fn schema_definition(&self) -> Definition {
         let mut schema_definition = self
             .decoding
-            .schema_definition(log_namespace)
+            .schema_definition()
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 LogplexConfig::NAME,
@@ -133,9 +133,7 @@ impl LogplexConfig {
             );
 
         // for metadata that is added to the events dynamically from config options
-        if log_namespace == LogNamespace::Vector {
-            schema_definition = schema_definition.unknown_fields(Kind::bytes());
-        }
+        schema_definition = schema_definition.unknown_fields(Kind::bytes());
 
         schema_definition
     }
@@ -169,7 +167,7 @@ impl SourceConfig for LogplexConfig {
         let log_namespace = cx.log_namespace();
 
         let decoder =
-            DecodingConfig::new(self.framing.clone(), self.decoding.clone(), log_namespace)
+            DecodingConfig::new(self.framing.clone(), self.decoding.clone())
                 .build()?;
 
         let source = LogplexSource {
@@ -198,7 +196,7 @@ impl SourceConfig for LogplexConfig {
     fn outputs(&self) -> Vec<SourceOutput> {
         // There is a global and per-source `log_namespace` config.
         // The source config overrides the global setting and is merged here.
-        let schema_def = self.schema_definition(LogNamespace::Vector);
+        let schema_def = self.schema_definition();
         vec![SourceOutput::new_maybe_logs(DataType::Log, schema_def)]
     }
 

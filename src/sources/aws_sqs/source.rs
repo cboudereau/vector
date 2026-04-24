@@ -248,7 +248,6 @@ mod tests {
             DecodingConfig::new(
                 config.framing.clone(),
                 config.decoding,
-                LogNamespace::Vector,
             )
             .build()
             .unwrap(),
@@ -322,7 +321,6 @@ mod tests {
             DecodingConfig::new(
                 config.framing.clone(),
                 config.decoding,
-                LogNamespace::Vector,
             )
             .build()
             .unwrap(),

@@ -30,10 +30,7 @@ use crate::{
 pub mod tcp;
 #[cfg(unix)]
 pub mod unix;
-use vector_lib::{
-    config::LogNamespace,
-    lookup::lookup_v2::OptionalValuePath,
-};
+use vector_lib::lookup::lookup_v2::OptionalValuePath;
 
 /// Configuration for the `dnstap` source.
 #[configurable_component(source("dnstap", "Collect DNS logs from a dnstap-compatible server."))]
@@ -104,7 +101,7 @@ impl DnstapConfig {
         self.raw_data_only.unwrap_or(false)
     }
 
-    pub fn schema_definition(&self, _log_namespace: LogNamespace) -> vector_lib::schema::Definition {
+    pub fn schema_definition(&self) -> vector_lib::schema::Definition {
         let event_schema = DnstapEventSchema;
 
         let schema = vector_lib::schema::Definition::empty_legacy_namespace();
@@ -169,7 +166,7 @@ impl SourceConfig for DnstapConfig {
 
     fn outputs(&self) -> Vec<SourceOutput> {
         let schema_definition = self
-            .schema_definition(LogNamespace::Vector)
+            .schema_definition()
             .with_standard_vector_source_metadata();
         vec![SourceOutput::new_maybe_logs(
             DataType::Log,

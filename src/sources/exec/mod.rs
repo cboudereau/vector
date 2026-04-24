@@ -253,7 +253,7 @@ impl SourceConfig for ExecConfig {
             .framing
             .clone()
             .unwrap_or_else(|| self.decoding.default_stream_framing());
-        let decoder = DecodingConfig::new(framing, self.decoding.clone(), log_namespace).build()?;
+        let decoder = DecodingConfig::new(framing, self.decoding.clone()).build()?;
 
         match &self.mode {
             Mode::Scheduled => {
@@ -288,11 +288,9 @@ impl SourceConfig for ExecConfig {
     }
 
     fn outputs(&self) -> Vec<SourceOutput> {
-        let log_namespace = LogNamespace::Vector;
-
         let schema_definition = self
             .decoding
-            .schema_definition(log_namespace)
+            .schema_definition()
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 Self::NAME,

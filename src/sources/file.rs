@@ -414,7 +414,7 @@ impl SourceConfig for FileConfig {
 
     fn outputs(&self) -> Vec<SourceOutput> {
         let schema_definition = BytesDeserializerConfig
-            .schema_definition(LogNamespace::Vector)
+            .schema_definition()
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 Self::NAME,
@@ -735,13 +735,13 @@ fn create_event(
     offset: u64,
     file: &str,
     meta: &EventMetadata,
-    log_namespace: LogNamespace,
+    _log_namespace: LogNamespace,
     include_file_metric_tag: bool,
     file_key: &str,
     offset_key: Option<&str>,
 ) -> OtelLog {
     let deserializer = BytesDeserializer;
-    let mut event = deserializer.parse_single(line, log_namespace);
+    let mut event = deserializer.parse_single(line);
 
     event.set_source_metadata(FileConfig::NAME, Utc::now());
 

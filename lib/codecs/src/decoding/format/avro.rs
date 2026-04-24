@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use smallvec::{SmallVec, smallvec};
 use vector_config::configurable_component;
 use vector_core::{
-    config::{DataType, LogNamespace},
+    config::DataType,
     event::{Event, EventMetadata, OtelLog},
     schema,
 };
@@ -55,7 +55,7 @@ impl AvroDeserializerConfig {
     }
 
     /// The schema required by the serializer.
-    pub fn schema_definition(&self, _log_namespace: LogNamespace) -> schema::Definition {
+    pub fn schema_definition(&self) -> schema::Definition {
         let mut definition = schema::Definition::empty_legacy_namespace()
             .unknown_fields(vrl::value::Kind::any());
 
@@ -122,7 +122,6 @@ impl Deserializer for AvroDeserializer {
     fn parse(
         &self,
         bytes: Bytes,
-        log_namespace: LogNamespace,
     ) -> vector_common::Result<SmallVec<[Event; 1]>> {
         // Avro has a `null` type which indicates no value.
         if bytes.is_empty() {
@@ -152,10 +151,8 @@ impl Deserializer for AvroDeserializer {
             map.insert(k.into(), try_from(v)?);
         }
         let mut log = OtelLog::from_value_map(VrlValue::Object(map), EventMetadata::default());
+        log.try_set_timestamp(Utc::now());
 
-        if log_namespace == LogNamespace::Vector {
-            log.try_set_timestamp(Utc::now());
-        }
         Ok(smallvec![Event::Log(log)])
     }
 }
@@ -269,7 +266,7 @@ mod tests {
 
         let deserializer = AvroDeserializer::new(schema, false);
         let events = deserializer
-            .parse(record_bytes, LogNamespace::Vector)
+            .parse(record_bytes)
             .unwrap();
         assert_eq!(events.len(), 1);
 
@@ -296,7 +293,7 @@ mod tests {
 
         let deserializer = AvroDeserializer::new(schema, true);
         let events = deserializer
-            .parse(bytes.freeze(), LogNamespace::Vector)
+            .parse(bytes.freeze())
             .unwrap();
         assert_eq!(events.len(), 1);
 
@@ -325,7 +322,7 @@ mod tests {
 
         let deserializer = AvroDeserializer::new(schema, true);
         let events = deserializer
-            .parse(bytes.freeze(), LogNamespace::Vector)
+            .parse(bytes.freeze())
             .unwrap();
         assert_eq!(events.len(), 1);
         let log = events[0].as_log();

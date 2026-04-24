@@ -43,11 +43,11 @@ pub fn make_log_event(
     Event::from(otel_log)
 }
 
-/// Normalize an OtelLog event for comparison: sort attributes by key and
-/// clear the source_event_id (which is a random UUID).
+/// Normalize an OtelLog event for comparison: clear the source_event_id
+/// (which is a random UUID). Attribute sorting is no longer needed because
+/// `OtelAttributes` uses a `BTreeMap` (inherently sorted).
 fn normalize_for_comparison(event: &mut Event, shared_metadata: &crate::event::EventMetadata) {
     if let Event::Log(otel_log) = event {
-        otel_log.record_mut().attributes.sort_by(|a, b| a.key.cmp(&b.key));
         *otel_log.metadata_mut() = shared_metadata.clone();
     }
 }

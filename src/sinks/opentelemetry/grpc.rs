@@ -628,7 +628,8 @@ pub(crate) fn otel_log_event_to_resource_logs(
         resource::v1::Resource as SinkResource,
     };
 
-    let record_bytes = log_event.record().encode_to_vec();
+    let proto_record = log_event.record_to_proto();
+    let record_bytes = proto_record.encode_to_vec();
     let sink_record = SinkLogRecord::decode(bytes::Bytes::from(record_bytes))
         .expect("LogRecord proto roundtrip");
 

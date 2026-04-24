@@ -48,8 +48,9 @@ impl Serialize for OtlpJsonLog<'_> {
         if !log.record().span_id.is_empty() {
             map.serialize_entry("spanId", &hex_encode_str(&log.record().span_id))?;
         }
-        if !log.record().attributes.is_empty() {
-            map.serialize_entry("attributes", &SerializableAttributes(&log.record().attributes))?;
+        if !log.attributes().is_empty() {
+            let kvs = log.attributes().to_key_values();
+            map.serialize_entry("attributes", &SerializableAttributes(&kvs))?;
         }
         if let Some(ref res) = log.resource() {
             map.serialize_entry("resource", &SerializableResource(res))?;

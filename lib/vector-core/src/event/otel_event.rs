@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use opentelemetry_proto::tonic::common::v1::{
     AnyValue, InstrumentationScope, KeyValue, any_value::Value as OtelValueKind,
 };
@@ -445,20 +445,99 @@ fn coerce_to_timestamp(v: Value) -> Value {
     }
 }
 
+// -- OtelAttributes --
+
+/// BTreeMap-backed attribute container for O(log n) lookup.
+/// Converts to/from `Vec<KeyValue>` at proto serialization boundaries.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct OtelAttributes {
+    inner: BTreeMap<String, AnyValue>,
+}
+
+impl OtelAttributes {
+    pub fn new() -> Self {
+        Self { inner: BTreeMap::new() }
+    }
+
+    pub fn get(&self, key: &str) -> Option<&AnyValue> {
+        self.inner.get(key)
+    }
+
+    pub fn insert(&mut self, key: String, value: AnyValue) -> Option<AnyValue> {
+        self.inner.insert(key, value)
+    }
+
+    pub fn remove(&mut self, key: &str) -> Option<AnyValue> {
+        self.inner.remove(key)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &AnyValue)> {
+        self.inner.iter()
+    }
+
+    pub fn keys(&self) -> impl Iterator<Item = &String> {
+        self.inner.keys()
+    }
+
+    /// Convert from proto `Vec<KeyValue>` (at source ingestion boundary).
+    pub fn from_key_values(kvs: Vec<KeyValue>) -> Self {
+        let inner = kvs.into_iter()
+            .filter_map(|kv| {
+                kv.value.map(|v| (kv.key, v))
+            })
+            .collect();
+        Self { inner }
+    }
+
+    /// Convert to proto `Vec<KeyValue>` (at sink egress boundary).
+    pub fn to_key_values(&self) -> Vec<KeyValue> {
+        self.inner.iter()
+            .map(|(k, v)| KeyValue {
+                key: k.clone(),
+                value: Some(v.clone()),
+            })
+            .collect()
+    }
+
+    /// Convert to VRL `ObjectMap` for canonical value representation.
+    pub fn to_object_map(&self) -> ObjectMap {
+        self.inner.iter()
+            .map(|(k, v)| (KeyString::from(k.clone()), any_value_to_vrl(v)))
+            .collect()
+    }
+}
+
+impl From<Vec<KeyValue>> for OtelAttributes {
+    fn from(kvs: Vec<KeyValue>) -> Self {
+        Self::from_key_values(kvs)
+    }
+}
+
 // -- OtelLog --
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct OtelLog {
     pub(crate) record: LogRecord,
+    pub(crate) record_attrs: OtelAttributes,
     pub(crate) resource: Option<Resource>,
     pub(crate) scope: Option<InstrumentationScope>,
     pub(crate) metadata: EventMetadata,
 }
 
 impl OtelLog {
-    pub fn new(record: LogRecord) -> Self {
+    pub fn new(mut record: LogRecord) -> Self {
+        let record_attrs = OtelAttributes::from_key_values(std::mem::take(&mut record.attributes));
         Self {
             record,
+            record_attrs,
             resource: None,
             scope: None,
             metadata: EventMetadata::default(),
@@ -478,6 +557,7 @@ impl OtelLog {
                 }),
                 ..Default::default()
             },
+            record_attrs: OtelAttributes::new(),
             resource: None,
             scope: None,
             metadata: EventMetadata::default(),
@@ -504,6 +584,7 @@ impl OtelLog {
                         body: Some(body),
                         ..Default::default()
                     },
+                    record_attrs: OtelAttributes::new(),
                     resource: None,
                     scope: None,
                     metadata: EventMetadata::default(),
@@ -513,13 +594,15 @@ impl OtelLog {
     }
 
     pub fn from_parts(
-        record: LogRecord,
+        mut record: LogRecord,
         resource: Option<Resource>,
         scope: Option<InstrumentationScope>,
         metadata: EventMetadata,
     ) -> Self {
+        let record_attrs = OtelAttributes::from_key_values(std::mem::take(&mut record.attributes));
         Self {
             record,
+            record_attrs,
             resource,
             scope,
             metadata,
@@ -568,13 +651,15 @@ impl OtelLog {
     }
 
     pub fn into_parts(
-        self,
+        mut self,
     ) -> (
         LogRecord,
         Option<Resource>,
         Option<InstrumentationScope>,
         EventMetadata,
     ) {
+        // Reconstitute record.attributes from the BTreeMap for proto consumers.
+        self.record.attributes = self.record_attrs.to_key_values();
         (self.record, self.resource, self.scope, self.metadata)
     }
 
@@ -582,8 +667,23 @@ impl OtelLog {
         &self.record
     }
 
+    /// Return a full `LogRecord` with `attributes` populated from the
+    /// internal `OtelAttributes` map.  Use at proto serialization boundaries
+    /// (gRPC sink, buffer codec, OTLP codec) where the downstream expects
+    /// a complete proto message.
+    pub fn record_to_proto(&self) -> LogRecord {
+        let mut r = self.record.clone();
+        r.attributes = self.record_attrs.to_key_values();
+        r
+    }
+
     pub fn record_mut(&mut self) -> &mut LogRecord {
         &mut self.record
+    }
+
+    /// Return a reference to the `OtelAttributes` for record-level attributes.
+    pub fn record_attributes(&self) -> &OtelAttributes {
+        &self.record_attrs
     }
 
     pub fn resource(&self) -> Option<&Resource> {
@@ -679,7 +779,7 @@ impl OtelLog {
     }
 
     pub fn attribute(&self, key: &str) -> Option<&AnyValue> {
-        attribute_value(&self.record.attributes, key)
+        self.record_attrs.get(key)
     }
 
     /// Returns `true` if the body is a KvList that contains `key`, or if `key`
@@ -698,15 +798,15 @@ impl OtelLog {
     }
 
     pub fn set_attribute(&mut self, key: String, value: AnyValue) {
-        set_attribute(&mut self.record.attributes, key, value);
+        self.record_attrs.insert(key, value);
     }
 
     pub fn remove_attribute(&mut self, key: &str) -> Option<AnyValue> {
-        remove_attribute(&mut self.record.attributes, key)
+        self.record_attrs.remove(key)
     }
 
-    pub fn attributes(&self) -> &[KeyValue] {
-        &self.record.attributes
+    pub fn attributes(&self) -> &OtelAttributes {
+        &self.record_attrs
     }
 
     pub fn resource_attribute(&self, key: &str) -> Option<&AnyValue> {
@@ -881,7 +981,7 @@ impl OtelLog {
                 Some(Value::Integer(self.record.observed_time_unix_nano as i64))
             }
             other => {
-                attribute_value(&self.record.attributes, other)
+                self.record_attrs.get(other)
                     .map(any_value_to_vrl)
             }
         }
@@ -936,7 +1036,7 @@ impl OtelLog {
                 }
             }
             first => {
-                let av = attribute_value(&self.record.attributes, first)?;
+                let av = self.record_attrs.get(first)?;
                 let v = any_value_to_vrl(av);
                 navigate_value(&v, &fields[1..])
             }
@@ -1031,8 +1131,7 @@ impl OtelLog {
                     self.record_mut().trace_id = decoded;
                 } else {
                     // Malformed hex: store as attribute so data isn't lost
-                    set_attribute(
-                        &mut self.record_mut().attributes,
+                    self.record_attrs.insert(
                         "trace_id".to_string(),
                         vrl_value_to_any_value(&value),
                     );
@@ -1045,8 +1144,7 @@ impl OtelLog {
                 if let Some(decoded) = hex_decode(&value) {
                     self.record_mut().span_id = decoded;
                 } else {
-                    set_attribute(
-                        &mut self.record_mut().attributes,
+                    self.record_attrs.insert(
                         "span_id".to_string(),
                         vrl_value_to_any_value(&value),
                     );
@@ -1067,8 +1165,7 @@ impl OtelLog {
                     _ => {
                         // Non-numeric values (e.g. formatted strings from sinks):
                         // store as attribute so they appear in JSON serialization.
-                        set_attribute(
-                            &mut self.record_mut().attributes,
+                        self.record_attrs.insert(
                             "time_unix_nano".to_string(),
                             vrl_value_to_any_value(&value),
                         );
@@ -1086,10 +1183,9 @@ impl OtelLog {
             }
             other => {
                 // Generic: upsert into record attributes
-                let old = attribute_value(&self.record.attributes, other)
+                let old = self.record_attrs.get(other)
                     .map(any_value_to_vrl);
-                set_attribute(
-                    &mut self.record_mut().attributes,
+                self.record_attrs.insert(
                     other.to_string(),
                     vrl_value_to_any_value(&value),
                 );
@@ -1195,12 +1291,11 @@ impl OtelLog {
                 }
             }
             first => {
-                let mut v = attribute_value(&self.record.attributes, first)
+                let mut v = self.record_attrs.get(first)
                     .map(any_value_to_vrl)
                     .unwrap_or(Value::Object(ObjectMap::new()));
                 let old = insert_value_at(&mut v, &fields[1..], value);
-                set_attribute(
-                    &mut self.record_mut().attributes,
+                self.record_attrs.insert(
                     first.to_string(),
                     vrl_value_to_any_value(&v),
                 );
@@ -1319,7 +1414,7 @@ impl OtelLog {
                 old
             }
             other => {
-                remove_attribute(&mut self.record_mut().attributes, other)
+                self.record_attrs.remove(other)
                     .map(|av| any_value_to_vrl(&av))
             }
         }
@@ -1389,20 +1484,19 @@ impl OtelLog {
                 }
             }
             first => {
-                let av = attribute_value(&self.record.attributes, first)?;
+                let av = self.record_attrs.get(first)?;
                 let mut v = any_value_to_vrl(av);
                 let result = remove_value_at(&mut v, &fields[1..], prune);
                 if result.is_some() {
                     if prune {
                         if let Value::Object(ref map) = v {
                             if map.is_empty() {
-                                remove_attribute(&mut self.record_mut().attributes, first);
+                                self.record_attrs.remove(first);
                                 return result;
                             }
                         }
                     }
-                    set_attribute(
-                        &mut self.record_mut().attributes,
+                    self.record_attrs.insert(
                         first.to_string(),
                         vrl_value_to_any_value(&v),
                     );
@@ -1500,10 +1594,9 @@ impl OtelLog {
         if !self.record.span_id.is_empty() {
             map.insert("span_id".into(), hex_encode(&self.record.span_id));
         }
-        if !self.record.attributes.is_empty() {
-            let attrs = kvlist_to_object_map(&self.record.attributes);
-            for (k, v) in attrs {
-                map.insert(k, v);
+        if !self.record_attrs.is_empty() {
+            for (k, v) in self.record_attrs.iter() {
+                map.insert(KeyString::from(k.clone()), any_value_to_vrl(v));
             }
         }
         if let Some(ref res) = self.resource {
@@ -1546,6 +1639,7 @@ impl OtelLog {
     pub fn from_value_map(value: Value, metadata: EventMetadata) -> Self {
         let mut out = Self {
             record: LogRecord::default(),
+            record_attrs: OtelAttributes::new(),
             resource: None,
             scope: None,
             metadata,
@@ -1568,6 +1662,7 @@ impl OtelLog {
                     body: Some(vrl_value_to_any_value(&other)),
                     ..Default::default()
                 };
+                self.record_attrs = OtelAttributes::new();
                 self.resource = None;
                 self.scope = None;
                 return;
@@ -1618,13 +1713,11 @@ impl OtelLog {
         self.resource = restore_resource(&mut map);
         self.scope = restore_scope(&mut map);
 
-        let attributes: Vec<KeyValue> = map
-            .into_iter()
-            .map(|(k, v)| KeyValue {
-                key: k.to_string(),
-                value: Some(vrl_value_to_any_value(&v)),
-            })
-            .collect();
+        self.record_attrs = OtelAttributes {
+            inner: map.into_iter()
+                .map(|(k, v)| (k.to_string(), vrl_value_to_any_value(&v)))
+                .collect(),
+        };
 
         self.record = LogRecord {
             body,
@@ -1634,7 +1727,7 @@ impl OtelLog {
             severity_number,
             trace_id,
             span_id,
-            attributes,
+            attributes: Vec::new(),
             ..Default::default()
         };
     }
@@ -1867,7 +1960,7 @@ impl OtelLog {
 
     /// Check if the log has no body and no attributes.
     pub fn is_empty_object(&self) -> bool {
-        self.record.body.is_none() && self.record.attributes.is_empty()
+        self.record.body.is_none() && self.record_attrs.is_empty()
     }
 
     /// Convert to fields unquoted — recursively flatten nested objects with unquoted dotted keys.
@@ -1909,6 +2002,7 @@ impl OtelLog {
     pub fn new_with_metadata(metadata: EventMetadata) -> Self {
         Self {
             record: LogRecord::default(),
+            record_attrs: OtelAttributes::new(),
             resource: None,
             scope: None,
             metadata,
@@ -3971,7 +4065,7 @@ impl EventDataEq for OtelLog {
             && self.record.flags == other.record.flags
             && self.record.trace_id == other.record.trace_id
             && self.record.span_id == other.record.span_id
-            && self.record.attributes == other.record.attributes
+            && self.record_attrs == other.record_attrs
             && self.record.dropped_attributes_count == other.record.dropped_attributes_count
             && self.resource == other.resource
             && self.scope == other.scope

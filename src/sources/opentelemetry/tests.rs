@@ -147,7 +147,7 @@ async fn receive_grpc_logs_vector_namespace() {
 
         // Attributes
         assert_eq!(otel_log.attributes().len(), 1);
-        assert_eq!(otel_log.attributes()[0].key, "attr_key");
+        assert!(otel_log.attributes().get("attr_key").is_some());
     })
     .await;
 }
@@ -1135,7 +1135,7 @@ async fn http_json_logs() {
         assert_eq!(scope.version, "0.1.0");
 
         assert_eq!(otel_log.attributes().len(), 1);
-        assert_eq!(otel_log.attributes()[0].key, "env");
+        assert!(otel_log.attributes().get("env").is_some());
 
         assert_eq!(
             otel_log.trace_id(),

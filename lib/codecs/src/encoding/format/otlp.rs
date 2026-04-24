@@ -138,7 +138,8 @@ fn proto_convert<S: Message, D: Message + Default>(src: &S) -> D {
 }
 
 fn otel_log_to_export_request(log_event: &OtelLog) -> ExportLogsServiceRequest {
-    let record: ProtoLogRecord = proto_convert(log_event.record());
+    let proto_record = log_event.record_to_proto();
+    let record: ProtoLogRecord = proto_convert(&proto_record);
     let resource = log_event.resource().map(|r| proto_convert::<_, ProtoResource>(r));
     let scope = log_event.scope().map(|s| proto_convert::<_, ProtoScope>(s));
 

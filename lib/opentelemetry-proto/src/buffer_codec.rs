@@ -106,7 +106,8 @@ fn otel_logs_to_export(otel_logs: &OtelLogArray) -> ExportLogsServiceRequest {
         resource_logs: otel_logs
             .iter()
             .map(|otel| {
-                let record: LogRecord = transcode(otel.record());
+                let proto_record = otel.record_to_proto();
+                let record: LogRecord = transcode(&proto_record);
                 let resource: Option<Resource> = otel.resource().map(|r| transcode(r));
                 let scope: Option<InstrumentationScope> = otel.scope().map(|s| transcode(s));
                 ResourceLogs {

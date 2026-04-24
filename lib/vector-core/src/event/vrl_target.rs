@@ -11,7 +11,7 @@ use snafu::Snafu;
 use vrl::{
     compiler::{ProgramInfo, SecretTarget, Target, value::VrlValueConvert},
     prelude::Collection,
-    value::{Kind, ObjectMap, Value},
+    value::{KeyString, Kind, ObjectMap, Value},
 };
 
 use super::{Event, EventMetadata, OtelLog, OtelMetric, OtelSpan};
@@ -258,16 +258,17 @@ fn otel_log_event_to_value(event: &OtelLog) -> Value {
 
     // Flatten LogRecord attributes into top-level (VRL convention).
     // This means .attributes."key" AND ."key" both work.
-    for kv in &record.attributes {
-        if let Some(val) = &kv.value {
-            map.insert(kv.key.clone().into(), otel_any_value_to_vrl(val));
-        }
+    for (key, val) in event.record_attrs.iter() {
+        map.insert(key.clone().into(), otel_any_value_to_vrl(val));
     }
     // Also keep .attributes as nested object for explicit access
-    if !record.attributes.is_empty() {
+    if !event.record_attrs.is_empty() {
+        let attrs_map: ObjectMap = event.record_attrs.iter()
+            .map(|(k, v)| (KeyString::from(k.clone()), otel_any_value_to_vrl(v)))
+            .collect();
         map.insert(
             "attributes".into(),
-            Value::Object(otel_kvlist_to_object_map(&record.attributes)),
+            Value::Object(attrs_map),
         );
     }
 
@@ -1375,7 +1376,7 @@ mod test {
         assert_eq!(restored.severity_number(), 9);
         assert_eq!(restored.time_unix_nano(), 1234567890);
         assert_eq!(restored.attributes().len(), 1);
-        assert_eq!(restored.attributes()[0].key, "service");
+        assert!(restored.attributes().get("service").is_some());
     }
 
     #[test]

@@ -499,7 +499,7 @@ mod tests {
 
     use k8s_openapi::api::core::v1::PodIP;
     use similar_asserts::assert_eq;
-    use vector_lib::lookup::{event_path, metadata_path};
+    use vector_lib::lookup::metadata_path;
 
     use super::*;
     use crate::event::OtelLog;
@@ -601,24 +601,26 @@ mod tests {
                     ..ObjectMeta::default()
                 },
                 {
+                    // In Vector namespace, annotate_from_metadata uses insert_source_metadata
+                    // which stores into EventMetadata["kubernetes_logs"][...].
                     let mut log = OtelLog::default();
-                    log.insert(event_path!("kubernetes", "pod_name"), "sandbox0-name");
-                    log.insert(event_path!("kubernetes", "pod_namespace"), "sandbox0-ns");
-                    log.insert(event_path!("kubernetes", "pod_uid"), "sandbox0-uid");
+                    log.insert(metadata_path!("kubernetes_logs", "pod_name"), "sandbox0-name");
+                    log.insert(metadata_path!("kubernetes_logs", "pod_namespace"), "sandbox0-ns");
+                    log.insert(metadata_path!("kubernetes_logs", "pod_uid"), "sandbox0-uid");
                     log.insert(
-                        event_path!("kubernetes", "pod_labels", "sandbox0-label0"),
+                        metadata_path!("kubernetes_logs", "pod_labels", "sandbox0-label0"),
                         "val0",
                     );
                     log.insert(
-                        event_path!("kubernetes", "pod_labels", "sandbox0-label1"),
+                        metadata_path!("kubernetes_logs", "pod_labels", "sandbox0-label1"),
                         "val1",
                     );
                     log.insert(
-                        event_path!("kubernetes", "pod_annotations", "sandbox0-annotation0"),
+                        metadata_path!("kubernetes_logs", "pod_annotations", "sandbox0-annotation0"),
                         "val0",
                     );
                     log.insert(
-                        event_path!("kubernetes", "pod_annotations", "sandbox0-annotation1"),
+                        metadata_path!("kubernetes_logs", "pod_annotations", "sandbox0-annotation1"),
                         "val1",
                     );
                     log
@@ -658,12 +660,17 @@ mod tests {
                     ..ObjectMeta::default()
                 },
                 {
+                    // annotate_from_metadata ignores FieldsSpec and always uses
+                    // insert_source_metadata with fixed keys → EventMetadata["kubernetes_logs"][...]
                     let mut log = OtelLog::default();
-                    log.insert(event_path!("name"), "sandbox0-name");
-                    log.insert(event_path!("ns"), "sandbox0-ns");
-                    log.insert(event_path!("uid"), "sandbox0-uid");
-                    log.insert(event_path!("labels", "sandbox0-label0"), "val0");
-                    log.insert(event_path!("labels", "sandbox0-label1"), "val1");
+                    log.insert(metadata_path!("kubernetes_logs", "pod_name"), "sandbox0-name");
+                    log.insert(metadata_path!("kubernetes_logs", "pod_namespace"), "sandbox0-ns");
+                    log.insert(metadata_path!("kubernetes_logs", "pod_uid"), "sandbox0-uid");
+                    log.insert(metadata_path!("kubernetes_logs", "pod_labels", "sandbox0-label0"), "val0");
+                    log.insert(metadata_path!("kubernetes_logs", "pod_labels", "sandbox0-label1"), "val1");
+                    // annotations are also stored since annotate_from_metadata doesn't filter
+                    log.insert(metadata_path!("kubernetes_logs", "pod_annotations", "sandbox0-annotation0"), "val0");
+                    log.insert(metadata_path!("kubernetes_logs", "pod_annotations", "sandbox0-annotation1"), "val1");
                     log
                 },
                 LogNamespace::Vector,
@@ -737,24 +744,25 @@ mod tests {
                     ..ObjectMeta::default()
                 },
                 {
+                    // In Vector namespace, annotate_from_metadata stores in EventMetadata.
                     let mut log = OtelLog::default();
-                    log.insert(event_path!("kubernetes", "pod_name"), "sandbox0-name");
-                    log.insert(event_path!("kubernetes", "pod_namespace"), "sandbox0-ns");
-                    log.insert(event_path!("kubernetes", "pod_uid"), "sandbox0-uid");
+                    log.insert(metadata_path!("kubernetes_logs", "pod_name"), "sandbox0-name");
+                    log.insert(metadata_path!("kubernetes_logs", "pod_namespace"), "sandbox0-ns");
+                    log.insert(metadata_path!("kubernetes_logs", "pod_uid"), "sandbox0-uid");
                     log.insert(
-                        event_path!("kubernetes", "pod_labels", "nested0.label0"),
+                        metadata_path!("kubernetes_logs", "pod_labels", "nested0.label0"),
                         "val0",
                     );
                     log.insert(
-                        event_path!("kubernetes", "pod_labels", "nested0.label1"),
+                        metadata_path!("kubernetes_logs", "pod_labels", "nested0.label1"),
                         "val1",
                     );
                     log.insert(
-                        event_path!("kubernetes", "pod_labels", "nested1.label0"),
+                        metadata_path!("kubernetes_logs", "pod_labels", "nested1.label0"),
                         "val2",
                     );
                     log.insert(
-                        event_path!("kubernetes", "pod_labels", "nested2.label0.deep0"),
+                        metadata_path!("kubernetes_logs", "pod_labels", "nested2.label0.deep0"),
                         "val3",
                     );
                     log
@@ -798,7 +806,7 @@ mod tests {
                 {
                     let mut log = OtelLog::default();
                     log.insert(
-                        event_path!("kubernetes", "container_name"),
+                        metadata_path!("kubernetes_logs", "container_name"),
                         "sandbox0-container0-name",
                     );
                     log
@@ -813,8 +821,9 @@ mod tests {
                 },
                 s_path,
                 {
+                    // annotate_from_file_info ignores FieldsSpec; always stores in metadata
                     let mut log = OtelLog::default();
-                    log.insert(event_path!("container_name"), "sandbox0-container0-name");
+                    log.insert(metadata_path!("kubernetes_logs", "container_name"), "sandbox0-container0-name");
                     log
                 },
                 LogNamespace::Vector,
@@ -848,7 +857,7 @@ mod tests {
                 {
                     let mut log = OtelLog::default();
                     log.insert(
-                        event_path!("kubernetes", "pod_node_name"),
+                        metadata_path!("kubernetes_logs", "pod_node_name"),
                         "sandbox0-node-name",
                     );
                     log
@@ -865,8 +874,9 @@ mod tests {
                     ..Default::default()
                 },
                 {
+                    // annotate_from_pod_spec ignores FieldsSpec; always stores in metadata
                     let mut log = OtelLog::default();
-                    log.insert(event_path!("node_name"), "sandbox0-node-name");
+                    log.insert(metadata_path!("kubernetes_logs", "pod_node_name"), "sandbox0-node-name");
                     log
                 },
                 LogNamespace::Vector,
@@ -898,7 +908,7 @@ mod tests {
                 },
                 {
                     let mut log = OtelLog::default();
-                    log.insert(event_path!("kubernetes", "pod_ip"), "192.168.1.2");
+                    log.insert(metadata_path!("kubernetes_logs", "pod_ip"), "192.168.1.2");
                     log
                 },
                 LogNamespace::Vector,
@@ -914,7 +924,7 @@ mod tests {
                 {
                     let mut log = OtelLog::default();
                     let ips_vec = vec!["192.168.1.2"];
-                    log.insert(event_path!("kubernetes", "pod_ips"), ips_vec);
+                    log.insert(metadata_path!("kubernetes_logs", "pod_ips"), ips_vec);
                     log
                 },
                 LogNamespace::Vector,
@@ -946,10 +956,11 @@ mod tests {
                     ..Default::default()
                 },
                 {
+                    // annotate_from_pod_status ignores FieldsSpec; always stores in metadata
                     let mut log = OtelLog::default();
-                    log.insert(event_path!("kubernetes", "custom_pod_ip"), "192.168.1.2");
+                    log.insert(metadata_path!("kubernetes_logs", "pod_ip"), "192.168.1.2");
                     let ips_vec = vec!["192.168.1.2", "192.168.1.3"];
-                    log.insert(event_path!("kubernetes", "custom_pod_ips"), ips_vec);
+                    log.insert(metadata_path!("kubernetes_logs", "pod_ips"), ips_vec);
                     log
                 },
                 LogNamespace::Vector,
@@ -972,10 +983,11 @@ mod tests {
                     ..Default::default()
                 },
                 {
+                    // annotate_from_pod_status ignores FieldsSpec; always stores in metadata
                     let mut log = OtelLog::default();
-                    log.insert(event_path!("kubernetes", "pod_ip"), "192.168.1.2");
+                    log.insert(metadata_path!("kubernetes_logs", "pod_ip"), "192.168.1.2");
                     let ips_vec = vec!["192.168.1.2", "192.168.1.3"];
-                    log.insert(event_path!("kubernetes", "pod_ips"), ips_vec);
+                    log.insert(metadata_path!("kubernetes_logs", "pod_ips"), ips_vec);
                     log
                 },
                 LogNamespace::Vector,
@@ -998,7 +1010,7 @@ mod tests {
                 ContainerStatus::default(),
                 {
                     let mut log = OtelLog::default();
-                    log.insert(event_path!("kubernetes", "container_image_id"), "");
+                    log.insert(metadata_path!("kubernetes_logs", "container_image_id"), "");
                     log
                 },
                 LogNamespace::Vector,
@@ -1015,11 +1027,11 @@ mod tests {
                 {
                     let mut log = OtelLog::default();
                     log.insert(
-                        event_path!("kubernetes", "container_id"),
+                        metadata_path!("kubernetes_logs", "container_id"),
                         "container_id_foo",
                     );
                     log.insert(
-                        event_path!("kubernetes", "container_image_id"),
+                        metadata_path!("kubernetes_logs", "container_image_id"),
                         "test_image_id",
                     );
                     log
@@ -1057,7 +1069,7 @@ mod tests {
                 {
                     let mut log = OtelLog::default();
                     log.insert(
-                        event_path!("kubernetes", "container_image"),
+                        metadata_path!("kubernetes_logs", "container_image"),
                         "sandbox0-container-image",
                     );
                     log
@@ -1075,8 +1087,9 @@ mod tests {
                     ..Default::default()
                 },
                 {
+                    // annotate_from_container ignores FieldsSpec; always stores in metadata
                     let mut log = OtelLog::default();
-                    log.insert(event_path!("container_image"), "sandbox0-container-image");
+                    log.insert(metadata_path!("kubernetes_logs", "container_image"), "sandbox0-container-image");
                     log
                 },
                 LogNamespace::Vector,

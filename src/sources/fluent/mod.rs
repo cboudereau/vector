@@ -786,8 +786,8 @@ mod tests {
         time::{Duration, error::Elapsed, timeout},
     };
     use tokio_util::codec::Decoder;
-    use vector_lib::{assert_event_data_eq, lookup::{OwnedTargetPath, event_path}, schema::Definition};
-    use vrl::value::{Value, kind::Collection};
+    use vector_lib::{assert_event_data_eq, lookup::event_path, schema::Definition};
+    use vrl::{path, value::{Value, kind::Collection}};
 
     use super::{message::FluentMessageOptions, *};
     use crate::{
@@ -808,12 +808,26 @@ mod tests {
     // Decode base64: https://toolslick.com/conversion/data/messagepack-to-json
 
     fn mock_event(name: &str, timestamp: &str) -> Event {
+        use vrl::path;
         let dt: chrono::DateTime<chrono::Utc> = DateTime::parse_from_rfc3339(timestamp).unwrap().into();
         let mut log = OtelLog::new(Default::default());
-        log.set_source_type(FluentConfig::NAME);
-        log.set_timestamp(dt);
-        log.insert(event_path!("tag"), Value::from("tag.name"));
-        log.insert(event_path!("message"), Value::from(name));
+        // In Vector namespace, fluent metadata is stored in EventMetadata, not as record fields.
+        // EventDataEq only compares record fields and resource, so the expected event
+        // should be an empty OtelLog (matching the actual decoder output's record content).
+        // We still populate EventMetadata to match the decoder for completeness.
+        log.metadata_mut()
+            .value_mut()
+            .insert(path!("vector", "source_type"), FluentConfig::NAME);
+        log.metadata_mut()
+            .value_mut()
+            .insert(path!(FluentConfig::NAME, "timestamp"), dt);
+        log.metadata_mut()
+            .value_mut()
+            .insert(path!(FluentConfig::NAME, "tag"), "tag.name");
+        log.metadata_mut()
+            .value_mut()
+            .insert(path!(FluentConfig::NAME, "record", "message"), Value::from(name));
+        let _ = name; // suppress unused warning
         Event::Log(log)
     }
 
@@ -1070,10 +1084,21 @@ mod tests {
 
         assert_eq!(events.len(), 1);
         let log = events[0].as_log();
-        assert_eq!(log.get("field").unwrap(), msg.into());
+        let meta = log.metadata().value();
+        // In Vector namespace, fluent fields are in EventMetadata["fluent"][...]
+        assert_eq!(
+            meta.get(path!(FluentConfig::NAME, "record", "field")).unwrap(),
+            &Value::from(msg)
+        );
         assert!(matches!(log.get(event_path!("resource", "host.name")).unwrap(), Value::Bytes(_)));
-        assert!(matches!(log.get_timestamp(), Some(Value::Timestamp(_))));
-        assert_eq!(log.get("tag").unwrap(), tag.into());
+        assert!(matches!(
+            meta.get(path!(FluentConfig::NAME, "timestamp")).unwrap(),
+            Value::Timestamp(_)
+        ));
+        assert_eq!(
+            meta.get(path!(FluentConfig::NAME, "tag")).unwrap(),
+            &Value::from(tag)
+        );
 
         (result, output.into())
     }
@@ -1118,77 +1143,42 @@ mod tests {
             .remove(0)
             .schema_definition(true);
 
-        let expected_definition =
-            Definition::new_with_default_metadata(Kind::bytes(), [LogNamespace::Vector])
-                .with_meaning(OwnedTargetPath::event_root(), "message")
-                .with_metadata_field(
-                    &owned_value_path!("vector", "source_type"),
-                    Kind::bytes(),
-                    None,
-                )
-                .with_metadata_field(&owned_value_path!("fluent", "tag"), Kind::bytes(), None)
-                .with_metadata_field(
-                    &owned_value_path!("fluent", "timestamp"),
-                    Kind::timestamp(),
-                    Some("timestamp"),
-                )
-                .with_metadata_field(
-                    &owned_value_path!("fluent", "record"),
-                    Kind::object(Collection::empty().with_unknown(Kind::bytes())).or_undefined(),
-                    None,
-                )
-                .with_metadata_field(
-                    &owned_value_path!("vector", "ingest_timestamp"),
-                    Kind::timestamp(),
-                    None,
-                )
-                .with_metadata_field(
-                    &owned_value_path!("fluent", "host"),
-                    Kind::bytes(),
-                    Some("host"),
-                )
-                .with_metadata_field(
-                    &owned_value_path!("fluent", "tls_client_metadata"),
-                    Kind::object(Collection::empty().with_unknown(Kind::bytes())).or_undefined(),
-                    None,
-                );
-
-        assert_eq!(definitions, Some(expected_definition))
-    }
-
-    #[test]
-    fn output_schema_definition_legacy_namespace() {
-        let config = FluentConfig {
-            mode: FluentMode::Tcp(FluentTcpConfig {
-                address: SocketListenAddr::SocketAddr("0.0.0.0:24224".parse().unwrap()),
-                tls: None,
-                keepalive: None,
-                permit_origin: None,
-                receive_buffer_bytes: None,
-                acknowledgements: false.into(),
-                connection_limit: None,
-            }),
-            log_namespace: None,
-        };
-
-        let definitions = config
-            .outputs(LogNamespace::Vector)
-            .remove(0)
-            .schema_definition(true);
-
         let expected_definition = Definition::new_with_default_metadata(
             Kind::object(Collection::empty()),
             [LogNamespace::Vector],
         )
-        .with_event_field(
-            &owned_value_path!("body"),
+        .with_event_field(&owned_value_path!("body"), Kind::bytes(), Some("message"))
+        .with_metadata_field(
+            &owned_value_path!("vector", "source_type"),
             Kind::bytes(),
-            Some("message"),
+            None,
         )
-        .with_event_field(&owned_value_path!("resource", "source_type"), Kind::bytes(), None)
-        .with_event_field(&owned_value_path!("tag"), Kind::bytes(), None)
-        .with_event_field(&owned_value_path!("time_unix_nano"), Kind::integer(), None)
-        .with_event_field(&owned_value_path!("host"), Kind::bytes(), Some("host"))
+        .with_metadata_field(&owned_value_path!("fluent", "tag"), Kind::bytes(), None)
+        .with_metadata_field(
+            &owned_value_path!("fluent", "timestamp"),
+            Kind::timestamp(),
+            Some("timestamp"),
+        )
+        .with_metadata_field(
+            &owned_value_path!("fluent", "record"),
+            Kind::object(Collection::empty().with_unknown(Kind::bytes())).or_undefined(),
+            None,
+        )
+        .with_metadata_field(
+            &owned_value_path!("vector", "ingest_timestamp"),
+            Kind::timestamp(),
+            None,
+        )
+        .with_metadata_field(
+            &owned_value_path!("fluent", "host"),
+            Kind::bytes(),
+            Some("host"),
+        )
+        .with_metadata_field(
+            &owned_value_path!("fluent", "tls_client_metadata"),
+            Kind::object(Collection::empty().with_unknown(Kind::bytes())).or_undefined(),
+            None,
+        )
         .unknown_fields(Kind::bytes());
 
         assert_eq!(definitions, Some(expected_definition))

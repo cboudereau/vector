@@ -322,7 +322,7 @@ mod test {
     use vector_lib::{
         codecs::{GelfDeserializerConfig, NewlineDelimitedDecoderConfig},
         event::EventContainer,
-        lookup::{event_path, lookup_v2::OptionalValuePath, owned_value_path, path},
+        lookup::{lookup_v2::OptionalValuePath, owned_value_path, path},
     };
     use vrl::{btreemap, value, value::ObjectMap};
     #[cfg(unix)]
@@ -451,9 +451,17 @@ mod test {
                 .unwrap();
 
             let event = rx.next().await.unwrap();
+            let log = event.as_log();
+            let event_meta = log.metadata().value();
 
-            assert_eq!(event.as_log().get(event_path!("resource", "host.name")).unwrap(), addr.ip().to_string().into());
-            assert_eq!(event.as_log().get("port").unwrap(), addr.port().into());
+            assert_eq!(
+                event_meta.get(path!(SocketConfig::NAME, "host")).unwrap(),
+                &value!(addr.ip().to_string())
+            );
+            assert_eq!(
+                event_meta.get(path!(SocketConfig::NAME, "port")).unwrap(),
+                &value!(addr.port())
+            );
         })
         .await;
     }
@@ -650,7 +658,11 @@ mod test {
                 "subject" => "CN=localhost,OU=Vector,O=Datadog,L=New York,ST=New York,C=US"
             );
 
-            assert_eq!(event.as_log().get("tls_peer").unwrap(), tls_meta.clone().into(),);
+            assert_eq!(
+                event.as_log().metadata().value()
+                    .get(path!(SocketConfig::NAME, "tls_client_metadata")).unwrap(),
+                &value!(tls_meta.clone()),
+            );
 
             let event = rx.next().await.unwrap();
             assert_eq!(
@@ -658,7 +670,11 @@ mod test {
                 "another line".into()
             );
 
-            assert_eq!(event.as_log().get("tls_peer").unwrap(), tls_meta.clone().into(),);
+            assert_eq!(
+                event.as_log().metadata().value()
+                    .get(path!(SocketConfig::NAME, "tls_client_metadata")).unwrap(),
+                &value!(tls_meta.clone()),
+            );
         })
         .await;
     }
@@ -1200,14 +1216,16 @@ mod test {
 
             let from = send_lines_udp(address, vec!["test".to_string()]).await;
             let events = collect_n(rx, 1).await;
+            let log = events[0].as_log();
+            let event_meta = log.metadata().value();
 
             assert_eq!(
-                events[0].as_log().get(event_path!("resource", "host.name")).unwrap(),
-                from.local_addr().unwrap().ip().to_string().into()
+                event_meta.get(path!(SocketConfig::NAME, "host")).unwrap(),
+                &value!(from.local_addr().unwrap().ip().to_string())
             );
             assert_eq!(
-                events[0].as_log().get("port").unwrap(),
-                from.local_addr().unwrap().port().into()
+                event_meta.get(path!(SocketConfig::NAME, "port")).unwrap(),
+                &value!(from.local_addr().unwrap().port())
             );
         })
         .await;
@@ -1603,15 +1621,17 @@ mod test {
             let events = collect_n(rx, 1).await;
 
             assert_eq!(events.len(), 1);
+            let log = events[0].as_log();
+            assert_eq!(log.get("body").unwrap(), "test".into());
+            let event_meta = log.metadata().value();
             assert_eq!(
-                events[0].as_log().get("body").unwrap(),
-                "test".into()
+                event_meta.get(path!("vector", "source_type")).unwrap(),
+                &value!(SocketConfig::NAME)
             );
             assert_eq!(
-                events[0].as_log().get_source_type().unwrap(),
-                "socket".into()
+                event_meta.get(path!(SocketConfig::NAME, "host")).unwrap(),
+                &value!(UNNAMED_SOCKET_HOST)
             );
-            assert_eq!(events[0].as_log().get(event_path!("resource", "host.name")).unwrap(), UNNAMED_SOCKET_HOST.into());
         })
         .await;
     }

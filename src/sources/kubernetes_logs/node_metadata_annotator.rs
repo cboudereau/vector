@@ -116,7 +116,7 @@ fn annotate_otel_from_metadata(
 #[cfg(test)]
 mod tests {
     use similar_asserts::assert_eq;
-    use vector_lib::lookup::{event_path, lookup_v2::parse_target_path, metadata_path};
+    use vector_lib::lookup::{lookup_v2::parse_target_path, metadata_path};
 
     use super::*;
     use crate::event::OtelLog;
@@ -175,13 +175,14 @@ mod tests {
                     ..ObjectMeta::default()
                 },
                 {
+                    // annotate_from_metadata uses insert_source_metadata → always metadata path
                     let mut log = OtelLog::default();
                     log.insert(
-                        event_path!("kubernetes", "node_labels", "sandbox0-label0"),
+                        metadata_path!("kubernetes_logs", "node_labels", "sandbox0-label0"),
                         "val0",
                     );
                     log.insert(
-                        event_path!("kubernetes", "node_labels", "sandbox0-label1"),
+                        metadata_path!("kubernetes_logs", "node_labels", "sandbox0-label1"),
                         "val1",
                     );
                     log
@@ -206,9 +207,10 @@ mod tests {
                     ..ObjectMeta::default()
                 },
                 {
+                    // annotate_from_metadata ignores FieldsSpec; always stores in metadata
                     let mut log = OtelLog::default();
-                    log.insert(event_path!("node_labels", "sandbox0-label0"), "val0");
-                    log.insert(event_path!("node_labels", "sandbox0-label1"), "val1");
+                    log.insert(metadata_path!("kubernetes_logs", "node_labels", "sandbox0-label0"), "val0");
+                    log.insert(metadata_path!("kubernetes_logs", "node_labels", "sandbox0-label1"), "val1");
                     log
                 },
                 LogNamespace::Vector,

@@ -178,7 +178,7 @@ async fn run(
 mod tests {
     use futures::Stream;
     use tokio::time::{Duration, sleep};
-    use vector_lib::{event::Value, lookup::OwnedTargetPath};
+    use vector_lib::event::Value;
     use vrl::value::kind::Collection;
 
     use serial_test::serial;
@@ -361,60 +361,28 @@ mod tests {
             .remove(0)
             .schema_definition(true);
 
-        let expected_definition =
-            Definition::new_with_default_metadata(Kind::bytes(), [LogNamespace::Vector])
-                .with_meaning(OwnedTargetPath::event_root(), "message")
-                .with_metadata_field(
-                    &owned_value_path!("vector", "source_type"),
-                    Kind::bytes(),
-                    None,
-                )
-                .with_metadata_field(
-                    &owned_value_path!(InternalLogsConfig::NAME, "pid"),
-                    Kind::integer(),
-                    None,
-                )
-                .with_metadata_field(
-                    &owned_value_path!("vector", "ingest_timestamp"),
-                    Kind::timestamp(),
-                    None,
-                )
-                .with_metadata_field(
-                    &owned_value_path!(InternalLogsConfig::NAME, "host"),
-                    Kind::bytes().or_undefined(),
-                    Some("host"),
-                );
-
-        assert_eq!(definitions, Some(expected_definition))
-    }
-
-    #[test]
-    fn output_schema_definition_legacy_namespace() {
-        let mut config = InternalLogsConfig::default();
-
-        let pid_key = "pid_a_pid_a_pid_pid_pid";
-
-        config.pid_key = OptionalValuePath::from(owned_value_path!(pid_key));
-
-        let definitions = config
-            .outputs(LogNamespace::Vector)
-            .remove(0)
-            .schema_definition(true);
-
         let expected_definition = Definition::new_with_default_metadata(
             Kind::object(Collection::empty()),
             [LogNamespace::Vector],
         )
-        .with_event_field(
-            &owned_value_path!("body"),
+        .with_event_field(&owned_value_path!("body"), Kind::bytes(), Some("message"))
+        .with_metadata_field(
+            &owned_value_path!("vector", "source_type"),
             Kind::bytes(),
-            Some("message"),
+            None,
         )
-        .with_event_field(&owned_value_path!("resource", "source_type"), Kind::bytes(), None)
-        .with_event_field(&owned_value_path!(pid_key), Kind::integer(), None)
-        .with_event_field(&owned_value_path!("time_unix_nano"), Kind::integer(), None)
-        .with_event_field(
-            &owned_value_path!("resource", "host.name"),
+        .with_metadata_field(
+            &owned_value_path!(InternalLogsConfig::NAME, "pid"),
+            Kind::integer(),
+            None,
+        )
+        .with_metadata_field(
+            &owned_value_path!("vector", "ingest_timestamp"),
+            Kind::timestamp(),
+            None,
+        )
+        .with_metadata_field(
+            &owned_value_path!(InternalLogsConfig::NAME, "host"),
             Kind::bytes().or_undefined(),
             Some("host"),
         );

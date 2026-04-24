@@ -170,6 +170,11 @@ async fn multiple_inputs_backpressure() {
 // Wait until the source has sent at least the expected number of events, plus a small additional
 // margin to ensure we allow it to run over the expected amount if it's going to.
 async fn wait_until_expected(source_counter: impl AsRef<AtomicUsize>, expected: usize) {
-    crate::test_util::wait_for_atomic_usize(source_counter, |count| count >= expected).await;
+    let value = source_counter.as_ref();
+    crate::test_util::wait_for_duration(
+        || std::future::ready(value.load(Ordering::SeqCst) >= expected),
+        Duration::from_secs(30),
+    )
+    .await;
     tokio::time::sleep(Duration::from_millis(100)).await;
 }

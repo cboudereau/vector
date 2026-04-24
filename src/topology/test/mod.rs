@@ -816,6 +816,7 @@ async fn topology_healthcheck_run_for_changes_on_reload() {
 #[tokio::test]
 async fn topology_disk_buffer_flushes_on_idle() {
     trace_init();
+    vector_lib::opentelemetry::buffer_codec::init();
 
     let tmpdir = tempfile::tempdir().expect("no tmpdir");
     let event = Event::Log(OtelLog::from("foo"));

@@ -25,7 +25,7 @@ use vector_lib::{
     },
     config::{DataType, LogNamespace},
     event::{MetricTags, metric::TagValue},
-    lookup::{OwnedTargetPath, owned_value_path},
+    lookup::owned_value_path,
     metric_tags,
 };
 use vrl::{
@@ -1580,46 +1580,43 @@ fn test_config_outputs() {
                                 Kind::bytes(),
                                 Some("message"),
                             )
-                            .with_event_field(
+                            .with_source_metadata(
+                                "datadog_agent",
                                 &owned_value_path!("status"),
                                 Kind::bytes(),
                                 Some("severity"),
                             )
-                            .with_event_field(
+                            .with_source_metadata(
+                                "datadog_agent",
                                 &owned_value_path!("timestamp"),
                                 Kind::timestamp(),
                                 Some("timestamp"),
                             )
-                            .with_event_field(
+                            .with_source_metadata(
+                                "datadog_agent",
                                 &owned_value_path!("hostname"),
                                 Kind::bytes(),
                                 Some("host"),
                             )
-                            .with_event_field(
+                            .with_source_metadata(
+                                "datadog_agent",
                                 &owned_value_path!("service"),
                                 Kind::bytes(),
                                 Some("service"),
                             )
-                            .with_event_field(
+                            .with_source_metadata(
+                                "datadog_agent",
                                 &owned_value_path!("ddsource"),
                                 Kind::bytes(),
                                 Some("source"),
                             )
-                            .with_event_field(
+                            .with_source_metadata(
+                                "datadog_agent",
                                 &owned_value_path!("ddtags"),
                                 Kind::bytes(),
                                 Some("tags"),
                             )
-                            .with_event_field(
-                                &owned_value_path!("resource", "source_type"),
-                                Kind::bytes(),
-                                None,
-                            )
-                            .with_event_field(
-                                &owned_value_path!("time_unix_nano"),
-                                Kind::integer(),
-                                None,
-                            ),
+                            .with_standard_vector_source_metadata(),
                     ),
                 )]),
             },
@@ -1638,46 +1635,43 @@ fn test_config_outputs() {
                                 Kind::bytes(),
                                 Some("message"),
                             )
-                            .with_event_field(
+                            .with_source_metadata(
+                                "datadog_agent",
                                 &owned_value_path!("status"),
                                 Kind::bytes(),
                                 Some("severity"),
                             )
-                            .with_event_field(
+                            .with_source_metadata(
+                                "datadog_agent",
                                 &owned_value_path!("timestamp"),
                                 Kind::timestamp(),
                                 Some("timestamp"),
                             )
-                            .with_event_field(
+                            .with_source_metadata(
+                                "datadog_agent",
                                 &owned_value_path!("hostname"),
                                 Kind::bytes(),
                                 Some("host"),
                             )
-                            .with_event_field(
+                            .with_source_metadata(
+                                "datadog_agent",
                                 &owned_value_path!("service"),
                                 Kind::bytes(),
                                 Some("service"),
                             )
-                            .with_event_field(
+                            .with_source_metadata(
+                                "datadog_agent",
                                 &owned_value_path!("ddsource"),
                                 Kind::bytes(),
                                 Some("source"),
                             )
-                            .with_event_field(
+                            .with_source_metadata(
+                                "datadog_agent",
                                 &owned_value_path!("ddtags"),
                                 Kind::bytes(),
                                 Some("tags"),
                             )
-                            .with_event_field(
-                                &owned_value_path!("resource", "source_type"),
-                                Kind::bytes(),
-                                None,
-                            )
-                            .with_event_field(
-                                &owned_value_path!("time_unix_nano"),
-                                Kind::integer(),
-                                None,
-                            ),
+                            .with_standard_vector_source_metadata(),
                     ),
                 )]),
             },
@@ -1697,46 +1691,43 @@ fn test_config_outputs() {
                                     Kind::bytes(),
                                     Some("message"),
                                 )
-                                .with_event_field(
+                                .with_source_metadata(
+                                    "datadog_agent",
                                     &owned_value_path!("status"),
                                     Kind::bytes(),
                                     Some("severity"),
                                 )
-                                .with_event_field(
+                                .with_source_metadata(
+                                    "datadog_agent",
                                     &owned_value_path!("timestamp"),
                                     Kind::timestamp(),
                                     Some("timestamp"),
                                 )
-                                .with_event_field(
-                                    &owned_value_path!("time_unix_nano"),
-                                    Kind::integer(),
-                                    None,
-                                )
-                                .with_event_field(
+                                .with_source_metadata(
+                                    "datadog_agent",
                                     &owned_value_path!("hostname"),
                                     Kind::bytes(),
                                     Some("host"),
                                 )
-                                .with_event_field(
+                                .with_source_metadata(
+                                    "datadog_agent",
                                     &owned_value_path!("service"),
                                     Kind::bytes(),
                                     Some("service"),
                                 )
-                                .with_event_field(
+                                .with_source_metadata(
+                                    "datadog_agent",
                                     &owned_value_path!("ddsource"),
                                     Kind::bytes(),
                                     Some("source"),
                                 )
-                                .with_event_field(
+                                .with_source_metadata(
+                                    "datadog_agent",
                                     &owned_value_path!("ddtags"),
                                     Kind::bytes(),
                                     Some("tags"),
                                 )
-                                .with_event_field(
-                                    &owned_value_path!("resource", "source_type"),
-                                    Kind::bytes(),
-                                    None,
-                                ),
+                                .with_standard_vector_source_metadata(),
                         ),
                     ),
                     (Some(METRICS), None),
@@ -1752,20 +1743,15 @@ fn test_config_outputs() {
                 want: HashMap::from([(
                     None,
                     Some(
-                        schema::Definition::empty_legacy_namespace()
-                            .unknown_fields(Kind::json())
-                            .with_event_field(
-                                &owned_value_path!("timestamp"),
-                                Kind::json().or_timestamp(),
-                                None,
-                            )
-                            .with_event_field(&owned_value_path!("resource", "source_type"), Kind::json(), None)
-                            .with_event_field(&owned_value_path!("ddsource"), Kind::json(), None)
-                            .with_event_field(&owned_value_path!("ddtags"), Kind::json(), None)
-                            .with_event_field(&owned_value_path!("hostname"), Kind::json(), None)
-                            .with_event_field(&owned_value_path!("service"), Kind::json(), None)
-                            .with_event_field(&owned_value_path!("status"), Kind::json(), None)
-                            .with_event_field(&owned_value_path!("time_unix_nano"), Kind::json(), None),
+                        DeserializerConfig::Json(Default::default())
+                            .schema_definition(LogNamespace::Vector)
+                            .with_source_metadata("datadog_agent", &owned_value_path!("status"), Kind::bytes(), Some("severity"))
+                            .with_source_metadata("datadog_agent", &owned_value_path!("timestamp"), Kind::timestamp(), Some("timestamp"))
+                            .with_source_metadata("datadog_agent", &owned_value_path!("hostname"), Kind::bytes(), Some("host"))
+                            .with_source_metadata("datadog_agent", &owned_value_path!("service"), Kind::bytes(), Some("service"))
+                            .with_source_metadata("datadog_agent", &owned_value_path!("ddsource"), Kind::bytes(), Some("source"))
+                            .with_source_metadata("datadog_agent", &owned_value_path!("ddtags"), Kind::bytes(), Some("tags"))
+                            .with_standard_vector_source_metadata(),
                     ),
                 )]),
             },
@@ -1779,32 +1765,15 @@ fn test_config_outputs() {
                     (
                         Some(LOGS),
                         Some(
-                            schema::Definition::empty_legacy_namespace()
-                                .unknown_fields(Kind::json())
-                                .with_event_field(
-                                    &owned_value_path!("timestamp"),
-                                    Kind::json().or_timestamp(),
-                                    None,
-                                )
-                                .with_event_field(
-                                    &owned_value_path!("resource", "source_type"),
-                                    Kind::json(),
-                                    None,
-                                )
-                                .with_event_field(
-                                    &owned_value_path!("ddsource"),
-                                    Kind::json(),
-                                    None,
-                                )
-                                .with_event_field(&owned_value_path!("ddtags"), Kind::json(), None)
-                                .with_event_field(
-                                    &owned_value_path!("hostname"),
-                                    Kind::json(),
-                                    None,
-                                )
-                                .with_event_field(&owned_value_path!("service"), Kind::json(), None)
-                                .with_event_field(&owned_value_path!("status"), Kind::json(), None)
-                                .with_event_field(&owned_value_path!("time_unix_nano"), Kind::json(), None),
+                            DeserializerConfig::Json(Default::default())
+                                .schema_definition(LogNamespace::Vector)
+                                .with_source_metadata("datadog_agent", &owned_value_path!("status"), Kind::bytes(), Some("severity"))
+                                .with_source_metadata("datadog_agent", &owned_value_path!("timestamp"), Kind::timestamp(), Some("timestamp"))
+                                .with_source_metadata("datadog_agent", &owned_value_path!("hostname"), Kind::bytes(), Some("host"))
+                                .with_source_metadata("datadog_agent", &owned_value_path!("service"), Kind::bytes(), Some("service"))
+                                .with_source_metadata("datadog_agent", &owned_value_path!("ddsource"), Kind::bytes(), Some("source"))
+                                .with_source_metadata("datadog_agent", &owned_value_path!("ddtags"), Kind::bytes(), Some("tags"))
+                                .with_standard_vector_source_metadata(),
                         ),
                     ),
                     (Some(METRICS), None),
@@ -1821,73 +1790,15 @@ fn test_config_outputs() {
                 want: HashMap::from([(
                     None,
                     Some(
-                        schema::Definition::empty_legacy_namespace()
-                            .with_event_field(
-                                &owned_value_path!("body"),
-                                Kind::bytes(),
-                                Some("message"),
-                            )
-                            .with_event_field(
-                                &owned_value_path!("time_unix_nano"),
-                                Kind::integer(),
-                                Some("timestamp"),
-                            )
-                            .with_event_field(
-                                &owned_value_path!("timestamp"),
-                                Kind::timestamp().or_object(Collection::from_unknown(Kind::bytes())),
-                                None,
-                            )
-                            .with_event_field(
-                                &owned_value_path!("hostname"),
-                                Kind::bytes(),
-                                Some("host"),
-                            )
-                            .optional_field(
-                                &owned_value_path!("severity"),
-                                Kind::bytes(),
-                                Some("severity"),
-                            )
-                            .optional_field(&owned_value_path!("facility"), Kind::bytes(), None)
-                            .optional_field(&owned_value_path!("version"), Kind::integer(), None)
-                            .optional_field(
-                                &owned_value_path!("appname"),
-                                Kind::bytes(),
-                                Some("service"),
-                            )
-                            .optional_field(&owned_value_path!("msgid"), Kind::bytes(), None)
-                            .optional_field(
-                                &owned_value_path!("procid"),
-                                Kind::integer().or_bytes(),
-                                None,
-                            )
-                            .unknown_fields(Kind::object(
-                                vrl::value::kind::Collection::from_unknown(Kind::bytes()),
-                            ))
-                            .with_event_field(
-                                &owned_value_path!("resource", "source_type"),
-                                Kind::bytes(),
-                                None,
-                            )
-                            .with_event_field(
-                                &owned_value_path!("ddsource"),
-                                Kind::bytes().or_object(Collection::from_unknown(Kind::bytes())),
-                                None,
-                            )
-                            .with_event_field(
-                                &owned_value_path!("ddtags"),
-                                Kind::bytes().or_object(Collection::from_unknown(Kind::bytes())),
-                                None,
-                            )
-                            .with_event_field(
-                                &owned_value_path!("service"),
-                                Kind::bytes().or_object(Collection::from_unknown(Kind::bytes())),
-                                None,
-                            )
-                            .with_event_field(
-                                &owned_value_path!("status"),
-                                Kind::bytes().or_object(Collection::from_unknown(Kind::bytes())),
-                                None,
-                            ),
+                        DeserializerConfig::Syslog(Default::default())
+                            .schema_definition(LogNamespace::Vector)
+                            .with_source_metadata("datadog_agent", &owned_value_path!("status"), Kind::bytes(), Some("severity"))
+                            .with_source_metadata("datadog_agent", &owned_value_path!("timestamp"), Kind::timestamp(), Some("timestamp"))
+                            .with_source_metadata("datadog_agent", &owned_value_path!("hostname"), Kind::bytes(), Some("host"))
+                            .with_source_metadata("datadog_agent", &owned_value_path!("service"), Kind::bytes(), Some("service"))
+                            .with_source_metadata("datadog_agent", &owned_value_path!("ddsource"), Kind::bytes(), Some("source"))
+                            .with_source_metadata("datadog_agent", &owned_value_path!("ddtags"), Kind::bytes(), Some("tags"))
+                            .with_standard_vector_source_metadata(),
                     ),
                 )]),
             },
@@ -1902,81 +1813,15 @@ fn test_config_outputs() {
                     (
                         Some(LOGS),
                         Some(
-                            schema::Definition::empty_legacy_namespace()
-                                .with_event_field(
-                                    &owned_value_path!("body"),
-                                    Kind::bytes(),
-                                    Some("message"),
-                                )
-                                .with_event_field(
-                                    &owned_value_path!("time_unix_nano"),
-                                    Kind::integer(),
-                                    Some("timestamp"),
-                                )
-                                .with_event_field(
-                                    &owned_value_path!("timestamp"),
-                                    Kind::timestamp().or_object(Collection::from_unknown(Kind::bytes())),
-                                    None,
-                                )
-                                .with_event_field(
-                                    &owned_value_path!("hostname"),
-                                    Kind::bytes(),
-                                    Some("host"),
-                                )
-                                .optional_field(
-                                    &owned_value_path!("severity"),
-                                    Kind::bytes(),
-                                    Some("severity"),
-                                )
-                                .optional_field(&owned_value_path!("facility"), Kind::bytes(), None)
-                                .optional_field(
-                                    &owned_value_path!("version"),
-                                    Kind::integer(),
-                                    None,
-                                )
-                                .optional_field(
-                                    &owned_value_path!("appname"),
-                                    Kind::bytes(),
-                                    Some("service"),
-                                )
-                                .optional_field(&owned_value_path!("msgid"), Kind::bytes(), None)
-                                .optional_field(
-                                    &owned_value_path!("procid"),
-                                    Kind::integer().or_bytes(),
-                                    None,
-                                )
-                                .unknown_fields(Kind::object(
-                                    vrl::value::kind::Collection::from_unknown(Kind::bytes()),
-                                ))
-                                .with_event_field(
-                                    &owned_value_path!("resource", "source_type"),
-                                    Kind::bytes(),
-                                    None,
-                                )
-                                .with_event_field(
-                                    &owned_value_path!("ddsource"),
-                                    Kind::bytes()
-                                        .or_object(Collection::from_unknown(Kind::bytes())),
-                                    None,
-                                )
-                                .with_event_field(
-                                    &owned_value_path!("ddtags"),
-                                    Kind::bytes()
-                                        .or_object(Collection::from_unknown(Kind::bytes())),
-                                    None,
-                                )
-                                .with_event_field(
-                                    &owned_value_path!("service"),
-                                    Kind::bytes()
-                                        .or_object(Collection::from_unknown(Kind::bytes())),
-                                    None,
-                                )
-                                .with_event_field(
-                                    &owned_value_path!("status"),
-                                    Kind::bytes()
-                                        .or_object(Collection::from_unknown(Kind::bytes())),
-                                    None,
-                                ),
+                            DeserializerConfig::Syslog(Default::default())
+                                .schema_definition(LogNamespace::Vector)
+                                .with_source_metadata("datadog_agent", &owned_value_path!("status"), Kind::bytes(), Some("severity"))
+                                .with_source_metadata("datadog_agent", &owned_value_path!("timestamp"), Kind::timestamp(), Some("timestamp"))
+                                .with_source_metadata("datadog_agent", &owned_value_path!("hostname"), Kind::bytes(), Some("host"))
+                                .with_source_metadata("datadog_agent", &owned_value_path!("service"), Kind::bytes(), Some("service"))
+                                .with_source_metadata("datadog_agent", &owned_value_path!("ddsource"), Kind::bytes(), Some("source"))
+                                .with_source_metadata("datadog_agent", &owned_value_path!("ddtags"), Kind::bytes(), Some("tags"))
+                                .with_standard_vector_source_metadata(),
                         ),
                     ),
                     (Some(METRICS), None),
@@ -2247,47 +2092,52 @@ fn test_output_schema_definition_json_vector_namespace() {
     assert_eq!(
         definition,
         Some(
-            Definition::new_with_default_metadata(Kind::json(), [LogNamespace::Vector])
-                .with_metadata_field(
-                    &owned_value_path!("datadog_agent", "ddsource"),
-                    Kind::bytes(),
-                    Some("source")
-                )
-                .with_metadata_field(
-                    &owned_value_path!("datadog_agent", "ddtags"),
-                    Kind::bytes(),
-                    Some("tags")
-                )
-                .with_metadata_field(
-                    &owned_value_path!("datadog_agent", "hostname"),
-                    Kind::bytes(),
-                    Some("host")
-                )
-                .with_metadata_field(
-                    &owned_value_path!("datadog_agent", "service"),
-                    Kind::bytes(),
-                    Some("service")
-                )
-                .with_metadata_field(
-                    &owned_value_path!("datadog_agent", "status"),
-                    Kind::bytes(),
-                    Some("severity")
-                )
-                .with_metadata_field(
-                    &owned_value_path!("datadog_agent", "timestamp"),
-                    Kind::timestamp(),
-                    Some("timestamp")
-                )
-                .with_metadata_field(
-                    &owned_value_path!("vector", "ingest_timestamp"),
-                    Kind::timestamp(),
-                    None
-                )
-                .with_metadata_field(
-                    &owned_value_path!("vector", "source_type"),
-                    Kind::bytes(),
-                    None
-                )
+            Definition::new_with_default_metadata(
+                Kind::object(Collection::empty()),
+                [LogNamespace::Vector]
+            )
+            .unknown_fields(Kind::json())
+            .with_event_field(&owned_value_path!("time_unix_nano"), Kind::json(), None)
+            .with_metadata_field(
+                &owned_value_path!("datadog_agent", "ddsource"),
+                Kind::bytes(),
+                Some("source")
+            )
+            .with_metadata_field(
+                &owned_value_path!("datadog_agent", "ddtags"),
+                Kind::bytes(),
+                Some("tags")
+            )
+            .with_metadata_field(
+                &owned_value_path!("datadog_agent", "hostname"),
+                Kind::bytes(),
+                Some("host")
+            )
+            .with_metadata_field(
+                &owned_value_path!("datadog_agent", "service"),
+                Kind::bytes(),
+                Some("service")
+            )
+            .with_metadata_field(
+                &owned_value_path!("datadog_agent", "status"),
+                Kind::bytes(),
+                Some("severity")
+            )
+            .with_metadata_field(
+                &owned_value_path!("datadog_agent", "timestamp"),
+                Kind::timestamp(),
+                Some("timestamp")
+            )
+            .with_metadata_field(
+                &owned_value_path!("vector", "ingest_timestamp"),
+                Kind::timestamp(),
+                None
+            )
+            .with_metadata_field(
+                &owned_value_path!("vector", "source_type"),
+                Kind::bytes(),
+                None
+            )
         )
     )
 }
@@ -2306,136 +2156,49 @@ fn test_output_schema_definition_bytes_vector_namespace() {
     assert_eq!(
         definition,
         Some(
-            Definition::new_with_default_metadata(Kind::bytes(), [LogNamespace::Vector])
-                .with_metadata_field(
-                    &owned_value_path!("datadog_agent", "ddsource"),
-                    Kind::bytes(),
-                    Some("source")
-                )
-                .with_metadata_field(
-                    &owned_value_path!("datadog_agent", "ddtags"),
-                    Kind::bytes(),
-                    Some("tags")
-                )
-                .with_metadata_field(
-                    &owned_value_path!("datadog_agent", "hostname"),
-                    Kind::bytes(),
-                    Some("host")
-                )
-                .with_metadata_field(
-                    &owned_value_path!("datadog_agent", "service"),
-                    Kind::bytes(),
-                    Some("service")
-                )
-                .with_metadata_field(
-                    &owned_value_path!("datadog_agent", "status"),
-                    Kind::bytes(),
-                    Some("severity")
-                )
-                .with_metadata_field(
-                    &owned_value_path!("datadog_agent", "timestamp"),
-                    Kind::timestamp(),
-                    Some("timestamp")
-                )
-                .with_metadata_field(
-                    &owned_value_path!("vector", "ingest_timestamp"),
-                    Kind::timestamp(),
-                    None
-                )
-                .with_metadata_field(
-                    &owned_value_path!("vector", "source_type"),
-                    Kind::bytes(),
-                    None
-                )
-                .with_meaning(OwnedTargetPath::event_root(), "message")
-        )
-    )
-}
-
-#[test]
-fn test_output_schema_definition_json_legacy_namespace() {
-    let definition = toml::from_str::<DatadogAgentConfig>(indoc! { r#"
-            address = "0.0.0.0:8012"
-            decoding.codec = "json"
-        "#})
-    .unwrap()
-    .outputs(LogNamespace::Vector)
-    .remove(0)
-    .schema_definition(true);
-
-    assert_eq!(
-        definition,
-        Some(
-            Definition::new_with_default_metadata(Kind::json(), [LogNamespace::Vector])
-                .with_event_field(
-                    &owned_value_path!("time_unix_nano"),
-                    Kind::json(),
-                    None
-                )
-                .with_event_field(&owned_value_path!("ddsource"), Kind::json(), None)
-                .with_event_field(&owned_value_path!("ddtags"), Kind::json(), None)
-                .with_event_field(&owned_value_path!("hostname"), Kind::json(), None)
-                .with_event_field(&owned_value_path!("service"), Kind::json(), None)
-                .with_event_field(&owned_value_path!("resource", "source_type"), Kind::json(), None)
-                .with_event_field(&owned_value_path!("status"), Kind::json(), None)
-                .try_with_field(
-                    &owned_value_path!("timestamp"),
-                    Kind::timestamp(),
-                    Some("timestamp")
-                )
-        )
-    )
-}
-
-#[test]
-fn test_output_schema_definition_bytes_legacy_namespace() {
-    let definition = toml::from_str::<DatadogAgentConfig>(indoc! { r#"
-            address = "0.0.0.0:8012"
-            decoding.codec = "bytes"
-        "#})
-    .unwrap()
-    .outputs(LogNamespace::Vector)
-    .remove(0)
-    .schema_definition(true);
-
-    assert_eq!(
-        definition,
-        Some(
             Definition::new_with_default_metadata(
                 Kind::object(Collection::empty()),
                 [LogNamespace::Vector]
             )
-            .with_event_field(
-                &owned_value_path!("ddsource"),
+            .with_event_field(&owned_value_path!("body"), Kind::bytes(), Some("message"))
+            .with_metadata_field(
+                &owned_value_path!("datadog_agent", "ddsource"),
                 Kind::bytes(),
                 Some("source")
             )
-            .with_event_field(&owned_value_path!("ddtags"), Kind::bytes(), Some("tags"))
-            .with_event_field(&owned_value_path!("hostname"), Kind::bytes(), Some("host"))
-            .with_event_field(
-                &owned_value_path!("body"),
+            .with_metadata_field(
+                &owned_value_path!("datadog_agent", "ddtags"),
                 Kind::bytes(),
-                Some("message")
+                Some("tags")
             )
-            .with_event_field(
-                &owned_value_path!("service"),
+            .with_metadata_field(
+                &owned_value_path!("datadog_agent", "hostname"),
+                Kind::bytes(),
+                Some("host")
+            )
+            .with_metadata_field(
+                &owned_value_path!("datadog_agent", "service"),
                 Kind::bytes(),
                 Some("service")
             )
-            .with_event_field(&owned_value_path!("resource", "source_type"), Kind::bytes(), None)
-            .with_event_field(
-                &owned_value_path!("status"),
+            .with_metadata_field(
+                &owned_value_path!("datadog_agent", "status"),
                 Kind::bytes(),
                 Some("severity")
             )
-            .with_event_field(
-                &owned_value_path!("timestamp"),
+            .with_metadata_field(
+                &owned_value_path!("datadog_agent", "timestamp"),
                 Kind::timestamp(),
                 Some("timestamp")
             )
-            .try_with_field(
-                &owned_value_path!("time_unix_nano"),
-                Kind::integer(),
+            .with_metadata_field(
+                &owned_value_path!("vector", "ingest_timestamp"),
+                Kind::timestamp(),
+                None
+            )
+            .with_metadata_field(
+                &owned_value_path!("vector", "source_type"),
+                Kind::bytes(),
                 None
             )
         )

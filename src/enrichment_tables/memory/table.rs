@@ -1032,6 +1032,6 @@ mod tests {
         let event = events.remove(0);
         let log = event.as_log();
 
-        assert!(!log.value().is_empty());
+        assert!(!log.to_value_canonical().is_empty());
     }
 }

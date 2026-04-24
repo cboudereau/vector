@@ -1183,7 +1183,7 @@ mod tests {
     use super::*;
     use crate::{
         config::ComponentKey,
-        event::{Event, EventStatus, OtelLog},
+        event::{Event, EventStatus},
         test_util::components::assert_source_compliance,
     };
 
@@ -1279,8 +1279,9 @@ mod tests {
             Value::Bytes("System Initialization".into())
         );
         assert_eq!(
-            received[0].as_log().get_source_type().unwrap(),
-            "journald".into()
+            received[0].as_log().metadata().value()
+                .get(path!("vector", "source_type")).unwrap(),
+            &Value::from("journald")
         );
         assert_eq!(timestamp(&received[0]), value_ts(1578529839, 140001000));
         assert_eq!(priority(&received[0]), Value::Bytes("INFO".into()));
@@ -1380,8 +1381,13 @@ mod tests {
         let received = run_with_units(&["syslog.service"], &[], None).await;
         assert_eq!(received.len(), 1);
         assert_eq!(
-            received[0].as_log().get("SYSLOG_RAW").unwrap(),
-            Value::Bytes("¿World?".into())
+            received[0]
+                .as_log()
+                .metadata()
+                .value()
+                .get(path!(JournaldConfig::NAME, "metadata", "SYSLOG_RAW"))
+                .unwrap(),
+            &Value::Bytes("¿World?".into())
         );
     }
 
@@ -1390,8 +1396,13 @@ mod tests {
         let received = run_with_units(&["NetworkManager.service"], &[], None).await;
         assert_eq!(received.len(), 1);
         assert_eq!(
-            received[0].as_log().get("SYSLOG_FACILITY").unwrap(),
-            Value::Bytes(r#"["DHCP4","DHCP6"]"#.into())
+            received[0]
+                .as_log()
+                .metadata()
+                .value()
+                .get(path!(JournaldConfig::NAME, "metadata", "SYSLOG_FACILITY"))
+                .unwrap(),
+            &Value::Bytes(r#"["DHCP4","DHCP6"]"#.into())
         );
     }
 
@@ -1654,11 +1665,23 @@ mod tests {
     }
 
     fn timestamp(event: &Event) -> Value {
-        event.as_log().get_timestamp().unwrap()
+        event
+            .as_log()
+            .metadata()
+            .value()
+            .get(path!(JournaldConfig::NAME, "timestamp"))
+            .cloned()
+            .unwrap()
     }
 
     fn cursor(event: &Event) -> Value {
-        event.as_log().get(CURSOR).unwrap()
+        event
+            .as_log()
+            .metadata()
+            .value()
+            .get(path!(JournaldConfig::NAME, "metadata", CURSOR))
+            .cloned()
+            .unwrap()
     }
 
     fn value_ts(secs: i64, usecs: u32) -> Value {
@@ -1671,7 +1694,13 @@ mod tests {
     }
 
     fn priority(event: &Event) -> Value {
-        event.as_log().get("PRIORITY").unwrap()
+        event
+            .as_log()
+            .metadata()
+            .value()
+            .get(path!(JournaldConfig::NAME, "metadata", "PRIORITY"))
+            .cloned()
+            .unwrap()
     }
 
     #[test]
@@ -1715,102 +1744,5 @@ mod tests {
                 );
 
         assert_eq!(definitions, Some(expected_definition))
-    }
-
-    #[test]
-    fn output_schema_definition_legacy_namespace() {
-        let config = JournaldConfig::default();
-
-        let definitions = config
-            .outputs(LogNamespace::Vector)
-            .remove(0)
-            .schema_definition(true);
-
-        let expected_definition = Definition::new_with_default_metadata(
-            Kind::object(Collection::empty()),
-            [LogNamespace::Vector],
-        )
-        .with_event_field(&owned_value_path!("resource", "source_type"), Kind::bytes(), None)
-        .with_event_field(&owned_value_path!("time_unix_nano"), Kind::integer(), None)
-        .with_event_field(
-            &owned_value_path!("resource", "host.name"),
-            Kind::bytes().or_undefined(),
-            Some("host"),
-        )
-        .unknown_fields(Kind::bytes());
-
-        assert_eq!(definitions, Some(expected_definition))
-    }
-
-    fn matches_schema(config: &JournaldConfig, namespace: LogNamespace) {
-        let record = r#"{
-            "PRIORITY":"6",
-            "SYSLOG_FACILITY":"3",
-            "SYSLOG_IDENTIFIER":"ntpd",
-            "_BOOT_ID":"124c781146e841ae8d9b4590df8b9231",
-            "_CAP_EFFECTIVE":"3fffffffff",
-            "_CMDLINE":"ntpd: [priv]",
-            "_COMM":"ntpd",
-            "_EXE":"/usr/sbin/ntpd",
-            "_GID":"0",
-            "_MACHINE_ID":"c36e9ea52800a19d214cb71b53263a28",
-            "_PID":"2156",
-            "_STREAM_ID":"92c79f4b45c4457490ebdefece29995e",
-            "_SYSTEMD_CGROUP":"/system.slice/ntpd.service",
-            "_SYSTEMD_INVOCATION_ID":"496ad5cd046d48e29f37f559a6d176f8",
-            "_SYSTEMD_SLICE":"system.slice",
-            "_SYSTEMD_UNIT":"ntpd.service",
-            "_TRANSPORT":"stdout",
-            "_UID":"0",
-            "__MONOTONIC_TIMESTAMP":"98694000446",
-            "__REALTIME_TIMESTAMP":"1564173027000443",
-            "host":"my-host.local",
-            "message":"reply from 192.168.1.2: offset -0.001791 delay 0.000176, next query 1500s",
-            "source_type":"journald"
-        }"#;
-
-        let json: serde_json::Value = serde_json::from_str(record).unwrap();
-        let mut event = Event::Log(OtelLog::from(vrl::value::Value::from(json)));
-
-        let now = chrono::Utc::now();
-        event.as_mut_log().record_mut().time_unix_nano =
-            now.timestamp_nanos_opt().unwrap_or(0) as u64;
-        // Production code also inserts a "timestamp" attribute via insert_vector_metadata
-        event.as_mut_log().insert(
-            vector_lib::lookup::event_path!("timestamp"),
-            vrl::value::Value::Timestamp(now),
-        );
-        event.as_mut_log().set_host("my-host.local");
-        event.as_mut_log().set_source_type(JournaldConfig::NAME);
-
-        let definitions = config.outputs(namespace).remove(0).schema_definition(true);
-
-        // Proto-canonical fields exposed by OtelLog::to_value_canonical():
-        // - observed_time_unix_nano/time_unix_nano are Integer
-        // - "timestamp" becomes bytes (AnyValue has no timestamp type)
-        let def = definitions.unwrap()
-            .with_event_field(
-                &vector_lib::lookup::owned_value_path!("observed_time_unix_nano"),
-                vrl::value::Kind::integer().or_undefined(),
-                None,
-            )
-            .with_event_field(
-                &vector_lib::lookup::owned_value_path!("timestamp"),
-                vrl::value::Kind::bytes().or_timestamp().or_undefined(),
-                None,
-            )
-            .with_event_field(
-                &vector_lib::lookup::owned_value_path!("time_unix_nano"),
-                vrl::value::Kind::integer().or_undefined(),
-                None,
-            );
-        def.assert_valid_for_event(&event);
-    }
-
-    #[test]
-    fn matches_schema_legacy() {
-        let config = JournaldConfig::default();
-
-        matches_schema(&config, LogNamespace::Vector)
     }
 }

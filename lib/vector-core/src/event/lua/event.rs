@@ -17,8 +17,11 @@ impl IntoLua for LuaEvent {
         let table = lua.create_table()?;
         match self.event {
             Event::Log(otel_log) => {
-                // Flatten OtelLog to a Value for Lua field compatibility
-                let value = otel_log.value();
+                // Always use the canonical proto layout so Lua sees a table,
+                // regardless of the internal namespace setting.  `value()`
+                // would return only the body scalar in Vector-namespace mode,
+                // which is not a Lua table and breaks all field-access code.
+                let value = otel_log.to_value_canonical();
                 table.raw_set("log", value.into_lua(lua)?)?
             }
             Event::Metric(otel_metric) => {

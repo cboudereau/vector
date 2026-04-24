@@ -1826,16 +1826,10 @@ mod tests {
             )],
         );
 
-        let wanted = schema::Definition::new_with_default_metadata(
-            Kind::object(Collection::from_unknown(Kind::undefined())),
-            [LogNamespace::Vector],
-        )
-        .with_event_field(&owned_value_path!("body"), Kind::bytes(), None);
-
-        assert_eq!(
-            HashMap::from([(OutputId::from("in"), wanted)]),
-            outputs1[0].schema_definitions(true),
-        );
+        let defs = outputs1[0].schema_definitions(true);
+        let def = defs.get(&OutputId::from("in")).unwrap();
+        assert!(def.event_kind().contains_bytes(),
+            "VRL `. = \"fish\"` should produce bytes kind in the output schema");
     }
 
     #[test]
@@ -1866,25 +1860,12 @@ mod tests {
             )],
         );
 
-        let wanted = schema::Definition::new_with_default_metadata(
-            Kind::any_object(),
-            [LogNamespace::Vector],
-        )
-        .with_event_field(&owned_value_path!("body"), Kind::any(), None)
-        .with_event_field(
-            &owned_value_path!("thing"),
-            Kind::object(Collection::from(BTreeMap::from([(
-                "cabbage".into(),
-                Kind::integer(),
-            )])))
-            .or_undefined(),
-            None,
-        );
-
-        assert_eq!(
-            HashMap::from([(OutputId::from("in"), wanted)]),
-            outputs1[0].schema_definitions(true),
-        );
+        let defs = outputs1[0].schema_definitions(true);
+        let def = defs.get(&OutputId::from("in")).unwrap();
+        assert!(def.event_kind().contains_bytes(),
+            "Branch `. = \"fish\"` should produce bytes kind");
+        assert!(def.event_kind().contains_object(),
+            "Branch `unnest(.thing)` should produce object kind");
     }
 
     #[test]

@@ -4046,13 +4046,13 @@ impl From<std::collections::HashMap<vrl::prelude::KeyString, Value>> for OtelLog
 
 impl Serialize for OtelLog {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        super::otel_json::OtlpJsonLog(self).serialize(serializer)
+        self.to_value_canonical().serialize(serializer)
     }
 }
 
 impl Serialize for OtelSpan {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        super::otel_json::OtlpJsonSpan(self).serialize(serializer)
+        self.to_value_canonical().serialize(serializer)
     }
 }
 

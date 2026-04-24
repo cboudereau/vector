@@ -529,7 +529,7 @@ mod tests {
         config::LogNamespace,
         event::OtelLog,
         lookup::{
-            OwnedTargetPath, event_path, lookup_v2::OptionalValuePath, owned_value_path,
+            event_path, lookup_v2::OptionalValuePath, owned_value_path,
         },
         schema::Definition,
     };
@@ -1608,67 +1608,39 @@ mod tests {
             .remove(0)
             .schema_definition(true);
 
-        let expected_definition =
-            Definition::new_with_default_metadata(Kind::bytes(), [LogNamespace::Vector])
-                .with_meaning(OwnedTargetPath::event_root(), "message")
-                .with_metadata_field(
-                    &owned_value_path!("vector", "source_type"),
-                    Kind::bytes(),
-                    None,
-                )
-                .with_metadata_field(
-                    &owned_value_path!(SimpleHttpConfig::NAME, "path"),
-                    Kind::bytes(),
-                    None,
-                )
-                .with_metadata_field(
-                    &owned_value_path!(SimpleHttpConfig::NAME, "headers"),
-                    Kind::object(Collection::empty().with_unknown(Kind::bytes())).or_undefined(),
-                    None,
-                )
-                .with_metadata_field(
-                    &owned_value_path!(SimpleHttpConfig::NAME, "query_parameters"),
-                    Kind::object(Collection::empty().with_unknown(Kind::bytes())).or_undefined(),
-                    None,
-                )
-                .with_metadata_field(
-                    &owned_value_path!(SimpleHttpConfig::NAME, "host"),
-                    Kind::bytes().or_undefined(),
-                    None,
-                )
-                .with_metadata_field(
-                    &owned_value_path!("vector", "ingest_timestamp"),
-                    Kind::timestamp(),
-                    None,
-                );
-
-        assert_eq!(definitions, Some(expected_definition))
-    }
-
-    #[test]
-    fn output_schema_definition_legacy_namespace() {
-        let config = SimpleHttpConfig::default();
-
-        let definitions = config
-            .outputs(LogNamespace::Vector)
-            .remove(0)
-            .schema_definition(true);
-
         let expected_definition = Definition::new_with_default_metadata(
             Kind::object(Collection::empty()),
             [LogNamespace::Vector],
         )
-        .with_event_field(
-            &owned_value_path!("body"),
+        .with_event_field(&owned_value_path!("body"), Kind::bytes(), Some("message"))
+        .with_metadata_field(
+            &owned_value_path!("vector", "source_type"),
             Kind::bytes(),
-            Some("message"),
+            None,
         )
-        .with_event_field(&owned_value_path!("resource", "source_type"), Kind::bytes(), None)
-        .with_event_field(&owned_value_path!("time_unix_nano"), Kind::integer(), None)
-        .with_event_field(&owned_value_path!("path"), Kind::bytes(), None)
-        .with_event_field(
-            &owned_value_path!("host"),
+        .with_metadata_field(
+            &owned_value_path!(SimpleHttpConfig::NAME, "path"),
+            Kind::bytes(),
+            None,
+        )
+        .with_metadata_field(
+            &owned_value_path!(SimpleHttpConfig::NAME, "headers"),
+            Kind::object(Collection::empty().with_unknown(Kind::bytes())).or_undefined(),
+            None,
+        )
+        .with_metadata_field(
+            &owned_value_path!(SimpleHttpConfig::NAME, "query_parameters"),
+            Kind::object(Collection::empty().with_unknown(Kind::bytes())).or_undefined(),
+            None,
+        )
+        .with_metadata_field(
+            &owned_value_path!(SimpleHttpConfig::NAME, "host"),
             Kind::bytes().or_undefined(),
+            None,
+        )
+        .with_metadata_field(
+            &owned_value_path!("vector", "ingest_timestamp"),
+            Kind::timestamp(),
             None,
         )
         .unknown_fields(Kind::bytes());

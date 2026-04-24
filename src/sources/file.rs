@@ -929,61 +929,32 @@ mod tests {
         assert_eq!(
             definitions,
             Some(
-                Definition::new_with_default_metadata(Kind::bytes(), [LogNamespace::Vector])
-                    .with_meaning(OwnedTargetPath::event_root(), "message")
-                    .with_metadata_field(
-                        &owned_value_path!("vector", "source_type"),
-                        Kind::bytes(),
-                        None
-                    )
-                    .with_metadata_field(
-                        &owned_value_path!("vector", "ingest_timestamp"),
-                        Kind::timestamp(),
-                        None
-                    )
-                    .with_metadata_field(
-                        &owned_value_path!("file", "host"),
-                        Kind::bytes().or_undefined(),
-                        Some("host")
-                    )
-                    .with_metadata_field(
-                        &owned_value_path!("file", "offset"),
-                        Kind::integer(),
-                        None
-                    )
-                    .with_metadata_field(&owned_value_path!("file", "path"), Kind::bytes(), None)
-            )
-        )
-    }
-
-    #[test]
-    fn output_schema_definition_legacy_namespace() {
-        let definitions = FileConfig::default()
-            .outputs(LogNamespace::Vector)
-            .remove(0)
-            .schema_definition(true);
-
-        assert_eq!(
-            definitions,
-            Some(
                 Definition::new_with_default_metadata(
                     Kind::object(Collection::empty()),
                     [LogNamespace::Vector]
                 )
-                .with_event_field(
-                    &owned_value_path!("body"),
+                .with_event_field(&owned_value_path!("body"), Kind::bytes(), Some("message"))
+                .with_metadata_field(
+                    &owned_value_path!("vector", "source_type"),
                     Kind::bytes(),
-                    Some("message")
+                    None
                 )
-                .with_event_field(&owned_value_path!("resource", "source_type"), Kind::bytes(), None)
-                .with_event_field(&owned_value_path!("time_unix_nano"), Kind::integer(), None)
-                .with_event_field(
-                    &owned_value_path!("resource", "host.name"),
+                .with_metadata_field(
+                    &owned_value_path!("vector", "ingest_timestamp"),
+                    Kind::timestamp(),
+                    None
+                )
+                .with_metadata_field(
+                    &owned_value_path!("file", "host"),
                     Kind::bytes().or_undefined(),
                     Some("host")
                 )
-                .with_event_field(&owned_value_path!("offset"), Kind::undefined(), None)
-                .with_event_field(&owned_value_path!("file"), Kind::bytes(), None)
+                .with_metadata_field(
+                    &owned_value_path!("file", "offset"),
+                    Kind::integer(),
+                    None
+                )
+                .with_metadata_field(&owned_value_path!("file", "path"), Kind::bytes(), None)
             )
         )
     }
@@ -2348,7 +2319,7 @@ mod tests {
         Acks,        // Full acknowledgements and proper finalization
     }
     use AckingMode::*;
-    use vector_lib::lookup::OwnedTargetPath;
+
 
     async fn run_file_source(
         config: &FileConfig,

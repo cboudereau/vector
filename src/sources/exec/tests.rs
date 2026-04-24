@@ -22,7 +22,8 @@ fn test_scheduled_handle_event() {
     let data_stream = Some(STDOUT.to_string());
     let pid = Some(8888_u32);
 
-    let mut event = OtelLog::from("hello world").into();
+    let mut event: Event =
+        OtelLog::from_value_map(value!("hello world"), EventMetadata::default()).into();
     handle_event(
         &config,
         &hostname,
@@ -32,14 +33,33 @@ fn test_scheduled_handle_event() {
         LogNamespace::Vector,
     );
     let log = event.as_log();
+    let meta = log.metadata().value();
 
-    assert_eq!(log.get_host().unwrap(), "Some.Machine".into());
-    assert_eq!(log.get(STREAM_KEY).unwrap(), STDOUT.into());
-    assert_eq!(log.get(PID_KEY).unwrap(), (8888_i64).into());
-    assert_eq!(log.get(COMMAND_KEY).unwrap(), config.command.into());
-    assert_eq!(log.get_body().unwrap(), "hello world".into());
-    assert_eq!(log.get_source_type().unwrap(), "exec".into());
-    assert!(log.get_timestamp().is_some());
+    assert_eq!(
+        meta.get(path!(ExecConfig::NAME, "host")).unwrap(),
+        &value!("Some.Machine")
+    );
+    assert_eq!(
+        meta.get(path!(ExecConfig::NAME, STREAM_KEY)).unwrap(),
+        &value!(STDOUT)
+    );
+    assert_eq!(
+        meta.get(path!(ExecConfig::NAME, PID_KEY)).unwrap(),
+        &value!(8888_i64)
+    );
+    assert_eq!(
+        meta.get(path!(ExecConfig::NAME, COMMAND_KEY)).unwrap(),
+        &value!(config.command)
+    );
+    assert_eq!(log.value(), value!("hello world"));
+    assert_eq!(
+        meta.get(path!("vector", "source_type")).unwrap(),
+        &value!("exec")
+    );
+    assert!(meta
+        .get(path!("vector", "ingest_timestamp"))
+        .unwrap()
+        .is_timestamp());
 }
 
 #[test]
@@ -99,7 +119,8 @@ fn test_streaming_create_event() {
     let data_stream = Some(STDOUT.to_string());
     let pid = Some(8888_u32);
 
-    let mut event = OtelLog::from("hello world").into();
+    let mut event: Event =
+        OtelLog::from_value_map(value!("hello world"), EventMetadata::default()).into();
     handle_event(
         &config,
         &hostname,
@@ -109,14 +130,33 @@ fn test_streaming_create_event() {
         LogNamespace::Vector,
     );
     let log = event.as_log();
+    let meta = log.metadata().value();
 
-    assert_eq!(log.get_host().unwrap(), "Some.Machine".into());
-    assert_eq!(log.get(STREAM_KEY).unwrap(), STDOUT.into());
-    assert_eq!(log.get(PID_KEY).unwrap(), (8888_i64).into());
-    assert_eq!(log.get(COMMAND_KEY).unwrap(), config.command.into());
-    assert_eq!(log.get_body().unwrap(), "hello world".into());
-    assert_eq!(log.get_source_type().unwrap(), "exec".into());
-    assert!(log.get_timestamp().is_some());
+    assert_eq!(
+        meta.get(path!(ExecConfig::NAME, "host")).unwrap(),
+        &value!("Some.Machine")
+    );
+    assert_eq!(
+        meta.get(path!(ExecConfig::NAME, STREAM_KEY)).unwrap(),
+        &value!(STDOUT)
+    );
+    assert_eq!(
+        meta.get(path!(ExecConfig::NAME, PID_KEY)).unwrap(),
+        &value!(8888_i64)
+    );
+    assert_eq!(
+        meta.get(path!(ExecConfig::NAME, COMMAND_KEY)).unwrap(),
+        &value!(config.command)
+    );
+    assert_eq!(log.value(), value!("hello world"));
+    assert_eq!(
+        meta.get(path!("vector", "source_type")).unwrap(),
+        &value!("exec")
+    );
+    assert!(meta
+        .get(path!("vector", "ingest_timestamp"))
+        .unwrap()
+        .is_timestamp());
 }
 
 #[test]
@@ -369,15 +409,29 @@ async fn test_run_command_linux() {
 
     if let Poll::Ready(Some(event)) = futures::poll!(rx.next()) {
         let log = event.as_log();
-        assert_eq!(log.get(COMMAND_KEY).unwrap(), config.command.clone().into());
-        assert_eq!(log.get(STREAM_KEY).unwrap(), STDOUT.into());
-        assert_eq!(log.get_source_type().unwrap(), "exec".into());
+        let meta = log.metadata().value();
+        assert_eq!(
+            meta.get(path!(ExecConfig::NAME, COMMAND_KEY)).unwrap(),
+            &value!(config.command.clone())
+        );
+        assert_eq!(
+            meta.get(path!(ExecConfig::NAME, STREAM_KEY)).unwrap(),
+            &value!(STDOUT)
+        );
+        assert_eq!(
+            meta.get(path!("vector", "source_type")).unwrap(),
+            &value!("exec")
+        );
         assert_eq!(log.get_body().unwrap(), "Hello World!".into());
-        assert_eq!(log.get_host().unwrap(), "Some.Machine".into());
-        assert!(log.get(PID_KEY).is_some());
-        assert!(log.get_timestamp().is_some());
-
-        assert_eq!(8, log.convert_to_fields().len());
+        assert_eq!(
+            meta.get(path!(ExecConfig::NAME, "host")).unwrap(),
+            &value!("Some.Machine")
+        );
+        assert!(meta.get(path!(ExecConfig::NAME, PID_KEY)).is_some());
+        assert!(meta
+            .get(path!("vector", "ingest_timestamp"))
+            .unwrap()
+            .is_timestamp());
     } else {
         panic!("Expected to receive a linux event");
     }

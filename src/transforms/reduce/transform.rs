@@ -1005,7 +1005,7 @@ merge_strategies.bar = "concat"
                 "a-b" => 2,
                 "test_end" => "done"
             });
-            assert_eq!(output.value(), expected_value);
+            assert_eq!(output.to_value_canonical(), expected_value);
 
             drop(tx);
             topology.stop().await;
@@ -1041,7 +1041,7 @@ merge_strategies.bar = "concat"
                 "a b" => 3,
                 "test_end" => "done"
             });
-            assert_eq!(output.value(), expected_value);
+            assert_eq!(output.to_value_canonical(), expected_value);
 
             drop(tx);
             topology.stop().await;

@@ -449,6 +449,10 @@ mod tests {
         metadata.set_source_id(Arc::new(ComponentKey::from("in")));
         metadata.set_upstream_id(Arc::new(OutputId::from("transform")));
         metadata.set_schema_definition(&Arc::new(schema_definition(LogNamespace::Vector)));
+        metadata.value_mut().insert(
+            vrl::path!("vector"),
+            Value::Object(std::collections::BTreeMap::new()),
+        );
 
         let log = do_transform(counter).await.unwrap();
         let collected: Vec<_> = log.all_event_fields().unwrap();
@@ -485,6 +489,10 @@ mod tests {
         metadata.set_source_id(Arc::new(ComponentKey::from("in")));
         metadata.set_upstream_id(Arc::new(OutputId::from("transform")));
         metadata.set_schema_definition(&Arc::new(schema_definition(LogNamespace::Vector)));
+        metadata.value_mut().insert(
+            vrl::path!("vector"),
+            Value::Object(std::collections::BTreeMap::new()),
+        );
 
         let log = do_transform(gauge).await.unwrap();
         let collected: Vec<_> = log.all_event_fields().unwrap();
@@ -603,6 +611,10 @@ mod tests {
         metadata.set_source_id(Arc::new(ComponentKey::from("in")));
         metadata.set_upstream_id(Arc::new(OutputId::from("transform")));
         metadata.set_schema_definition(&Arc::new(schema_definition(LogNamespace::Vector)));
+        metadata.value_mut().insert(
+            vrl::path!("vector"),
+            Value::Object(std::collections::BTreeMap::new()),
+        );
 
         let log = do_transform(histo).await.unwrap();
         let collected: Vec<_> = log.all_event_fields().unwrap();
@@ -661,6 +673,10 @@ mod tests {
         metadata.set_source_id(Arc::new(ComponentKey::from("in")));
         metadata.set_upstream_id(Arc::new(OutputId::from("transform")));
         metadata.set_schema_definition(&Arc::new(schema_definition(LogNamespace::Vector)));
+        metadata.value_mut().insert(
+            vrl::path!("vector"),
+            Value::Object(std::collections::BTreeMap::new()),
+        );
 
         let log = do_transform(summary).await.unwrap();
         let collected: Vec<_> = log.all_event_fields().unwrap();

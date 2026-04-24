@@ -412,7 +412,7 @@ mod tests {
     use vector_lib::{
         config::LogNamespace,
         event::{Event, EventStatus, Value},
-        lookup::{OwnedTargetPath, owned_value_path},
+        lookup::owned_value_path,
         schema::Definition,
     };
     use vrl::value::{Kind, kind::Collection};
@@ -714,75 +714,46 @@ mod tests {
             .remove(0)
             .schema_definition(true);
 
-        let expected_definition =
-            Definition::new_with_default_metadata(Kind::bytes(), [LogNamespace::Vector])
-                .with_meaning(OwnedTargetPath::event_root(), "message")
-                .with_metadata_field(
-                    &owned_value_path!("vector", "source_type"),
-                    Kind::bytes(),
-                    None,
-                )
-                .with_metadata_field(
-                    &owned_value_path!("vector", "ingest_timestamp"),
-                    Kind::timestamp(),
-                    None,
-                )
-                .with_metadata_field(
-                    &owned_value_path!(LogplexConfig::NAME, "timestamp"),
-                    Kind::timestamp().or_undefined(),
-                    Some("timestamp"),
-                )
-                .with_metadata_field(
-                    &owned_value_path!(LogplexConfig::NAME, "host"),
-                    Kind::bytes(),
-                    Some("host"),
-                )
-                .with_metadata_field(
-                    &owned_value_path!(LogplexConfig::NAME, "app_name"),
-                    Kind::bytes(),
-                    Some("service"),
-                )
-                .with_metadata_field(
-                    &owned_value_path!(LogplexConfig::NAME, "proc_id"),
-                    Kind::bytes(),
-                    None,
-                )
-                .with_metadata_field(
-                    &owned_value_path!(LogplexConfig::NAME, "query_parameters"),
-                    Kind::object(Collection::empty().with_unknown(Kind::bytes())).or_undefined(),
-                    None,
-                );
-
-        assert_eq!(definitions, Some(expected_definition))
-    }
-
-    #[test]
-    fn output_schema_definition_legacy_namespace() {
-        let config = LogplexConfig::default();
-
-        let definitions = config
-            .outputs(LogNamespace::Vector)
-            .remove(0)
-            .schema_definition(true);
-
         let expected_definition = Definition::new_with_default_metadata(
             Kind::object(Collection::empty()),
             [LogNamespace::Vector],
         )
-        .with_event_field(
-            &owned_value_path!("body"),
+        .with_event_field(&owned_value_path!("body"), Kind::bytes(), Some("message"))
+        .with_metadata_field(
+            &owned_value_path!("vector", "source_type"),
             Kind::bytes(),
-            Some("message"),
+            None,
         )
-        .with_event_field(&owned_value_path!("resource", "source_type"), Kind::bytes(), None)
-        .with_event_field(&owned_value_path!("time_unix_nano"), Kind::integer(), None)
-        .with_event_field(&owned_value_path!("host"), Kind::bytes(), Some("host"))
-        .with_event_field(
-            &owned_value_path!("app_name"),
+        .with_metadata_field(
+            &owned_value_path!("vector", "ingest_timestamp"),
+            Kind::timestamp(),
+            None,
+        )
+        .with_metadata_field(
+            &owned_value_path!(LogplexConfig::NAME, "timestamp"),
+            Kind::timestamp().or_undefined(),
+            Some("timestamp"),
+        )
+        .with_metadata_field(
+            &owned_value_path!(LogplexConfig::NAME, "host"),
+            Kind::bytes(),
+            Some("host"),
+        )
+        .with_metadata_field(
+            &owned_value_path!(LogplexConfig::NAME, "app_name"),
             Kind::bytes(),
             Some("service"),
         )
-        .with_event_field(&owned_value_path!("proc_id"), Kind::bytes(), None)
+        .with_metadata_field(
+            &owned_value_path!(LogplexConfig::NAME, "proc_id"),
+            Kind::bytes(),
+            None,
+        )
+        .with_metadata_field(
+            &owned_value_path!(LogplexConfig::NAME, "query_parameters"),
+            Kind::object(Collection::empty().with_unknown(Kind::bytes())).or_undefined(),
+            None,
+        )
         .unknown_fields(Kind::bytes());
 
         assert_eq!(definitions, Some(expected_definition))

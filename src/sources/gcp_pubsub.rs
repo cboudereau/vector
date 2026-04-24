@@ -739,7 +739,7 @@ impl Future for Task {
 
 #[cfg(test)]
 mod tests {
-    use vector_lib::{lookup::OwnedTargetPath, schema::Definition};
+    use vector_lib::schema::Definition;
 
     use super::*;
 
@@ -760,73 +760,36 @@ mod tests {
             .remove(0)
             .schema_definition(true);
 
-        let expected_definition =
-            Definition::new_with_default_metadata(Kind::bytes(), [LogNamespace::Vector])
-                .with_meaning(OwnedTargetPath::event_root(), "message")
-                .with_metadata_field(
-                    &owned_value_path!("vector", "source_type"),
-                    Kind::bytes(),
-                    None,
-                )
-                .with_metadata_field(
-                    &owned_value_path!("vector", "ingest_timestamp"),
-                    Kind::timestamp(),
-                    None,
-                )
-                .with_metadata_field(
-                    &owned_value_path!("gcp_pubsub", "timestamp"),
-                    Kind::timestamp().or_undefined(),
-                    Some("timestamp"),
-                )
-                .with_metadata_field(
-                    &owned_value_path!("gcp_pubsub", "attributes"),
-                    Kind::object(Collection::empty().with_unknown(Kind::bytes())),
-                    None,
-                )
-                .with_metadata_field(
-                    &owned_value_path!("gcp_pubsub", "message_id"),
-                    Kind::bytes(),
-                    None,
-                );
-
-        assert_eq!(definitions, Some(expected_definition));
-    }
-
-    #[test]
-    fn output_schema_definition_legacy_namespace() {
-        let config = PubsubConfig::default();
-
-        let definitions = config
-            .outputs(LogNamespace::Vector)
-            .remove(0)
-            .schema_definition(true);
-
         let expected_definition = Definition::new_with_default_metadata(
             Kind::object(Collection::empty()),
             [LogNamespace::Vector],
         )
-        .with_event_field(
-            &owned_value_path!("body"),
+        .with_event_field(&owned_value_path!("body"), Kind::bytes(), Some("message"))
+        .with_metadata_field(
+            &owned_value_path!("vector", "source_type"),
             Kind::bytes(),
-            Some("message"),
+            None,
         )
-        .with_event_field(
-            &owned_value_path!("timestamp"),
+        .with_metadata_field(
+            &owned_value_path!("vector", "ingest_timestamp"),
+            Kind::timestamp(),
+            None,
+        )
+        .with_metadata_field(
+            &owned_value_path!("gcp_pubsub", "timestamp"),
             Kind::timestamp().or_undefined(),
             Some("timestamp"),
         )
-        .with_event_field(&owned_value_path!("resource", "source_type"), Kind::bytes(), None)
-        .try_with_field(
-            &owned_value_path!("time_unix_nano"),
-            Kind::integer(),
-            None,
-        )
-        .with_event_field(
-            &owned_value_path!("attributes"),
+        .with_metadata_field(
+            &owned_value_path!("gcp_pubsub", "attributes"),
             Kind::object(Collection::empty().with_unknown(Kind::bytes())),
             None,
         )
-        .with_event_field(&owned_value_path!("message_id"), Kind::bytes(), None);
+        .with_metadata_field(
+            &owned_value_path!("gcp_pubsub", "message_id"),
+            Kind::bytes(),
+            None,
+        );
 
         assert_eq!(definitions, Some(expected_definition));
     }

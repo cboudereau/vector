@@ -658,7 +658,6 @@ mod test {
     use futures::Stream;
     use rand::{Rng, rng};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use vector_lib::lookup::OwnedTargetPath;
     use vrl::value::kind::Collection;
 
     use super::*;
@@ -793,59 +792,36 @@ mod test {
             .remove(0)
             .schema_definition(true);
 
-        let expected_definition =
-            Definition::new_with_default_metadata(Kind::bytes(), [LogNamespace::Vector])
-                .with_meaning(OwnedTargetPath::event_root(), "message")
-                .with_metadata_field(
-                    &owned_value_path!("vector", "source_type"),
-                    Kind::bytes(),
-                    None,
-                )
-                .with_metadata_field(
-                    &owned_value_path!("vector", "ingest_timestamp"),
-                    Kind::timestamp(),
-                    None,
-                )
-                .with_metadata_field(
-                    &owned_value_path!(LogstashConfig::NAME, "timestamp"),
-                    Kind::timestamp().or_undefined(),
-                    Some("timestamp"),
-                )
-                .with_metadata_field(
-                    &owned_value_path!(LogstashConfig::NAME, "host"),
-                    Kind::bytes(),
-                    Some("host"),
-                )
-                .with_metadata_field(
-                    &owned_value_path!(LogstashConfig::NAME, "tls_client_metadata"),
-                    Kind::object(Collection::empty().with_unknown(Kind::bytes())).or_undefined(),
-                    None,
-                );
-
-        assert_eq!(definitions, Some(expected_definition))
-    }
-
-    #[test]
-    fn output_schema_definition_legacy_namespace() {
-        let config = LogstashConfig::default();
-
-        let definitions = config
-            .outputs(LogNamespace::Vector)
-            .remove(0)
-            .schema_definition(true);
-
         let expected_definition = Definition::new_with_default_metadata(
             Kind::object(Collection::empty()),
             [LogNamespace::Vector],
         )
-        .with_event_field(
-            &owned_value_path!("body"),
+        .with_event_field(&owned_value_path!("body"), Kind::bytes(), Some("message"))
+        .with_metadata_field(
+            &owned_value_path!("vector", "source_type"),
             Kind::bytes(),
-            Some("message"),
+            None,
         )
-        .with_event_field(&owned_value_path!("resource", "source_type"), Kind::bytes(), None)
-        .with_event_field(&owned_value_path!("time_unix_nano"), Kind::integer(), None)
-        .with_event_field(&owned_value_path!("host"), Kind::bytes(), Some("host"));
+        .with_metadata_field(
+            &owned_value_path!("vector", "ingest_timestamp"),
+            Kind::timestamp(),
+            None,
+        )
+        .with_metadata_field(
+            &owned_value_path!(LogstashConfig::NAME, "timestamp"),
+            Kind::timestamp().or_undefined(),
+            Some("timestamp"),
+        )
+        .with_metadata_field(
+            &owned_value_path!(LogstashConfig::NAME, "host"),
+            Kind::bytes(),
+            Some("host"),
+        )
+        .with_metadata_field(
+            &owned_value_path!(LogstashConfig::NAME, "tls_client_metadata"),
+            Kind::object(Collection::empty().with_unknown(Kind::bytes())).or_undefined(),
+            None,
+        );
 
         assert_eq!(definitions, Some(expected_definition))
     }

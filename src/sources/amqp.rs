@@ -496,7 +496,7 @@ async fn handle_ack(status: BatchStatus, entry: FinalizerEntry) {
 
 #[cfg(test)]
 pub mod test {
-    use vector_lib::{lookup::OwnedTargetPath, schema::Definition, tls::TlsConfig};
+    use vector_lib::{schema::Definition, tls::TlsConfig};
     use vrl::value::kind::Collection;
 
     use super::*;
@@ -552,54 +552,29 @@ pub mod test {
             .remove(0)
             .schema_definition(true);
 
-        let expected_definition =
-            Definition::new_with_default_metadata(Kind::bytes(), [LogNamespace::Vector])
-                .with_meaning(OwnedTargetPath::event_root(), "message")
-                .with_metadata_field(
-                    &owned_value_path!("vector", "source_type"),
-                    Kind::bytes(),
-                    None,
-                )
-                .with_metadata_field(
-                    &owned_value_path!("vector", "ingest_timestamp"),
-                    Kind::timestamp(),
-                    None,
-                )
-                .with_metadata_field(
-                    &owned_value_path!("amqp", "timestamp"),
-                    Kind::timestamp(),
-                    Some("timestamp"),
-                )
-                .with_metadata_field(&owned_value_path!("amqp", "routing"), Kind::bytes(), None)
-                .with_metadata_field(&owned_value_path!("amqp", "exchange"), Kind::bytes(), None)
-                .with_metadata_field(&owned_value_path!("amqp", "offset"), Kind::integer(), None);
-
-        assert_eq!(definition, Some(expected_definition));
-    }
-
-    #[test]
-    fn output_schema_definition_legacy_namespace() {
-        let config = AmqpSourceConfig::default();
-
-        let definition = config
-            .outputs(LogNamespace::Vector)
-            .remove(0)
-            .schema_definition(true);
-
         let expected_definition = Definition::new_with_default_metadata(
             Kind::object(Collection::empty()),
             [LogNamespace::Vector],
         )
-        .with_event_field(
-            &owned_value_path!("body"),
+        .with_event_field(&owned_value_path!("body"), Kind::bytes(), Some("message"))
+        .with_metadata_field(
+            &owned_value_path!("vector", "source_type"),
             Kind::bytes(),
-            Some("message"),
+            None,
         )
-        .with_event_field(&owned_value_path!("time_unix_nano"), Kind::integer(), None)
-        .with_event_field(&owned_value_path!("resource", "source_type"), Kind::bytes(), None)
-        .with_event_field(&owned_value_path!("routing"), Kind::bytes(), None)
-        .with_event_field(&owned_value_path!("exchange"), Kind::bytes(), None)
-        .with_event_field(&owned_value_path!("offset"), Kind::integer(), None);
+        .with_metadata_field(
+            &owned_value_path!("vector", "ingest_timestamp"),
+            Kind::timestamp(),
+            None,
+        )
+        .with_metadata_field(
+            &owned_value_path!("amqp", "timestamp"),
+            Kind::timestamp(),
+            Some("timestamp"),
+        )
+        .with_metadata_field(&owned_value_path!("amqp", "routing"), Kind::bytes(), None)
+        .with_metadata_field(&owned_value_path!("amqp", "exchange"), Kind::bytes(), None)
+        .with_metadata_field(&owned_value_path!("amqp", "offset"), Kind::integer(), None);
 
         assert_eq!(definition, Some(expected_definition));
     }

@@ -481,7 +481,7 @@ mod test_utils {
         /// If the definition is not valid, debug info will be returned.
         pub fn is_valid_for_event(&self, event: &Event) -> Result<(), String> {
             if let Some(otel_log) = event.maybe_as_log() {
-                let actual_kind = Kind::from(otel_log.value());
+                let actual_kind = Kind::from(otel_log.to_value_canonical());
                 if let Err(path) = self.event_kind.is_superset(&actual_kind) {
                     return Result::Err(format!(
                         "Event value doesn't match at path: {}\n\nEvent type at path = {:?}\n\nDefinition at path = {:?}",
@@ -624,7 +624,6 @@ mod tests {
     #[test]
     fn test_empty_legacy_field() {
         let definition = Definition::default_legacy_namespace().with_vector_metadata(
-            Some(&owned_value_path!()),
             &owned_value_path!(),
             Kind::integer(),
             None,

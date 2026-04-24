@@ -119,7 +119,7 @@ fn annotate_otel_from_metadata(
 #[cfg(test)]
 mod tests {
     use similar_asserts::assert_eq;
-    use vector_lib::lookup::{event_path, metadata_path};
+    use vector_lib::lookup::metadata_path;
 
     use super::*;
     use crate::event::OtelLog;
@@ -178,13 +178,14 @@ mod tests {
                     ..ObjectMeta::default()
                 },
                 {
+                    // annotate_from_metadata uses insert_source_metadata → always metadata path
                     let mut log = OtelLog::default();
                     log.insert(
-                        event_path!("kubernetes", "namespace_labels", "sandbox0-label0"),
+                        metadata_path!("kubernetes_logs", "namespace_labels", "sandbox0-label0"),
                         "val0",
                     );
                     log.insert(
-                        event_path!("kubernetes", "namespace_labels", "sandbox0-label1"),
+                        metadata_path!("kubernetes_logs", "namespace_labels", "sandbox0-label1"),
                         "val1",
                     );
                     log
@@ -209,9 +210,10 @@ mod tests {
                     ..ObjectMeta::default()
                 },
                 {
+                    // annotate_from_metadata ignores FieldsSpec; always stores in metadata
                     let mut log = OtelLog::default();
-                    log.insert(event_path!("ns_labels", "sandbox0-label0"), "val0");
-                    log.insert(event_path!("ns_labels", "sandbox0-label1"), "val1");
+                    log.insert(metadata_path!("kubernetes_logs", "namespace_labels", "sandbox0-label0"), "val0");
+                    log.insert(metadata_path!("kubernetes_logs", "namespace_labels", "sandbox0-label1"), "val1");
                     log
                 },
                 LogNamespace::Vector,
@@ -280,21 +282,26 @@ mod tests {
                     ..ObjectMeta::default()
                 },
                 {
+                    // annotate_from_metadata uses insert_source_metadata → always metadata path
                     let mut log = OtelLog::default();
                     log.insert(
-                        event_path!("kubernetes", "namespace_labels", "nested0.label0"),
+                        metadata_path!("kubernetes_logs", "namespace_labels", "nested0.label0"),
                         "val0",
                     );
                     log.insert(
-                        event_path!("kubernetes", "namespace_labels", "nested0.label1"),
+                        metadata_path!("kubernetes_logs", "namespace_labels", "nested0.label1"),
                         "val1",
                     );
                     log.insert(
-                        event_path!("kubernetes", "namespace_labels", "nested1.label0"),
+                        metadata_path!("kubernetes_logs", "namespace_labels", "nested1.label0"),
                         "val2",
                     );
                     log.insert(
-                        event_path!("kubernetes", "namespace_labels", "nested2.label0.deep0"),
+                        metadata_path!(
+                            "kubernetes_logs",
+                            "namespace_labels",
+                            "nested2.label0.deep0"
+                        ),
                         "val3",
                     );
                     log

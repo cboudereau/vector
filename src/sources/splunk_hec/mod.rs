@@ -1218,7 +1218,7 @@ mod tests {
         schema::Definition,
         sensitive_string::SensitiveString,
     };
-    use vrl::{event_path, path::OwnedTargetPath};
+    use vrl::{event_path, path};
 
     use super::*;
     use crate::{
@@ -1444,10 +1444,10 @@ mod tests {
             event.as_log().get("body").unwrap(),
             message.into()
         );
-        assert!(event.as_log().get_timestamp().is_some());
+        assert!(event.as_log().metadata().value().get(path!("splunk_hec", "timestamp")).is_some());
         assert_eq!(
-            event.as_log().get_source_type().unwrap(),
-            "splunk_hec".into()
+            event.as_log().metadata().value().get(path!("vector", "source_type")).unwrap(),
+            &Value::from("splunk_hec")
         );
         assert!(event.metadata().splunk_hec_token().is_none());
     }
@@ -1468,10 +1468,10 @@ mod tests {
             event.as_log().get("body").unwrap(),
             message.into()
         );
-        assert!(event.as_log().get_timestamp().is_some());
+        assert!(event.as_log().metadata().value().get(path!("splunk_hec", "timestamp")).is_some());
         assert_eq!(
-            event.as_log().get_source_type().unwrap(),
-            "splunk_hec".into()
+            event.as_log().metadata().value().get(path!("vector", "source_type")).unwrap(),
+            &Value::from("splunk_hec")
         );
         assert!(event.metadata().splunk_hec_token().is_none());
     }
@@ -1496,10 +1496,10 @@ mod tests {
                 event.as_log().get("body").unwrap(),
                 msg.into()
             );
-            assert!(event.as_log().get_timestamp().is_some());
+            assert!(event.as_log().metadata().value().get(path!("splunk_hec", "timestamp")).is_some());
             assert_eq!(
-                event.as_log().get_source_type().unwrap(),
-                "splunk_hec".into()
+                event.as_log().metadata().value().get(path!("vector", "source_type")).unwrap(),
+                &Value::from("splunk_hec")
             );
             assert!(event.metadata().splunk_hec_token().is_none());
         }
@@ -1521,10 +1521,10 @@ mod tests {
             event.as_log().get("body").unwrap(),
             message.into()
         );
-        assert!(event.as_log().get_timestamp().is_some());
+        assert!(event.as_log().metadata().value().get(path!("splunk_hec", "timestamp")).is_some());
         assert_eq!(
-            event.as_log().get_source_type().unwrap(),
-            "splunk_hec".into()
+            event.as_log().metadata().value().get(path!("vector", "source_type")).unwrap(),
+            &Value::from("splunk_hec")
         );
         assert!(event.metadata().splunk_hec_token().is_none());
     }
@@ -1549,10 +1549,10 @@ mod tests {
                 event.as_log().get("body").unwrap(),
                 msg.into()
             );
-            assert!(event.as_log().get_timestamp().is_some());
+            assert!(event.as_log().metadata().value().get(path!("splunk_hec", "timestamp")).is_some());
             assert_eq!(
-                event.as_log().get_source_type().unwrap(),
-                "splunk_hec".into()
+                event.as_log().metadata().value().get(path!("vector", "source_type")).unwrap(),
+                &Value::from("splunk_hec")
             );
             assert!(event.metadata().splunk_hec_token().is_none());
         }
@@ -1575,10 +1575,10 @@ mod tests {
         let event = collect_n(source, 1).await.remove(0).into_log();
         assert_eq!(event.get("greeting").unwrap(), "hello".into());
         assert_eq!(event.get("name").unwrap(), "bob".into());
-        assert!(event.get_timestamp().is_some());
+        assert!(event.metadata().value().get(path!("splunk_hec", "timestamp")).is_some());
         assert_eq!(
-            event.get_source_type().unwrap(),
-            "splunk_hec".into()
+            event.metadata().value().get(path!("vector", "source_type")).unwrap(),
+            &Value::from("splunk_hec")
         );
         assert!(event.metadata().splunk_hec_token().is_none());
     }
@@ -1619,8 +1619,9 @@ mod tests {
         sink.run_events(vec![event.into()]).await.unwrap();
 
         let event = collect_n(source, 1).await.remove(0);
+        // In Vector namespace, the `line` attribute is preserved as-is (no renaming to body/message)
         assert_eq!(
-            event.as_log().get("body").unwrap(),
+            event.as_log().get("line").unwrap(),
             "hello".into()
         );
         assert!(event.metadata().splunk_hec_token().is_none());
@@ -1639,11 +1640,14 @@ mod tests {
                 event.as_log().get("body").unwrap(),
                 message.into()
             );
-            assert_eq!(event.as_log().get(super::CHANNEL).unwrap(), "channel".into());
-            assert!(event.as_log().get_timestamp().is_some());
             assert_eq!(
-                event.as_log().get_source_type().unwrap(),
-                "splunk_hec".into()
+                event.as_log().metadata().value().get(path!("splunk_hec", "splunk_channel")).unwrap(),
+                &Value::from("channel")
+            );
+            assert!(event.as_log().metadata().value().get(path!("vector", "ingest_timestamp")).is_some());
+            assert_eq!(
+                event.as_log().metadata().value().get(path!("vector", "source_type")).unwrap(),
+                &Value::from("splunk_hec")
             );
             assert!(event.metadata().splunk_hec_token().is_none());
         })
@@ -1664,11 +1668,14 @@ mod tests {
                 event.as_log().get("message").unwrap(),
                 "root".into()
             );
-            assert_eq!(event.as_log().get(super::CHANNEL).unwrap(), "channel".into());
-            assert!(event.as_log().get_timestamp().is_some());
             assert_eq!(
-                event.as_log().get_source_type().unwrap(),
-                "splunk_hec".into()
+                event.as_log().metadata().value().get(path!("splunk_hec", "splunk_channel")).unwrap(),
+                &Value::from("channel")
+            );
+            assert!(event.as_log().metadata().value().get(path!("splunk_hec", "timestamp")).is_some());
+            assert_eq!(
+                event.as_log().metadata().value().get(path!("vector", "source_type")).unwrap(),
+                &Value::from("splunk_hec")
             );
             assert!(event.metadata().splunk_hec_token().is_none());
         })
@@ -1692,7 +1699,10 @@ mod tests {
             );
 
             let event = collect_n(source, 1).await.remove(0);
-            assert_eq!(event.as_log().get(super::CHANNEL).unwrap(), "guid".into());
+            assert_eq!(
+                event.as_log().metadata().value().get(path!("splunk_hec", "splunk_channel")).unwrap(),
+                &Value::from("guid")
+            );
         })
         .await;
     }
@@ -1714,10 +1724,10 @@ mod tests {
             );
 
             let event = collect_n(source, 1).await.remove(0);
-            // Host is stored as resource attribute "host.name" via try_set_host
+            // Host from xff in raw endpoint is stored in metadata["splunk_hec"]["host"]
             assert_eq!(
-                event.as_log().get_host().unwrap(),
-                "10.0.0.1".into()
+                event.as_log().metadata().value().get(path!("splunk_hec", "host")).unwrap(),
+                &Value::from("10.0.0.1")
             );
         })
         .await;
@@ -1792,7 +1802,10 @@ mod tests {
             );
 
             let event = collect_n(source, 1).await.remove(0);
-            assert_eq!(event.as_log().get(super::CHANNEL).unwrap(), "guid".into());
+            assert_eq!(
+                event.as_log().metadata().value().get(path!("splunk_hec", "splunk_channel")).unwrap(),
+                &Value::from("guid")
+            );
         })
         .await;
     }
@@ -1914,11 +1927,14 @@ mod tests {
                 event.as_log().get("body").unwrap(),
                 message.into()
             );
-            assert_eq!(event.as_log().get(super::CHANNEL).unwrap(), "channel".into());
-            assert!(event.as_log().get_timestamp().is_some());
             assert_eq!(
-                event.as_log().get_source_type().unwrap(),
-                "splunk_hec".into()
+                event.as_log().metadata().value().get(path!("splunk_hec", "splunk_channel")).unwrap(),
+                &Value::from("channel")
+            );
+            assert!(event.as_log().metadata().value().get(path!("vector", "ingest_timestamp")).is_some());
+            assert_eq!(
+                event.as_log().metadata().value().get(path!("vector", "source_type")).unwrap(),
+                &Value::from("splunk_hec")
             );
             assert_eq!(
                 &event.metadata().splunk_hec_token().as_ref().unwrap()[..],
@@ -1995,10 +2011,10 @@ mod tests {
                 event.as_log().get("body").unwrap(),
                 "first".into()
             );
-            assert!(event.as_log().get_timestamp().is_some());
+            assert!(event.as_log().metadata().value().get(path!("splunk_hec", "timestamp")).is_some());
             assert_eq!(
-                event.as_log().get_source_type().unwrap(),
-                "splunk_hec".into()
+                event.as_log().metadata().value().get(path!("vector", "source_type")).unwrap(),
+                &Value::from("splunk_hec")
             );
         })
         .await;
@@ -2022,10 +2038,10 @@ mod tests {
                 event.as_log().get("body").unwrap(),
                 "first".into()
             );
-            assert!(event.as_log().get_timestamp().is_some());
+            assert!(event.as_log().metadata().value().get(path!("splunk_hec", "timestamp")).is_some());
             assert_eq!(
-                event.as_log().get_source_type().unwrap(),
-                "splunk_hec".into()
+                event.as_log().metadata().value().get(path!("vector", "source_type")).unwrap(),
+                &Value::from("splunk_hec")
             );
         })
         .await;
@@ -2047,10 +2063,10 @@ mod tests {
                 event.as_log().get("body").unwrap(),
                 "first".into()
             );
-            assert!(event.as_log().get_timestamp().is_some());
+            assert!(event.as_log().metadata().value().get(path!("splunk_hec", "timestamp")).is_some());
             assert_eq!(
-                event.as_log().get_source_type().unwrap(),
-                "splunk_hec".into()
+                event.as_log().metadata().value().get(path!("vector", "source_type")).unwrap(),
+                &Value::from("splunk_hec")
             );
         })
         .await;
@@ -2076,10 +2092,11 @@ mod tests {
         assert_eq!(event.as_log().get("non").unwrap(), "A non UTF8 character �".into());
         assert_eq!(event.as_log().get("number").unwrap(), 2.into());
         assert_eq!(event.as_log().get("bool").unwrap(), true.into());
-        assert!(event.as_log().get((lookup::PathPrefix::Event, &owned_value_path!("time_unix_nano"))).is_some());
+        // In Vector namespace, timestamp is in metadata, not as time_unix_nano on the event
+        assert!(event.as_log().metadata().value().get(path!(SplunkConfig::NAME, "timestamp")).is_some());
         assert_eq!(
-            event.as_log().get_source_type().unwrap(),
-            "splunk_hec".into()
+            event.as_log().metadata().value().get(path!("vector", "source_type")).unwrap(),
+            &Value::from("splunk_hec")
         );
     }).await;
     }
@@ -2101,19 +2118,20 @@ mod tests {
             events[0].as_log().get("body").unwrap(),
             "first".into()
         );
-        assert_eq!(events[0].as_log().get(super::SOURCE).unwrap(), "main".into());
+        // In Vector namespace, splunk_source is stored in metadata["splunk_hec"]["splunk_source"]
+        assert_eq!(events[0].as_log().metadata().value().get(path!(SplunkConfig::NAME, super::SOURCE)).unwrap(), &Value::from("main"));
 
         assert_eq!(
             events[1].as_log().get("body").unwrap(),
             "second".into()
         );
-        assert_eq!(events[1].as_log().get(super::SOURCE).unwrap(), "main".into());
+        assert_eq!(events[1].as_log().metadata().value().get(path!(SplunkConfig::NAME, super::SOURCE)).unwrap(), &Value::from("main"));
 
         assert_eq!(
             events[2].as_log().get("body").unwrap(),
             "third".into()
         );
-        assert_eq!(events[2].as_log().get(super::SOURCE).unwrap(), "secondary".into());
+        assert_eq!(events[2].as_log().metadata().value().get(path!(SplunkConfig::NAME, super::SOURCE)).unwrap(), &Value::from("secondary"));
     }).await;
     }
 
@@ -2540,10 +2558,21 @@ mod tests {
             .schema_definition(true);
 
         let expected_definition = Definition::new_with_default_metadata(
-            Kind::object(Collection::empty()).or_bytes(),
+            Kind::object(Collection::empty()),
             [LogNamespace::Vector],
         )
-        .with_meaning(OwnedTargetPath::event_root(), meaning::MESSAGE)
+        .with_event_field(
+            &owned_value_path!("line"),
+            Kind::object(Collection::empty())
+                .or_array(Collection::empty())
+                .or_undefined(),
+            None,
+        )
+        .with_event_field(
+            &owned_value_path!("body"),
+            Kind::bytes().or_undefined(),
+            Some(meaning::MESSAGE),
+        )
         .with_metadata_field(
             &owned_value_path!("vector", "source_type"),
             Kind::bytes(),
@@ -2560,6 +2589,11 @@ mod tests {
             Some("host"),
         )
         .with_metadata_field(
+            &owned_value_path!("splunk_hec", "channel"),
+            Kind::bytes(),
+            None,
+        )
+        .with_metadata_field(
             &owned_value_path!("splunk_hec", "index"),
             Kind::bytes(),
             None,
@@ -2570,56 +2604,12 @@ mod tests {
             Some("service"),
         )
         .with_metadata_field(
-            &owned_value_path!("splunk_hec", "channel"),
-            Kind::bytes(),
-            None,
-        )
-        .with_metadata_field(
             &owned_value_path!("splunk_hec", "sourcetype"),
             Kind::bytes(),
             None,
         );
 
         assert_eq!(definition, Some(expected_definition));
-    }
-
-    #[test]
-    fn output_schema_definition_legacy_namespace() {
-        let config = SplunkConfig::default();
-        let definitions = config
-            .outputs(LogNamespace::Vector)
-            .remove(0)
-            .schema_definition(true);
-
-        let expected_definition = Definition::new_with_default_metadata(
-            Kind::object(Collection::empty()),
-            [LogNamespace::Vector],
-        )
-        .with_event_field(&owned_value_path!("host"), Kind::bytes(), Some("host"))
-        .with_event_field(
-            &owned_value_path!("body"),
-            Kind::bytes().or_undefined(),
-            Some("message"),
-        )
-        .with_event_field(
-            &owned_value_path!("line"),
-            Kind::array(Collection::empty())
-                .or_object(Collection::empty())
-                .or_undefined(),
-            None,
-        )
-        .with_event_field(&owned_value_path!("resource", "source_type"), Kind::bytes(), None)
-        .with_event_field(&owned_value_path!("splunk_channel"), Kind::bytes(), None)
-        .with_event_field(&owned_value_path!("splunk_index"), Kind::bytes(), None)
-        .with_event_field(
-            &owned_value_path!("splunk_source"),
-            Kind::bytes(),
-            Some("service"),
-        )
-        .with_event_field(&owned_value_path!("splunk_sourcetype"), Kind::bytes(), None)
-        .with_event_field(&owned_value_path!("time_unix_nano"), Kind::integer(), None);
-
-        assert_eq!(definitions, Some(expected_definition));
     }
 
     impl ValidatableComponent for SplunkConfig {

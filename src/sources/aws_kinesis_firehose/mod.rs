@@ -282,7 +282,6 @@ mod tests {
     use tokio::time::{Duration, sleep};
     use vector_lib::lookup::path;
     use vrl::value;
-    use vrl::value::Value;
 
     use super::*;
     use crate::{
@@ -536,10 +535,20 @@ mod tests {
 
                 assert_eq!(events.len(), 1);
                 let log = events[0].as_log();
-                assert_eq!(log.get("body").unwrap(), Value::Bytes(Bytes::from(expected)));
-                assert_eq!(log.get_source_type().unwrap(), Value::Bytes(Bytes::from("aws_kinesis_firehose")));
-                assert_eq!(log.get("request_id").unwrap(), Value::Bytes(Bytes::from(REQUEST_ID)));
-                assert_eq!(log.get("source_arn").unwrap(), Value::Bytes(Bytes::from(SOURCE_ARN)));
+                let meta = log.metadata();
+                assert_eq!(log.value(), value!(Bytes::from(expected)));
+                assert_eq!(
+                    meta.value().get(path!("vector", "source_type")).unwrap(),
+                    &value!("aws_kinesis_firehose")
+                );
+                assert_eq!(
+                    meta.value().get(path!("aws_kinesis_firehose", "request_id")).unwrap(),
+                    &value!(REQUEST_ID)
+                );
+                assert_eq!(
+                    meta.value().get(path!("aws_kinesis_firehose", "source_arn")).unwrap(),
+                    &value!(SOURCE_ARN)
+                );
 
                 let response: models::FirehoseResponse = res.json().await.unwrap();
                 assert_eq!(response.request_id, REQUEST_ID);
@@ -704,10 +713,20 @@ mod tests {
 
             assert_eq!(events.len(), 1);
             let log = events[0].as_log();
-            assert_eq!(log.get("body").unwrap(), Value::Bytes(Bytes::from(RECORD)));
-            assert_eq!(log.get_source_type().unwrap(), Value::Bytes(Bytes::from("aws_kinesis_firehose")));
-            assert_eq!(log.get("request_id").unwrap(), Value::Bytes(Bytes::from(REQUEST_ID)));
-            assert_eq!(log.get("source_arn").unwrap(), Value::Bytes(Bytes::from(SOURCE_ARN)));
+            let meta = log.metadata();
+            assert_eq!(log.value(), value!(Bytes::from(RECORD)));
+            assert_eq!(
+                meta.value().get(path!("vector", "source_type")).unwrap(),
+                &value!("aws_kinesis_firehose")
+            );
+            assert_eq!(
+                meta.value().get(path!("aws_kinesis_firehose", "request_id")).unwrap(),
+                &value!(REQUEST_ID)
+            );
+            assert_eq!(
+                meta.value().get(path!("aws_kinesis_firehose", "source_arn")).unwrap(),
+                &value!(SOURCE_ARN)
+            );
 
             let response: models::FirehoseResponse = res.json().await.unwrap();
             assert_eq!(response.request_id, REQUEST_ID);
@@ -861,10 +880,20 @@ mod tests {
 
         assert_eq!(events.len(), 1);
         let log = events[0].as_log();
-        assert_eq!(log.get("body").unwrap(), Value::Bytes(Bytes::from(expected)));
-        assert_eq!(log.get_source_type().unwrap(), Value::Bytes(Bytes::from("aws_kinesis_firehose")));
-        assert_eq!(log.get("request_id").unwrap(), Value::Bytes(Bytes::from(REQUEST_ID)));
-        assert_eq!(log.get("source_arn").unwrap(), Value::Bytes(Bytes::from(SOURCE_ARN)));
+        let meta = log.metadata();
+        assert_eq!(log.value(), value!(Bytes::from(expected)));
+        assert_eq!(
+            meta.value().get(path!("vector", "source_type")).unwrap(),
+            &value!("aws_kinesis_firehose")
+        );
+        assert_eq!(
+            meta.value().get(path!("aws_kinesis_firehose", "request_id")).unwrap(),
+            &value!(REQUEST_ID)
+        );
+        assert_eq!(
+            meta.value().get(path!("aws_kinesis_firehose", "source_arn")).unwrap(),
+            &value!(SOURCE_ARN)
+        );
 
         let response: models::FirehoseResponse = res.json().await.unwrap();
         assert_eq!(response.request_id, REQUEST_ID);

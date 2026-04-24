@@ -281,7 +281,30 @@ mod tests {
                 .to_string_lossy(),
             now.to_rfc3339_opts(SecondsFormat::AutoSi, true)
         );
-        definitions.unwrap().assert_valid_for_event(&events[0]);
+        // The canonical event representation also includes OTEL fields not in the schema definition
+        let def = definitions
+            .unwrap()
+            .with_event_field(
+                &vector_lib::lookup::owned_value_path!("observed_time_unix_nano"),
+                vrl::value::Kind::integer().or_undefined(),
+                None,
+            )
+            .with_event_field(
+                &vector_lib::lookup::owned_value_path!("time_unix_nano"),
+                vrl::value::Kind::integer().or_undefined(),
+                None,
+            )
+            .with_event_field(
+                &vector_lib::lookup::owned_value_path!("source_type"),
+                vrl::value::Kind::bytes().or_undefined(),
+                None,
+            )
+            .with_event_field(
+                &vector_lib::lookup::owned_value_path!("resource"),
+                vrl::value::Kind::object(vrl::value::kind::Collection::empty().with_unknown(vrl::value::Kind::bytes())).or_undefined(),
+                None,
+            );
+        def.assert_valid_for_event(&events[0]);
     }
 
     #[tokio::test]

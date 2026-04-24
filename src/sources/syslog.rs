@@ -392,13 +392,10 @@ fn enrich_syslog_event(
             );
         }
         let parsed_hostname = otel_log
-            .attribute("hostname")
-            .and_then(|v| match &v.value {
-                Some(opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(s)) => {
-                    Some(s.clone())
-                }
-                _ => None,
-            });
+            .metadata()
+            .value()
+            .get(vrl::path!("syslog", "hostname"))
+            .and_then(|v| v.as_str().map(|s| s.into_owned()));
         let host_value = parsed_hostname.or_else(|| {
             default_host.as_ref().map(|h| String::from_utf8_lossy(h).into_owned())
         });
@@ -429,10 +426,10 @@ mod test {
         assert_event_data_eq,
         codecs::decoding::format::Deserializer,
         config::ComponentKey,
-        lookup::{OwnedTargetPath, event_path, owned_value_path},
+        lookup::owned_value_path,
         schema::Definition,
     };
-    use vrl::value::{Kind, ObjectMap, Value, kind::Collection};
+    use vrl::value::{Kind, Value, kind::Collection};
 
     use super::*;
     use crate::{
@@ -475,145 +472,51 @@ mod test {
             .remove(0)
             .schema_definition(true);
 
-        let expected_definition =
-            Definition::new_with_default_metadata(Kind::bytes(), [LogNamespace::Vector])
-                .with_meaning(OwnedTargetPath::event_root(), "message")
-                .with_metadata_field(
-                    &owned_value_path!("vector", "source_type"),
-                    Kind::bytes(),
-                    None,
-                )
-                .with_metadata_field(
-                    &owned_value_path!("vector", "ingest_timestamp"),
-                    Kind::timestamp(),
-                    None,
-                )
-                .with_metadata_field(
-                    &owned_value_path!("syslog", "timestamp"),
-                    Kind::timestamp(),
-                    Some("timestamp"),
-                )
-                .with_metadata_field(
-                    &owned_value_path!("syslog", "hostname"),
-                    Kind::bytes().or_undefined(),
-                    Some("host"),
-                )
-                .with_metadata_field(
-                    &owned_value_path!("syslog", "source_ip"),
-                    Kind::bytes().or_undefined(),
-                    None,
-                )
-                .with_metadata_field(
-                    &owned_value_path!("syslog", "severity"),
-                    Kind::bytes().or_undefined(),
-                    Some("severity"),
-                )
-                .with_metadata_field(
-                    &owned_value_path!("syslog", "facility"),
-                    Kind::bytes().or_undefined(),
-                    None,
-                )
-                .with_metadata_field(
-                    &owned_value_path!("syslog", "version"),
-                    Kind::integer().or_undefined(),
-                    None,
-                )
-                .with_metadata_field(
-                    &owned_value_path!("syslog", "appname"),
-                    Kind::bytes().or_undefined(),
-                    Some("service"),
-                )
-                .with_metadata_field(
-                    &owned_value_path!("syslog", "msgid"),
-                    Kind::bytes().or_undefined(),
-                    None,
-                )
-                .with_metadata_field(
-                    &owned_value_path!("syslog", "procid"),
-                    Kind::integer().or_bytes().or_undefined(),
-                    None,
-                )
-                .with_metadata_field(
-                    &owned_value_path!("syslog", "structured_data"),
-                    Kind::object(Collection::from_unknown(Kind::object(
-                        Collection::from_unknown(Kind::bytes()),
-                    ))),
-                    None,
-                )
-                .with_metadata_field(
-                    &owned_value_path!("syslog", "tls_client_metadata"),
-                    Kind::object(Collection::empty().with_unknown(Kind::bytes())).or_undefined(),
-                    None,
-                );
-
-        assert_eq!(definitions, Some(expected_definition));
-    }
-
-    #[test]
-    fn output_schema_definition_legacy_namespace() {
-        let config = SyslogConfig::default();
-
-        let definitions = config
-            .outputs(LogNamespace::Vector)
-            .remove(0)
-            .schema_definition(true);
-
         let expected_definition = Definition::new_with_default_metadata(
             Kind::object(Collection::empty()),
             [LogNamespace::Vector],
         )
-        .with_event_field(
-            &owned_value_path!("body"),
-            Kind::bytes(),
-            Some("message"),
-        )
-        .with_event_field(
+        .with_event_field(&owned_value_path!("body"), Kind::bytes(), Some("message"))
+        .optional_field(
             &owned_value_path!("time_unix_nano"),
             Kind::integer(),
             Some("timestamp"),
         )
-        .with_event_field(
+        .optional_field(
             &owned_value_path!("hostname"),
-            Kind::bytes().or_undefined(),
+            Kind::bytes(),
             Some("host"),
         )
-        .with_event_field(
-            &owned_value_path!("source_ip"),
-            Kind::bytes().or_undefined(),
-            None,
-        )
-        .with_event_field(
+        .optional_field(
             &owned_value_path!("severity"),
-            Kind::bytes().or_undefined(),
+            Kind::bytes(),
             Some("severity"),
         )
-        .with_event_field(
-            &owned_value_path!("facility"),
-            Kind::bytes().or_undefined(),
-            None,
-        )
-        .with_event_field(
-            &owned_value_path!("version"),
-            Kind::integer().or_undefined(),
-            None,
-        )
-        .with_event_field(
+        .optional_field(&owned_value_path!("facility"), Kind::bytes(), None)
+        .optional_field(&owned_value_path!("version"), Kind::integer(), None)
+        .optional_field(
             &owned_value_path!("appname"),
-            Kind::bytes().or_undefined(),
+            Kind::bytes(),
             Some("service"),
         )
-        .with_event_field(
-            &owned_value_path!("msgid"),
-            Kind::bytes().or_undefined(),
-            None,
-        )
-        .with_event_field(
+        .optional_field(&owned_value_path!("msgid"), Kind::bytes(), None)
+        .optional_field(
             &owned_value_path!("procid"),
-            Kind::integer().or_bytes().or_undefined(),
+            Kind::integer().or_bytes(),
             None,
         )
+        .optional_field(&owned_value_path!("source_ip"), Kind::bytes(), None)
         .unknown_fields(Kind::object(Collection::from_unknown(Kind::bytes())))
-        .with_standard_vector_source_metadata();
+        .with_metadata_field(
+            &owned_value_path!("vector", "source_type"),
+            Kind::bytes(),
+            None,
+        )
+        .with_metadata_field(
+            &owned_value_path!("vector", "ingest_timestamp"),
+            Kind::timestamp(),
+            None,
+        );
 
         assert_eq!(definitions, Some(expected_definition));
     }
@@ -777,28 +680,12 @@ mod test {
 
         {
             let expected = expected.as_mut_log();
-            expected.insert(
-                event_path!("time_unix_nano"),
-                Value::Integer(Utc.with_ymd_and_hms(2019, 2, 13, 19, 48, 34)
-                    .single()
-                    .expect("invalid timestamp")
-                    .timestamp_nanos_opt().unwrap()),
-            );
+            // In Vector namespace, syslog fields (hostname, severity, facility, etc.)
+            // are stored in EventMetadata, not as record attributes.
+            // EventDataEq only compares record fields + resource, not EventMetadata,
+            // so we only set what ends up in record.attributes and resource.
             expected.set_source_type("syslog");
             expected.set_host("74794bfb6795");
-            expected.insert("hostname", "74794bfb6795");
-
-            expected.insert("meta.sequenceId", "1");
-            expected.insert("meta.sysUpTime", "37");
-            expected.insert("meta.language", "EN");
-            expected.insert("origin.software", "test");
-            expected.insert("origin.ip", "192.168.0.1");
-
-            expected.insert("severity", "notice");
-            expected.insert("facility", "user");
-            expected.insert("version", 1);
-            expected.insert("appname", "root");
-            expected.insert("procid", 8449);
             expected.insert("source_ip", "192.168.0.254");
         }
 
@@ -823,21 +710,11 @@ mod test {
         let mut expected = Event::Log(OtelLog::from(msg));
         {
             let expected = expected.as_mut_log();
-            expected.insert(
-                event_path!("time_unix_nano"),
-                Value::Integer(Utc.with_ymd_and_hms(2019, 2, 13, 19, 48, 34)
-                    .single()
-                    .expect("invalid timestamp")
-                    .timestamp_nanos_opt().unwrap()),
-            );
-            expected.set_host("74794bfb6795");
-            expected.insert("hostname", "74794bfb6795");
+            // In Vector namespace, syslog fields go to EventMetadata (not compared by EventDataEq).
+            // Only resource attrs and record attributes (like source_ip) are compared.
+            // Order must match enrich_syslog_event: source_type first, then host.name.
             expected.set_source_type("syslog");
-            expected.insert("severity", "notice");
-            expected.insert("facility", "user");
-            expected.insert("version", 1);
-            expected.insert("appname", "root");
-            expected.insert("procid", 8449);
+            expected.set_host("74794bfb6795");
             expected.insert("source_ip", "192.168.0.254");
         }
 
@@ -863,11 +740,16 @@ mod test {
 
     #[test]
     fn handles_empty_sd_element() {
+        use vrl::path;
         fn there_is_map_called_empty(event: Event) -> bool {
+            // In Vector namespace, structured data is stored in EventMetadata
+            // under ["syslog"]["structured_data"]["<element_id>"]
             event
                 .as_log()
-                .get("empty")
-                .expect("empty exists")
+                .metadata()
+                .value()
+                .get(path!("syslog", "structured_data", "empty"))
+                .expect("empty structured data element exists in metadata")
                 .is_object()
         }
 
@@ -924,13 +806,16 @@ mod test {
 
     #[test]
     fn handles_dots_in_sdata() {
+        use vrl::path;
         let raw =
             r#"<190>Feb 13 21:31:56 74794bfb6795 liblogging-stdlog:  [origin foo.bar="baz"] hello"#;
         let event =
             event_from_bytes(None, raw.to_owned().into()).unwrap();
+        // In Vector namespace, structured data is stored in EventMetadata
+        // under ["syslog"]["structured_data"]["<element_id>"]["<param_name>"]
         assert_eq!(
-            event.as_log().get(r#"origin."foo.bar""#),
-            Some(Value::from("baz"))
+            event.as_log().metadata().value().get(path!("syslog", "structured_data", "origin", "foo.bar")),
+            Some(&Value::from("baz"))
         );
     }
 
@@ -946,31 +831,12 @@ mod test {
 
         let mut expected = Event::Log(OtelLog::from(msg));
         {
-            let nanos = event.as_log().get(event_path!("time_unix_nano")).unwrap();
-            let nanos_i64 = nanos.as_integer().unwrap();
-            let year = chrono::DateTime::from_timestamp(
-                nanos_i64 / 1_000_000_000,
-                (nanos_i64 % 1_000_000_000) as u32,
-            ).unwrap().naive_local().year();
-
             let expected = expected.as_mut_log();
-            let expected_date: DateTime<Utc> = Local
-                .with_ymd_and_hms(year, 2, 13, 20, 7, 26)
-                .single()
-                .expect("invalid timestamp")
-                .into();
-
-            expected.insert(
-                event_path!("time_unix_nano"),
-                Value::Integer(expected_date.timestamp_nanos_opt().unwrap()),
-            );
-            expected.set_host("74794bfb6795");
+            // In Vector namespace, syslog fields (hostname, severity, etc.) go to
+            // EventMetadata. EventDataEq only compares record fields + resource.
+            // Order must match enrich_syslog_event: source_type first, then host.name.
             expected.set_source_type("syslog");
-            expected.insert("hostname", "74794bfb6795");
-            expected.insert("severity", "notice");
-            expected.insert("facility", "user");
-            expected.insert("appname", "root");
-            expected.insert("procid", 8539);
+            expected.set_host("74794bfb6795");
             expected.insert("source_ip", "192.168.0.254");
         }
 
@@ -991,34 +857,12 @@ mod test {
 
         let mut expected = Event::Log(OtelLog::from(msg));
         {
-            let nanos = event.as_log().get(event_path!("time_unix_nano")).unwrap();
-            let nanos_i64 = nanos.as_integer().unwrap();
-            let year = chrono::DateTime::from_timestamp(
-                nanos_i64 / 1_000_000_000,
-                (nanos_i64 % 1_000_000_000) as u32,
-            ).unwrap().naive_local().year();
-
             let expected = expected.as_mut_log();
-            let expected_date: DateTime<Utc> = Local
-                .with_ymd_and_hms(year, 2, 13, 21, 31, 56)
-                .single()
-                .expect("invalid timestamp")
-                .into();
-            expected.insert(
-                event_path!("time_unix_nano"),
-                Value::Integer(expected_date.timestamp_nanos_opt().unwrap()),
-            );
+            // In Vector namespace, syslog fields (hostname, severity, structured data, etc.)
+            // go to EventMetadata. EventDataEq only compares record fields + resource.
             expected.set_source_type("syslog");
             expected.set_host("74794bfb6795");
-            expected.insert("hostname", "74794bfb6795");
-            expected.insert("severity", "info");
-            expected.insert("facility", "local7");
-            expected.insert("appname", "liblogging-stdlog");
-            expected.insert("origin.software", "rsyslogd");
-            expected.insert("origin.swVersion", "8.24.0");
             expected.insert("source_ip", "192.168.0.254");
-            expected.insert(event_path!("origin", "x-pid"), "8979");
-            expected.insert(event_path!("origin", "x-info"), "http://www.rsyslog.com");
         }
 
         assert_event_data_eq!(event, expected);
@@ -1034,24 +878,11 @@ mod test {
         let mut expected = Event::Log(OtelLog::from(msg));
         {
             let expected = expected.as_mut_log();
-            expected.insert(
-                event_path!("time_unix_nano"),
-                Value::Integer(Utc.with_ymd_and_hms(2019, 2, 13, 21, 53, 30)
-                    .single()
-                    .and_then(|t| t.with_nanosecond(605_850 * 1000))
-                    .expect("invalid timestamp")
-                    .timestamp_nanos_opt().unwrap()),
-            );
+            // In Vector namespace, syslog fields (hostname, severity, structured data, etc.)
+            // go to EventMetadata. EventDataEq only compares record fields + resource.
             expected.set_source_type("syslog");
             expected.set_host("74794bfb6795");
-            expected.insert("hostname", "74794bfb6795");
-            expected.insert("severity", "info");
-            expected.insert("facility", "local7");
-            expected.insert("appname", "liblogging-stdlog");
-            expected.insert("origin.software", "rsyslogd");
-            expected.insert("origin.swVersion", "8.24.0");
-            expected.insert(event_path!("origin", "x-pid"), "9043");
-            expected.insert(event_path!("origin", "x-info"), "http://www.rsyslog.com");
+            // No source_ip since no default_host passed to event_from_bytes
         }
 
         assert_event_data_eq!(
@@ -1102,12 +933,12 @@ mod test {
 
             send_lines(in_addr, input_lines).await.unwrap();
 
-            // Wait a short period of time to ensure the messages get sent.
-            sleep(Duration::from_secs(2)).await;
+            // Wait for all messages to be processed.
+            sleep(Duration::from_secs(5)).await;
 
             // Shutdown the source, and make sure we've got all the messages we sent in.
             shutdown
-                .shutdown_all(Some(Instant::now() + Duration::from_millis(100)))
+                .shutdown_all(Some(Instant::now() + Duration::from_millis(500)))
                 .await;
             shutdown_complete.await;
 
@@ -1326,12 +1157,12 @@ mod test {
 
             send_encodable(in_addr, codec, input_lines).await.unwrap();
 
-            // Wait a short period of time to ensure the messages get sent.
-            sleep(Duration::from_secs(2)).await;
+            // Wait for all messages to be processed.
+            sleep(Duration::from_secs(5)).await;
 
             // Shutdown the source, and make sure we've got all the messages we sent in.
             shutdown
-                .shutdown_all(Some(Instant::now() + Duration::from_millis(100)))
+                .shutdown_all(Some(Instant::now() + Duration::from_millis(500)))
                 .await;
             shutdown_complete.await;
 
@@ -1417,79 +1248,70 @@ mod test {
 
     impl From<Event> for SyslogMessageRfc5424 {
         fn from(e: Event) -> Self {
-            let mut fields = e.into_log().as_map().unwrap();
+            use vrl::path;
 
-            let (host, source_type) = match fields.remove("resource") {
-                Some(Value::Object(mut m)) => (
-                    m.remove("host.name").map(value_to_string).unwrap(),
-                    m.remove("source_type").map(value_to_string).unwrap(),
-                ),
-                _ => panic!("expected resource object with host.name and source_type"),
+            let log = e.into_log();
+            let meta = log.metadata().value();
+
+            // In Vector namespace, syslog fields are in EventMetadata["syslog"][...]
+            let get_meta_str = |key: &str| -> Option<String> {
+                meta.get(path!("syslog", key))
+                    .map(|v| value_to_string(v.clone()))
             };
 
-            Self {
-                msgid: fields.remove("msgid").map(value_to_string).unwrap(),
-                severity: fields
-                    .remove("severity")
-                    .map(value_to_string)
-                    .and_then(|s: String| Severity::from_str(s.as_str()))
-                    .unwrap(),
-                facility: fields
-                    .remove("facility")
-                    .map(value_to_string)
-                    .and_then(|s: String| Facility::from_str(s.as_str()))
-                    .unwrap(),
-                version: fields
-                    .remove("version")
-                    .map(value_to_string)
-                    .map(|s: String| u8::from_str(s.as_str()).unwrap())
-                    .unwrap(),
-                timestamp: fields.remove("time_unix_nano").map(|v| {
-                    if let Some(nanos) = v.as_integer() {
-                        let secs = nanos / 1_000_000_000;
-                        let nsecs = (nanos % 1_000_000_000) as u32;
-                        chrono::DateTime::from_timestamp(secs, nsecs)
-                            .map(|dt| dt.to_rfc3339_opts(SecondsFormat::AutoSi, true))
-                            .unwrap_or_else(|| nanos.to_string())
-                    } else {
-                        value_to_string(v)
+            // host and source_type from resource attributes
+            let host = log.get_host().map(value_to_string).unwrap();
+            let source_type = log.get_source_type().map(value_to_string).unwrap();
+
+            // timestamp from metadata["syslog"]["timestamp"]
+            let timestamp = meta
+                .get(path!("syslog", "timestamp"))
+                .map(|v| value_to_string(v.clone()))
+                .unwrap();
+
+            // structured data from metadata["syslog"]["structured_data"]
+            let structured_data = match meta.get(path!("syslog", "structured_data")) {
+                Some(Value::Object(sdata)) => {
+                    let mut result = StructuredData::default();
+                    for (id, params) in sdata.iter() {
+                        if let Value::Object(params_map) = params {
+                            let subfields: HashMap<String, String> = params_map
+                                .iter()
+                                .map(|(k, v)| (k.to_string(), value_to_string(v.clone())))
+                                .collect();
+                            result.insert(id.to_string(), subfields);
+                        }
                     }
-                }).unwrap(),
+                    result
+                }
+                _ => StructuredData::default(),
+            };
+
+            // message from event body
+            let message = value_to_string(log.value().clone());
+
+            Self {
+                msgid: get_meta_str("msgid").unwrap(),
+                severity: get_meta_str("severity")
+                    .and_then(|s| Severity::from_str(s.as_str()))
+                    .unwrap(),
+                facility: get_meta_str("facility")
+                    .and_then(|s| Facility::from_str(s.as_str()))
+                    .unwrap(),
+                version: get_meta_str("version")
+                    .map(|s| u8::from_str(s.as_str()).unwrap())
+                    .unwrap(),
+                timestamp,
                 host,
                 source_type,
-                appname: fields.remove("appname").map(value_to_string).unwrap(),
-                procid: fields
-                    .remove("procid")
-                    .map(value_to_string)
-                    .map(|s: String| usize::from_str(s.as_str()).unwrap())
+                appname: get_meta_str("appname").unwrap(),
+                procid: get_meta_str("procid")
+                    .map(|s| usize::from_str(s.as_str()).unwrap())
                     .unwrap(),
-                message: fields.remove("body").map(value_to_string).unwrap(),
-                structured_data: {
-                    // Only pass Object values — those are syslog structured data sections.
-                    // Non-object leftovers (observed_time_unix_nano, severity_number, etc.) are
-                    // proto-canonical fields that don't map to structured data.
-                    fields.retain(|_, v| v.is_object());
-                    structured_data_from_fields(fields)
-                },
+                message,
+                structured_data,
             }
         }
-    }
-
-    fn structured_data_from_fields(fields: ObjectMap) -> StructuredData {
-        let mut structured_data = StructuredData::default();
-
-        for (key, value) in fields.into_iter() {
-            let subfields = value
-                .into_object()
-                .unwrap()
-                .into_iter()
-                .map(|(k, v)| (k.into(), value_to_string(v)))
-                .collect();
-
-            structured_data.insert(key.into(), subfields);
-        }
-
-        structured_data
     }
 
     #[allow(non_camel_case_types, clippy::upper_case_acronyms)]

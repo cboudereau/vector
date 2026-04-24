@@ -1301,7 +1301,7 @@ impl ConsumerContext for KafkaSourceContext {
 
 #[cfg(test)]
 mod test {
-    use vector_lib::{lookup::OwnedTargetPath, schema::Definition};
+    use vector_lib::schema::Definition;
 
     use super::*;
 
@@ -1358,76 +1358,43 @@ mod test {
         assert_eq!(
             definitions,
             Some(
-                Definition::new_with_default_metadata(Kind::bytes(), [LogNamespace::Vector])
-                    .with_meaning(OwnedTargetPath::event_root(), "message")
-                    .with_metadata_field(
-                        &owned_value_path!("kafka", "timestamp"),
-                        Kind::timestamp(),
-                        Some("timestamp")
-                    )
-                    .with_metadata_field(
-                        &owned_value_path!("kafka", "message_key"),
-                        Kind::bytes(),
-                        None
-                    )
-                    .with_metadata_field(&owned_value_path!("kafka", "topic"), Kind::bytes(), None)
-                    .with_metadata_field(
-                        &owned_value_path!("kafka", "partition"),
-                        Kind::bytes(),
-                        None
-                    )
-                    .with_metadata_field(&owned_value_path!("kafka", "offset"), Kind::bytes(), None)
-                    .with_metadata_field(
-                        &owned_value_path!("kafka", "headers"),
-                        Kind::object(Collection::empty().with_unknown(Kind::bytes())),
-                        None
-                    )
-                    .with_metadata_field(
-                        &owned_value_path!("vector", "ingest_timestamp"),
-                        Kind::timestamp(),
-                        None
-                    )
-                    .with_metadata_field(
-                        &owned_value_path!("vector", "source_type"),
-                        Kind::bytes(),
-                        None
-                    )
-            )
-        )
-    }
-
-    #[test]
-    fn test_output_schema_definition_legacy_namespace() {
-        let definitions = make_config("topic", "group", LogNamespace::Vector, None)
-            .outputs(LogNamespace::Vector)
-            .remove(0)
-            .schema_definition(true);
-
-        assert_eq!(
-            definitions,
-            Some(
-                Definition::new_with_default_metadata(Kind::json(), [LogNamespace::Vector])
-                    .unknown_fields(Kind::undefined())
-                    .with_event_field(
-                        &owned_value_path!("body"),
-                        Kind::bytes(),
-                        Some("message")
-                    )
-                    .with_event_field(
-                        &owned_value_path!("time_unix_nano"),
-                        Kind::timestamp(),
-                        Some("timestamp")
-                    )
-                    .with_event_field(&owned_value_path!("message_key"), Kind::bytes(), None)
-                    .with_event_field(&owned_value_path!("topic"), Kind::bytes(), None)
-                    .with_event_field(&owned_value_path!("partition"), Kind::bytes(), None)
-                    .with_event_field(&owned_value_path!("offset"), Kind::bytes(), None)
-                    .with_event_field(
-                        &owned_value_path!("headers"),
-                        Kind::object(Collection::empty().with_unknown(Kind::bytes())),
-                        None
-                    )
-                    .with_event_field(&owned_value_path!("resource", "source_type"), Kind::bytes(), None)
+                Definition::new_with_default_metadata(
+                    Kind::object(Collection::empty()),
+                    [LogNamespace::Vector]
+                )
+                .with_event_field(&owned_value_path!("body"), Kind::bytes(), Some("message"))
+                .with_metadata_field(
+                    &owned_value_path!("kafka", "timestamp"),
+                    Kind::timestamp(),
+                    Some("timestamp")
+                )
+                .with_metadata_field(
+                    &owned_value_path!("kafka", "message_key"),
+                    Kind::bytes(),
+                    None
+                )
+                .with_metadata_field(&owned_value_path!("kafka", "topic"), Kind::bytes(), None)
+                .with_metadata_field(
+                    &owned_value_path!("kafka", "partition"),
+                    Kind::bytes(),
+                    None
+                )
+                .with_metadata_field(&owned_value_path!("kafka", "offset"), Kind::bytes(), None)
+                .with_metadata_field(
+                    &owned_value_path!("kafka", "headers"),
+                    Kind::object(Collection::empty().with_unknown(Kind::bytes())),
+                    None
+                )
+                .with_metadata_field(
+                    &owned_value_path!("vector", "ingest_timestamp"),
+                    Kind::timestamp(),
+                    None
+                )
+                .with_metadata_field(
+                    &owned_value_path!("vector", "source_type"),
+                    Kind::bytes(),
+                    None
+                )
             )
         )
     }

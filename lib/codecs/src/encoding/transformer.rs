@@ -150,41 +150,39 @@ impl Transformer {
 
     fn apply_only_fields_otel(&self, log: &mut OtelLog) {
         if let Some(only_fields) = self.only_fields.as_ref() {
-            // Collect current value, extract only_fields, rebuild
-            let mut old_value = log.value();
-            let mut kept = Vec::new();
+            let only_set: std::collections::HashSet<String> = only_fields
+                .iter()
+                .map(|f| String::from(f.clone()))
+                .collect();
 
-            for field in only_fields {
-                if let Some(value) = old_value.remove(field, true) {
-                    kept.push((field.clone(), value));
-                }
-            }
-
-            // Preserve service meaning in dropped_fields
+            // Preserve service meaning in dropped_fields before removal
             let service_path = log
                 .metadata()
                 .schema_definition()
                 .meaning_path(meaning::SERVICE)
                 .cloned();
-            if let Some(service_path) = service_path {
-                if let Some(service) = old_value.remove(&service_path.path, true) {
-                    log.metadata_mut()
-                        .add_dropped_field(meaning::SERVICE.into(), service);
-                }
-            }
 
-            // Clear all fields and re-insert only the kept ones
-            // Use the existing remove/insert pattern via keys
-            if let Some(keys) = log.keys() {
-                let keys_to_remove: Vec<String> = keys.map(|k| k.to_string()).collect();
-                for key in keys_to_remove {
-                    if let Ok(path) = vrl::path::parse_target_path(&key) {
+            // Collect all current keys
+            let keys_to_check: Vec<String> = log
+                .keys()
+                .map(|keys| keys.map(|k| k.to_string()).collect())
+                .unwrap_or_default();
+
+            for key in &keys_to_check {
+                if !only_set.contains(key.as_str()) {
+                    if let Ok(path) = vrl::path::parse_target_path(key) {
+                        if let Some(service_path) = &service_path {
+                            if service_path.path.to_string() == *key {
+                                if let Some(v) = log.remove(&path) {
+                                    log.metadata_mut()
+                                        .add_dropped_field(meaning::SERVICE.into(), v);
+                                    continue;
+                                }
+                            }
+                        }
                         log.remove(&path);
                     }
                 }
-            }
-            for (field, value) in kept {
-                log.insert((PathPrefix::Event, &field), value);
             }
         }
     }

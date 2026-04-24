@@ -203,7 +203,7 @@ impl SourceConfig for WebSocketConfig {
 
 #[cfg(test)]
 mod test {
-    use vector_lib::{config::LogNamespace, lookup::OwnedTargetPath, schema, schema::Definition};
+    use vector_lib::{config::LogNamespace, schema};
     use vrl::{
         owned_value_path,
         value::kind::{Collection, Kind},
@@ -228,43 +228,21 @@ mod test {
             .remove(0)
             .schema_definition(true);
 
-        let expected_definition =
-            Definition::new_with_default_metadata(Kind::bytes(), [LogNamespace::Vector])
-                .with_meaning(OwnedTargetPath::event_root(), "message")
-                .with_metadata_field(
-                    &owned_value_path!("vector", "source_type"),
-                    Kind::bytes(),
-                    None,
-                )
-                .with_metadata_field(
-                    &owned_value_path!("vector", "ingest_timestamp"),
-                    Kind::timestamp(),
-                    None,
-                );
-
-        assert_eq!(definition, Some(expected_definition));
-    }
-
-    #[test]
-    fn output_schema_definition_legacy_namespace() {
-        let config = WebSocketConfig::default();
-
-        let definition = config
-            .outputs(LogNamespace::Vector)
-            .remove(0)
-            .schema_definition(true);
-
         let expected_definition = schema::Definition::new_with_default_metadata(
             Kind::object(Collection::empty()),
             [LogNamespace::Vector],
         )
-        .with_event_field(
-            &owned_value_path!("body"),
+        .with_event_field(&owned_value_path!("body"), Kind::bytes(), Some("message"))
+        .with_metadata_field(
+            &owned_value_path!("vector", "source_type"),
             Kind::bytes(),
-            Some("message"),
+            None,
         )
-        .with_event_field(&owned_value_path!("time_unix_nano"), Kind::integer(), None)
-        .with_event_field(&owned_value_path!("resource", "source_type"), Kind::bytes(), None);
+        .with_metadata_field(
+            &owned_value_path!("vector", "ingest_timestamp"),
+            Kind::timestamp(),
+            None,
+        );
 
         assert_eq!(definition, Some(expected_definition));
     }

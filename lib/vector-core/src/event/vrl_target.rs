@@ -365,7 +365,7 @@ fn otel_span_event_to_value(event: &OtelSpan) -> Value {
     map.insert("end_time_unix_nano".into(), Value::Integer(span_proto.end_time_unix_nano as i64));
     map.insert(
         "attributes".into(),
-        Value::Object(otel_kvlist_to_object_map(&span_proto.attributes)),
+        Value::Object(event.attributes().to_object_map()),
     );
     map.insert("dropped_attributes_count".into(), Value::Integer(span_proto.dropped_attributes_count as i64));
 

@@ -1263,9 +1263,9 @@ async fn decode_traces() {
             assert_eq!(status.code, opentelemetry_proto::tonic::trace::v1::status::StatusCode::Error as i32);
 
             // Span attributes (from DD meta + metrics)
-            assert_eq!(attr_str(&otel_span.attributes, "foo"), "bar");
-            assert_eq!(attr_double(&otel_span.attributes, "a_metrics"), 0.577);
-            assert_eq!(attr_str(&otel_span.attributes, "dd.resource"), "a_resource");
+            assert_eq!(attr_str(&span_v1.attributes().to_key_values(), "foo"), "bar");
+            assert_eq!(attr_double(&span_v1.attributes().to_key_values(), "a_metrics"), 0.577);
+            assert_eq!(attr_str(&span_v1.attributes().to_key_values(), "dd.resource"), "a_resource");
 
             assert_eq!(
                 &events[0].metadata().secrets().get("datadog_api_key").unwrap()[..],
@@ -1278,7 +1278,7 @@ async fn decode_traces() {
             assert_eq!(resource_attr_str(apm_span, "host.name"), "a_hostname");
             assert_eq!(resource_attr_str(apm_span, "deployment.environment"), "an_environment");
             assert_eq!(apm_otel.name, "a_name");
-            assert_eq!(attr_str(&apm_otel.attributes, "dd.resource"), "a_resource");
+            assert_eq!(attr_str(&apm_span.attributes().to_key_values(), "dd.resource"), "a_resource");
 
             assert_eq!(
                 &events[1].metadata().secrets().get("datadog_api_key").unwrap()[..],
@@ -1292,8 +1292,9 @@ async fn decode_traces() {
             assert_eq!(resource_attr_str(span_v2, "deployment.environment"), "env");
 
             // Chunk-level tags as span attributes
-            assert_eq!(attr_str(&v2_otel.attributes, "a"), "tag");
-            assert_eq!(attr_str(&v2_otel.attributes, "another"), "tag");
+            let v2_kvs = span_v2.attributes().to_key_values();
+            assert_eq!(attr_str(&v2_kvs, "a"), "tag");
+            assert_eq!(attr_str(&v2_kvs, "another"), "tag");
 
             // Scope from tracer payload
             let scope_v2 = span_v2.scope().expect("scope should be set");
@@ -1301,18 +1302,18 @@ async fn decode_traces() {
             assert_eq!(scope_v2.version, "v577");
 
             // Tracer-level attributes
-            assert_eq!(attr_str(&v2_otel.attributes, "dd.language_version"), "v33");
-            assert_eq!(attr_str(&v2_otel.attributes, "dd.container_id"), "an_id");
-            assert_eq!(attr_str(&v2_otel.attributes, "dd.origin"), "an_origin");
-            assert_eq!(attr_str(&v2_otel.attributes, "dd.runtime_id"), "123abc");
-            assert_eq!(attr_str(&v2_otel.attributes, "dd.app_version"), "v314");
-            assert_eq!(attr_int(&v2_otel.attributes, "dd.priority"), 42);
-            assert_eq!(attr_double(&v2_otel.attributes, "dd.target_tps"), 10.0);
-            assert_eq!(attr_double(&v2_otel.attributes, "dd.error_tps"), 10.0);
+            assert_eq!(attr_str(&v2_kvs, "dd.language_version"), "v33");
+            assert_eq!(attr_str(&v2_kvs, "dd.container_id"), "an_id");
+            assert_eq!(attr_str(&v2_kvs, "dd.origin"), "an_origin");
+            assert_eq!(attr_str(&v2_kvs, "dd.runtime_id"), "123abc");
+            assert_eq!(attr_str(&v2_kvs, "dd.app_version"), "v314");
+            assert_eq!(attr_int(&v2_kvs, "dd.priority"), 42);
+            assert_eq!(attr_double(&v2_kvs, "dd.target_tps"), 10.0);
+            assert_eq!(attr_double(&v2_kvs, "dd.error_tps"), 10.0);
 
             // v2 span fields
             assert_eq!(v2_otel.name, "a_name");
-            assert_eq!(attr_str(&v2_otel.attributes, "dd.resource"), "a_resource");
+            assert_eq!(attr_str(&v2_kvs, "dd.resource"), "a_resource");
             assert_eq!(v2_otel.trace_id, {
                 let mut bytes = vec![0u8; 16];
                 bytes[8..16].copy_from_slice(&123u64.to_be_bytes());
@@ -1331,8 +1332,8 @@ async fn decode_traces() {
             assert_eq!(v2_status.code, opentelemetry_proto::tonic::trace::v1::status::StatusCode::Error as i32);
 
             // Meta + metrics as span attributes
-            assert_eq!(attr_str(&v2_otel.attributes, "foo"), "bar");
-            assert_eq!(attr_double(&v2_otel.attributes, "a_metrics"), 0.577);
+            assert_eq!(attr_str(&v2_kvs, "foo"), "bar");
+            assert_eq!(attr_double(&v2_kvs, "a_metrics"), 0.577);
 
             assert_eq!(
                 &events[2].metadata().secrets().get("datadog_api_key").unwrap()[..],

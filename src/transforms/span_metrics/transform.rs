@@ -142,9 +142,11 @@ impl SpanMetrics {
             if excluded.iter().any(|e| e == &dim_config.name) {
                 continue;
             }
-            let value = span.attributes.iter()
-                .find(|kv| kv.key == dim_config.name)
-                .and_then(extract_string_value)
+            let value = otel_span.attribute(&dim_config.name)
+                .and_then(|av| match &av.value {
+                    Some(opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(s)) => Some(s.clone()),
+                    _ => None,
+                })
                 .or_else(|| {
                     resource.and_then(|r| {
                         r.attributes.iter()

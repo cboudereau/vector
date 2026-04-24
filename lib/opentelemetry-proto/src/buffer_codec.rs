@@ -157,7 +157,7 @@ fn otel_spans_to_export(otel_spans: &OtelSpanArray) -> ExportTraceServiceRequest
         resource_spans: otel_spans
             .iter()
             .map(|otel| {
-                let span: Span = transcode(otel.span());
+                let span: Span = transcode(&otel.span_to_proto());
                 let resource: Option<Resource> = otel.resource().map(|r| transcode(r));
                 let scope: Option<InstrumentationScope> = otel.scope().map(|s| transcode(s));
                 ResourceSpans {

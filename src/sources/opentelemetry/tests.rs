@@ -1291,8 +1291,8 @@ async fn http_json_traces() {
         assert_eq!(otel_span.span().kind, 1);
         assert_eq!(otel_span.span().start_time_unix_nano, 1713525203000000000);
         assert_eq!(otel_span.span().end_time_unix_nano, 1713525205000000000);
-        assert_eq!(otel_span.span().attributes.len(), 1);
-        assert_eq!(otel_span.span().attributes[0].key, "http.method");
+        assert_eq!(otel_span.attributes().len(), 1);
+        assert!(otel_span.attributes().get("http.method").is_some());
         assert_eq!(
             otel_span.span().trace_id,
             str_into_hex_bytes("4ac52aadf321c2e531db005df08792f5")

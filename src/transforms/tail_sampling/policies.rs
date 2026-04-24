@@ -346,14 +346,10 @@ impl SamplingPolicy for StringAttribute {
     fn evaluate(&self, trace: &BufferedTrace) -> Decision {
         for span_event in &trace.spans {
             if let crate::event::Event::Trace(otel_span) = span_event {
-                for attr in &otel_span.span().attributes {
-                    if attr.key == self.key {
-                        if let Some(v) = &attr.value {
-                            if let Some(opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(s)) = &v.value {
-                                if self.values.iter().any(|val| val == s) {
-                                    return Decision::Sample;
-                                }
-                            }
+                if let Some(v) = otel_span.attribute(&self.key) {
+                    if let Some(opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(s)) = &v.value {
+                        if self.values.iter().any(|val| val == s) {
+                            return Decision::Sample;
                         }
                     }
                 }
@@ -376,19 +372,15 @@ impl SamplingPolicy for NumericAttribute {
     fn evaluate(&self, trace: &BufferedTrace) -> Decision {
         for span_event in &trace.spans {
             if let crate::event::Event::Trace(otel_span) = span_event {
-                for attr in &otel_span.span().attributes {
-                    if attr.key == self.key {
-                        if let Some(v) = &attr.value {
-                            let num = match &v.value {
-                                Some(opentelemetry_proto::tonic::common::v1::any_value::Value::DoubleValue(d)) => Some(*d),
-                                Some(opentelemetry_proto::tonic::common::v1::any_value::Value::IntValue(i)) => Some(*i as f64),
-                                _ => None,
-                            };
-                            if let Some(n) = num {
-                                if n >= self.min_value && n <= self.max_value {
-                                    return Decision::Sample;
-                                }
-                            }
+                if let Some(v) = otel_span.attribute(&self.key) {
+                    let num = match &v.value {
+                        Some(opentelemetry_proto::tonic::common::v1::any_value::Value::DoubleValue(d)) => Some(*d),
+                        Some(opentelemetry_proto::tonic::common::v1::any_value::Value::IntValue(i)) => Some(*i as f64),
+                        _ => None,
+                    };
+                    if let Some(n) = num {
+                        if n >= self.min_value && n <= self.max_value {
+                            return Decision::Sample;
                         }
                     }
                 }

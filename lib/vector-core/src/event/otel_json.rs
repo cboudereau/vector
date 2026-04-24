@@ -93,8 +93,9 @@ impl Serialize for OtlpJsonSpan<'_> {
         if span.span().end_time_unix_nano != 0 {
             map.serialize_entry("endTimeUnixNano", &span.span().end_time_unix_nano.to_string())?;
         }
-        if !span.span().attributes.is_empty() {
-            map.serialize_entry("attributes", &SerializableAttributes(&span.span().attributes))?;
+        if !span.attributes().is_empty() {
+            let kvs = span.attributes().to_key_values();
+            map.serialize_entry("attributes", &SerializableAttributes(&kvs))?;
         }
         if let Some(ref status) = span.span().status {
             map.serialize_entry("status", &serde_json::json!({

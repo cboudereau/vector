@@ -666,7 +666,7 @@ pub(crate) fn otel_span_event_to_resource_spans(
         trace::v1::{ResourceSpans, ScopeSpans, Span as SinkSpan},
     };
 
-    let span_bytes = span_event.span().encode_to_vec();
+    let span_bytes = span_event.span_to_proto().encode_to_vec();
     let sink_span =
         SinkSpan::decode(bytes::Bytes::from(span_bytes)).expect("Span proto roundtrip");
 

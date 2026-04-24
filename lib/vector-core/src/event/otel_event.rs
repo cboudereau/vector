@@ -2025,15 +2025,18 @@ impl OtelLog {
 #[derive(Clone, Debug, PartialEq)]
 pub struct OtelSpan {
     pub(crate) span: Span,
+    pub(crate) span_attrs: OtelAttributes,
     pub(crate) resource: Option<Resource>,
     pub(crate) scope: Option<InstrumentationScope>,
     pub(crate) metadata: EventMetadata,
 }
 
 impl OtelSpan {
-    pub fn new(span: Span) -> Self {
+    pub fn new(mut span: Span) -> Self {
+        let span_attrs = OtelAttributes::from_key_values(std::mem::take(&mut span.attributes));
         Self {
             span,
+            span_attrs,
             resource: None,
             scope: None,
             metadata: EventMetadata::default(),
@@ -2045,18 +2048,13 @@ impl OtelSpan {
     /// The OtelLog's fields become span attributes. Resource and scope are preserved.
     pub fn from_otel_log(log: OtelLog) -> Self {
         let map = log.as_map().unwrap_or_default();
-        let attributes: Vec<KeyValue> = map
-            .into_iter()
-            .map(|(k, v)| KeyValue {
-                key: k.to_string(),
-                value: Some(vrl_value_to_any_value(&v)),
-            })
-            .collect();
+        let mut span_attrs = OtelAttributes::new();
+        for (k, v) in map {
+            span_attrs.insert(k.to_string(), vrl_value_to_any_value(&v));
+        }
         Self {
-            span: Span {
-                attributes,
-                ..Default::default()
-            },
+            span: Span::default(),
+            span_attrs,
             resource: log.resource,
             scope: log.scope,
             metadata: log.metadata,
@@ -2072,6 +2070,7 @@ impl OtelSpan {
     pub fn from_value_map(value: Value, metadata: EventMetadata) -> Self {
         let mut out = Self {
             span: Span::default(),
+            span_attrs: OtelAttributes::new(),
             resource: None,
             scope: None,
             metadata,
@@ -2081,13 +2080,15 @@ impl OtelSpan {
     }
 
     pub fn from_parts(
-        span: Span,
+        mut span: Span,
         resource: Option<Resource>,
         scope: Option<InstrumentationScope>,
         metadata: EventMetadata,
     ) -> Self {
+        let span_attrs = OtelAttributes::from_key_values(std::mem::take(&mut span.attributes));
         Self {
             span,
+            span_attrs,
             resource,
             scope,
             metadata,
@@ -2102,7 +2103,18 @@ impl OtelSpan {
         Option<InstrumentationScope>,
         EventMetadata,
     ) {
-        (self.span, self.resource, self.scope, self.metadata)
+        let mut span = self.span;
+        span.attributes = self.span_attrs.to_key_values();
+        (span, self.resource, self.scope, self.metadata)
+    }
+
+    /// Return a full `Span` proto with attributes reconstituted from the
+    /// internal `OtelAttributes` map. Use at proto serialization boundaries
+    /// (OTLP codec, buffer encoding, gRPC sink).
+    pub fn span_to_proto(&self) -> Span {
+        let mut span = self.span.clone();
+        span.attributes = self.span_attrs.to_key_values();
+        span
     }
 
     pub fn span(&self) -> &Span {
@@ -2177,19 +2189,19 @@ impl OtelSpan {
     }
 
     pub fn attribute(&self, key: &str) -> Option<&AnyValue> {
-        attribute_value(&self.span.attributes, key)
+        self.span_attrs.get(key)
     }
 
     pub fn set_attribute(&mut self, key: String, value: AnyValue) {
-        set_attribute(&mut self.span.attributes, key, value);
+        self.span_attrs.insert(key, value);
     }
 
     pub fn remove_attribute(&mut self, key: &str) -> Option<AnyValue> {
-        remove_attribute(&mut self.span.attributes, key)
+        self.span_attrs.remove(key)
     }
 
-    pub fn attributes(&self) -> &[KeyValue] {
-        &self.span.attributes
+    pub fn attributes(&self) -> &OtelAttributes {
+        &self.span_attrs
     }
 
     pub fn resource_attribute(&self, key: &str) -> Option<&AnyValue> {
@@ -2250,10 +2262,9 @@ impl OtelSpan {
             status_map.insert("code".into(), Value::Integer(status.code as i64));
             map.insert("status".into(), Value::Object(status_map));
         }
-        if !self.span.attributes.is_empty() {
-            let attrs = kvlist_to_object_map(&self.span.attributes);
-            for (k, v) in attrs {
-                map.insert(k, v);
+        if !self.span_attrs.is_empty() {
+            for (k, v) in self.span_attrs.iter() {
+                map.insert(KeyString::from(k.clone()), any_value_to_vrl(v));
             }
         }
         if let Some(ref res) = self.resource {
@@ -2362,13 +2373,10 @@ impl OtelSpan {
         self.resource = restore_resource(&mut map);
         self.scope = restore_scope(&mut map);
 
-        let attributes: Vec<KeyValue> = map
-            .into_iter()
-            .map(|(k, v)| KeyValue {
-                key: k.to_string(),
-                value: Some(vrl_value_to_any_value(&v)),
-            })
-            .collect();
+        let mut span_attrs = OtelAttributes::new();
+        for (k, v) in map {
+            span_attrs.insert(k.to_string(), vrl_value_to_any_value(&v));
+        }
 
         self.span = Span {
             name,
@@ -2379,9 +2387,9 @@ impl OtelSpan {
             end_time_unix_nano,
             kind,
             status,
-            attributes,
             ..Default::default()
         };
+        self.span_attrs = span_attrs;
     }
 
     /// Get a field value by path.
@@ -2464,7 +2472,7 @@ impl OtelSpan {
                 Some(Value::Object(status_map))
             }
             other => {
-                attribute_value(&self.span.attributes, other)
+                self.span_attrs.get(other)
                     .map(any_value_to_vrl)
             }
         }
@@ -2533,7 +2541,7 @@ impl OtelSpan {
                 }
             }
             first => {
-                if let Some(av) = attribute_value(&self.span.attributes, first) {
+                if let Some(av) = self.span_attrs.get(first) {
                     let v = any_value_to_vrl(av);
                     if let Some(result) = navigate_value(&v, &fields[1..]) {
                         return Some(result);
@@ -2620,7 +2628,7 @@ impl OtelSpan {
                 if let Some(decoded) = hex_decode(&value) {
                     self.span.trace_id = decoded;
                 } else {
-                    set_attribute(&mut self.span.attributes, "trace_id".to_string(), vrl_value_to_any_value(&value));
+                    self.span_attrs.insert("trace_id".to_string(), vrl_value_to_any_value(&value));
                 }
                 old
             }
@@ -2630,7 +2638,7 @@ impl OtelSpan {
                 if let Some(decoded) = hex_decode(&value) {
                     self.span.span_id = decoded;
                 } else {
-                    set_attribute(&mut self.span.attributes, "span_id".to_string(), vrl_value_to_any_value(&value));
+                    self.span_attrs.insert("span_id".to_string(), vrl_value_to_any_value(&value));
                 }
                 old
             }
@@ -2640,7 +2648,7 @@ impl OtelSpan {
                 if let Some(decoded) = hex_decode(&value) {
                     self.span.parent_span_id = decoded;
                 } else {
-                    set_attribute(&mut self.span.attributes, "parent_span_id".to_string(), vrl_value_to_any_value(&value));
+                    self.span_attrs.insert("parent_span_id".to_string(), vrl_value_to_any_value(&value));
                 }
                 old
             }
@@ -2656,7 +2664,7 @@ impl OtelSpan {
                         }
                     }
                 }
-                set_attribute(&mut self.span.attributes, "start_time".to_string(), vrl_value_to_any_value(&value));
+                self.span_attrs.insert("start_time".to_string(), vrl_value_to_any_value(&value));
                 old
             }
             "end_time" => {
@@ -2671,7 +2679,7 @@ impl OtelSpan {
                         }
                     }
                 }
-                set_attribute(&mut self.span.attributes, "end_time".to_string(), vrl_value_to_any_value(&value));
+                self.span_attrs.insert("end_time".to_string(), vrl_value_to_any_value(&value));
                 old
             }
             "kind" => {
@@ -2703,8 +2711,8 @@ impl OtelSpan {
                 old
             }
             other => {
-                let old = attribute_value(&self.span.attributes, other).map(any_value_to_vrl);
-                set_attribute(&mut self.span.attributes, other.to_string(), vrl_value_to_any_value(&value));
+                let old = self.span_attrs.get(other).map(any_value_to_vrl);
+                self.span_attrs.insert(other.to_string(), vrl_value_to_any_value(&value));
                 old
             }
         }
@@ -2812,11 +2820,11 @@ impl OtelSpan {
                 }
             }
             first => {
-                let mut v = attribute_value(&self.span.attributes, first)
+                let mut v = self.span_attrs.get(first)
                     .map(any_value_to_vrl)
                     .unwrap_or(Value::Object(ObjectMap::new()));
                 let old = insert_value_at(&mut v, &fields[1..], value);
-                set_attribute(&mut self.span.attributes, first.to_string(), vrl_value_to_any_value(&v));
+                self.span_attrs.insert(first.to_string(), vrl_value_to_any_value(&v));
                 old
             }
         }
@@ -4075,6 +4083,7 @@ impl EventDataEq for OtelLog {
 impl EventDataEq for OtelSpan {
     fn event_data_eq(&self, other: &Self) -> bool {
         self.span == other.span
+            && self.span_attrs == other.span_attrs
             && self.resource == other.resource
             && self.scope == other.scope
     }

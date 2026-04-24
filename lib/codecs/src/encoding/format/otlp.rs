@@ -175,7 +175,7 @@ fn otel_metric_to_export_request(metric_event: &OtelMetric) -> ExportMetricsServ
 }
 
 fn otel_span_to_export_request(span_event: &OtelSpan) -> ExportTraceServiceRequest {
-    let span: ProtoSpan = proto_convert(span_event.span());
+    let span: ProtoSpan = proto_convert(&span_event.span_to_proto());
     let resource = span_event.resource().map(|r| proto_convert::<_, ProtoResource>(r));
     let scope = span_event.scope().map(|s| proto_convert::<_, ProtoScope>(s));
 

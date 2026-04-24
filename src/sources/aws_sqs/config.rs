@@ -2,7 +2,7 @@ use std::num::NonZeroUsize;
 
 use vector_lib::{
     codecs::decoding::{DeserializerConfig, FramingConfig},
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     configurable::configurable_component,
     lookup::owned_value_path,
 };
@@ -142,7 +142,6 @@ impl SourceConfig for AwsSqsConfig {
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::Overwrite(owned_value_path!("timestamp"))),
                 &owned_value_path!("timestamp"),
                 Kind::timestamp().or_undefined(),
                 Some("timestamp"),

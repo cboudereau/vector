@@ -5,7 +5,7 @@ use futures_util::StreamExt;
 use serde::{Deserialize, de};
 use vector_lib::{
     codecs::{JsonSerializerConfig, TextSerializerConfig},
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     event::{Event, EventMetadata, OtelLog, Value},
     lookup::lookup_v2::OptionalTargetPath,
     schema::{Definition, meaning},
@@ -348,14 +348,12 @@ fn splunk_encode_log_event_semantic_meanings() {
         Definition::new_with_default_metadata(Kind::bytes(), [LogNamespace::Vector])
             .with_source_metadata(
                 "splunk_hec",
-                Some(LegacyKey::InsertIfEmpty(owned_value_path!("hostname"))),
                 &owned_value_path!("hostname"),
                 Kind::bytes(),
                 Some(meaning::HOST),
             )
             .with_source_metadata(
                 "splunk_hec",
-                Some(LegacyKey::InsertIfEmpty(owned_value_path!("timestamp"))),
                 &owned_value_path!("timestamp"),
                 Kind::timestamp(),
                 Some(meaning::TIMESTAMP),

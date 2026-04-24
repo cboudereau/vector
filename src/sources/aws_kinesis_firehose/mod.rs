@@ -7,7 +7,7 @@ use tower::ServiceBuilder;
 use tracing::Span;
 use vector_lib::{
     codecs::decoding::{DeserializerConfig, FramingConfig},
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     configurable::configurable_component,
     lookup::owned_value_path,
     sensitive_string::SensitiveString,
@@ -219,14 +219,12 @@ impl SourceConfig for AwsKinesisFirehoseConfig {
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::InsertIfEmpty(owned_value_path!("request_id"))),
                 &owned_value_path!("request_id"),
                 Kind::bytes(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::InsertIfEmpty(owned_value_path!("source_arn"))),
                 &owned_value_path!("source_arn"),
                 Kind::bytes(),
                 None,

@@ -11,7 +11,7 @@ use vector_lib::{
         StreamDecodingError,
         decoding::{DeserializerConfig, FramingConfig},
     },
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     configurable::NamedComponent,
     event::{Event, string_value},
     internal_event::{ByteSize, BytesReceived, CountByteSize, InternalEventHandle as _, Protocol},
@@ -191,7 +191,6 @@ fn outputs(
         .schema_definition(log_namespace)
         .with_source_metadata(
             source_name,
-            Some(LegacyKey::Overwrite(owned_value_path!("resource", "host.name"))),
             &owned_value_path!("host"),
             Kind::bytes(),
             Some("host"),

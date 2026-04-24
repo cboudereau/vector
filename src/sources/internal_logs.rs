@@ -2,9 +2,9 @@ use chrono::Utc;
 use futures::{StreamExt, stream};
 use vector_lib::{
     codecs::BytesDeserializerConfig,
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     configurable::configurable_component,
-    lookup::{OwnedValuePath, lookup_v2::OptionalValuePath, owned_value_path, path},
+    lookup::{lookup_v2::OptionalValuePath, owned_value_path, path},
     schema::Definition,
 };
 use vrl::value::Kind;
@@ -66,9 +66,6 @@ impl Default for InternalLogsConfig {
 impl InternalLogsConfig {
     /// Generates the `schema::Definition` for this component.
     fn schema_definition(&self, log_namespace: LogNamespace) -> Definition {
-        let host_key = Some(LegacyKey::Overwrite(owned_value_path!("resource", "host.name")));
-        let pid_key = self.pid_key.clone().path.map(LegacyKey::Overwrite);
-
         // There is a global and per-source `log_namespace` config.
         // The source config overrides the global setting and is merged here.
         BytesDeserializerConfig
@@ -76,14 +73,12 @@ impl InternalLogsConfig {
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 InternalLogsConfig::NAME,
-                host_key,
                 &owned_value_path!("host"),
                 Kind::bytes().or_undefined(),
                 Some("host"),
             )
             .with_source_metadata(
                 InternalLogsConfig::NAME,
-                pid_key,
                 &owned_value_path!("pid"),
                 Kind::integer(),
                 None,
@@ -95,14 +90,11 @@ impl InternalLogsConfig {
 #[typetag::serde(name = "internal_logs")]
 impl SourceConfig for InternalLogsConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
-        let pid_key = self.pid_key.clone().path;
-
         let subscription = TraceSubscription::subscribe();
 
         let log_namespace = cx.log_namespace(self.log_namespace);
 
         Ok(Box::pin(run(
-            pid_key,
             subscription,
             cx.out,
             cx.shutdown,
@@ -126,7 +118,6 @@ impl SourceConfig for InternalLogsConfig {
 }
 
 async fn run(
-    pid_key: Option<OwnedValuePath>,
     mut subscription: TraceSubscription,
     mut out: SourceSender,
     shutdown: ShutdownSignal,
@@ -160,11 +151,9 @@ async fn run(
             log.set_host(hostname.to_owned());
         }
 
-        let legacy_pid_key = pid_key.as_ref().map(LegacyKey::Overwrite);
         log_namespace.insert_source_metadata(
             InternalLogsConfig::NAME,
             &mut log,
-            legacy_pid_key,
             path!("pid"),
             pid,
         );

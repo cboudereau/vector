@@ -5,11 +5,11 @@
 use k8s_openapi::{api::core::v1::Node, apimachinery::pkg::apis::meta::v1::ObjectMeta};
 use kube::runtime::reflector::{ObjectRef, store::Store};
 use vector_lib::{
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     configurable::configurable_component,
     lookup::{
         OwnedTargetPath,
-        lookup_v2::{OptionalTargetPath, ValuePath},
+        lookup_v2::OptionalTargetPath,
         owned_value_path, path,
     },
 };
@@ -86,15 +86,12 @@ fn annotate_from_metadata(
     log_namespace: LogNamespace,
 ) {
     if let Some(labels) = &metadata.labels
-        && let Some(prefix_path) = &fields_spec.node_labels.path
+        && fields_spec.node_labels.path.is_some()
     {
         for (key, value) in labels.iter() {
-            let key_path = path!(key);
-
             log_namespace.insert_source_metadata(
                 Config::NAME,
                 log,
-                Some(LegacyKey::Overwrite((&prefix_path.path).concat(key_path))),
                 path!("node_labels", key),
                 value.to_owned(),
             )

@@ -35,7 +35,7 @@ use tower::ServiceBuilder;
 use tracing::Span;
 use vector_lib::{
     codecs::decoding::{DeserializerConfig, FramingConfig},
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     configurable::configurable_component,
     event::{BatchNotifier, BatchStatus},
     internal_event::{EventsReceived, Registered},
@@ -275,42 +275,36 @@ impl SourceConfig for DatadogAgentConfig {
             // https://docs.datadoghq.com/logs/log_configuration/attributes_naming_convention/?s=severity#reserved-attributes
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::InsertIfEmpty(owned_value_path!("status"))),
                 &owned_value_path!("status"),
                 Kind::bytes(),
                 Some(meaning::SEVERITY),
             )
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::InsertIfEmpty(owned_value_path!("timestamp"))),
                 &owned_value_path!("timestamp"),
                 Kind::timestamp(),
                 Some(meaning::TIMESTAMP),
             )
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::InsertIfEmpty(owned_value_path!("hostname"))),
                 &owned_value_path!("hostname"),
                 Kind::bytes(),
                 Some(meaning::HOST),
             )
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::InsertIfEmpty(owned_value_path!("service"))),
                 &owned_value_path!("service"),
                 Kind::bytes(),
                 Some(meaning::SERVICE),
             )
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::InsertIfEmpty(owned_value_path!("ddsource"))),
                 &owned_value_path!("ddsource"),
                 Kind::bytes(),
                 Some(meaning::SOURCE),
             )
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::InsertIfEmpty(owned_value_path!("ddtags"))),
                 &owned_value_path!("ddtags"),
                 if self.parse_ddtags {
                     Kind::array(Collection::empty().with_unknown(Kind::bytes())).or_undefined()

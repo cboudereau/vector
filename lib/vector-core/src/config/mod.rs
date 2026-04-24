@@ -463,23 +463,12 @@ impl From<LogNamespace> for bool {
     }
 }
 
-/// A shortcut to specify no `LegacyKey` should be used (since otherwise a turbofish would be required)
-pub const NO_LEGACY_KEY: Option<LegacyKey<&'static str>> = None;
-
-pub enum LegacyKey<T> {
-    /// Always insert the data, even if the field previously existed
-    Overwrite(T),
-    /// Only insert the data if the field is currently empty
-    InsertIfEmpty(T),
-}
-
 impl LogNamespace {
     /// Adds metadata to "event metadata", nested under the source name.
     pub fn insert_source_metadata<'a>(
         &self,
         source_name: &'a str,
         log: &mut impl MetadataInsertable,
-        _legacy_key: Option<LegacyKey<impl ValuePath<'a>>>,
         metadata_key: impl ValuePath<'a>,
         value: impl Into<Value>,
     ) {
@@ -493,7 +482,6 @@ impl LogNamespace {
         &self,
         source_name: &'a str,
         log: &OtelLog,
-        _legacy_key: impl ValuePath<'a>,
         metadata_key: impl ValuePath<'a>,
     ) -> Option<Value> {
         log.metadata()
@@ -514,7 +502,6 @@ impl LogNamespace {
             .insert(path!("vector", "source_type"), source_name);
         self.insert_vector_metadata(
             log,
-            Some(path!("time_unix_nano")),
             path!("ingest_timestamp"),
             now,
         );
@@ -524,7 +511,6 @@ impl LogNamespace {
     pub fn insert_vector_metadata<'a>(
         &self,
         log: &mut impl MetadataInsertable,
-        _legacy_key: Option<impl ValuePath<'a>>,
         metadata_key: impl ValuePath<'a>,
         value: impl Into<Value>,
     ) {
@@ -537,7 +523,6 @@ impl LogNamespace {
     pub fn get_vector_metadata<'a>(
         &self,
         log: &OtelLog,
-        _legacy_key: impl ValuePath<'a>,
         metadata_key: impl ValuePath<'a>,
     ) -> Option<Value> {
         log.metadata()

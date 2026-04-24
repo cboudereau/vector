@@ -28,7 +28,7 @@ use tokio_util::codec::FramedRead;
 use vector_lib::{
     EstimatedJsonEncodedSizeOf,
     codecs::{CharacterDelimitedDecoder, decoding::BoxedFramingError},
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     configurable::configurable_component,
     finalizer::OrderedFinalizer,
     internal_event::{
@@ -270,21 +270,18 @@ impl JournaldConfig {
             // for metadata that is added to the events dynamically through the Record
             .with_source_metadata(
                 JournaldConfig::NAME,
-                None,
                 &owned_value_path!("metadata"),
                 Kind::object(Collection::empty().with_unknown(Kind::bytes())).or_undefined(),
                 None,
             )
             .with_source_metadata(
                 JournaldConfig::NAME,
-                None,
                 &owned_value_path!("timestamp"),
                 Kind::timestamp().or_undefined(),
                 Some("timestamp"),
             )
             .with_source_metadata(
                 JournaldConfig::NAME,
-                Some(LegacyKey::Overwrite(owned_value_path!("resource", "host.name"))),
                 &owned_value_path!("host"),
                 Kind::bytes().or_undefined(),
                 Some("host"),

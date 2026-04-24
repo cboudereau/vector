@@ -11,7 +11,7 @@ use tracing::{Instrument, Span};
 use vector_lib::{
     EstimatedJsonEncodedSizeOf,
     codecs::{BytesDeserializer, BytesDeserializerConfig},
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     configurable::configurable_component,
     file_source::{
         file_server::{FileServer, Line, calculate_ignore_before},
@@ -418,35 +418,23 @@ impl SourceConfig for FileConfig {
     }
 
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
-        let file_key = self.file_key.clone().path.map(LegacyKey::Overwrite);
-        let host_key = Some(LegacyKey::Overwrite(owned_value_path!("resource", "host.name")));
-
-        let offset_key = self
-            .offset_key
-            .clone()
-            .and_then(|k| k.path)
-            .map(LegacyKey::Overwrite);
-
         let schema_definition = BytesDeserializerConfig
             .schema_definition(global_log_namespace.merge(self.log_namespace))
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 Self::NAME,
-                host_key,
                 &owned_value_path!("host"),
                 Kind::bytes().or_undefined(),
                 Some("host"),
             )
             .with_source_metadata(
                 Self::NAME,
-                offset_key,
                 &owned_value_path!("offset"),
                 Kind::integer(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                file_key,
                 &owned_value_path!("path"),
                 Kind::bytes(),
                 None,

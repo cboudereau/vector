@@ -2,7 +2,7 @@ use bytes::Bytes;
 use chrono::{DateTime, TimeZone, Utc};
 use prost::Message;
 use vector_core::{
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     event::{Event, EventMetadata, OtelLog},
 };
 use vrl::{core::Value, path};
@@ -261,7 +261,6 @@ impl ResourceLog {
                 log_namespace.insert_source_metadata(
                     SOURCE_NAME,
                     &mut log,
-                    Some(LegacyKey::Overwrite(path!(SCOPE_KEY, NAME_KEY))),
                     path!(SCOPE_KEY, NAME_KEY),
                     scope.name,
                 );
@@ -270,7 +269,6 @@ impl ResourceLog {
                 log_namespace.insert_source_metadata(
                     SOURCE_NAME,
                     &mut log,
-                    Some(LegacyKey::Overwrite(path!(SCOPE_KEY, VERSION_KEY))),
                     path!(SCOPE_KEY, VERSION_KEY),
                     scope.version,
                 );
@@ -279,7 +277,6 @@ impl ResourceLog {
                 log_namespace.insert_source_metadata(
                     SOURCE_NAME,
                     &mut log,
-                    Some(LegacyKey::Overwrite(path!(SCOPE_KEY, ATTRIBUTES_KEY))),
                     path!(SCOPE_KEY, ATTRIBUTES_KEY),
                     kv_list_into_value(scope.attributes),
                 );
@@ -288,10 +285,6 @@ impl ResourceLog {
                 log_namespace.insert_source_metadata(
                     SOURCE_NAME,
                     &mut log,
-                    Some(LegacyKey::Overwrite(path!(
-                        SCOPE_KEY,
-                        DROPPED_ATTRIBUTES_COUNT_KEY
-                    ))),
                     path!(SCOPE_KEY, DROPPED_ATTRIBUTES_COUNT_KEY),
                     scope.dropped_attributes_count,
                 );
@@ -305,7 +298,6 @@ impl ResourceLog {
             log_namespace.insert_source_metadata(
                 SOURCE_NAME,
                 &mut log,
-                Some(LegacyKey::Overwrite(path!(RESOURCE_KEY))),
                 path!(RESOURCE_KEY),
                 kv_list_into_value(resource.attributes),
             );
@@ -314,7 +306,6 @@ impl ResourceLog {
             log_namespace.insert_source_metadata(
                 SOURCE_NAME,
                 &mut log,
-                Some(LegacyKey::Overwrite(path!(ATTRIBUTES_KEY))),
                 path!(ATTRIBUTES_KEY),
                 kv_list_into_value(self.log_record.attributes),
             );
@@ -323,7 +314,6 @@ impl ResourceLog {
             log_namespace.insert_source_metadata(
                 SOURCE_NAME,
                 &mut log,
-                Some(LegacyKey::Overwrite(path!(TRACE_ID_KEY))),
                 path!(TRACE_ID_KEY),
                 Bytes::from(to_hex(&self.log_record.trace_id)),
             );
@@ -332,7 +322,6 @@ impl ResourceLog {
             log_namespace.insert_source_metadata(
                 SOURCE_NAME,
                 &mut log,
-                Some(LegacyKey::Overwrite(path!(SPAN_ID_KEY))),
                 path!(SPAN_ID_KEY),
                 Bytes::from(to_hex(&self.log_record.span_id)),
             );
@@ -341,7 +330,6 @@ impl ResourceLog {
             log_namespace.insert_source_metadata(
                 SOURCE_NAME,
                 &mut log,
-                Some(LegacyKey::Overwrite(path!(SEVERITY_TEXT_KEY))),
                 path!(SEVERITY_TEXT_KEY),
                 self.log_record.severity_text,
             );
@@ -350,7 +338,6 @@ impl ResourceLog {
             log_namespace.insert_source_metadata(
                 SOURCE_NAME,
                 &mut log,
-                Some(LegacyKey::Overwrite(path!(SEVERITY_NUMBER_KEY))),
                 path!(SEVERITY_NUMBER_KEY),
                 self.log_record.severity_number,
             );
@@ -359,7 +346,6 @@ impl ResourceLog {
             log_namespace.insert_source_metadata(
                 SOURCE_NAME,
                 &mut log,
-                Some(LegacyKey::Overwrite(path!(FLAGS_KEY))),
                 path!(FLAGS_KEY),
                 self.log_record.flags,
             );
@@ -368,7 +354,6 @@ impl ResourceLog {
         log_namespace.insert_source_metadata(
             SOURCE_NAME,
             &mut log,
-            Some(LegacyKey::Overwrite(path!(DROPPED_ATTRIBUTES_COUNT_KEY))),
             path!(DROPPED_ATTRIBUTES_COUNT_KEY),
             self.log_record.dropped_attributes_count,
         );
@@ -384,7 +369,6 @@ impl ResourceLog {
         log_namespace.insert_source_metadata(
             SOURCE_NAME,
             &mut log,
-            Some(LegacyKey::Overwrite(path!(OBSERVED_TIMESTAMP_KEY))),
             path!(OBSERVED_TIMESTAMP_KEY),
             observed_timestamp.clone(),
         );

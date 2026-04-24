@@ -112,6 +112,7 @@ fn default_max_length() -> usize {
 }
 
 impl UdpConfig {
+    #[allow(dead_code)]
     pub(super) fn host_key(&self) -> OptionalValuePath {
         self.host_key.clone().unwrap_or(default_host_key())
     }

@@ -957,7 +957,7 @@ mod test {
     };
     use tokio_util::codec::{Framed, length_delimited};
     use vector_lib::{
-        config::{LegacyKey, LogNamespace},
+        config::LogNamespace,
         lookup::{OwnedValuePath, owned_value_path, path},
         tcp::TcpKeepaliveConfig,
         tls::{CertificateMetadata, MaybeTls, MaybeTlsSettings},
@@ -1079,7 +1079,6 @@ mod test {
                 self.log_namespace.insert_source_metadata(
                     "framestream",
                     &mut log_event,
-                    self.host_key.as_ref().map(LegacyKey::Overwrite),
                     path!("host"),
                     host,
                 )

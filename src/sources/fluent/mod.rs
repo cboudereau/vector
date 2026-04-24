@@ -15,10 +15,10 @@ use smallvec::{SmallVec, smallvec};
 use tokio_util::codec::Decoder;
 use vector_lib::{
     codecs::{BytesDeserializerConfig, StreamDecodingError},
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     configurable::configurable_component,
     ipallowlist::IpAllowlistConfig,
-    lookup::{lookup_v2::parse_value_path, owned_value_path, path},
+    lookup::{owned_value_path, path},
     schema::Definition,
 };
 use vrl::value::{Kind, Value, kind::Collection};
@@ -330,22 +330,6 @@ impl SourceConfig for FluentConfig {
 impl FluentConfig {
     /// Builds the `schema::Definition` for this source using the provided `LogNamespace`.
     fn schema_definition(&self, log_namespace: LogNamespace) -> Definition {
-        // `host_key` is only inserted if not present already.
-        let host_key = Some(LegacyKey::InsertIfEmpty(owned_value_path!("host")));
-
-        let tag_key = parse_value_path("tag").ok().map(LegacyKey::Overwrite);
-
-        let tls_client_metadata_path = match &self.mode {
-            FluentMode::Tcp(tcp) => tcp
-                .tls
-                .as_ref()
-                .and_then(|tls| tls.client_metadata_key.as_ref())
-                .and_then(|k| k.path.clone())
-                .map(LegacyKey::Overwrite),
-            #[cfg(unix)]
-            FluentMode::Unix(_) => None,
-        };
-
         // There is a global and per-source `log_namespace` config.
         // The source config overrides the global setting and is merged here.
         let mut schema_definition = BytesDeserializerConfig
@@ -353,21 +337,18 @@ impl FluentConfig {
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 FluentConfig::NAME,
-                host_key,
                 &owned_value_path!("host"),
                 Kind::bytes(),
                 Some("host"),
             )
             .with_source_metadata(
                 FluentConfig::NAME,
-                tag_key,
                 &owned_value_path!("tag"),
                 Kind::bytes(),
                 None,
             )
             .with_source_metadata(
                 FluentConfig::NAME,
-                None,
                 &owned_value_path!("timestamp"),
                 Kind::timestamp(),
                 Some("timestamp"),
@@ -375,14 +356,12 @@ impl FluentConfig {
             // for metadata that is added to the events dynamically from the FluentRecord
             .with_source_metadata(
                 FluentConfig::NAME,
-                None,
                 &owned_value_path!("record"),
                 Kind::object(Collection::empty().with_unknown(Kind::bytes())).or_undefined(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                tls_client_metadata_path,
                 &owned_value_path!("tls_client_metadata"),
                 Kind::object(Collection::empty().with_unknown(Kind::bytes())).or_undefined(),
                 None,
@@ -767,7 +746,6 @@ impl From<FluentEvent<'_>> for Event {
         log_namespace.insert_source_metadata(
             FluentConfig::NAME,
             &mut log,
-            Some(LegacyKey::Overwrite(path!("tag"))),
             path!("tag"),
             tag,
         );
@@ -777,7 +755,6 @@ impl From<FluentEvent<'_>> for Event {
             log_namespace.insert_source_metadata(
                 FluentConfig::NAME,
                 &mut log,
-                Some(LegacyKey::Overwrite(path!(key.as_str()))),
                 path!("record", key.as_str()),
                 value,
             );

@@ -18,7 +18,7 @@ use vector_lib::{
         Decoder, DecodingConfig, StreamDecodingError,
         decoding::{DeserializerConfig, FramingConfig},
     },
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     configurable::configurable_component,
     internal_event::{ByteSize, BytesReceived, InternalEventHandle as _, Protocol},
     lookup::owned_value_path,
@@ -301,28 +301,24 @@ impl SourceConfig for ExecConfig {
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::InsertIfEmpty(owned_value_path!("host"))),
                 &owned_value_path!("host"),
                 Kind::bytes().or_undefined(),
                 Some("host"),
             )
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::InsertIfEmpty(owned_value_path!(STREAM_KEY))),
                 &owned_value_path!(STREAM_KEY),
                 Kind::bytes().or_undefined(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::InsertIfEmpty(owned_value_path!(PID_KEY))),
                 &owned_value_path!(PID_KEY),
                 Kind::integer().or_undefined(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::InsertIfEmpty(owned_value_path!(COMMAND_KEY))),
                 &owned_value_path!(COMMAND_KEY),
                 Kind::bytes(),
                 None,

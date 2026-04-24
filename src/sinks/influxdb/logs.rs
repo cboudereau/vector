@@ -854,7 +854,7 @@ mod integration_tests {
     use futures::stream;
     use vector_lib::{
         codecs::BytesDeserializerConfig,
-        config::{LegacyKey, LogNamespace},
+        config::LogNamespace,
         event::{BatchNotifier, BatchStatus, Event, OtelLog},
         lookup::{owned_value_path, path},
     };
@@ -922,7 +922,6 @@ mod integration_tests {
         LogNamespace::Vector.insert_source_metadata(
             "file",
             &mut namespaced_log,
-            Some(LegacyKey::Overwrite(path!("host"))),
             path!("host"),
             "aws.cloud.eur",
         );

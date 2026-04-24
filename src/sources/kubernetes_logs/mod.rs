@@ -24,7 +24,7 @@ use serde_with::serde_as;
 use vector_lib::{
     EstimatedJsonEncodedSizeOf, TimeZone,
     codecs::{BytesDeserializer, BytesDeserializerConfig},
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     configurable::configurable_component,
     file_source::file_server::{
         FileServer, Line, Shutdown as FileServerShutdown, calculate_ignore_before,
@@ -354,187 +354,102 @@ impl SourceConfig for Config {
             .schema_definition(log_namespace)
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::Overwrite(owned_value_path!("file"))),
                 &owned_value_path!("file"),
                 Kind::bytes(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                self.pod_annotation_fields
-                    .container_id
-                    .path
-                    .clone()
-                    .map(|k| k.path)
-                    .map(LegacyKey::Overwrite),
                 &owned_value_path!("container_id"),
                 Kind::bytes().or_undefined(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                self.pod_annotation_fields
-                    .container_image
-                    .path
-                    .clone()
-                    .map(|k| k.path)
-                    .map(LegacyKey::Overwrite),
                 &owned_value_path!("container_image"),
                 Kind::bytes().or_undefined(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                self.pod_annotation_fields
-                    .container_name
-                    .path
-                    .clone()
-                    .map(|k| k.path)
-                    .map(LegacyKey::Overwrite),
                 &owned_value_path!("container_name"),
                 Kind::bytes().or_undefined(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                self.namespace_annotation_fields
-                    .namespace_labels
-                    .path
-                    .clone()
-                    .map(|x| LegacyKey::Overwrite(x.path)),
                 &owned_value_path!("namespace_labels"),
                 Kind::object(Collection::empty().with_unknown(Kind::bytes())).or_undefined(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                self.node_annotation_fields
-                    .node_labels
-                    .path
-                    .clone()
-                    .map(|x| LegacyKey::Overwrite(x.path)),
                 &owned_value_path!("node_labels"),
                 Kind::object(Collection::empty().with_unknown(Kind::bytes())).or_undefined(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                self.pod_annotation_fields
-                    .pod_annotations
-                    .path
-                    .clone()
-                    .map(|k| k.path)
-                    .map(LegacyKey::Overwrite),
                 &owned_value_path!("pod_annotations"),
                 Kind::object(Collection::empty().with_unknown(Kind::bytes())).or_undefined(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                self.pod_annotation_fields
-                    .pod_ip
-                    .path
-                    .clone()
-                    .map(|k| k.path)
-                    .map(LegacyKey::Overwrite),
                 &owned_value_path!("pod_ip"),
                 Kind::bytes().or_undefined(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                self.pod_annotation_fields
-                    .pod_ips
-                    .path
-                    .clone()
-                    .map(|k| k.path)
-                    .map(LegacyKey::Overwrite),
                 &owned_value_path!("pod_ips"),
                 Kind::array(Collection::empty().with_unknown(Kind::bytes())).or_undefined(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                self.pod_annotation_fields
-                    .pod_labels
-                    .path
-                    .clone()
-                    .map(|k| k.path)
-                    .map(LegacyKey::Overwrite),
                 &owned_value_path!("pod_labels"),
                 Kind::object(Collection::empty().with_unknown(Kind::bytes())).or_undefined(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                self.pod_annotation_fields
-                    .pod_name
-                    .path
-                    .clone()
-                    .map(|k| k.path)
-                    .map(LegacyKey::Overwrite),
                 &owned_value_path!("pod_name"),
                 Kind::bytes().or_undefined(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                self.pod_annotation_fields
-                    .pod_namespace
-                    .path
-                    .clone()
-                    .map(|k| k.path)
-                    .map(LegacyKey::Overwrite),
                 &owned_value_path!("pod_namespace"),
                 Kind::bytes().or_undefined(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                self.pod_annotation_fields
-                    .pod_node_name
-                    .path
-                    .clone()
-                    .map(|k| k.path)
-                    .map(LegacyKey::Overwrite),
                 &owned_value_path!("pod_node_name"),
                 Kind::bytes().or_undefined(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                self.pod_annotation_fields
-                    .pod_owner
-                    .path
-                    .clone()
-                    .map(|k| k.path)
-                    .map(LegacyKey::Overwrite),
                 &owned_value_path!("pod_owner"),
                 Kind::bytes().or_undefined(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                self.pod_annotation_fields
-                    .pod_uid
-                    .path
-                    .clone()
-                    .map(|k| k.path)
-                    .map(LegacyKey::Overwrite),
                 &owned_value_path!("pod_uid"),
                 Kind::bytes().or_undefined(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::Overwrite(owned_value_path!("stream"))),
                 &owned_value_path!("stream"),
                 Kind::bytes(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::Overwrite(owned_value_path!("time_unix_nano"))),
                 &owned_value_path!("timestamp"),
                 Kind::timestamp(),
                 Some("timestamp"),

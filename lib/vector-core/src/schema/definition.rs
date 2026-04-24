@@ -5,7 +5,7 @@ use lookup::{
 };
 use vrl::value::{Kind, kind::Collection};
 
-use crate::config::{LegacyKey, LogNamespace};
+use crate::config::LogNamespace;
 
 /// The definition of a schema.
 ///
@@ -132,9 +132,7 @@ impl Definition {
     /// This function should be called in the same order as the values are actually inserted into the event.
     #[must_use]
     pub fn with_standard_vector_source_metadata(self) -> Self {
-        let source_type_path = owned_value_path!("resource", "source_type");
         let def = self.with_vector_metadata(
-            Some(&source_type_path),
             &owned_value_path!("source_type"),
             Kind::bytes(),
             None,
@@ -147,55 +145,34 @@ impl Definition {
         )
     }
 
-    /// This should be used wherever `LogNamespace::insert_source_metadata` is used to insert metadata.
-    /// This automatically detects which log namespaces are used, and also automatically
-    /// determines if there are possible conflicts from existing field names (usually from the selected decoder).
-    /// This function should be called in the same order as the values are actually inserted into the event.
+    /// Register metadata type information for a source-namespaced field.
+    /// Corresponds to `LogNamespace::insert_source_metadata`.
     #[must_use]
     pub fn with_source_metadata(
         self,
         source_name: &str,
-        legacy_path: Option<LegacyKey<OwnedValuePath>>,
-        vector_path: &OwnedValuePath,
-        kind: Kind,
-        meaning: Option<&str>,
-    ) -> Self {
-        self.with_namespaced_metadata(source_name, legacy_path, vector_path, kind, meaning)
-    }
-
-    /// This should be used wherever `LogNamespace::insert_vector_metadata` is used to insert metadata.
-    /// This automatically detects which log namespaces are used, and also automatically
-    /// determines if there are possible conflicts from existing field names (usually from the selected decoder).
-    /// This function should be called in the same order as the values are actually inserted into the event.
-    #[must_use]
-    pub fn with_vector_metadata(
-        self,
-        legacy_path: Option<&OwnedValuePath>,
-        vector_path: &OwnedValuePath,
-        kind: Kind,
-        meaning: Option<&str>,
-    ) -> Self {
-        self.with_namespaced_metadata(
-            "vector",
-            legacy_path.cloned().map(LegacyKey::InsertIfEmpty),
-            vector_path,
-            kind,
-            meaning,
-        )
-    }
-
-    /// This generalizes the `LogNamespace::insert_*` methods for type definitions.
-    /// This assumes the legacy key is either guaranteed to not collide or is inserted with `try_insert`.
-    fn with_namespaced_metadata(
-        self,
-        prefix: &str,
-        _legacy_path: Option<LegacyKey<OwnedValuePath>>,
         vector_path: &OwnedValuePath,
         kind: Kind,
         meaning: Option<&str>,
     ) -> Self {
         self.with_metadata_field(
-            &vector_path.with_field_prefix(prefix),
+            &vector_path.with_field_prefix(source_name),
+            kind,
+            meaning,
+        )
+    }
+
+    /// Register metadata type information for a vector-namespaced field.
+    /// Corresponds to `LogNamespace::insert_vector_metadata`.
+    #[must_use]
+    pub fn with_vector_metadata(
+        self,
+        vector_path: &OwnedValuePath,
+        kind: Kind,
+        meaning: Option<&str>,
+    ) -> Self {
+        self.with_metadata_field(
+            &vector_path.with_field_prefix("vector"),
             kind,
             meaning,
         )

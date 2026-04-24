@@ -8,11 +8,11 @@ use k8s_openapi::{
 };
 use kube::runtime::reflector::{ObjectRef, store::Store};
 use vector_lib::{
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     configurable::configurable_component,
     lookup::{
         OwnedTargetPath,
-        lookup_v2::{OptionalTargetPath, ValuePath},
+        lookup_v2::OptionalTargetPath,
         owned_value_path, path,
     },
 };
@@ -237,21 +237,12 @@ impl PodMetadataAnnotator {
 #[allow(dead_code)]
 fn annotate_from_file_info(
     log: &mut OtelLog,
-    fields_spec: &FieldsSpec,
     file_info: &LogFileInfo<'_>,
     log_namespace: LogNamespace,
 ) {
-    let legacy_key = fields_spec
-        .container_name
-        .path
-        .as_ref()
-        .map(|k| &k.path)
-        .map(LegacyKey::Overwrite);
-
     log_namespace.insert_source_metadata(
         Config::NAME,
         log,
-        legacy_key,
         path!("container_name"),
         file_info.container_name.to_owned(),
     );
@@ -260,32 +251,23 @@ fn annotate_from_file_info(
 #[allow(dead_code)]
 fn annotate_from_metadata(
     log: &mut OtelLog,
-    fields_spec: &FieldsSpec,
     metadata: &ObjectMeta,
     log_namespace: LogNamespace,
 ) {
-    for (legacy_key, metadata_key, value) in [
-        (&fields_spec.pod_name, path!("pod_name"), &metadata.name),
+    for (metadata_key, value) in [
+        (path!("pod_name"), &metadata.name),
         (
-            &fields_spec.pod_namespace,
             path!("pod_namespace"),
             &metadata.namespace,
         ),
-        (&fields_spec.pod_uid, path!("pod_uid"), &metadata.uid),
+        (path!("pod_uid"), &metadata.uid),
     ]
     .iter()
     {
         if let Some(value) = value {
-            let legacy_key = legacy_key
-                .path
-                .as_ref()
-                .map(|k| &k.path)
-                .map(LegacyKey::Overwrite);
-
             log_namespace.insert_source_metadata(
                 Config::NAME,
                 log,
-                legacy_key,
                 *metadata_key,
                 value.to_owned(),
             );
@@ -293,35 +275,19 @@ fn annotate_from_metadata(
     }
 
     if let Some(owner_references) = &metadata.owner_references {
-        let legacy_key = fields_spec
-            .pod_owner
-            .path
-            .as_ref()
-            .map(|k| &k.path)
-            .map(LegacyKey::Overwrite);
-
         log_namespace.insert_source_metadata(
             Config::NAME,
             log,
-            legacy_key,
             path!("pod_owner"),
             format!("{}/{}", owner_references[0].kind, owner_references[0].name),
         )
     }
 
     if let Some(labels) = &metadata.labels {
-        let legacy_key_prefix = fields_spec.pod_labels.path.as_ref().map(|k| &k.path);
-
         for (key, value) in labels.iter() {
-            let key_path = path!(key);
-            let legacy_key = legacy_key_prefix
-                .map(|k| k.concat(key_path))
-                .map(LegacyKey::Overwrite);
-
             log_namespace.insert_source_metadata(
                 Config::NAME,
                 log,
-                legacy_key,
                 path!("pod_labels", key),
                 value.to_owned(),
             )
@@ -329,18 +295,10 @@ fn annotate_from_metadata(
     }
 
     if let Some(annotations) = &metadata.annotations {
-        let legacy_key_prefix = fields_spec.pod_annotations.path.as_ref().map(|k| &k.path);
-
         for (key, value) in annotations.iter() {
-            let key_path = path!(key);
-            let legacy_key = legacy_key_prefix
-                .map(|k| k.concat(key_path))
-                .map(LegacyKey::Overwrite);
-
             log_namespace.insert_source_metadata(
                 Config::NAME,
                 log,
-                legacy_key,
                 path!("pod_annotations", key),
                 value.to_owned(),
             )
@@ -351,22 +309,13 @@ fn annotate_from_metadata(
 #[allow(dead_code)]
 fn annotate_from_pod_spec(
     log: &mut OtelLog,
-    fields_spec: &FieldsSpec,
     pod_spec: &PodSpec,
     log_namespace: LogNamespace,
 ) {
     if let Some(value) = &pod_spec.node_name {
-        let legacy_key = fields_spec
-            .pod_node_name
-            .path
-            .as_ref()
-            .map(|k| &k.path)
-            .map(LegacyKey::Overwrite);
-
         log_namespace.insert_source_metadata(
             Config::NAME,
             log,
-            legacy_key,
             path!("pod_node_name"),
             value.to_owned(),
         )
@@ -376,79 +325,46 @@ fn annotate_from_pod_spec(
 #[allow(dead_code)]
 fn annotate_from_pod_status(
     log: &mut OtelLog,
-    fields_spec: &FieldsSpec,
     pod_status: &PodStatus,
     log_namespace: LogNamespace,
 ) {
     if let Some(value) = &pod_status.pod_ip {
-        let legacy_key = fields_spec
-            .pod_ip
-            .path
-            .as_ref()
-            .map(|k| &k.path)
-            .map(LegacyKey::Overwrite);
-
         log_namespace.insert_source_metadata(
             Config::NAME,
             log,
-            legacy_key,
             path!("pod_ip"),
             value.to_owned(),
         )
     }
 
     if let Some(value) = &pod_status.pod_ips {
-        let legacy_key = fields_spec
-            .pod_ips
-            .path
-            .as_ref()
-            .map(|k| &k.path)
-            .map(LegacyKey::Overwrite);
-
         let value = value
             .iter()
             .filter_map(|k| k.ip.clone())
             .collect::<Vec<String>>();
 
-        log_namespace.insert_source_metadata(Config::NAME, log, legacy_key, path!("pod_ips"), value)
+        log_namespace.insert_source_metadata(Config::NAME, log, path!("pod_ips"), value)
     }
 }
 
 #[allow(dead_code)]
 fn annotate_from_container_status(
     log: &mut OtelLog,
-    fields_spec: &FieldsSpec,
     container_status: &ContainerStatus,
     log_namespace: LogNamespace,
 ) {
     if let Some(value) = &container_status.container_id {
-        let legacy_key = fields_spec
-            .container_id
-            .path
-            .as_ref()
-            .map(|k| &k.path)
-            .map(LegacyKey::Overwrite);
-
         log_namespace.insert_source_metadata(
             Config::NAME,
             log,
-            legacy_key,
             path!("container_id"),
             value.to_owned(),
         )
     }
 
-    let legacy_key = fields_spec
-        .container_image_id
-        .path
-        .as_ref()
-        .map(|k| &k.path)
-        .map(LegacyKey::Overwrite);
-
     log_namespace.insert_source_metadata(
         Config::NAME,
         log,
-        legacy_key,
         path!("container_image_id"),
         container_status.image_id.to_owned(),
     )
@@ -457,22 +373,13 @@ fn annotate_from_container_status(
 #[allow(dead_code)]
 fn annotate_from_container(
     log: &mut OtelLog,
-    fields_spec: &FieldsSpec,
     container: &Container,
     log_namespace: LogNamespace,
 ) {
     if let Some(value) = &container.image {
-        let legacy_key = fields_spec
-            .container_image
-            .path
-            .as_ref()
-            .map(|k| &k.path)
-            .map(LegacyKey::Overwrite);
-
         log_namespace.insert_source_metadata(
             Config::NAME,
             log,
-            legacy_key,
             path!("container_image"),
             value.to_owned(),
         )
@@ -856,9 +763,9 @@ mod tests {
             ),
         ];
 
-        for (fields_spec, metadata, expected, log_namespace) in cases.into_iter() {
+        for (_fields_spec, metadata, expected, log_namespace) in cases.into_iter() {
             let mut log = OtelLog::default();
-            annotate_from_metadata(&mut log, &fields_spec, &metadata, log_namespace);
+            annotate_from_metadata(&mut log, &metadata, log_namespace);
             let expected = expected;
             assert_eq!(log, expected);
         }
@@ -914,10 +821,10 @@ mod tests {
             ),
         ];
 
-        for (fields_spec, file, expected, log_namespace) in cases.into_iter() {
+        for (_fields_spec, file, expected, log_namespace) in cases.into_iter() {
             let mut log = OtelLog::default();
             let file_info = parse_log_file_path(file).unwrap();
-            annotate_from_file_info(&mut log, &fields_spec, &file_info, log_namespace);
+            annotate_from_file_info(&mut log, &file_info, log_namespace);
             let expected = expected;
             assert_eq!(log, expected);
         }
@@ -966,9 +873,9 @@ mod tests {
             ),
         ];
 
-        for (fields_spec, pod_spec, expected, log_namespace) in cases.into_iter() {
+        for (_fields_spec, pod_spec, expected, log_namespace) in cases.into_iter() {
             let mut log = OtelLog::default();
-            annotate_from_pod_spec(&mut log, &fields_spec, &pod_spec, log_namespace);
+            annotate_from_pod_spec(&mut log, &pod_spec, log_namespace);
             let expected = expected;
             assert_eq!(log, expected);
         }
@@ -1075,9 +982,9 @@ mod tests {
             ),
         ];
 
-        for (fields_spec, pod_status, expected, log_namespace) in cases.into_iter() {
+        for (_fields_spec, pod_status, expected, log_namespace) in cases.into_iter() {
             let mut log = OtelLog::default();
-            annotate_from_pod_status(&mut log, &fields_spec, &pod_status, log_namespace);
+            annotate_from_pod_status(&mut log, &pod_status, log_namespace);
             let expected = expected;
             assert_eq!(log, expected);
         }
@@ -1120,11 +1027,10 @@ mod tests {
                 LogNamespace::Vector,
             ),
         ];
-        for (fields_spec, container_status, expected, log_namespace) in cases.into_iter() {
+        for (_fields_spec, container_status, expected, log_namespace) in cases.into_iter() {
             let mut log = OtelLog::default();
             annotate_from_container_status(
                 &mut log,
-                &fields_spec,
                 &container_status,
                 log_namespace,
             );
@@ -1177,9 +1083,9 @@ mod tests {
             ),
         ];
 
-        for (fields_spec, container, expected, log_namespace) in cases.into_iter() {
+        for (_fields_spec, container, expected, log_namespace) in cases.into_iter() {
             let mut log = OtelLog::default();
-            annotate_from_container(&mut log, &fields_spec, &container, log_namespace);
+            annotate_from_container(&mut log, &container, log_namespace);
             let expected = expected;
             assert_eq!(log, expected);
         }

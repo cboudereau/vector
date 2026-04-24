@@ -5,7 +5,7 @@ mod unix;
 
 use vector_lib::{
     codecs::decoding::DeserializerConfig,
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     configurable::configurable_component,
     lookup::{lookup_v2::OptionalValuePath, owned_value_path},
 };
@@ -207,82 +207,56 @@ impl SourceConfig for SocketConfig {
             .with_standard_vector_source_metadata();
 
         let schema_definition = match &self.mode {
-            Mode::Tcp(config) => {
-                let legacy_host_key = config.host_key().path.map(LegacyKey::InsertIfEmpty);
-
-                let legacy_port_key = config.port_key().clone().path.map(LegacyKey::InsertIfEmpty);
-
-                let tls_client_metadata_path = config
-                    .tls()
-                    .as_ref()
-                    .and_then(|tls| tls.client_metadata_key.as_ref())
-                    .and_then(|k| k.path.clone())
-                    .map(LegacyKey::Overwrite);
-
+            Mode::Tcp(_) => {
                 schema_definition
                     .with_source_metadata(
                         Self::NAME,
-                        legacy_host_key,
                         &owned_value_path!("host"),
                         Kind::bytes(),
                         Some("host"),
                     )
                     .with_source_metadata(
                         Self::NAME,
-                        legacy_port_key,
                         &owned_value_path!("port"),
                         Kind::integer(),
                         None,
                     )
                     .with_source_metadata(
                         Self::NAME,
-                        tls_client_metadata_path,
                         &owned_value_path!("tls_client_metadata"),
                         Kind::object(Collection::empty().with_unknown(Kind::bytes()))
                             .or_undefined(),
                         None,
                     )
             }
-            Mode::Udp(config) => {
-                let legacy_host_key = config.host_key().path.map(LegacyKey::InsertIfEmpty);
-
-                let legacy_port_key = config.port_key().clone().path.map(LegacyKey::InsertIfEmpty);
-
+            Mode::Udp(_) => {
                 schema_definition
                     .with_source_metadata(
                         Self::NAME,
-                        legacy_host_key,
                         &owned_value_path!("host"),
                         Kind::bytes(),
                         None,
                     )
                     .with_source_metadata(
                         Self::NAME,
-                        legacy_port_key,
                         &owned_value_path!("port"),
                         Kind::integer(),
                         None,
                     )
             }
             #[cfg(unix)]
-            Mode::UnixDatagram(config) => {
-                let legacy_host_key = config.host_key().clone().path.map(LegacyKey::InsertIfEmpty);
-
+            Mode::UnixDatagram(_) => {
                 schema_definition.with_source_metadata(
                     Self::NAME,
-                    legacy_host_key,
                     &owned_value_path!("host"),
                     Kind::bytes(),
                     None,
                 )
             }
             #[cfg(unix)]
-            Mode::UnixStream(config) => {
-                let legacy_host_key = config.host_key().clone().path.map(LegacyKey::InsertIfEmpty);
-
+            Mode::UnixStream(_) => {
                 schema_definition.with_source_metadata(
                     Self::NAME,
-                    legacy_host_key,
                     &owned_value_path!("host"),
                     Kind::bytes(),
                     None,

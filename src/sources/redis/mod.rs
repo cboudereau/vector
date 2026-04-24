@@ -8,7 +8,7 @@ use vector_lib::{
         Decoder, DecodingConfig, StreamDecodingError,
         decoding::{DeserializerConfig, FramingConfig},
     },
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     configurable::configurable_component,
     internal_event::{
         ByteSize, BytesReceived, CountByteSize, InternalEventHandle as _, Protocol, Registered,
@@ -195,18 +195,11 @@ impl SourceConfig for RedisSourceConfig {
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
         let log_namespace = global_log_namespace.merge(self.log_namespace);
 
-        let redis_key_path = self
-            .redis_key
-            .clone()
-            .and_then(|k| k.path)
-            .map(LegacyKey::InsertIfEmpty);
-
         let schema_definition = self
             .decoding
             .schema_definition(log_namespace)
             .with_source_metadata(
                 Self::NAME,
-                redis_key_path,
                 &owned_value_path!("key"),
                 Kind::bytes(),
                 None,

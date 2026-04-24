@@ -19,7 +19,7 @@ use vector_lib::{
         Decoder, DecodingConfig, StreamDecodingError,
         decoding::{DeserializerConfig, FramingConfig},
     },
-    config::{LegacyKey, LogNamespace, SourceAcknowledgementsConfig, SourceOutput},
+    config::{LogNamespace, SourceAcknowledgementsConfig, SourceOutput},
     configurable::configurable_component,
     event::{Event, string_value},
     finalization::BatchStatus,
@@ -234,21 +234,18 @@ impl SourceConfig for PulsarSourceConfig {
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::InsertIfEmpty(owned_value_path!("publish_time"))),
                 &owned_value_path!("publish_time"),
                 Kind::timestamp(),
                 Some("publish_time"),
             )
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::InsertIfEmpty(owned_value_path!("topic"))),
                 &owned_value_path!("topic"),
                 Kind::bytes(),
                 Some("topic"),
             )
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::InsertIfEmpty(owned_value_path!("producer_name"))),
                 &owned_value_path!("producer_name"),
                 Kind::bytes(),
                 Some("producer_name"),

@@ -5,7 +5,7 @@ use rumqttc::{MqttOptions, TlsConfiguration, Transport};
 use snafu::ResultExt;
 use vector_lib::{
     codecs::decoding::{DeserializerConfig, FramingConfig},
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     configurable::configurable_component,
     lookup::{lookup_v2::OptionalValuePath, owned_value_path},
     tls::MaybeTlsSettings,
@@ -94,7 +94,6 @@ impl SourceConfig for MqttSourceConfig {
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::Overwrite(owned_value_path!("timestamp"))),
                 &owned_value_path!("timestamp"),
                 Kind::timestamp().or_undefined(),
                 Some("timestamp"),

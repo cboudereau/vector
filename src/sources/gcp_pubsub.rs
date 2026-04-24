@@ -26,7 +26,7 @@ use tonic::{
 use vector_lib::{
     byte_size_of::ByteSizeOf,
     codecs::decoding::{DeserializerConfig, FramingConfig},
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     configurable::configurable_component,
     finalizer::UnorderedFinalizer,
     internal_event::{
@@ -344,21 +344,18 @@ impl SourceConfig for PubsubConfig {
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 PubsubConfig::NAME,
-                Some(LegacyKey::Overwrite(owned_value_path!("timestamp"))),
                 &owned_value_path!("timestamp"),
                 Kind::timestamp().or_undefined(),
                 Some("timestamp"),
             )
             .with_source_metadata(
                 PubsubConfig::NAME,
-                Some(LegacyKey::Overwrite(owned_value_path!("attributes"))),
                 &owned_value_path!("attributes"),
                 Kind::object(Collection::empty().with_unknown(Kind::bytes())),
                 None,
             )
             .with_source_metadata(
                 PubsubConfig::NAME,
-                Some(LegacyKey::Overwrite(owned_value_path!("message_id"))),
                 &owned_value_path!("message_id"),
                 Kind::bytes(),
                 None,

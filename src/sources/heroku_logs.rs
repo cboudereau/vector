@@ -14,7 +14,7 @@ use vector_lib::{
         StreamDecodingError,
         decoding::{DeserializerConfig, FramingConfig},
     },
-    config::{DataType, LegacyKey, LogNamespace},
+    config::{DataType, LogNamespace},
     configurable::configurable_component,
     lookup::{lookup_v2::parse_value_path, owned_value_path},
     schema::Definition,
@@ -106,28 +106,24 @@ impl LogplexConfig {
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 LogplexConfig::NAME,
-                None,
                 &owned_value_path!("timestamp"),
                 Kind::timestamp().or_undefined(),
                 Some("timestamp"),
             )
             .with_source_metadata(
                 LogplexConfig::NAME,
-                Some(LegacyKey::InsertIfEmpty(owned_value_path!("host"))),
                 &owned_value_path!("host"),
                 Kind::bytes(),
                 Some("host"),
             )
             .with_source_metadata(
                 LogplexConfig::NAME,
-                Some(LegacyKey::InsertIfEmpty(owned_value_path!("app_name"))),
                 &owned_value_path!("app_name"),
                 Kind::bytes(),
                 Some("service"),
             )
             .with_source_metadata(
                 LogplexConfig::NAME,
-                Some(LegacyKey::InsertIfEmpty(owned_value_path!("proc_id"))),
                 &owned_value_path!("proc_id"),
                 Kind::bytes(),
                 None,
@@ -135,7 +131,6 @@ impl LogplexConfig {
             // for metadata that is added to the events dynamically from the self.query_parameters
             .with_source_metadata(
                 LogplexConfig::NAME,
-                None,
                 &owned_value_path!("query_parameters"),
                 Kind::object(Collection::empty().with_unknown(Kind::bytes())).or_undefined(),
                 None,

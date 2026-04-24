@@ -31,7 +31,7 @@ use tokio_util::codec::FramedRead;
 use tracing::Instrument;
 use vector_lib::{
     codecs::decoding::FramingError,
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     configurable::configurable_component,
     internal_event::{
         ByteSize, BytesReceived, CountByteSize, InternalEventHandle as _, Protocol, Registered,
@@ -923,7 +923,6 @@ fn handle_single_log(
     log_namespace.insert_source_metadata(
         AwsS3Config::NAME,
         log,
-        Some(LegacyKey::Overwrite(path!("bucket"))),
         path!("bucket"),
         Bytes::from(s3_event.s3.bucket.name.as_bytes().to_vec()),
     );
@@ -931,14 +930,12 @@ fn handle_single_log(
     log_namespace.insert_source_metadata(
         AwsS3Config::NAME,
         log,
-        Some(LegacyKey::Overwrite(path!("object"))),
         path!("object"),
         Bytes::from(s3_event.s3.object.key.as_bytes().to_vec()),
     );
     log_namespace.insert_source_metadata(
         AwsS3Config::NAME,
         log,
-        Some(LegacyKey::Overwrite(path!("region"))),
         path!("region"),
         Bytes::from(s3_event.aws_region.as_bytes().to_vec()),
     );
@@ -948,7 +945,6 @@ fn handle_single_log(
             log_namespace.insert_source_metadata(
                 AwsS3Config::NAME,
                 log,
-                Some(LegacyKey::Overwrite(path!(key))),
                 path!("metadata", key.as_str()),
                 value.clone(),
             );

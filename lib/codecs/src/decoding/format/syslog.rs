@@ -3,12 +3,12 @@ use std::borrow::Cow;
 use bytes::Bytes;
 use chrono::{DateTime, Datelike, Utc};
 use derivative::Derivative;
-use lookup::{OwnedValuePath, owned_value_path};
+use lookup::owned_value_path;
 use smallvec::{SmallVec, smallvec};
 use syslog_loose::{IncompleteDate, Message, ProcId, Protocol, Variant};
 use vector_config::configurable_component;
 use vector_core::{
-    config::{DataType, LegacyKey, LogNamespace},
+    config::{DataType, LogNamespace},
     event::{Event, EventMetadata, ObjectMap, OtelLog, Value},
     schema,
 };
@@ -205,7 +205,6 @@ fn insert_metadata_fields_from_syslog(
         log_namespace.insert_source_metadata(
             source,
             log,
-            None::<LegacyKey<&OwnedValuePath>>,
             &owned_value_path!("timestamp"),
             timestamp,
         );
@@ -214,7 +213,6 @@ fn insert_metadata_fields_from_syslog(
         log_namespace.insert_source_metadata(
             source,
             log,
-            None::<LegacyKey<&OwnedValuePath>>,
             &owned_value_path!("hostname"),
             host.to_string(),
         );
@@ -223,7 +221,6 @@ fn insert_metadata_fields_from_syslog(
         log_namespace.insert_source_metadata(
             source,
             log,
-            None::<LegacyKey<&OwnedValuePath>>,
             &owned_value_path!("severity"),
             severity.as_str().to_owned(),
         );
@@ -232,7 +229,6 @@ fn insert_metadata_fields_from_syslog(
         log_namespace.insert_source_metadata(
             source,
             log,
-            None::<LegacyKey<&OwnedValuePath>>,
             &owned_value_path!("facility"),
             facility.as_str().to_owned(),
         );
@@ -241,7 +237,6 @@ fn insert_metadata_fields_from_syslog(
         log_namespace.insert_source_metadata(
             source,
             log,
-            None::<LegacyKey<&OwnedValuePath>>,
             &owned_value_path!("version"),
             version as i64,
         );
@@ -250,7 +245,6 @@ fn insert_metadata_fields_from_syslog(
         log_namespace.insert_source_metadata(
             source,
             log,
-            None::<LegacyKey<&OwnedValuePath>>,
             &owned_value_path!("appname"),
             app_name.to_owned(),
         );
@@ -259,7 +253,6 @@ fn insert_metadata_fields_from_syslog(
         log_namespace.insert_source_metadata(
             source,
             log,
-            None::<LegacyKey<&OwnedValuePath>>,
             &owned_value_path!("msgid"),
             msg_id.to_owned(),
         );
@@ -272,7 +265,6 @@ fn insert_metadata_fields_from_syslog(
         log_namespace.insert_source_metadata(
             source,
             log,
-            None::<LegacyKey<&OwnedValuePath>>,
             &owned_value_path!("procid"),
             value,
         );
@@ -292,7 +284,6 @@ fn insert_metadata_fields_from_syslog(
     log_namespace.insert_source_metadata(
         source,
         log,
-        None::<LegacyKey<&OwnedValuePath>>,
         &owned_value_path!("structured_data"),
         sdata,
     );

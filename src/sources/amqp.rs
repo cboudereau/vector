@@ -13,7 +13,7 @@ use tokio_util::codec::FramedRead;
 use vector_lib::{
     EstimatedJsonEncodedSizeOf,
     codecs::decoding::{DeserializerConfig, FramingConfig},
-    config::{LegacyKey, LogNamespace, SourceAcknowledgementsConfig},
+    config::{LogNamespace, SourceAcknowledgementsConfig},
     configurable::configurable_component,
     event::{Event, OtelLog},
     finalizer::UnorderedFinalizer,
@@ -159,31 +159,24 @@ impl SourceConfig for AmqpSourceConfig {
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 AmqpSourceConfig::NAME,
-                None,
                 &owned_value_path!("timestamp"),
                 Kind::timestamp(),
                 Some("timestamp"),
             )
             .with_source_metadata(
                 AmqpSourceConfig::NAME,
-                self.routing_key_field
-                    .path
-                    .clone()
-                    .map(LegacyKey::InsertIfEmpty),
                 &owned_value_path!("routing"),
                 Kind::bytes(),
                 None,
             )
             .with_source_metadata(
                 AmqpSourceConfig::NAME,
-                self.exchange_key.path.clone().map(LegacyKey::InsertIfEmpty),
                 &owned_value_path!("exchange"),
                 Kind::bytes(),
                 None,
             )
             .with_source_metadata(
                 AmqpSourceConfig::NAME,
-                self.offset_key.path.clone().map(LegacyKey::InsertIfEmpty),
                 &owned_value_path!("offset"),
                 Kind::integer(),
                 None,
@@ -258,10 +251,6 @@ fn populate_log_event(
     log_namespace.insert_source_metadata(
         AmqpSourceConfig::NAME,
         log,
-        keys.routing_key_field
-            .path
-            .as_ref()
-            .map(LegacyKey::InsertIfEmpty),
         path!("routing"),
         keys.routing.to_string(),
     );
@@ -269,10 +258,6 @@ fn populate_log_event(
     log_namespace.insert_source_metadata(
         AmqpSourceConfig::NAME,
         log,
-        keys.exchange_key
-            .path
-            .as_ref()
-            .map(LegacyKey::InsertIfEmpty),
         path!("exchange"),
         keys.exchange.to_string(),
     );
@@ -280,7 +265,6 @@ fn populate_log_event(
     log_namespace.insert_source_metadata(
         AmqpSourceConfig::NAME,
         log,
-        keys.offset_key.path.as_ref().map(LegacyKey::InsertIfEmpty),
         path!("offset"),
         keys.delivery_tag,
     );

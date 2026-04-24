@@ -43,10 +43,10 @@ use vector_lib::{
         StreamDecodingError,
         decoding::{DeserializerConfig, FramingConfig},
     },
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     configurable::configurable_component,
     finalizer::OrderedFinalizer,
-    lookup::{OwnedValuePath, lookup_v2::OptionalValuePath, owned_value_path},
+    lookup::{lookup_v2::OptionalValuePath, owned_value_path},
 };
 use vrl::value::{Kind, ObjectMap, kind::Collection};
 
@@ -253,12 +253,6 @@ pub struct KafkaSourceConfig {
     metrics: Metrics,
 }
 
-impl KafkaSourceConfig {
-    fn keys(&self) -> Keys {
-        Keys::from(self)
-    }
-}
-
 const fn default_session_timeout_ms() -> Duration {
     Duration::from_millis(10000) // default in librdkafka
 }
@@ -358,7 +352,6 @@ impl SourceConfig for KafkaSourceConfig {
 
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
         let log_namespace = global_log_namespace.merge(self.log_namespace);
-        let keys = self.keys();
 
         let schema_definition = self
             .decoding
@@ -366,42 +359,36 @@ impl SourceConfig for KafkaSourceConfig {
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 Self::NAME,
-                keys.timestamp.map(LegacyKey::Overwrite),
                 &owned_value_path!("timestamp"),
                 Kind::timestamp(),
                 Some("timestamp"),
             )
             .with_source_metadata(
                 Self::NAME,
-                keys.topic.clone().map(LegacyKey::Overwrite),
                 &owned_value_path!("topic"),
                 Kind::bytes(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                keys.partition.clone().map(LegacyKey::Overwrite),
                 &owned_value_path!("partition"),
                 Kind::bytes(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                keys.offset.clone().map(LegacyKey::Overwrite),
                 &owned_value_path!("offset"),
                 Kind::bytes(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                keys.headers.clone().map(LegacyKey::Overwrite),
                 &owned_value_path!("headers"),
                 Kind::object(Collection::empty().with_unknown(Kind::bytes())),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                keys.key_field.clone().map(LegacyKey::Overwrite),
                 &owned_value_path!("message_key"),
                 Kind::bytes(),
                 None,
@@ -588,7 +575,6 @@ impl ConsumerStateInner<Consuming> {
         acknowledgements: bool,
         exit_eof: bool,
     ) -> (oneshot::Sender<()>, tokio::task::AbortHandle) {
-        let keys = self.config.keys();
         let decoder = self.decoder.clone();
         let log_namespace = self.log_namespace;
         let mut out = self.out.clone();
@@ -651,7 +637,7 @@ impl ConsumerStateInner<Consuming> {
                                 topic: msg.topic(),
                                 partition: msg.partition(),
                             });
-                            parse_message(msg, decoder.clone(), &keys, &mut out, acknowledgements, &finalizer, log_namespace).await;
+                            parse_message(msg, decoder.clone(), &mut out, acknowledgements, &finalizer, log_namespace).await;
                         }
                     },
                 )
@@ -951,13 +937,12 @@ fn drive_kafka_consumer(
 async fn parse_message(
     msg: BorrowedMessage<'_>,
     decoder: Decoder,
-    keys: &'_ Keys,
     out: &mut SourceSender,
     acknowledgements: bool,
     finalizer: &Option<OrderedFinalizer<FinalizerEntry>>,
     log_namespace: LogNamespace,
 ) {
-    if let Some((count, stream)) = parse_stream(&msg, decoder, keys, log_namespace) {
+    if let Some((count, stream)) = parse_stream(&msg, decoder, log_namespace) {
         let (batch, receiver) = BatchNotifier::new_with_receiver();
         let mut stream = stream.map(|event| {
             // All acknowledgements flow through the normal Finalizer stream so
@@ -989,7 +974,6 @@ async fn parse_message(
 fn parse_stream<'a>(
     msg: &BorrowedMessage<'a>,
     decoder: Decoder,
-    keys: &'a Keys,
     log_namespace: LogNamespace,
 ) -> Option<(usize, impl Stream<Item = Event> + 'a + use<'a>)> {
     let payload = msg.payload()?; // skip messages with empty payload
@@ -1011,7 +995,7 @@ fn parse_stream<'a>(
                         partition: rmsg.partition,
                     });
                     for mut event in events {
-                        rmsg.apply(keys, &mut event, log_namespace);
+                        rmsg.apply(&mut event, log_namespace);
                         yield event;
                     }
                 },
@@ -1027,29 +1011,6 @@ fn parse_stream<'a>(
     }
     .boxed();
     Some((count, stream))
-}
-
-#[derive(Clone, Debug)]
-struct Keys {
-    timestamp: Option<OwnedValuePath>,
-    key_field: Option<OwnedValuePath>,
-    topic: Option<OwnedValuePath>,
-    partition: Option<OwnedValuePath>,
-    offset: Option<OwnedValuePath>,
-    headers: Option<OwnedValuePath>,
-}
-
-impl Keys {
-    fn from(config: &KafkaSourceConfig) -> Self {
-        Self {
-            timestamp: Some(owned_value_path!("time_unix_nano")),
-            key_field: config.key_field.path.clone(),
-            topic: config.topic_key.path.clone(),
-            partition: config.partition_key.path.clone(),
-            offset: config.offset_key.path.clone(),
-            headers: config.headers_key.path.clone(),
-        }
-    }
 }
 
 struct ReceivedMessage {
@@ -1096,7 +1057,7 @@ impl ReceivedMessage {
         }
     }
 
-    fn apply(&self, _keys: &Keys, event: &mut Event, _log_namespace: LogNamespace) {
+    fn apply(&self, event: &mut Event, _log_namespace: LogNamespace) {
         if let Event::Log(otel_log) = event {
             otel_log.set_source_metadata(KafkaSourceConfig::NAME, Utc::now());
             otel_log.set_attribute("topic".to_string(), string_value(&self.topic));

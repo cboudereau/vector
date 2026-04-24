@@ -24,7 +24,7 @@ use tower::ServiceBuilder;
 use tracing::Span;
 use vector_lib::{
     EstimatedJsonEncodedSizeOf,
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     configurable::configurable_component,
     event::BatchNotifier,
     internal_event::{CountByteSize, InternalEventHandle as _, Registered},
@@ -228,28 +228,24 @@ impl SourceConfig for SplunkConfig {
         .with_standard_vector_source_metadata()
         .with_source_metadata(
             SplunkConfig::NAME,
-            Some(LegacyKey::InsertIfEmpty(owned_value_path!("host"))),
             &owned_value_path!("host"),
             Kind::bytes(),
             Some(meaning::HOST),
         )
         .with_source_metadata(
             SplunkConfig::NAME,
-            Some(LegacyKey::Overwrite(owned_value_path!(CHANNEL))),
             &owned_value_path!("channel"),
             Kind::bytes(),
             None,
         )
         .with_source_metadata(
             SplunkConfig::NAME,
-            Some(LegacyKey::Overwrite(owned_value_path!(INDEX))),
             &owned_value_path!("index"),
             Kind::bytes(),
             None,
         )
         .with_source_metadata(
             SplunkConfig::NAME,
-            Some(LegacyKey::Overwrite(owned_value_path!(SOURCE))),
             &owned_value_path!("source"),
             Kind::bytes(),
             Some(meaning::SERVICE),
@@ -257,7 +253,6 @@ impl SourceConfig for SplunkConfig {
         // Not to be confused with `source_type`.
         .with_source_metadata(
             SplunkConfig::NAME,
-            Some(LegacyKey::Overwrite(owned_value_path!(SOURCETYPE))),
             &owned_value_path!("sourcetype"),
             Kind::bytes(),
             None,
@@ -731,12 +726,10 @@ impl<'de, R: JsonRead<'de>> EventIterator<'de, R> {
             .insert(lookup::path!("vector", "source_type"), SplunkConfig::NAME);
 
         // Process channel field
-        let channel_path = owned_value_path!(CHANNEL);
         if let Some(JsonValue::String(guid)) = json.get_mut("channel").map(JsonValue::take) {
             self.log_namespace.insert_source_metadata(
                 SplunkConfig::NAME,
                 &mut log,
-                Some(LegacyKey::Overwrite(&channel_path)),
                 lookup::path!(CHANNEL),
                 guid,
             );
@@ -744,7 +737,6 @@ impl<'de, R: JsonRead<'de>> EventIterator<'de, R> {
             self.log_namespace.insert_source_metadata(
                 SplunkConfig::NAME,
                 &mut log,
-                Some(LegacyKey::Overwrite(&channel_path)),
                 lookup::path!(CHANNEL),
                 guid.clone(),
             );
@@ -756,7 +748,6 @@ impl<'de, R: JsonRead<'de>> EventIterator<'de, R> {
                 self.log_namespace.insert_source_metadata(
                     SplunkConfig::NAME,
                     &mut log,
-                    Some(LegacyKey::Overwrite(&owned_value_path!(key.as_str()))),
                     lookup::path!(key.as_str()),
                     value,
                 );
@@ -953,11 +944,10 @@ impl DefaultExtractor {
         if let Some(val) = self.value.as_ref() {
             if self.field == "host" {
                 log.set_host(val.clone());
-            } else if let Some(metadata_key) = self.to_field.path.as_ref() {
+            } else if self.to_field.path.is_some() {
                 self.log_namespace.insert_source_metadata(
                     SplunkConfig::NAME,
                     log,
-                    Some(LegacyKey::Overwrite(metadata_key)),
                     &self.to_field.path.clone().unwrap_or(owned_value_path!("")),
                     val.clone(),
                 )
@@ -1011,7 +1001,6 @@ fn raw_event(
     log_namespace.insert_source_metadata(
         SplunkConfig::NAME,
         &mut log,
-        Some(LegacyKey::Overwrite(&owned_value_path!(CHANNEL))),
         lookup::path!(CHANNEL),
         channel,
     );

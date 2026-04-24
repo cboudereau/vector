@@ -5,7 +5,7 @@ use async_nats::jetstream::{
 use snafu::{ResultExt, Snafu};
 use vector_lib::{
     codecs::decoding::{DeserializerConfig, FramingConfig},
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     configurable::configurable_component,
     lookup::{lookup_v2::OptionalValuePath, owned_value_path},
 };
@@ -253,18 +253,12 @@ impl SourceConfig for NatsSourceConfig {
 
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
         let log_namespace = global_log_namespace.merge(self.log_namespace);
-        let legacy_subject_key_field = self
-            .subject_key_field
-            .clone()
-            .path
-            .map(LegacyKey::InsertIfEmpty);
         let schema_definition = self
             .decoding
             .schema_definition(log_namespace)
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 NatsSourceConfig::NAME,
-                legacy_subject_key_field,
                 &owned_value_path!("subject"),
                 Kind::bytes(),
                 None,

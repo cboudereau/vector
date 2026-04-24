@@ -13,7 +13,7 @@ use snafu::{ResultExt, Snafu};
 use tokio_util::codec::Decoder;
 use vector_lib::{
     codecs::{BytesDeserializerConfig, StreamDecodingError},
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     configurable::configurable_component,
     ipallowlist::IpAllowlistConfig,
     lookup::owned_value_path,
@@ -75,36 +75,23 @@ pub struct LogstashConfig {
 impl LogstashConfig {
     /// Builds the `schema::Definition` for this source using the provided `LogNamespace`.
     fn schema_definition(&self, log_namespace: LogNamespace) -> Definition {
-        // `host_key` is only inserted if not present already.
-        let host_key = Some(LegacyKey::InsertIfEmpty(owned_value_path!("host")));
-
-        let tls_client_metadata_path = self
-            .tls
-            .as_ref()
-            .and_then(|tls| tls.client_metadata_key.as_ref())
-            .and_then(|k| k.path.clone())
-            .map(LegacyKey::Overwrite);
-
         BytesDeserializerConfig
             .schema_definition(log_namespace)
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 LogstashConfig::NAME,
-                None,
                 &owned_value_path!("timestamp"),
                 Kind::timestamp().or_undefined(),
                 Some("timestamp"),
             )
             .with_source_metadata(
                 LogstashConfig::NAME,
-                host_key,
                 &owned_value_path!("host"),
                 Kind::bytes(),
                 Some("host"),
             )
             .with_source_metadata(
                 Self::NAME,
-                tls_client_metadata_path,
                 &owned_value_path!("tls_client_metadata"),
                 Kind::object(Collection::empty().with_unknown(Kind::bytes())).or_undefined(),
                 None,

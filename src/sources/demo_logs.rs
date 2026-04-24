@@ -14,7 +14,7 @@ use vector_lib::{
         StreamDecodingError,
         decoding::{DeserializerConfig, FramingConfig},
     },
-    config::{DataType, LegacyKey, LogNamespace},
+    config::{DataType, LogNamespace},
     configurable::configurable_component,
     internal_event::{ByteSize, BytesReceived, CountByteSize, InternalEventHandle as _, Protocol},
     lookup::owned_value_path,
@@ -311,7 +311,6 @@ impl SourceConfig for DemoLogsConfig {
             .with_standard_vector_source_metadata()
             .with_source_metadata(
                 DemoLogsConfig::NAME,
-                Some(LegacyKey::InsertIfEmpty(owned_value_path!("service"))),
                 &owned_value_path!("service"),
                 Kind::bytes(),
                 Some("service"),

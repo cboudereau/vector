@@ -11,7 +11,7 @@ use vector_lib::{
         NewlineDelimitedDecoderConfig,
         decoding::{DeserializerConfig, FramingConfig},
     },
-    config::{DataType, LegacyKey, LogNamespace},
+    config::{DataType, LogNamespace},
     configurable::configurable_component,
     lookup::{lookup_v2::OptionalValuePath, owned_value_path},
     schema::Definition,
@@ -187,7 +187,6 @@ impl SimpleHttpConfig {
             .schema_definition(log_namespace)
             .with_source_metadata(
                 SimpleHttpConfig::NAME,
-                self.path_key.path.clone().map(LegacyKey::InsertIfEmpty),
                 &owned_value_path!("path"),
                 Kind::bytes(),
                 None,
@@ -195,7 +194,6 @@ impl SimpleHttpConfig {
             // for metadata that is added to the events dynamically from the self.headers
             .with_source_metadata(
                 SimpleHttpConfig::NAME,
-                None,
                 &owned_value_path!("headers"),
                 Kind::object(Collection::empty().with_unknown(Kind::bytes())).or_undefined(),
                 None,
@@ -203,14 +201,12 @@ impl SimpleHttpConfig {
             // for metadata that is added to the events dynamically from the self.query_parameters
             .with_source_metadata(
                 SimpleHttpConfig::NAME,
-                None,
                 &owned_value_path!("query_parameters"),
                 Kind::object(Collection::empty().with_unknown(Kind::bytes())).or_undefined(),
                 None,
             )
             .with_source_metadata(
                 SimpleHttpConfig::NAME,
-                self.host_key.path.clone().map(LegacyKey::Overwrite),
                 &owned_value_path!("host"),
                 Kind::bytes().or_undefined(),
                 None,

@@ -21,7 +21,7 @@ use futures::FutureExt;
 use futures_util::{TryFutureExt, future::join};
 use tonic::{codec::CompressionEncoding, service::RoutesBuilder};
 use vector_lib::{
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     configurable::configurable_component,
     internal_event::{BytesReceived, EventsReceived, Protocol},
     lookup::{OwnedTargetPath, owned_value_path},
@@ -227,74 +227,60 @@ impl SourceConfig for OpentelemetryConfig {
         let schema_definition = Definition::new_with_default_metadata(Kind::any(), [log_namespace])
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::Overwrite(owned_value_path!(RESOURCE_KEY))),
                 &owned_value_path!(RESOURCE_KEY),
                 Kind::object(Collection::from_unknown(Kind::any())).or_undefined(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::Overwrite(owned_value_path!(ATTRIBUTES_KEY))),
                 &owned_value_path!(ATTRIBUTES_KEY),
                 Kind::object(Collection::from_unknown(Kind::any())).or_undefined(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::Overwrite(owned_value_path!(TRACE_ID_KEY))),
                 &owned_value_path!(TRACE_ID_KEY),
                 Kind::bytes().or_undefined(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::Overwrite(owned_value_path!(SPAN_ID_KEY))),
                 &owned_value_path!(SPAN_ID_KEY),
                 Kind::bytes().or_undefined(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::Overwrite(owned_value_path!(SEVERITY_TEXT_KEY))),
                 &owned_value_path!(SEVERITY_TEXT_KEY),
                 Kind::bytes().or_undefined(),
                 Some("severity"),
             )
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::Overwrite(owned_value_path!(SEVERITY_NUMBER_KEY))),
                 &owned_value_path!(SEVERITY_NUMBER_KEY),
                 Kind::integer().or_undefined(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::Overwrite(owned_value_path!(FLAGS_KEY))),
                 &owned_value_path!(FLAGS_KEY),
                 Kind::integer().or_undefined(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::Overwrite(owned_value_path!(
-                    DROPPED_ATTRIBUTES_COUNT_KEY
-                ))),
                 &owned_value_path!(DROPPED_ATTRIBUTES_COUNT_KEY),
                 Kind::integer(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::Overwrite(owned_value_path!(
-                    OBSERVED_TIMESTAMP_KEY
-                ))),
                 &owned_value_path!(OBSERVED_TIMESTAMP_KEY),
                 Kind::timestamp(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                None,
                 &owned_value_path!("timestamp"),
                 Kind::timestamp(),
                 Some("timestamp"),

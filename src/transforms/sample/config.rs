@@ -1,6 +1,5 @@
 use snafu::Snafu;
 use vector_lib::{
-    config::LegacyKey,
     configurable::configurable_component,
     lookup::{lookup_v2::OptionalValuePath, owned_value_path},
 };
@@ -173,7 +172,6 @@ impl TransformConfig for SampleConfig {
                         output.clone(),
                         definition.clone().with_source_metadata(
                             SampleConfig::NAME,
-                            Some(LegacyKey::Overwrite(owned_value_path!("sample_rate"))),
                             &owned_value_path!("sample_rate"),
                             Kind::bytes(),
                             None,

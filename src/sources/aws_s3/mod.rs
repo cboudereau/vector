@@ -10,7 +10,7 @@ use vector_lib::{
         NewlineDelimitedDecoderConfig,
         decoding::{DeserializerConfig, FramingConfig, NewlineDelimitedDecoderOptions},
     },
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     configurable::configurable_component,
     lookup::owned_value_path,
 };
@@ -182,28 +182,24 @@ impl SourceConfig for AwsS3Config {
             .schema_definition(log_namespace)
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::Overwrite(owned_value_path!("bucket"))),
                 &owned_value_path!("bucket"),
                 Kind::bytes(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::Overwrite(owned_value_path!("object"))),
                 &owned_value_path!("object"),
                 Kind::bytes(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::Overwrite(owned_value_path!("region"))),
                 &owned_value_path!("region"),
                 Kind::bytes(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                None,
                 &owned_value_path!("timestamp"),
                 Kind::timestamp(),
                 Some("timestamp"),
@@ -212,7 +208,6 @@ impl SourceConfig for AwsS3Config {
             // for metadata that is added to the events dynamically from the metadata
             .with_source_metadata(
                 Self::NAME,
-                None,
                 &owned_value_path!("metadata"),
                 Kind::object(Collection::empty().with_unknown(Kind::bytes())).or_undefined(),
                 None,

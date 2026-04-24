@@ -25,7 +25,7 @@ use tokio::sync::mpsc;
 use tracing_futures::Instrument;
 use vector_lib::{
     codecs::{BytesDeserializer, BytesDeserializerConfig},
-    config::{LegacyKey, LogNamespace},
+    config::LogNamespace,
     configurable::configurable_component,
     internal_event::{ByteSize, BytesReceived, InternalEventHandle as _, Protocol, Registered},
     lookup::{
@@ -277,74 +277,62 @@ impl SourceConfig for DockerLogsConfig {
     }
 
     fn outputs(&self, global_log_namespace: LogNamespace) -> Vec<SourceOutput> {
-        let host_key = Some(LegacyKey::Overwrite(owned_value_path!("resource", "host.name")));
-
         let schema_definition = BytesDeserializerConfig
             .schema_definition(global_log_namespace.merge(self.log_namespace))
             .with_source_metadata(
                 Self::NAME,
-                host_key,
                 &owned_value_path!("host"),
                 Kind::bytes().or_undefined(),
                 Some("host"),
             )
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::Overwrite(owned_value_path!(CONTAINER))),
                 &owned_value_path!(CONTAINER),
                 Kind::bytes(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::Overwrite(owned_value_path!(IMAGE))),
                 &owned_value_path!(IMAGE),
                 Kind::bytes(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::Overwrite(owned_value_path!(NAME))),
                 &owned_value_path!(NAME),
                 Kind::bytes(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::Overwrite(owned_value_path!(CREATED_AT))),
                 &owned_value_path!(CREATED_AT),
                 Kind::timestamp(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::Overwrite(owned_value_path!("label"))),
                 &owned_value_path!("labels"),
                 Kind::object(Collection::empty().with_unknown(Kind::bytes())).or_undefined(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::Overwrite(owned_value_path!(STREAM))),
                 &owned_value_path!(STREAM),
                 Kind::bytes(),
                 None,
             )
             .with_source_metadata(
                 Self::NAME,
-                Some(LegacyKey::Overwrite(owned_value_path!("time_unix_nano"))),
                 &owned_value_path!("timestamp"),
                 Kind::timestamp(),
                 Some("timestamp"),
             )
             .with_vector_metadata(
-                Some(&owned_value_path!("resource", "source_type")),
                 &owned_value_path!("source_type"),
                 Kind::bytes(),
                 None,
             )
             .with_vector_metadata(
-                None,
                 &owned_value_path!("ingest_timestamp"),
                 Kind::timestamp(),
                 None,
@@ -1165,13 +1153,10 @@ impl ContainerLogInfo {
             // If the event is partial, just set the partial event marker field.
             if is_partial {
                 // Only add partial event marker field if it's requested.
-                if let Some(partial_event_marker_field) = partial_event_marker_field {
+                if partial_event_marker_field.is_some() {
                     log_namespace.insert_source_metadata(
                         DockerLogsConfig::NAME,
                         &mut log,
-                        Some(LegacyKey::Overwrite(path!(
-                            partial_event_marker_field.as_str()
-                        ))),
                         path!(event::PARTIAL),
                         true,
                     );

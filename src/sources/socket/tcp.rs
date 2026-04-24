@@ -12,7 +12,7 @@ use vector_lib::{
 };
 use vrl::value::Value;
 
-use super::{SocketConfig, default_host_key};
+use super::SocketConfig;
 use crate::{
     codecs::Decoder,
     event::{Event, int_value, string_value},
@@ -116,11 +116,6 @@ impl TcpConfig {
             connection_limit: None,
             log_namespace: None,
         }
-    }
-
-    #[allow(dead_code)]
-    pub(super) fn host_key(&self) -> OptionalValuePath {
-        self.host_key.clone().unwrap_or(default_host_key())
     }
 
     pub const fn port_key(&self) -> &OptionalValuePath {

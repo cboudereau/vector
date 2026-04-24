@@ -18,7 +18,6 @@ use vector_lib::{
 };
 use vrl::value::Value;
 
-use super::default_host_key;
 use crate::{
     SourceSender,
     codecs::Decoder,
@@ -112,11 +111,6 @@ fn default_max_length() -> usize {
 }
 
 impl UdpConfig {
-    #[allow(dead_code)]
-    pub(super) fn host_key(&self) -> OptionalValuePath {
-        self.host_key.clone().unwrap_or(default_host_key())
-    }
-
     pub const fn port_key(&self) -> &OptionalValuePath {
         &self.port_key
     }

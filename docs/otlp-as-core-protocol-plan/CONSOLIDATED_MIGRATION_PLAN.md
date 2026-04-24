@@ -29,11 +29,44 @@ pub enum Event {
 - OTLP HTTP JSON ingestion — native support in the `opentelemetry` source.
 - Zero-conversion OTLP path: OTel source → OTel sink (gRPC + HTTP) for all 3 signals.
 - `LogNamespace::Legacy` — removed; only `Vector` namespace remains.
+- `LegacyKey` type — deleted along with all `_legacy_key` parameters (~200 call sites).
 - `LogSchema` struct + `log_schema()` — deleted.
 - `event.proto`, `vector.proto` — deleted; disk buffers use `otlp_buffer.proto` only.
 - `BufferFormat` enum (Vector/Otlp/Migrate) — collapsed to OTLP-only.
 - `Serialize for OtelLog/OtelSpan` — OTLP-native JSON (proto3 camelCase).
 - `EventDataEq for OtelLog/OtelSpan` — direct proto comparison.
+
+---
+
+## Breaking Changes
+
+### `log_namespace` config option removed (Legacy namespace no longer exists)
+
+The `LogNamespace::Legacy` variant has been removed. All events now use the **Vector** namespace exclusively:
+
+- **Metadata fields** (source_type, timestamp, host, etc.) are stored in **event metadata** under the source name, not on the event root.
+- **Event body** is placed at the event root.
+
+**Impact:** Users who had `log_namespace = false` (Legacy mode) in their source configs will see a different event layout:
+- Fields like `source_type`, `timestamp`, `host` that were previously on the event root are now in event metadata.
+- VRL programs that access these fields at the root (e.g., `.source_type`, `.timestamp`) must be updated to use metadata paths (e.g., `%vector.source_type`, `%<source_name>.timestamp`).
+
+**Migration:** Use `vector vrl-migrate` to automatically rewrite VRL programs for the new namespace layout (~91% auto-rewrite coverage).
+
+The `log_namespace` config field is still accepted (to avoid parse errors from `deny_unknown_fields`) but is ignored — it always resolves to Vector namespace regardless of the value.
+
+### `Serialize` output format changed for OtelLog/OtelSpan
+
+JSON serialization of `OtelLog` and `OtelSpan` now uses **OTLP-native JSON** (proto3 mapping with camelCase field names) instead of the legacy flat snake_case layout.
+
+**Before:** `{"body": "...", "severity_text": "...", "time_unix_nano": 123, "my_attr": "val"}`
+**After:** `{"body": {"stringValue": "..."}, "severityText": "...", "timeUnixNano": "123", "attributes": [{"key": "my_attr", "value": {"stringValue": "val"}}]}`
+
+**Impact:** Sinks that serialize events as JSON (console, file, http, kafka with JSON encoding) will produce different output. Downstream consumers parsing this JSON must be updated.
+
+### Native proto wire format removed
+
+The `event.proto` and `vector.proto` wire formats are deleted. The Vector source/sink now speak OTLP gRPC exclusively. Older Vector instances that speak the native proto format cannot communicate with this version.
 
 ---
 
@@ -112,9 +145,9 @@ kafka, syslog, …  ──────────►  OTel Span
 | **P1-3** | Vector source/sink → OTLP gRPC + delete native proto/event.proto | −7,862 lines |
 | **P4** | Collapse LogNamespace to Vector-only (remove Legacy variant) | 90 files, −1,152 lines |
 | **P5** | OTLP-native Serialize + direct EventDataEq | — |
-| **P8** | Delete log_schema constants, clean stale docs | — |
+| **P8** | Delete log_schema constants, LegacyKey type, clean stale docs | 41 files, −500 lines |
 
-**Net code change:** ~−20,500 lines removed.
+**Net code change:** ~−21,000 lines removed.
 
 ---
 
@@ -122,7 +155,6 @@ kafka, syslog, …  ──────────►  OTel Span
 
 | Component | Why it stays |
 |-----------|-------------|
-| `LegacyKey` type + `_legacy_key` params | In 199 call sites across sources. No-op but avoids churn. Remove in future cleanup pass. |
 | `to_value_canonical()` / `from_value_map()` | VRL path access (get/insert/remove) and legacy-format encoders (GELF, Avro) depend on Value↔proto bridge. |
 | `modify_as_value()` | Performance optimization for dnstap (batched mutations). |
 | Legacy metric types (MetricValue, MetricKind, MetricTags, etc.) | Internal computation layer for metric sinks/transforms — arithmetic, filtering, cardinality. OTLP proto lacks these operations natively. |
@@ -132,10 +164,9 @@ kafka, syslog, …  ──────────►  OTel Span
 
 ## Deferred to Future Release
 
-1. Remove `LegacyKey` type and all `_legacy_key` parameters (~199 call sites).
+1. Migrate metric sinks to work directly with OTLP proto types (requires implementing arithmetic on proto).
 2. Replace `to_value_canonical()` bridge with direct proto access in GELF/Avro encoders.
-3. Migrate metric sinks to work directly with OTLP proto types (requires implementing arithmetic on proto).
-4. Document the migration in release notes.
+3. Remove `log_namespace: Option<bool>` config fields once deprecation period ends.
 
 ---
 

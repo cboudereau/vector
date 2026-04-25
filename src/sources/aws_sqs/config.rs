@@ -103,8 +103,6 @@ pub struct AwsSqsConfig {
 #[typetag::serde(name = "aws_sqs")]
 impl SourceConfig for AwsSqsConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<crate::sources::Source> {
-        let log_namespace = cx.log_namespace();
-
         let client = self.build_client(&cx).await?;
         let decoder =
             DecodingConfig::new(self.framing.clone(), self.decoding.clone())
@@ -124,7 +122,6 @@ impl SourceConfig for AwsSqsConfig {
                 visibility_timeout_secs: self.visibility_timeout_secs,
                 delete_message: self.delete_message,
                 acknowledgements,
-                log_namespace,
             }
             .run(cx.out, cx.shutdown),
         ))

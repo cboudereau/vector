@@ -10,7 +10,6 @@ use vector_lib::{
         NewlineDelimitedDecoderConfig,
         decoding::{DeserializerConfig, FramingConfig, NewlineDelimitedDecoderOptions},
     },
-    config::LogNamespace,
     configurable::configurable_component,
     lookup::owned_value_path,
 };
@@ -154,8 +153,6 @@ impl_generate_config_from_default!(AwsS3Config);
 #[typetag::serde(name = "aws_s3")]
 impl SourceConfig for AwsS3Config {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
-        let log_namespace = cx.log_namespace();
-
         let multiline_config: Option<line_agg::Config> = self
             .multiline
             .as_ref()
@@ -164,9 +161,9 @@ impl SourceConfig for AwsS3Config {
 
         match self.strategy {
             Strategy::Sqs => Ok(Box::pin(
-                self.create_sqs_ingestor(multiline_config, &cx.proxy, log_namespace)
+                self.create_sqs_ingestor(multiline_config, &cx.proxy)
                     .await?
-                    .run(cx, self.acknowledgements, log_namespace),
+                    .run(cx, self.acknowledgements),
             )),
         }
     }
@@ -227,7 +224,6 @@ impl AwsS3Config {
         &self,
         multiline: Option<line_agg::Config>,
         proxy: &ProxyConfig,
-        _log_namespace: LogNamespace,
     ) -> crate::Result<sqs::Ingestor> {
         let region = self.region.region();
         let endpoint = self.region.endpoint();
@@ -446,10 +442,7 @@ mod integration_tests {
     use aws_sdk_s3::Client as S3Client;
     use aws_sdk_sqs::{Client as SqsClient, types::QueueAttributeName};
     use similar_asserts::assert_eq;
-    use vector_lib::{
-        codecs::{JsonDeserializerConfig, decoding::DeserializerConfig},
-        lookup::path,
-    };
+    use vector_lib::codecs::{JsonDeserializerConfig, decoding::DeserializerConfig};
     use vrl::value::Value;
 
     use super::*;
@@ -490,7 +483,6 @@ mod integration_tests {
             logs.join("\n").into_bytes(),
             logs,
             Delivered,
-            false,
             DeserializerConfig::Bytes,
             None,
         )
@@ -519,7 +511,6 @@ mod integration_tests {
             json_logs.join("\n").into_bytes(),
             logs,
             Delivered,
-            false,
             DeserializerConfig::Json(JsonDeserializerConfig::default()),
             None,
         )
@@ -540,7 +531,6 @@ mod integration_tests {
             logs.join("\n").into_bytes(),
             logs,
             Delivered,
-            true,
             DeserializerConfig::Bytes,
             None,
         )
@@ -562,7 +552,6 @@ mod integration_tests {
             logs.join("\n").into_bytes(),
             logs,
             Delivered,
-            false,
             DeserializerConfig::Bytes,
             None,
         )
@@ -584,7 +573,6 @@ mod integration_tests {
             logs.join("\n").into_bytes(),
             logs,
             Delivered,
-            false,
             DeserializerConfig::Bytes,
             None,
         )
@@ -614,7 +602,6 @@ mod integration_tests {
             buffer,
             logs,
             Delivered,
-            false,
             DeserializerConfig::Bytes,
             None,
         )
@@ -645,7 +632,6 @@ mod integration_tests {
             buffer,
             logs,
             Delivered,
-            false,
             DeserializerConfig::Bytes,
             None,
         )
@@ -676,7 +662,6 @@ mod integration_tests {
             buffer,
             logs,
             Delivered,
-            false,
             DeserializerConfig::Bytes,
             None,
         )
@@ -705,7 +690,6 @@ mod integration_tests {
             logs.join("\n").into_bytes(),
             vec!["abc\ndef\ngeh".to_owned()],
             Delivered,
-            false,
             DeserializerConfig::Bytes,
             None,
         )
@@ -729,7 +713,6 @@ mod integration_tests {
             logs.join("\n").into_bytes(),
             logs,
             Errored,
-            false,
             DeserializerConfig::Bytes,
             None,
         )
@@ -750,7 +733,6 @@ mod integration_tests {
             logs.join("\n").into_bytes(),
             logs,
             Rejected,
-            false,
             DeserializerConfig::Bytes,
             None,
         )
@@ -774,7 +756,6 @@ mod integration_tests {
             logs.join("\n").into_bytes(),
             logs,
             Rejected,
-            false,
             DeserializerConfig::Bytes,
             Some(custom_options),
         )
@@ -788,7 +769,6 @@ mod integration_tests {
     fn config(
         queue_url: &str,
         multiline: Option<MultilineConfig>,
-        log_namespace: bool,
         decoding: DeserializerConfig,
     ) -> AwsS3Config {
         AwsS3Config {
@@ -805,7 +785,6 @@ mod integration_tests {
                 ..Default::default()
             }),
             acknowledgements: true.into(),
-            log_namespace: Some(log_namespace),
             decoding,
             ..Default::default()
         }
@@ -821,7 +800,6 @@ mod integration_tests {
         payload: Vec<u8>,
         expected_lines: Vec<String>,
         status: EventStatus,
-        log_namespace: bool,
         decoding: DeserializerConfig,
         custom_options: Option<HashMap<String, Box<dyn Any>>>,
     ) {
@@ -836,7 +814,7 @@ mod integration_tests {
 
             tokio::time::sleep(Duration::from_secs(1)).await;
 
-            let mut config = config(&queue, multiline, log_namespace, decoding);
+            let mut config = config(&queue, multiline, decoding);
 
             if let Some(false) = custom_options
                 .as_ref()
@@ -918,7 +896,6 @@ mod integration_tests {
 
             let (tx, rx) = SourceSender::new_test_finalize(status);
             let cx = SourceContext::new_test(tx, None);
-            let namespace = cx.log_namespace(Some(log_namespace));
             let source = config.build(cx).await.unwrap();
             tokio::spawn(async move { source.await.unwrap() });
 
@@ -934,14 +911,7 @@ mod integration_tests {
                 let message = expected_lines[i].as_str();
 
                 let log = event.as_log();
-                if log_namespace {
-                    assert_eq!(log.value(), Value::from(message));
-                } else {
-                    assert_eq!(log.get(vrl::event_path!("message")).unwrap(), Value::from(message));
-                }
-                assert_eq!(namespace.get_source_metadata(AwsS3Config::NAME, log, path!("bucket"), path!("bucket")).unwrap(), Value::from(bucket.clone()));
-                assert_eq!(namespace.get_source_metadata(AwsS3Config::NAME, log, path!("object"), path!("object")).unwrap(), Value::from(key.clone()));
-                assert_eq!(namespace.get_source_metadata(AwsS3Config::NAME, log, path!("region"), path!("region")).unwrap(), Value::from("us-east-1"));
+                assert_eq!(log.value(), Value::from(message));
             }
 
             // Unfortunately we need a fairly large sleep here to ensure that the source has actually managed to delete the SQS message.

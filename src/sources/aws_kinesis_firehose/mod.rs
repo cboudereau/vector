@@ -146,7 +146,6 @@ impl fmt::Display for Compression {
 #[typetag::serde(name = "aws_kinesis_firehose")]
 impl SourceConfig for AwsKinesisFirehoseConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
-        let log_namespace = cx.log_namespace();
         let decoder =
             DecodingConfig::new(self.framing.clone(), self.decoding.clone())
                 .build()?;
@@ -171,7 +170,6 @@ impl SourceConfig for AwsKinesisFirehoseConfig {
             decoder,
             acknowledgements,
             cx.out,
-            log_namespace,
         );
 
         let tls = MaybeTlsSettings::from_config(self.tls.as_ref(), true)?;

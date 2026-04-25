@@ -11,7 +11,6 @@ use vector_common::constants::GZIP_MAGIC;
 use vector_lib::{
     EstimatedJsonEncodedSizeOf,
     codecs::StreamDecodingError,
-    config::LogNamespace,
     event::BatchNotifier,
     finalization::AddBatchNotifier,
     internal_event::{
@@ -45,7 +44,6 @@ pub(super) struct Context {
     pub(super) acknowledgements: bool,
     pub(super) bytes_received: Registered<BytesReceived>,
     pub(super) out: SourceSender,
-    pub(super) log_namespace: LogNamespace,
 }
 
 /// Publishes decoded events from the FirehoseRequest to the pipeline
@@ -55,7 +53,6 @@ pub(super) async fn firehose(
     request: FirehoseRequest,
     mut context: Context,
 ) -> Result<impl warp::Reply, reject::Rejection> {
-    let _log_namespace = context.log_namespace;
     let request_timestamp = request.timestamp;
     let access_key = request.access_key.clone();
     let store_access_key = context.store_access_key;

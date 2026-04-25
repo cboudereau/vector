@@ -2,7 +2,7 @@ use chrono::Utc;
 use futures::{StreamExt, stream};
 use vector_lib::{
     codecs::BytesDeserializerConfig,
-    config::{LogNamespace, insert_source_metadata, insert_standard_vector_source_metadata},
+    config::{insert_source_metadata, insert_standard_vector_source_metadata},
     configurable::configurable_component,
     lookup::{lookup_v2::OptionalValuePath, owned_value_path, path},
     schema::Definition,
@@ -61,8 +61,6 @@ impl Default for InternalLogsConfig {
 impl InternalLogsConfig {
     /// Generates the `schema::Definition` for this component.
     fn schema_definition(&self) -> Definition {
-        // There is a global and per-source `log_namespace` config.
-        // The source config overrides the global setting and is merged here.
         BytesDeserializerConfig
             .schema_definition()
             .with_standard_vector_source_metadata()
@@ -87,13 +85,10 @@ impl SourceConfig for InternalLogsConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
         let subscription = TraceSubscription::subscribe();
 
-        let log_namespace = cx.log_namespace();
-
         Ok(Box::pin(run(
             subscription,
             cx.out,
             cx.shutdown,
-            log_namespace,
         )))
     }
 
@@ -116,7 +111,6 @@ async fn run(
     mut subscription: TraceSubscription,
     mut out: SourceSender,
     shutdown: ShutdownSignal,
-    _log_namespace: LogNamespace,
 ) -> Result<(), ()> {
     let hostname = crate::get_hostname();
     let pid = std::process::id();
@@ -173,7 +167,7 @@ async fn run(
 mod tests {
     use futures::Stream;
     use tokio::time::{Duration, sleep};
-    use vector_lib::event::Value;
+    use vector_lib::{config::LogNamespace, event::Value};
     use vrl::value::kind::Collection;
 
     use serial_test::serial;

@@ -14,7 +14,7 @@ use vector_lib::{
         StreamDecodingError,
         decoding::{DeserializerConfig, FramingConfig},
     },
-    config::{DataType, LogNamespace},
+    config::DataType,
     configurable::configurable_component,
     lookup::{lookup_v2::parse_value_path, owned_value_path},
     schema::Definition,
@@ -164,8 +164,6 @@ impl GenerateConfig for LogplexConfig {
 #[typetag::serde(name = "heroku_logs")]
 impl SourceConfig for LogplexConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
-        let log_namespace = cx.log_namespace();
-
         let decoder =
             DecodingConfig::new(self.framing.clone(), self.decoding.clone())
                 .build()?;
@@ -176,7 +174,6 @@ impl SourceConfig for LogplexConfig {
                 "query_parameters",
             ))?,
             decoder,
-            log_namespace,
         };
 
         source.run(
@@ -194,8 +191,6 @@ impl SourceConfig for LogplexConfig {
     }
 
     fn outputs(&self) -> Vec<SourceOutput> {
-        // There is a global and per-source `log_namespace` config.
-        // The source config overrides the global setting and is merged here.
         let schema_def = self.schema_definition();
         vec![SourceOutput::new_maybe_logs(DataType::Log, schema_def)]
     }
@@ -213,7 +208,6 @@ impl SourceConfig for LogplexConfig {
 struct LogplexSource {
     query_parameters: Vec<HttpConfigParamKind>,
     decoder: Decoder,
-    log_namespace: LogNamespace,
 }
 
 impl LogplexSource {
@@ -263,7 +257,7 @@ impl LogplexSource {
                     .ok()
             })
             .filter(|s| !s.is_empty())
-            .flat_map(|line| line_to_events(self.decoder.clone(), self.log_namespace, line))
+            .flat_map(|line| line_to_events(self.decoder.clone(), line))
             .collect()
     }
 }
@@ -291,7 +285,6 @@ impl HttpSource for LogplexSource {
             events,
             &self.query_parameters,
             query_parameters,
-            self.log_namespace,
             LogplexConfig::NAME,
         );
     }
@@ -316,7 +309,6 @@ fn header_error_message(name: &str, msg: &str) -> ErrorMessage {
 
 fn line_to_events(
     mut decoder: Decoder,
-    _log_namespace: LogNamespace,
     line: String,
 ) -> SmallVec<[Event; 1]> {
     let parts = line.splitn(8, ' ').collect::<Vec<&str>>();
@@ -646,9 +638,8 @@ mod tests {
 
     #[test]
     fn logplex_handles_normal_lines() {
-        let log_namespace = LogNamespace::Vector;
         let body = "267 <158>1 2020-01-08T22:33:57.353034+00:00 host heroku router - foo bar baz";
-        let events = super::line_to_events(Default::default(), log_namespace, body.into());
+        let events = super::line_to_events(Default::default(), body.into());
         let log = events[0].as_log();
 
         assert_eq!(log.get_body().unwrap(), "foo bar baz".into());
@@ -665,9 +656,8 @@ mod tests {
 
     #[test]
     fn logplex_handles_malformed_lines() {
-        let log_namespace = LogNamespace::Vector;
         let body = "what am i doing here";
-        let events = super::line_to_events(Default::default(), log_namespace, body.into());
+        let events = super::line_to_events(Default::default(), body.into());
         let log = events[0].as_log();
 
         assert_eq!(log.get_body().unwrap(), "what am i doing here".into());
@@ -677,9 +667,8 @@ mod tests {
 
     #[test]
     fn logplex_doesnt_blow_up_on_bad_framing() {
-        let log_namespace = LogNamespace::Vector;
         let body = "1000000 <158>1 2020-01-08T22:33:57.353034+00:00 host heroku router - i'm not that long";
-        let events = super::line_to_events(Default::default(), log_namespace, body.into());
+        let events = super::line_to_events(Default::default(), body.into());
         let log = events[0].as_log();
 
         assert_eq!(log.get_body().unwrap(), "i'm not that long".into());

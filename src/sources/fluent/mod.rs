@@ -15,7 +15,7 @@ use smallvec::{SmallVec, smallvec};
 use tokio_util::codec::Decoder;
 use vector_lib::{
     codecs::{BytesDeserializerConfig, StreamDecodingError},
-    config::{LogNamespace, insert_source_metadata},
+    config::insert_source_metadata,
     configurable::configurable_component,
     ipallowlist::IpAllowlistConfig,
     lookup::{owned_value_path, path},
@@ -199,9 +199,8 @@ impl FluentTcpConfig {
     fn build(
         &self,
         cx: SourceContext,
-        log_namespace: LogNamespace,
     ) -> crate::Result<super::Source> {
-        let source = FluentSource::new(log_namespace);
+        let source = FluentSource::new();
         let shutdown_secs = Duration::from_secs(30);
         let tls_config = self.tls.as_ref().map(|tls| tls.tls_config.clone());
         let tls_client_metadata_key = self
@@ -223,7 +222,6 @@ impl FluentTcpConfig {
             self.connection_limit,
             self.permit_origin.clone().map(Into::into),
             FluentConfig::NAME,
-            log_namespace,
         )
     }
 }
@@ -255,9 +253,8 @@ impl FluentUnixConfig {
     fn build(
         &self,
         cx: SourceContext,
-        log_namespace: LogNamespace,
     ) -> crate::Result<super::Source> {
-        let source = FluentSource::new(log_namespace);
+        let source = FluentSource::new();
 
         crate::sources::util::build_unix_stream_source(
             self.path.clone(),
@@ -291,11 +288,10 @@ impl GenerateConfig for FluentConfig {
 #[typetag::serde(name = "fluent")]
 impl SourceConfig for FluentConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
-        let log_namespace = cx.log_namespace();
         match &self.mode {
-            FluentMode::Tcp(t) => t.build(cx, log_namespace),
+            FluentMode::Tcp(t) => t.build(cx),
             #[cfg(unix)]
-            FluentMode::Unix(u) => u.build(cx, log_namespace),
+            FluentMode::Unix(u) => u.build(cx),
         }
     }
 
@@ -369,13 +365,11 @@ impl FluentConfig {
 }
 
 #[derive(Debug, Clone)]
-struct FluentSource {
-    log_namespace: LogNamespace,
-}
+struct FluentSource;
 
 impl FluentSource {
-    fn new(log_namespace: LogNamespace) -> Self {
-        Self { log_namespace }
+    fn new() -> Self {
+        Self
     }
 
     fn handle_events_impl(&self, events: &mut [Event], host: Value) {
@@ -394,7 +388,7 @@ impl TcpSource for FluentSource {
     type Acker = FluentAcker;
 
     fn decoder(&self) -> Self::Decoder {
-        FluentDecoder::new(self.log_namespace)
+        FluentDecoder::new()
     }
 
     fn handle_events(&self, events: &mut [Event], host: SocketAddr) {
@@ -453,13 +447,11 @@ impl From<decode::Error> for DecodeError {
 }
 
 #[derive(Debug, Clone)]
-struct FluentDecoder {
-    log_namespace: LogNamespace,
-}
+struct FluentDecoder;
 
 impl FluentDecoder {
-    const fn new(log_namespace: LogNamespace) -> Self {
-        Self { log_namespace }
+    const fn new() -> Self {
+        Self
     }
 
     fn handle_message(
@@ -467,15 +459,12 @@ impl FluentDecoder {
         message: Result<FluentMessage, DecodeError>,
         byte_size: usize,
     ) -> Result<Option<(FluentFrame, usize)>, DecodeError> {
-        let log_namespace = &self.log_namespace;
-
         match message? {
             FluentMessage::Message(tag, timestamp, record) => {
                 let event = Event::from(FluentEvent {
                     tag,
                     timestamp,
                     record,
-                    log_namespace,
                 });
                 let frame = FluentFrame {
                     events: smallvec![event],
@@ -488,7 +477,6 @@ impl FluentDecoder {
                     tag,
                     timestamp,
                     record,
-                    log_namespace,
                 });
                 let frame = FluentFrame {
                     events: smallvec![event],
@@ -504,7 +492,6 @@ impl FluentDecoder {
                             tag: tag.clone(),
                             timestamp,
                             record,
-                            log_namespace,
                         })
                     })
                     .collect();
@@ -522,7 +509,6 @@ impl FluentDecoder {
                             tag: tag.clone(),
                             timestamp,
                             record,
-                            log_namespace,
                         })
                     })
                     .collect();
@@ -543,7 +529,6 @@ impl FluentDecoder {
                         tag: tag.clone(),
                         timestamp,
                         record,
-                        log_namespace,
                     }));
                 }
                 let frame = FluentFrame {
@@ -575,7 +560,6 @@ impl FluentDecoder {
                         tag: tag.clone(),
                         timestamp,
                         record,
-                        log_namespace,
                     }));
                 }
                 let frame = FluentFrame {
@@ -706,20 +690,18 @@ impl TcpSourceAcker for FluentAcker {
 
 /// Normalized fluent message.
 #[derive(Debug, PartialEq)]
-struct FluentEvent<'a> {
+struct FluentEvent {
     tag: FluentTag,
     timestamp: FluentTimestamp,
     record: FluentRecord,
-    log_namespace: &'a LogNamespace,
 }
 
-impl From<FluentEvent<'_>> for Event {
+impl From<FluentEvent> for Event {
     fn from(frame: FluentEvent) -> Event {
         let FluentEvent {
             tag,
             timestamp,
             record,
-            log_namespace: _log_namespace,
         } = frame;
 
         let mut log = OtelLog::new(Default::default());
@@ -778,7 +760,7 @@ mod tests {
         time::{Duration, error::Elapsed, timeout},
     };
     use tokio_util::codec::Decoder;
-    use vector_lib::{assert_event_data_eq, lookup::event_path, schema::Definition};
+    use vector_lib::{assert_event_data_eq, config::LogNamespace, lookup::event_path, schema::Definition};
     use vrl::{path, value::{Value, kind::Collection}};
 
     use super::{message::FluentMessageOptions, *};
@@ -994,7 +976,7 @@ mod tests {
     fn decode_all(message: Vec<u8>) -> Result<(SmallVec<[Event; 1]>, usize), DecodeError> {
         let mut buf = BytesMut::from(&message[..]);
 
-        let mut decoder = FluentDecoder::new(LogNamespace::default());
+        let mut decoder = FluentDecoder::new();
 
         let (frame, byte_size) = decoder.decode(&mut buf)?.unwrap();
         Ok((frame.into(), byte_size))

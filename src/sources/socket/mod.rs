@@ -102,8 +102,6 @@ impl SourceConfig for SocketConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
         match self.mode.clone() {
             Mode::Tcp(config) => {
-                let log_namespace = cx.log_namespace();
-
                 let decoding = config.decoding().clone();
                 let decoder = DecodingConfig::new(
                     config
@@ -114,7 +112,7 @@ impl SourceConfig for SocketConfig {
                 )
                 .build()?;
 
-                let tcp = tcp::RawTcpSource::new(config.clone(), decoder, log_namespace);
+                let tcp = tcp::RawTcpSource::new(config.clone(), decoder);
                 let tls_config = config.tls().as_ref().map(|tls| tls.tls_config.clone());
                 let tls_client_metadata_key = config
                     .tls()
@@ -135,11 +133,9 @@ impl SourceConfig for SocketConfig {
                     config.connection_limit,
                     config.permit_origin.map(Into::into),
                     SocketConfig::NAME,
-                    log_namespace,
                 )
             }
             Mode::Udp(config) => {
-                let log_namespace = cx.log_namespace();
                 let decoding = config.decoding().clone();
                 let framing = config
                     .framing()
@@ -151,12 +147,10 @@ impl SourceConfig for SocketConfig {
                     decoder,
                     cx.shutdown,
                     cx.out,
-                    log_namespace,
                 ))
             }
             #[cfg(unix)]
             Mode::UnixDatagram(config) => {
-                let log_namespace = cx.log_namespace();
                 let decoding = config.decoding.clone();
                 let framing = config
                     .framing
@@ -164,12 +158,10 @@ impl SourceConfig for SocketConfig {
                     .unwrap_or_else(|| decoding.default_message_based_framing());
                 let decoder = DecodingConfig::new(framing, decoding).build()?;
 
-                unix::unix_datagram(config, decoder, cx.shutdown, cx.out, log_namespace)
+                unix::unix_datagram(config, decoder, cx.shutdown, cx.out)
             }
             #[cfg(unix)]
             Mode::UnixStream(config) => {
-                let log_namespace = cx.log_namespace();
-
                 let decoding = config.decoding().clone();
                 let decoder = DecodingConfig::new(
                     config
@@ -180,7 +172,7 @@ impl SourceConfig for SocketConfig {
                 )
                 .build()?;
 
-                unix::unix_stream(config, decoder, cx.shutdown, cx.out, log_namespace)
+                unix::unix_stream(config, decoder, cx.shutdown, cx.out)
             }
         }
     }

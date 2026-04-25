@@ -13,7 +13,6 @@ use snafu::{ResultExt, Snafu};
 use tokio_util::codec::Decoder;
 use vector_lib::{
     codecs::{BytesDeserializerConfig, StreamDecodingError},
-    config::LogNamespace,
     configurable::configurable_component,
     ipallowlist::IpAllowlistConfig,
     lookup::owned_value_path,
@@ -119,10 +118,8 @@ impl GenerateConfig for LogstashConfig {
 #[typetag::serde(name = "logstash")]
 impl SourceConfig for LogstashConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
-        let log_namespace = cx.log_namespace();
         let source = LogstashSource {
             timestamp_converter: types::Conversion::Timestamp(cx.globals.timezone()),
-            log_namespace,
         };
         let shutdown_secs = Duration::from_secs(30);
         let tls_config = self.tls.as_ref().map(|tls| tls.tls_config.clone());
@@ -146,13 +143,10 @@ impl SourceConfig for LogstashConfig {
             self.connection_limit,
             self.permit_origin.clone().map(Into::into),
             LogstashConfig::NAME,
-            log_namespace,
         )
     }
 
     fn outputs(&self) -> Vec<SourceOutput> {
-        // There is a global and per-source `log_namespace` config.
-        // The source config overrides the global setting and is merged here.
         vec![SourceOutput::new_maybe_logs(
             DataType::Log,
             self.schema_definition(),
@@ -172,8 +166,6 @@ impl SourceConfig for LogstashConfig {
 struct LogstashSource {
     #[allow(dead_code)]
     timestamp_converter: types::Conversion,
-    #[allow(dead_code)]
-    log_namespace: LogNamespace,
 }
 
 impl TcpSource for LogstashSource {
@@ -653,6 +645,7 @@ mod test {
     use futures::Stream;
     use rand::{Rng, rng};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use vector_lib::config::LogNamespace;
     use vrl::value::kind::Collection;
 
     use super::*;

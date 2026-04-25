@@ -31,7 +31,7 @@ use tokio_util::codec::FramedRead;
 use tracing::Instrument;
 use vector_lib::{
     codecs::decoding::FramingError,
-    config::{LogNamespace, insert_source_metadata},
+    config::insert_source_metadata,
     configurable::configurable_component,
     internal_event::{
         ByteSize, BytesReceived, CountByteSize, InternalEventHandle as _, Protocol, Registered,
@@ -344,7 +344,6 @@ impl Ingestor {
         self,
         cx: SourceContext,
         acknowledgements: SourceAcknowledgementsConfig,
-        log_namespace: LogNamespace,
     ) -> Result<(), ()> {
         let acknowledgements = cx.do_acknowledgements(acknowledgements);
         let mut handles = Vec::new();
@@ -353,7 +352,6 @@ impl Ingestor {
                 Arc::clone(&self.state),
                 cx.out.clone(),
                 cx.shutdown.clone(),
-                log_namespace,
                 acknowledgements,
             );
             let fut = process.run();
@@ -380,7 +378,6 @@ pub struct IngestorProcess {
     out: SourceSender,
     shutdown: ShutdownSignal,
     acknowledgements: bool,
-    log_namespace: LogNamespace,
     bytes_received: Registered<BytesReceived>,
     events_received: Registered<EventsReceived>,
     backoff: ExponentialBackoff,
@@ -391,7 +388,6 @@ impl IngestorProcess {
         state: Arc<State>,
         out: SourceSender,
         shutdown: ShutdownSignal,
-        log_namespace: LogNamespace,
         acknowledgements: bool,
     ) -> Self {
         Self {
@@ -399,7 +395,6 @@ impl IngestorProcess {
             out,
             shutdown,
             acknowledgements,
-            log_namespace,
             bytes_received: register!(BytesReceived::from(Protocol::HTTP)),
             events_received: register!(EventsReceived),
             backoff: ExponentialBackoff::default().max_delay(Duration::from_secs(30)),
@@ -620,8 +615,7 @@ impl IngestorProcess {
 
     async fn handle_s3_event(&mut self, s3_event: S3Event) -> Result<(), ProcessingError> {
         for record in s3_event.records {
-            self.handle_s3_event_record(record, self.log_namespace)
-                .await?
+            self.handle_s3_event_record(record).await?
         }
         Ok(())
     }
@@ -629,7 +623,6 @@ impl IngestorProcess {
     async fn handle_s3_event_record(
         &mut self,
         s3_event: S3EventRecord,
-        _log_namespace: LogNamespace,
     ) -> Result<(), ProcessingError> {
         let event_version: semver::Version = s3_event.event_version.clone().into();
         if !SUPPORTED_S3_EVENT_VERSION.matches(&event_version) {
@@ -915,7 +908,6 @@ impl IngestorProcess {
 #[allow(dead_code)]
 fn handle_single_log(
     log: &mut OtelLog,
-    _log_namespace: LogNamespace,
     s3_event: &S3EventRecord,
     metadata: &Option<HashMap<String, String>>,
     timestamp: Option<DateTime<Utc>>,

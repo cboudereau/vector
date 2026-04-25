@@ -92,9 +92,8 @@ pub(crate) fn null_fd() -> crate::Result<RawFd> {
 impl SourceConfig for FileDescriptorSourceConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<crate::sources::Source> {
         let pipe = io::BufReader::new(unsafe { File::from_raw_fd(self.fd as i32) });
-        let log_namespace = cx.log_namespace();
 
-        self.source(pipe, cx.shutdown, cx.out, log_namespace)
+        self.source(pipe, cx.shutdown, cx.out)
     }
 
     fn outputs(&self) -> Vec<SourceOutput> {

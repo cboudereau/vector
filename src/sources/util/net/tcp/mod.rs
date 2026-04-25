@@ -19,7 +19,7 @@ use tracing::Instrument;
 use vector_lib::{
     EstimatedJsonEncodedSizeOf,
     codecs::{ReadyFrames, StreamDecodingError, internal_events::DecoderFramingError},
-    config::{LogNamespace, SourceAcknowledgementsConfig},
+    config::SourceAcknowledgementsConfig,
     event::{BatchNotifier, BatchStatus, Event},
     finalization::AddBatchNotifier,
     lookup::OwnedValuePath,
@@ -121,7 +121,6 @@ where
         max_connections: Option<u32>,
         allowlist: Option<Vec<IpNet>>,
         source_name: &'static str,
-        log_namespace: LogNamespace,
     ) -> crate::Result<crate::sources::Source> {
         let acknowledgements = cx.do_acknowledgements(acknowledgements);
 
@@ -213,7 +212,6 @@ where
                                 request_limiter,
                                 tls_client_metadata_key.clone(),
                                 source_name,
-                                log_namespace,
                             );
 
                             tokio::spawn(
@@ -247,7 +245,6 @@ async fn handle_stream<T>(
     request_limiter: RequestLimiter,
     _tls_client_metadata_key: Option<OwnedValuePath>,
     _source_name: &'static str,
-    _log_namespace: LogNamespace,
 ) where
     <<T as TcpSource>::Decoder as tokio_util::codec::Decoder>::Item: std::marker::Send,
     T: TcpSource,

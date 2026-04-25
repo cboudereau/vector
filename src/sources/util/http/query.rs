@@ -1,10 +1,7 @@
 use std::collections::HashMap;
 
 use opentelemetry_proto::tonic::common::v1::AnyValue;
-use vector_lib::{
-    config::LogNamespace,
-    event::Event,
-};
+use vector_lib::event::Event;
 
 use crate::{
     event::string_value,
@@ -15,7 +12,6 @@ pub fn add_query_parameters(
     events: &mut [Event],
     query_parameters_config: &[HttpConfigParamKind],
     query_parameters: &HashMap<String, String>,
-    _log_namespace: LogNamespace,
     _source_name: &'static str,
 ) {
     for qp in query_parameters_config {
@@ -74,7 +70,6 @@ pub fn add_query_parameters(
 
 #[cfg(test)]
 mod tests {
-    use vector_lib::config::LogNamespace;
     use vrl::value;
 
     use crate::{
@@ -100,7 +95,6 @@ mod tests {
             &mut events,
             &query_params_names,
             &query_params,
-            LogNamespace::Vector,
             "test",
         );
 
@@ -125,7 +119,6 @@ mod tests {
             &mut events,
             &query_params_names,
             &query_params,
-            LogNamespace::Vector,
             "test",
         );
 

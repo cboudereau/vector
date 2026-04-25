@@ -11,7 +11,6 @@ use vector_lib::{
         StreamDecodingError,
         decoding::{DeserializerConfig, FramingConfig},
     },
-    config::LogNamespace,
     configurable::NamedComponent,
     event::{Event, string_value},
     internal_event::{ByteSize, BytesReceived, CountByteSize, InternalEventHandle as _, Protocol},
@@ -43,7 +42,6 @@ pub trait FileDescriptorConfig: NamedComponent {
         reader: R,
         shutdown: ShutdownSignal,
         out: SourceSender,
-        log_namespace: LogNamespace,
     ) -> crate::Result<crate::sources::Source>
     where
         R: Send + io::BufRead + 'static,
@@ -77,7 +75,6 @@ pub trait FileDescriptorConfig: NamedComponent {
             shutdown,
             self.get_component_name(),
             hostname,
-            log_namespace,
         )))
     }
 }
@@ -107,7 +104,6 @@ where
 
 type Receiver = mpsc::Receiver<Result<Bytes, io::Error>>;
 
-#[allow(clippy::too_many_arguments)]
 async fn process_stream(
     receiver: Receiver,
     decoder: Decoder,
@@ -115,7 +111,6 @@ async fn process_stream(
     shutdown: ShutdownSignal,
     source_type: &'static str,
     hostname: Option<String>,
-    _log_namespace: LogNamespace,
 ) -> Result<(), ()> {
     let bytes_received = register!(BytesReceived::from(Protocol::NONE));
     let events_received = register!(EventsReceived);

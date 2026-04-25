@@ -454,7 +454,6 @@ impl HttpSource for SimpleHttpSource {
             events,
             &self.query_parameters,
             query_parameters,
-            self.log_namespace,
             SimpleHttpConfig::NAME,
         );
     }

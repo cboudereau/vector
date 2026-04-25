@@ -9,7 +9,6 @@ use futures::{FutureExt, StreamExt};
 use tokio::{pin, select};
 use tracing_futures::Instrument;
 use vector_lib::{
-    config::LogNamespace,
     finalizer::UnorderedFinalizer,
     internal_event::{EventsReceived, Registered},
 };
@@ -40,7 +39,6 @@ pub struct SqsSource {
     pub delete_message: bool,
     pub concurrency: usize,
     pub(super) acknowledgements: bool,
-    pub(super) log_namespace: LogNamespace,
 }
 
 impl SqsSource {
@@ -155,7 +153,6 @@ impl SqsSource {
                         body.as_bytes(),
                         timestamp,
                         &batch,
-                        self.log_namespace,
                         &events_received,
                     );
                     events.extend(decoded);
@@ -255,7 +252,6 @@ mod tests {
             b"test",
             Some(now),
             &None,
-            LogNamespace::Vector,
             &register!(EventsReceived),
         )
         .collect();
@@ -328,7 +324,6 @@ mod tests {
             b"test",
             Some(now),
             &None,
-            LogNamespace::Vector,
             &register!(EventsReceived),
         )
         .collect();

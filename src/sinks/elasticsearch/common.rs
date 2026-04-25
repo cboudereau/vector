@@ -4,7 +4,7 @@ use http_body::Body as _;
 use hyper::Body;
 use serde::Deserialize;
 use snafu::ResultExt;
-use vector_lib::config::{LogNamespace, proxy::ProxyConfig};
+use vector_lib::config::proxy::ProxyConfig;
 
 use super::{
     ElasticsearchApiVersion, ElasticsearchEncoder, InvalidHostSnafu, Request, VersionType,
@@ -131,7 +131,6 @@ impl ElasticsearchCommon {
         let metric_to_log = MetricToLog::new(
             metric_config.host_tag.as_deref(),
             metric_config.timezone.unwrap_or_default(),
-            LogNamespace::Vector,
             metric_config.metric_tag_values,
         );
 

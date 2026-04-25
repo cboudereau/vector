@@ -161,7 +161,6 @@ impl SourceConfig for WebSocketConfig {
         let connector =
             WebSocketConnector::new(self.common.uri.clone(), tls, self.common.auth.clone())?;
 
-        let log_namespace = cx.log_namespace();
         let decoder =
             DecodingConfig::new(self.framing.clone(), self.decoding.clone())
                 .build()?;
@@ -169,7 +168,6 @@ impl SourceConfig for WebSocketConfig {
         let params = WebSocketSourceParams {
             connector,
             decoder,
-            log_namespace,
         };
 
         let source = WebSocketSource::new(self.clone(), params);

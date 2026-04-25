@@ -374,7 +374,6 @@ impl SourceConfig for JournaldConfig {
 
         let batch_size = self.batch_size;
         let acknowledgements = cx.do_acknowledgements(self.acknowledgements);
-        let log_namespace = cx.log_namespace();
 
         Ok(Box::pin(
             JournaldSource {
@@ -386,7 +385,6 @@ impl SourceConfig for JournaldConfig {
                 out: cx.out,
                 acknowledgements,
                 starter,
-                log_namespace,
                 emit_cursor: self.emit_cursor,
             }
             .run_shutdown(cx.shutdown),
@@ -417,7 +415,6 @@ struct JournaldSource {
     out: SourceSender,
     acknowledgements: bool,
     starter: StartJournalctl,
-    log_namespace: LogNamespace,
     emit_cursor: bool,
 }
 
@@ -620,10 +617,9 @@ impl<'a> Batch<'a> {
                             let mut event = create_log_event_from_record(
                                 record,
                                 &self.batch,
-                                self.source.log_namespace,
                             );
 
-                            enrich_log_event(&mut event, self.source.log_namespace);
+                            enrich_log_event(&mut event);
 
                             self.events.push(event);
                         }
@@ -822,7 +818,7 @@ async fn get_systemd_version_from_journalctl(journalctl_path: &PathBuf) -> crate
         })?)
 }
 
-fn enrich_log_event(log: &mut OtelLog, _log_namespace: LogNamespace) {
+fn enrich_log_event(log: &mut OtelLog) {
     let host = log
         .metadata()
         .value()
@@ -876,7 +872,6 @@ fn enrich_log_event(log: &mut OtelLog, _log_namespace: LogNamespace) {
 fn create_log_event_from_record(
     mut record: Record,
     batch: &Option<BatchNotifier>,
-    _log_namespace: LogNamespace,
 ) -> OtelLog {
     let message_value = record
         .remove(MESSAGE)

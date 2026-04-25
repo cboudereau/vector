@@ -5,7 +5,6 @@ use serde_with::serde_as;
 use smallvec::SmallVec;
 use vector_lib::{
     codecs::decoding::{DeserializerConfig, FramingConfig},
-    config::LogNamespace,
     configurable::configurable_component,
     ipallowlist::IpAllowlistConfig,
     lookup::{self, lookup_v2::OptionalValuePath, owned_value_path},
@@ -181,16 +180,13 @@ pub struct RawTcpSource {
     #[allow(dead_code)]
     config: TcpConfig,
     decoder: Decoder,
-    #[allow(dead_code)]
-    log_namespace: LogNamespace,
 }
 
 impl RawTcpSource {
-    pub const fn new(config: TcpConfig, decoder: Decoder, log_namespace: LogNamespace) -> Self {
+    pub const fn new(config: TcpConfig, decoder: Decoder) -> Self {
         Self {
             config,
             decoder,
-            log_namespace,
         }
     }
 }

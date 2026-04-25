@@ -4,7 +4,6 @@ use bytes::Bytes;
 use chrono::Utc;
 use vector_lib::{
     codecs::decoding::{DeserializerConfig, FramingConfig},
-    config::LogNamespace,
     configurable::configurable_component,
     lookup::{self, lookup_v2::OptionalValuePath},
     shutdown::ShutdownSignal,
@@ -88,7 +87,6 @@ fn handle_events(
     events: &mut [Event],
     _host_key: &OptionalValuePath,
     received_from: Option<Bytes>,
-    _log_namespace: LogNamespace,
 ) {
     let now = Utc::now();
 
@@ -113,7 +111,6 @@ pub(super) fn unix_datagram(
     decoder: Decoder,
     shutdown: ShutdownSignal,
     out: SourceSender,
-    log_namespace: LogNamespace,
 ) -> crate::Result<Source> {
     let max_length = config
         .framing
@@ -131,7 +128,7 @@ pub(super) fn unix_datagram(
         max_length,
         decoder,
         move |events, received_from| {
-            handle_events(events, &config.host_key, received_from, log_namespace)
+            handle_events(events, &config.host_key, received_from)
         },
         shutdown,
         out,
@@ -143,14 +140,13 @@ pub(super) fn unix_stream(
     decoder: Decoder,
     shutdown: ShutdownSignal,
     out: SourceSender,
-    log_namespace: LogNamespace,
 ) -> crate::Result<Source> {
     build_unix_stream_source(
         config.path,
         config.socket_file_mode,
         decoder,
         move |events, received_from| {
-            handle_events(events, &config.host_key, received_from, log_namespace)
+            handle_events(events, &config.host_key, received_from)
         },
         shutdown,
         out,

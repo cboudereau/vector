@@ -5,7 +5,6 @@ use serde_json::Value;
 use vector_lib::{
     TimeZone,
     codecs::MetricTagValues,
-    config::LogNamespace,
     configurable::configurable_component,
     lookup::{PathPrefix, event_path, owned_value_path, path},
 };
@@ -64,7 +63,6 @@ impl MetricToLogConfig {
         MetricToLog::new(
             self.host_tag.as_deref(),
             self.timezone.unwrap_or_else(|| context.globals.timezone()),
-            context.log_namespace(),
             self.metric_tag_values,
         )
     }
@@ -94,11 +92,10 @@ impl TransformConfig for MetricToLogConfig {
 
     fn outputs(
         &self,
-        context: &TransformContext,
+        _context: &TransformContext,
         input_definitions: &[(OutputId, Definition)],
     ) -> Vec<TransformOutput> {
-        let log_namespace = context.log_namespace();
-        let schema_definition = schema_definition(log_namespace);
+        let schema_definition = schema_definition();
 
         vec![TransformOutput::new(
             DataType::Log,
@@ -114,8 +111,8 @@ impl TransformConfig for MetricToLogConfig {
     }
 }
 
-fn schema_definition(log_namespace: LogNamespace) -> Definition {
-    let mut schema_definition = Definition::default_for_namespace(&BTreeSet::from([log_namespace]))
+fn schema_definition() -> Definition {
+    let mut schema_definition = Definition::default_for_namespace(&BTreeSet::from([vector_lib::config::LogNamespace::Vector]))
         .with_event_field(&owned_value_path!("name"), Kind::bytes(), None)
         .with_event_field(
             &owned_value_path!("namespace"),
@@ -233,7 +230,6 @@ fn schema_definition(log_namespace: LogNamespace) -> Definition {
 pub struct MetricToLog {
     host_tag: Option<OwnedValuePath>,
     timezone: TimeZone,
-    _log_namespace: LogNamespace,
     tag_values: MetricTagValues,
 }
 
@@ -241,7 +237,6 @@ impl MetricToLog {
     pub fn new(
         host_tag: Option<&str>,
         timezone: TimeZone,
-        log_namespace: LogNamespace,
         tag_values: MetricTagValues,
     ) -> Self {
         Self {
@@ -249,7 +244,6 @@ impl MetricToLog {
                 Some(owned_value_path!("tags", host))
             }),
             timezone,
-            _log_namespace: log_namespace,
             tag_values,
         }
     }
@@ -437,7 +431,7 @@ mod tests {
         let mut metadata = counter.metadata().clone();
         metadata.set_source_id(Arc::new(ComponentKey::from("in")));
         metadata.set_upstream_id(Arc::new(OutputId::from("transform")));
-        metadata.set_schema_definition(&Arc::new(schema_definition(LogNamespace::Vector)));
+        metadata.set_schema_definition(&Arc::new(schema_definition()));
         metadata.value_mut().insert(
             vrl::path!("vector"),
             Value::Object(std::collections::BTreeMap::new()),
@@ -477,7 +471,7 @@ mod tests {
         let mut metadata = gauge.metadata().clone();
         metadata.set_source_id(Arc::new(ComponentKey::from("in")));
         metadata.set_upstream_id(Arc::new(OutputId::from("transform")));
-        metadata.set_schema_definition(&Arc::new(schema_definition(LogNamespace::Vector)));
+        metadata.set_schema_definition(&Arc::new(schema_definition()));
         metadata.value_mut().insert(
             vrl::path!("vector"),
             Value::Object(std::collections::BTreeMap::new()),
@@ -515,7 +509,7 @@ mod tests {
         let mut metadata = set.metadata().clone();
         metadata.set_source_id(Arc::new(ComponentKey::from("in")));
         metadata.set_upstream_id(Arc::new(OutputId::from("transform")));
-        metadata.set_schema_definition(&Arc::new(schema_definition(LogNamespace::Vector)));
+        metadata.set_schema_definition(&Arc::new(schema_definition()));
 
         let log = do_transform(set).await.unwrap();
         let collected: Vec<_> = log.all_event_fields().unwrap();
@@ -548,7 +542,7 @@ mod tests {
         let mut metadata = distro.metadata().clone();
         metadata.set_source_id(Arc::new(ComponentKey::from("in")));
         metadata.set_upstream_id(Arc::new(OutputId::from("transform")));
-        metadata.set_schema_definition(&Arc::new(schema_definition(LogNamespace::Vector)));
+        metadata.set_schema_definition(&Arc::new(schema_definition()));
 
         let log = do_transform(distro).await.unwrap();
         let collected: Vec<_> = log.all_event_fields().unwrap();
@@ -599,7 +593,7 @@ mod tests {
         let mut metadata = histo.metadata().clone();
         metadata.set_source_id(Arc::new(ComponentKey::from("in")));
         metadata.set_upstream_id(Arc::new(OutputId::from("transform")));
-        metadata.set_schema_definition(&Arc::new(schema_definition(LogNamespace::Vector)));
+        metadata.set_schema_definition(&Arc::new(schema_definition()));
         metadata.value_mut().insert(
             vrl::path!("vector"),
             Value::Object(std::collections::BTreeMap::new()),
@@ -661,7 +655,7 @@ mod tests {
         let mut metadata = summary.metadata().clone();
         metadata.set_source_id(Arc::new(ComponentKey::from("in")));
         metadata.set_upstream_id(Arc::new(OutputId::from("transform")));
-        metadata.set_schema_definition(&Arc::new(schema_definition(LogNamespace::Vector)));
+        metadata.set_schema_definition(&Arc::new(schema_definition()));
         metadata.value_mut().insert(
             vrl::path!("vector"),
             Value::Object(std::collections::BTreeMap::new()),

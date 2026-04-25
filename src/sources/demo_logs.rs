@@ -14,7 +14,7 @@ use vector_lib::{
         StreamDecodingError,
         decoding::{DeserializerConfig, FramingConfig},
     },
-    config::{DataType, LogNamespace},
+    config::DataType,
     configurable::configurable_component,
     internal_event::{ByteSize, BytesReceived, CountByteSize, InternalEventHandle as _, Protocol},
     lookup::owned_value_path,
@@ -209,7 +209,6 @@ async fn demo_logs_source(
     decoder: Decoder,
     mut shutdown: ShutdownSignal,
     mut out: SourceSender,
-    _log_namespace: LogNamespace,
 ) -> Result<(), ()> {
     let interval: Option<Duration> = (interval != Duration::ZERO).then_some(interval);
     let mut interval = interval.map(time::interval);
@@ -277,8 +276,6 @@ impl_generate_config_from_default!(DemoLogsConfig);
 #[typetag::serde(name = "demo_logs")]
 impl SourceConfig for DemoLogsConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
-        let log_namespace = cx.log_namespace();
-
         self.format.validate()?;
         let decoder =
             DecodingConfig::new(self.framing.clone(), self.decoding.clone())
@@ -290,7 +287,6 @@ impl SourceConfig for DemoLogsConfig {
             decoder,
             cx.shutdown,
             cx.out,
-            log_namespace,
         )))
     }
 
@@ -353,7 +349,6 @@ mod tests {
                 decoder,
                 ShutdownSignal::noop(),
                 tx,
-                LogNamespace::Vector,
             )
             .await
             .unwrap();

@@ -152,7 +152,6 @@ impl GenerateConfig for SyslogConfig {
 #[typetag::serde(name = "syslog")]
 impl SourceConfig for SyslogConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
-        let log_namespace = cx.log_namespace();
         match self.mode.clone() {
             Mode::Tcp {
                 address,
@@ -185,7 +184,6 @@ impl SourceConfig for SyslogConfig {
                     connection_limit,
                     permit_origin.map(Into::into),
                     SyslogConfig::NAME,
-                    log_namespace,
                 )
             }
             Mode::Udp {

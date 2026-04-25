@@ -8,7 +8,6 @@ use vector_lib::{
         Decoder, DecodingConfig, StreamDecodingError,
         decoding::{DeserializerConfig, FramingConfig},
     },
-    config::LogNamespace,
     configurable::configurable_component,
     internal_event::{
         ByteSize, BytesReceived, CountByteSize, InternalEventHandle as _, Protocol, Registered,
@@ -150,8 +149,6 @@ impl GenerateConfig for RedisSourceConfig {
 #[typetag::serde(name = "redis")]
 impl SourceConfig for RedisSourceConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
-        let log_namespace = cx.log_namespace();
-
         // A key must be specified to actually query i.e. the list to pop from, or the channel to subscribe to.
         if self.key.is_empty() {
             return Err("`key` cannot be empty.".into());
@@ -176,7 +173,6 @@ impl SourceConfig for RedisSourceConfig {
             redis_key,
             decoder,
             cx,
-            log_namespace,
         };
 
         match self.data_type {
@@ -219,8 +215,6 @@ struct InputHandler {
     #[allow(dead_code)]
     pub redis_key: Option<OwnedValuePath>,
     pub decoder: Decoder,
-    #[allow(dead_code)]
-    pub log_namespace: LogNamespace,
     pub cx: SourceContext,
 }
 

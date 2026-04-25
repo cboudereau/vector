@@ -74,12 +74,10 @@ impl_generate_config_from_default!(StdinConfig);
 #[typetag::serde(name = "stdin")]
 impl SourceConfig for StdinConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<crate::sources::Source> {
-        let log_namespace = cx.log_namespace();
         self.source(
             io::BufReader::new(io::stdin()),
             cx.shutdown,
             cx.out,
-            log_namespace,
         )
     }
 
@@ -101,7 +99,7 @@ mod tests {
     use std::io::Cursor;
 
     use futures::StreamExt;
-    use vector_lib::{config::LogNamespace, lookup::path};
+    use vector_lib::lookup::path;
     use vrl::value;
 
     use super::*;
@@ -124,7 +122,7 @@ mod tests {
             let buf = Cursor::new("hello world\nhello world again");
 
             config
-                .source(buf, ShutdownSignal::noop(), tx, LogNamespace::Vector)
+                .source(buf, ShutdownSignal::noop(), tx)
                 .unwrap()
                 .await
                 .unwrap();
@@ -167,7 +165,7 @@ mod tests {
             let buf = Cursor::new("hello world\nhello world again");
 
             config
-                .source(buf, ShutdownSignal::noop(), tx, LogNamespace::Vector)
+                .source(buf, ShutdownSignal::noop(), tx)
                 .unwrap()
                 .await
                 .unwrap();

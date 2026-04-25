@@ -6,7 +6,6 @@ use tokio::time::interval;
 use tokio_stream::wrappers::IntervalStream;
 use vector_lib::{
     ByteSizeOf, EstimatedJsonEncodedSizeOf,
-    config::LogNamespace,
     event::{Event, EventMetadata, OtelLog},
     internal_event::{
         ByteSize, BytesReceived, BytesReceivedHandle, CountByteSize, EventsReceived,
@@ -29,7 +28,6 @@ pub(crate) struct MemorySource {
     pub(super) memory: Memory,
     pub(super) shutdown: ShutdownSignal,
     pub(super) out: SourceSender,
-    pub(super) _log_namespace: LogNamespace,
 }
 
 impl MemorySource {

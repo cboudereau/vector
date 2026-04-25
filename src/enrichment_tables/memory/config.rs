@@ -192,11 +192,7 @@ impl SourceConfig for MemoryConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<Source> {
         let memory = self.get_or_build_memory().await;
 
-        let log_namespace = cx.log_namespace();
-
-        Ok(Box::pin(
-            memory.as_source(cx.shutdown, cx.out, log_namespace).run(),
-        ))
+        Ok(Box::pin(memory.as_source(cx.shutdown, cx.out).run()))
     }
 
     fn outputs(&self) -> Vec<SourceOutput> {

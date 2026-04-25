@@ -70,15 +70,13 @@ fn default_topic_key() -> OptionalValuePath {
 #[typetag::serde(name = "mqtt")]
 impl SourceConfig for MqttSourceConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<crate::sources::Source> {
-        let log_namespace = cx.log_namespace();
-
         let connector = self.build_connector()?;
 
         let decoder =
             DecodingConfig::new(self.framing.clone(), self.decoding.clone())
                 .build()?;
 
-        let sink = MqttSource::new(connector.clone(), decoder, log_namespace, self.clone())?;
+        let sink = MqttSource::new(connector.clone(), decoder, self.clone())?;
         Ok(Box::pin(sink.run(cx.out, cx.shutdown)))
     }
 

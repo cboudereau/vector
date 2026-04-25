@@ -44,7 +44,6 @@ mod unix;
 use parser::Parser;
 #[cfg(unix)]
 use unix::{UnixConfig, statsd_unix};
-use vector_lib::config::LogNamespace;
 
 /// Configuration for the `statsd` source.
 #[configurable_component(source("statsd", "Collect metrics emitted by the StatsD aggregator."))]
@@ -227,7 +226,6 @@ impl SourceConfig for StatsdConfig {
                     config.connection_limit,
                     config.permit_origin.clone().map(Into::into),
                     StatsdConfig::NAME,
-                    LogNamespace::Vector,
                 )
             }
             #[cfg(unix)]

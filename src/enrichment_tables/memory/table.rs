@@ -21,7 +21,6 @@ use tokio::{
 use tokio_stream::wrappers::IntervalStream;
 use vector_lib::{
     ByteSizeOf, EstimatedJsonEncodedSizeOf,
-    config::LogNamespace,
     enrichment::{Case, Condition, IndexHandle, Table},
     event::{Event, EventStatus, Finalizable},
     internal_event::{
@@ -289,13 +288,11 @@ impl Memory {
         &self,
         shutdown: ShutdownSignal,
         out: SourceSender,
-        log_namespace: LogNamespace,
     ) -> MemorySource {
         MemorySource {
             memory: self.clone(),
             shutdown,
             out,
-            _log_namespace: log_namespace,
         }
     }
 }

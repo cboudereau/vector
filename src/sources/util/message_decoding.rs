@@ -6,7 +6,6 @@ use tokio_util::codec::Decoder as _;
 use vector_lib::{
     EstimatedJsonEncodedSizeOf,
     codecs::StreamDecodingError,
-    config::LogNamespace,
     internal_event::{CountByteSize, EventsReceived, InternalEventHandle as _, Registered},
 };
 
@@ -19,7 +18,6 @@ pub fn decode_message<'a>(
     message: &[u8],
     timestamp: Option<DateTime<Utc>>,
     batch: &'a Option<BatchNotifier>,
-    _log_namespace: LogNamespace,
     events_received: &'a Registered<EventsReceived>,
 ) -> impl Iterator<Item = Event> + 'a + use<'a> {
     let mut buffer = BytesMut::with_capacity(message.len());

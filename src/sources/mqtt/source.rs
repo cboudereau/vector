@@ -2,7 +2,6 @@ use itertools::Itertools;
 use rumqttc::{Event as MqttEvent, Incoming, Publish, QoS, SubscribeFilter};
 use vector_lib::{
     codecs::Decoder,
-    config::LogNamespace,
     internal_event::EventsReceived,
 };
 
@@ -21,7 +20,6 @@ use crate::{
 pub struct MqttSource {
     connector: MqttConnector,
     decoder: Decoder,
-    log_namespace: LogNamespace,
     config: MqttSourceConfig,
 }
 
@@ -29,13 +27,11 @@ impl MqttSource {
     pub fn new(
         connector: MqttConnector,
         decoder: Decoder,
-        log_namespace: LogNamespace,
         config: MqttSourceConfig,
     ) -> crate::Result<Self> {
         Ok(Self {
             connector,
             decoder,
-            log_namespace,
             config,
         })
     }
@@ -105,7 +101,6 @@ impl MqttSource {
             &publish.payload,
             None,
             &batch,
-            self.log_namespace,
             &events_received,
         )
         .map(|mut event| {

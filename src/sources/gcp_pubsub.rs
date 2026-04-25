@@ -26,7 +26,6 @@ use tonic::{
 use vector_lib::{
     byte_size_of::ByteSizeOf,
     codecs::decoding::{DeserializerConfig, FramingConfig},
-    config::LogNamespace,
     configurable::configurable_component,
     finalizer::UnorderedFinalizer,
     internal_event::{
@@ -250,7 +249,6 @@ const fn default_poll_time() -> Duration {
 #[typetag::serde(name = "gcp_pubsub")]
 impl SourceConfig for PubsubConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<crate::sources::Source> {
-        let log_namespace = cx.log_namespace();
         let ack_deadline_secs = match self.ack_deadline_seconds {
             None => self.ack_deadline_secs,
             Some(ads) => {
@@ -322,7 +320,6 @@ impl SourceConfig for PubsubConfig {
             keepalive: self.keepalive_secs,
             concurrency: Default::default(),
             full_response_size: self.full_response_size,
-            log_namespace,
             bytes_received: register!(BytesReceived::from(protocol)),
             events_received: register!(EventsReceived),
         }
@@ -386,7 +383,6 @@ struct PubsubSource {
     // would result in repeatedly re-opening the stream on idle.
     concurrency: Arc<AtomicUsize>,
     full_response_size: usize,
-    log_namespace: LogNamespace,
     bytes_received: Registered<BytesReceived>,
     events_received: Registered<EventsReceived>,
 }
@@ -666,7 +662,6 @@ impl PubsubSource {
                 .map(|(key, value)| (key.into(), Value::Bytes(value.into())))
                 .collect(),
         );
-        let log_namespace = self.log_namespace;
         util::decode_message(
             self.decoder.clone(),
             "gcp_pubsub",
@@ -675,7 +670,6 @@ impl PubsubSource {
                 DateTime::from_timestamp(dt.seconds, dt.nanos as u32).expect("invalid timestamp")
             }),
             batch,
-            log_namespace,
             &self.events_received,
         )
         .map(move |mut event| {
@@ -733,7 +727,7 @@ impl Future for Task {
 
 #[cfg(test)]
 mod tests {
-    use vector_lib::schema::Definition;
+    use vector_lib::{config::LogNamespace, schema::Definition};
 
     use super::*;
 

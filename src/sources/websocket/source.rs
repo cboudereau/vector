@@ -1,6 +1,6 @@
 use std::pin::Pin;
 
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use futures::{Sink, Stream, StreamExt, pin_mut, sink::SinkExt};
 use snafu::Snafu;
 use tokio::time;
@@ -10,8 +10,7 @@ use tokio_tungstenite::tungstenite::{
 use tokio_util::codec::FramedRead;
 use vector_lib::{
     EstimatedJsonEncodedSizeOf,
-    config::LogNamespace,
-    event::{Event, OtelLog},
+    event::Event,
     internal_event::{CountByteSize, EventsReceived, InternalEventHandle as _},
 };
 
@@ -44,8 +43,6 @@ type WebSocketStream = Pin<Box<dyn Stream<Item = Result<Message, TungsteniteErro
 pub(crate) struct WebSocketSourceParams {
     pub connector: WebSocketConnector,
     pub decoder: Decoder,
-    #[allow(dead_code)]
-    pub log_namespace: LogNamespace,
 }
 
 pub(crate) struct WebSocketSource {
@@ -255,14 +252,6 @@ impl WebSocketSource {
                 }
             }
         }
-    }
-
-    #[allow(dead_code)]
-    #[allow(dead_code)]
-    fn add_metadata(&self, event: &mut OtelLog, now: DateTime<Utc>) {
-        self.params
-            .log_namespace
-            .insert_standard_vector_source_metadata(event, WebSocketConfig::NAME, now);
     }
 
     async fn reconnect(

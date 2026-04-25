@@ -34,5 +34,4 @@ ENV PATH="/home/vscode/.local/bin:${PATH}"
 VOLUME /workspace
 WORKDIR /workspace
 
-# ENTRYPOINT /bin/bash
 ENTRYPOINT claude

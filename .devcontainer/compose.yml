@@ -1,0 +1,15 @@
+# docker compose run dev
+services:
+  dev:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ../:/workspace
+    networks:
+      - bridge
+    stdin_open: true # docker run -i
+    tty: true        # docker run -t
+
+networks:
+  bridge:

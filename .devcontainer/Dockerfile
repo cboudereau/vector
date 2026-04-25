@@ -31,4 +31,8 @@ USER vscode
 WORKDIR /tmp
 RUN curl -fsSL https://claude.ai/install.sh | bash
 ENV PATH="/home/vscode/.local/bin:${PATH}"
-WORKDIR /workspaces
+VOLUME /workspace
+WORKDIR /workspace
+
+# ENTRYPOINT /bin/bash
+ENTRYPOINT claude

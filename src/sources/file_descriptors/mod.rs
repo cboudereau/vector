@@ -115,7 +115,7 @@ async fn process_stream(
     shutdown: ShutdownSignal,
     source_type: &'static str,
     hostname: Option<String>,
-    log_namespace: LogNamespace,
+    _log_namespace: LogNamespace,
 ) -> Result<(), ()> {
     let bytes_received = register!(BytesReceived::from(Protocol::NONE));
     let events_received = register!(EventsReceived);
@@ -140,11 +140,7 @@ async fn process_stream(
 
                     for mut event in events {
                         if let Event::Log(ref mut otel_log) = event {
-                            if log_namespace == LogNamespace::Vector {
                                 otel_log.set_source_metadata_vector_ns(source_type, now);
-                            } else {
-                                otel_log.set_source_metadata(source_type, now);
-                            }
                             if let Some(hostname) = &hostname {
                                 otel_log.set_resource_attribute(
                                     "host.name".to_string(),

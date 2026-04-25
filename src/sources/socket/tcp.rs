@@ -15,7 +15,7 @@ use vrl::value::Value;
 use super::SocketConfig;
 use crate::{
     codecs::Decoder,
-    event::{Event, int_value, string_value},
+    event::Event,
     serde::default_decoding,
     sources::util::net::{SocketListenAddr, TcpNullAcker, TcpSource},
     tcp::TcpKeepaliveConfig,
@@ -211,30 +211,16 @@ impl TcpSource for RawTcpSource {
         for event in events {
             match event {
                 Event::Log(otel_log) => {
-                    if self.log_namespace == LogNamespace::Vector {
-                        otel_log.set_source_metadata_vector_ns(SocketConfig::NAME, now);
-                        let meta = otel_log.metadata_mut().value_mut();
-                        meta.insert(
-                            lookup::path!(SocketConfig::NAME, "host"),
-                            host.ip().to_string(),
-                        );
-                        meta.insert(
-                            lookup::path!(SocketConfig::NAME, "port"),
-                            Value::Integer(host.port() as i64),
-                        );
-                    } else {
-                        otel_log.set_source_metadata(SocketConfig::NAME, now);
-                        otel_log.set_resource_attribute(
-                            "host.name".to_string(),
-                            string_value(host.ip().to_string()),
-                        );
-                        if let Some(port_path) = self.config.port_key().path.as_ref() {
-                            otel_log.set_attribute(
-                                port_path.to_string(),
-                                int_value(host.port() as i64),
-                            );
-                        }
-                    }
+                    otel_log.set_source_metadata_vector_ns(SocketConfig::NAME, now);
+                    let meta = otel_log.metadata_mut().value_mut();
+                    meta.insert(
+                        lookup::path!(SocketConfig::NAME, "host"),
+                        host.ip().to_string(),
+                    );
+                    meta.insert(
+                        lookup::path!(SocketConfig::NAME, "port"),
+                        Value::Integer(host.port() as i64),
+                    );
                 }
                 _ => {}
             }

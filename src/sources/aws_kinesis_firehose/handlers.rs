@@ -30,7 +30,7 @@ use vector_lib::lookup;
 use crate::{
     SourceSender,
     codecs::Decoder,
-    event::{BatchStatus, Event, string_value},
+    event::{BatchStatus, Event},
     internal_events::{
         AwsKinesisFirehoseAutomaticRecordDecodeError, EventsReceived, StreamClosedError,
     },
@@ -55,7 +55,7 @@ pub(super) async fn firehose(
     request: FirehoseRequest,
     mut context: Context,
 ) -> Result<impl warp::Reply, reject::Rejection> {
-    let log_namespace = context.log_namespace;
+    let _log_namespace = context.log_namespace;
     let request_timestamp = request.timestamp;
     let access_key = request.access_key.clone();
     let store_access_key = context.store_access_key;
@@ -93,7 +93,6 @@ pub(super) async fn firehose(
                             event.add_batch_notifier(batch.clone());
                         }
                         if let Event::Log(otel_log) = event {
-                            if log_namespace == LogNamespace::Vector {
                                 otel_log.set_source_metadata_vector_ns(
                                     AwsKinesisFirehoseConfig::NAME,
                                     now,
@@ -111,20 +110,6 @@ pub(super) async fn firehose(
                                     lookup::path!(AwsKinesisFirehoseConfig::NAME, "timestamp"),
                                     vrl::value::Value::Timestamp(request_timestamp),
                                 );
-                            } else {
-                                otel_log.set_source_metadata(
-                                    AwsKinesisFirehoseConfig::NAME,
-                                    now,
-                                );
-                                otel_log.set_attribute(
-                                    "request_id".to_string(),
-                                    string_value(request_id.clone()),
-                                );
-                                otel_log.set_attribute(
-                                    "source_arn".to_string(),
-                                    string_value(source_arn.clone()),
-                                );
-                            }
                             if store_access_key {
                                 if let Some(ref key) = access_key {
                                     otel_log.metadata_mut().secrets_mut().insert(

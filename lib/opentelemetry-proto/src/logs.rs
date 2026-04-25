@@ -248,7 +248,7 @@ struct ResourceLog {
 
 // https://github.com/open-telemetry/opentelemetry-specification/blob/v1.15.0/specification/logs/data-model.md
 impl ResourceLog {
-    fn into_event(self, log_namespace: LogNamespace, now: DateTime<Utc>) -> Event {
+    fn into_event(self, _log_namespace: LogNamespace, now: DateTime<Utc>) -> Event {
         let mut log = if let Some(v) = self.log_record.body.and_then(|av| av.value) {
             OtelLog::from(<PBValue as Into<Value>>::into(v))
         } else {
@@ -387,11 +387,9 @@ impl ResourceLog {
         log.metadata_mut()
             .value_mut()
             .insert(path!("vector", "source_type"), SOURCE_NAME);
-        if log_namespace == LogNamespace::Vector {
-            log.metadata_mut()
-                .value_mut()
-                .insert(path!("vector", "ingest_timestamp"), now);
-        }
+        log.metadata_mut()
+            .value_mut()
+            .insert(path!("vector", "ingest_timestamp"), now);
 
         log.into()
     }

@@ -26,12 +26,11 @@ use vector_lib::{
 use vrl::value::Kind;
 use vrl::value::Value;
 
-use opentelemetry_proto::tonic::common::v1::AnyValue;
 use vector_lib::lookup;
 use crate::{
     SourceSender,
     config::{SourceConfig, SourceContext, SourceOutput},
-    event::{Event, string_value, int_value},
+    event::Event,
     internal_events::{
         ExecChannelClosedError, ExecCommandExecuted, ExecEventsReceived, ExecFailedError,
         ExecFailedToSignalChild, ExecFailedToSignalChildError, ExecTimeoutError, StreamClosedError,
@@ -657,55 +656,34 @@ fn handle_event(
     data_stream: &Option<String>,
     pid: Option<u32>,
     event: &mut Event,
-    log_namespace: LogNamespace,
+    _log_namespace: LogNamespace,
 ) {
     if let Event::Log(otel_log) = event {
         let now = Utc::now();
-        if log_namespace == LogNamespace::Vector {
-            otel_log.set_source_metadata_vector_ns(ExecConfig::NAME, now);
-            let meta = otel_log.metadata_mut().value_mut();
-            if let Some(hostname) = hostname {
-                meta.insert(
-                    lookup::path!(ExecConfig::NAME, "host"),
-                    hostname.clone(),
-                );
-            }
-            if let Some(data_stream) = data_stream {
-                meta.insert(
-                    lookup::path!(ExecConfig::NAME, STREAM_KEY),
-                    data_stream.clone(),
-                );
-            }
-            if let Some(pid) = pid {
-                meta.insert(
-                    lookup::path!(ExecConfig::NAME, PID_KEY),
-                    Value::Integer(pid as i64),
-                );
-            }
+        otel_log.set_source_metadata_vector_ns(ExecConfig::NAME, now);
+        let meta = otel_log.metadata_mut().value_mut();
+        if let Some(hostname) = hostname {
             meta.insert(
-                lookup::path!(ExecConfig::NAME, COMMAND_KEY),
-                Value::Array(config.command.iter().map(|s| Value::from(s.clone())).collect()),
+                lookup::path!(ExecConfig::NAME, "host"),
+                hostname.clone(),
             );
-        } else {
-            otel_log.set_source_metadata(ExecConfig::NAME, now);
-            if let Some(data_stream) = data_stream {
-                otel_log.set_attribute(STREAM_KEY.to_string(), string_value(data_stream.clone()));
-            }
-            if let Some(pid) = pid {
-                otel_log.set_attribute(PID_KEY.to_string(), int_value(pid as i64));
-            }
-            if let Some(hostname) = hostname {
-                otel_log.set_resource_attribute("host.name".to_string(), string_value(hostname.clone()));
-            }
-            let cmd_value = AnyValue {
-                value: Some(opentelemetry_proto::tonic::common::v1::any_value::Value::ArrayValue(
-                    opentelemetry_proto::tonic::common::v1::ArrayValue {
-                        values: config.command.iter().map(|s| string_value(s.clone())).collect(),
-                    },
-                )),
-            };
-            otel_log.set_attribute(COMMAND_KEY.to_string(), cmd_value);
         }
+        if let Some(data_stream) = data_stream {
+            meta.insert(
+                lookup::path!(ExecConfig::NAME, STREAM_KEY),
+                data_stream.clone(),
+            );
+        }
+        if let Some(pid) = pid {
+            meta.insert(
+                lookup::path!(ExecConfig::NAME, PID_KEY),
+                Value::Integer(pid as i64),
+            );
+        }
+        meta.insert(
+            lookup::path!(ExecConfig::NAME, COMMAND_KEY),
+            Value::Array(config.command.iter().map(|s| Value::from(s.clone())).collect()),
+        );
     }
 }
 

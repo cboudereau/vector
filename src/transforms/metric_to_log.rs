@@ -233,7 +233,7 @@ fn schema_definition(log_namespace: LogNamespace) -> Definition {
 pub struct MetricToLog {
     host_tag: Option<OwnedValuePath>,
     timezone: TimeZone,
-    log_namespace: LogNamespace,
+    _log_namespace: LogNamespace,
     tag_values: MetricTagValues,
 }
 
@@ -249,7 +249,7 @@ impl MetricToLog {
                 Some(owned_value_path!("tags", host))
             }),
             timezone,
-            log_namespace,
+            _log_namespace: log_namespace,
             tag_values,
         }
     }
@@ -285,36 +285,32 @@ impl MetricToLog {
                     .collect();
                 let mut log = OtelLog::from_value_map(event::Value::Object(fields), metadata);
 
-                if self.log_namespace == LogNamespace::Vector {
-                    // "Vector" namespace just leaves the `timestamp` in place.
+                // "Vector" namespace just leaves the `timestamp` in place.
 
-                    let timestamp = log
-                        .remove(event_path!("timestamp"))
-                        .and_then(|value| {
-                            Conversion::Timestamp(self.timezone)
-                                .convert(value.coerce_to_bytes())
-                                .ok()
-                        })
-                        .unwrap_or_else(|| event::Value::Timestamp(Utc::now()));
+                let timestamp = log
+                    .remove(event_path!("timestamp"))
+                    .and_then(|value| {
+                        Conversion::Timestamp(self.timezone)
+                            .convert(value.coerce_to_bytes())
+                            .ok()
+                    })
+                    .unwrap_or_else(|| event::Value::Timestamp(Utc::now()));
 
-                    if let Some(ts) = timestamp.as_timestamp() {
-                        log.set_timestamp(*ts);
-                    }
-
-                    if let Some(host_tag) = &self.host_tag
-                        && let Some(host_value) =
-                            log.remove_prune((PathPrefix::Event, host_tag), true)
-                    {
-                        log.set_host(host_value);
-                    }
+                if let Some(ts) = timestamp.as_timestamp() {
+                    log.set_timestamp(*ts);
                 }
-                if self.log_namespace == LogNamespace::Vector {
-                    // Create vector metadata since this is used as a marker to see which namespace is used at runtime.
-                    // This can be removed once metrics support namespacing.
-                    log.metadata_mut()
-                        .value_mut()
-                        .insert(path!("vector"), vrl::value::Value::Object(BTreeMap::new()));
+
+                if let Some(host_tag) = &self.host_tag
+                    && let Some(host_value) =
+                        log.remove_prune((PathPrefix::Event, host_tag), true)
+                {
+                    log.set_host(host_value);
                 }
+                // Create vector metadata since this is used as a marker to see which namespace is used at runtime.
+                // This can be removed once metrics support namespacing.
+                log.metadata_mut()
+                    .value_mut()
+                    .insert(path!("vector"), vrl::value::Value::Object(BTreeMap::new()));
                 Some(log)
             }
             _ => None,

@@ -14,7 +14,7 @@ use super::{SocketConfig, default_host_key};
 use crate::{
     SourceSender,
     codecs::Decoder,
-    event::{Event, string_value},
+    event::Event,
     serde::default_decoding,
     sources::{
         Source,
@@ -88,29 +88,19 @@ fn handle_events(
     events: &mut [Event],
     _host_key: &OptionalValuePath,
     received_from: Option<Bytes>,
-    log_namespace: LogNamespace,
+    _log_namespace: LogNamespace,
 ) {
     let now = Utc::now();
 
     for event in events {
         match event {
             Event::Log(otel_log) => {
-                if log_namespace == LogNamespace::Vector {
-                    otel_log.set_source_metadata_vector_ns(SocketConfig::NAME, now);
-                    if let Some(ref host) = received_from {
-                        otel_log.metadata_mut().value_mut().insert(
-                            lookup::path!(SocketConfig::NAME, "host"),
-                            String::from_utf8_lossy(host).into_owned(),
-                        );
-                    }
-                } else {
-                    otel_log.set_source_metadata(SocketConfig::NAME, now);
-                    if let Some(ref host) = received_from {
-                        otel_log.set_resource_attribute(
-                            "host.name".to_string(),
-                            string_value(String::from_utf8_lossy(host).into_owned()),
-                        );
-                    }
+                otel_log.set_source_metadata_vector_ns(SocketConfig::NAME, now);
+                if let Some(ref host) = received_from {
+                    otel_log.metadata_mut().value_mut().insert(
+                        lookup::path!(SocketConfig::NAME, "host"),
+                        String::from_utf8_lossy(host).into_owned(),
+                    );
                 }
             }
             _ => {}

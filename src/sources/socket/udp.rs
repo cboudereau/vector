@@ -21,7 +21,7 @@ use vrl::value::Value;
 use crate::{
     SourceSender,
     codecs::Decoder,
-    event::{Event, int_value, string_value},
+    event::Event,
     internal_events::{
         SocketBindError, SocketEventsReceived, SocketMode, SocketMulticastGroupJoinError,
         SocketReceiveError, StreamClosedError,
@@ -143,11 +143,10 @@ pub(super) fn udp(
     decoder: Decoder,
     mut shutdown: ShutdownSignal,
     mut out: SourceSender,
-    log_namespace: LogNamespace,
+    _log_namespace: LogNamespace,
 ) -> Source {
     Box::pin(async move {
         let listenfd = ListenFd::from_env();
-        let port_key_str = config.port_key().path.as_ref().map(|p| p.to_string());
         let socket = try_bind_udp_socket(config.address, listenfd)
             .await
             .map_err(|error| {
@@ -263,7 +262,6 @@ pub(super) fn udp(
                                 for event in &mut events {
                                     match event {
                                         Event::Log(otel_log) => {
-                                            if log_namespace == LogNamespace::Vector {
                                                 otel_log.set_source_metadata_vector_ns(SocketConfig::NAME, now);
                                                 let meta = otel_log.metadata_mut().value_mut();
                                                 meta.insert(
@@ -274,19 +272,6 @@ pub(super) fn udp(
                                                     lookup::path!(SocketConfig::NAME, "port"),
                                                     Value::Integer(address.port() as i64),
                                                 );
-                                            } else {
-                                                otel_log.set_source_metadata(SocketConfig::NAME, now);
-                                                otel_log.set_resource_attribute(
-                                                    "host.name".to_string(),
-                                                    string_value(address.ip().to_string()),
-                                                );
-                                                if let Some(ref port_key) = port_key_str {
-                                                    otel_log.set_attribute(
-                                                        port_key.clone(),
-                                                        int_value(address.port() as i64),
-                                                    );
-                                                }
-                                            }
                                         }
                                         _ => {}
                                     }

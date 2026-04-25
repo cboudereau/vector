@@ -19,7 +19,7 @@ pub fn decode_message<'a>(
     message: &[u8],
     timestamp: Option<DateTime<Utc>>,
     batch: &'a Option<BatchNotifier>,
-    log_namespace: LogNamespace,
+    _log_namespace: LogNamespace,
     events_received: &'a Registered<EventsReceived>,
 ) -> impl Iterator<Item = Event> + 'a + use<'a> {
     let mut buffer = BytesMut::with_capacity(message.len());
@@ -31,20 +31,14 @@ pub fn decode_message<'a>(
             break match decoder.decode_eof(&mut buffer) {
                 Ok(Some((events, _))) => Some(events.into_iter().map(move |mut event| {
                     if let Event::Log(ref mut otel_log) = event {
-                        if log_namespace == LogNamespace::Vector {
                             otel_log.set_source_metadata_vector_ns(source_type, now);
-                        } else {
-                            otel_log.set_source_metadata(source_type, now);
-                        }
                         if let Some(timestamp) = timestamp {
                             otel_log.record_mut().time_unix_nano =
                                 timestamp.timestamp_nanos_opt().unwrap_or(0) as u64;
-                            if log_namespace == LogNamespace::Vector {
                                 otel_log.metadata_mut().value_mut().insert(
                                     vector_lib::lookup::path!(source_type, "timestamp"),
                                     vrl::value::Value::Timestamp(timestamp),
                                 );
-                            }
                         }
                     }
                     events_received.emit(CountByteSize(1, event.estimated_json_encoded_size_of()));

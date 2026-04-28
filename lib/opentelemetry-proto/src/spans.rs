@@ -101,8 +101,7 @@ struct ResourceSpan {
     span: Span,
 }
 
-// Unlike log events(log body + metadata), trace spans are just metadata, so we don't handle log_namespace here,
-// insert all attributes into log root, just like what datadog_agent/traces does.
+// Trace spans are pure metadata (no log body), so all attributes are inserted at the root.
 impl ResourceSpan {
     fn into_event(self, now: DateTime<Utc>) -> Event {
         let mut trace = OtelSpan::new(Default::default());

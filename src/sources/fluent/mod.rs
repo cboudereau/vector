@@ -320,8 +320,6 @@ impl SourceConfig for FluentConfig {
 impl FluentConfig {
     /// Builds the `schema::Definition` for this source.
     fn schema_definition(&self) -> Definition {
-        // There is a global and per-source `log_namespace` config.
-        // The source config overrides the global setting and is merged here.
         let mut schema_definition = BytesDeserializerConfig
             .schema_definition()
             .with_standard_vector_source_metadata()

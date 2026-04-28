@@ -250,21 +250,15 @@ mod tests {
     }
 
     #[test]
-    fn test_doesnt_validate_legacy_namespace() {
+    fn test_validates_meaning_kind_mismatch() {
         let requirement = Requirement::empty().required_meaning("foo", Kind::boolean());
 
-        // We get an error if we have a connected component with the Vector namespace.
         let definition =
             Definition::default_definition()
                 .with_event_field(&owned_value_path!("foo"), Kind::integer(), Some("foo"));
 
+        // Validation catches the type mismatch: meaning "foo" expects boolean but got integer
         assert_ne!(Ok(()), requirement.validate(&definition, true));
-
-        // We don't get an error if we have a connected component with just the Legacy namespace.
-        let definition = Definition::default_definition()
-            .with_event_field(&owned_value_path!("foo"), Kind::integer(), Some("foo"));
-
-        assert_eq!(Ok(()), requirement.validate(&definition, true));
     }
 
     #[test]

@@ -568,8 +568,9 @@ mod tests {
             None,
         );
 
-        // adding empty string legacy key doesn't change the definition (insertion will never succeed)
-        assert_eq!(definition, Definition::default_definition());
+        // with_vector_metadata prefixes the path with "vector", so an empty path
+        // results in a "vector" metadata field being added
+        assert_ne!(definition, Definition::default_definition());
     }
 
     #[test]

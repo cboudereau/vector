@@ -509,7 +509,12 @@ mod test {
         let mut event = OtelLog::from("log");
         insert_standard_vector_source_metadata(&mut event, "source", Utc::now());
 
-        assert!(event.get_source_type().is_some());
+        let source_type = event
+            .metadata()
+            .value()
+            .get(path!("vector", "source_type"))
+            .cloned();
+        assert!(source_type.is_some());
     }
 
     #[test]

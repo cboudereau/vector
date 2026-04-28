@@ -97,10 +97,8 @@ pub fn fill_default_fields_match(maybe_fields: Option<&FieldMatchConfig>) -> Fie
 //
 // See the comment in `fill_default_fields_match` for more information on why this is required.
 //
-// TODO: These values are used even for events with the new "Vector" log namespace.
-//   These aren't great defaults in that case, but hard-coding isn't much better since the
-//   structure can vary significantly. This should probably either become a required field
-//   in the future, or maybe the "semantic meaning" can be utilized here.
+// TODO: Hard-coded defaults aren't ideal since event structure can vary significantly.
+//   This should probably either become a required field, or use semantic meanings.
 fn default_match_fields() -> Vec<ConfigTargetPath> {
     vec![
         ConfigTargetPath(OwnedTargetPath::event(owned_value_path!("body"))),

@@ -60,7 +60,7 @@ impl SyslogDeserializerConfig {
 
     /// The schema produced by the deserializer.
     pub fn schema_definition(&self) -> schema::Definition {
-        let mut definition = schema::Definition::empty_legacy_namespace()
+        let mut definition = schema::Definition::empty_definition()
             // The `message` field is always defined. If parsing fails, the entire body becomes the
             // message.
             .with_event_field(

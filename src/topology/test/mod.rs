@@ -92,7 +92,7 @@ fn set_expected_source_metadata(event: &mut Event, source_component_id: &str) {
     event.set_source_type(TEST_BASIC_SOURCE_TYPE);
     event
         .metadata_mut()
-        .set_schema_definition(&Arc::new(Definition::default_legacy_namespace()));
+        .set_schema_definition(&Arc::new(Definition::default_definition()));
 }
 
 #[tokio::test]

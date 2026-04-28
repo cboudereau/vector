@@ -34,7 +34,7 @@ impl BytesDeserializerConfig {
 
     /// The schema produced by the deserializer.
     pub fn schema_definition(&self) -> schema::Definition {
-        let definition = schema::Definition::empty_legacy_namespace();
+        let definition = schema::Definition::empty_definition();
         let message_key = owned_value_path!("body");
         definition.with_event_field(
             &message_key,

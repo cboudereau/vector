@@ -1,0 +1,16 @@
+{
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  },
+  "model": "claude-opus-4-6",
+  "enabledPlugins": {
+    "rust-analyzer-lsp@claude-plugins-official": true
+  },
+  "effortLevel": "high",
+  "skipDangerousModePermissionPrompt": true,
+  "skipAutoPermissionPrompt": true,
+  "permissions": {
+    "defaultMode": "auto"
+  }
+}

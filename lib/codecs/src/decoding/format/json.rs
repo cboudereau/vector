@@ -40,7 +40,7 @@ impl JsonDeserializerConfig {
     /// The schema produced by the deserializer.
     pub fn schema_definition(&self) -> schema::Definition {
         let mut definition =
-            schema::Definition::empty_legacy_namespace().unknown_fields(Kind::json());
+            schema::Definition::empty_definition().unknown_fields(Kind::json());
 
         {
             let timestamp_key = owned_value_path!("time_unix_nano");

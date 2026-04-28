@@ -66,7 +66,7 @@ const DD_API_TRACES_PATH: &str = "/api/v0.2/traces";
 const HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 
 fn test_logs_schema_definition() -> schema::Definition {
-    schema::Definition::empty_legacy_namespace().with_event_field(
+    schema::Definition::empty_definition().with_event_field(
         &owned_value_path!("a log field"),
         Kind::integer().or_bytes(),
         Some("log field"),
@@ -1571,7 +1571,7 @@ fn test_config_outputs() {
                 want: HashMap::from([(
                     None,
                     Some(
-                        schema::Definition::empty_legacy_namespace()
+                        schema::Definition::empty_definition()
                             .with_event_field(
                                 &owned_value_path!("body"),
                                 Kind::bytes(),
@@ -1626,7 +1626,7 @@ fn test_config_outputs() {
                 want: HashMap::from([(
                     None,
                     Some(
-                        schema::Definition::empty_legacy_namespace()
+                        schema::Definition::empty_definition()
                             .with_event_field(
                                 &owned_value_path!("body"),
                                 Kind::bytes(),
@@ -1682,7 +1682,7 @@ fn test_config_outputs() {
                     (
                         Some(LOGS),
                         Some(
-                            schema::Definition::empty_legacy_namespace()
+                            schema::Definition::empty_definition()
                                 .with_event_field(
                                     &owned_value_path!("body"),
                                     Kind::bytes(),

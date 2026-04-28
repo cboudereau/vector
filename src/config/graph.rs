@@ -459,7 +459,7 @@ mod test {
                     in_ty,
                     outputs: vec![TransformOutput::new(
                         out_ty,
-                        [("test".into(), Definition::default_legacy_namespace())].into(),
+                        [("test".into(), Definition::default_definition())].into(),
                     )],
                 },
             );
@@ -477,7 +477,7 @@ mod test {
                 Some(Node::Transform { outputs, .. }) => outputs.push(
                     TransformOutput::new(
                         ty,
-                        [("test".into(), Definition::default_legacy_namespace())].into(),
+                        [("test".into(), Definition::default_definition())].into(),
                     )
                     .with_port(name),
                 ),
@@ -733,11 +733,11 @@ mod test {
                 outputs: vec![
                     TransformOutput::new(
                         DataType::all_bits(),
-                        [("test".into(), Definition::default_legacy_namespace())].into(),
+                        [("test".into(), Definition::default_definition())].into(),
                     ),
                     TransformOutput::new(
                         DataType::all_bits(),
-                        [("test".into(), Definition::default_legacy_namespace())].into(),
+                        [("test".into(), Definition::default_definition())].into(),
                     )
                     .with_port("bar"),
                 ],
@@ -761,11 +761,11 @@ mod test {
                 outputs: vec![
                     TransformOutput::new(
                         DataType::all_bits(),
-                        [("test".into(), Definition::default_legacy_namespace())].into(),
+                        [("test".into(), Definition::default_definition())].into(),
                     ),
                     TransformOutput::new(
                         DataType::all_bits(),
-                        [("test".into(), Definition::default_legacy_namespace())].into(),
+                        [("test".into(), Definition::default_definition())].into(),
                     )
                     .with_port("errors"),
                 ],

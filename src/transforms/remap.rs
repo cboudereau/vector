@@ -658,7 +658,7 @@ mod tests {
     };
 
     fn test_default_schema_definition() -> schema::Definition {
-        schema::Definition::empty_legacy_namespace().with_event_field(
+        schema::Definition::empty_definition().with_event_field(
             &owned_value_path!("a default field"),
             Kind::integer().or_bytes(),
             Some("default"),
@@ -666,7 +666,7 @@ mod tests {
     }
 
     fn test_dropped_schema_definition() -> schema::Definition {
-        schema::Definition::empty_legacy_namespace().with_event_field(
+        schema::Definition::empty_definition().with_event_field(
             &owned_value_path!("a dropped field"),
             Kind::boolean().or_null(),
             Some("dropped"),
@@ -768,7 +768,7 @@ mod tests {
     #[test]
     #[ignore = "VRL/OtelLog integration needs deeper adaptation"]
     fn remap_return_raw_string_vector_namespace() {
-        let initial_definition = Definition::default_for_namespace();
+        let initial_definition = Definition::default_definition();
 
         let event = {
             let mut metadata = EventMetadata::default()
@@ -1576,7 +1576,7 @@ mod tests {
 
         let outputs1 = transform1.outputs(
             &Default::default(),
-            &[("in".into(), schema::Definition::default_legacy_namespace())],
+            &[("in".into(), schema::Definition::default_definition())],
         );
 
         assert_eq!(
@@ -1585,7 +1585,7 @@ mod tests {
                 // The `never` definition should have been passed on to the end.
                 [(
                     "in".into(),
-                    Definition::default_legacy_namespace().with_event_field(
+                    Definition::default_definition().with_event_field(
                         &owned_value_path!("thing"),
                         Kind::bytes(),
                         None
@@ -1609,7 +1609,7 @@ mod tests {
                 DataType::all_bits(),
                 [(
                     "in1".into(),
-                    Definition::default_legacy_namespace()
+                    Definition::default_definition()
                         .with_event_field(&owned_value_path!("thing"), Kind::bytes(), None)
                         .with_event_field(&owned_value_path!("thang"), Kind::bytes(), None),
                 )]
@@ -1688,7 +1688,7 @@ mod tests {
                 DataType::all_bits(),
                 [(
                     "in1".into(),
-                    Definition::default_legacy_namespace()
+                    Definition::default_definition()
                         .with_event_field(
                             &owned_value_path!("thing"),
                             Kind::object(Collection::from(BTreeMap::from([

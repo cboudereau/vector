@@ -204,7 +204,7 @@ impl SourceConfig for SplunkConfig {
 
     fn outputs(&self) -> Vec<SourceOutput> {
         let schema_definition = {
-            let definition = vector_lib::schema::Definition::empty_legacy_namespace()
+            let definition = vector_lib::schema::Definition::empty_definition()
                 .with_event_field(
                     &owned_value_path!("line"),
                     Kind::object(Collection::empty())

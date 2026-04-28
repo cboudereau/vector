@@ -190,7 +190,7 @@ impl LuaConfig {
             .map(|(output, _definition)| {
                 (
                     output.clone(),
-                    Definition::default_for_namespace(),
+                    Definition::default_definition(),
                 )
             })
             .collect();

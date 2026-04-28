@@ -387,7 +387,7 @@ group_by = [ "request_id" ]
         .unwrap();
 
         assert_transform_compliance(async move {
-            let input_definition = schema::Definition::default_legacy_namespace()
+            let input_definition = schema::Definition::default_definition()
                 .with_event_field(&owned_value_path!("counter"), Kind::integer(), None)
                 .with_event_field(&owned_value_path!("request_id"), Kind::bytes(), None)
                 .with_event_field(
@@ -409,7 +409,7 @@ group_by = [ "request_id" ]
 
             let new_schema_definition = reduce_config.outputs(
                 &Default::default(),
-                &[(OutputId::from("in"), Definition::default_legacy_namespace())],
+                &[(OutputId::from("in"), Definition::default_definition())],
             )[0]
             .clone()
             .log_schema_definitions
@@ -499,7 +499,7 @@ merge_strategies.baz = "max"
 
             let new_schema_definition = reduce_config.outputs(
                 &Default::default(),
-                &[(OutputId::from("in"), Definition::default_legacy_namespace())],
+                &[(OutputId::from("in"), Definition::default_definition())],
             )[0]
             .clone()
             .log_schema_definitions
@@ -568,7 +568,7 @@ group_by = [ "request_id" ]
             let (tx, rx) = mpsc::channel(1);
             let new_schema_definition = reduce_config.outputs(
                 &Default::default(),
-                &[(OutputId::from("in"), Definition::default_legacy_namespace())],
+                &[(OutputId::from("in"), Definition::default_definition())],
             )[0]
             .clone()
             .log_schema_definitions
@@ -776,7 +776,7 @@ merge_strategies.bar = "concat"
 
             let new_schema_definition = reduce_config.outputs(
                 &Default::default(),
-                &[(OutputId::from("in"), Definition::default_legacy_namespace())],
+                &[(OutputId::from("in"), Definition::default_definition())],
             )[0]
             .clone()
             .log_schema_definitions

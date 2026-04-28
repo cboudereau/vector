@@ -92,16 +92,12 @@ impl Definition {
         }
     }
 
-    pub fn default_legacy_namespace() -> Self {
+    pub fn default_definition() -> Self {
         Self::new_with_default_metadata(Kind::any())
     }
 
-    pub fn empty_legacy_namespace() -> Self {
+    pub fn empty_definition() -> Self {
         Self::new_with_default_metadata(Kind::object(Collection::empty()))
-    }
-
-    pub fn default_for_namespace() -> Self {
-        Self::new_with_default_metadata(Kind::any())
     }
 
     /// Adds the `source_type` and `ingest_timestamp` metadata fields, which are added to every Vector source.
@@ -566,14 +562,14 @@ mod tests {
 
     #[test]
     fn test_empty_legacy_field() {
-        let definition = Definition::default_legacy_namespace().with_vector_metadata(
+        let definition = Definition::default_definition().with_vector_metadata(
             &owned_value_path!(),
             Kind::integer(),
             None,
         );
 
         // adding empty string legacy key doesn't change the definition (insertion will never succeed)
-        assert_eq!(definition, Definition::default_legacy_namespace());
+        assert_eq!(definition, Definition::default_definition());
     }
 
     #[test]
@@ -645,7 +641,7 @@ mod tests {
                 },
             ),
         ]) {
-            let got = Definition::empty_legacy_namespace().with_event_field(&path, kind, meaning);
+            let got = Definition::empty_definition().with_event_field(&path, kind, meaning);
             assert_eq!(got.event_kind(), want.event_kind(), "{title}");
         }
     }

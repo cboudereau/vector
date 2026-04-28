@@ -63,7 +63,7 @@ impl SourceConfig for BackpressureSourceConfig {
     fn outputs(&self) -> Vec<SourceOutput> {
         vec![SourceOutput::new_maybe_logs(
             DataType::all_bits(),
-            Definition::default_legacy_namespace(),
+            Definition::default_definition(),
         )]
     }
 

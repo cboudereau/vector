@@ -48,7 +48,7 @@ impl SourceConfig for UnitTestSourceConfig {
     fn outputs(&self) -> Vec<SourceOutput> {
         vec![SourceOutput::new_maybe_logs(
             DataType::all_bits(),
-            schema::Definition::default_legacy_namespace(),
+            schema::Definition::default_definition(),
         )]
     }
 
@@ -105,7 +105,7 @@ impl SourceConfig for UnitTestStreamSourceConfig {
     fn outputs(&self) -> Vec<SourceOutput> {
         vec![SourceOutput::new_maybe_logs(
             DataType::all_bits(),
-            schema::Definition::default_legacy_namespace(),
+            schema::Definition::default_definition(),
         )]
     }
 

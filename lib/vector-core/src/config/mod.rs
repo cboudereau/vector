@@ -217,7 +217,7 @@ impl SourceOutput {
             if schema_enabled {
                 definition.deref().clone()
             } else {
-                let mut new_definition = schema::Definition::default_for_namespace();
+                let mut new_definition = schema::Definition::default_definition();
                 new_definition.add_meanings(definition.meanings());
                 new_definition
             }
@@ -307,7 +307,7 @@ impl TransformOutput {
             self.log_schema_definitions
                 .iter()
                 .map(|(output, definition)| {
-                    let mut new_definition = schema::Definition::default_for_namespace();
+                    let mut new_definition = schema::Definition::default_definition();
                     new_definition.add_meanings(definition.meanings());
                     (output.clone(), new_definition)
                 })
@@ -515,7 +515,7 @@ mod test {
     #[test]
     #[ignore = "Legacy LogEvent schema validation is lossy with OTel round-trip"]
     fn test_source_definitions_legacy() {
-        let definition = schema::Definition::empty_legacy_namespace()
+        let definition = schema::Definition::empty_definition()
             .with_event_field(&owned_value_path!("zork"), Kind::bytes(), Some("zork"))
             .with_event_field(&owned_value_path!("nork"), Kind::integer(), None);
         let output = SourceOutput::new_maybe_logs(DataType::Log, definition);
@@ -545,7 +545,7 @@ mod test {
         // There should be the default legacy definition without schemas enabled.
         assert_eq!(
             Some(
-                schema::Definition::default_legacy_namespace()
+                schema::Definition::default_definition()
                     .with_meaning(OwnedTargetPath::event(owned_value_path!("zork")), "zork")
             ),
             output.schema_definition(false)
@@ -555,7 +555,7 @@ mod test {
     #[test]
     #[ignore = "Legacy LogEvent schema validation is lossy with OTel round-trip"]
     fn test_source_definitons_vector() {
-        let definition = schema::Definition::default_for_namespace()
+        let definition = schema::Definition::default_definition()
             .with_metadata_field(
                 &owned_value_path!("vector", "zork"),
                 Kind::integer(),

@@ -143,7 +143,7 @@ impl SourceConfig for BasicSourceConfig {
     fn outputs(&self) -> Vec<SourceOutput> {
         vec![SourceOutput::new_maybe_logs(
             self.data_type.unwrap(),
-            Definition::default_legacy_namespace(),
+            Definition::default_definition(),
         )]
     }
 

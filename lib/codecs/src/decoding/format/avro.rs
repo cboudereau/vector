@@ -56,7 +56,7 @@ impl AvroDeserializerConfig {
 
     /// The schema required by the serializer.
     pub fn schema_definition(&self) -> schema::Definition {
-        let mut definition = schema::Definition::empty_legacy_namespace()
+        let mut definition = schema::Definition::empty_definition()
             .unknown_fields(vrl::value::Kind::any());
 
         {

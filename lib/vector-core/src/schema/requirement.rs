@@ -243,7 +243,7 @@ mod tests {
     #[test]
     fn test_doesnt_validate_types() {
         let requirement = Requirement::empty().required_meaning("foo", Kind::boolean());
-        let definition = Definition::default_for_namespace()
+        let definition = Definition::default_definition()
             .with_event_field(&owned_value_path!("foo"), Kind::integer(), Some("foo"));
 
         assert_eq!(Ok(()), requirement.validate(&definition, false));
@@ -255,13 +255,13 @@ mod tests {
 
         // We get an error if we have a connected component with the Vector namespace.
         let definition =
-            Definition::default_for_namespace()
+            Definition::default_definition()
                 .with_event_field(&owned_value_path!("foo"), Kind::integer(), Some("foo"));
 
         assert_ne!(Ok(()), requirement.validate(&definition, true));
 
         // We don't get an error if we have a connected component with just the Legacy namespace.
-        let definition = Definition::default_for_namespace()
+        let definition = Definition::default_definition()
             .with_event_field(&owned_value_path!("foo"), Kind::integer(), Some("foo"));
 
         assert_eq!(Ok(()), requirement.validate(&definition, true));
@@ -288,7 +288,7 @@ mod tests {
                 "empty",
                 TestCase {
                     requirement: Requirement::empty(),
-                    definition: Definition::default_for_namespace(),
+                    definition: Definition::default_definition(),
                     errors: vec![],
                 },
             ),
@@ -296,7 +296,7 @@ mod tests {
                 "missing required meaning",
                 TestCase {
                     requirement: Requirement::empty().required_meaning("foo", Kind::any()),
-                    definition: Definition::default_for_namespace(),
+                    definition: Definition::default_definition(),
                     errors: vec![ValidationError::MeaningMissing {
                         identifier: "foo".into(),
                     }],
@@ -308,7 +308,7 @@ mod tests {
                     requirement: Requirement::empty()
                         .required_meaning("foo", Kind::any())
                         .required_meaning("bar", Kind::any()),
-                    definition: Definition::default_for_namespace(),
+                    definition: Definition::default_definition(),
                     errors: vec![
                         ValidationError::MeaningMissing {
                             identifier: "bar".into(),
@@ -323,7 +323,7 @@ mod tests {
                 "missing optional meaning",
                 TestCase {
                     requirement: Requirement::empty().optional_meaning("foo", Kind::any()),
-                    definition: Definition::default_for_namespace(),
+                    definition: Definition::default_definition(),
                     errors: vec![],
                 },
             ),
@@ -333,7 +333,7 @@ mod tests {
                     requirement: Requirement::empty()
                         .optional_meaning("foo", Kind::any())
                         .required_meaning("bar", Kind::any()),
-                    definition: Definition::default_for_namespace(),
+                    definition: Definition::default_definition(),
                     errors: vec![ValidationError::MeaningMissing {
                         identifier: "bar".into(),
                     }],
@@ -343,7 +343,7 @@ mod tests {
                 "invalid required meaning kind",
                 TestCase {
                     requirement: Requirement::empty().required_meaning("foo", Kind::boolean()),
-                    definition: Definition::default_for_namespace()
+                    definition: Definition::default_definition()
                         .with_event_field(&owned_value_path!("foo"), Kind::integer(), Some("foo")),
                     errors: vec![ValidationError::MeaningKind {
                         identifier: "foo".into(),
@@ -356,7 +356,7 @@ mod tests {
                 "invalid optional meaning kind",
                 TestCase {
                     requirement: Requirement::empty().optional_meaning("foo", Kind::boolean()),
-                    definition: Definition::default_for_namespace()
+                    definition: Definition::default_definition()
                         .with_event_field(&owned_value_path!("foo"), Kind::integer(), Some("foo")),
                     errors: vec![ValidationError::MeaningKind {
                         identifier: "foo".into(),
@@ -369,10 +369,10 @@ mod tests {
                 "duplicate meaning pointers",
                 TestCase {
                     requirement: Requirement::empty().optional_meaning("foo", Kind::boolean()),
-                    definition: Definition::default_for_namespace()
+                    definition: Definition::default_definition()
                         .with_event_field(&owned_value_path!("foo"), Kind::integer(), Some("foo"))
                         .merge(
-                            Definition::default_for_namespace()
+                            Definition::default_definition()
                                 .with_event_field(
                                     &owned_value_path!("bar"),
                                     Kind::boolean(),

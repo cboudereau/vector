@@ -104,7 +104,7 @@ impl DnstapConfig {
     pub fn schema_definition(&self) -> vector_lib::schema::Definition {
         let event_schema = DnstapEventSchema;
 
-        let schema = vector_lib::schema::Definition::empty_legacy_namespace();
+        let schema = vector_lib::schema::Definition::empty_definition();
 
         if self.raw_data_only() {
             return schema.with_event_field(&owned_value_path!("body"), Kind::bytes(), Some("message"));
@@ -350,7 +350,7 @@ mod tests {
         // OtelLog stores source_type as an attribute (already present in the
         // JSON fixture) and the timestamp as observed_time_unix_nano (integer),
         // not the legacy "timestamp" (Kind::timestamp) path.
-        let schema = vector_lib::schema::Definition::empty_legacy_namespace()
+        let schema = vector_lib::schema::Definition::empty_definition()
             .with_event_field(
                 &owned_value_path!("source_type"),
                 Kind::bytes(),

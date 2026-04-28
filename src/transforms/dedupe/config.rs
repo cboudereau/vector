@@ -115,7 +115,7 @@ mod tests {
         // The schema definition is copied from the source for dedupe.
         event
             .metadata_mut()
-            .set_schema_definition(&Arc::new(Definition::default_legacy_namespace()));
+            .set_schema_definition(&Arc::new(Definition::default_definition()));
     }
 
     #[test]

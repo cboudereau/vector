@@ -502,11 +502,11 @@ mod tests {
                         "foo",
                         vec![SourceOutput::new_maybe_logs(
                             DataType::all_bits(),
-                            Definition::default_legacy_namespace(),
+                            Definition::default_definition(),
                         )],
                     )]),
                     transforms: IndexMap::default(),
-                    want: vec![("foo".into(), Definition::default_legacy_namespace())],
+                    want: vec![("foo".into(), Definition::default_definition())],
                 },
             ),
             (
@@ -517,7 +517,7 @@ mod tests {
                         "source-foo",
                         vec![SourceOutput::new_maybe_logs(
                             DataType::all_bits(),
-                            Definition::empty_legacy_namespace().with_event_field(
+                            Definition::empty_definition().with_event_field(
                                 &owned_value_path!("foo"),
                                 Kind::integer().or_bytes(),
                                 Some("foo bar"),
@@ -527,7 +527,7 @@ mod tests {
                     transforms: IndexMap::default(),
                     want: vec![(
                         "source-foo".into(),
-                        Definition::empty_legacy_namespace().with_event_field(
+                        Definition::empty_definition().with_event_field(
                             &owned_value_path!("foo"),
                             Kind::integer().or_bytes(),
                             Some("foo bar"),
@@ -544,7 +544,7 @@ mod tests {
                             "source-foo",
                             vec![SourceOutput::new_maybe_logs(
                                 DataType::all_bits(),
-                                Definition::empty_legacy_namespace().with_event_field(
+                                Definition::empty_definition().with_event_field(
                                     &owned_value_path!("foo"),
                                     Kind::integer().or_bytes(),
                                     Some("foo bar"),
@@ -555,7 +555,7 @@ mod tests {
                             "source-bar",
                             vec![SourceOutput::new_maybe_logs(
                                 DataType::all_bits(),
-                                Definition::empty_legacy_namespace().with_event_field(
+                                Definition::empty_definition().with_event_field(
                                     &owned_value_path!("foo"),
                                     Kind::timestamp(),
                                     Some("baz qux"),
@@ -567,7 +567,7 @@ mod tests {
                     want: vec![
                         (
                             "source-foo".into(),
-                            Definition::empty_legacy_namespace().with_event_field(
+                            Definition::empty_definition().with_event_field(
                                 &owned_value_path!("foo"),
                                 Kind::integer().or_bytes(),
                                 Some("foo bar"),
@@ -575,7 +575,7 @@ mod tests {
                         ),
                         (
                             "source-bar".into(),
-                            Definition::empty_legacy_namespace().with_event_field(
+                            Definition::empty_definition().with_event_field(
                                 &owned_value_path!("foo"),
                                 Kind::timestamp(),
                                 Some("baz qux"),
@@ -593,7 +593,7 @@ mod tests {
                             "source-foo",
                             vec![SourceOutput::new_maybe_logs(
                                 DataType::all_bits(),
-                                Definition::empty_legacy_namespace().with_event_field(
+                                Definition::empty_definition().with_event_field(
                                     &owned_value_path!("foo"),
                                     Kind::boolean(),
                                     Some("foo"),
@@ -604,7 +604,7 @@ mod tests {
                             "source-bar",
                             vec![SourceOutput::new_maybe_logs(
                                 DataType::all_bits(),
-                                Definition::empty_legacy_namespace().with_event_field(
+                                Definition::empty_definition().with_event_field(
                                     &owned_value_path!("bar"),
                                     Kind::integer(),
                                     Some("bar"),
@@ -620,7 +620,7 @@ mod tests {
                                 DataType::all_bits(),
                                 [(
                                     "source-foo".into(),
-                                    Definition::empty_legacy_namespace().with_event_field(
+                                    Definition::empty_definition().with_event_field(
                                         &owned_value_path!("baz"),
                                         Kind::regex(),
                                         Some("baz"),
@@ -633,7 +633,7 @@ mod tests {
                     want: vec![
                         (
                             "source-bar".into(),
-                            Definition::empty_legacy_namespace().with_event_field(
+                            Definition::empty_definition().with_event_field(
                                 &owned_value_path!("bar"),
                                 Kind::integer(),
                                 Some("bar"),
@@ -641,7 +641,7 @@ mod tests {
                         ),
                         (
                             "transform-baz".into(),
-                            Definition::empty_legacy_namespace().with_event_field(
+                            Definition::empty_definition().with_event_field(
                                 &owned_value_path!("baz"),
                                 Kind::regex(),
                                 Some("baz"),
@@ -667,7 +667,7 @@ mod tests {
                             "Source 1",
                             vec![SourceOutput::new_maybe_logs(
                                 DataType::all_bits(),
-                                Definition::empty_legacy_namespace().with_event_field(
+                                Definition::empty_definition().with_event_field(
                                     &owned_value_path!("source-1"),
                                     Kind::boolean(),
                                     Some("source-1"),
@@ -678,7 +678,7 @@ mod tests {
                             "Source 2",
                             vec![SourceOutput::new_maybe_logs(
                                 DataType::all_bits(),
-                                Definition::empty_legacy_namespace().with_event_field(
+                                Definition::empty_definition().with_event_field(
                                     &owned_value_path!("source-2"),
                                     Kind::integer(),
                                     Some("source-2"),
@@ -695,7 +695,7 @@ mod tests {
                                     DataType::all_bits(),
                                     [(
                                         "Source 1".into(),
-                                        Definition::empty_legacy_namespace().with_event_field(
+                                        Definition::empty_definition().with_event_field(
                                             &owned_value_path!("transform-1"),
                                             Kind::regex(),
                                             None,
@@ -713,7 +713,7 @@ mod tests {
                                     DataType::all_bits(),
                                     [(
                                         "Source 2".into(),
-                                        Definition::empty_legacy_namespace().with_event_field(
+                                        Definition::empty_definition().with_event_field(
                                             &owned_value_path!("transform-2"),
                                             Kind::float().or_null(),
                                             Some("transform-2"),
@@ -731,7 +731,7 @@ mod tests {
                                     DataType::all_bits(),
                                     [(
                                         "Source 2".into(),
-                                        Definition::empty_legacy_namespace().with_event_field(
+                                        Definition::empty_definition().with_event_field(
                                             &owned_value_path!("transform-3"),
                                             Kind::integer(),
                                             Some("transform-3"),
@@ -749,7 +749,7 @@ mod tests {
                                     DataType::all_bits(),
                                     [(
                                         "Source 2".into(),
-                                        Definition::empty_legacy_namespace().with_event_field(
+                                        Definition::empty_definition().with_event_field(
                                             &owned_value_path!("transform-4"),
                                             Kind::timestamp().or_bytes(),
                                             Some("transform-4"),
@@ -767,7 +767,7 @@ mod tests {
                                     DataType::all_bits(),
                                     [(
                                         "Transform 3".into(),
-                                        Definition::empty_legacy_namespace().with_event_field(
+                                        Definition::empty_definition().with_event_field(
                                             &owned_value_path!("transform-5"),
                                             Kind::boolean(),
                                             Some("transform-5"),
@@ -782,7 +782,7 @@ mod tests {
                         // Pipeline 1
                         (
                             "Transform 1".into(),
-                            Definition::empty_legacy_namespace().with_event_field(
+                            Definition::empty_definition().with_event_field(
                                 &owned_value_path!("transform-1"),
                                 Kind::regex(),
                                 None,
@@ -791,7 +791,7 @@ mod tests {
                         // Pipeline 2
                         (
                             "Transform 2".into(),
-                            Definition::empty_legacy_namespace().with_event_field(
+                            Definition::empty_definition().with_event_field(
                                 &owned_value_path!("transform-2"),
                                 Kind::float().or_null(),
                                 Some("transform-2"),
@@ -800,7 +800,7 @@ mod tests {
                         // Pipeline 3
                         (
                             "Transform 5".into(),
-                            Definition::empty_legacy_namespace().with_event_field(
+                            Definition::empty_definition().with_event_field(
                                 &owned_value_path!("transform-5"),
                                 Kind::boolean(),
                                 Some("transform-5"),

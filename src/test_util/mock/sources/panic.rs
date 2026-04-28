@@ -28,7 +28,7 @@ impl SourceConfig for PanicSourceConfig {
     fn outputs(&self) -> Vec<SourceOutput> {
         vec![SourceOutput::new_maybe_logs(
             DataType::Log,
-            Definition::default_legacy_namespace(),
+            Definition::default_definition(),
         )]
     }
 

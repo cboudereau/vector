@@ -29,7 +29,7 @@ fn set_expected_source_metadata(event: &mut Event) {
     event.set_source_type(TEST_SOURCE_TYPE);
     event
         .metadata_mut()
-        .set_schema_definition(&Arc::new(Definition::default_legacy_namespace()));
+        .set_schema_definition(&Arc::new(Definition::default_definition()));
 }
 
 async fn create_topology(

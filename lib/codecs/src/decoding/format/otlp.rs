@@ -73,7 +73,7 @@ impl OtlpDeserializerConfig {
 
     /// The schema produced by the deserializer.
     pub fn schema_definition(&self) -> schema::Definition {
-        schema::Definition::empty_legacy_namespace().unknown_fields(Kind::any())
+        schema::Definition::empty_definition().unknown_fields(Kind::any())
     }
 }
 

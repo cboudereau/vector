@@ -112,7 +112,7 @@ impl TransformConfig for MetricToLogConfig {
 }
 
 fn schema_definition() -> Definition {
-    let mut schema_definition = Definition::default_for_namespace()
+    let mut schema_definition = Definition::default_definition()
         .with_event_field(&owned_value_path!("name"), Kind::bytes(), None)
         .with_event_field(
             &owned_value_path!("namespace"),

@@ -1,0 +1,231 @@
+   Compiling vector-core v0.1.0 (/home/clem/gh/vector/lib/vector-core)
+   Compiling vector-vrl-metrics v0.1.0 (/home/clem/gh/vector/lib/vector-vrl-metrics)
+   Compiling dnstap-parser v0.1.0 (/home/clem/gh/vector/lib/dnstap-parser)
+   Compiling vector-opentelemetry-proto v0.1.0 (/home/clem/gh/vector/lib/opentelemetry-proto)
+   Compiling vector-tap v0.1.0 (/home/clem/gh/vector/lib/vector-tap)
+   Compiling vector-stream v0.1.0 (/home/clem/gh/vector/lib/vector-stream)
+   Compiling vector-vrl-functions v0.1.0 (/home/clem/gh/vector/lib/vector-vrl/functions)
+   Compiling codecs v0.1.0 (/home/clem/gh/vector/lib/codecs)
+   Compiling vector-lib v0.1.0 (/home/clem/gh/vector/lib/vector-lib)
+   Compiling vector v0.54.0 (/home/clem/gh/vector)
+error: unused import: `config::LogNamespace`
+  --> src/sources/kafka.rs:46:5
+   |
+46 |     config::LogNamespace,
+   |     ^^^^^^^^^^^^^^^^^^^^
+   |
+note: the lint level is defined here
+  --> src/lib.rs:7:9
+   |
+ 7 | #![deny(warnings)]
+   |         ^^^^^^^^
+   = note: `#[deny(unused_imports)]` implied by `#[deny(warnings)]`
+
+error[E0433]: failed to resolve: use of undeclared type `LogNamespace`
+    --> src/sources/kubernetes_logs/pod_metadata_annotator.rs:1033:17
+     |
+1033 |                 LogNamespace::Vector,
+     |                 ^^^^^^^^^^^^ use of undeclared type `LogNamespace`
+     |
+help: consider importing one of these enums
+     |
+ 488 +     use crate::config::LogNamespace;
+     |
+ 488 +     use vector_lib::config::LogNamespace;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `LogNamespace`
+    --> src/sources/kubernetes_logs/pod_metadata_annotator.rs:1049:17
+     |
+1049 |                 LogNamespace::Vector,
+     |                 ^^^^^^^^^^^^ use of undeclared type `LogNamespace`
+     |
+help: consider importing one of these enums
+     |
+ 488 +     use crate::config::LogNamespace;
+     |
+ 488 +     use vector_lib::config::LogNamespace;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `LogNamespace`
+    --> src/sources/kubernetes_logs/pod_metadata_annotator.rs:1067:17
+     |
+1067 |                 LogNamespace::Vector,
+     |                 ^^^^^^^^^^^^ use of undeclared type `LogNamespace`
+     |
+help: consider importing one of these enums
+     |
+ 488 +     use crate::config::LogNamespace;
+     |
+ 488 +     use vector_lib::config::LogNamespace;
+     |
+
+error[E0061]: this function takes 3 arguments but 2 arguments were supplied
+   --> src/sources/kubernetes_logs/mod.rs:709:13
+    |
+709 |             NamespaceMetadataAnnotator::new(ns_state, namespace_fields_spec);
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^--------------------------------- argument #3 of type `LogNamespace` is missing
+    |
+note: associated function defined here
+   --> src/sources/kubernetes_logs/namespace_metadata_annotator.rs:57:18
+    |
+ 57 |     pub const fn new(
+    |                  ^^^
+...
+ 60 |         log_namespace: LogNamespace,
+    |         ---------------------------
+help: provide the argument
+    |
+709 |             NamespaceMetadataAnnotator::new(ns_state, namespace_fields_spec, /* LogNamespace */);
+    |                                                                            ++++++++++++++++++++
+
+error[E0061]: this function takes 3 arguments but 2 arguments were supplied
+   --> src/sources/kubernetes_logs/mod.rs:710:30
+    |
+710 |         let node_annotator = NodeMetadataAnnotator::new(node_state, node_field_spec);
+    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^----------------------------- argument #3 of type `LogNamespace` is missing
+    |
+note: associated function defined here
+   --> src/sources/kubernetes_logs/node_metadata_annotator.rs:54:18
+    |
+ 54 |     pub const fn new(
+    |                  ^^^
+...
+ 57 |         log_namespace: LogNamespace,
+    |         ---------------------------
+help: provide the argument
+    |
+710 |         let node_annotator = NodeMetadataAnnotator::new(node_state, node_field_spec, /* LogNamespace */);
+    |                                                                                    ++++++++++++++++++++
+
+error[E0061]: this function takes 1 argument but 0 arguments were supplied
+   --> src/sources/kubernetes_logs/mod.rs:827:26
+    |
+827 |         let mut parser = Parser::new();
+    |                          ^^^^^^^^^^^-- argument #1 of type `LogNamespace` is missing
+    |
+note: associated function defined here
+   --> src/sources/kubernetes_logs/parser/mod.rs:82:18
+    |
+ 82 |     pub const fn new(log_namespace: LogNamespace) -> Self {
+    |                  ^^^ ---------------------------
+help: provide the argument
+    |
+827 |         let mut parser = Parser::new(/* LogNamespace */);
+    |                                      ++++++++++++++++++
+
+error[E0061]: this function takes 3 arguments but 2 arguments were supplied
+   --> src/sources/kubernetes_logs/mod.rs:837:13
+    |
+837 |             merge_partial_events(events, max_merged_line_bytes).left_stream()
+    |             ^^^^^^^^^^^^^^^^^^^^         --------------------- argument #2 of type `LogNamespace` is missing
+    |
+note: function defined here
+   --> src/sources/kubernetes_logs/partial_events_merger.rs:123:8
+    |
+123 | pub fn merge_partial_events(
+    |        ^^^^^^^^^^^^^^^^^^^^
+124 |     stream: impl Stream<Item = Event> + 'static,
+125 |     log_namespace: LogNamespace,
+    |     ---------------------------
+help: provide the argument
+    |
+837 |             merge_partial_events(events, /* LogNamespace */, max_merged_line_bytes).left_stream()
+    |                                          +++++++++++++++++++
+
+error[E0061]: this function takes 3 arguments but 2 arguments were supplied
+   --> src/sources/kubernetes_logs/mod.rs:709:13
+    |
+709 |             NamespaceMetadataAnnotator::new(ns_state, namespace_fields_spec);
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^--------------------------------- argument #3 of type `vector_lib::config::LogNamespace` is missing
+    |
+note: associated function defined here
+   --> src/sources/kubernetes_logs/namespace_metadata_annotator.rs:57:18
+    |
+ 57 |     pub const fn new(
+    |                  ^^^
+...
+ 60 |         log_namespace: LogNamespace,
+    |         ---------------------------
+help: provide the argument
+    |
+709 |             NamespaceMetadataAnnotator::new(ns_state, namespace_fields_spec, /* vector_lib::config::LogNamespace */);
+    |                                                                            ++++++++++++++++++++++++++++++++++++++++
+
+error[E0061]: this function takes 3 arguments but 2 arguments were supplied
+   --> src/sources/kubernetes_logs/mod.rs:710:30
+    |
+710 |         let node_annotator = NodeMetadataAnnotator::new(node_state, node_field_spec);
+    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^----------------------------- argument #3 of type `vector_lib::config::LogNamespace` is missing
+    |
+note: associated function defined here
+   --> src/sources/kubernetes_logs/node_metadata_annotator.rs:54:18
+    |
+ 54 |     pub const fn new(
+    |                  ^^^
+...
+ 57 |         log_namespace: LogNamespace,
+    |         ---------------------------
+help: provide the argument
+    |
+710 |         let node_annotator = NodeMetadataAnnotator::new(node_state, node_field_spec, /* vector_lib::config::LogNamespace */);
+    |                                                                                    ++++++++++++++++++++++++++++++++++++++++
+
+error[E0061]: this function takes 1 argument but 0 arguments were supplied
+   --> src/sources/kubernetes_logs/mod.rs:827:26
+    |
+827 |         let mut parser = Parser::new();
+    |                          ^^^^^^^^^^^-- argument #1 of type `vector_lib::config::LogNamespace` is missing
+    |
+note: associated function defined here
+   --> src/sources/kubernetes_logs/parser/mod.rs:82:18
+    |
+ 82 |     pub const fn new(log_namespace: LogNamespace) -> Self {
+    |                  ^^^ ---------------------------
+help: provide the argument
+    |
+827 |         let mut parser = Parser::new(/* vector_lib::config::LogNamespace */);
+    |                                      ++++++++++++++++++++++++++++++++++++++
+
+error[E0061]: this function takes 3 arguments but 2 arguments were supplied
+   --> src/sources/kubernetes_logs/mod.rs:837:13
+    |
+837 |             merge_partial_events(events, max_merged_line_bytes).left_stream()
+    |             ^^^^^^^^^^^^^^^^^^^^         --------------------- argument #2 of type `vector_lib::config::LogNamespace` is missing
+    |
+note: function defined here
+   --> src/sources/kubernetes_logs/partial_events_merger.rs:123:8
+    |
+123 | pub fn merge_partial_events(
+    |        ^^^^^^^^^^^^^^^^^^^^
+124 |     stream: impl Stream<Item = Event> + 'static,
+125 |     log_namespace: LogNamespace,
+    |     ---------------------------
+help: provide the argument
+    |
+837 |             merge_partial_events(events, /* vector_lib::config::LogNamespace */, max_merged_line_bytes).left_stream()
+    |                                          +++++++++++++++++++++++++++++++++++++++
+
+For more information about this error, try `rustc --explain E0061`.
+error: could not compile `vector` (lib) due to 5 previous errors
+warning: build failed, waiting for other jobs to finish...
+error[E0061]: this function takes 2 arguments but 3 arguments were supplied
+    --> src/sources/kubernetes_logs/pod_metadata_annotator.rs:1073:13
+     |
+1073 |             annotate_from_container(&mut log, &container, log_namespace);
+     |             ^^^^^^^^^^^^^^^^^^^^^^^                       ------------- unexpected argument #3
+     |
+note: function defined here
+    --> src/sources/kubernetes_logs/pod_metadata_annotator.rs:365:4
+     |
+ 365 | fn annotate_from_container(
+     |    ^^^^^^^^^^^^^^^^^^^^^^^
+help: remove the extra argument
+     |
+1073 -             annotate_from_container(&mut log, &container, log_namespace);
+1073 +             annotate_from_container(&mut log, &container);
+     |
+
+Some errors have detailed explanations: E0061, E0433.
+For more information about an error, try `rustc --explain E0061`.
+error: could not compile `vector` (lib test) due to 8 previous errors

@@ -73,11 +73,11 @@ async fn wait_for_message() {
     let schema_definitions = HashMap::from([
         (
             Some(LOGS.to_owned()),
-            schema::Definition::empty_legacy_namespace(),
+            schema::Definition::empty_definition(),
         ),
         (
             Some(METRICS.to_owned()),
-            schema::Definition::empty_legacy_namespace(),
+            schema::Definition::empty_definition(),
         ),
     ]);
     let context = SourceContext::new_test(sender, Some(schema_definitions));
@@ -115,11 +115,11 @@ async fn wait_for_traces() {
     let schema_definitions = HashMap::from([
         (
             Some(LOGS.to_owned()),
-            schema::Definition::empty_legacy_namespace(),
+            schema::Definition::empty_definition(),
         ),
         (
             Some(METRICS.to_owned()),
-            schema::Definition::empty_legacy_namespace(),
+            schema::Definition::empty_definition(),
         ),
     ]);
     let context = SourceContext::new_test(sender, Some(schema_definitions));

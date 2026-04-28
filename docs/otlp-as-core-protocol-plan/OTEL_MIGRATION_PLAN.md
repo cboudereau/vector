@@ -28,7 +28,7 @@ pub enum Event {
 - VRL migration tool (`vector vrl-migrate`) — ships with ~91% auto-rewrite coverage.
 - OTLP HTTP JSON ingestion — native support in the `opentelemetry` source.
 - Zero-conversion OTLP path: OTel source → OTel sink (gRPC + HTTP) for all 3 signals.
-- `LogNamespace::Legacy` — removed; only `Vector` namespace remains.
+- `LogNamespace` enum — fully deleted (was collapsed to `Vector`-only, then removed entirely).
 - `LegacyKey` type — deleted along with all `_legacy_key` parameters (~200 call sites).
 - `LogSchema` struct + `log_schema()` — deleted.
 - `event.proto`, `vector.proto` — deleted; disk buffers use `otlp_buffer.proto` only.
@@ -154,8 +154,9 @@ kafka, syslog, …  ──────────►  OTel Span
 | **P11** | `OtelAttributes` BTreeMap for OtelLog — O(log n) attribute lookup | 9 files, +160/−61 lines |
 | **P12** | `OtelAttributes` BTreeMap for OtelSpan — O(log n) attribute lookup, tail sampling + span_metrics use direct get | 10 files, +96/−91 lines |
 | **P13** | Remove `log_namespace` config from all sources/transforms + global schema + `LogNamespace::merge()` | 61 files, −547 lines |
+| **P14** | Delete `LogNamespace` enum, `Definition.log_namespaces` field, `SourceContext::log_namespace()`, rename legacy methods | 87 files, −1,070 lines |
 
-**Net code change:** ~−22,000 lines removed.
+**Net code change:** ~−23,000 lines removed.
 
 ---
 
@@ -166,7 +167,7 @@ kafka, syslog, …  ──────────►  OTel Span
 | `to_value_canonical()` / `from_value_map()` | VRL path access and flat-format encoders (GELF, Avro, protobuf, syslog, Lua) depend on Value↔proto bridge. 12 call sites across 8 codec files. | Direct proto access for encoders eliminates most; `OtelAttributes::to_object_map()` already covers attribute portion. |
 | `modify_as_value()` | Used by dnstap source/parser for batched mutations (1 production call site + tests). | Replace with direct `OtelAttributes` mutation or sequential `insert()` calls. Low priority. |
 | Legacy metric types (~2,164 lines) | `MetricValue` (Counter/Gauge/Set/Distribution/Histogram/Summary arithmetic), `MetricKind` (Incremental/Absolute temporality), `MetricTags` (multi-value tag support, 780 lines), `MetricSeries`/`MetricData` — used by all metric transforms/sinks. | `OtelAttributes` replaces `MetricTags`; arithmetic methods on `OtelMetric` replace `MetricValue` ops. Largest remaining cleanup. |
-| ~~`log_namespace: Option<bool>`~~ | **Done (P13).** Removed from all 37 sources, 2 transforms, global schema, and `LogNamespace::merge()`. 61 files, −547 lines. | — |
+| ~~`log_namespace: Option<bool>`~~ | **Done (P13+P14).** Removed config option from all 37 sources, 2 transforms, global schema, `LogNamespace::merge()` (P13). Deleted `LogNamespace` enum, `Definition.log_namespaces` field, `SourceContext::log_namespace()`, renamed legacy methods (P14). | — |
 | OtelMetric data-point attributes (`Vec<KeyValue>`) | Each data point (NumberDataPoint, HistogramDataPoint, etc.) has its own `Vec<KeyValue>`. Not a single field like OtelLog/OtelSpan — multiple data points per metric. | Wrap per-data-point attributes in `OtelAttributes`. More complex than Log/Span because metrics have N data points each with their own attribute set. |
 | Resource/scope `attribute_value()` free functions | OtelLog and OtelSpan record attributes migrated to `OtelAttributes`, but resource and scope attributes remain `Vec<KeyValue>` with linear scan helpers. Resource/scope attributes are typically small (3–10 entries). | Migrate resource/scope to `OtelAttributes` for consistency. Low perf impact (small lists) but improves code uniformity. |
 | `kvlist_to_object_map()` (10 call sites) | Converts `Vec<KeyValue>` to VRL `ObjectMap`. Used at serialization boundaries and VRL target projection. | Replaced by `OtelAttributes::to_object_map()` for record attrs; remaining calls are for resource/scope attrs. |

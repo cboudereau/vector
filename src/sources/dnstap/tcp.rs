@@ -5,7 +5,6 @@ use ipnet::IpNet;
 use serde_with::serde_as;
 use vector_lib::{
     EstimatedJsonEncodedSizeOf,
-    config::LogNamespace,
     configurable::configurable_component,
     ipallowlist::IpAllowlistConfig,
     lookup::{lookup_v2::OptionalValuePath, owned_value_path},
@@ -136,8 +135,6 @@ pub struct DnstapFrameHandler<T: FrameHandler + Clone> {
     max_connection_duration_secs: Option<u64>,
     max_connections: Option<u32>,
     allowlist: Option<Vec<IpNet>>,
-    #[allow(dead_code)]
-    log_namespace: LogNamespace,
 }
 
 impl<T: FrameHandler + Clone> DnstapFrameHandler<T> {
@@ -145,7 +142,6 @@ impl<T: FrameHandler + Clone> DnstapFrameHandler<T> {
         config: TcpConfig,
         tls: MaybeTlsSettings,
         frame_handler: T,
-        log_namespace: LogNamespace,
     ) -> Self {
         let tls_client_metadata_key = config
             .tls()
@@ -165,7 +161,6 @@ impl<T: FrameHandler + Clone> DnstapFrameHandler<T> {
             max_connection_duration_secs: config.max_connection_duration_secs,
             max_connections: config.connection_limit,
             allowlist: config.permit_origin.map(Into::into),
-            log_namespace,
         }
     }
 }

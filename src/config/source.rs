@@ -10,7 +10,7 @@ use vector_config_common::{
 use vector_config_macros::configurable_component;
 use vector_lib::{
     config::{
-        AcknowledgementsConfig, GlobalOptions, LogNamespace, SourceAcknowledgementsConfig,
+        AcknowledgementsConfig, GlobalOptions, SourceAcknowledgementsConfig,
         SourceOutput,
     },
     source::Source,
@@ -214,8 +214,4 @@ impl SourceContext {
             .enabled()
     }
 
-    /// Gets the log namespacing to use. Always returns `LogNamespace::Vector`.
-    pub fn log_namespace(&self) -> LogNamespace {
-        LogNamespace::Vector
-    }
 }

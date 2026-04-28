@@ -192,7 +192,6 @@ impl GenerateConfig for NatsSourceConfig {
 #[typetag::serde(name = "nats")]
 impl SourceConfig for NatsSourceConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<Source> {
-        let log_namespace = cx.log_namespace();
         let decoder =
             DecodingConfig::new(self.framing.clone(), self.decoding.clone())
                 .build()?;
@@ -225,7 +224,6 @@ impl SourceConfig for NatsSourceConfig {
                     connection,
                     messages,
                     decoder,
-                    log_namespace,
                     cx.shutdown,
                     cx.out,
                 )))
@@ -238,7 +236,6 @@ impl SourceConfig for NatsSourceConfig {
                     connection,
                     subscription,
                     decoder,
-                    log_namespace,
                     cx.shutdown,
                     cx.out,
                 )))
@@ -317,7 +314,6 @@ mod tests {
     #![allow(clippy::print_stdout)]
 
     use vector_lib::{
-        config::LogNamespace,
         lookup::owned_value_path,
         schema::Definition,
     };
@@ -344,8 +340,7 @@ mod tests {
             .schema_definition(true);
 
         let expected_definition = Definition::new_with_default_metadata(
-            Kind::object(Collection::empty()),
-            [LogNamespace::Vector],
+            Kind::object(Collection::empty())
         )
         .with_event_field(&owned_value_path!("body"), Kind::bytes(), Some("message"))
         .with_metadata_field(

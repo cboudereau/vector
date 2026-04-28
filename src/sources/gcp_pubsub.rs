@@ -727,7 +727,7 @@ impl Future for Task {
 
 #[cfg(test)]
 mod tests {
-    use vector_lib::{config::LogNamespace, schema::Definition};
+    use vector_lib::schema::Definition;
 
     use super::*;
 
@@ -748,8 +748,7 @@ mod tests {
             .schema_definition(true);
 
         let expected_definition = Definition::new_with_default_metadata(
-            Kind::object(Collection::empty()),
-            [LogNamespace::Vector],
+            Kind::object(Collection::empty())
         )
         .with_event_field(&owned_value_path!("body"), Kind::bytes(), Some("message"))
         .with_metadata_field(

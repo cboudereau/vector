@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use chrono::Utc;
 use serde_json::Value;
@@ -112,7 +112,7 @@ impl TransformConfig for MetricToLogConfig {
 }
 
 fn schema_definition() -> Definition {
-    let mut schema_definition = Definition::default_for_namespace(&BTreeSet::from([vector_lib::config::LogNamespace::Vector]))
+    let mut schema_definition = Definition::default_for_namespace()
         .with_event_field(&owned_value_path!("name"), Kind::bytes(), None)
         .with_event_field(
             &owned_value_path!("namespace"),

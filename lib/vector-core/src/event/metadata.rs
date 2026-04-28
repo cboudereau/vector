@@ -14,7 +14,7 @@ use vrl::{
 
 use super::{BatchNotifier, EventFinalizer, EventFinalizers, EventStatus, ObjectMap};
 use crate::{
-    config::{LogNamespace, OutputId},
+    config::OutputId,
     schema,
 };
 
@@ -228,8 +228,7 @@ impl Default for EventMetadata {
 
 pub(super) fn default_schema_definition() -> Arc<schema::Definition> {
     Arc::new(schema::Definition::new_with_default_metadata(
-        Kind::any(),
-        [LogNamespace::Vector],
+        Kind::any()
     ))
 }
 

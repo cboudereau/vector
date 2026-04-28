@@ -17,7 +17,7 @@ use vector_lib::{
         decoding::{DeserializerConfig, FramingConfig},
     },
     compile_vrl,
-    config::{LogNamespace, SourceOutput},
+    config::SourceOutput,
     configurable::configurable_component,
     event::{Event, OtelLog, VrlTarget},
 };
@@ -349,17 +349,14 @@ impl SourceConfig for HttpClientConfig {
 
         let tls = TlsSettings::from_options(self.tls.as_ref())?;
 
-        let log_namespace = cx.log_namespace();
-
         // build the decoder
-        let decoder = self.get_decoding_config(Some(log_namespace)).build()?;
+        let decoder = self.get_decoding_config().build()?;
 
         let content_type = self.decoding.content_type(&self.framing).to_string();
 
         // Create context with the config for dynamic query parameter and body evaluation
         let context = HttpClientContext {
             decoder,
-            log_namespace,
             query,
             body,
         };
@@ -399,7 +396,7 @@ impl SourceConfig for HttpClientConfig {
 }
 
 impl HttpClientConfig {
-    pub fn get_decoding_config(&self, _log_namespace: Option<LogNamespace>) -> DecodingConfig {
+    pub fn get_decoding_config(&self) -> DecodingConfig {
         let decoding = self.decoding.clone();
         let framing = self.framing.clone();
 
@@ -411,7 +408,6 @@ impl HttpClientConfig {
 #[derive(Clone)]
 pub struct HttpClientContext {
     pub decoder: Decoder,
-    pub log_namespace: LogNamespace,
     query: Query,
     body: Option<CompiledParam>,
 }

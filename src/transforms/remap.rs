@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::HashMap,
     fs::File,
     io::{self, Read},
     path::PathBuf,
@@ -311,7 +311,6 @@ impl TransformConfig for RemapConfig {
                     let mut new_type_def = Definition::new(
                         state.external.target_kind().clone(),
                         state.external.metadata_kind().clone(),
-                        input_definition.log_namespaces().clone(),
                     );
 
                     for (id, path) in input_definition.meanings() {
@@ -332,33 +331,33 @@ impl TransformConfig for RemapConfig {
                     Definition::new_with_default_metadata(
                         // The program failed to compile, so it can "never" return a value
                         Kind::never(),
-                        input_definition.log_namespaces().clone(),
                     )
                 });
 
             // When a message is dropped and re-routed, we keep the original event, but also annotate
             // it with additional metadata.
-            let dropped_definition = Definition::combine_log_namespaces(
-                input_definition.log_namespaces(),
-                input_definition.clone().with_event_field(
-                    &owned_value_path!("metadata"),
-                    Kind::object(BTreeMap::from([
-                        ("reason".into(), Kind::bytes()),
-                        ("message".into(), Kind::bytes()),
-                        ("component_id".into(), Kind::bytes()),
-                        ("component_type".into(), Kind::bytes()),
-                        ("component_kind".into(), Kind::bytes()),
-                    ])),
-                    Some("metadata"),
-                ),
-                input_definition
-                    .clone()
-                    .with_metadata_field(&owned_value_path!("reason"), Kind::bytes(), None)
-                    .with_metadata_field(&owned_value_path!("body"), Kind::bytes(), None)
-                    .with_metadata_field(&owned_value_path!("component_id"), Kind::bytes(), None)
-                    .with_metadata_field(&owned_value_path!("component_type"), Kind::bytes(), None)
-                    .with_metadata_field(&owned_value_path!("component_kind"), Kind::bytes(), None),
-            );
+            let dropped_definition = Definition::new_with_default_metadata(Kind::never())
+                .merge(
+                    input_definition
+                        .clone()
+                        .with_metadata_field(&owned_value_path!("reason"), Kind::bytes(), None)
+                        .with_metadata_field(&owned_value_path!("body"), Kind::bytes(), None)
+                        .with_metadata_field(
+                            &owned_value_path!("component_id"),
+                            Kind::bytes(),
+                            None,
+                        )
+                        .with_metadata_field(
+                            &owned_value_path!("component_type"),
+                            Kind::bytes(),
+                            None,
+                        )
+                        .with_metadata_field(
+                            &owned_value_path!("component_kind"),
+                            Kind::bytes(),
+                            None,
+                        ),
+                );
 
             default_definitions.insert(
                 output_id.clone(),
@@ -632,7 +631,7 @@ pub enum BuildError {
 #[cfg(test)]
 mod tests {
     use std::{
-        collections::{HashMap, HashSet},
+        collections::{BTreeMap, HashMap, HashSet},
         sync::Arc,
     };
 
@@ -640,7 +639,7 @@ mod tests {
     use indoc::{formatdoc, indoc};
     use tokio::sync::mpsc;
     use tokio_stream::wrappers::ReceiverStream;
-    use vector_lib::{config::{GlobalOptions, LogNamespace}, event::EventMetadata, metric_tags};
+    use vector_lib::{config::{GlobalOptions}, event::EventMetadata, metric_tags};
     use vrl::{btreemap, event_path, value::kind::Collection};
 
     use super::*;
@@ -769,7 +768,7 @@ mod tests {
     #[test]
     #[ignore = "VRL/OtelLog integration needs deeper adaptation"]
     fn remap_return_raw_string_vector_namespace() {
-        let initial_definition = Definition::default_for_namespace(&[LogNamespace::Vector].into());
+        let initial_definition = Definition::default_for_namespace();
 
         let event = {
             let mut metadata = EventMetadata::default()
@@ -805,7 +804,7 @@ mod tests {
         assert_eq!(output.port, None);
         let actual_schema_def = output.schema_definitions(true)[&OutputId::dummy()].clone();
         let expected_schema =
-            Definition::new(Kind::bytes(), Kind::any_object(), [LogNamespace::Vector]);
+            Definition::new(Kind::bytes(), Kind::any_object());
         assert_eq!(actual_schema_def, expected_schema);
     }
 
@@ -1044,11 +1043,9 @@ mod tests {
     #[test]
     #[ignore = "VRL/OtelLog integration needs deeper adaptation"]
     fn remap_timezone_fallback() {
-        let error = Event::from_json_value(
-            serde_json::json!({"timestamp": "2022-12-27 00:00:00"}),
-            LogNamespace::Vector,
-        )
-        .unwrap();
+        let error =
+            Event::from_json_value(serde_json::json!({"timestamp": "2022-12-27 00:00:00"}))
+                .unwrap();
         let conf = RemapConfig {
             source: Some(formatdoc! {r#"
                 .timestamp = parse_timestamp!(.timestamp, format: "%Y-%m-%d %H:%M:%S")
@@ -1081,11 +1078,9 @@ mod tests {
     #[test]
     #[ignore = "VRL/OtelLog integration needs deeper adaptation"]
     fn remap_timezone_override() {
-        let error = Event::from_json_value(
-            serde_json::json!({"timestamp": "2022-12-27 00:00:00"}),
-            LogNamespace::Vector,
-        )
-        .unwrap();
+        let error =
+            Event::from_json_value(serde_json::json!({"timestamp": "2022-12-27 00:00:00"}))
+                .unwrap();
         let conf = RemapConfig {
             source: Some(formatdoc! {r#"
                 .timestamp = parse_timestamp!(.timestamp, format: "%Y-%m-%d %H:%M:%S")
@@ -1119,16 +1114,10 @@ mod tests {
     #[test]
     #[ignore = "VRL/OtelLog integration needs deeper adaptation"]
     fn check_remap_branching() {
-        let happy =
-            Event::from_json_value(serde_json::json!({"hello": "world"}), LogNamespace::Vector)
-                .unwrap();
-        let abort = Event::from_json_value(
-            serde_json::json!({"hello": "goodbye"}),
-            LogNamespace::Vector,
-        )
-        .unwrap();
-        let error =
-            Event::from_json_value(serde_json::json!({"hello": 42}), LogNamespace::Vector).unwrap();
+        let happy = Event::from_json_value(serde_json::json!({"hello": "world"})).unwrap();
+        let abort =
+            Event::from_json_value(serde_json::json!({"hello": "goodbye"})).unwrap();
+        let error = Event::from_json_value(serde_json::json!({"hello": 42})).unwrap();
 
         let happy_metric = {
             let mut otel = OtelMetric::new_counter("counter", MetricKind::Absolute, 1.0);
@@ -1183,8 +1172,7 @@ mod tests {
             key: Some(ComponentKey::from("remapper")),
             schema_definitions,
             merged_schema_definition: schema::Definition::new_with_default_metadata(
-                Kind::any_object(),
-                [LogNamespace::Vector],
+                Kind::any_object()
             )
             .with_event_field(&owned_value_path!("hello"), Kind::bytes(), None),
             ..Default::default()
@@ -1290,9 +1278,9 @@ mod tests {
     #[test]
     fn check_remap_branching_assert_with_message() {
         let error_trigger_assert_custom_message =
-            Event::from_json_value(serde_json::json!({"hello": 42}), LogNamespace::Vector).unwrap();
+            Event::from_json_value(serde_json::json!({"hello": 42})).unwrap();
         let error_trigger_default_assert_message =
-            Event::from_json_value(serde_json::json!({"hello": 0}), LogNamespace::Vector).unwrap();
+            Event::from_json_value(serde_json::json!({"hello": 0})).unwrap();
         let conf = RemapConfig {
             source: Some(formatdoc! {r#"
                 assert_eq!(.hello, 0, "custom message here")
@@ -1352,8 +1340,7 @@ mod tests {
 
     #[test]
     fn check_remap_branching_abort_with_message() {
-        let error =
-            Event::from_json_value(serde_json::json!({"hello": 42}), LogNamespace::Vector).unwrap();
+        let error = Event::from_json_value(serde_json::json!({"hello": 42})).unwrap();
         let conf = RemapConfig {
             source: Some(formatdoc! {r#"
                 abort "custom message here"
@@ -1391,16 +1378,10 @@ mod tests {
 
     #[test]
     fn check_remap_branching_disabled() {
-        let happy =
-            Event::from_json_value(serde_json::json!({"hello": "world"}), LogNamespace::Vector)
-                .unwrap();
-        let abort = Event::from_json_value(
-            serde_json::json!({"hello": "goodbye"}),
-            LogNamespace::Vector,
-        )
-        .unwrap();
-        let error =
-            Event::from_json_value(serde_json::json!({"hello": 42}), LogNamespace::Vector).unwrap();
+        let happy = Event::from_json_value(serde_json::json!({"hello": "world"})).unwrap();
+        let abort =
+            Event::from_json_value(serde_json::json!({"hello": "goodbye"})).unwrap();
+        let error = Event::from_json_value(serde_json::json!({"hello": 42})).unwrap();
 
         let conf = RemapConfig {
             source: Some(formatdoc! {r#"
@@ -1425,8 +1406,7 @@ mod tests {
         };
 
         let schema_definition = schema::Definition::new_with_default_metadata(
-            Kind::any_object(),
-            [LogNamespace::Vector],
+            Kind::any_object()
         )
         .with_event_field(&owned_value_path!("foo"), Kind::any(), None)
         .with_event_field(&owned_value_path!("tags"), Kind::any(), None);
@@ -1437,8 +1417,7 @@ mod tests {
                 &[(
                     "test".into(),
                     schema::Definition::new_with_default_metadata(
-                        Kind::any_object(),
-                        [LogNamespace::Vector]
+                        Kind::any_object()
                     )
                 )],
             ),
@@ -1669,8 +1648,7 @@ mod tests {
             &[(
                 "in".into(),
                 schema::Definition::new_with_default_metadata(
-                    Kind::any_object(),
-                    [LogNamespace::Vector],
+                    Kind::any_object()
                 ),
             )],
         );
@@ -1681,8 +1659,7 @@ mod tests {
                 [(
                     "in".into(),
                     Definition::new_with_default_metadata(
-                        Kind::any_object(),
-                        [LogNamespace::Vector]
+                        Kind::any_object()
                     )
                     .with_event_field(
                         &owned_value_path!("thing"),
@@ -1746,8 +1723,7 @@ mod tests {
             &[(
                 "in".into(),
                 schema::Definition::new_with_default_metadata(
-                    Kind::any_object(),
-                    [LogNamespace::Vector],
+                    Kind::any_object()
                 ),
             )],
         );
@@ -1758,8 +1734,7 @@ mod tests {
                 [(
                     "in".into(),
                     Definition::new_with_default_metadata(
-                        Kind::any_object(),
-                        [LogNamespace::Vector]
+                        Kind::any_object()
                     ),
                 )]
                 .into(),
@@ -1786,8 +1761,7 @@ mod tests {
             &[(
                 "in".into(),
                 schema::Definition::new_with_default_metadata(
-                    Kind::any_object(),
-                    [LogNamespace::Vector],
+                    Kind::any_object()
                 ),
             )],
         );
@@ -1814,8 +1788,7 @@ mod tests {
             &[(
                 "in".into(),
                 schema::Definition::new_with_default_metadata(
-                    Kind::any_object(),
-                    [LogNamespace::Vector],
+                    Kind::any_object()
                 ),
             )],
         );
@@ -1848,8 +1821,7 @@ mod tests {
             &[(
                 "in".into(),
                 schema::Definition::new_with_default_metadata(
-                    Kind::any_object(),
-                    [LogNamespace::Vector],
+                    Kind::any_object()
                 ),
             )],
         );
@@ -1897,14 +1869,13 @@ mod tests {
             &[(
                 "in".into(),
                 schema::Definition::new_with_default_metadata(
-                    Kind::any_object(),
-                    [LogNamespace::Vector],
+                    Kind::any_object()
                 ),
             )],
         );
 
         let wanted =
-            schema::Definition::new_with_default_metadata(Kind::null(), [LogNamespace::Vector]);
+            schema::Definition::new_with_default_metadata(Kind::null());
 
         assert_eq!(
             HashMap::from([(OutputId::from("in"), wanted)]),
@@ -1923,8 +1894,7 @@ mod tests {
             ..Default::default()
         };
         let mut ast_runner = remap(config).unwrap();
-        let input_event =
-            Event::from_json_value(serde_json::json!({"a": 42}), LogNamespace::Vector).unwrap();
+        let input_event = Event::from_json_value(serde_json::json!({"a": 42})).unwrap();
         let dropped_event = transform_one_fallible(&mut ast_runner, input_event).unwrap_err();
         let dropped_log = dropped_event.as_log();
         assert_eq!(dropped_log.get(event_path!("a")), Some(Value::from(42)));

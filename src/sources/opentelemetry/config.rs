@@ -21,7 +21,6 @@ use futures::FutureExt;
 use futures_util::{TryFutureExt, future::join};
 use tonic::{codec::CompressionEncoding, service::RoutesBuilder};
 use vector_lib::{
-    config::LogNamespace,
     configurable::configurable_component,
     internal_event::{BytesReceived, EventsReceived, Protocol},
     lookup::{OwnedTargetPath, owned_value_path},
@@ -145,7 +144,6 @@ impl SourceConfig for OpentelemetryConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<Source> {
         let acknowledgements = cx.do_acknowledgements(self.acknowledgements);
         let events_received = register!(EventsReceived);
-        let log_namespace = cx.log_namespace();
 
         let grpc_tls_settings = MaybeTlsSettings::from_config(self.grpc.tls.as_ref(), true)?;
 
@@ -197,7 +195,6 @@ impl SourceConfig for OpentelemetryConfig {
 
         let filters = build_warp_filter(
             acknowledgements,
-            log_namespace,
             cx.out,
             bytes_received,
             events_received,
@@ -218,8 +215,7 @@ impl SourceConfig for OpentelemetryConfig {
     // TODO: appropriately handle "severity" meaning across both "severity_text" and "severity_number",
     // as both are optional and can be converted to/from.
     fn outputs(&self) -> Vec<SourceOutput> {
-        let log_namespace = LogNamespace::Vector;
-        let schema_definition = Definition::new_with_default_metadata(Kind::any(), [log_namespace])
+        let schema_definition = Definition::new_with_default_metadata(Kind::any())
             .with_source_metadata(
                 Self::NAME,
                 &owned_value_path!(RESOURCE_KEY),

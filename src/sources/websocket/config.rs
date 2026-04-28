@@ -194,7 +194,7 @@ impl SourceConfig for WebSocketConfig {
 
 #[cfg(test)]
 mod test {
-    use vector_lib::{config::LogNamespace, schema};
+    use vector_lib::schema;
     use vrl::{
         owned_value_path,
         value::kind::{Collection, Kind},
@@ -219,8 +219,7 @@ mod test {
             .schema_definition(true);
 
         let expected_definition = schema::Definition::new_with_default_metadata(
-            Kind::object(Collection::empty()),
-            [LogNamespace::Vector],
+            Kind::object(Collection::empty())
         )
         .with_event_field(&owned_value_path!("body"), Kind::bytes(), Some("message"))
         .with_metadata_field(

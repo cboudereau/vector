@@ -28,7 +28,6 @@ use tokio_util::codec::FramedRead;
 use vector_lib::{
     EstimatedJsonEncodedSizeOf,
     codecs::{CharacterDelimitedDecoder, decoding::BoxedFramingError},
-    config::LogNamespace,
     configurable::configurable_component,
     finalizer::OrderedFinalizer,
     internal_event::{
@@ -257,8 +256,7 @@ impl JournaldConfig {
     /// Builds the `schema::Definition` for this source.
     fn schema_definition(&self) -> Definition {
         let schema_definition = Definition::new_with_default_metadata(
-            Kind::bytes().or_null(),
-            [LogNamespace::Vector],
+            Kind::bytes().or_null()
         );
 
         let mut schema_definition = schema_definition
@@ -1703,7 +1701,7 @@ mod tests {
             .schema_definition(true);
 
         let expected_definition =
-            Definition::new_with_default_metadata(Kind::bytes().or_null(), [LogNamespace::Vector])
+            Definition::new_with_default_metadata(Kind::bytes().or_null())
                 .with_metadata_field(
                     &owned_value_path!("vector", "source_type"),
                     Kind::bytes(),

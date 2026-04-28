@@ -9,7 +9,7 @@ use serde_with::{TimestampSecondsWithFrac, serde_as};
 use smallvec::{SmallVec, smallvec};
 use vector_config::configurable_component;
 use vector_core::{
-    config::{DataType, LogNamespace},
+    config::{DataType},
     event::{Event, EventMetadata, OtelLog},
     schema,
 };
@@ -74,8 +74,7 @@ impl GelfDeserializerConfig {
     /// The schema produced by the deserializer.
     pub fn schema_definition(&self) -> schema::Definition {
         schema::Definition::new_with_default_metadata(
-            Kind::object(Collection::empty()),
-            [LogNamespace::Vector],
+            Kind::object(Collection::empty())
         )
         .with_event_field(&owned_value_path!(VERSION), Kind::bytes(), None)
         .with_event_field(&owned_value_path!(HOST), Kind::bytes(), None)

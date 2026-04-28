@@ -278,9 +278,8 @@ impl HecLogsSinkConfig {
 
 #[cfg(test)]
 mod tests {
-    use vector_lib::{
-        codecs::{JsonSerializerConfig, MetricTagValues, encoding::format::JsonSerializerOptions},
-        config::LogNamespace,
+    use vector_lib::codecs::{
+        JsonSerializerConfig, MetricTagValues, encoding::format::JsonSerializerOptions,
     };
 
     use super::*;
@@ -345,7 +344,6 @@ mod tests {
 
             ValidationConfiguration::from_sink(
                 Self::NAME,
-                LogNamespace::Vector,
                 vec![ComponentTestCaseConfig::from_sink(
                     config,
                     None,

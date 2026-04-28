@@ -16,7 +16,6 @@ mod integration_tests {
             DockerLogsConfig::default(),
             tx,
             ShutdownSignal::noop(),
-            LogNamespace::Vector,
         )
         .unwrap();
         source.hostname = Some("451062c59603".to_owned());
@@ -61,7 +60,6 @@ mod integration_tests {
         source_with_config(DockerLogsConfig {
             include_containers: Some(names.iter().map(|&s| s.to_owned()).collect()),
             include_labels: Some(label.into().map(|l| vec![l.to_owned()]).unwrap_or_default()),
-            log_namespace,
             ..DockerLogsConfig::default()
         })
         .await

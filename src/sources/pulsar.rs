@@ -19,7 +19,7 @@ use vector_lib::{
         Decoder, DecodingConfig, StreamDecodingError,
         decoding::{DeserializerConfig, FramingConfig},
     },
-    config::{LogNamespace, SourceAcknowledgementsConfig, SourceOutput},
+    config::{SourceAcknowledgementsConfig, SourceOutput},
     configurable::configurable_component,
     event::{Event, string_value},
     finalization::BatchStatus,
@@ -203,8 +203,6 @@ impl_generate_config_from_default!(PulsarSourceConfig);
 #[typetag::serde(name = "pulsar")]
 impl SourceConfig for PulsarSourceConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
-        let log_namespace = cx.log_namespace();
-
         let consumer = self.create_consumer().await?;
         let decoder =
             DecodingConfig::new(self.framing.clone(), self.decoding.clone())
@@ -217,7 +215,6 @@ impl SourceConfig for PulsarSourceConfig {
             cx.shutdown,
             cx.out,
             acknowledgements,
-            log_namespace,
         )))
     }
 
@@ -326,7 +323,6 @@ async fn pulsar_source(
     mut shutdown: ShutdownSignal,
     mut out: SourceSender,
     acknowledgements: bool,
-    log_namespace: LogNamespace,
 ) -> Result<(), ()> {
     let (finalizer, mut ack_stream) =
         OrderedFinalizer::<FinalizerEntry>::maybe_new(acknowledgements, Some(shutdown.clone()));
@@ -347,7 +343,7 @@ async fn pulsar_source(
                 match maybe_message {
                     Ok(msg) => {
                         bytes_received.emit(ByteSize(msg.payload.data.len()));
-                        parse_message(msg, &decoder, &finalizer, &mut out, &mut consumer, log_namespace, &events_received, &pulsar_error_events).await;
+                        parse_message(msg, &decoder, &finalizer, &mut out, &mut consumer, &events_received, &pulsar_error_events).await;
                     }
                     Err(error) => {
                         pulsar_error_events.emit(PulsarErrorEventData{
@@ -363,14 +359,12 @@ async fn pulsar_source(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn parse_message(
     msg: Message<String>,
     decoder: &Decoder,
     finalizer: &Option<OrderedFinalizer<FinalizerEntry>>,
     out: &mut SourceSender,
     consumer: &mut Consumer<String, TokioExecutor>,
-    _log_namespace: LogNamespace,
     events_received: &Registered<EventsReceived>,
     pulsar_error_events: &Registered<PulsarErrorEvent>,
 ) {
@@ -548,7 +542,6 @@ mod integration_tests {
         pulsar_send_receive(
             &pulsar_address("pulsar", 6650),
             true,
-            LogNamespace::Vector,
             None,
         )
         .await;
@@ -559,7 +552,6 @@ mod integration_tests {
         pulsar_send_receive(
             &pulsar_address("pulsar", 6650),
             true,
-            LogNamespace::Vector,
             None,
         )
         .await;
@@ -570,7 +562,6 @@ mod integration_tests {
         pulsar_send_receive(
             &pulsar_address("pulsar", 6650),
             false,
-            LogNamespace::Vector,
             None,
         )
         .await;
@@ -581,7 +572,6 @@ mod integration_tests {
         pulsar_send_receive(
             &pulsar_address("pulsar", 6650),
             false,
-            LogNamespace::Vector,
             None,
         )
         .await;
@@ -592,7 +582,6 @@ mod integration_tests {
         pulsar_send_receive(
             &pulsar_address("pulsar+ssl", 6651),
             false,
-            LogNamespace::Vector,
             Some(TlsOptions {
                 ca_file: TEST_PEM_INTERMEDIATE_CA_PATH.into(),
                 verify_certificate: None,
@@ -605,7 +594,6 @@ mod integration_tests {
     async fn pulsar_send_receive(
         endpoint: &str,
         acknowledgements: bool,
-        log_namespace: LogNamespace,
         tls: Option<TlsOptions>,
     ) {
         trace_init();
@@ -658,7 +646,6 @@ mod integration_tests {
                 ShutdownSignal::noop(),
                 tx,
                 acknowledgements,
-                log_namespace,
             ));
             producer.send_non_blocking(msg).await.unwrap();
 

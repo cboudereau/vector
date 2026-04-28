@@ -4,7 +4,7 @@ use bytes::Bytes;
 use crate::{
     SourceSender,
     codecs::DecodingConfig,
-    config::{LogNamespace, SourceConfig, SourceContext},
+    config::{SourceConfig, SourceContext},
     nats::{
         NatsAuthConfig, NatsAuthCredentialsFile, NatsAuthNKey, NatsAuthToken, NatsAuthUserPassword,
     },
@@ -107,7 +107,6 @@ async fn publish_and_check(conf: NatsSourceConfig) -> Result<(), BuildError> {
             nc,
             sub,
             decoder,
-            LogNamespace::Vector,
             ShutdownSignal::noop(),
             tx,
         ));
@@ -542,7 +541,6 @@ async fn nats_shutdown_drain_messages() {
         nc,
         sub,
         decoder,
-        LogNamespace::Vector,
         shutdown_signal,
         tx,
     ));

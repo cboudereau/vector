@@ -1,8 +1,5 @@
 use opentelemetry_proto::tonic::common::v1::AnyValue;
-use vector_lib::{
-    config::LogNamespace,
-    event::Event,
-};
+use vector_lib::event::Event;
 use warp::http::{HeaderMap, HeaderValue};
 
 use crate::{
@@ -14,7 +11,6 @@ pub fn add_headers(
     events: &mut [Event],
     headers_config: &[HttpConfigParamKind],
     headers: &HeaderMap,
-    _log_namespace: LogNamespace,
     _source_name: &'static str,
 ) {
     for h in headers_config {
@@ -76,7 +72,6 @@ pub fn add_headers(
 
 #[cfg(test)]
 mod tests {
-    use vector_lib::config::LogNamespace;
     use vrl::value;
     use warp::http::HeaderMap;
 
@@ -101,7 +96,6 @@ mod tests {
             &mut events,
             &header_names,
             &headers,
-            LogNamespace::Vector,
             "test",
         );
 
@@ -126,7 +120,6 @@ mod tests {
             &mut events,
             &header_names,
             &headers,
-            LogNamespace::Vector,
             "test",
         );
 

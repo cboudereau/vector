@@ -179,7 +179,7 @@ mod test {
     use std::collections::HashMap;
 
     use indoc::indoc;
-    use vector_lib::{config::LogNamespace, transform::TransformOutputsBuf};
+    use vector_lib::transform::TransformOutputsBuf;
 
     use super::*;
     use crate::{
@@ -213,10 +213,7 @@ mod test {
     #[test]
     fn route_pass_all_route_conditions() {
         let output_names = vec!["first", "second", "third", UNMATCHED_ROUTE];
-        let event = Event::from_json_value(
-            serde_json::json!({"body": "hello world", "second": "second", "third": "third"}),
-            LogNamespace::Vector,
-        )
+        let event = Event::from_json_value(serde_json::json!({"body": "hello world", "second": "second", "third": "third"}))
         .unwrap();
         let config = toml::from_str::<RouteConfig>(
             r#"
@@ -259,11 +256,8 @@ mod test {
     #[test]
     fn route_pass_one_route_condition() {
         let output_names = vec!["first", "second", "third", UNMATCHED_ROUTE];
-        let event = Event::from_json_value(
-            serde_json::json!({"body": "hello world"}),
-            LogNamespace::Vector,
-        )
-        .unwrap();
+        let event = Event::from_json_value(serde_json::json!({"body": "hello world"}))
+            .unwrap();
         let config = toml::from_str::<RouteConfig>(
             r#"
             route.first.type = "vrl"
@@ -304,9 +298,7 @@ mod test {
     #[test]
     fn route_pass_no_route_condition() {
         let output_names = vec!["first", "second", "third", UNMATCHED_ROUTE];
-        let event =
-            Event::from_json_value(serde_json::json!({"message": "NOPE"}), LogNamespace::Vector)
-                .unwrap();
+        let event = Event::from_json_value(serde_json::json!({"message": "NOPE"})).unwrap();
         let config = toml::from_str::<RouteConfig>(
             r#"
             route.first.type = "vrl"
@@ -347,9 +339,7 @@ mod test {
     #[test]
     fn route_no_unmatched_output() {
         let output_names = vec!["first", "second", "third", UNMATCHED_ROUTE];
-        let event =
-            Event::from_json_value(serde_json::json!({"message": "NOPE"}), LogNamespace::Vector)
-                .unwrap();
+        let event = Event::from_json_value(serde_json::json!({"message": "NOPE"})).unwrap();
         let config = toml::from_str::<RouteConfig>(
             r#"
             reroute_unmatched = false

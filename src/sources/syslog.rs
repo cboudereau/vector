@@ -415,7 +415,7 @@ mod test {
     use vector_lib::{
         assert_event_data_eq,
         codecs::decoding::format::Deserializer,
-        config::{ComponentKey, LogNamespace},
+        config::{ComponentKey},
         lookup::owned_value_path,
         schema::Definition,
     };
@@ -462,8 +462,7 @@ mod test {
             .schema_definition(true);
 
         let expected_definition = Definition::new_with_default_metadata(
-            Kind::object(Collection::empty()),
-            [LogNamespace::Vector],
+            Kind::object(Collection::empty())
         )
         .with_event_field(&owned_value_path!("body"), Kind::bytes(), Some("message"))
         .optional_field(

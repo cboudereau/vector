@@ -13,7 +13,7 @@ use vector_lib::{
             TextSerializerConfig,
         },
     },
-    config::{DataType, LogNamespace},
+    config::DataType,
     event::Event,
 };
 
@@ -105,7 +105,7 @@ impl ResourceCodec {
     ///
     /// The decoder is generated as an inverse to the input codec: if an encoding configuration was
     /// given, we generate a decoder that satisfies that encoding configuration, and vice versa.
-    pub fn into_decoder(&self, _log_namespace: LogNamespace) -> vector_lib::Result<Decoder> {
+    pub fn into_decoder(&self) -> vector_lib::Result<Decoder> {
         let (framer, deserializer) = match self {
             Self::Decoding(config) => return config.build(),
             Self::Encoding(config) => (
@@ -377,7 +377,6 @@ impl ExternalResource {
         task_coordinator: &TaskCoordinator<Configuring>,
         input_events: Vec<TestEvent>,
         runner_metrics: &Arc<Mutex<RunnerMetrics>>,
-        log_namespace: LogNamespace,
     ) -> vector_lib::Result<()> {
         match self.definition {
             ResourceDefinition::Http(http_config) => {
@@ -388,7 +387,6 @@ impl ExternalResource {
                     task_coordinator,
                     input_events,
                     runner_metrics,
-                    log_namespace,
                 })
             }
         }

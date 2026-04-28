@@ -7,7 +7,6 @@ use vector_lib::{
         CharacterDelimitedDecoderConfig,
         decoding::{CharacterDelimitedDecoderOptions, DeserializerConfig, FramingConfig},
     },
-    config::LogNamespace,
     event::Event,
 };
 use warp::{Filter, http::HeaderMap};
@@ -56,17 +55,14 @@ impl ValidatableComponent for HttpClientConfig {
             decoding: DeserializerConfig::Json(Default::default()),
             ..Default::default()
         };
-        let log_namespace = LogNamespace::Vector;
-
         let external_resource = ExternalResource::new(
             ResourceDirection::Pull,
             HttpResourceConfig::from_parts(uri, Some(config.method.into())),
-            config.get_decoding_config(None),
+            config.get_decoding_config(),
         );
 
         ValidationConfiguration::from_source(
             Self::NAME,
-            log_namespace,
             vec![ComponentTestCaseConfig::from_source(
                 config,
                 None,

@@ -33,8 +33,6 @@ pub use self::unit_test_components::{
     UnitTestSinkCheck, UnitTestSinkConfig, UnitTestSinkResult, UnitTestSourceConfig,
     UnitTestStreamSinkConfig, UnitTestStreamSourceConfig,
 };
-use vector_lib::config::LogNamespace;
-
 use super::{OutputId, compiler::expand_globs, graph::Graph, transform::get_transform_output_ids};
 use crate::{
     conditions::Condition,
@@ -194,7 +192,6 @@ impl UnitTestBuildMetadata {
                 get_transform_output_ids(
                     transform.inner.as_ref(),
                     key.clone(),
-                    LogNamespace::Vector,
                 )
             })
             .collect::<HashSet<_>>();
@@ -480,7 +477,6 @@ fn get_loose_end_outputs_sink(config: &ConfigBuilder) -> Option<SinkOuter<String
         get_transform_output_ids(
             transform.inner.as_ref(),
             key.clone(),
-            LogNamespace::Vector,
         )
         .map(|output| output.to_string())
         .collect::<Vec<_>>()

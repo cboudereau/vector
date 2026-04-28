@@ -2,7 +2,7 @@ use std::{collections::HashSet, time::Duration};
 
 use config::AmqpPropertiesConfig;
 use futures::StreamExt;
-use vector_lib::{config::LogNamespace, event::OtelLog};
+use vector_lib::event::OtelLog;
 
 use super::*;
 use crate::{
@@ -176,7 +176,6 @@ async fn amqp_round_trip() {
         connection: config.connection.clone(),
         queue: queue.clone(),
         consumer: format!("test-{}-amqp-source", random_string(10)),
-        log_namespace: Some(true),
         acknowledgements: true.into(),
         ..Default::default()
     };
@@ -185,7 +184,6 @@ async fn amqp_round_trip() {
         &source_cfg,
         ShutdownSignal::noop(),
         tx,
-        LogNamespace::Vector,
         true,
     )
     .await

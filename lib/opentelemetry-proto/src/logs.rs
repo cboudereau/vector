@@ -2,7 +2,7 @@ use bytes::Bytes;
 use chrono::{DateTime, TimeZone, Utc};
 use prost::Message;
 use vector_core::{
-    config::{LogNamespace, insert_source_metadata},
+    config::insert_source_metadata,
     event::{Event, EventMetadata, OtelLog},
 };
 use vrl::{core::Value, path};
@@ -29,7 +29,7 @@ pub const DROPPED_ATTRIBUTES_COUNT_KEY: &str = "dropped_attributes_count";
 pub const FLAGS_KEY: &str = "flags";
 
 impl ResourceLogs {
-    pub fn into_event_iter(self, log_namespace: LogNamespace) -> impl Iterator<Item = Event> {
+    pub fn into_event_iter(self) -> impl Iterator<Item = Event> {
         let now = Utc::now();
 
         self.scope_logs.into_iter().flat_map(move |scope_log| {
@@ -41,7 +41,7 @@ impl ResourceLogs {
                     scope: scope.clone(),
                     log_record,
                 }
-                .into_event(log_namespace, now)
+                .into_event(now)
             })
         })
     }
@@ -248,7 +248,7 @@ struct ResourceLog {
 
 // https://github.com/open-telemetry/opentelemetry-specification/blob/v1.15.0/specification/logs/data-model.md
 impl ResourceLog {
-    fn into_event(self, _log_namespace: LogNamespace, now: DateTime<Utc>) -> Event {
+    fn into_event(self, now: DateTime<Utc>) -> Event {
         let mut log = if let Some(v) = self.log_record.body.and_then(|av| av.value) {
             OtelLog::from(<PBValue as Into<Value>>::into(v))
         } else {

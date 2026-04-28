@@ -3,7 +3,7 @@ use std::{collections::HashMap, path::PathBuf};
 use futures_util::{FutureExt, StreamExt, TryFutureExt, TryStreamExt, stream};
 use heim::{disk::Partition, units::information::byte};
 use indexmap::IndexMap;
-use vector_lib::{buffers::config::DiskUsage, config::LogNamespace, internal_event::DEFAULT_OUTPUT};
+use vector_lib::{buffers::config::DiskUsage, internal_event::DEFAULT_OUTPUT};
 
 use super::{
     ComponentKey, Config, OutputId, Resource, builder::ConfigBuilder,
@@ -219,7 +219,6 @@ pub fn check_outputs(config: &ConfigBuilder) -> Result<(), Vec<String>> {
         if get_transform_output_ids(
             transform.inner.as_ref(),
             key.clone(),
-            LogNamespace::Vector,
         )
         .any(|output| matches!(output.port, Some(output) if output == DEFAULT_OUTPUT))
         {
@@ -394,7 +393,6 @@ pub fn warnings(config: &Config) -> Vec<String> {
         get_transform_output_ids(
             transform.inner.as_ref(),
             key.clone(),
-            LogNamespace::Vector,
         )
         .map(|output| ("transform", output))
         .collect::<Vec<_>>()

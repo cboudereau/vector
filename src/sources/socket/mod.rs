@@ -938,16 +938,15 @@ mod test {
         shutdown: &mut SourceShutdownCoordinator,
     ) -> (SocketAddr, JoinHandle<Result<(), ()>>) {
         let (shutdown_signal, _) = shutdown.register_source(source_id, false);
-        init_udp_inner(sender, source_id, shutdown_signal, None, false).await
+        init_udp_inner(sender, source_id, shutdown_signal, None).await
     }
 
-    async fn init_udp(sender: SourceSender, use_log_namespace: bool) -> SocketAddr {
+    async fn init_udp(sender: SourceSender) -> SocketAddr {
         init_udp_inner(
             sender,
             &ComponentKey::from("default"),
             ShutdownSignal::noop(),
             None,
-            use_log_namespace,
         )
         .await
         .0
@@ -959,7 +958,6 @@ mod test {
             &ComponentKey::from("default"),
             ShutdownSignal::noop(),
             Some(config),
-            false,
         )
         .await
         .0
@@ -970,7 +968,6 @@ mod test {
         source_key: &ComponentKey,
         shutdown_signal: ShutdownSignal,
         config: Option<UdpConfig>,
-        _use_vector_namespace: bool,
     ) -> (SocketAddr, JoinHandle<Result<(), ()>>) {
         let (guard, address, config) = match config {
             Some(config) => match config.address() {
@@ -1019,7 +1016,7 @@ mod test {
     async fn udp_message() {
         assert_source_compliance(&SOCKET_PUSH_SOURCE_TAGS, async {
             let (tx, rx) = SourceSender::new_test();
-            let address = init_udp(tx, false).await;
+            let address = init_udp(tx).await;
 
             send_lines_udp(address, vec!["test".to_string()]).await;
             let events = collect_n(rx, 1).await;
@@ -1036,7 +1033,7 @@ mod test {
     async fn udp_message_preserves_newline() {
         assert_source_compliance(&SOCKET_PUSH_SOURCE_TAGS, async {
             let (tx, rx) = SourceSender::new_test();
-            let address = init_udp(tx, false).await;
+            let address = init_udp(tx).await;
 
             send_lines_udp(address, vec!["foo\nbar".to_string()]).await;
             let events = collect_n(rx, 1).await;
@@ -1053,7 +1050,7 @@ mod test {
     async fn udp_multiple_packets() {
         assert_source_compliance(&SOCKET_PUSH_SOURCE_TAGS, async {
             let (tx, rx) = SourceSender::new_test();
-            let address = init_udp(tx, false).await;
+            let address = init_udp(tx).await;
 
             send_lines_udp(address, vec!["test".to_string(), "test2".to_string()]).await;
             let events = collect_n(rx, 2).await;
@@ -1179,7 +1176,7 @@ mod test {
     async fn udp_it_includes_host() {
         assert_source_compliance(&SOCKET_PUSH_SOURCE_TAGS, async {
             let (tx, rx) = SourceSender::new_test();
-            let address = init_udp(tx, false).await;
+            let address = init_udp(tx).await;
 
             let from = send_lines_udp(address, vec!["test".to_string()]).await;
             let events = collect_n(rx, 1).await;
@@ -1202,7 +1199,7 @@ mod test {
     async fn udp_it_includes_vector_namespaced_fields() {
         assert_source_compliance(&SOCKET_PUSH_SOURCE_TAGS, async {
             let (tx, rx) = SourceSender::new_test();
-            let address = init_udp(tx, true).await;
+            let address = init_udp(tx).await;
 
             let from = send_lines_udp(address, vec!["test".to_string()]).await;
             let events = collect_n(rx, 1).await;
@@ -1230,7 +1227,7 @@ mod test {
     async fn udp_it_includes_source_type() {
         assert_source_compliance(&SOCKET_PUSH_SOURCE_TAGS, async {
             let (tx, rx) = SourceSender::new_test();
-            let address = init_udp(tx, false).await;
+            let address = init_udp(tx).await;
 
             _ = send_lines_udp(address, vec!["test".to_string()]).await;
             let events = collect_n(rx, 1).await;
@@ -1441,25 +1438,23 @@ mod test {
     ////////////// UNIX TEST LIBS //////////////
 
     #[cfg(unix)]
-    async fn init_unix(sender: SourceSender, stream: bool, use_vector_namespace: bool) -> PathBuf {
-        init_unix_inner(sender, stream, use_vector_namespace, None).await
+    async fn init_unix(sender: SourceSender, stream: bool) -> PathBuf {
+        init_unix_inner(sender, stream, None).await
     }
 
     #[cfg(unix)]
     async fn init_unix_with_config(
         sender: SourceSender,
         stream: bool,
-        use_vector_namespace: bool,
         config: UnixConfig,
     ) -> PathBuf {
-        init_unix_inner(sender, stream, use_vector_namespace, Some(config)).await
+        init_unix_inner(sender, stream, Some(config)).await
     }
 
     #[cfg(unix)]
     async fn init_unix_inner(
         sender: SourceSender,
         stream: bool,
-        _use_vector_namespace: bool,
         config: Option<UnixConfig>,
     ) -> PathBuf {
         let config = config.unwrap_or_else(|| {
@@ -1505,10 +1500,9 @@ mod test {
     async fn unix_message(
         message: &str,
         stream: bool,
-        use_vector_namespace: bool,
     ) -> (PathBuf, impl Stream<Item = Event> + use<>) {
         let (tx, rx) = SourceSender::new_test();
-        let path = init_unix(tx, stream, use_vector_namespace).await;
+        let path = init_unix(tx, stream).await;
         let path_clone = path.clone();
 
         unix_send_lines(stream, path, &[message]).await;
@@ -1519,7 +1513,7 @@ mod test {
     #[cfg(unix)]
     async fn unix_multiple_packets(stream: bool) {
         let (tx, rx) = SourceSender::new_test();
-        let path = init_unix(tx, stream, false).await;
+        let path = init_unix(tx, stream).await;
 
         unix_send_lines(stream, path, &["test", "test2"]).await;
         let events = collect_n(rx, 2).await;
@@ -1580,7 +1574,7 @@ mod test {
     #[tokio::test]
     async fn unix_datagram_message() {
         assert_source_compliance(&SOCKET_PUSH_SOURCE_TAGS, async {
-            let (_, rx) = unix_message("test", false, false).await;
+            let (_, rx) = unix_message("test", false).await;
             let events = collect_n(rx, 1).await;
 
             assert_eq!(events.len(), 1);
@@ -1653,7 +1647,7 @@ mod test {
             let in_path = tempfile::tempdir().unwrap().keep().join("unix_test");
             let mut config = UnixConfig::new(in_path.clone());
             config.decoding = GelfDeserializerConfig::default().into();
-            let path = init_unix_with_config(tx, false, false, config).await;
+            let path = init_unix_with_config(tx, false, config).await;
             let seed = 42;
             let mut rng = SmallRng::seed_from_u64(seed);
             let max_size = 20;
@@ -1684,7 +1678,7 @@ mod test {
     #[tokio::test]
     async fn unix_datagram_message_with_vector_namespace() {
         assert_source_compliance(&SOCKET_PUSH_SOURCE_TAGS, async {
-            let (_, rx) = unix_message("test", false, true).await;
+            let (_, rx) = unix_message("test", false).await;
             let events = collect_n(rx, 1).await;
             let log = events[0].as_log();
             let event_meta = log.metadata().value();
@@ -1709,7 +1703,7 @@ mod test {
     #[tokio::test]
     async fn unix_datagram_message_preserves_newline() {
         assert_source_compliance(&SOCKET_PUSH_SOURCE_TAGS, async {
-            let (_, rx) = unix_message("foo\nbar", false, false).await;
+            let (_, rx) = unix_message("foo\nbar", false).await;
             let events = collect_n(rx, 1).await;
 
             assert_eq!(events.len(), 1);
@@ -1796,7 +1790,7 @@ mod test {
     #[tokio::test]
     async fn unix_stream_message() {
         assert_source_compliance(&SOCKET_PUSH_SOURCE_TAGS, async {
-            let (_, rx) = unix_message("test", true, false).await;
+            let (_, rx) = unix_message("test", true).await;
             let events = collect_n(rx, 1).await;
 
             assert_eq!(1, events.len());
@@ -1816,7 +1810,7 @@ mod test {
     #[tokio::test]
     async fn unix_stream_message_with_vector_namespace() {
         assert_source_compliance(&SOCKET_PUSH_SOURCE_TAGS, async {
-            let (_, rx) = unix_message("test", true, true).await;
+            let (_, rx) = unix_message("test", true).await;
             let events = collect_n(rx, 1).await;
             let log = events[0].as_log();
             let event_meta = log.metadata().value();
@@ -1839,7 +1833,7 @@ mod test {
     #[tokio::test]
     async fn unix_stream_message_splits_on_newline() {
         assert_source_compliance(&SOCKET_PUSH_SOURCE_TAGS, async {
-            let (_, rx) = unix_message("foo\nbar", true, false).await;
+            let (_, rx) = unix_message("foo\nbar", true).await;
             let events = collect_n(rx, 2).await;
 
             assert_eq!(events.len(), 2);

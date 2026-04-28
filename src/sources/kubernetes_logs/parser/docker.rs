@@ -2,8 +2,6 @@ use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use serde_json::Value as JsonValue;
 use snafu::Snafu;
-use vector_lib::config::LogNamespace;
-
 use crate::{
     event::{self, Event},
     internal_events::KubernetesLogsDockerFormatParseError,
@@ -21,14 +19,11 @@ pub const TIMESTAMP_KEY: &str = "time";
 ///
 /// Normalizes parsed data for consistency.
 #[derive(Clone, Debug)]
-pub(super) struct Docker {
-    #[allow(dead_code)]
-    log_namespace: LogNamespace,
-}
+pub(super) struct Docker;
 
 impl Docker {
-    pub const fn new(log_namespace: LogNamespace) -> Self {
-        Self { log_namespace }
+    pub const fn new() -> Self {
+        Self
     }
 }
 
@@ -180,7 +175,7 @@ pub mod tests {
     }
 
     /// Shared test cases.
-    pub fn valid_cases(log_namespace: LogNamespace) -> Vec<(Bytes, Vec<Event>)> {
+    pub fn valid_cases() -> Vec<(Bytes, Vec<Event>)> {
         vec![
             (
                 Bytes::from(
@@ -191,7 +186,6 @@ pub mod tests {
                     "2016-10-05T00:00:30.082640485Z",
                     "stderr",
                     false,
-                    log_namespace,
                 )],
             ),
             (
@@ -203,7 +197,6 @@ pub mod tests {
                     "2016-10-05T00:00:30.082640485Z",
                     "stdout",
                     false,
-                    log_namespace,
                 )],
             ),
             // Partial message due to message length.
@@ -221,7 +214,6 @@ pub mod tests {
                     "2016-10-05T00:00:30.082640485Z",
                     "stdout",
                     true,
-                    log_namespace,
                 )],
             ),
             // Non-partial message, because message length matches but
@@ -241,7 +233,6 @@ pub mod tests {
                     "2016-10-05T00:00:30.082640485Z",
                     "stdout",
                     false,
-                    log_namespace,
                 )],
             ),
         ]
@@ -281,11 +272,9 @@ pub mod tests {
         trace_init();
 
         test_util::test_parser(
-            || Docker {
-                log_namespace: LogNamespace::Vector,
-            },
+            Docker::new,
             |bytes| Event::Log(OtelLog::from(value!(bytes))),
-            valid_cases(LogNamespace::Vector),
+            valid_cases(),
         );
     }
 
@@ -294,11 +283,9 @@ pub mod tests {
         trace_init();
 
         test_util::test_parser(
-            || Docker {
-                log_namespace: LogNamespace::Vector,
-            },
+            Docker::new,
             |bytes| Event::Log(OtelLog::from(bytes)),
-            valid_cases(LogNamespace::Vector),
+            valid_cases(),
         );
     }
 
@@ -309,7 +296,7 @@ pub mod tests {
         let cases = invalid_cases();
 
         for bytes in cases {
-            let mut parser = Docker::new(LogNamespace::Vector);
+            let mut parser = Docker::new();
             let input = OtelLog::from(value!(bytes));
             let mut output = OutputBuffer::default();
             parser.transform(&mut output, input.into());
@@ -325,7 +312,7 @@ pub mod tests {
         let cases = invalid_cases();
 
         for bytes in cases {
-            let mut parser = Docker::new(LogNamespace::Vector);
+            let mut parser = Docker::new();
             let input = OtelLog::from(bytes);
             let mut output = OutputBuffer::default();
             parser.transform(&mut output, input.into());

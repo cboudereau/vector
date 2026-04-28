@@ -17,7 +17,8 @@ use tokio::{
 };
 use tokio_util::codec::Encoder as _;
 use vector_lib::{
-    EstimatedJsonEncodedSizeOf, codecs::encoding, config::{LogNamespace, insert_standard_vector_source_metadata}, event::Event,
+    EstimatedJsonEncodedSizeOf, codecs::encoding,
+    config::insert_standard_vector_source_metadata, event::Event,
 };
 
 pub use self::config::TopologyBuilder;
@@ -325,7 +326,6 @@ impl Runner {
                 &runner_metrics,
                 maybe_runner_encoder.as_ref().cloned(),
                 self.configuration.component_type,
-                self.configuration.log_namespace(),
             );
 
             // the number of events we expect to receive from the output.
@@ -494,7 +494,6 @@ fn build_external_resource(
                 output_task_coordinator,
                 test_case.events.clone(),
                 runner_metrics,
-                configuration.log_namespace(),
             )?;
 
             Ok((
@@ -564,7 +563,6 @@ fn spawn_input_driver(
     runner_metrics: &Arc<Mutex<RunnerMetrics>>,
     mut maybe_encoder: Option<Encoder<encoding::Framer>>,
     component_type: ComponentType,
-    log_namespace: LogNamespace,
 ) -> JoinHandle<()> {
     let input_runner_metrics = Arc::clone(runner_metrics);
 

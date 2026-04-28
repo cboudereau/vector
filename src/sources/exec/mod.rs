@@ -18,7 +18,6 @@ use vector_lib::{
         Decoder, DecodingConfig, StreamDecodingError,
         decoding::{DeserializerConfig, FramingConfig},
     },
-    config::LogNamespace,
     configurable::configurable_component,
     internal_event::{ByteSize, BytesReceived, InternalEventHandle as _, Protocol},
     lookup::owned_value_path,
@@ -246,7 +245,6 @@ impl SourceConfig for ExecConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
         self.validate()?;
         let hostname = get_hostname();
-        let log_namespace = cx.log_namespace();
 
         let framing = self
             .framing
@@ -265,7 +263,6 @@ impl SourceConfig for ExecConfig {
                     decoder,
                     cx.shutdown,
                     cx.out,
-                    log_namespace,
                 )))
             }
             Mode::Streaming => {
@@ -280,7 +277,6 @@ impl SourceConfig for ExecConfig {
                     decoder,
                     cx.shutdown,
                     cx.out,
-                    log_namespace,
                 )))
             }
         }
@@ -334,7 +330,6 @@ async fn run_scheduled(
     decoder: Decoder,
     shutdown: ShutdownSignal,
     out: SourceSender,
-    log_namespace: LogNamespace,
 ) -> Result<(), ()> {
     debug!("Starting scheduled exec runs.");
     let schedule = Duration::from_secs(exec_interval_secs);
@@ -351,7 +346,6 @@ async fn run_scheduled(
                 decoder.clone(),
                 shutdown.clone(),
                 out.clone(),
-                log_namespace,
             ),
         )
         .await;
@@ -379,7 +373,6 @@ async fn run_scheduled(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn run_streaming(
     config: ExecConfig,
     hostname: Option<String>,
@@ -388,7 +381,6 @@ async fn run_streaming(
     decoder: Decoder,
     mut shutdown: ShutdownSignal,
     out: SourceSender,
-    log_namespace: LogNamespace,
 ) -> Result<(), ()> {
     if respawn_on_exit {
         let duration = Duration::from_secs(respawn_interval_secs);
@@ -401,7 +393,6 @@ async fn run_streaming(
                 decoder.clone(),
                 shutdown.clone(),
                 out.clone(),
-                log_namespace,
             )
             .await;
 
@@ -425,7 +416,6 @@ async fn run_streaming(
             decoder,
             shutdown,
             out,
-            log_namespace,
         )
         .await;
 
@@ -446,7 +436,6 @@ async fn run_command(
     decoder: Decoder,
     mut shutdown: ShutdownSignal,
     mut out: SourceSender,
-    log_namespace: LogNamespace,
 ) -> Result<Option<ExitStatus>, Error> {
     debug!("Starting command run.");
     let mut command = build_command(&config);
@@ -508,7 +497,7 @@ async fn run_command(
                         });
 
                         for event in &mut events {
-                            handle_event(&config, &hostname, &Some(stream.to_string()), pid, event, log_namespace);
+                            handle_event(&config, &hostname, &Some(stream.to_string()), pid, event);
                         }
                         if (out.send_batch(events).await).is_err() {
                             emit!(StreamClosedError { count });
@@ -656,7 +645,6 @@ fn handle_event(
     data_stream: &Option<String>,
     pid: Option<u32>,
     event: &mut Event,
-    _log_namespace: LogNamespace,
 ) {
     if let Event::Log(otel_log) = event {
         let now = Utc::now();

@@ -36,7 +36,7 @@ pub mod config {
     pub use vector_common::config::ComponentKey;
     pub use vector_core::config::{
         AcknowledgementsConfig, DataType, GlobalOptions, Input,
-        LogNamespace, MEMORY_BUFFER_DEFAULT_MAX_EVENTS, OutputId,
+        MEMORY_BUFFER_DEFAULT_MAX_EVENTS, OutputId,
         SourceAcknowledgementsConfig, SourceOutput,
         Tags, Telemetry, TransformOutput, WildcardMatching, clone_input_definitions,
         get_source_metadata, get_vector_metadata,

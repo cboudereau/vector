@@ -13,7 +13,7 @@ use tokio_util::codec::FramedRead;
 use vector_lib::{
     EstimatedJsonEncodedSizeOf,
     codecs::decoding::{DeserializerConfig, FramingConfig},
-    config::{LogNamespace, SourceAcknowledgementsConfig, insert_source_metadata},
+    config::{SourceAcknowledgementsConfig, insert_source_metadata},
     configurable::configurable_component,
     event::{Event, OtelLog},
     finalizer::UnorderedFinalizer,
@@ -132,7 +132,7 @@ fn default_offset_key() -> OptionalValuePath {
 impl_generate_config_from_default!(AmqpSourceConfig);
 
 impl AmqpSourceConfig {
-    fn decoder(&self, _log_namespace: LogNamespace) -> vector_lib::Result<Decoder> {
+    fn decoder(&self) -> vector_lib::Result<Decoder> {
         DecodingConfig::new(self.framing.clone(), self.decoding.clone()).build()
     }
 }
@@ -141,10 +141,9 @@ impl AmqpSourceConfig {
 #[typetag::serde(name = "amqp")]
 impl SourceConfig for AmqpSourceConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
-        let log_namespace = cx.log_namespace();
         let acknowledgements = cx.do_acknowledgements(self.acknowledgements);
 
-        amqp_source(self, cx.shutdown, cx.out, log_namespace, acknowledgements).await
+        amqp_source(self, cx.shutdown, cx.out, acknowledgements).await
     }
 
     fn outputs(&self) -> Vec<SourceOutput> {
@@ -205,7 +204,6 @@ pub(crate) async fn amqp_source(
     config: &AmqpSourceConfig,
     shutdown: ShutdownSignal,
     out: SourceSender,
-    log_namespace: LogNamespace,
     acknowledgements: bool,
 ) -> crate::Result<super::Source> {
     let config = config.clone();
@@ -220,7 +218,6 @@ pub(crate) async fn amqp_source(
         shutdown,
         out,
         channel,
-        log_namespace,
         acknowledgements,
     )))
 }
@@ -241,7 +238,6 @@ fn populate_log_event(
     log: &mut OtelLog,
     timestamp: Option<chrono::DateTime<Utc>>,
     keys: &Keys<'_>,
-    _log_namespace: LogNamespace,
 ) {
     insert_source_metadata(
         AmqpSourceConfig::NAME,
@@ -285,12 +281,11 @@ fn populate_log_event(
 async fn receive_event(
     config: &AmqpSourceConfig,
     out: &mut SourceSender,
-    log_namespace: LogNamespace,
     finalizer: Option<&UnorderedFinalizer<FinalizerEntry>>,
     msg: Delivery,
 ) -> Result<(), ()> {
     let payload = Cursor::new(Bytes::copy_from_slice(&msg.data));
-    let decoder = config.decoder(log_namespace).map_err(|_e| ())?;
+    let decoder = config.decoder().map_err(|_e| ())?;
     let mut stream = FramedRead::new(payload, decoder);
 
     // Extract timestamp from AMQP message
@@ -406,7 +401,6 @@ async fn run_amqp_source(
     shutdown: ShutdownSignal,
     mut out: SourceSender,
     channel: Channel,
-    log_namespace: LogNamespace,
     acknowledgements: bool,
 ) -> Result<(), ()> {
     let (finalizer, mut ack_stream) =
@@ -453,7 +447,7 @@ async fn run_amqp_source(
                             return Err(());
                         }
                         Ok(msg) => {
-                            receive_event(&config, &mut out, log_namespace, finalizer.as_ref(), msg).await?
+                            receive_event(&config, &mut out, finalizer.as_ref(), msg).await?
                         }
                     }
                 } else {
@@ -547,8 +541,7 @@ pub mod test {
             .schema_definition(true);
 
         let expected_definition = Definition::new_with_default_metadata(
-            Kind::object(Collection::empty()),
-            [LogNamespace::Vector],
+            Kind::object(Collection::empty())
         )
         .with_event_field(&owned_value_path!("body"), Kind::bytes(), Some("message"))
         .with_metadata_field(
@@ -601,7 +594,6 @@ mod integration_test {
                 &config,
                 ShutdownSignal::noop(),
                 SourceSender::new_test().0,
-                LogNamespace::Vector,
                 false,
             )
             .await
@@ -619,7 +611,6 @@ mod integration_test {
                 &config,
                 ShutdownSignal::noop(),
                 SourceSender::new_test().0,
-                LogNamespace::Vector,
                 false,
             )
             .await

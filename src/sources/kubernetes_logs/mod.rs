@@ -24,7 +24,6 @@ use serde_with::serde_as;
 use vector_lib::{
     EstimatedJsonEncodedSizeOf, TimeZone,
     codecs::{BytesDeserializer, BytesDeserializerConfig},
-    config::LogNamespace,
     configurable::configurable_component,
     file_source::file_server::{
         FileServer, Line, Shutdown as FileServerShutdown, calculate_ignore_before,
@@ -329,12 +328,11 @@ impl Default for Config {
 #[typetag::serde(name = "kubernetes_logs")]
 impl SourceConfig for Config {
     async fn build(&self, cx: SourceContext) -> crate::Result<sources::Source> {
-        let log_namespace = cx.log_namespace();
         let source = Source::new(self, &cx.globals, &cx.key).await?;
 
         Ok(Box::pin(
             source
-                .run(cx.out, cx.shutdown, log_namespace)
+                .run(cx.out, cx.shutdown)
                 .map(|result| {
                     result.map_err(|error| {
                         error!(message = "Source future failed.", %error);
@@ -586,7 +584,6 @@ impl Source {
         self,
         mut out: SourceSender,
         global_shutdown: ShutdownSignal,
-        log_namespace: LogNamespace,
     ) -> crate::Result<()> {
         let Self {
             client,
@@ -707,10 +704,10 @@ impl Source {
             exclude_paths,
             insert_namespace_fields,
         );
-        let annotator = PodMetadataAnnotator::new(pod_state, pod_fields_spec, log_namespace);
+        let annotator = PodMetadataAnnotator::new(pod_state, pod_fields_spec);
         let ns_annotator =
-            NamespaceMetadataAnnotator::new(ns_state, namespace_fields_spec, log_namespace);
-        let node_annotator = NodeMetadataAnnotator::new(node_state, node_field_spec, log_namespace);
+            NamespaceMetadataAnnotator::new(ns_state, namespace_fields_spec);
+        let node_annotator = NodeMetadataAnnotator::new(node_state, node_field_spec);
 
         let ignore_before = calculate_ignore_before(ignore_older_secs);
 
@@ -791,7 +788,6 @@ impl Source {
                 line.text,
                 &line.filename,
                 ingestion_timestamp_field.as_ref(),
-                log_namespace,
             );
 
             let file_info = annotator.annotate(&mut event, &line.filename);
@@ -828,7 +824,7 @@ impl Source {
             event
         });
 
-        let mut parser = Parser::new(log_namespace);
+        let mut parser = Parser::new();
         let events = events.flat_map(move |event| {
             let mut buf = OutputBuffer::with_capacity(1);
             parser.transform(&mut buf, event);
@@ -838,7 +834,7 @@ impl Source {
         let (events_count, _) = events.size_hint();
 
         let mut stream = if auto_partial_merge {
-            merge_partial_events(events, log_namespace, max_merged_line_bytes).left_stream()
+            merge_partial_events(events, max_merged_line_bytes).left_stream()
         } else {
             events.right_stream()
         };
@@ -905,7 +901,6 @@ fn create_event(
     line: Bytes,
     file: &str,
     _ingestion_timestamp_field: Option<&OwnedTargetPath>,
-    _log_namespace: LogNamespace,
 ) -> Event {
     let deserializer = BytesDeserializer;
     let mut log = deserializer.parse_single(line);
@@ -1052,7 +1047,6 @@ fn prepare_label_selector(selector: &str) -> String {
 mod tests {
     use similar_asserts::assert_eq;
     use vector_lib::{
-        config::LogNamespace,
         lookup::owned_value_path,
         schema::Definition,
     };
@@ -1260,8 +1254,7 @@ mod tests {
             definitions,
             Some(
                 Definition::new_with_default_metadata(
-                    Kind::object(Collection::empty()),
-                    [LogNamespace::Vector]
+                    Kind::object(Collection::empty())
                 )
                 .with_event_field(&owned_value_path!("body"), Kind::bytes(), Some("message"))
                 .with_metadata_field(

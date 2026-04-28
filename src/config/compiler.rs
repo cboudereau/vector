@@ -1,5 +1,4 @@
 use indexmap::{IndexMap, IndexSet};
-use vector_lib::config::LogNamespace;
 use vector_lib::id::Inputs;
 
 use super::{
@@ -167,7 +166,7 @@ pub(crate) fn expand_globs(config: &mut ConfigBuilder) {
                 })
         })
         .chain(config.transforms.iter().flat_map(|(key, t)| {
-            get_transform_output_ids(t.inner.as_ref(), key.clone(), LogNamespace::Vector)
+            get_transform_output_ids(t.inner.as_ref(), key.clone())
         }))
         .map(|output_id| output_id.to_string())
         .collect::<IndexSet<String>>();

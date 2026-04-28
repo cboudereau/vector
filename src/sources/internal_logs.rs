@@ -167,7 +167,7 @@ async fn run(
 mod tests {
     use futures::Stream;
     use tokio::time::{Duration, sleep};
-    use vector_lib::{config::LogNamespace, event::Value};
+    use vector_lib::event::Value;
     use vrl::value::kind::Collection;
 
     use serial_test::serial;
@@ -351,8 +351,7 @@ mod tests {
             .schema_definition(true);
 
         let expected_definition = Definition::new_with_default_metadata(
-            Kind::object(Collection::empty()),
-            [LogNamespace::Vector],
+            Kind::object(Collection::empty())
         )
         .with_event_field(&owned_value_path!("body"), Kind::bytes(), Some("message"))
         .with_metadata_field(

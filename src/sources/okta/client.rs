@@ -17,7 +17,7 @@ use vector_lib::{
         Decoder, DecodingConfig, JsonDeserializerConfig, StreamDecodingError,
         decoding::{DeserializerConfig, FramingConfig},
     },
-    config::{LogNamespace, SourceOutput, proxy::ProxyConfig},
+    config::{SourceOutput, proxy::ProxyConfig},
     configurable::configurable_component,
     event::Event,
     json_size::JsonSize,
@@ -145,8 +145,6 @@ impl SourceConfig for OktaConfig {
 
         let tls = TlsSettings::from_options(self.tls.as_ref())?;
 
-        let log_namespace = cx.log_namespace();
-
         warn_if_interval_too_low(self.timeout, self.interval);
 
         Ok(run(
@@ -156,7 +154,6 @@ impl SourceConfig for OktaConfig {
             self.token.clone(),
             self.interval,
             self.timeout,
-            log_namespace,
             cx.shutdown,
             cx.out,
         )
@@ -175,7 +172,7 @@ impl SourceConfig for OktaConfig {
     }
 }
 
-fn enrich_events(events: &mut Vec<Event>, _log_namespace: LogNamespace) {
+fn enrich_events(events: &mut Vec<Event>) {
     let now = Utc::now();
     for event in events {
         if let Event::Log(otel_log) = event {
@@ -224,7 +221,6 @@ async fn run_once(url: String, result: OktaTimeoutResult, timeout: Duration) -> 
 fn handle_response(
     response: OktaRunResult,
     decoder: Decoder,
-    log_namespace: LogNamespace,
     url: String,
 ) -> Option<impl Stream<Item = Event> + Send + use<>> {
     match response {
@@ -248,7 +244,7 @@ fn handle_response(
                 return None;
             }
 
-            enrich_events(&mut events, log_namespace);
+            enrich_events(&mut events);
 
             Some(stream::iter(events))
         }
@@ -281,7 +277,6 @@ async fn run(
     token: String,
     interval: Duration,
     timeout: Duration,
-    log_namespace: LogNamespace,
     shutdown: ShutdownSignal,
     mut out: SourceSender,
 ) -> Result<(), ()> {
@@ -363,7 +358,7 @@ async fn run(
                             (new_url, response)
                         };
 
-                        handle_response(response, decoder, log_namespace, run_url)
+                        handle_response(response, decoder, run_url)
                             .map(|events| (events, ()))
                     }
                 })

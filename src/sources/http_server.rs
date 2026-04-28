@@ -11,7 +11,7 @@ use vector_lib::{
         NewlineDelimitedDecoderConfig,
         decoding::{DeserializerConfig, FramingConfig},
     },
-    config::{DataType, LogNamespace},
+    config::DataType,
     configurable::configurable_component,
     lookup::{lookup_v2::OptionalValuePath, owned_value_path},
     schema::Definition,
@@ -345,7 +345,6 @@ pub fn build_param_matcher(list: &[String]) -> crate::Result<Vec<HttpConfigParam
 #[typetag::serde(name = "http_server")]
 impl SourceConfig for SimpleHttpConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
-        let log_namespace = cx.log_namespace();
         let decoder = self
             .get_decoding_config()?
             .build()?;
@@ -359,7 +358,6 @@ impl SourceConfig for SimpleHttpConfig {
             path_key: self.path_key.clone(),
             host_key: self.host_key.clone(),
             decoder,
-            log_namespace,
         };
         source.run(
             self.address,
@@ -404,7 +402,6 @@ struct SimpleHttpSource {
     path_key: OptionalValuePath,
     host_key: OptionalValuePath,
     decoder: Decoder,
-    log_namespace: LogNamespace,
 }
 
 impl HttpSource for SimpleHttpSource {
@@ -446,7 +443,6 @@ impl HttpSource for SimpleHttpSource {
             events,
             &self.headers,
             headers,
-            self.log_namespace,
             SimpleHttpConfig::NAME,
         );
 
@@ -512,7 +508,6 @@ mod tests {
             BytesDecoderConfig, JsonDeserializerConfig,
             decoding::{DeserializerConfig, FramingConfig},
         },
-        config::LogNamespace,
         event::OtelLog,
         lookup::{
             event_path, lookup_v2::OptionalValuePath, owned_value_path,
@@ -1593,8 +1588,7 @@ mod tests {
             .schema_definition(true);
 
         let expected_definition = Definition::new_with_default_metadata(
-            Kind::object(Collection::empty()),
-            [LogNamespace::Vector],
+            Kind::object(Collection::empty())
         )
         .with_event_field(&owned_value_path!("body"), Kind::bytes(), Some("message"))
         .with_metadata_field(
@@ -1672,8 +1666,6 @@ mod tests {
                 ..Default::default()
             };
 
-            let log_namespace = LogNamespace::Vector;
-
             let listen_addr_http = format!("http://{}/", config.address);
             let uri = Uri::try_from(&listen_addr_http).expect("should not fail to parse URI");
 
@@ -1687,7 +1679,6 @@ mod tests {
 
             ValidationConfiguration::from_source(
                 Self::NAME,
-                log_namespace,
                 vec![ComponentTestCaseConfig::from_source(
                     config,
                     None,

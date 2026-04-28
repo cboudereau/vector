@@ -61,7 +61,6 @@ async fn receive_logs_legacy_namespace() {
                 headers: vec![],
             },
             acknowledgements: Default::default(),
-            log_namespace: Default::default(),
         };
 
         let (sender, logs_output, _) = new_source(EventStatus::Delivered, LOGS.to_string());
@@ -159,7 +158,6 @@ async fn receive_trace() {
                 headers: vec![],
             },
             acknowledgements: Default::default(),
-            log_namespace: Default::default(),
         };
 
         let (sender, trace_output, _) = new_source(EventStatus::Delivered, TRACES.to_string());
@@ -263,7 +261,6 @@ async fn receive_metric() {
                 headers: vec![],
             },
             acknowledgements: Default::default(),
-            log_namespace: Default::default(),
         };
 
         let (sender, metrics_output, _) = new_source(EventStatus::Delivered, METRICS.to_string());

@@ -491,7 +491,6 @@ mod tests {
     use bytes::BytesMut;
     use chrono::NaiveDate;
     use std::sync::Arc;
-    use vector_core::config::LogNamespace;
     use vector_core::event::{
         Event, EventMetadata, MetricKind, MetricValue, OtelMetric, StatisticKind,
         metric::{MetricData, MetricName, MetricSeries, MetricTime},
@@ -856,8 +855,7 @@ mod tests {
                 "syslog" => Kind::object(btreemap! {
                     "service" => Kind::bytes(),
                 })
-            }),
-            [LogNamespace::Vector],
+            })
         );
         let schema = schema.with_meaning(parse_target_path("syslog.service").unwrap(), "service");
         let mut event = Event::Log(log);

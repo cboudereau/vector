@@ -5,7 +5,6 @@ use futures_util::StreamExt;
 use serde::{Deserialize, de};
 use vector_lib::{
     codecs::{JsonSerializerConfig, TextSerializerConfig},
-    config::LogNamespace,
     event::{Event, EventMetadata, OtelLog, Value},
     lookup::lookup_v2::OptionalTargetPath,
     schema::{Definition, meaning},
@@ -345,7 +344,7 @@ fn splunk_encode_log_event_json_timestamps() {
 #[test]
 fn splunk_encode_log_event_semantic_meanings() {
     let metadata = EventMetadata::default().with_schema_definition(&Arc::new(
-        Definition::new_with_default_metadata(Kind::bytes(), [LogNamespace::Vector])
+        Definition::new_with_default_metadata(Kind::bytes())
             .with_source_metadata(
                 "splunk_hec",
                 &owned_value_path!("hostname"),
@@ -376,8 +375,6 @@ fn splunk_encode_log_event_semantic_meanings() {
         metadata_path!("splunk_hec", "timestamp"),
         Value::Timestamp(og_time),
     );
-
-    assert!(log.namespace() == LogNamespace::Vector);
 
     let event = Event::from(log);
 

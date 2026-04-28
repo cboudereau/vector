@@ -35,7 +35,6 @@ use tower::ServiceBuilder;
 use tracing::Span;
 use vector_lib::{
     codecs::decoding::{DeserializerConfig, FramingConfig},
-    config::LogNamespace,
     configurable::configurable_component,
     event::{BatchNotifier, BatchStatus},
     internal_event::{EventsReceived, Registered},
@@ -188,8 +187,6 @@ impl GenerateConfig for DatadogAgentConfig {
 #[typetag::serde(name = "datadog_agent")]
 impl SourceConfig for DatadogAgentConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<sources::Source> {
-        let log_namespace = cx.log_namespace();
-
         let logs_schema_definition = cx
             .schema_definitions
             .get(&Some(LOGS.to_owned()))
@@ -206,7 +203,6 @@ impl SourceConfig for DatadogAgentConfig {
             decoder,
             tls.http_protocol_name(),
             logs_schema_definition,
-            log_namespace,
             self.parse_ddtags,
             self.split_metric_namespace,
         );
@@ -359,8 +355,6 @@ pub struct ApiKeyQueryParams {
 #[derive(Clone)]
 pub(crate) struct DatadogAgentSource {
     pub(crate) api_key_extractor: ApiKeyExtractor,
-    #[allow(dead_code)]
-    pub(crate) log_namespace: LogNamespace,
     pub(crate) decoder: Decoder,
     protocol: &'static str,
     logs_schema_definition: Option<Arc<schema::Definition>>,
@@ -403,7 +397,6 @@ impl DatadogAgentSource {
         decoder: Decoder,
         protocol: &'static str,
         logs_schema_definition: Option<schema::Definition>,
-        log_namespace: LogNamespace,
         parse_ddtags: bool,
         split_metric_namespace: bool,
     ) -> Self {
@@ -416,7 +409,6 @@ impl DatadogAgentSource {
             decoder,
             protocol,
             logs_schema_definition: logs_schema_definition.map(Arc::new),
-            log_namespace,
             events_received: register!(EventsReceived),
             parse_ddtags,
             split_metric_namespace,

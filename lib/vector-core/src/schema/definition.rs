@@ -5,8 +5,6 @@ use lookup::{
 };
 use vrl::value::{Kind, kind::Collection};
 
-use crate::config::LogNamespace;
-
 /// The definition of a schema.
 ///
 /// This struct contains all the information needed to inspect the schema of an event emitted by
@@ -24,11 +22,6 @@ pub struct Definition {
     /// The value within this map points to a path inside the `event_kind`.
     /// Meanings currently can't point to metadata.
     meaning: BTreeMap<String, MeaningPointer>,
-
-    /// Type definitions of components can change depending on the log namespace chosen.
-    /// This records which ones are possible.
-    /// An empty set means the definition can't be for a log
-    log_namespaces: BTreeSet<LogNamespace>,
 }
 
 /// In regular use, a semantic meaning points to exactly _one_ location in the collection. However,
@@ -70,62 +63,45 @@ impl MeaningPointer {
 }
 
 impl Definition {
-    /// The most general possible definition. The `Kind` is `any`, and all `log_namespaces` are enabled.
+    /// The most general possible definition. The `Kind` is `any`.
     pub fn any() -> Self {
         Self {
             event_kind: Kind::any(),
             metadata_kind: Kind::any(),
             meaning: BTreeMap::default(),
-            log_namespaces: [LogNamespace::Vector].into(),
         }
     }
 
     /// Creates a new definition that is of the event kind specified, and an empty object for metadata.
     /// There are no meanings.
-    /// The `log_namespaces` are used to list the possible namespaces the schema is for.
-    pub fn new_with_default_metadata(
-        event_kind: Kind,
-        log_namespaces: impl Into<BTreeSet<LogNamespace>>,
-    ) -> Self {
+    pub fn new_with_default_metadata(event_kind: Kind) -> Self {
         Self {
             event_kind,
             metadata_kind: Kind::object(Collection::any()),
             meaning: BTreeMap::default(),
-            log_namespaces: log_namespaces.into(),
         }
     }
 
     /// Creates a new definition, specifying both the event and metadata kind.
     /// There are no meanings.
-    /// The `log_namespaces` are used to list the possible namespaces the schema is for.
-    pub fn new(
-        event_kind: Kind,
-        metadata_kind: Kind,
-        log_namespaces: impl Into<BTreeSet<LogNamespace>>,
-    ) -> Self {
+    pub fn new(event_kind: Kind, metadata_kind: Kind) -> Self {
         Self {
             event_kind,
             metadata_kind,
             meaning: BTreeMap::default(),
-            log_namespaces: log_namespaces.into(),
         }
     }
 
     pub fn default_legacy_namespace() -> Self {
-        Self::new_with_default_metadata(Kind::any(), [LogNamespace::Vector])
+        Self::new_with_default_metadata(Kind::any())
     }
 
     pub fn empty_legacy_namespace() -> Self {
-        Self::new_with_default_metadata(Kind::object(Collection::empty()), [LogNamespace::Vector])
+        Self::new_with_default_metadata(Kind::object(Collection::empty()))
     }
 
-    pub fn default_for_namespace(_log_namespaces: &BTreeSet<LogNamespace>) -> Self {
-        Self::new_with_default_metadata(Kind::any(), [LogNamespace::Vector])
-    }
-
-    /// The set of possible log namespaces that events can use. When merged, this is the union of all inputs.
-    pub fn log_namespaces(&self) -> &BTreeSet<LogNamespace> {
-        &self.log_namespaces
+    pub fn default_for_namespace() -> Self {
+        Self::new_with_default_metadata(Kind::any())
     }
 
     /// Adds the `source_type` and `ingest_timestamp` metadata fields, which are added to every Vector source.
@@ -146,7 +122,7 @@ impl Definition {
     }
 
     /// Register metadata type information for a source-namespaced field.
-    /// Corresponds to `LogNamespace::insert_source_metadata`.
+    /// Corresponds to `insert_source_metadata`.
     #[must_use]
     pub fn with_source_metadata(
         self,
@@ -163,7 +139,7 @@ impl Definition {
     }
 
     /// Register metadata type information for a vector-namespaced field.
-    /// Corresponds to `LogNamespace::insert_vector_metadata`.
+    /// Corresponds to `insert_vector_metadata`.
     #[must_use]
     pub fn with_vector_metadata(
         self,
@@ -377,7 +353,7 @@ impl Definition {
     ///
     /// This just takes the union of both definitions.
     #[must_use]
-    pub fn merge(mut self, mut other: Self) -> Self {
+    pub fn merge(mut self, other: Self) -> Self {
         for (other_id, other_meaning) in other.meaning {
             let meaning = match self.meaning.remove(&other_id) {
                 Some(this_meaning) => this_meaning.merge(other_meaning),
@@ -389,23 +365,7 @@ impl Definition {
 
         self.event_kind = self.event_kind.union(other.event_kind);
         self.metadata_kind = self.metadata_kind.union(other.metadata_kind);
-        self.log_namespaces.append(&mut other.log_namespaces);
         self
-    }
-
-    /// If the schema definition depends on the `LogNamespace`, this combines the individual
-    /// definitions for each `LogNamespace`.
-    pub fn combine_log_namespaces(
-        log_namespaces: &BTreeSet<LogNamespace>,
-        _legacy: Self,
-        vector: Self,
-    ) -> Self {
-        let mut combined =
-            Definition::new_with_default_metadata(Kind::never(), log_namespaces.clone());
-        if log_namespaces.contains(&LogNamespace::Vector) {
-            combined = combined.merge(vector);
-        }
-        combined
     }
 
     /// Returns an `OwnedTargetPath` into an event, based on the provided `meaning`, if the meaning exists.
@@ -500,14 +460,6 @@ mod test_utils {
                         self.metadata_kind.at_path(&path).debug_info()
                     ));
                 }
-                if !self.log_namespaces.contains(&otel_log.namespace()) {
-                    return Result::Err(format!(
-                        "Event uses the {:?} LogNamespace, but the definition only contains: {:?}",
-                        otel_log.namespace(),
-                        self.log_namespaces
-                    ));
-                }
-
                 Ok(())
             } else {
                 // schema definitions currently only apply to logs
@@ -567,7 +519,7 @@ mod tests {
         } in [
             TestCase {
                 title: "match",
-                definition: Definition::new(Kind::any(), Kind::any(), [LogNamespace::Vector]),
+                definition: Definition::new(Kind::any(), Kind::any()),
                 event: Event::Log(OtelLog::from(Value::Object(BTreeMap::new()))),
                 valid: true,
             },
@@ -576,7 +528,6 @@ mod tests {
                 definition: Definition::new(
                     Kind::object(Collection::empty()),
                     Kind::any(),
-                    [LogNamespace::Vector],
                 ),
                 event: Event::Log(OtelLog::from(Value::Object(BTreeMap::from([("foo".into(), 4.into())])))),
                 valid: false,
@@ -586,7 +537,6 @@ mod tests {
                 definition: Definition::new(
                     Kind::any(),
                     Kind::object(Collection::empty()),
-                    [LogNamespace::Vector],
                 ),
                 event: Event::Log(OtelLog::from_value_map(
                     Value::Object(BTreeMap::new()),
@@ -597,17 +547,10 @@ mod tests {
                 valid: false,
             },
             TestCase {
-                title: "wrong log namespace",
-                definition: Definition::new(Kind::any(), Kind::any(), []),
-                event: Event::Log(OtelLog::from(Value::Object(BTreeMap::new()))),
-                valid: false,
-            },
-            TestCase {
                 title: "event mismatch - null vs undefined",
                 definition: Definition::new(
                     Kind::object(Collection::empty()),
                     Kind::any(),
-                    [LogNamespace::Vector],
                 ),
                 event: Event::Log(OtelLog::from(Value::Object(BTreeMap::from([(
                     "foo".into(),
@@ -665,7 +608,6 @@ mod tests {
                             MeaningPointer::Valid(parse_target_path("foo").unwrap()),
                         )]
                         .into(),
-                        log_namespaces: BTreeSet::new(),
                     },
                 },
             ),
@@ -686,7 +628,6 @@ mod tests {
                             MeaningPointer::Valid(parse_target_path(".foo.bar").unwrap()),
                         )]
                         .into(),
-                        log_namespaces: BTreeSet::new(),
                     },
                 },
             ),
@@ -700,7 +641,6 @@ mod tests {
                         event_kind: Kind::object(BTreeMap::from([("foo".into(), Kind::boolean())])),
                         metadata_kind: Kind::object(Collection::empty()),
                         meaning: BTreeMap::default(),
-                        log_namespaces: BTreeSet::new(),
                     },
                 },
             ),
@@ -745,7 +685,6 @@ mod tests {
                             MeaningPointer::Valid(parse_target_path("foo").unwrap()),
                         )]
                         .into(),
-                        log_namespaces: BTreeSet::new(),
                     },
                 },
             ),
@@ -769,7 +708,6 @@ mod tests {
                             MeaningPointer::Valid(parse_target_path(".foo.bar").unwrap()),
                         )]
                         .into(),
-                        log_namespaces: BTreeSet::new(),
                     },
                 },
             ),
@@ -786,12 +724,11 @@ mod tests {
                         )])),
                         metadata_kind: Kind::object(Collection::any()),
                         meaning: BTreeMap::default(),
-                        log_namespaces: BTreeSet::new(),
                     },
                 },
             ),
         ] {
-            let mut got = Definition::new_with_default_metadata(Kind::object(BTreeMap::new()), []);
+            let mut got = Definition::new_with_default_metadata(Kind::object(BTreeMap::new()));
             got = got.optional_field(&path, kind, meaning);
 
             assert_eq!(got, want, "{title}");
@@ -804,10 +741,9 @@ mod tests {
             event_kind: Kind::object(Collection::from_unknown(Kind::bytes().or_integer())),
             metadata_kind: Kind::object(Collection::any()),
             meaning: BTreeMap::default(),
-            log_namespaces: BTreeSet::new(),
         };
 
-        let mut got = Definition::new_with_default_metadata(Kind::object(Collection::empty()), []);
+        let mut got = Definition::new_with_default_metadata(Kind::object(Collection::empty()));
         got = got.unknown_fields(Kind::boolean());
         got = got.unknown_fields(Kind::bytes().or_integer());
 
@@ -819,7 +755,6 @@ mod tests {
         let def = Definition::new(
             Kind::object(Collection::empty()),
             Kind::object(Collection::empty()),
-            [LogNamespace::Vector],
         )
         .with_event_field(
             &owned_value_path!("foo"),
@@ -865,7 +800,6 @@ mod tests {
                             "foo_meaning".to_owned(),
                             MeaningPointer::Valid(parse_target_path("foo").unwrap()),
                         )]),
-                        log_namespaces: BTreeSet::new(),
                     },
                     other: Definition {
                         event_kind: Kind::object(Collection::from(BTreeMap::from([(
@@ -877,7 +811,6 @@ mod tests {
                             "foo_meaning".to_owned(),
                             MeaningPointer::Valid(parse_target_path("foo").unwrap()),
                         )]),
-                        log_namespaces: BTreeSet::new(),
                     },
                     want: Definition {
                         event_kind: Kind::object(Collection::from(BTreeMap::from([(
@@ -889,7 +822,6 @@ mod tests {
                             "foo_meaning".to_owned(),
                             MeaningPointer::Valid(parse_target_path("foo").unwrap()),
                         )]),
-                        log_namespaces: BTreeSet::new(),
                     },
                 },
             ),
@@ -903,7 +835,6 @@ mod tests {
                         )]))),
                         metadata_kind: Kind::object(Collection::empty()),
                         meaning: BTreeMap::default(),
-                        log_namespaces: BTreeSet::new(),
                     },
                     other: Definition {
                         event_kind: Kind::object(Collection::from(BTreeMap::from([(
@@ -912,7 +843,6 @@ mod tests {
                         )]))),
                         metadata_kind: Kind::object(Collection::empty()),
                         meaning: BTreeMap::default(),
-                        log_namespaces: BTreeSet::new(),
                     },
                     want: Definition {
                         event_kind: Kind::object(Collection::from(BTreeMap::from([(
@@ -921,7 +851,6 @@ mod tests {
                         )]))),
                         metadata_kind: Kind::object(Collection::empty()),
                         meaning: BTreeMap::default(),
-                        log_namespaces: BTreeSet::new(),
                     },
                 },
             ),
@@ -935,7 +864,6 @@ mod tests {
                         )]))),
                         metadata_kind: Kind::object(Collection::empty()),
                         meaning: BTreeMap::default(),
-                        log_namespaces: BTreeSet::new(),
                     },
                     other: Definition {
                         event_kind: Kind::object(Collection::from(BTreeMap::from([(
@@ -944,7 +872,6 @@ mod tests {
                         )]))),
                         metadata_kind: Kind::object(Collection::empty()),
                         meaning: BTreeMap::default(),
-                        log_namespaces: BTreeSet::new(),
                     },
                     want: Definition {
                         event_kind: Kind::object(Collection::from(BTreeMap::from([(
@@ -953,7 +880,6 @@ mod tests {
                         )]))),
                         metadata_kind: Kind::object(Collection::empty()),
                         meaning: BTreeMap::default(),
-                        log_namespaces: BTreeSet::new(),
                     },
                 },
             ),
@@ -967,7 +893,6 @@ mod tests {
                         )]))),
                         metadata_kind: Kind::object(Collection::empty()),
                         meaning: BTreeMap::default(),
-                        log_namespaces: BTreeSet::new(),
                     },
                     other: Definition {
                         event_kind: Kind::object(Collection::from(BTreeMap::from([(
@@ -976,7 +901,6 @@ mod tests {
                         )]))),
                         metadata_kind: Kind::object(Collection::empty()),
                         meaning: BTreeMap::default(),
-                        log_namespaces: BTreeSet::new(),
                     },
                     want: Definition {
                         event_kind: Kind::object(Collection::from(BTreeMap::from([(
@@ -985,7 +909,6 @@ mod tests {
                         )]))),
                         metadata_kind: Kind::object(Collection::empty()),
                         meaning: BTreeMap::default(),
-                        log_namespaces: BTreeSet::new(),
                     },
                 },
             ),
@@ -1002,7 +925,6 @@ mod tests {
                             "foo".into(),
                             MeaningPointer::Valid(parse_target_path("foo").unwrap()),
                         )]),
-                        log_namespaces: BTreeSet::new(),
                     },
                     other: Definition {
                         event_kind: Kind::object(Collection::from(BTreeMap::from([(
@@ -1014,7 +936,6 @@ mod tests {
                             "foo".into(),
                             MeaningPointer::Valid(parse_target_path("bar").unwrap()),
                         )]),
-                        log_namespaces: BTreeSet::new(),
                     },
                     want: Definition {
                         event_kind: Kind::object(Collection::from(BTreeMap::from([(
@@ -1029,7 +950,6 @@ mod tests {
                                 parse_target_path("bar").unwrap(),
                             ])),
                         )]),
-                        log_namespaces: BTreeSet::new(),
                     },
                 },
             ),
@@ -1046,7 +966,6 @@ mod tests {
                             "foo".into(),
                             MeaningPointer::Valid(parse_target_path("foo").unwrap()),
                         )]),
-                        log_namespaces: BTreeSet::new(),
                     },
                     other: Definition {
                         event_kind: Kind::object(Collection::from(BTreeMap::from([(
@@ -1058,7 +977,6 @@ mod tests {
                             "foo".into(),
                             MeaningPointer::Valid(parse_target_path("foo").unwrap()),
                         )]),
-                        log_namespaces: BTreeSet::new(),
                     },
                     want: Definition {
                         event_kind: Kind::object(Collection::from(BTreeMap::from([(
@@ -1070,7 +988,6 @@ mod tests {
                             "foo".into(),
                             MeaningPointer::Valid(parse_target_path("foo").unwrap()),
                         )]),
-                        log_namespaces: BTreeSet::new(),
                     },
                 },
             ),

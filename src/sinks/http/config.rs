@@ -386,10 +386,7 @@ mod tests {
         fn validation_configuration() -> ValidationConfiguration {
             use std::str::FromStr;
 
-            use vector_lib::{
-                codecs::{JsonSerializerConfig, MetricTagValues},
-                config::LogNamespace,
-            };
+            use vector_lib::codecs::{JsonSerializerConfig, MetricTagValues};
 
             let endpoint = "http://127.0.0.1:9000/endpoint";
             let uri = UriSerde::from_str(endpoint).expect("should never fail to parse");
@@ -425,7 +422,6 @@ mod tests {
 
             ValidationConfiguration::from_sink(
                 Self::NAME,
-                LogNamespace::Vector,
                 vec![ComponentTestCaseConfig::from_sink(
                     config,
                     None,

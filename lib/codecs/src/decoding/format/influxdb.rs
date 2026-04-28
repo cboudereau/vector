@@ -7,7 +7,7 @@ use influxdb_line_protocol::{FieldValue, ParsedLine};
 use smallvec::SmallVec;
 use vector_config::configurable_component;
 use vector_core::{
-    config::{DataType, LogNamespace},
+    config::{DataType},
     event::{Event, MetricTags, OtelMetric},
     schema,
 };
@@ -45,8 +45,7 @@ impl InfluxdbDeserializerConfig {
     /// The schema produced by the deserializer.
     pub fn schema_definition(&self) -> schema::Definition {
         schema::Definition::new_with_default_metadata(
-            Kind::object(Collection::empty()),
-            [LogNamespace::Vector],
+            Kind::object(Collection::empty())
         )
     }
 }

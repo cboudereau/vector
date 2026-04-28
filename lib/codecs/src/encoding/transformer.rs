@@ -269,8 +269,7 @@ mod tests {
     use indoc::indoc;
     use lookup::{owned_value_path, path::parse_target_path};
     use vector_core::{
-        config::LogNamespace,
-        event::OtelLog,
+        config::event::OtelLog,
         schema,
     };
     use vrl::{btreemap, value::Kind};
@@ -460,8 +459,7 @@ mod tests {
                 "thing" => Kind::object(btreemap! {
                     "service" => Kind::bytes(),
                 }),
-            }),
-            [LogNamespace::Vector],
+            })
         );
 
         let schema = schema.with_meaning(parse_target_path("thing.service").unwrap(), "service");
@@ -501,8 +499,7 @@ mod tests {
                 "thing" => Kind::object(btreemap! {
                     "service" => Kind::bytes(),
                 }),
-            }),
-            [LogNamespace::Vector],
+            })
         );
 
         let schema = schema.with_meaning(parse_target_path("thing.service").unwrap(), "service");

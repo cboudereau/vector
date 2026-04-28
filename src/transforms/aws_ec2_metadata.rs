@@ -730,7 +730,7 @@ mod test {
     use vrl::{owned_value_path, value::Kind};
 
     use crate::{
-        config::{LogNamespace, OutputId, TransformConfig, schema::Definition},
+        config::{OutputId, TransformConfig, schema::Definition},
         transforms::aws_ec2_metadata::Ec2Metadata,
     };
 
@@ -742,7 +742,7 @@ mod test {
         };
 
         let input_definition =
-            Definition::new(Kind::bytes(), Kind::any_object(), [LogNamespace::Vector]);
+            Definition::new(Kind::bytes(), Kind::any_object());
 
         let mut outputs = transform_config.outputs(
             &Default::default(),

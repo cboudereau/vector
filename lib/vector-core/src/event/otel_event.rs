@@ -1773,10 +1773,8 @@ impl OtelLog {
     /// Prefers `time_unix_nano` (event time), falls back to
     /// `observed_time_unix_nano` (ingest time).
     pub fn get_timestamp(&self) -> Option<Value> {
-        if self.namespace() == crate::config::LogNamespace::Vector {
-            if let Some(ts) = self.get_by_meaning("timestamp") {
-                return Some(coerce_to_timestamp(ts));
-            }
+        if let Some(ts) = self.get_by_meaning("timestamp") {
+            return Some(coerce_to_timestamp(ts));
         }
         if self.record.time_unix_nano != 0 {
             let nanos = self.record.time_unix_nano;
@@ -1878,10 +1876,6 @@ impl OtelLog {
         Ok(self.get(&target_path))
     }
 
-    pub fn namespace(&self) -> crate::config::LogNamespace {
-        crate::config::LogNamespace::Vector
-    }
-
     /// Iterate all event fields (flattened, dotted keys). Owned values.
     /// Iterator over all event fields, returning owned values
     /// since OtelLog builds the field tree dynamically from proto.
@@ -1977,13 +1971,9 @@ impl OtelLog {
     /// In Vector namespace: returns body only.
     /// In Legacy namespace: returns canonical proto layout.
     pub fn value(&self) -> Value {
-        if self.namespace() == crate::config::LogNamespace::Vector {
-            self.body()
-                .map(any_value_to_vrl)
-                .unwrap_or(Value::Null)
-        } else {
-            self.to_value_canonical()
-        }
+        self.body()
+            .map(any_value_to_vrl)
+            .unwrap_or(Value::Null)
     }
 
     /// Get all top-level keys from the event.
@@ -4790,7 +4780,6 @@ mod tests {
     #[test]
     fn get_by_meaning_resolves_schema_meaning() {
         use std::sync::Arc;
-        use crate::config::LogNamespace;
 
         // Create an OtelLog and insert a field at a custom path
         let mut event = OtelLog::from("test body");
@@ -4804,7 +4793,6 @@ mod tests {
             lookup::path!("vector", "ns"),
             Value::Bytes("true".into()),
         );
-        assert_eq!(event.namespace(), LogNamespace::Vector);
 
         // Set schema meaning: "timestamp" → "@timestamp"
         let schema = event

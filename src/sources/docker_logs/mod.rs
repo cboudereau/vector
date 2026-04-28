@@ -25,7 +25,7 @@ use tokio::sync::mpsc;
 use tracing_futures::Instrument;
 use vector_lib::{
     codecs::{BytesDeserializer, BytesDeserializerConfig},
-    config::{LogNamespace, insert_source_metadata},
+    config::insert_source_metadata,
     configurable::configurable_component,
     internal_event::{ByteSize, BytesReceived, InternalEventHandle as _, Protocol, Registered},
     lookup::{
@@ -240,12 +240,10 @@ impl_generate_config_from_default!(DockerLogsConfig);
 #[typetag::serde(name = "docker_logs")]
 impl SourceConfig for DockerLogsConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
-        let log_namespace = cx.log_namespace();
         let source = DockerLogsSource::new(
             self.clone().with_empty_partial_event_marker_field_as_none(),
             cx.out,
             cx.shutdown.clone(),
-            log_namespace,
         )?;
 
         // Capture currently running containers, and do main future(run)
@@ -451,7 +449,6 @@ impl DockerLogsSource {
         config: DockerLogsConfig,
         out: SourceSender,
         shutdown: ShutdownSignal,
-        log_namespace: LogNamespace,
     ) -> crate::Result<DockerLogsSource> {
         let backoff_secs = config.retry_backoff_secs;
 
@@ -482,7 +479,6 @@ impl DockerLogsSource {
             out,
             main_send,
             shutdown,
-            log_namespace,
         };
 
         Ok(DockerLogsSource {
@@ -700,7 +696,6 @@ struct EventStreamBuilder {
     main_send: mpsc::UnboundedSender<Result<ContainerLogInfo, (ContainerId, ErrorPersistence)>>,
     /// Self and event streams will end on this.
     shutdown: ShutdownSignal,
-    log_namespace: LogNamespace,
 }
 
 impl EventStreamBuilder {
@@ -786,7 +781,6 @@ impl EventStreamBuilder {
                         core.config.auto_partial_merge,
                         &mut partial_event_merge_state,
                         &bytes_received,
-                        self.log_namespace,
                     )),
                     Err(error) => {
                         // On any error, restart connection
@@ -823,7 +817,6 @@ impl EventStreamBuilder {
                 Box::new(line_agg_adapter(
                     events_stream,
                     line_agg::Logic::new(line_agg_config.clone()),
-                    self.log_namespace,
                 ))
             } else {
                 Box::new(events_stream)
@@ -990,7 +983,6 @@ impl ContainerLogInfo {
         auto_partial_merge: bool,
         partial_event_merge_state: &mut Option<MergeState>,
         bytes_received: &Registered<BytesReceived>,
-        _log_namespace: LogNamespace,
     ) -> Option<OtelLog> {
         let (stream, mut bytes_message) = match log_output {
             LogOutput::StdErr { message } => (STDERR.clone(), message),
@@ -1207,7 +1199,6 @@ impl ContainerMetadata {
 fn line_agg_adapter(
     inner: impl Stream<Item = OtelLog> + Unpin,
     logic: line_agg::Logic<Bytes, OtelLog>,
-    _log_namespace: LogNamespace,
 ) -> impl Stream<Item = OtelLog> {
     let line_agg_in = inner.map(move |mut log| {
         let message_value = log

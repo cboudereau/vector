@@ -376,7 +376,7 @@ mod tests {
     use futures::stream;
     use tokio::sync::mpsc;
     use tokio_stream::wrappers::ReceiverStream;
-    use vector_lib::config::{ComponentKey, LogNamespace};
+    use vector_lib::config::ComponentKey;
     use vrl::value::Kind;
 
     use super::*;
@@ -420,7 +420,7 @@ mod tests {
             .with_source_id(Arc::new(ComponentKey::from("in")))
             .with_upstream_id(Arc::new(OutputId::from("transform")));
         event.metadata_mut().set_schema_definition(&Arc::new(
-            Definition::new_with_default_metadata(Kind::any(), [LogNamespace::Vector]),
+            Definition::new_with_default_metadata(Kind::any()),
         ));
 
         event.metadata_mut().set_source_type("unit_test_stream");

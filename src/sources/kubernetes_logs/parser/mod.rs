@@ -2,8 +2,6 @@ mod cri;
 mod docker;
 mod test_util;
 
-use vector_lib::config::LogNamespace;
-
 use crate::{
     event::{Event, Value},
     internal_events::KubernetesLogsFormatPickerEdgeCase,
@@ -75,14 +73,12 @@ enum ParserState {
 #[derive(Clone, Debug)]
 pub struct Parser {
     state: ParserState,
-    log_namespace: LogNamespace,
 }
 
 impl Parser {
-    pub const fn new(log_namespace: LogNamespace) -> Self {
+    pub const fn new() -> Self {
         Self {
             state: ParserState::Uninitialized,
-            log_namespace,
         }
     }
 }
@@ -108,9 +104,9 @@ impl FunctionTransform for Parser {
         match &mut self.state {
             ParserState::Uninitialized => {
                 self.state = if bytes_for_detection.len() > 1 && bytes_for_detection[0] == b'{' {
-                    ParserState::Docker(docker::Docker::new(self.log_namespace))
+                    ParserState::Docker(docker::Docker::new())
                 } else {
-                    ParserState::Cri(cri::Cri::new(self.log_namespace))
+                    ParserState::Cri(cri::Cri::new())
                 };
                 self.transform(output, event)
             }
@@ -137,10 +133,10 @@ mod tests {
     };
 
     /// Picker has to work for all test cases for underlying parsers.
-    fn valid_cases(log_namespace: LogNamespace) -> Vec<(Bytes, Vec<Event>)> {
+    fn valid_cases() -> Vec<(Bytes, Vec<Event>)> {
         let mut valid_cases = vec![];
-        valid_cases.extend(docker::tests::valid_cases(log_namespace));
-        valid_cases.extend(cri::tests::valid_cases(log_namespace));
+        valid_cases.extend(docker::tests::valid_cases());
+        valid_cases.extend(cri::tests::valid_cases());
         valid_cases
     }
 
@@ -154,9 +150,9 @@ mod tests {
     fn test_parsing_valid_vector_namespace() {
         trace_init();
         test_util::test_parser(
-            || Parser::new(LogNamespace::Vector),
+            || Parser::new(),
             |bytes| Event::Log(OtelLog::from(value!(bytes))),
-            valid_cases(LogNamespace::Vector),
+            valid_cases(),
         );
     }
 
@@ -164,9 +160,9 @@ mod tests {
     fn test_parsing_valid_legacy_namespace() {
         trace_init();
         test_util::test_parser(
-            || Parser::new(LogNamespace::Vector),
+            || Parser::new(),
             |bytes| Event::Log(OtelLog::from(bytes)),
-            valid_cases(LogNamespace::Vector),
+            valid_cases(),
         );
     }
 
@@ -177,7 +173,7 @@ mod tests {
         let cases = invalid_cases();
 
         for bytes in cases {
-            let mut parser = Parser::new(LogNamespace::Vector);
+            let mut parser = Parser::new();
             let input = OtelLog::from(bytes);
             let mut output = OutputBuffer::default();
             parser.transform(&mut output, input.into());
@@ -192,21 +188,18 @@ mod tests {
 
         let cases = vec![
             // No `message` field.
-            (OtelLog::default(), LogNamespace::Vector),
+            OtelLog::default(),
             // Non-bytes `message` field.
-            (OtelLog::from(value!(123)), LogNamespace::Vector),
-            (
-                {
-                    let mut input = OtelLog::default();
-                    input.insert(event_path!("body"), 123);
-                    input
-                },
-                LogNamespace::Vector,
-            ),
+            OtelLog::from(value!(123)),
+            {
+                let mut input = OtelLog::default();
+                input.insert(event_path!("body"), 123);
+                input
+            },
         ];
 
-        for (input, log_namespace) in cases {
-            let mut parser = Parser::new(log_namespace);
+        for input in cases {
+            let mut parser = Parser::new();
             let mut output = OutputBuffer::default();
             parser.transform(&mut output, input.into());
 

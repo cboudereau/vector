@@ -54,17 +54,12 @@ impl LuaConfig {
         input_definitions: &[(OutputId, schema::Definition)],
     ) -> Vec<TransformOutput> {
         // Lua causes the type definition to be reset
-        let namespaces = input_definitions
-            .iter()
-            .flat_map(|(_output, definition)| definition.log_namespaces().clone())
-            .collect();
-
         let definition = input_definitions
             .iter()
             .map(|(output, _definition)| {
                 (
                     output.clone(),
-                    Definition::default_for_namespace(&namespaces),
+                    Definition::default_for_namespace(),
                 )
             })
             .collect();

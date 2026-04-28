@@ -1,6 +1,6 @@
-use std::{collections::BTreeMap, marker::PhantomData};
+use std::marker::PhantomData;
 
-use lookup::{OwnedTargetPath, OwnedValuePath, PathPrefix, owned_value_path};
+use lookup::{OwnedTargetPath, OwnedValuePath, PathPrefix};
 use opentelemetry_proto::tonic::common::v1::{
     AnyValue as OtelAnyValue, ArrayValue as OtelArrayValue, KeyValue as OtelKeyValue,
     KeyValueList as OtelKeyValueList, InstrumentationScope as OtelScope,
@@ -10,12 +10,17 @@ use opentelemetry_proto::tonic::resource::v1::Resource as OtelResource;
 use snafu::Snafu;
 use vrl::{
     compiler::{ProgramInfo, SecretTarget, Target, value::VrlValueConvert},
-    prelude::Collection,
-    value::{KeyString, Kind, ObjectMap, Value},
+    value::{KeyString, ObjectMap, Value},
 };
 
 use super::{Event, EventMetadata, OtelLog, OtelMetric, OtelSpan};
 use crate::schema::Definition;
+#[cfg(test)]
+use lookup::owned_value_path;
+#[cfg(test)]
+use std::collections::BTreeMap;
+#[cfg(test)]
+use vrl::{prelude::Collection, value::Kind};
 
 const VALID_OTEL_METRIC_PATHS_SET: &str = ".name, .description, .unit, .resource, .scope, .attributes, .data.*.data_points[*].attributes";
 const VALID_OTEL_METRIC_PATHS_GET: &str =
@@ -685,15 +690,7 @@ impl VrlTarget {
 
     /// Modifies a schema in the same way that the `into_events` function modifies the event
     pub fn modify_schema_definition_for_into_events(input: Definition) -> Definition {
-        let log_namespaces = input.log_namespaces().clone();
-
-        // both namespaces merge arrays, but only `Legacy` moves field definitions into a "message" field.
-        let merged_arrays = merge_array_definitions(input);
-        Definition::combine_log_namespaces(
-            &log_namespaces,
-            move_field_definitions_into_message(merged_arrays.clone()),
-            merged_arrays,
-        )
+        merge_array_definitions(input)
     }
 
     /// Turn the target back into events.
@@ -749,6 +746,7 @@ impl VrlTarget {
 
 /// If the VRL returns a value that is not an array (see [`merge_array_definitions`]),
 /// or an object, that data is moved into the `message` field.
+#[cfg(test)]
 fn move_field_definitions_into_message(mut definition: Definition) -> Definition {
     let mut message = definition.event_kind().clone();
     message.remove_object();
@@ -1048,32 +1046,27 @@ mod test {
     use vrl::{btreemap, value::kind::Index};
 
     use super::{super::OtelMetric, *};
-    use crate::config::LogNamespace;
-
     #[test]
     fn test_field_definitions_in_message() {
         let definition =
-            Definition::new_with_default_metadata(Kind::bytes(), [LogNamespace::Vector]);
+            Definition::new_with_default_metadata(Kind::bytes());
         assert_eq!(
             Definition::new_with_default_metadata(
-                Kind::object(BTreeMap::from([("body".into(), Kind::bytes())])),
-                [LogNamespace::Vector]
+                Kind::object(BTreeMap::from([("body".into(), Kind::bytes())]))
             ),
             move_field_definitions_into_message(definition)
         );
 
         // Test when a body field already exists.
         let definition = Definition::new_with_default_metadata(
-            Kind::object(BTreeMap::from([("body".into(), Kind::integer())])).or_bytes(),
-            [LogNamespace::Vector],
+            Kind::object(BTreeMap::from([("body".into(), Kind::integer())])).or_bytes()
         );
         assert_eq!(
             Definition::new_with_default_metadata(
                 Kind::object(BTreeMap::from([(
                     "body".into(),
                     Kind::bytes().or_integer()
-                )])),
-                [LogNamespace::Vector]
+                )]))
             ),
             move_field_definitions_into_message(definition)
         );
@@ -1091,14 +1084,14 @@ mod test {
 
         let kind = Kind::array(Collection::from_unknown(Kind::object(object)));
 
-        let definition = Definition::new_with_default_metadata(kind, [LogNamespace::Vector]);
+        let definition = Definition::new_with_default_metadata(kind);
 
         let kind = Kind::object(BTreeMap::from([
             ("carrot".into(), Kind::bytes()),
             ("potato".into(), Kind::integer()),
         ]));
 
-        let wanted = Definition::new_with_default_metadata(kind, [LogNamespace::Vector]);
+        let wanted = Definition::new_with_default_metadata(kind);
         let merged = merge_array_definitions(definition);
 
         assert_eq!(wanted, merged);
@@ -1128,7 +1121,7 @@ mod test {
         kind.add_object(object);
         kind.add_array(array);
 
-        let definition = Definition::new_with_default_metadata(kind, [LogNamespace::Vector]);
+        let definition = Definition::new_with_default_metadata(kind);
 
         let mut kind = Kind::bytes();
         kind.add_integer();
@@ -1139,7 +1132,7 @@ mod test {
             ("peas".into(), Kind::bytes().or_undefined()),
         ]));
 
-        let wanted = Definition::new_with_default_metadata(kind, [LogNamespace::Vector]);
+        let wanted = Definition::new_with_default_metadata(kind);
         let merged = merge_array_definitions(definition);
 
         assert_eq!(wanted, merged);

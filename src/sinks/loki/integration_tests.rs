@@ -4,7 +4,7 @@ use bytes::Bytes;
 use chrono::{DateTime, Duration, Utc};
 use futures::stream;
 use vector_lib::{
-    config::{LogNamespace, Tags, Telemetry, init_telemetry},
+    config::{Tags, Telemetry, init_telemetry, insert_standard_vector_source_metadata},
     encode_logfmt,
     event::{BatchNotifier, BatchStatus, Event, OtelLog},
     lookup::{PathPrefix, owned_value_path},
@@ -113,11 +113,10 @@ fn namespaced_timestamp_generator(
         log.insert(timestamp_field.as_str(), Value::from(timestamp));
 
         // We need vector metadata for it to pick up that it is in the Vector namespace.
-        LogNamespace::Vector.insert_standard_vector_source_metadata(&mut log, "loki", Utc::now());
+        insert_standard_vector_source_metadata(&mut log, "loki", Utc::now());
 
         let schema = schema::Definition::new_with_default_metadata(
-            Kind::object(Collection::empty()),
-            [LogNamespace::Vector],
+            Kind::object(Collection::empty())
         )
         // Add a field that means the timestamp.
         .with_event_field(

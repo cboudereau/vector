@@ -11,7 +11,6 @@ use tower::ServiceBuilder;
 use tracing::Span;
 use vector_lib::{
     EstimatedJsonEncodedSizeOf,
-    config::LogNamespace,
     event::{BatchNotifier, BatchStatus},
     internal_event::{
         ByteSize, BytesReceived, CountByteSize, InternalEventHandle as _, Registered,
@@ -87,7 +86,6 @@ pub(crate) async fn run_http_server(
 
 pub(crate) fn build_warp_filter(
     acknowledgements: bool,
-    log_namespace: LogNamespace,
     out: SourceSender,
     bytes_received: Registered<BytesReceived>,
     events_received: Registered<EventsReceived>,
@@ -95,7 +93,6 @@ pub(crate) fn build_warp_filter(
 ) -> BoxedFilter<(Response,)> {
     let log_filters = build_warp_log_filter(
         acknowledgements,
-        log_namespace,
         out.clone(),
         bytes_received.clone(),
         events_received.clone(),
@@ -125,13 +122,11 @@ fn enrich_events(
     events: &mut [Event],
     headers_config: &[HttpConfigParamKind],
     headers: &HeaderMap,
-    log_namespace: LogNamespace,
 ) {
     add_headers(
         events,
         headers_config,
         headers,
-        log_namespace,
         OpentelemetryConfig::NAME,
     );
 }
@@ -215,7 +210,6 @@ fn is_json_content_type(content_type: Option<&str>) -> bool {
 
 fn build_warp_log_filter(
     acknowledgements: bool,
-    log_namespace: LogNamespace,
     source_sender: SourceSender,
     bytes_received: Registered<BytesReceived>,
     events_received: Registered<EventsReceived>,
@@ -239,12 +233,11 @@ fn build_warp_log_filter(
                     bytes_received.emit(ByteSize(decoded_body.len()));
                     decode_log_body(
                         decoded_body,
-                        log_namespace,
                         &events_received,
                         is_json_content_type(content_type.as_deref()),
                     )
                     .map(|mut events| {
-                        enrich_events(&mut events, &headers_cfg, &headers, log_namespace);
+                        enrich_events(&mut events, &headers_cfg, &headers);
                         events
                     })
                 })
@@ -443,7 +436,6 @@ fn decode_trace_body(
 
 fn decode_log_body(
     body: Bytes,
-    _log_namespace: LogNamespace,
     events_received: &Registered<EventsReceived>,
     is_json: bool,
 ) -> Result<Vec<Event>, ErrorMessage> {

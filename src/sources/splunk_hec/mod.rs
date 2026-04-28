@@ -24,7 +24,7 @@ use tower::ServiceBuilder;
 use tracing::Span;
 use vector_lib::{
     EstimatedJsonEncodedSizeOf,
-    config::{LogNamespace, insert_source_metadata, insert_standard_vector_source_metadata},
+    config::{insert_source_metadata, insert_standard_vector_source_metadata},
     configurable::configurable_component,
     event::BatchNotifier,
     internal_event::{CountByteSize, InternalEventHandle as _, Registered},
@@ -203,8 +203,6 @@ impl SourceConfig for SplunkConfig {
     }
 
     fn outputs(&self) -> Vec<SourceOutput> {
-        let _log_namespace = LogNamespace::Vector;
-
         let schema_definition = {
             let definition = vector_lib::schema::Definition::empty_legacy_namespace()
                 .with_event_field(
@@ -275,13 +273,11 @@ struct SplunkSource {
     protocol: &'static str,
     idx_ack: Option<Arc<IndexerAcknowledgement>>,
     store_hec_token: bool,
-    log_namespace: LogNamespace,
     events_received: Registered<EventsReceived>,
 }
 
 impl SplunkSource {
     fn new(config: &SplunkConfig, protocol: &'static str, cx: SourceContext) -> Self {
-        let log_namespace = cx.log_namespace();
         let acknowledgements = cx.do_acknowledgements(config.acknowledgements.enabled.into());
         let shutdown = cx.shutdown;
         let valid_tokens = config
@@ -304,7 +300,6 @@ impl SplunkSource {
             protocol,
             idx_ack,
             store_hec_token: config.store_hec_token,
-            log_namespace,
             events_received: register!(EventsReceived),
         }
     }
@@ -321,7 +316,6 @@ impl SplunkSource {
         let protocol = self.protocol;
         let idx_ack = self.idx_ack.clone();
         let store_hec_token = self.store_hec_token;
-        let _log_namespace = self.log_namespace;
         let events_received = self.events_received.clone();
 
         warp::post()
@@ -435,7 +429,6 @@ impl SplunkSource {
         let idx_ack = self.idx_ack.clone();
         let store_hec_token = self.store_hec_token;
         let events_received = self.events_received.clone();
-        let log_namespace = self.log_namespace;
 
         warp::post()
             .and(path!("raw" / "1.0").or(path!("raw")))
@@ -482,7 +475,6 @@ impl SplunkSource {
                             remote,
                             xff,
                             batch,
-                            log_namespace,
                             &events_received,
                         )?;
                         if let Some(token) = token.filter(|_| store_hec_token) {
@@ -958,7 +950,6 @@ fn raw_event(
     remote: Option<SocketAddr>,
     xff: Option<String>,
     batch: Option<BatchNotifier>,
-    _log_namespace: LogNamespace,
     events_received: &Registered<EventsReceived>,
 ) -> Result<Event, Rejection> {
     // Process gzip
@@ -2540,8 +2531,7 @@ mod tests {
             .schema_definition(true);
 
         let expected_definition = Definition::new_with_default_metadata(
-            Kind::object(Collection::empty()),
-            [LogNamespace::Vector],
+            Kind::object(Collection::empty())
         )
         .with_event_field(
             &owned_value_path!("line"),
@@ -2604,7 +2594,6 @@ mod tests {
             let listen_addr_http = format!("http://{}/services/collector/event", config.address);
             let uri = Uri::try_from(&listen_addr_http).expect("should not fail to parse URI");
 
-            let log_namespace = LogNamespace::Vector;
             let framing = BytesDecoderConfig::new().into();
             let decoding = DeserializerConfig::Json(Default::default());
 
@@ -2619,7 +2608,6 @@ mod tests {
 
             ValidationConfiguration::from_source(
                 Self::NAME,
-                log_namespace,
                 vec![ComponentTestCaseConfig::from_source(
                     config,
                     None,

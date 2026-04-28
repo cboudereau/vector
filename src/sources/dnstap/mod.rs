@@ -139,7 +139,6 @@ impl_generate_config_from_default!(DnstapConfig);
 #[typetag::serde(name = "dnstap")]
 impl SourceConfig for DnstapConfig {
     async fn build(&self, cx: SourceContext) -> Result<super::Source> {
-        let log_namespace = cx.log_namespace();
         let common_frame_handler = CommonFrameHandler::new(self);
         match &self.mode {
             Mode::Tcp(config) => {
@@ -150,7 +149,6 @@ impl SourceConfig for DnstapConfig {
                     config.clone(),
                     tls,
                     common_frame_handler,
-                    log_namespace,
                 );
 
                 build_framestream_tcp_source(frame_handler, cx.shutdown, cx.out)

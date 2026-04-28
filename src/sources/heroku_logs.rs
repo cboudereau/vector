@@ -395,7 +395,6 @@ mod tests {
     use futures::Stream;
     use similar_asserts::assert_eq;
     use vector_lib::{
-        config::LogNamespace,
         event::{Event, EventStatus, Value},
         lookup::owned_value_path,
         schema::Definition,
@@ -695,8 +694,7 @@ mod tests {
             .schema_definition(true);
 
         let expected_definition = Definition::new_with_default_metadata(
-            Kind::object(Collection::empty()),
-            [LogNamespace::Vector],
+            Kind::object(Collection::empty())
         )
         .with_event_field(&owned_value_path!("body"), Kind::bytes(), Some("message"))
         .with_metadata_field(

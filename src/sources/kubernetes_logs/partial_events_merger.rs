@@ -7,10 +7,7 @@ use std::{
 
 use bytes::BytesMut;
 use futures::{Stream, StreamExt};
-use vector_lib::{
-    config::LogNamespace,
-    stream::expiration_map::{Emitter, map_with_expiration},
-};
+use vector_lib::stream::expiration_map::{Emitter, map_with_expiration};
 
 use crate::{
     event,
@@ -122,12 +119,10 @@ struct Bucket {
 
 pub fn merge_partial_events(
     stream: impl Stream<Item = Event> + 'static,
-    log_namespace: LogNamespace,
     maybe_max_merged_line_bytes: Option<usize>,
 ) -> impl Stream<Item = Event> {
     merge_partial_events_with_custom_expiration(
         stream,
-        log_namespace,
         EXPIRATION_TIME,
         maybe_max_merged_line_bytes,
     )
@@ -136,7 +131,6 @@ pub fn merge_partial_events(
 // internal function that allows customizing the expiration time (for testing)
 fn merge_partial_events_with_custom_expiration(
     stream: impl Stream<Item = Event> + 'static,
-    _log_namespace: LogNamespace,
     expiration_time: Duration,
     maybe_max_merged_line_bytes: Option<usize>,
 ) -> impl Stream<Item = Event> {
@@ -193,7 +187,7 @@ mod test {
         e_1.insert("foo", 1);
 
         let input_stream = futures::stream::iter([e_1.into()]);
-        let output_stream = merge_partial_events(input_stream, LogNamespace::Vector, None);
+        let output_stream = merge_partial_events(input_stream, None);
 
         let output: Vec<Event> = output_stream.collect().await;
         assert_eq!(output.len(), 1);
@@ -209,7 +203,7 @@ mod test {
         e_1.insert("foo", 1);
 
         let input_stream = futures::stream::iter([e_1.into()]);
-        let output_stream = merge_partial_events(input_stream, LogNamespace::Vector, Some(1));
+        let output_stream = merge_partial_events(input_stream, Some(1));
 
         let output: Vec<Event> = output_stream.collect().await;
         assert_eq!(output.len(), 0);
@@ -225,7 +219,7 @@ mod test {
         e_2.insert("foo2", 1);
 
         let input_stream = futures::stream::iter([e_1.into(), e_2.into()]);
-        let output_stream = merge_partial_events(input_stream, LogNamespace::Vector, None);
+        let output_stream = merge_partial_events(input_stream, None);
 
         let output: Vec<Event> = output_stream.collect().await;
         assert_eq!(output.len(), 1);
@@ -246,7 +240,7 @@ mod test {
 
         let input_stream = futures::stream::iter([e_1.into(), e_2.into()]);
         // 24 > length of first message but less than the two combined
-        let output_stream = merge_partial_events(input_stream, LogNamespace::Vector, Some(24));
+        let output_stream = merge_partial_events(input_stream, Some(24));
 
         let output: Vec<Event> = output_stream.collect().await;
         assert_eq!(output.len(), 0);
@@ -263,7 +257,7 @@ mod test {
         e_1.insert("_partial", true);
 
         let input_stream = futures::stream::iter([e_1.into(), e_2.into()]);
-        let output_stream = merge_partial_events(input_stream, LogNamespace::Vector, None);
+        let output_stream = merge_partial_events(input_stream, None);
 
         let output: Vec<Event> = output_stream.collect().await;
         assert_eq!(output.len(), 1);
@@ -285,7 +279,7 @@ mod test {
 
         let input_stream = futures::stream::iter([e_1.into(), e_2.into()]);
         // 24 > length of first message but less than the two combined
-        let output_stream = merge_partial_events(input_stream, LogNamespace::Vector, Some(24));
+        let output_stream = merge_partial_events(input_stream, Some(24));
 
         let output: Vec<Event> = output_stream.collect().await;
         assert_eq!(output.len(), 0);
@@ -307,7 +301,6 @@ mod test {
 
         let output_stream = merge_partial_events_with_custom_expiration(
             input_stream,
-            LogNamespace::Vector,
             Duration::from_secs(1),
             None,
         );
@@ -332,7 +325,7 @@ mod test {
         e_1.set_attribute(FILE_KEY.to_string(), string_value("foo1"));
 
         let input_stream = futures::stream::iter([Event::from(e_1)]);
-        let output_stream = merge_partial_events(input_stream, LogNamespace::Vector, None);
+        let output_stream = merge_partial_events(input_stream, None);
 
         let output: Vec<Event> = output_stream.collect().await;
         assert_eq!(output.len(), 1);
@@ -358,7 +351,7 @@ mod test {
         e_2.set_attribute(FILE_KEY.to_string(), string_value("foo1"));
 
         let input_stream = futures::stream::iter([Event::from(e_1), Event::from(e_2)]);
-        let output_stream = merge_partial_events(input_stream, LogNamespace::Vector, None);
+        let output_stream = merge_partial_events(input_stream, None);
 
         let output: Vec<Event> = output_stream.collect().await;
         assert_eq!(output.len(), 1);

@@ -26,7 +26,6 @@ use vector_lib::{
         CharacterDelimitedEncoder,
         encoding::{Framer, Serializer::Json},
     },
-    config::LogNamespace,
     event::Event,
 };
 
@@ -293,7 +292,6 @@ pub struct HttpResourceOutputContext<'a> {
     pub task_coordinator: &'a TaskCoordinator<Configuring>,
     pub input_events: Vec<TestEvent>,
     pub runner_metrics: &'a Arc<Mutex<RunnerMetrics>>,
-    pub log_namespace: LogNamespace,
 }
 
 impl HttpResourceOutputContext<'_> {
@@ -304,7 +302,7 @@ impl HttpResourceOutputContext<'_> {
         // via an output sender. We accept/collect events until we're told to shutdown.
 
         // First, we'll build and spawn our HTTP server.
-        let decoder = self.codec.into_decoder(self.log_namespace)?;
+        let decoder = self.codec.into_decoder()?;
 
         // Note that we currently don't differentiate which events should and shouldn't be rejected-
         // we reject all events in this server if any are marked for rejection.

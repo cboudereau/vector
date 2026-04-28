@@ -6,7 +6,6 @@ use tokio_util::codec::FramedRead;
 use vector_lib::{
     EstimatedJsonEncodedSizeOf,
     codecs::decoding::StreamDecodingError,
-    config::LogNamespace,
     internal_event::{
         ByteSize, BytesReceived, CountByteSize, EventsReceived, EventsReceivedHandle,
         InternalEventHandle as _, Protocol,
@@ -39,7 +38,6 @@ pub async fn process_message(
     msg: &async_nats::Message,
     _config: &NatsSourceConfig,
     decoder: &Decoder,
-    _log_namespace: LogNamespace,
     out: &mut SourceSender,
     events_received: &EventsReceivedHandle,
 ) -> ProcessingStatus {
@@ -96,7 +94,6 @@ pub async fn run_nats_jetstream(
     _connection: async_nats::Client,
     stream: PullConsumerStream,
     decoder: Decoder,
-    log_namespace: LogNamespace,
     shutdown: ShutdownSignal,
     mut out: SourceSender,
 ) -> Result<(), ()> {
@@ -111,7 +108,6 @@ pub async fn run_nats_jetstream(
             &msg,
             &config,
             &decoder,
-            log_namespace,
             &mut out,
             &events_received,
         )
@@ -141,7 +137,6 @@ pub async fn run_nats_core(
     _connection: async_nats::Client,
     mut subscriber: async_nats::Subscriber,
     decoder: Decoder,
-    log_namespace: LogNamespace,
     mut shutdown: ShutdownSignal,
     mut out: SourceSender,
 ) -> Result<(), ()> {
@@ -167,7 +162,6 @@ pub async fn run_nats_core(
                             &msg,
                             &config,
                             &decoder,
-                            log_namespace,
                             &mut out,
                             &events_received,
                         )

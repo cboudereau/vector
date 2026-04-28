@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use derivative::Derivative;
-use vector_lib::{config::LogNamespace, conversion};
+use vector_lib::conversion;
 
 use crate::{
     event::{self, Event},
@@ -25,13 +25,11 @@ const TIMESTAMP_KEY: &str = "timestamp";
 /// [cri_log_format]: https://github.com/kubernetes/community/blob/ee2abbf9dbfa4523b414f99a04ddc97bd38c74b2/contributors/design-proposals/node/kubelet-cri-logging.md
 #[derive(Clone, Derivative)]
 #[derivative(Debug)]
-pub(super) struct Cri {
-    log_namespace: LogNamespace,
-}
+pub(super) struct Cri;
 
 impl Cri {
-    pub const fn new(log_namespace: LogNamespace) -> Self {
-        Self { log_namespace }
+    pub const fn new() -> Self {
+        Self
     }
 }
 
@@ -165,7 +163,7 @@ pub mod tests {
     }
 
     /// Shared test cases.
-    pub fn valid_cases(log_namespace: LogNamespace) -> Vec<(Bytes, Vec<Event>)> {
+    pub fn valid_cases() -> Vec<(Bytes, Vec<Event>)> {
         vec![
             (
                 Bytes::from(
@@ -176,7 +174,6 @@ pub mod tests {
                     "2016-10-06T00:17:09.669794202Z",
                     "stdout",
                     false,
-                    log_namespace,
                 )],
             ),
             (
@@ -186,7 +183,6 @@ pub mod tests {
                     "2016-10-06T00:17:09.669794202Z",
                     "stdout",
                     true,
-                    log_namespace,
                 )],
             ),
             (
@@ -198,7 +194,6 @@ pub mod tests {
                     "2016-10-06T00:17:09.669794202Z",
                     "stdout",
                     true,
-                    log_namespace,
                 )],
             ),
             (
@@ -208,7 +203,6 @@ pub mod tests {
                     "2016-10-06T00:17:10.113242941Z",
                     "stderr",
                     false,
-                    log_namespace,
                 )],
             ),
             // A part of the partial message with a realistic length.
@@ -225,7 +219,6 @@ pub mod tests {
                     "2016-10-06T00:17:10.113242941Z",
                     "stdout",
                     true,
-                    log_namespace,
                 )],
             ),
             (
@@ -245,7 +238,6 @@ pub mod tests {
                     "2021-08-05T17:35:26.640507539Z",
                     "stdout",
                     true,
-                    log_namespace,
                 )],
             ),
         ]
@@ -255,9 +247,9 @@ pub mod tests {
     fn test_parsing_valid_vector_namespace() {
         trace_init();
         test_util::test_parser(
-            || Cri::new(LogNamespace::Vector),
+            Cri::new,
             |bytes| Event::Log(OtelLog::from(value!(bytes))),
-            valid_cases(LogNamespace::Vector),
+            valid_cases(),
         );
     }
 
@@ -265,9 +257,9 @@ pub mod tests {
     fn test_parsing_valid_legacy_namespace() {
         trace_init();
         test_util::test_parser(
-            || Cri::new(LogNamespace::Vector),
+            Cri::new,
             |bytes| Event::Log(OtelLog::from(bytes)),
-            valid_cases(LogNamespace::Vector),
+            valid_cases(),
         );
     }
 }

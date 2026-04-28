@@ -39,14 +39,11 @@ impl TransformConfig for ErrorDefinitionTransformConfig {
             DataType::all_bits(),
             definitions
                 .iter()
-                .map(|(output, definition)| {
+                .map(|(output, _definition)| {
                     (
                         output.clone(),
                         // Return a definition of Kind::never implying that we can never return a value.
-                        Definition::new_with_default_metadata(
-                            Kind::never(),
-                            definition.log_namespaces().clone(),
-                        ),
+                        Definition::new_with_default_metadata(Kind::never()),
                     )
                 })
                 .collect(),

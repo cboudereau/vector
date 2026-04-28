@@ -760,7 +760,7 @@ mod tests {
         time::{Duration, error::Elapsed, timeout},
     };
     use tokio_util::codec::Decoder;
-    use vector_lib::{assert_event_data_eq, config::LogNamespace, lookup::event_path, schema::Definition};
+    use vector_lib::{assert_event_data_eq, lookup::event_path, schema::Definition};
     use vrl::{path, value::{Value, kind::Collection}};
 
     use super::{message::FluentMessageOptions, *};
@@ -1115,8 +1115,7 @@ mod tests {
             .schema_definition(true);
 
         let expected_definition = Definition::new_with_default_metadata(
-            Kind::object(Collection::empty()),
-            [LogNamespace::Vector],
+            Kind::object(Collection::empty())
         )
         .with_event_field(&owned_value_path!("body"), Kind::bytes(), Some("message"))
         .with_metadata_field(

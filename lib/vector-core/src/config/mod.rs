@@ -12,7 +12,6 @@ mod telemetry;
 pub use global_options::{GlobalOptions, WildcardMatching};
 use lookup::{PathPrefix, lookup_v2::ValuePath, path};
 pub use output_id::OutputId;
-use serde::{Deserialize, Serialize};
 pub use telemetry::{Tags, Telemetry, init_telemetry, telemetry};
 pub use vector_common::config::ComponentKey;
 use vector_config::configurable_component;
@@ -24,10 +23,7 @@ use crate::{
 };
 
 /// Trait for event types that support the metadata insertion patterns used
-/// by `LogNamespace::insert_source_metadata` / `insert_vector_metadata`.
-///
-/// Trait for event types that support the metadata insertion patterns used
-/// by `LogNamespace::insert_source_metadata` / `insert_vector_metadata`.
+/// by `insert_source_metadata` / `insert_vector_metadata`.
 ///
 /// `OtelLog` implements this so that sources can produce `OtelLog` directly
 /// without changing the insertion API.
@@ -221,8 +217,7 @@ impl SourceOutput {
             if schema_enabled {
                 definition.deref().clone()
             } else {
-                let mut new_definition =
-                    schema::Definition::default_for_namespace(definition.log_namespaces());
+                let mut new_definition = schema::Definition::default_for_namespace();
                 new_definition.add_meanings(definition.meanings());
                 new_definition
             }
@@ -312,8 +307,7 @@ impl TransformOutput {
             self.log_schema_definitions
                 .iter()
                 .map(|(output, definition)| {
-                    let mut new_definition =
-                        schema::Definition::default_for_namespace(definition.log_namespaces());
+                    let mut new_definition = schema::Definition::default_for_namespace();
                     new_definition.add_meanings(definition.meanings());
                     (output.clone(), new_definition)
                 })
@@ -441,74 +435,6 @@ impl From<bool> for AcknowledgementsConfig {
     }
 }
 
-/// Backwards-compatible alias — `LogNamespace` was a two-variant enum that
-/// has been collapsed to a single variant. Kept temporarily so existing
-/// call-sites compile while being migrated.  New code should call the free
-/// functions (`insert_source_metadata`, etc.) directly.
-#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize, PartialOrd, Ord, Eq, Default)]
-pub enum LogNamespace {
-    #[default]
-    Vector,
-}
-
-impl From<bool> for LogNamespace {
-    fn from(_: bool) -> Self {
-        LogNamespace::Vector
-    }
-}
-
-impl From<LogNamespace> for bool {
-    fn from(_: LogNamespace) -> Self {
-        true
-    }
-}
-
-impl LogNamespace {
-    pub fn insert_source_metadata<'a>(
-        &self,
-        source_name: &'a str,
-        log: &mut impl MetadataInsertable,
-        metadata_key: impl ValuePath<'a>,
-        value: impl Into<Value>,
-    ) {
-        insert_source_metadata(source_name, log, metadata_key, value);
-    }
-
-    pub fn get_source_metadata<'a>(
-        &self,
-        source_name: &'a str,
-        log: &OtelLog,
-        metadata_key: impl ValuePath<'a>,
-    ) -> Option<Value> {
-        get_source_metadata(source_name, log, metadata_key)
-    }
-
-    pub fn insert_standard_vector_source_metadata(
-        &self,
-        log: &mut impl MetadataInsertable,
-        source_name: &'static str,
-        now: DateTime<Utc>,
-    ) {
-        insert_standard_vector_source_metadata(log, source_name, now);
-    }
-
-    pub fn insert_vector_metadata<'a>(
-        &self,
-        log: &mut impl MetadataInsertable,
-        metadata_key: impl ValuePath<'a>,
-        value: impl Into<Value>,
-    ) {
-        insert_vector_metadata(log, metadata_key, value);
-    }
-
-    pub fn get_vector_metadata<'a>(
-        &self,
-        log: &OtelLog,
-        metadata_key: impl ValuePath<'a>,
-    ) -> Option<Value> {
-        get_vector_metadata(log, metadata_key)
-    }
-}
 
 /// Adds metadata to "event metadata", nested under the source name.
 pub fn insert_source_metadata<'a>(
@@ -580,9 +506,8 @@ mod test {
 
     #[test]
     fn test_insert_standard_vector_source_metadata() {
-        let namespace = LogNamespace::Vector;
         let mut event = OtelLog::from("log");
-        namespace.insert_standard_vector_source_metadata(&mut event, "source", Utc::now());
+        insert_standard_vector_source_metadata(&mut event, "source", Utc::now());
 
         assert!(event.get_source_type().is_some());
     }
@@ -630,7 +555,7 @@ mod test {
     #[test]
     #[ignore = "Legacy LogEvent schema validation is lossy with OTel round-trip"]
     fn test_source_definitons_vector() {
-        let definition = schema::Definition::default_for_namespace(&[LogNamespace::Vector].into())
+        let definition = schema::Definition::default_for_namespace()
             .with_metadata_field(
                 &owned_value_path!("vector", "zork"),
                 Kind::integer(),

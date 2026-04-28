@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use futures::{FutureExt, future};
 use tokio::sync::Mutex;
 use vector_lib::{
-    config::{AcknowledgementsConfig, DataType, Input, LogNamespace},
+    config::{AcknowledgementsConfig, DataType, Input},
     configurable::configurable_component,
     enrichment::Table,
     id::ComponentKey,
@@ -196,9 +196,8 @@ impl SourceConfig for MemoryConfig {
     }
 
     fn outputs(&self) -> Vec<SourceOutput> {
-        let log_namespace = LogNamespace::Vector;
         let schema_definition =
-            schema::Definition::new_with_default_metadata(Kind::any_object(), [log_namespace])
+            schema::Definition::new_with_default_metadata(Kind::any_object())
                 .with_meaning(OwnedTargetPath::event_root(), "message")
                 .with_standard_vector_source_metadata();
 

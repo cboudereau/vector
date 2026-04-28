@@ -854,7 +854,7 @@ mod integration_tests {
     use futures::stream;
     use vector_lib::{
         codecs::BytesDeserializerConfig,
-        config::LogNamespace,
+        config::{insert_source_metadata, insert_standard_vector_source_metadata},
         event::{BatchNotifier, BatchStatus, Event, OtelLog},
         lookup::{owned_value_path, path},
     };
@@ -919,19 +919,19 @@ mod integration_tests {
 
         let mut namespaced_log =
             OtelLog::from(value!("namespaced message")).with_batch_notifier(&batch);
-        LogNamespace::Vector.insert_source_metadata(
+        insert_source_metadata(
             "file",
             &mut namespaced_log,
             path!("host"),
             "aws.cloud.eur",
         );
-        LogNamespace::Vector.insert_standard_vector_source_metadata(
+        insert_standard_vector_source_metadata(
             &mut namespaced_log,
             "file",
             now,
         );
         let schema = BytesDeserializerConfig
-            .schema_definition(LogNamespace::Vector)
+            .schema_definition()
             .with_metadata_field(
                 &owned_value_path!("file", "host"),
                 Kind::bytes(),

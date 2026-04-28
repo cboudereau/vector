@@ -4,8 +4,6 @@ use lookup::OwnedTargetPath;
 use vrl::value::Kind;
 
 use super::Definition;
-use crate::config::LogNamespace;
-
 /// The input schema for a given component.
 ///
 /// This schema defines the (semantic) fields a component expects to receive from its input
@@ -85,12 +83,6 @@ impl Requirement {
         validate_schema_type: bool,
     ) -> Result<(), ValidationErrors> {
         let mut errors = vec![];
-
-        // We only validate definitions if there is at least one connected component
-        // that uses the Vector namespace.
-        if !definition.log_namespaces().contains(&LogNamespace::Vector) {
-            return Ok(());
-        }
 
         for (identifier, req_meaning) in &self.meaning {
             // Check if we're dealing with an invalid meaning, meaning the definition has a single
@@ -251,7 +243,7 @@ mod tests {
     #[test]
     fn test_doesnt_validate_types() {
         let requirement = Requirement::empty().required_meaning("foo", Kind::boolean());
-        let definition = Definition::default_for_namespace(&[LogNamespace::Vector].into())
+        let definition = Definition::default_for_namespace()
             .with_event_field(&owned_value_path!("foo"), Kind::integer(), Some("foo"));
 
         assert_eq!(Ok(()), requirement.validate(&definition, false));
@@ -263,13 +255,13 @@ mod tests {
 
         // We get an error if we have a connected component with the Vector namespace.
         let definition =
-            Definition::default_for_namespace(&[LogNamespace::Vector, LogNamespace::Vector].into())
+            Definition::default_for_namespace()
                 .with_event_field(&owned_value_path!("foo"), Kind::integer(), Some("foo"));
 
         assert_ne!(Ok(()), requirement.validate(&definition, true));
 
         // We don't get an error if we have a connected component with just the Legacy namespace.
-        let definition = Definition::default_for_namespace(&[LogNamespace::Vector].into())
+        let definition = Definition::default_for_namespace()
             .with_event_field(&owned_value_path!("foo"), Kind::integer(), Some("foo"));
 
         assert_eq!(Ok(()), requirement.validate(&definition, true));
@@ -296,7 +288,7 @@ mod tests {
                 "empty",
                 TestCase {
                     requirement: Requirement::empty(),
-                    definition: Definition::default_for_namespace(&[LogNamespace::Vector].into()),
+                    definition: Definition::default_for_namespace(),
                     errors: vec![],
                 },
             ),
@@ -304,7 +296,7 @@ mod tests {
                 "missing required meaning",
                 TestCase {
                     requirement: Requirement::empty().required_meaning("foo", Kind::any()),
-                    definition: Definition::default_for_namespace(&[LogNamespace::Vector].into()),
+                    definition: Definition::default_for_namespace(),
                     errors: vec![ValidationError::MeaningMissing {
                         identifier: "foo".into(),
                     }],
@@ -316,7 +308,7 @@ mod tests {
                     requirement: Requirement::empty()
                         .required_meaning("foo", Kind::any())
                         .required_meaning("bar", Kind::any()),
-                    definition: Definition::default_for_namespace(&[LogNamespace::Vector].into()),
+                    definition: Definition::default_for_namespace(),
                     errors: vec![
                         ValidationError::MeaningMissing {
                             identifier: "bar".into(),
@@ -331,7 +323,7 @@ mod tests {
                 "missing optional meaning",
                 TestCase {
                     requirement: Requirement::empty().optional_meaning("foo", Kind::any()),
-                    definition: Definition::default_for_namespace(&[LogNamespace::Vector].into()),
+                    definition: Definition::default_for_namespace(),
                     errors: vec![],
                 },
             ),
@@ -341,7 +333,7 @@ mod tests {
                     requirement: Requirement::empty()
                         .optional_meaning("foo", Kind::any())
                         .required_meaning("bar", Kind::any()),
-                    definition: Definition::default_for_namespace(&[LogNamespace::Vector].into()),
+                    definition: Definition::default_for_namespace(),
                     errors: vec![ValidationError::MeaningMissing {
                         identifier: "bar".into(),
                     }],
@@ -351,7 +343,7 @@ mod tests {
                 "invalid required meaning kind",
                 TestCase {
                     requirement: Requirement::empty().required_meaning("foo", Kind::boolean()),
-                    definition: Definition::default_for_namespace(&[LogNamespace::Vector].into())
+                    definition: Definition::default_for_namespace()
                         .with_event_field(&owned_value_path!("foo"), Kind::integer(), Some("foo")),
                     errors: vec![ValidationError::MeaningKind {
                         identifier: "foo".into(),
@@ -364,7 +356,7 @@ mod tests {
                 "invalid optional meaning kind",
                 TestCase {
                     requirement: Requirement::empty().optional_meaning("foo", Kind::boolean()),
-                    definition: Definition::default_for_namespace(&[LogNamespace::Vector].into())
+                    definition: Definition::default_for_namespace()
                         .with_event_field(&owned_value_path!("foo"), Kind::integer(), Some("foo")),
                     errors: vec![ValidationError::MeaningKind {
                         identifier: "foo".into(),
@@ -377,10 +369,10 @@ mod tests {
                 "duplicate meaning pointers",
                 TestCase {
                     requirement: Requirement::empty().optional_meaning("foo", Kind::boolean()),
-                    definition: Definition::default_for_namespace(&[LogNamespace::Vector].into())
+                    definition: Definition::default_for_namespace()
                         .with_event_field(&owned_value_path!("foo"), Kind::integer(), Some("foo"))
                         .merge(
-                            Definition::default_for_namespace(&[LogNamespace::Vector].into())
+                            Definition::default_for_namespace()
                                 .with_event_field(
                                     &owned_value_path!("bar"),
                                     Kind::boolean(),

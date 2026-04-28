@@ -4,7 +4,7 @@ use std::sync::{
 };
 
 use tokio::time::Duration;
-use vector_lib::{config::LogNamespace, event::Event};
+use vector_lib::event::Event;
 use warp::Filter;
 
 use crate::{
@@ -46,11 +46,8 @@ impl ValidatableComponent for OktaConfig {
             timeout: Duration::from_secs(1),
             ..Default::default()
         };
-        let log_namespace = LogNamespace::Vector;
-
         ValidationConfiguration::from_source(
             Self::NAME,
-            log_namespace,
             vec![ComponentTestCaseConfig::from_source(config, None, None)],
         )
     }

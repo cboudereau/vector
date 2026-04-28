@@ -5,7 +5,7 @@
 use k8s_openapi::{api::core::v1::Namespace, apimachinery::pkg::apis::meta::v1::ObjectMeta};
 use kube::runtime::reflector::{ObjectRef, store::Store};
 use vector_lib::{
-    config::{LogNamespace, insert_source_metadata},
+    config::insert_source_metadata,
     configurable::configurable_component,
     lookup::{
         OwnedTargetPath,
@@ -48,8 +48,6 @@ pub struct NamespaceMetadataAnnotator {
     namespace_state_reader: Store<Namespace>,
     #[allow(dead_code)]
     fields_spec: FieldsSpec,
-    #[allow(dead_code)]
-    log_namespace: LogNamespace,
 }
 
 impl NamespaceMetadataAnnotator {
@@ -57,12 +55,10 @@ impl NamespaceMetadataAnnotator {
     pub const fn new(
         namespace_state_reader: Store<Namespace>,
         fields_spec: FieldsSpec,
-        log_namespace: LogNamespace,
     ) -> Self {
         Self {
             namespace_state_reader,
             fields_spec,
-            log_namespace,
         }
     }
 }
@@ -86,7 +82,6 @@ fn annotate_from_metadata(
     log: &mut OtelLog,
     fields_spec: &FieldsSpec,
     metadata: &ObjectMeta,
-    _log_namespace: LogNamespace,
 ) {
     if let Some(labels) = &metadata.labels
         && fields_spec.namespace_labels.path.is_some()
@@ -131,7 +126,6 @@ mod tests {
                 FieldsSpec::default(),
                 ObjectMeta::default(),
                 OtelLog::default(),
-                LogNamespace::Vector,
             ),
             (
                 FieldsSpec::default(),
@@ -160,7 +154,6 @@ mod tests {
                     );
                     log
                 },
-                LogNamespace::Vector,
             ),
             (
                 FieldsSpec::default(),
@@ -178,7 +171,7 @@ mod tests {
                     ..ObjectMeta::default()
                 },
                 {
-                    // annotate_from_metadata uses insert_source_metadata → always metadata path
+                    // annotate_from_metadata uses insert_source_metadata -> always metadata path
                     let mut log = OtelLog::default();
                     log.insert(
                         metadata_path!("kubernetes_logs", "namespace_labels", "sandbox0-label0"),
@@ -190,7 +183,6 @@ mod tests {
                     );
                     log
                 },
-                LogNamespace::Vector,
             ),
             (
                 FieldsSpec {
@@ -216,7 +208,6 @@ mod tests {
                     log.insert(metadata_path!("kubernetes_logs", "namespace_labels", "sandbox0-label1"), "val1");
                     log
                 },
-                LogNamespace::Vector,
             ),
             // Ensure we properly handle labels with `.` as flat fields.
             (
@@ -261,7 +252,6 @@ mod tests {
                     );
                     log
                 },
-                LogNamespace::Vector,
             ),
             (
                 FieldsSpec::default(),
@@ -282,7 +272,7 @@ mod tests {
                     ..ObjectMeta::default()
                 },
                 {
-                    // annotate_from_metadata uses insert_source_metadata → always metadata path
+                    // annotate_from_metadata uses insert_source_metadata -> always metadata path
                     let mut log = OtelLog::default();
                     log.insert(
                         metadata_path!("kubernetes_logs", "namespace_labels", "nested0.label0"),
@@ -306,13 +296,12 @@ mod tests {
                     );
                     log
                 },
-                LogNamespace::Vector,
             ),
         ];
 
-        for (fields_spec, metadata, expected, log_namespace) in cases.into_iter() {
+        for (fields_spec, metadata, expected) in cases.into_iter() {
             let mut log = OtelLog::default();
-            annotate_from_metadata(&mut log, &fields_spec, &metadata, log_namespace);
+            annotate_from_metadata(&mut log, &fields_spec, &metadata);
             let expected = expected;
             assert_eq!(log, expected);
         }

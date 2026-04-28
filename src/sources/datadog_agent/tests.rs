@@ -23,7 +23,7 @@ use vector_lib::{
             DeserializerConfig, Framer,
         },
     },
-    config::{DataType, LogNamespace},
+    config::{DataType},
     event::{MetricTags, metric::TagValue},
     lookup::owned_value_path,
     metric_tags,
@@ -109,7 +109,6 @@ fn test_decode_log_body() {
             decoder,
             "http",
             Some(test_logs_schema_definition()),
-            LogNamespace::Vector,
             false,
             true,
         );
@@ -177,7 +176,6 @@ fn test_decode_log_body_parse_ddtags() {
         decoder,
         "http",
         Some(test_logs_schema_definition()),
-        LogNamespace::Vector,
         true,
         true,
     );
@@ -217,7 +215,6 @@ fn test_decode_log_body_empty_object() {
         decoder,
         "http",
         Some(test_logs_schema_definition()),
-        LogNamespace::Vector,
         false,
         true,
     );
@@ -2092,8 +2089,7 @@ fn test_output_schema_definition_json_vector_namespace() {
         definition,
         Some(
             Definition::new_with_default_metadata(
-                Kind::object(Collection::empty()),
-                [LogNamespace::Vector]
+                Kind::object(Collection::empty())
             )
             .unknown_fields(Kind::json())
             .with_event_field(&owned_value_path!("time_unix_nano"), Kind::json(), None)
@@ -2156,8 +2152,7 @@ fn test_output_schema_definition_bytes_vector_namespace() {
         definition,
         Some(
             Definition::new_with_default_metadata(
-                Kind::object(Collection::empty()),
-                [LogNamespace::Vector]
+                Kind::object(Collection::empty())
             )
             .with_event_field(&owned_value_path!("body"), Kind::bytes(), Some("message"))
             .with_metadata_field(
@@ -2348,8 +2343,6 @@ impl ValidatableComponent for DatadogAgentConfig {
             send_timeout_secs: None,
         };
 
-        let log_namespace = LogNamespace::Vector;
-
         // TODO set up separate test cases for metrics and traces endpoints
 
         let logs_addr = format!("http://{}/api/v2/logs", config.address);
@@ -2368,7 +2361,6 @@ impl ValidatableComponent for DatadogAgentConfig {
 
         ValidationConfiguration::from_source(
             Self::NAME,
-            log_namespace,
             vec![ComponentTestCaseConfig::from_source(
                 config,
                 None,

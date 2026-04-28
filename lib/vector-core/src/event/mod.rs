@@ -22,7 +22,7 @@ pub use vrl::value::{KeyString, ObjectMap, Value};
 #[cfg(feature = "vrl")]
 pub use vrl_target::{TargetEvents, VrlTarget};
 
-use crate::config::{LogNamespace, OutputId};
+use crate::config::OutputId;
 
 pub mod array;
 pub mod discriminant;
@@ -352,10 +352,7 @@ impl Event {
     }
 
     /// Creates an Event from a JSON value.
-    pub fn from_json_value(
-        value: serde_json::Value,
-        _log_namespace: LogNamespace,
-    ) -> crate::Result<Self> {
+    pub fn from_json_value(value: serde_json::Value) -> crate::Result<Self> {
         Ok(Event::Log(OtelLog::from(Value::from(value))))
     }
 }

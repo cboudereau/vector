@@ -1226,8 +1226,6 @@ impl OtelLog {
                             ts.timestamp_nanos_opt().unwrap_or(0) as u64;
                     }
                     _ => {
-                        // Non-numeric values (e.g. formatted strings from sinks):
-                        // store as attribute so they appear in JSON serialization.
                         self.record_attrs.insert(
                             "time_unix_nano".to_string(),
                             vrl_value_to_any_value(&value),
@@ -1239,8 +1237,15 @@ impl OtelLog {
             "observed_time_unix_nano" => {
                 let old = if self.record.observed_time_unix_nano == 0 { None }
                     else { Some(Value::Integer(self.record.observed_time_unix_nano as i64)) };
-                if let Some(n) = value.as_integer() {
-                    self.record_mut().observed_time_unix_nano = n as u64;
+                match &value {
+                    Value::Integer(n) => {
+                        self.record_mut().observed_time_unix_nano = *n as u64;
+                    }
+                    Value::Timestamp(ts) => {
+                        self.record_mut().observed_time_unix_nano =
+                            ts.timestamp_nanos_opt().unwrap_or(0) as u64;
+                    }
+                    _ => {}
                 }
                 old
             }
@@ -1603,8 +1608,9 @@ impl OtelLog {
         }
         if !self.record_attrs.is_empty() {
             for (k, v) in self.record_attrs.iter() {
-                if !is_reserved_log_field(k) {
-                    map.insert(KeyString::from(k.clone()), any_value_to_vrl(v));
+                let key = KeyString::from(k.clone());
+                if !map.contains_key(&key) {
+                    map.insert(key, any_value_to_vrl(v));
                 }
             }
         }
@@ -2338,7 +2344,10 @@ impl OtelSpan {
         }
         if !self.span_attrs.is_empty() {
             for (k, v) in self.span_attrs.iter() {
-                map.insert(KeyString::from(k.clone()), any_value_to_vrl(v));
+                let key = KeyString::from(k.clone());
+                if !map.contains_key(&key) {
+                    map.insert(key, any_value_to_vrl(v));
+                }
             }
         }
         {
@@ -4327,22 +4336,13 @@ impl Serialize for HexBytes<'_> {
     }
 }
 
-const RESERVED_LOG_FIELDS: &[&str] = &[
-    "body", "severity_text", "severity_number", "time_unix_nano",
-    "observed_time_unix_nano", "trace_id", "span_id", "flags",
-    "dropped_attributes_count", "resource", "scope",
-];
-
-fn is_reserved_log_field(key: &str) -> bool {
-    RESERVED_LOG_FIELDS.contains(&key)
-}
-
 fn serialize_otel_attrs_flat<S: serde::ser::SerializeMap>(
     attrs: &OtelAttributes,
+    already_serialized: &[&str],
     map: &mut S,
 ) -> Result<(), S::Error> {
     for (k, v) in attrs.iter() {
-        if !is_reserved_log_field(k) {
+        if !already_serialized.contains(&k.as_str()) {
             map.serialize_entry(k, &SerializableAnyValue(v))?;
         }
     }
@@ -4392,28 +4392,36 @@ impl Serialize for OtelLog {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeMap;
         let mut map = serializer.serialize_map(None)?;
+        let mut emitted: Vec<&str> = Vec::new();
         if let Some(body) = self.body() {
             map.serialize_entry("body", &SerializableAnyValue(body))?;
+            emitted.push("body");
         }
         if !self.record.severity_text.is_empty() {
             map.serialize_entry("severity_text", &self.record.severity_text)?;
+            emitted.push("severity_text");
         }
         if self.record.severity_number != 0 {
             map.serialize_entry("severity_number", &(self.record.severity_number as i64))?;
+            emitted.push("severity_number");
         }
         if self.record.time_unix_nano != 0 {
             map.serialize_entry("time_unix_nano", &(self.record.time_unix_nano as i64))?;
+            emitted.push("time_unix_nano");
         }
         if self.record.observed_time_unix_nano != 0 {
             map.serialize_entry("observed_time_unix_nano", &(self.record.observed_time_unix_nano as i64))?;
+            emitted.push("observed_time_unix_nano");
         }
         if !self.record.trace_id.is_empty() {
             map.serialize_entry("trace_id", &HexBytes(&self.record.trace_id))?;
+            emitted.push("trace_id");
         }
         if !self.record.span_id.is_empty() {
             map.serialize_entry("span_id", &HexBytes(&self.record.span_id))?;
+            emitted.push("span_id");
         }
-        serialize_otel_attrs_flat(&self.record_attrs, &mut map)?;
+        serialize_otel_attrs_flat(&self.record_attrs, &emitted, &mut map)?;
         serialize_resource_scope(self.resource.as_ref(), &self.resource_attrs, self.scope.as_ref(), &self.scope_attrs, &mut map)?;
         map.end()
     }
@@ -4423,26 +4431,34 @@ impl Serialize for OtelSpan {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeMap;
         let mut map = serializer.serialize_map(None)?;
+        let mut emitted: Vec<&str> = Vec::new();
         if !self.span.name.is_empty() {
             map.serialize_entry("name", &self.span.name)?;
+            emitted.push("name");
         }
         if !self.span.trace_id.is_empty() {
             map.serialize_entry("trace_id", &HexBytes(&self.span.trace_id))?;
+            emitted.push("trace_id");
         }
         if !self.span.span_id.is_empty() {
             map.serialize_entry("span_id", &HexBytes(&self.span.span_id))?;
+            emitted.push("span_id");
         }
         if !self.span.parent_span_id.is_empty() {
             map.serialize_entry("parent_span_id", &HexBytes(&self.span.parent_span_id))?;
+            emitted.push("parent_span_id");
         }
         if self.span.start_time_unix_nano != 0 {
             map.serialize_entry("start_time_unix_nano", &(self.span.start_time_unix_nano as i64))?;
+            emitted.push("start_time_unix_nano");
         }
         if self.span.end_time_unix_nano != 0 {
             map.serialize_entry("end_time_unix_nano", &(self.span.end_time_unix_nano as i64))?;
+            emitted.push("end_time_unix_nano");
         }
         if self.span.kind != 0 {
             map.serialize_entry("kind", &(self.span.kind as i64))?;
+            emitted.push("kind");
         }
         if let Some(status) = &self.span.status {
             let mut status_map = ObjectMap::new();
@@ -4451,8 +4467,9 @@ impl Serialize for OtelSpan {
             }
             status_map.insert("code".into(), Value::Integer(status.code as i64));
             map.serialize_entry("status", &status_map)?;
+            emitted.push("status");
         }
-        serialize_otel_attrs_flat(&self.span_attrs, &mut map)?;
+        serialize_otel_attrs_flat(&self.span_attrs, &emitted, &mut map)?;
         serialize_resource_scope(self.resource.as_ref(), &self.resource_attrs, self.scope.as_ref(), &self.scope_attrs, &mut map)?;
         map.end()
     }

@@ -108,7 +108,7 @@ kafka, syslog, …  ──────────►  OTel Span
 | DDSketch vs ExponentialHistogram | ExponentialHistogram in core (tighter error at scale 7: ±0.27% vs ±0.78%). DDSketch only in DD adapter. |
 | Core value type | `AnyValue` (OTel proto). `Value` is VRL-boundary only. |
 | `EventMetadata` | Retained as pipeline sidecar (finalizers, source_id, schema). Not merged into `Resource.attributes`. |
-| `Vec<KeyValue>` attribute lookup | O(n) linear scan was same approach as otelcontribcol. Caused 15–25% regression for VRL (lookup-dominated, 10–20 reads). **Fixed in P11–P12:** `OtelAttributes` BTreeMap wrapper for OtelLog + OtelSpan. OtelMetric data-point attributes remain `Vec<KeyValue>` (deferred). |
+| `Vec<KeyValue>` attribute lookup | O(n) linear scan was same approach as otelcontribcol. Caused 15–25% regression for VRL (lookup-dominated, 10–20 reads). **Fixed in P11–P12+P16:** `OtelAttributes` BTreeMap wrapper for all three event types (OtelLog, OtelSpan, OtelMetric). |
 | Migration strategy | Wrapper types (incremental, always-compilable) over big-bang replacement. |
 | DD sink | Not re-added — DD accepts OTLP natively. Users point OTel sink at DD's OTLP endpoint. |
 | Native codecs + protos | Fully deleted. Vector source/sink speak OTLP gRPC natively. |
@@ -159,9 +159,9 @@ kafka, syslog, …  ──────────►  OTel Span
 | **P16** | `OtelAttributes` for OtelMetric data-point attributes — BTreeMap O(log n) lookup, delete `attribute_value()` + `set_attribute()` free fns | 5 files |
 | **P17** | Direct `Serialize` for OtelLog/OtelSpan — serialize from proto fields without `to_value_canonical()` Value tree allocation. `HexBytes` wrapper for trace/span ID hex encoding. Round-trip tests prove output matches canonical format. | 1 file |
 | **P18** | Fix 17 skipped `cargo test -p vector` tests: un-ignore all, fix assertions + add OtelMetric VRL legacy paths (`.tags.*`, `.kind`, `.namespace`), fix `value_to_otel_log_event` for non-Object values, add metric dropped annotation | 7 files |
-| **P19** | Code review + test cleanup: fix EventDataEq (resource/scope attrs), reserved field collision guard, flags/dropped_attributes_count round-trip, non-UTF8 BytesValue, consolidate duplicate AnyValue conversions, extract `otel_fields.rs` constants, delete 16 dead tests, fix 8 tests, un-ignore 5 | 12 files |
+| **P19** | Code review + test cleanup: fix EventDataEq (resource/scope attrs), reserved field collision guard, flags/dropped_attributes_count round-trip, non-UTF8 BytesValue, consolidate duplicate AnyValue conversions, extract `otel_fields.rs` constants (29), delete 16 dead tests, fix 9 tests, un-ignore 5. Zero `#[ignore]` remaining in `lib/` crates. | 32 files |
 
-**Net code change:** ~−23,000 lines removed.
+**Total changes:** +53,115/−42,556 lines across 9,885 files (net +10,559). The net positive reflects substantial new code (OTel types, VRL targets, OtelAttributes, migration tool, new transforms) alongside large deletions (legacy types, DD sinks, native proto, test fixtures).
 
 ---
 
@@ -175,7 +175,7 @@ kafka, syslog, …  ──────────►  OTel Span
 | ~~`log_namespace: Option<bool>`~~ | **Done (P13+P14).** Removed config option from all 37 sources, 2 transforms, global schema, `LogNamespace::merge()` (P13). Deleted `LogNamespace` enum, `Definition.log_namespaces` field, `SourceContext::log_namespace()`, renamed legacy methods (P14). | — |
 | ~~Resource/scope attributes~~ | **Done.** `OtelLog` and `OtelSpan` resource/scope attributes now use `OtelAttributes` (BTreeMap-backed), same as record/span attributes. | — |
 | ~~OtelMetric data-point attributes~~ | **Done (P16).** Each data point's `Vec<KeyValue>` extracted into `Vec<OtelAttributes>` at ingestion, written back via `metric_proto()` / `into_parts()` at egress. O(log n) lookup for VRL and `extract_metric_data()`. `attribute_value()` + `set_attribute()` free functions deleted. | — |
-| `kvlist_to_object_map()` (2 call sites) | Converts `Vec<KeyValue>` to VRL `ObjectMap`. Only used internally for `KvlistValue` → `ObjectMap` conversion in `any_value_to_vrl`. | May be inlined or removed when VRL operates on `AnyValue` directly. |
+| `kvlist_to_object_map()` (9 call sites) | Converts `Vec<KeyValue>` to VRL `ObjectMap`. Used for `KvlistValue` → `ObjectMap` in `any_value_to_vrl`, metric data-point attributes, span events/links, and resource/scope in VRL target. | May be inlined or removed when VRL operates on `AnyValue` directly. |
 
 ---
 
@@ -271,15 +271,14 @@ VRL .resource.x     →  direct resource + BTreeMap::get           →  O(log m)
 
 1. **Legacy metric types removal** (~2,164 lines) — Replace `MetricTags` with `OtelAttributes`, add arithmetic methods to `OtelMetric`, eliminate `MetricValue`/`MetricKind`/`MetricSeries`/`MetricData`. Largest remaining cleanup.
 2. **Replace `to_value_canonical()` bridge** — Direct proto access in GELF/Avro/protobuf/syslog encoders. 12 call sites across 8 codec files.
-3. **Logfmt serializer fix** — 2 remaining skipped tests. Needs refactor to use `to_value_canonical()` instead of `log.value()`.
-4. **Extract remaining hardcoded field names in otel_event.rs** — ~100 uses of string literals for field names. Lower risk since otel_event.rs is the defining module.
-5. **OtelSpan remove/remove_prune** — Currently falls through to full canonical rebuild. Direct proto field removal would be more efficient.
+3. **Extract remaining hardcoded field names in otel_event.rs** — ~100 uses of string literals for field names. Lower risk since otel_event.rs is the defining module.
+4. **OtelSpan remove/remove_prune** — Currently falls through to full canonical rebuild. Direct proto field removal would be more efficient.
 
 ---
 
 ## Code Review Findings (P19)
 
-Audit of the full migration (510 commits since `before_migration` tag). Two review passes. Organized by severity.
+Audit of the full migration (511 commits since `before_migration` tag). Two review passes. Organized by severity.
 
 ### P0 — Bugs (data loss or panics)
 
@@ -323,7 +322,7 @@ Audit of the full migration (510 commits since `before_migration` tag). Two revi
 | Action | Count | Details |
 |--------|-------|---------|
 | **DELETED** | 16 | Dead code: legacy proto round-trip (2), legacy LogNamespace schema (2), dev utility (1), QuickCheck size_of (3), metric codec (4), transformer (3), text metric (1) |
-| **FIXED** | 8 | VRL decoding (3), GELF timestamp (1), JSON metric_tags_full (2), lag time (3 un-ignored), CEF/CSV (2 un-ignored) |
+| **FIXED** | 9 | VRL decoding (4), GELF timestamp (1), JSON metric_tags_full (2), lag time (3 un-ignored), CEF/CSV (2 un-ignored), logfmt (2 — already working after `value()` fix) |
 | **KEEP IGNORED** | 14 | Infrastructure: GCP (8), disk buffer (2), Azure (2), backpressure (1), finalization (1) |
 
 ---
@@ -351,7 +350,7 @@ All 17 OTel-migration ignored tests in `src/` have been un-ignored and fixed:
 | Legacy proto round-trip (2) | **Deleted** | Dead code — native proto format removed |
 | QuickCheck size_of (3) | **Deleted** (entire file) | `Arbitrary` for `Event` overflows with OTel types |
 | Legacy LogNamespace schema (2) | **Deleted** | Schema validation assumed `LogEvent` semantics |
-| VRL decoding format (3 of 4) | **Fixed** | Updated VRL source to use `.body`, assertions to match OTel structure |
+| VRL decoding format (4) | **Fixed** | Updated VRL source to use `.body`, assertions to match OTel structure |
 | Transformer (3) | **Deleted** | Tested dot-path nesting + `only_fields` with `service` — not applicable to OtelLog flat attributes |
 | CEF timestamp (1) | **Un-ignored** | Already passing |
 | CSV timestamp (1) | **Un-ignored** | Already passing |
@@ -360,11 +359,9 @@ All 17 OTel-migration ignored tests in `src/` have been un-ignored and fixed:
 | JSON/text dead metric tests (5) | **Deleted** | Set, histogram, summary, distribution tests — dead metric types in this context |
 | Orphan metrics test file | **Deleted** | `vector-core/metrics/tests/mod.rs` was never compiled |
 
-### Remaining skipped `lib/` tests — 2
+### Remaining skipped `lib/` tests — 0
 
-| File | Tests | Why |
-|------|-------|-----|
-| `codecs/encoding/format/logfmt.rs` | `serialize_logfmt`, `serialize_otel_log_logfmt` | Logfmt serializer calls `log.value()` which returns only body. Needs refactor to use `to_value_canonical()` or serde. |
+All OTel-migration related `#[ignore]` annotations in `lib/` crates have been resolved. Zero remaining.
 
 ### Pre-existing infrastructure issues (not caused by migration)
 

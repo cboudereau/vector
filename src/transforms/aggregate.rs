@@ -8,15 +8,12 @@ use async_stream::stream;
 use futures::{Stream, StreamExt};
 use vector_lib::{
     configurable::configurable_component,
-    event::{
-        MetricValue,
-        metric::{MetricData, MetricKind, MetricSeries},
-    },
+    event::metric::MetricSeries,
 };
 
 use crate::{
     config::{DataType, Input, OutputId, TransformConfig, TransformContext, TransformOutput},
-    event::{Event, EventMetadata, OtelMetric},
+    event::{Event, OtelMetric},
     internal_events::{AggregateEventRecorded, AggregateFlushed, AggregateUpdateFailed},
     schema,
     transforms::{TaskTransform, Transform},
@@ -104,14 +101,12 @@ impl TransformConfig for AggregateConfig {
     }
 }
 
-type MetricEntry = (MetricData, EventMetadata);
-
 #[derive(Debug)]
 pub struct Aggregate {
     interval: Duration,
-    map: HashMap<MetricSeries, MetricEntry>,
-    prev_map: HashMap<MetricSeries, MetricEntry>,
-    multi_map: HashMap<MetricSeries, Vec<MetricEntry>>,
+    map: HashMap<MetricSeries, OtelMetric>,
+    prev_map: HashMap<MetricSeries, OtelMetric>,
+    multi_map: HashMap<MetricSeries, Vec<OtelMetric>>,
     mode: AggregationMode,
 }
 
@@ -127,196 +122,154 @@ impl Aggregate {
     }
 
     fn record(&mut self, event: Event) {
-        let (series, data, metadata) = match event {
-            Event::Metric(otel) => otel.into_metric_parts(),
+        let metric = match event {
+            Event::Metric(m) => m,
             _ => return,
         };
 
+        let series = metric.metric_series();
+
         match self.mode {
-            AggregationMode::Auto => match data.kind {
-                MetricKind::Incremental => self.record_sum(series, data, metadata),
-                MetricKind::Absolute => {
-                    self.map.insert(series, (data, metadata));
+            AggregationMode::Auto => {
+                if metric.is_delta() {
+                    self.record_sum(series, metric);
+                } else {
+                    self.map.insert(series, metric);
                 }
-            },
-            AggregationMode::Sum => self.record_sum(series, data, metadata),
-            AggregationMode::Latest | AggregationMode::Diff => match data.kind {
-                MetricKind::Incremental => (),
-                MetricKind::Absolute => {
-                    self.map.insert(series, (data, metadata));
-                }
-            },
-            AggregationMode::Count => self.record_count(series, data, metadata),
-            AggregationMode::Max | AggregationMode::Min => {
-                self.record_comparison(series, data, metadata)
             }
-            AggregationMode::Mean | AggregationMode::Stdev => match data.kind {
-                MetricKind::Incremental => (),
-                MetricKind::Absolute => {
-                    if matches!(data.value, MetricValue::Gauge { value: _ }) {
-                        match self.multi_map.entry(series) {
-                            Entry::Occupied(mut entry) => {
-                                let existing = entry.get_mut();
-                                existing.push((data, metadata));
-                            }
-                            Entry::Vacant(entry) => {
-                                entry.insert(vec![(data, metadata)]);
-                            }
-                        }
+            AggregationMode::Sum => self.record_sum(series, metric),
+            AggregationMode::Latest | AggregationMode::Diff => {
+                if metric.is_cumulative() {
+                    self.map.insert(series, metric);
+                }
+            }
+            AggregationMode::Count => self.record_count(series, metric),
+            AggregationMode::Max | AggregationMode::Min => {
+                self.record_comparison(series, metric)
+            }
+            AggregationMode::Mean | AggregationMode::Stdev => {
+                if metric.is_cumulative() && metric.is_gauge() {
+                    match self.multi_map.entry(series) {
+                        Entry::Occupied(mut entry) => entry.get_mut().push(metric),
+                        Entry::Vacant(entry) => { entry.insert(vec![metric]); }
                     }
                 }
-            },
+            }
         }
 
         emit!(AggregateEventRecorded);
     }
 
-    fn record_count(
-        &mut self,
-        series: MetricSeries,
-        mut data: MetricData,
-        metadata: EventMetadata,
-    ) {
-        let mut count_data = data.clone();
-        let existing = self.map.entry(series).or_insert_with(|| {
-            *data.value_mut() = MetricValue::Counter { value: 0f64 };
-            (data.clone(), metadata.clone())
-        });
-        *count_data.value_mut() = MetricValue::Counter { value: 1f64 };
-        if existing.0.kind == data.kind && existing.0.update(&count_data) {
-            existing.1.merge(metadata);
-        } else {
-            emit!(AggregateUpdateFailed);
+    fn record_count(&mut self, series: MetricSeries, metric: OtelMetric) {
+        match self.map.entry(series) {
+            Entry::Occupied(mut entry) => {
+                let existing = entry.get_mut();
+                let current = existing.first_value_as_f64().unwrap_or(0.0);
+                existing.set_first_value(current + 1.0);
+                existing.metadata_mut().merge(metric.metadata().clone());
+            }
+            Entry::Vacant(entry) => {
+                use crate::event::metric::MetricKind;
+                let mut counter = OtelMetric::new_counter(
+                    metric.name(),
+                    MetricKind::Absolute,
+                    1.0,
+                );
+                *counter.metadata_mut() = metric.metadata().clone();
+                entry.insert(counter);
+            }
         }
     }
 
-    fn record_sum(&mut self, series: MetricSeries, data: MetricData, metadata: EventMetadata) {
-        match data.kind {
-            MetricKind::Incremental => match self.map.entry(series) {
-                Entry::Occupied(mut entry) => {
-                    let existing = entry.get_mut();
-                    // In order to update (add) the new and old kind's must match
-                    if existing.0.kind == data.kind && existing.0.update(&data) {
-                        existing.1.merge(metadata);
-                    } else {
-                        emit!(AggregateUpdateFailed);
-                        *existing = (data, metadata);
-                    }
+    fn record_sum(&mut self, series: MetricSeries, metric: OtelMetric) {
+        if !metric.is_delta() { return; }
+        match self.map.entry(series) {
+            Entry::Occupied(mut entry) => {
+                let existing = entry.get_mut();
+                if existing.is_delta() && existing.add(&metric) {
+                    existing.metadata_mut().merge(metric.metadata().clone());
+                } else {
+                    emit!(AggregateUpdateFailed);
+                    *existing = metric;
                 }
-                Entry::Vacant(entry) => {
-                    entry.insert((data, metadata));
-                }
-            },
-            MetricKind::Absolute => {}
+            }
+            Entry::Vacant(entry) => {
+                entry.insert(metric);
+            }
         }
     }
 
-    fn record_comparison(
-        &mut self,
-        series: MetricSeries,
-        data: MetricData,
-        metadata: EventMetadata,
-    ) {
-        match data.kind {
-            MetricKind::Incremental => (),
-            MetricKind::Absolute => match self.map.entry(series) {
-                Entry::Occupied(mut entry) => {
-                    let existing = entry.get_mut();
-                    // In order to update (add) the new and old kind's must match
-                    if existing.0.kind == data.kind {
-                        if let MetricValue::Gauge {
-                            value: existing_value,
-                        } = existing.0.value()
-                            && let MetricValue::Gauge { value: new_value } = data.value()
-                        {
-                            let should_update = match self.mode {
-                                AggregationMode::Max => new_value > existing_value,
-                                AggregationMode::Min => new_value < existing_value,
-                                _ => false,
-                            };
-                            if should_update {
-                                *existing = (data, metadata);
-                            }
-                        }
-                    } else {
-                        emit!(AggregateUpdateFailed);
-                        *existing = (data, metadata);
+    fn record_comparison(&mut self, series: MetricSeries, metric: OtelMetric) {
+        if !metric.is_cumulative() { return; }
+        match self.map.entry(series) {
+            Entry::Occupied(mut entry) => {
+                let existing_val = entry.get().first_value_as_f64();
+                let new_val = metric.first_value_as_f64();
+                if let (Some(ev), Some(nv)) = (existing_val, new_val) {
+                    let should_update = match self.mode {
+                        AggregationMode::Max => nv > ev,
+                        AggregationMode::Min => nv < ev,
+                        _ => false,
+                    };
+                    if should_update {
+                        *entry.get_mut() = metric;
                     }
                 }
-                Entry::Vacant(entry) => {
-                    entry.insert((data, metadata));
-                }
-            },
+            }
+            Entry::Vacant(entry) => {
+                entry.insert(metric);
+            }
         }
     }
 
     fn flush_into(&mut self, output: &mut Vec<Event>) {
         let map = std::mem::take(&mut self.map);
-        for (series, entry) in map.clone().into_iter() {
-            let (mut data, metadata) = entry;
-            if matches!(self.mode, AggregationMode::Diff)
-                && let Some(prev_entry) = self.prev_map.get(&series)
-                && data.kind == prev_entry.0.kind
-                && !data.subtract(&prev_entry.0)
-            {
-                emit!(AggregateUpdateFailed);
+        for (series, mut metric) in map.clone().into_iter() {
+            if matches!(self.mode, AggregationMode::Diff) {
+                if let Some(prev) = self.prev_map.get(&series) {
+                    if !metric.subtract(prev) {
+                        emit!(AggregateUpdateFailed);
+                    }
+                }
             }
-            output.push(Event::Metric(OtelMetric::from_metric_parts(
-                series, data, metadata,
-            )));
+            output.push(Event::Metric(metric));
         }
 
         let multi_map = std::mem::take(&mut self.multi_map);
-        'outer: for (series, entries) in multi_map.into_iter() {
+        'outer: for (_series, entries) in multi_map.into_iter() {
             if entries.is_empty() {
                 continue;
             }
 
-            let (mut final_sum, mut final_metadata) = entries.first().unwrap().clone();
-            for (data, metadata) in entries.iter().skip(1) {
-                if !final_sum.update(data) {
-                    // Incompatible types, skip this metric
+            let mut combined = entries[0].clone();
+            for m in entries.iter().skip(1) {
+                if !combined.add(m) {
                     emit!(AggregateUpdateFailed);
                     continue 'outer;
                 }
-                final_metadata.merge(metadata.clone());
+                combined.metadata_mut().merge(m.metadata().clone());
             }
 
-            let final_mean_value = if let MetricValue::Gauge { value } = final_sum.value_mut() {
-                // Entries are not empty so this is safe.
-                *value /= entries.len() as f64;
-                *value
-            } else {
-                0.0
-            };
+            let count = entries.len() as f64;
+            let mean_value = combined.first_value_as_f64().unwrap_or(0.0) / count;
 
-            let final_mean = final_sum.clone();
             match self.mode {
                 AggregationMode::Mean => {
-                    output.push(Event::Metric(OtelMetric::from_metric_parts(
-                        series, final_mean, final_metadata,
-                    )));
+                    combined.set_first_value(mean_value);
+                    output.push(Event::Metric(combined));
                 }
                 AggregationMode::Stdev => {
                     let variance = entries
                         .iter()
-                        .filter_map(|(data, _)| {
-                            if let MetricValue::Gauge { value } = data.value() {
-                                let diff = final_mean_value - value;
-                                Some(diff * diff)
-                            } else {
-                                None
-                            }
+                        .filter_map(|m| {
+                            let v = m.first_value_as_f64()?;
+                            let diff = mean_value - v;
+                            Some(diff * diff)
                         })
                         .sum::<f64>()
-                        / entries.len() as f64;
-                    let mut final_stdev = final_mean;
-                    if let MetricValue::Gauge { value } = final_stdev.value_mut() {
-                        *value = variance.sqrt()
-                    }
-                    output.push(Event::Metric(OtelMetric::from_metric_parts(
-                        series, final_stdev, final_metadata,
-                    )));
+                        / count;
+                    combined.set_first_value(variance.sqrt());
+                    output.push(Event::Metric(combined));
                 }
                 _ => (),
             }

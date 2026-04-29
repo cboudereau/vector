@@ -4247,6 +4247,19 @@ impl OtelMetric {
     /// Decompose this OtelMetric into legacy metric parts without creating
     /// an intermediate Metric. Used by aggregate and other transforms that
     /// store MetricSeries/MetricData separately.
+    /// Build a `MetricSeries` key for this metric (name + namespace + tags).
+    /// This is the grouping key used by aggregate/normalization.
+    pub fn metric_series(&self) -> super::metric::MetricSeries {
+        use super::metric::{MetricName, MetricSeries};
+        MetricSeries {
+            name: MetricName {
+                name: self.metric.name.clone(),
+                namespace: self.namespace().map(|s| s.to_string()),
+            },
+            tags: self.tags(),
+        }
+    }
+
     pub fn into_metric_parts(self) -> (super::metric::MetricSeries, super::metric::MetricData, super::EventMetadata) {
         use super::metric::{MetricData, MetricName, MetricSeries, MetricTime};
 
@@ -4495,6 +4508,26 @@ impl OtelMetric {
                 }
             }
             None => {}
+        }
+    }
+
+    /// Set the first data point value (Sum or Gauge only).
+    pub fn set_first_value(&mut self, val: f64) {
+        use opentelemetry_proto::tonic::metrics::v1::metric::Data as MD;
+        use opentelemetry_proto::tonic::metrics::v1::number_data_point::Value as NDPValue;
+
+        match self.metric.data.as_mut() {
+            Some(MD::Sum(s)) => {
+                if let Some(dp) = s.data_points.first_mut() {
+                    dp.value = Some(NDPValue::AsDouble(val));
+                }
+            }
+            Some(MD::Gauge(g)) => {
+                if let Some(dp) = g.data_points.first_mut() {
+                    dp.value = Some(NDPValue::AsDouble(val));
+                }
+            }
+            _ => {}
         }
     }
 

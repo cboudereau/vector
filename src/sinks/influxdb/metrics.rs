@@ -282,11 +282,12 @@ fn encode_events(
     let count = events.len();
 
     for otel in events.into_iter() {
-        let (series, data, _metadata) = otel.into_metric_parts();
-        let fullname = encode_namespace(series.name.namespace.as_deref().or(default_namespace), '.', series.name.name.as_str());
-        let ts = encode_timestamp(data.time.timestamp);
-        let tags = merge_tags(series.tags.as_ref(), tags);
-        let (metric_type, fields) = get_type_and_fields(&data.value, quantiles);
+        let fullname = encode_namespace(otel.namespace().or(default_namespace), '.', otel.name());
+        let ts = encode_timestamp(otel.timestamp());
+        let event_tags = otel.tags();
+        let tags = merge_tags(event_tags.as_ref(), tags);
+        let value = otel.value();
+        let (metric_type, fields) = get_type_and_fields(&value, quantiles);
 
         let mut unwrapped_tags = tags.unwrap_or_default();
         unwrapped_tags.replace("metric_type".to_owned(), metric_type.to_owned());

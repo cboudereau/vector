@@ -4106,6 +4106,11 @@ impl OtelMetric {
         self.to_legacy_metric_ref_timestamp()
     }
 
+    /// Get the interval between start_time and end_time in milliseconds.
+    pub fn interval_ms(&self) -> Option<std::num::NonZeroU32> {
+        self.reconstruct_interval_ms()
+    }
+
     fn to_legacy_metric_ref_timestamp(&self) -> Option<chrono::DateTime<chrono::Utc>> {
         use opentelemetry_proto::tonic::metrics::v1::metric;
         let data = self.metric.data.as_ref()?;

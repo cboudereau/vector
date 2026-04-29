@@ -283,15 +283,15 @@ impl CloudWatchMetricsSvc {
         events
             .into_iter()
             .filter_map(|otel| {
-                let (series, data, _metadata) = otel.into_metric_parts();
-                let metric_name = series.name.name.to_string();
-                let timestamp = data
-                    .time.timestamp
+                let metric_name = otel.name().to_string();
+                let timestamp = otel
+                    .timestamp()
                     .map(|x| AwsDateTime::from_millis(x.timestamp_millis()));
-                let dimensions = series.tags.as_ref().map(tags_to_dimensions);
+                let event_tags = otel.tags();
+                let dimensions = event_tags.as_ref().map(tags_to_dimensions);
                 let resolution = resolutions.get(&metric_name).copied();
-                // AwsCloudwatchMetricNormalize converts these to the right MetricKind
-                match &data.value {
+                let value = otel.value();
+                match &value {
                     MetricValue::Counter { value } => Some(
                         MetricDatum::builder()
                             .metric_name(metric_name)

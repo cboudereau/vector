@@ -14,7 +14,7 @@ use vector_lib::{
 use vrl::event_path;
 
 use super::NewRelicSinkError;
-use crate::event::{Event, MetricKind, MetricValue, Value};
+use crate::event::{Event, MetricKind, Value};
 
 #[derive(Debug)]
 pub(super) enum NewRelicApiModel {
@@ -69,43 +69,34 @@ impl TryFrom<Vec<Event>> for MetricsApiModel {
                     return None;
                 };
 
-                // Generate Value::Object() from BTreeMap<String, String>
-                let (series, data, _) = otel_metric.into_metric_parts();
-
-                // We only handle gauge and counter metrics
-                // Extract value & type and set type-related attributes
-                let (value, metric_type, interval_ms) = match (data.value, &data.kind) {
-                    (MetricValue::Counter { value }, MetricKind::Incremental) => {
-                        let Some(interval_ms) = data.time.interval_ms else {
-                            // Incremental counter without an interval is worthless, skip this metric
-                            num_missing_interval += 1;
-                            return None;
-                        };
-                        (value, "count", Some(interval_ms.get() as i64))
-                    }
-                    (MetricValue::Counter { value }, MetricKind::Absolute)
-                    | (MetricValue::Gauge { value }, _) => (value, "gauge", None),
-                    _ => {
-                        // Unsupported metric type
-                        num_unsupported_metric_type += 1;
+                let (value, metric_type, interval_ms) = if otel_metric.is_sum() && otel_metric.kind() == MetricKind::Incremental {
+                    let Some(interval_ms) = otel_metric.interval_ms() else {
+                        num_missing_interval += 1;
                         return None;
-                    }
+                    };
+                    let v = otel_metric.first_value_as_f64().unwrap_or(0.0);
+                    (v, "count", Some(interval_ms.get() as i64))
+                } else if otel_metric.is_sum() || otel_metric.is_gauge() {
+                    let v = otel_metric.first_value_as_f64().unwrap_or(0.0);
+                    (v, "gauge", None)
+                } else {
+                    num_unsupported_metric_type += 1;
+                    return None;
                 };
 
-                // Set name, type, value, timestamp, and attributes
                 if value.is_nan() {
                     num_nan_value += 1;
                     return None;
                 };
 
-                let timestamp = data.time.timestamp.unwrap_or_else(Utc::now);
+                let timestamp = otel_metric.timestamp().unwrap_or_else(Utc::now);
                 Some(MetricData {
                     interval_ms,
-                    name: series.name.name,
+                    name: otel_metric.name().to_string(),
                     r#type: metric_type,
                     value,
                     timestamp: timestamp.timestamp_millis(),
-                    attributes: series.tags.map(|tags| tags.into_iter_single().collect()),
+                    attributes: otel_metric.tags().map(|tags| tags.into_iter_single().collect()),
                 })
             })
             .collect();

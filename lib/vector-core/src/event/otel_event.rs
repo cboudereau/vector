@@ -602,6 +602,132 @@ pub fn scope_to_proto(scope: Option<&InstrumentationScope>, attrs: &OtelAttribut
     Some(s)
 }
 
+fn append_canonical_resource_scope(
+    map: &mut ObjectMap,
+    resource: Option<&Resource>,
+    resource_attrs: &OtelAttributes,
+    scope: Option<&InstrumentationScope>,
+    scope_attrs: &OtelAttributes,
+) {
+    {
+        let mut res_map = resource_attrs.to_object_map();
+        if let Some(ref res) = resource {
+            if res.dropped_attributes_count != 0 {
+                res_map.insert(
+                    "dropped_attributes_count".into(),
+                    Value::Integer(res.dropped_attributes_count as i64),
+                );
+            }
+        }
+        if !res_map.is_empty() {
+            map.insert("resource".into(), Value::Object(res_map));
+        }
+    }
+    {
+        let mut scope_map = ObjectMap::new();
+        if let Some(ref s) = scope {
+            if !s.name.is_empty() {
+                scope_map.insert("name".into(), Value::Bytes(s.name.clone().into()));
+            }
+            if !s.version.is_empty() {
+                scope_map.insert("version".into(), Value::Bytes(s.version.clone().into()));
+            }
+        }
+        if !scope_attrs.is_empty() {
+            scope_map.insert(
+                "attributes".into(),
+                Value::Object(scope_attrs.to_object_map()),
+            );
+        }
+        if !scope_map.is_empty() {
+            map.insert("scope".into(), Value::Object(scope_map));
+        }
+    }
+}
+
+fn remove_resource_subpath(
+    resource_attrs: &mut OtelAttributes,
+    remaining: &[String],
+    prune: bool,
+) -> Option<Value> {
+    if remaining.len() == 1 {
+        resource_attrs.remove(remaining[0].as_str())
+            .map(|av| any_value_to_vrl(&av))
+    } else {
+        let key = remaining[0].as_str();
+        let av = resource_attrs.get(key)?;
+        let mut v = any_value_to_vrl(av);
+        let result = remove_value_at(&mut v, &remaining[1..], prune);
+        resource_attrs.insert(key.to_string(), vrl_value_to_any_value(&v));
+        result
+    }
+}
+
+fn remove_scope_subpath(
+    scope: Option<&mut InstrumentationScope>,
+    scope_attrs: &mut OtelAttributes,
+    remaining: &[String],
+    prune: bool,
+) -> Option<Value> {
+    let scope = scope?;
+    match remaining[0].as_str() {
+        "name" if remaining.len() == 1 => {
+            if scope.name.is_empty() { return None; }
+            let old = Some(Value::Bytes(scope.name.clone().into()));
+            scope.name = String::new();
+            old
+        }
+        "version" if remaining.len() == 1 => {
+            if scope.version.is_empty() { return None; }
+            let old = Some(Value::Bytes(scope.version.clone().into()));
+            scope.version = String::new();
+            old
+        }
+        "attributes" => {
+            if remaining.len() == 1 {
+                if scope_attrs.is_empty() { return None; }
+                let old = Some(Value::Object(scope_attrs.to_object_map()));
+                *scope_attrs = OtelAttributes::new();
+                old
+            } else if remaining.len() == 2 {
+                scope_attrs.remove(remaining[1].as_str())
+                    .map(|av| any_value_to_vrl(&av))
+            } else {
+                let key = remaining[1].as_str();
+                let av = scope_attrs.get(key)?;
+                let mut v = any_value_to_vrl(av);
+                let result = remove_value_at(&mut v, &remaining[2..], prune);
+                scope_attrs.insert(key.to_string(), vrl_value_to_any_value(&v));
+                result
+            }
+        }
+        _ => None,
+    }
+}
+
+fn remove_attrs_subpath(
+    attrs: &mut OtelAttributes,
+    first: &str,
+    remaining: &[String],
+    prune: bool,
+) -> Option<Value> {
+    let av = attrs.get(first)?;
+    let mut v = any_value_to_vrl(av);
+    let result = remove_value_at(&mut v, remaining, prune);
+    if result.is_some() {
+        if prune {
+            if let Value::Object(ref map) = v {
+                if map.is_empty() {
+                    attrs.remove(first);
+                    return result;
+                }
+            }
+        }
+        attrs.insert(first.to_string(), vrl_value_to_any_value(&v));
+    }
+    result
+}
+
 /// BTreeMap-backed attribute container for O(log n) lookup.
 /// Converts to/from `Vec<KeyValue>` at proto serialization boundaries.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -1625,77 +1751,15 @@ impl OtelLog {
     fn remove_field_path(&mut self, fields: &[String], prune: bool) -> Option<Value> {
         debug_assert!(fields.len() >= 2);
         match fields[0].as_str() {
-            "resource" => {
-                let remaining = &fields[1..];
-                if remaining.len() == 1 {
-                    self.resource_attrs.remove(remaining[0].as_str())
-                        .map(|av| any_value_to_vrl(&av))
-                } else {
-                    let key = remaining[0].as_str();
-                    let av = self.resource_attrs.get(key)?;
-                    let mut v = any_value_to_vrl(av);
-                    let result = remove_value_at(&mut v, &remaining[1..], prune);
-                    self.resource_attrs.insert(key.to_string(), vrl_value_to_any_value(&v));
-                    result
-                }
-            }
-            "scope" => {
-                let scope = self.scope.as_mut()?;
-                let remaining = &fields[1..];
-                match remaining[0].as_str() {
-                    "name" if remaining.len() == 1 => {
-                        if scope.name.is_empty() { return None; }
-                        let old = Some(Value::Bytes(scope.name.clone().into()));
-                        scope.name = String::new();
-                        old
-                    }
-                    "version" if remaining.len() == 1 => {
-                        if scope.version.is_empty() { return None; }
-                        let old = Some(Value::Bytes(scope.version.clone().into()));
-                        scope.version = String::new();
-                        old
-                    }
-                    "attributes" => {
-                        if remaining.len() == 1 {
-                            if self.scope_attrs.is_empty() { return None; }
-                            let old = Some(Value::Object(self.scope_attrs.to_object_map()));
-                            self.scope_attrs = OtelAttributes::new();
-                            old
-                        } else if remaining.len() == 2 {
-                            self.scope_attrs.remove(remaining[1].as_str())
-                                .map(|av| any_value_to_vrl(&av))
-                        } else {
-                            let key = remaining[1].as_str();
-                            let av = self.scope_attrs.get(key)?;
-                            let mut v = any_value_to_vrl(av);
-                            let result = remove_value_at(&mut v, &remaining[2..], prune);
-                            self.scope_attrs.insert(key.to_string(), vrl_value_to_any_value(&v));
-                            result
-                        }
-                    }
-                    _ => None,
-                }
-            }
-            first => {
-                let av = self.record_attrs.get(first)?;
-                let mut v = any_value_to_vrl(av);
-                let result = remove_value_at(&mut v, &fields[1..], prune);
-                if result.is_some() {
-                    if prune {
-                        if let Value::Object(ref map) = v {
-                            if map.is_empty() {
-                                self.record_attrs.remove(first);
-                                return result;
-                            }
-                        }
-                    }
-                    self.record_attrs.insert(
-                        first.to_string(),
-                        vrl_value_to_any_value(&v),
-                    );
-                }
-                result
-            }
+            "resource" => remove_resource_subpath(
+                &mut self.resource_attrs, &fields[1..], prune,
+            ),
+            "scope" => remove_scope_subpath(
+                self.scope.as_mut(), &mut self.scope_attrs, &fields[1..], prune,
+            ),
+            first => remove_attrs_subpath(
+                &mut self.record_attrs, first, &fields[1..], prune,
+            ),
         }
     }
 
@@ -1772,40 +1836,13 @@ impl OtelLog {
                 }
             }
         }
-        {
-            let mut res_map = self.resource_attrs.to_object_map();
-            if let Some(ref res) = self.resource {
-                if res.dropped_attributes_count != 0 {
-                    res_map.insert(
-                        "dropped_attributes_count".into(),
-                        Value::Integer(res.dropped_attributes_count as i64),
-                    );
-                }
-            }
-            if !res_map.is_empty() {
-                map.insert("resource".into(), Value::Object(res_map));
-            }
-        }
-        {
-            let mut scope_map = ObjectMap::new();
-            if let Some(ref scope) = self.scope {
-                if !scope.name.is_empty() {
-                    scope_map.insert("name".into(), Value::Bytes(scope.name.clone().into()));
-                }
-                if !scope.version.is_empty() {
-                    scope_map.insert("version".into(), Value::Bytes(scope.version.clone().into()));
-                }
-            }
-            if !self.scope_attrs.is_empty() {
-                scope_map.insert(
-                    "attributes".into(),
-                    Value::Object(self.scope_attrs.to_object_map()),
-                );
-            }
-            if !scope_map.is_empty() {
-                map.insert("scope".into(), Value::Object(scope_map));
-            }
-        }
+        append_canonical_resource_scope(
+            &mut map,
+            self.resource.as_ref(),
+            &self.resource_attrs,
+            self.scope.as_ref(),
+            &self.scope_attrs,
+        );
 
         Value::Object(map)
     }
@@ -2567,40 +2604,13 @@ impl OtelSpan {
                 }
             }
         }
-        {
-            let mut res_map = self.resource_attrs.to_object_map();
-            if let Some(ref res) = self.resource {
-                if res.dropped_attributes_count != 0 {
-                    res_map.insert(
-                        "dropped_attributes_count".into(),
-                        Value::Integer(res.dropped_attributes_count as i64),
-                    );
-                }
-            }
-            if !res_map.is_empty() {
-                map.insert("resource".into(), Value::Object(res_map));
-            }
-        }
-        {
-            let mut scope_map = ObjectMap::new();
-            if let Some(ref scope) = self.scope {
-                if !scope.name.is_empty() {
-                    scope_map.insert("name".into(), Value::Bytes(scope.name.clone().into()));
-                }
-                if !scope.version.is_empty() {
-                    scope_map.insert("version".into(), Value::Bytes(scope.version.clone().into()));
-                }
-            }
-            if !self.scope_attrs.is_empty() {
-                scope_map.insert(
-                    "attributes".into(),
-                    Value::Object(self.scope_attrs.to_object_map()),
-                );
-            }
-            if !scope_map.is_empty() {
-                map.insert("scope".into(), Value::Object(scope_map));
-            }
-        }
+        append_canonical_resource_scope(
+            &mut map,
+            self.resource.as_ref(),
+            &self.resource_attrs,
+            self.scope.as_ref(),
+            &self.scope_attrs,
+        );
 
         Value::Object(map)
     }
@@ -3302,57 +3312,12 @@ impl OtelSpan {
     fn span_remove_field_path(&mut self, fields: &[String], prune: bool) -> Option<Value> {
         debug_assert!(fields.len() >= 2);
         match fields[0].as_str() {
-            "resource" => {
-                let remaining = &fields[1..];
-                if remaining.len() == 1 {
-                    self.resource_attrs.remove(remaining[0].as_str())
-                        .map(|av| any_value_to_vrl(&av))
-                } else {
-                    let key = remaining[0].as_str();
-                    let av = self.resource_attrs.get(key)?;
-                    let mut v = any_value_to_vrl(av);
-                    let result = remove_value_at(&mut v, &remaining[1..], prune);
-                    self.resource_attrs.insert(key.to_string(), vrl_value_to_any_value(&v));
-                    result
-                }
-            }
-            "scope" => {
-                let scope = self.scope.as_mut()?;
-                let remaining = &fields[1..];
-                match remaining[0].as_str() {
-                    "name" if remaining.len() == 1 => {
-                        if scope.name.is_empty() { return None; }
-                        let old = Some(Value::Bytes(scope.name.clone().into()));
-                        scope.name = String::new();
-                        old
-                    }
-                    "version" if remaining.len() == 1 => {
-                        if scope.version.is_empty() { return None; }
-                        let old = Some(Value::Bytes(scope.version.clone().into()));
-                        scope.version = String::new();
-                        old
-                    }
-                    "attributes" => {
-                        if remaining.len() == 1 {
-                            if self.scope_attrs.is_empty() { return None; }
-                            let old = Some(Value::Object(self.scope_attrs.to_object_map()));
-                            self.scope_attrs = OtelAttributes::new();
-                            old
-                        } else if remaining.len() == 2 {
-                            self.scope_attrs.remove(remaining[1].as_str())
-                                .map(|av| any_value_to_vrl(&av))
-                        } else {
-                            let key = remaining[1].as_str();
-                            let av = self.scope_attrs.get(key)?;
-                            let mut v = any_value_to_vrl(av);
-                            let result = remove_value_at(&mut v, &remaining[2..], prune);
-                            self.scope_attrs.insert(key.to_string(), vrl_value_to_any_value(&v));
-                            result
-                        }
-                    }
-                    _ => None,
-                }
-            }
+            "resource" => remove_resource_subpath(
+                &mut self.resource_attrs, &fields[1..], prune,
+            ),
+            "scope" => remove_scope_subpath(
+                self.scope.as_mut(), &mut self.scope_attrs, &fields[1..], prune,
+            ),
             "status" => {
                 let status = self.span.status.as_mut()?;
                 let remaining = &fields[1..];
@@ -3371,26 +3336,9 @@ impl OtelSpan {
                     _ => None,
                 }
             }
-            first => {
-                let av = self.span_attrs.get(first)?;
-                let mut v = any_value_to_vrl(av);
-                let result = remove_value_at(&mut v, &fields[1..], prune);
-                if result.is_some() {
-                    if prune {
-                        if let Value::Object(ref map) = v {
-                            if map.is_empty() {
-                                self.span_attrs.remove(first);
-                                return result;
-                            }
-                        }
-                    }
-                    self.span_attrs.insert(
-                        first.to_string(),
-                        vrl_value_to_any_value(&v),
-                    );
-                }
-                result
-            }
+            first => remove_attrs_subpath(
+                &mut self.span_attrs, first, &fields[1..], prune,
+            ),
         }
     }
 

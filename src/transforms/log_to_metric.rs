@@ -5,13 +5,11 @@ use indexmap::IndexMap;
 use vector_lib::{
     configurable::configurable_component,
     event::{
-        OtelLog, OtelMetric,
-        metric::{Bucket, Quantile, Sample},
+        OtelMetric,
     },
 };
 use vrl::{
-    event_path, path,
-    path::{PathParseError, parse_target_path},
+    path::parse_target_path,
 };
 
 use crate::{
@@ -26,8 +24,7 @@ use crate::{
     },
     internal_events::{
         DROP_EVENT, LogToMetricFieldNullError, LogToMetricParseFloatError,
-        MetricMetadataInvalidFieldValueError, MetricMetadataMetricDetailsNotFoundError,
-        MetricMetadataParseError, ParserMissingFieldError,
+        ParserMissingFieldError,
     },
     schema,
     template::{Template, TemplateRenderingError},
@@ -43,35 +40,6 @@ use crate::{
 pub struct LogToMetricConfig {
     /// A list of metrics to generate.
     pub metrics: Option<Vec<MetricConfig>>,
-
-    /// Setting this flag changes the behavior of this transformation.
-    /// Notably the `metrics` field will be ignored.
-    /// All incoming events will be processed and if possible they will be converted to log events.
-    /// Otherwise, only items specified in the `metrics` field will be processed.
-    ///
-    /// Example:
-    /// <pre class="chroma"><code class="language-toml" data-lang="toml">{
-    ///     "counter": {
-    ///         "value": 10.0
-    ///     },
-    ///     "kind": "incremental",
-    ///     "name": "test.transform.counter",
-    ///     "tags": {
-    ///         "env": "test_env",
-    ///         "host": "localhost"
-    ///     }
-    /// }
-    /// </code></pre>
-    ///
-    /// This is a JSON representation of a counter with the following properties:
-    ///
-    /// - `counter`: An object with a single property `value` representing the counter value, in this case, `10.0`).
-    /// - `kind`: A string indicating the kind of counter, in this case, "incremental".
-    /// - `name`: A string representing the name of the counter, here set to "test.transform.counter".
-    /// - `tags`: An object containing additional tags such as "env" and "host".
-    ///
-    /// Objects that can be processed include counter, histogram, gauge, set and summary.
-    pub all_metrics: Option<bool>,
 }
 
 /// Specification of a counter derived from a log event.
@@ -172,7 +140,6 @@ const fn default_kind() -> MetricKind {
 #[derive(Debug, Clone)]
 pub struct LogToMetric {
     pub metrics: Vec<MetricConfig>,
-    pub all_metrics: bool,
 }
 
 impl GenerateConfig for LogToMetricConfig {
@@ -188,7 +155,6 @@ impl GenerateConfig for LogToMetricConfig {
                     kind: MetricKind::Incremental,
                 }),
             }]),
-            all_metrics: Some(true),
         })
         .unwrap()
     }
@@ -200,7 +166,6 @@ impl TransformConfig for LogToMetricConfig {
     async fn build(&self, _context: &TransformContext) -> crate::Result<Transform> {
         Ok(Transform::function(LogToMetric {
             metrics: self.metrics.clone().unwrap_or_default(),
-            all_metrics: self.all_metrics.unwrap_or_default(),
         }))
     }
 
@@ -222,39 +187,12 @@ impl TransformConfig for LogToMetricConfig {
     }
 }
 
-/// Kinds of TranformError for Parsing
-#[configurable_component]
-#[derive(Clone, Debug)]
-pub enum TransformParseErrorKind {
-    ///  Error when Parsing a Float
-    FloatError,
-    ///  Error when Parsing an Int
-    IntError,
-    /// Errors when Parsing Arrays
-    ArrayError,
-}
-
-impl std::fmt::Display for TransformParseErrorKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{self:?}")
-    }
-}
-
 enum TransformError {
     PathNotFound {
         path: String,
     },
     PathNull {
         path: String,
-    },
-    MetricDetailsNotFound,
-    MetricValueError {
-        path: String,
-        path_value: String,
-    },
-    ParseError {
-        path: String,
-        kind: TransformParseErrorKind,
     },
     ParseFloatError {
         path: String,
@@ -499,383 +437,6 @@ fn otel_from_parts(
     )
 }
 
-fn bytes_to_str(value: &Value) -> Option<String> {
-    match value {
-        Value::Bytes(bytes) => std::str::from_utf8(bytes).ok().map(|s| s.to_string()),
-        _ => None,
-    }
-}
-
-fn try_get_string_from_log(log: &OtelLog, path: &str) -> Result<Option<String>, TransformError> {
-    // TODO: update returned errors after `TransformError` is refactored.
-    let maybe_value = log.parse_path_and_get_value(path).map_err(|e| match e {
-        PathParseError::InvalidPathSyntax { path } => PathNotFound {
-            path: path.to_string(),
-        },
-    })?;
-    match maybe_value {
-        None => Err(PathNotFound {
-            path: path.to_string(),
-        }),
-        Some(v) => Ok(bytes_to_str(&v)),
-    }
-}
-
-fn get_counter_value(log: &OtelLog) -> Result<MetricValue, TransformError> {
-    let counter_val = log
-        .get(event_path!("counter", "value"))
-        .ok_or_else(|| TransformError::PathNotFound {
-            path: "counter.value".to_string(),
-        })?;
-    let counter_value = counter_val
-        .as_float()
-        .ok_or_else(|| TransformError::ParseError {
-            path: "counter.value".to_string(),
-            kind: TransformParseErrorKind::FloatError,
-        })?;
-
-    Ok(MetricValue::Counter {
-        value: *counter_value,
-    })
-}
-
-fn get_gauge_value(log: &OtelLog) -> Result<MetricValue, TransformError> {
-    let gauge_val = log
-        .get(event_path!("gauge", "value"))
-        .ok_or_else(|| TransformError::PathNotFound {
-            path: "gauge.value".to_string(),
-        })?;
-    let gauge_value = gauge_val
-        .as_float()
-        .ok_or_else(|| TransformError::ParseError {
-            path: "gauge.value".to_string(),
-            kind: TransformParseErrorKind::FloatError,
-        })?;
-    Ok(MetricValue::Gauge {
-        value: *gauge_value,
-    })
-}
-
-fn get_set_value(log: &OtelLog) -> Result<MetricValue, TransformError> {
-    let set_val = log
-        .get(event_path!("set", "values"))
-        .ok_or_else(|| TransformError::PathNotFound {
-            path: "set.values".to_string(),
-        })?;
-    let set_values = set_val
-        .as_array()
-        .ok_or_else(|| TransformError::ParseError {
-            path: "set.values".to_string(),
-            kind: TransformParseErrorKind::ArrayError,
-        })?;
-
-    let mut values: Vec<String> = Vec::new();
-    for e_value in set_values {
-        let value = e_value
-            .as_bytes()
-            .ok_or_else(|| TransformError::ParseError {
-                path: "set.values".to_string(),
-                kind: TransformParseErrorKind::ArrayError,
-            })?;
-        values.push(String::from_utf8_lossy(value).to_string());
-    }
-
-    Ok(MetricValue::Set {
-        values: values.into_iter().collect(),
-    })
-}
-
-fn get_distribution_value(log: &OtelLog) -> Result<MetricValue, TransformError> {
-    let samples_val = log
-        .get(event_path!("distribution", "samples"))
-        .ok_or_else(|| TransformError::PathNotFound {
-            path: "distribution.samples".to_string(),
-        })?;
-    let event_samples = samples_val
-        .as_array()
-        .ok_or_else(|| TransformError::ParseError {
-            path: "distribution.samples".to_string(),
-            kind: TransformParseErrorKind::ArrayError,
-        })?;
-
-    let mut samples: Vec<Sample> = Vec::new();
-    for e_sample in event_samples {
-        let value = e_sample
-            .get(path!("value"))
-            .ok_or_else(|| TransformError::PathNotFound {
-                path: "value".to_string(),
-            })?
-            .as_float()
-            .ok_or_else(|| TransformError::ParseError {
-                path: "value".to_string(),
-                kind: TransformParseErrorKind::FloatError,
-            })?;
-
-        let rate = e_sample
-            .get(path!("rate"))
-            .ok_or_else(|| TransformError::PathNotFound {
-                path: "rate".to_string(),
-            })?
-            .as_integer()
-            .ok_or_else(|| TransformError::ParseError {
-                path: "rate".to_string(),
-                kind: TransformParseErrorKind::IntError,
-            })?;
-
-        samples.push(Sample {
-            value: *value,
-            rate: rate as u32,
-        });
-    }
-
-    let statistic_str = match try_get_string_from_log(log, "distribution.statistic")? {
-        Some(n) => n,
-        None => {
-            return Err(TransformError::PathNotFound {
-                path: "distribution.statistic".to_string(),
-            });
-        }
-    };
-    let statistic_kind = match statistic_str.as_str() {
-        "histogram" => Ok(StatisticKind::Histogram),
-        "summary" => Ok(StatisticKind::Summary),
-        _ => Err(TransformError::MetricValueError {
-            path: "distribution.statistic".to_string(),
-            path_value: statistic_str.to_string(),
-        }),
-    }?;
-
-    Ok(MetricValue::Distribution {
-        samples,
-        statistic: statistic_kind,
-    })
-}
-
-fn get_histogram_value(log: &OtelLog) -> Result<MetricValue, TransformError> {
-    let buckets_val = log
-        .get(event_path!("aggregated_histogram", "buckets"))
-        .ok_or_else(|| TransformError::PathNotFound {
-            path: "aggregated_histogram.buckets".to_string(),
-        })?;
-    let event_buckets = buckets_val
-        .as_array()
-        .ok_or_else(|| TransformError::ParseError {
-            path: "aggregated_histogram.buckets".to_string(),
-            kind: TransformParseErrorKind::ArrayError,
-        })?;
-
-    let mut buckets: Vec<Bucket> = Vec::new();
-    for e_bucket in event_buckets {
-        let upper_limit = e_bucket
-            .get(path!("upper_limit"))
-            .ok_or_else(|| TransformError::PathNotFound {
-                path: "aggregated_histogram.buckets.upper_limit".to_string(),
-            })?
-            .as_float()
-            .ok_or_else(|| TransformError::ParseError {
-                path: "aggregated_histogram.buckets.upper_limit".to_string(),
-                kind: TransformParseErrorKind::FloatError,
-            })?;
-
-        let count = e_bucket
-            .get(path!("count"))
-            .ok_or_else(|| TransformError::PathNotFound {
-                path: "aggregated_histogram.buckets.count".to_string(),
-            })?
-            .as_integer()
-            .ok_or_else(|| TransformError::ParseError {
-                path: "aggregated_histogram.buckets.count".to_string(),
-                kind: TransformParseErrorKind::IntError,
-            })?;
-
-        buckets.push(Bucket {
-            upper_limit: *upper_limit,
-            count: count as u64,
-        });
-    }
-
-    let count_val = log
-        .get(event_path!("aggregated_histogram", "count"))
-        .ok_or_else(|| TransformError::PathNotFound {
-            path: "aggregated_histogram.count".to_string(),
-        })?;
-    let count = count_val
-        .as_integer()
-        .ok_or_else(|| TransformError::ParseError {
-            path: "aggregated_histogram.count".to_string(),
-            kind: TransformParseErrorKind::IntError,
-        })?;
-
-    let sum_val = log
-        .get(event_path!("aggregated_histogram", "sum"))
-        .ok_or_else(|| TransformError::PathNotFound {
-            path: "aggregated_histogram.sum".to_string(),
-        })?;
-    let sum = sum_val
-        .as_float()
-        .ok_or_else(|| TransformError::ParseError {
-            path: "aggregated_histogram.sum".to_string(),
-            kind: TransformParseErrorKind::FloatError,
-        })?;
-
-    Ok(MetricValue::AggregatedHistogram {
-        buckets,
-        count: count as u64,
-        sum: *sum,
-    })
-}
-
-fn get_summary_value(log: &OtelLog) -> Result<MetricValue, TransformError> {
-    let quantiles_val = log
-        .get(event_path!("aggregated_summary", "quantiles"))
-        .ok_or_else(|| TransformError::PathNotFound {
-            path: "aggregated_summary.quantiles".to_string(),
-        })?;
-    let event_quantiles = quantiles_val
-        .as_array()
-        .ok_or_else(|| TransformError::ParseError {
-            path: "aggregated_summary.quantiles".to_string(),
-            kind: TransformParseErrorKind::ArrayError,
-        })?;
-
-    let mut quantiles: Vec<Quantile> = Vec::new();
-    for e_quantile in event_quantiles {
-        let quantile = e_quantile
-            .get(path!("quantile"))
-            .ok_or_else(|| TransformError::PathNotFound {
-                path: "aggregated_summary.quantiles.quantile".to_string(),
-            })?
-            .as_float()
-            .ok_or_else(|| TransformError::ParseError {
-                path: "aggregated_summary.quantiles.quantile".to_string(),
-                kind: TransformParseErrorKind::FloatError,
-            })?;
-
-        let value = e_quantile
-            .get(path!("value"))
-            .ok_or_else(|| TransformError::PathNotFound {
-                path: "aggregated_summary.quantiles.value".to_string(),
-            })?
-            .as_float()
-            .ok_or_else(|| TransformError::ParseError {
-                path: "aggregated_summary.quantiles.value".to_string(),
-                kind: TransformParseErrorKind::FloatError,
-            })?;
-
-        quantiles.push(Quantile {
-            quantile: *quantile,
-            value: *value,
-        })
-    }
-
-    let count_val = log
-        .get(event_path!("aggregated_summary", "count"))
-        .ok_or_else(|| TransformError::PathNotFound {
-            path: "aggregated_summary.count".to_string(),
-        })?;
-    let count = count_val
-        .as_integer()
-        .ok_or_else(|| TransformError::ParseError {
-            path: "aggregated_summary.count".to_string(),
-            kind: TransformParseErrorKind::IntError,
-        })?;
-
-    let sum_val = log
-        .get(event_path!("aggregated_summary", "sum"))
-        .ok_or_else(|| TransformError::PathNotFound {
-            path: "aggregated_summary.sum".to_string(),
-        })?;
-    let sum = sum_val
-        .as_float()
-        .ok_or_else(|| TransformError::ParseError {
-            path: "aggregated_summary.sum".to_string(),
-            kind: TransformParseErrorKind::FloatError,
-        })?;
-
-    Ok(MetricValue::AggregatedSummary {
-        quantiles,
-        count: count as u64,
-        sum: *sum,
-    })
-}
-
-fn to_metrics(event: &Event) -> Result<OtelMetric, TransformError> {
-    let log = event.as_log();
-    let timestamp = log
-        .get_timestamp()
-        .and_then(|v| v.as_timestamp().cloned())
-        .or_else(|| Some(Utc::now()));
-
-    let name = match try_get_string_from_log(log, "name")? {
-        Some(n) => n,
-        None => {
-            return Err(TransformError::PathNotFound {
-                path: "name".to_string(),
-            });
-        }
-    };
-
-    let mut tags = MetricTags::default();
-
-    if let Some(els) = log.get(event_path!("tags"))
-        && let Some(el) = els.as_object()
-    {
-        for (key, value) in el {
-            tags.insert(key.to_string(), bytes_to_str(value));
-        }
-    }
-    let tags_result = Some(tags);
-
-    let kind_str = match try_get_string_from_log(log, "kind")? {
-        Some(n) => n,
-        None => {
-            return Err(TransformError::PathNotFound {
-                path: "kind".to_string(),
-            });
-        }
-    };
-
-    let kind = match kind_str.as_str() {
-        "absolute" => Ok(MetricKind::Absolute),
-        "incremental" => Ok(MetricKind::Incremental),
-        value => Err(TransformError::MetricValueError {
-            path: "kind".to_string(),
-            path_value: value.to_string(),
-        }),
-    }?;
-
-    let mut value: Option<MetricValue> = None;
-    if let Some(root_event) = log.as_map() {
-        for key in root_event.keys() {
-            value = match key.as_str() {
-                "gauge" => Some(get_gauge_value(log)?),
-                "distribution" => Some(get_distribution_value(log)?),
-                "aggregated_histogram" => Some(get_histogram_value(log)?),
-                "aggregated_summary" => Some(get_summary_value(log)?),
-                "counter" => Some(get_counter_value(log)?),
-                "set" => Some(get_set_value(log)?),
-                _ => None,
-            };
-
-            if value.is_some() {
-                break;
-            }
-        }
-    }
-
-    let value = value.ok_or(TransformError::MetricDetailsNotFound)?;
-
-    let mut metric = otel_from_parts(name, kind, value, log.metadata().clone())
-        .with_tags(tags_result)
-        .with_timestamp(timestamp);
-
-    if let Ok(namespace) = try_get_string_from_log(log, "namespace") {
-        metric = metric.with_namespace(namespace);
-    }
-
-    Ok(metric)
-}
-
 impl FunctionTransform for LogToMetric {
     fn transform(&mut self, output: &mut OutputBuffer, event: Event) {
         if !matches!(event, Event::Log(_)) {
@@ -883,17 +444,16 @@ impl FunctionTransform for LogToMetric {
         }
         // Metrics are "all or none" for a specific log. If a single fails, none are produced.
         let mut buffer = Vec::with_capacity(self.metrics.len());
-        if self.all_metrics {
-            match to_metrics(&event) {
+        for config in self.metrics.iter() {
+            match to_metric_with_config(config, &event) {
                 Ok(otel) => {
-                    output.push(Event::Metric(otel));
+                    buffer.push(Event::Metric(otel));
                 }
                 Err(err) => {
                     match err {
-                        TransformError::MetricValueError { path, path_value } => {
-                            emit!(MetricMetadataInvalidFieldValueError {
-                                field: path.as_ref(),
-                                field_value: path_value.as_ref()
+                        TransformError::PathNull { path } => {
+                            emit!(LogToMetricFieldNullError {
+                                field: path.as_ref()
                             })
                         }
                         TransformError::PathNotFound { path } => {
@@ -901,14 +461,18 @@ impl FunctionTransform for LogToMetric {
                                 field: path.as_ref()
                             })
                         }
-                        TransformError::ParseError { path, kind } => {
-                            emit!(MetricMetadataParseError {
+                        TransformError::ParseFloatError { path, error } => {
+                            emit!(LogToMetricParseFloatError {
                                 field: path.as_ref(),
-                                kind: &kind.to_string(),
+                                error
                             })
                         }
-                        TransformError::MetricDetailsNotFound => {
-                            emit!(MetricMetadataMetricDetailsNotFoundError {})
+                        TransformError::TemplateRenderingError(error) => {
+                            emit!(crate::internal_events::TemplateRenderingError {
+                                error,
+                                drop_event: true,
+                                field: None,
+                            })
                         }
                         TransformError::PairExpansionError { key, value, error } => {
                             emit!(crate::internal_events::PairExpansionError {
@@ -918,54 +482,9 @@ impl FunctionTransform for LogToMetric {
                                 error
                             })
                         }
-                        _ => {}
                     };
-                }
-            }
-        } else {
-            for config in self.metrics.iter() {
-                match to_metric_with_config(config, &event) {
-                    Ok(otel) => {
-                        buffer.push(Event::Metric(otel));
-                    }
-                    Err(err) => {
-                        match err {
-                            TransformError::PathNull { path } => {
-                                emit!(LogToMetricFieldNullError {
-                                    field: path.as_ref()
-                                })
-                            }
-                            TransformError::PathNotFound { path } => {
-                                emit!(ParserMissingFieldError::<DROP_EVENT> {
-                                    field: path.as_ref()
-                                })
-                            }
-                            TransformError::ParseFloatError { path, error } => {
-                                emit!(LogToMetricParseFloatError {
-                                    field: path.as_ref(),
-                                    error
-                                })
-                            }
-                            TransformError::TemplateRenderingError(error) => {
-                                emit!(crate::internal_events::TemplateRenderingError {
-                                    error,
-                                    drop_event: true,
-                                    field: None,
-                                })
-                            }
-                            TransformError::PairExpansionError { key, value, error } => {
-                                emit!(crate::internal_events::PairExpansionError {
-                                    key: &key,
-                                    value: &value,
-                                    drop_event: true,
-                                    error
-                                })
-                            }
-                            _ => {}
-                        };
-                        // early return to prevent the partial buffer from being sent
-                        return;
-                    }
+                    // early return to prevent the partial buffer from being sent
+                    return;
                 }
             }
         }
@@ -987,7 +506,7 @@ mod tests {
     use tokio_stream::wrappers::ReceiverStream;
     use vector_lib::{
         config::ComponentKey,
-        event::{EventMetadata, ObjectMap},
+        event::ObjectMap,
         metric_tags,
     };
 
@@ -1006,7 +525,6 @@ mod tests {
     const TEST_SOURCE_COMPONENT_ID: &str = "in";
     const TEST_UPSTREAM_COMPONENT_ID: &str = "transform";
     const TEST_SOURCE_TYPE: &str = "unit_test_stream";
-    const TEST_NAMESPACE: &str = "test_namespace";
 
     #[test]
     fn generate_config() {
@@ -1797,446 +1315,4 @@ mod tests {
             });
     }
 
-    //  Metric Metadata Tests
-    //
-    fn create_log_event(json_str: &str) -> Event {
-        create_log_event_with_namespace(json_str, Some(TEST_NAMESPACE))
-    }
-
-    fn create_log_event_with_namespace(json_str: &str, namespace: Option<&str>) -> Event {
-        let mut log_value: Value =
-            serde_json::from_str(json_str).expect("JSON was not well-formatted");
-        let nanos = ts().timestamp_nanos_opt().unwrap_or(0) as u64;
-        log_value.insert("time_unix_nano", Value::Integer(nanos as i64));
-
-        if let Some(namespace) = namespace {
-            log_value.insert("namespace", namespace);
-        }
-
-        let mut metadata = EventMetadata::default();
-        set_test_source_metadata(&mut metadata);
-
-        Event::Log(OtelLog::from_value_map(log_value, metadata.clone()))
-    }
-
-    #[tokio::test]
-    async fn transform_gauge() {
-        let config = LogToMetricConfig {
-            metrics: None,
-            all_metrics: Some(true),
-        };
-
-        let json_str = r#"{
-          "gauge": {
-            "value": 990.0
-          },
-          "kind": "absolute",
-          "name": "test.transform.gauge",
-          "tags": {
-            "env": "test_env",
-            "host": "localhost"
-          }
-        }"#;
-        let log = create_log_event(json_str);
-        let metric = do_transform(config, log.clone()).await.unwrap();
-        assert_eq!(
-            metric.clone().into_otel_metric(),
-            {
-                otel_from_parts(
-                    "test.transform.gauge",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 990.0 },
-                    metric.metadata().clone(),
-                )
-                .with_namespace(Some(TEST_NAMESPACE))
-                .with_tags(Some(metric_tags!(
-                    "env" => "test_env",
-                    "host" => "localhost",
-                )))
-                .with_timestamp(Some(ts()))
-
-            });
-    }
-
-    #[tokio::test]
-    async fn transform_histogram() {
-        let config = LogToMetricConfig {
-            metrics: None,
-            all_metrics: Some(true),
-        };
-
-        let json_str = r#"{
-          "aggregated_histogram": {
-            "sum": 18.0,
-            "count": 5,
-            "buckets": [
-              {
-                "upper_limit": 1.0,
-                "count": 1
-              },
-              {
-                "upper_limit": 2.0,
-                "count": 2
-              },
-              {
-                "upper_limit": 5.0,
-                "count": 1
-              },
-              {
-                "upper_limit": 10.0,
-                "count": 1
-              }
-            ]
-          },
-          "kind": "absolute",
-          "name": "test.transform.histogram",
-          "tags": {
-            "env": "test_env",
-            "host": "localhost"
-          }
-        }"#;
-        let log = create_log_event(json_str);
-        let metric = do_transform(config, log.clone()).await.unwrap();
-        assert_eq!(
-            metric.clone().into_otel_metric(),
-            {
-                otel_from_parts(
-                    "test.transform.histogram",
-                    MetricKind::Absolute,
-                    MetricValue::AggregatedHistogram {
-                        count: 5,
-                        sum: 18.0,
-                        buckets: vec![
-                            Bucket {
-                                upper_limit: 1.0,
-                                count: 1,
-                            },
-                            Bucket {
-                                upper_limit: 2.0,
-                                count: 2,
-                            },
-                            Bucket {
-                                upper_limit: 5.0,
-                                count: 1,
-                            },
-                            Bucket {
-                                upper_limit: 10.0,
-                                count: 1,
-                            },
-                        ],
-                    },
-                    metric.metadata().clone(),
-                )
-                .with_namespace(Some(TEST_NAMESPACE))
-                .with_tags(Some(metric_tags!(
-                    "env" => "test_env",
-                    "host" => "localhost",
-                )))
-                .with_timestamp(Some(ts()))
-
-            });
-    }
-
-    #[tokio::test]
-    async fn transform_distribution_histogram() {
-        let config = LogToMetricConfig {
-            metrics: None,
-            all_metrics: Some(true),
-        };
-
-        let json_str = r#"{
-          "distribution": {
-            "samples": [
-              {
-                "value": 1.0,
-                "rate": 1
-              },
-              {
-                "value": 2.0,
-                "rate": 2
-              }
-            ],
-            "statistic": "histogram"
-          },
-          "kind": "absolute",
-          "name": "test.transform.distribution_histogram",
-          "tags": {
-            "env": "test_env",
-            "host": "localhost"
-          }
-        }"#;
-        let log = create_log_event(json_str);
-        let metric = do_transform(config, log.clone()).await.unwrap();
-        assert_eq!(
-            metric.clone().into_otel_metric(),
-            {
-                otel_from_parts(
-                    "test.transform.distribution_histogram",
-                    MetricKind::Absolute,
-                    MetricValue::Distribution {
-                        samples: vec![
-                            Sample {
-                                value: 1.0,
-                                rate: 1
-                            },
-                            Sample {
-                                value: 2.0,
-                                rate: 2
-                            },
-                        ],
-                        statistic: StatisticKind::Histogram,
-                    },
-                    metric.metadata().clone(),
-                )
-                .with_namespace(Some(TEST_NAMESPACE))
-                .with_tags(Some(metric_tags!(
-                    "env" => "test_env",
-                    "host" => "localhost",
-                )))
-                .with_timestamp(Some(ts()))
-
-            });
-    }
-
-    #[tokio::test]
-    async fn transform_distribution_summary() {
-        let config = LogToMetricConfig {
-            metrics: None,
-            all_metrics: Some(true),
-        };
-
-        let json_str = r#"{
-          "distribution": {
-            "samples": [
-              {
-                "value": 1.0,
-                "rate": 1
-              },
-              {
-                "value": 2.0,
-                "rate": 2
-              }
-            ],
-            "statistic": "summary"
-          },
-          "kind": "absolute",
-          "name": "test.transform.distribution_summary",
-          "tags": {
-            "env": "test_env",
-            "host": "localhost"
-          }
-        }"#;
-        let log = create_log_event(json_str);
-        let metric = do_transform(config, log.clone()).await.unwrap();
-        assert_eq!(
-            metric.clone().into_otel_metric(),
-            {
-                otel_from_parts(
-                    "test.transform.distribution_summary",
-                    MetricKind::Absolute,
-                    MetricValue::Distribution {
-                        samples: vec![
-                            Sample {
-                                value: 1.0,
-                                rate: 1
-                            },
-                            Sample {
-                                value: 2.0,
-                                rate: 2
-                            },
-                        ],
-                        statistic: StatisticKind::Summary,
-                    },
-                    metric.metadata().clone(),
-                )
-                .with_namespace(Some(TEST_NAMESPACE))
-                .with_tags(Some(metric_tags!(
-                    "env" => "test_env",
-                    "host" => "localhost",
-                )))
-                .with_timestamp(Some(ts()))
-
-            });
-    }
-
-    #[tokio::test]
-    async fn transform_summary() {
-        let config = LogToMetricConfig {
-            metrics: None,
-            all_metrics: Some(true),
-        };
-
-        let json_str = r#"{
-          "aggregated_summary": {
-            "sum": 100.0,
-            "count": 7,
-            "quantiles": [
-              {
-                "quantile": 0.05,
-                "value": 10.0
-              },
-              {
-                "quantile": 0.95,
-                "value": 25.0
-              }
-            ]
-          },
-          "kind": "absolute",
-          "name": "test.transform.histogram",
-          "tags": {
-            "env": "test_env",
-            "host": "localhost"
-          }
-        }"#;
-        let log = create_log_event(json_str);
-        let metric = do_transform(config, log.clone()).await.unwrap();
-        assert_eq!(
-            metric.clone().into_otel_metric(),
-            {
-                otel_from_parts(
-                    "test.transform.histogram",
-                    MetricKind::Absolute,
-                    MetricValue::AggregatedSummary {
-                        quantiles: vec![
-                            Quantile {
-                                quantile: 0.05,
-                                value: 10.0,
-                            },
-                            Quantile {
-                                quantile: 0.95,
-                                value: 25.0,
-                            },
-                        ],
-                        count: 7,
-                        sum: 100.0,
-                    },
-                    metric.metadata().clone(),
-                )
-                .with_namespace(Some(TEST_NAMESPACE))
-                .with_tags(Some(metric_tags!(
-                    "env" => "test_env",
-                    "host" => "localhost",
-                )))
-                .with_timestamp(Some(ts()))
-
-            });
-    }
-
-    #[tokio::test]
-    async fn transform_counter() {
-        let config = LogToMetricConfig {
-            metrics: None,
-            all_metrics: Some(true),
-        };
-
-        let json_str = r#"{
-          "counter": {
-            "value": 10.0
-          },
-          "kind": "incremental",
-          "name": "test.transform.counter",
-          "tags": {
-            "env": "test_env",
-            "host": "localhost"
-          }
-        }"#;
-        let log = create_log_event(json_str);
-        let metric = do_transform(config, log.clone()).await.unwrap();
-        assert_eq!(
-            metric.clone().into_otel_metric(),
-            {
-                otel_from_parts(
-                    "test.transform.counter",
-                    MetricKind::Incremental,
-                    MetricValue::Counter { value: 10.0 },
-                    metric.metadata().clone(),
-                )
-                .with_namespace(Some(TEST_NAMESPACE))
-                .with_tags(Some(metric_tags!(
-                    "env" => "test_env",
-                    "host" => "localhost",
-                )))
-                .with_timestamp(Some(ts()))
-
-            });
-    }
-
-    #[tokio::test]
-    async fn transform_set() {
-        let config = LogToMetricConfig {
-            metrics: None,
-            all_metrics: Some(true),
-        };
-
-        let json_str = r#"{
-          "set": {
-            "values": ["990.0", "1234"]
-          },
-          "kind": "incremental",
-          "name": "test.transform.set",
-          "tags": {
-            "env": "test_env",
-            "host": "localhost"
-          }
-        }"#;
-        let log = create_log_event(json_str);
-        let metric = do_transform(config, log.clone()).await.unwrap();
-        assert_eq!(
-            metric.clone().into_otel_metric(),
-            {
-                otel_from_parts(
-                    "test.transform.set",
-                    MetricKind::Incremental,
-                    MetricValue::Set {
-                        values: vec!["990.0".into(), "1234".into()].into_iter().collect()
-                    },
-                    metric.metadata().clone(),
-                )
-                .with_namespace(Some(TEST_NAMESPACE))
-                .with_tags(Some(metric_tags!(
-                    "env" => "test_env",
-                    "host" => "localhost",
-                )))
-                .with_timestamp(Some(ts()))
-
-            });
-    }
-
-    #[tokio::test]
-    async fn transform_all_metrics_optional_namespace() {
-        let config = LogToMetricConfig {
-            metrics: None,
-            all_metrics: Some(true),
-        };
-
-        let json_str = r#"{
-          "counter": {
-            "value": 10.0
-          },
-          "kind": "incremental",
-          "name": "test.transform.counter",
-          "tags": {
-            "env": "test_env",
-            "host": "localhost"
-          }
-        }"#;
-        let log = create_log_event_with_namespace(json_str, None);
-        let metric = do_transform(config, log.clone()).await.unwrap();
-        assert_eq!(
-            metric.clone().into_otel_metric(),
-            {
-                otel_from_parts(
-                    "test.transform.counter",
-                    MetricKind::Incremental,
-                    MetricValue::Counter { value: 10.0 },
-                    metric.metadata().clone(),
-                )
-                .with_tags(Some(metric_tags!(
-                    "env" => "test_env",
-                    "host" => "localhost",
-                )))
-                .with_timestamp(Some(ts()))
-
-            });
-    }
 }

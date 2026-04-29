@@ -344,7 +344,7 @@ Only two wire/serialization formats are allowed anywhere in the codebase:
 
 Format-specific encoders (GELF, Syslog, CEF, Logfmt) access proto fields directly — they produce their own format from the proto struct, not from an intermediate JSON/Value tree.
 
-### P23 — OtelLog/OtelSpan `Serialize` → OTLP/JSON
+### P23 — OtelLog/OtelSpan `Serialize` → OTLP/JSON ✅ (completed 2026-04-29)
 Replace the canonical flat format with OTLP/JSON (proto3 camelCase, nested resource/scope/attributes) as the default `Serialize` impl for OtelLog and OtelSpan. OtelMetric already produces OTLP JSON.
 
 **Current state (3 paths, only 1 is OTLP):**
@@ -370,14 +370,14 @@ Replace the canonical flat format with OTLP/JSON (proto3 camelCase, nested resou
 - Tests: migrate to proto-level or OTLP/JSON assertions.
 - **Future (optional):** Add OTLP/JSON support to OTLP HTTP sink (`application/json` Content-Type option). Currently proto-only, which is correct and performant. JSON option useful for receivers that only accept JSON.
 
-### P24 — Delete `log_to_metric` `to_metrics()`, replace with VRL
+### P24 — Delete `log_to_metric` `to_metrics()`, replace with VRL ✅ (completed 2026-04-29)
 The `all_metrics = true` code path is replaced by VRL-based approach.
 - Delete `to_metrics()` function and all legacy field-name parsing (`tags`, `kind`, `counter`, `gauge`, etc.)
 - Delete `all_metrics` config option
 - Users write VRL to construct metrics from logs (more flexible, no hardcoded field mapping)
 - Config-driven metric construction (`metrics` array in config) remains — already OTLP-compliant.
 
-### P25 — `metric_to_log` → full OTLP metric as structured body
+### P25 — `metric_to_log` → full OTLP metric as structured body ✅ (completed 2026-04-29)
 Replace `serde_json::to_value(&otel)` bridge with direct conversion. Output OtelLog has body = `KvlistValue` containing the full OTLP metric structure.
 - Convert OtelMetric proto fields directly to `AnyValue::KvlistValue` (name, data points, attributes, temporality)
 - Set as OtelLog body — native proto structure, no serialization needed
@@ -387,7 +387,7 @@ Replace `serde_json::to_value(&otel)` bridge with direct conversion. Output Otel
 - No intermediate `serde_json::Value` → `event::Value` conversion
 - Saves ~2 heap allocations per event
 
-### P26 — Legacy metric types removal (~2,164 lines)
+### P26 — Legacy metric types removal (~2,164 lines) 🔧 (arithmetic + aggregate done 2026-04-29, remaining consumers TBD)
 Replace `MetricTags` with `OtelAttributes`, add arithmetic via `MetricArithmetic` trait on `OtelMetric`, eliminate `MetricValue`/`MetricKind`/`MetricSeries`/`MetricData`.
 
 **Decisions:**
@@ -407,20 +407,20 @@ Replace `MetricTags` with `OtelAttributes`, add arithmetic via `MetricArithmetic
 - `MetricKind` → `AggregationTemporality` on Sum/Histogram/ExponentialHistogram proto fields only
 - `MetricSeries`/`MetricData` → direct proto field access on `OtelMetric`
 
-### P27 — Replace `to_value_canonical()` in codec encoders
+### P27 — Replace `to_value_canonical()` in codec encoders (deferred — requires encoder-specific rewrites)
 Direct proto field access in GELF/Avro/protobuf/syslog encoders. 12 call sites across 8 codec files.
 - **Decision:** Encoders access proto fields directly (most performant). No OTLP/JSON parsing — that would add unnecessary serialization/deserialization overhead.
 - `OtelAttributes` (BTreeMap) provides direct access to attributes without conversion.
 - `to_value_canonical()` stays only for VRL bridge (proto → Value for VRL field access).
 
-### P28 — Extract remaining hardcoded field names in otel_event.rs
-~100 uses of string literals for field names. Lower risk since otel_event.rs is the defining module.
+### P28 — Extract remaining hardcoded field names in otel_event.rs (deferred — low value, all in same file)
+~239 uses of string literals for field names. Lower risk since otel_event.rs is the defining module.
 
-### P29 — OtelSpan remove/remove_prune
-Currently falls through to full canonical rebuild. Direct proto field removal would be more efficient.
+### P29 — OtelSpan remove/remove_prune ✅ (completed 2026-04-29)
+Direct proto field removal for all single-segment and multi-segment paths, with prune support.
 
-### P30 — Deduplicate OtelLog/OtelSpan/OtelMetric common code (P2-1)
-~500 lines duplicated across the three event types (get/insert/remove, resource/scope handling). Extract into shared trait or helper module.
+### P30 — Deduplicate OtelLog/OtelSpan/OtelMetric common code (P2-1) ✅ (completed 2026-04-29)
+Extracted shared helper functions: `append_canonical_resource_scope`, `remove_resource_subpath`, `remove_scope_subpath`, `remove_attrs_subpath`. ~52 lines net reduction.
 
 ---
 

@@ -4303,6 +4303,256 @@ impl OtelMetric {
         self
     }
 
+    /// Add the data from `other` to this metric.
+    ///
+    /// Both metrics must have the same data type (Sum+Sum, Gauge+Gauge, etc.).
+    /// For Histogram, bucket layouts (explicit_bounds) must match.
+    /// Returns `false` if the types are incompatible.
+    #[must_use]
+    pub fn add(&mut self, other: &Self) -> bool {
+        use opentelemetry_proto::tonic::metrics::v1::metric::Data as MD;
+        use opentelemetry_proto::tonic::metrics::v1::number_data_point::Value as NDPValue;
+
+        match (self.metric.data.as_mut(), other.metric.data.as_ref()) {
+            (Some(MD::Sum(s)), Some(MD::Sum(o))) => {
+                for (dp, odp) in s.data_points.iter_mut().zip(o.data_points.iter()) {
+                    match (&mut dp.value, &odp.value) {
+                        (Some(NDPValue::AsDouble(v)), Some(NDPValue::AsDouble(ov))) => *v += ov,
+                        (Some(NDPValue::AsInt(v)), Some(NDPValue::AsInt(ov))) => *v += ov,
+                        _ => return false,
+                    }
+                }
+                true
+            }
+            (Some(MD::Gauge(g)), Some(MD::Gauge(o))) => {
+                for (dp, odp) in g.data_points.iter_mut().zip(o.data_points.iter()) {
+                    match (&mut dp.value, &odp.value) {
+                        (Some(NDPValue::AsDouble(v)), Some(NDPValue::AsDouble(ov))) => *v += ov,
+                        (Some(NDPValue::AsInt(v)), Some(NDPValue::AsInt(ov))) => *v += ov,
+                        _ => return false,
+                    }
+                }
+                true
+            }
+            (Some(MD::Histogram(h)), Some(MD::Histogram(oh))) => {
+                for (dp, odp) in h.data_points.iter_mut().zip(oh.data_points.iter()) {
+                    if dp.explicit_bounds != odp.explicit_bounds
+                        || dp.bucket_counts.len() != odp.bucket_counts.len()
+                    {
+                        return false;
+                    }
+                    for (bc, obc) in dp.bucket_counts.iter_mut().zip(odp.bucket_counts.iter()) {
+                        *bc += obc;
+                    }
+                    dp.count += odp.count;
+                    dp.sum = Some(dp.sum.unwrap_or(0.0) + odp.sum.unwrap_or(0.0));
+                }
+                true
+            }
+            (Some(MD::Summary(_)), Some(MD::Summary(_))) => {
+                // Summaries (quantile sketches) cannot be meaningfully added
+                false
+            }
+            (Some(MD::ExponentialHistogram(eh)), Some(MD::ExponentialHistogram(oeh))) => {
+                for (dp, odp) in eh.data_points.iter_mut().zip(oeh.data_points.iter()) {
+                    if dp.scale != odp.scale {
+                        return false;
+                    }
+                    dp.count += odp.count;
+                    dp.sum = Some(dp.sum.unwrap_or(0.0) + odp.sum.unwrap_or(0.0));
+                    dp.zero_count += odp.zero_count;
+                    if let (Some(pos), Some(opos)) = (&mut dp.positive, &odp.positive) {
+                        if pos.offset == opos.offset && pos.bucket_counts.len() == opos.bucket_counts.len() {
+                            for (bc, obc) in pos.bucket_counts.iter_mut().zip(opos.bucket_counts.iter()) {
+                                *bc += obc;
+                            }
+                        } else {
+                            return false;
+                        }
+                    }
+                    if let (Some(neg), Some(oneg)) = (&mut dp.negative, &odp.negative) {
+                        if neg.offset == oneg.offset && neg.bucket_counts.len() == oneg.bucket_counts.len() {
+                            for (bc, obc) in neg.bucket_counts.iter_mut().zip(oneg.bucket_counts.iter()) {
+                                *bc += obc;
+                            }
+                        } else {
+                            return false;
+                        }
+                    }
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Subtract the data of `other` from this metric.
+    ///
+    /// Both metrics must have the same data type. For counters (Sum),
+    /// this is monotonic: returns `false` if subtraction would go negative.
+    #[must_use]
+    pub fn subtract(&mut self, other: &Self) -> bool {
+        use opentelemetry_proto::tonic::metrics::v1::metric::Data as MD;
+        use opentelemetry_proto::tonic::metrics::v1::number_data_point::Value as NDPValue;
+
+        match (self.metric.data.as_mut(), other.metric.data.as_ref()) {
+            (Some(MD::Sum(s)), Some(MD::Sum(o))) => {
+                for (dp, odp) in s.data_points.iter_mut().zip(o.data_points.iter()) {
+                    match (&mut dp.value, &odp.value) {
+                        (Some(NDPValue::AsDouble(v)), Some(NDPValue::AsDouble(ov))) => {
+                            if *v < *ov { return false; }
+                            *v -= ov;
+                        }
+                        (Some(NDPValue::AsInt(v)), Some(NDPValue::AsInt(ov))) => {
+                            if *v < *ov { return false; }
+                            *v -= ov;
+                        }
+                        _ => return false,
+                    }
+                }
+                true
+            }
+            (Some(MD::Gauge(g)), Some(MD::Gauge(o))) => {
+                for (dp, odp) in g.data_points.iter_mut().zip(o.data_points.iter()) {
+                    match (&mut dp.value, &odp.value) {
+                        (Some(NDPValue::AsDouble(v)), Some(NDPValue::AsDouble(ov))) => *v -= ov,
+                        (Some(NDPValue::AsInt(v)), Some(NDPValue::AsInt(ov))) => *v -= ov,
+                        _ => return false,
+                    }
+                }
+                true
+            }
+            (Some(MD::Histogram(h)), Some(MD::Histogram(oh))) => {
+                for (dp, odp) in h.data_points.iter_mut().zip(oh.data_points.iter()) {
+                    if dp.explicit_bounds != odp.explicit_bounds
+                        || dp.bucket_counts.len() != odp.bucket_counts.len()
+                        || dp.count < odp.count
+                    {
+                        return false;
+                    }
+                    for (bc, obc) in dp.bucket_counts.iter_mut().zip(odp.bucket_counts.iter()) {
+                        if *bc < *obc { return false; }
+                        *bc -= obc;
+                    }
+                    dp.count -= odp.count;
+                    dp.sum = Some(dp.sum.unwrap_or(0.0) - odp.sum.unwrap_or(0.0));
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Zero out all data point values in this metric.
+    pub fn zero(&mut self) {
+        use opentelemetry_proto::tonic::metrics::v1::metric::Data as MD;
+        use opentelemetry_proto::tonic::metrics::v1::number_data_point::Value as NDPValue;
+
+        match self.metric.data.as_mut() {
+            Some(MD::Sum(s)) => {
+                for dp in &mut s.data_points {
+                    match &mut dp.value {
+                        Some(NDPValue::AsDouble(v)) => *v = 0.0,
+                        Some(NDPValue::AsInt(v)) => *v = 0,
+                        _ => {}
+                    }
+                }
+            }
+            Some(MD::Gauge(g)) => {
+                for dp in &mut g.data_points {
+                    match &mut dp.value {
+                        Some(NDPValue::AsDouble(v)) => *v = 0.0,
+                        Some(NDPValue::AsInt(v)) => *v = 0,
+                        _ => {}
+                    }
+                }
+            }
+            Some(MD::Histogram(h)) => {
+                for dp in &mut h.data_points {
+                    for bc in &mut dp.bucket_counts { *bc = 0; }
+                    dp.count = 0;
+                    dp.sum = Some(0.0);
+                }
+            }
+            Some(MD::Summary(s)) => {
+                for dp in &mut s.data_points {
+                    for qv in &mut dp.quantile_values { qv.value = 0.0; }
+                    dp.count = 0;
+                    dp.sum = 0.0;
+                }
+            }
+            Some(MD::ExponentialHistogram(eh)) => {
+                for dp in &mut eh.data_points {
+                    dp.count = 0;
+                    dp.sum = Some(0.0);
+                    dp.zero_count = 0;
+                    if let Some(ref mut pos) = dp.positive {
+                        for bc in &mut pos.bucket_counts { *bc = 0; }
+                    }
+                    if let Some(ref mut neg) = dp.negative {
+                        for bc in &mut neg.bucket_counts { *bc = 0; }
+                    }
+                }
+            }
+            None => {}
+        }
+    }
+
+    /// Get the first data point value as f64, if this is a Sum or Gauge.
+    pub fn first_value_as_f64(&self) -> Option<f64> {
+        use opentelemetry_proto::tonic::metrics::v1::metric::Data as MD;
+        use opentelemetry_proto::tonic::metrics::v1::number_data_point::Value as NDPValue;
+
+        match self.metric.data.as_ref() {
+            Some(MD::Sum(s)) => s.data_points.first().and_then(|dp| match &dp.value {
+                Some(NDPValue::AsDouble(v)) => Some(*v),
+                Some(NDPValue::AsInt(v)) => Some(*v as f64),
+                _ => None,
+            }),
+            Some(MD::Gauge(g)) => g.data_points.first().and_then(|dp| match &dp.value {
+                Some(NDPValue::AsDouble(v)) => Some(*v),
+                Some(NDPValue::AsInt(v)) => Some(*v as f64),
+                _ => None,
+            }),
+            _ => None,
+        }
+    }
+
+    /// Check if this metric is a delta (incremental) type.
+    /// Only Sum, Histogram, and ExponentialHistogram have AggregationTemporality.
+    /// Gauge and Summary are point-in-time and neither delta nor cumulative.
+    pub fn is_delta(&self) -> bool {
+        use opentelemetry_proto::tonic::metrics::v1::{AggregationTemporality, metric::Data as MD};
+        match self.metric.data.as_ref() {
+            Some(MD::Sum(s)) => s.aggregation_temporality == AggregationTemporality::Delta as i32,
+            Some(MD::Histogram(h)) => h.aggregation_temporality == AggregationTemporality::Delta as i32,
+            Some(MD::ExponentialHistogram(eh)) => eh.aggregation_temporality == AggregationTemporality::Delta as i32,
+            _ => false,
+        }
+    }
+
+    /// Check if this metric is cumulative (absolute).
+    pub fn is_cumulative(&self) -> bool {
+        use opentelemetry_proto::tonic::metrics::v1::{AggregationTemporality, metric::Data as MD};
+        match self.metric.data.as_ref() {
+            Some(MD::Sum(s)) => s.aggregation_temporality == AggregationTemporality::Cumulative as i32,
+            Some(MD::Histogram(h)) => h.aggregation_temporality == AggregationTemporality::Cumulative as i32,
+            Some(MD::ExponentialHistogram(eh)) => eh.aggregation_temporality == AggregationTemporality::Cumulative as i32,
+            Some(MD::Gauge(_)) | Some(MD::Summary(_)) => true,
+            None => false,
+        }
+    }
+
+    /// Check if this metric is a Gauge type.
+    pub fn is_gauge(&self) -> bool {
+        matches!(self.metric.data.as_ref(), Some(opentelemetry_proto::tonic::metrics::v1::metric::Data::Gauge(_)))
+    }
+
+    /// Check if this metric is a Sum type.
+    pub fn is_sum(&self) -> bool {
+        matches!(self.metric.data.as_ref(), Some(opentelemetry_proto::tonic::metrics::v1::metric::Data::Sum(_)))
+    }
+
     /// Convert this metric to an `AnyValue::KvlistValue` suitable for use as
     /// an OtelLog body. Includes name, description, unit, and data (sum/gauge/
     /// histogram/summary/exponentialHistogram). Does NOT include resource/scope
@@ -6148,5 +6398,108 @@ mod tests {
         let res_attrs = json["resource"]["attributes"].as_array().expect("resource attributes");
         assert_eq!(res_attrs[0]["key"], "host");
         assert_eq!(res_attrs[0]["value"]["stringValue"], "box1");
+    }
+
+    #[test]
+    fn otel_metric_add_sum() {
+        use crate::event::MetricKind;
+        let mut m1 = OtelMetric::new_counter("c", MetricKind::Incremental, 10.0);
+        let m2 = OtelMetric::new_counter("c", MetricKind::Incremental, 5.0);
+        assert!(m1.add(&m2));
+        assert_eq!(m1.first_value_as_f64(), Some(15.0));
+    }
+
+    #[test]
+    fn otel_metric_add_gauge() {
+        let mut m1 = OtelMetric::new_gauge("g", 10.0);
+        let m2 = OtelMetric::new_gauge("g", 3.0);
+        assert!(m1.add(&m2));
+        assert_eq!(m1.first_value_as_f64(), Some(13.0));
+    }
+
+    #[test]
+    fn otel_metric_add_mismatched_types() {
+        use crate::event::MetricKind;
+        let mut m1 = OtelMetric::new_counter("c", MetricKind::Incremental, 10.0);
+        let m2 = OtelMetric::new_gauge("g", 5.0);
+        assert!(!m1.add(&m2));
+        assert_eq!(m1.first_value_as_f64(), Some(10.0));
+    }
+
+    #[test]
+    fn otel_metric_subtract_sum() {
+        use crate::event::MetricKind;
+        let mut m1 = OtelMetric::new_counter("c", MetricKind::Incremental, 10.0);
+        let m2 = OtelMetric::new_counter("c", MetricKind::Incremental, 3.0);
+        assert!(m1.subtract(&m2));
+        assert_eq!(m1.first_value_as_f64(), Some(7.0));
+    }
+
+    #[test]
+    fn otel_metric_subtract_sum_underflow() {
+        use crate::event::MetricKind;
+        let mut m1 = OtelMetric::new_counter("c", MetricKind::Incremental, 3.0);
+        let m2 = OtelMetric::new_counter("c", MetricKind::Incremental, 10.0);
+        assert!(!m1.subtract(&m2));
+        assert_eq!(m1.first_value_as_f64(), Some(3.0));
+    }
+
+    #[test]
+    fn otel_metric_zero() {
+        use crate::event::MetricKind;
+        let mut m = OtelMetric::new_counter("c", MetricKind::Incremental, 42.0);
+        m.zero();
+        assert_eq!(m.first_value_as_f64(), Some(0.0));
+    }
+
+    #[test]
+    fn otel_metric_is_delta() {
+        use crate::event::MetricKind;
+        let delta = OtelMetric::new_counter("c", MetricKind::Incremental, 1.0);
+        let cumulative = OtelMetric::new_counter("c", MetricKind::Absolute, 1.0);
+        let gauge = OtelMetric::new_gauge("g", 1.0);
+        assert!(delta.is_delta());
+        assert!(!cumulative.is_delta());
+        assert!(!gauge.is_delta());
+    }
+
+    #[test]
+    fn otel_metric_is_cumulative() {
+        use crate::event::MetricKind;
+        let delta = OtelMetric::new_counter("c", MetricKind::Incremental, 1.0);
+        let cumulative = OtelMetric::new_counter("c", MetricKind::Absolute, 1.0);
+        let gauge = OtelMetric::new_gauge("g", 1.0);
+        assert!(!delta.is_cumulative());
+        assert!(cumulative.is_cumulative());
+        assert!(gauge.is_cumulative());
+    }
+
+    #[test]
+    fn otel_metric_add_histogram() {
+        use crate::event::{MetricKind, MetricValue, metric::Bucket};
+        let mut m1 = OtelMetric::new_histogram(
+            "h",
+            MetricKind::Incremental,
+            &[Bucket { upper_limit: 1.0, count: 5 }, Bucket { upper_limit: 2.0, count: 10 }],
+            15,
+            25.0,
+        );
+        let m2 = OtelMetric::new_histogram(
+            "h",
+            MetricKind::Incremental,
+            &[Bucket { upper_limit: 1.0, count: 3 }, Bucket { upper_limit: 2.0, count: 7 }],
+            10,
+            15.0,
+        );
+        assert!(m1.add(&m2));
+        let (_, value, _) = m1.extract_metric_data();
+        if let MetricValue::AggregatedHistogram { buckets, count, sum } = value {
+            assert_eq!(count, 25);
+            assert_eq!(sum, 40.0);
+            assert_eq!(buckets[0].count, 8);
+            assert_eq!(buckets[1].count, 17);
+        } else {
+            panic!("expected AggregatedHistogram");
+        }
     }
 }

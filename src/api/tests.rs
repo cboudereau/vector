@@ -211,7 +211,6 @@ async fn integration_test_source_metric() {
                 tags: None,
                 metric: MetricTypeConfig::Gauge,
             }]),
-            all_metrics: None,
         },
     );
     config.add_sink(

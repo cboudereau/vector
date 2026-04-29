@@ -407,13 +407,11 @@ impl Handler {
                 let mut collector = StringCollector::new();
 
                 for (_, (otel, _)) in metrics.iter() {
-                    let (series, data, _) = otel.clone().into_metric_parts();
                     collector.encode_metric(
                         self.default_namespace.as_deref(),
                         &self.buckets,
                         &self.quantiles,
-                        &series,
-                        &data,
+                        otel,
                     );
                 }
 

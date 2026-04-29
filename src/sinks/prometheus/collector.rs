@@ -8,7 +8,10 @@ use vector_lib::{
 };
 
 use crate::{
-    event::metric::{MetricData, MetricKind, MetricSeries, MetricValue, StatisticKind},
+    event::{
+        OtelMetric,
+        metric::{MetricKind, MetricValue, StatisticKind},
+    },
     sinks::util::{encode_namespace, statistic::DistributionStatistic},
 };
 
@@ -36,18 +39,19 @@ pub(super) trait MetricCollector {
         default_namespace: Option<&str>,
         buckets: &[f64],
         quantiles: &[f64],
-        series: &MetricSeries,
-        data: &MetricData,
+        metric: &OtelMetric,
     ) {
-        let name = encode_namespace(series.name.namespace.as_deref().or(default_namespace), '_', series.name.name.as_str());
+        let name = encode_namespace(metric.namespace().or(default_namespace), '_', metric.name());
         let name = &name;
-        let timestamp = data.time.timestamp.map(|t| t.timestamp_millis());
+        let timestamp = metric.timestamp().map(|t| t.timestamp_millis());
+        let value = metric.value();
 
-        if data.kind == MetricKind::Absolute {
-            let tags = series.tags.as_ref();
-            self.emit_metadata(series.name.name.as_str(), name, &data.value);
+        if metric.kind() == MetricKind::Absolute {
+            let event_tags = metric.tags();
+            let tags = event_tags.as_ref();
+            self.emit_metadata(metric.name(), name, &value);
 
-            match &data.value {
+            match &value {
                 MetricValue::Counter { value } => {
                     self.emit_value(timestamp, name, "", *value, tags, None);
                 }
@@ -450,9 +454,8 @@ mod tests {
         quantiles: &[f64],
         metric: OtelMetric,
     ) -> T::Output {
-        let (series, data, _) = metric.into_metric_parts();
         let mut s = T::new();
-        s.encode_metric(default_namespace, buckets, quantiles, &series, &data);
+        s.encode_metric(default_namespace, buckets, quantiles, &metric);
         s.finish()
     }
 

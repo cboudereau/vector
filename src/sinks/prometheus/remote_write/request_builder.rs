@@ -26,16 +26,14 @@ impl encoding::Encoder<Vec<OtelMetric>> for RemoteWriteEncoder {
 
         let mut time_series = collector::TimeSeries::new();
         let len = input.len();
-        for otel in input {
-            byte_size.add_event(&otel, otel.estimated_json_encoded_size_of());
+        for otel in input.iter() {
+            byte_size.add_event(otel, otel.estimated_json_encoded_size_of());
 
-            let (series, data, _) = otel.into_metric_parts();
             time_series.encode_metric(
                 self.default_namespace.as_deref(),
                 &self.buckets,
                 &self.quantiles,
-                &series,
-                &data,
+                otel,
             );
         }
         let request = time_series.finish();

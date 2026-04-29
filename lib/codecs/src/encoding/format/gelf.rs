@@ -193,10 +193,21 @@ fn to_gelf_event(log: &mut OtelLog) -> vector_common::Result<()> {
                 }
             }
             TIMESTAMP => {
-                if !(value.is_timestamp() || value.is_integer()) {
-                    err_invalid_type(field, "timestamp or integer", value.kind_str())?;
-                }
-                if let Value::Timestamp(ts) = value {
+                let parsed_ts = match value {
+                    Value::Timestamp(ts) => Some(*ts),
+                    Value::Integer(_) => None,
+                    Value::Bytes(b) => {
+                        let s = std::str::from_utf8(b).unwrap_or("");
+                        chrono::DateTime::parse_from_rfc3339(s)
+                            .ok()
+                            .map(|dt| dt.with_timezone(&chrono::Utc))
+                    }
+                    _ => {
+                        err_invalid_type(field, "timestamp or integer", value.kind_str())?;
+                        None
+                    }
+                };
+                if let Some(ts) = parsed_ts {
                     let ts_millis = ts.timestamp_millis();
                     timestamp_replacement = Some(if ts_millis % 1000 != 0 {
                         Value::Float(
@@ -357,7 +368,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Timestamp round-trip through OtelLog changes format (Z vs +00:00)"]
     fn gelf_serializing_timestamp() {
         // floating point in case of sub second timestamp
         {

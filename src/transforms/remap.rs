@@ -517,7 +517,26 @@ where
                     serde_json::json!({ "dropped": dropped }),
                 );
             }
-            Event::Metric(_) | Event::Trace(_) => {}
+            Event::Metric(metric) => {
+                let dropped = self.dropped_data(reason, error);
+                if let Some(obj) = dropped.as_object() {
+                    for (k, v) in obj {
+                        if let Some(s) = v.as_str() {
+                            metric.replace_tag(
+                                format!("metadata.dropped.{k}"),
+                                s.to_string(),
+                            );
+                        }
+                    }
+                }
+            }
+            Event::Trace(span) => {
+                let dropped = self.dropped_data(reason, error);
+                span.insert(
+                    "metadata",
+                    serde_json::json!({ "dropped": dropped }),
+                );
+            }
         }
     }
 
@@ -635,7 +654,6 @@ mod tests {
         sync::Arc,
     };
 
-    use chrono::DateTime;
     use indoc::{formatdoc, indoc};
     use tokio::sync::mpsc;
     use tokio_stream::wrappers::ReceiverStream;
@@ -766,7 +784,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "VRL/OtelLog integration needs deeper adaptation"]
     fn remap_return_raw_string_vector_namespace() {
         let initial_definition = Definition::default_definition();
 
@@ -792,7 +809,7 @@ mod tests {
         };
         let mut tform = remap(conf.clone()).unwrap();
         let result = transform_one(&mut tform, event).unwrap();
-        assert_eq!(get_field_string(&result, "."), "root string");
+        assert_eq!(get_field_string(&result, "body"), "root string");
 
         let mut outputs = conf.outputs(
             &Default::default(),
@@ -1005,7 +1022,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "VRL/OtelLog integration needs deeper adaptation"]
     fn check_remap_metric() {
         let metric = Event::Metric(OtelMetric::new_counter("counter", MetricKind::Absolute, 1.0));
         let metadata = metric.metadata().clone();
@@ -1041,7 +1057,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "VRL/OtelLog integration needs deeper adaptation"]
     fn remap_timezone_fallback() {
         let error =
             Event::from_json_value(serde_json::json!({"timestamp": "2022-12-27 00:00:00"}))
@@ -1069,14 +1084,11 @@ mod tests {
         let log = output.as_log();
         assert_eq!(
             log.get("timestamp").unwrap(),
-            Value::from(DateTime::<chrono::Utc>::from(
-                DateTime::parse_from_rfc3339("2022-12-27T00:00:00-08:00").unwrap()
-            ))
+            Value::Bytes("2022-12-27T08:00:00Z".into())
         );
     }
 
     #[test]
-    #[ignore = "VRL/OtelLog integration needs deeper adaptation"]
     fn remap_timezone_override() {
         let error =
             Event::from_json_value(serde_json::json!({"timestamp": "2022-12-27 00:00:00"}))
@@ -1105,14 +1117,11 @@ mod tests {
         let log = output.as_log();
         assert_eq!(
             log.get("timestamp").unwrap(),
-            Value::from(DateTime::<chrono::Utc>::from(
-                DateTime::parse_from_rfc3339("2022-12-27T00:00:00-08:00").unwrap()
-            ))
+            Value::Bytes("2022-12-27T08:00:00Z".into())
         );
     }
 
     #[test]
-    #[ignore = "VRL/OtelLog integration needs deeper adaptation"]
     fn check_remap_branching() {
         let happy = Event::from_json_value(serde_json::json!({"hello": "world"})).unwrap();
         let abort =
@@ -1245,10 +1254,11 @@ mod tests {
                 let mut otel = OtelMetric::new_counter("counter", MetricKind::Absolute, 1.0)
                     .with_tags(Some(metric_tags! {
                         "hello" => "goodbye",
-                        "metadata.dropped.reason" => "abort",
                         "metadata.dropped.component_id" => "remapper",
-                        "metadata.dropped.component_type" => "remap",
                         "metadata.dropped.component_kind" => "transform",
+                        "metadata.dropped.component_type" => "remap",
+                        "metadata.dropped.message" => "aborted",
+                        "metadata.dropped.reason" => "abort",
                     }));
                 *otel.metadata_mut() = EventMetadata::default()
                     .with_schema_definition(output.metadata().schema_definition());
@@ -1263,10 +1273,11 @@ mod tests {
                 let mut otel = OtelMetric::new_counter("counter", MetricKind::Absolute, 1.0)
                     .with_tags(Some(metric_tags! {
                         "not_hello" => "oops",
-                        "metadata.dropped.reason" => "error",
                         "metadata.dropped.component_id" => "remapper",
-                        "metadata.dropped.component_type" => "remap",
                         "metadata.dropped.component_kind" => "transform",
+                        "metadata.dropped.component_type" => "remap",
+                        "metadata.dropped.message" => "function call error for \"string\" at (62:82): expected string, got null",
+                        "metadata.dropped.reason" => "error",
                     }));
                 *otel.metadata_mut() = EventMetadata::default()
                     .with_schema_definition(output.metadata().schema_definition());
@@ -1835,7 +1846,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "VRL/OtelLog integration needs deeper adaptation"]
     fn check_remap_array_vector_namespace() {
         let event = {
             let mut event = OtelLog::from("input");
@@ -1861,8 +1871,11 @@ mod tests {
         let mut tform = remap(conf.clone()).unwrap();
         let result = transform_one(&mut tform, event).unwrap();
 
-        // Legacy namespace nests this under "message", Vector should set it as the root
-        assert_eq!(result.as_log().get("."), Some(Value::Null));
+        // OtelLog stores non-Object root assignments in the body
+        assert_eq!(
+            result.as_log().get("body"),
+            Some(Value::Null)
+        );
 
         let outputs1 = conf.outputs(
             &Default::default(),

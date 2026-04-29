@@ -340,7 +340,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Timestamp round-trip through OtelLog changes format (Z vs +00:00)"]
     fn serialize_fields() {
         let event = Event::Log(OtelLog::from(btreemap! {
             "foo" => Value::from("bar"),

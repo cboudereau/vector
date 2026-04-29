@@ -1031,20 +1031,20 @@ mod tests {
     use std::{collections::BTreeMap, vec};
 
     use dnsmsg_parser::dns_message_parser::DnsParserOptions;
-    use vector_core::event::OtelLog;
+    use vector_core::event::{EventMetadata, OtelLog};
+    use vrl::value::{ObjectMap, Value};
 
     use super::*;
 
-    /// Test helper: parse into a `OtelLog` so existing assertions that
-    /// read via `log_event.get(path)` keep working. Production callers
-    /// (src/sources/dnstap and the parse_dnstap VRL function) use the
-    /// `&mut Value` API directly. See `DNSTAP_PARSER_MIGRATION.md`.
     fn parse_into_log_event(
         event: &mut OtelLog,
         frame: Bytes,
         opts: DnsParserOptions,
     ) -> Result<()> {
-        event.modify_as_value(|value| DnstapParser::parse(value, frame, opts))
+        let mut value = Value::Object(ObjectMap::new());
+        let result = DnstapParser::parse(&mut value, frame, opts);
+        *event = OtelLog::from_value_map(value, EventMetadata::default());
+        result
     }
 
     #[test]
@@ -1139,7 +1139,7 @@ mod tests {
         }
 
         assert!(log_event.get_timestamp().unwrap().as_timestamp().is_some(),
-            "parser should set time_unix_nano via modify_as_value round-trip");
+            "parser should set time_unix_nano via from_value_map round-trip");
     }
 
     #[test]
@@ -1319,7 +1319,7 @@ mod tests {
         }
 
         assert!(log_event.get_timestamp().unwrap().as_timestamp().is_some(),
-            "parser should set time_unix_nano via modify_as_value round-trip");
+            "parser should set time_unix_nano via from_value_map round-trip");
     }
 
     #[test]

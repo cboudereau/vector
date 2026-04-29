@@ -8,14 +8,14 @@ use dnstap_parser::{
 };
 use vector_lib::{
     configurable::configurable_component,
-    event::{Event, OtelLog},
+    event::{Event, EventMetadata, OtelLog},
     internal_event::{ByteSize, BytesReceived, InternalEventHandle, Protocol, Registered},
     lookup::{owned_value_path, path},
     tls::MaybeTlsSettings,
 };
 use vrl::{
     path::OwnedValuePath,
-    value::Kind,
+    value::{Kind, ObjectMap, Value},
 };
 
 use super::util::framestream::{
@@ -224,37 +224,33 @@ impl FrameHandler for CommonFrameHandler {
     ) -> Option<vector_lib::event::Event> {
         self.bytes_received.emit(ByteSize(frame.len()));
 
-        let mut log = OtelLog::new(Default::default());
-
-        if let Some(host) = received_from {
-            log.set_host(host);
-        }
-
-        // Drive the dnstap parser through modify_as_value: the parser's
-        // ~50 internal Value inserts share a single legacy-layout
-        // round-trip on OtelLog. See DNSTAP_PARSER_MIGRATION.md.
-        let parse_result = log.modify_as_value(|value| {
-            if self.raw_data_only {
-                value.insert(
-                    &DNSTAP_VALUE_PATHS.raw_data,
-                    BASE64_STANDARD.encode(&frame),
-                );
-                Ok(())
-            } else {
-                DnstapParser::parse(
-                    value,
-                    frame,
-                    DnsParserOptions {
-                        lowercase_hostnames: self.lowercase_hostnames,
-                    },
-                )
-            }
-        });
+        let mut value = Value::Object(ObjectMap::new());
+        let parse_result = if self.raw_data_only {
+            value.insert(
+                &DNSTAP_VALUE_PATHS.raw_data,
+                BASE64_STANDARD.encode(&frame),
+            );
+            Ok(())
+        } else {
+            DnstapParser::parse(
+                &mut value,
+                frame,
+                DnsParserOptions {
+                    lowercase_hostnames: self.lowercase_hostnames,
+                },
+            )
+        };
         if let Err(err) = parse_result {
             emit!(DnstapParseError {
                 error: format!("Dnstap protobuf decode error {err:?}.")
             });
             return None;
+        }
+
+        let mut log = OtelLog::from_value_map(value, EventMetadata::default());
+
+        if let Some(host) = received_from {
+            log.set_host(host);
         }
 
         log.metadata_mut()

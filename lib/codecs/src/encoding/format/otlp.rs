@@ -157,7 +157,8 @@ fn otel_log_to_export_request(log_event: &OtelLog) -> ExportLogsServiceRequest {
 }
 
 fn otel_metric_to_export_request(metric_event: &OtelMetric) -> ExportMetricsServiceRequest {
-    let metric: ProtoMetric = proto_convert(metric_event.metric());
+    let proto = metric_event.metric_proto();
+    let metric: ProtoMetric = proto_convert(&proto);
     let resource = metric_event.resource_proto().map(|r| proto_convert::<_, ProtoResource>(&r));
     let scope = metric_event.scope_proto().map(|s| proto_convert::<_, ProtoScope>(&s));
 

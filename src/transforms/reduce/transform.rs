@@ -849,7 +849,6 @@ merge_strategies.bar = "concat"
     }
 
     #[tokio::test]
-    #[ignore = "OtelLog round-trip changes nested field structure"]
     async fn strategy_path_with_nested_fields() {
         let reduce_config = toml::from_str::<ReduceConfig>(indoc!(
             r#"
@@ -904,21 +903,20 @@ merge_strategies.bar = "concat"
             output.remove_timestamp();
             output.remove("timestamp_end");
 
-            assert_eq!(
-                output.value(),
-                btreemap! {
-                    "id" => 777,
-                    "message" => btreemap! {
-                        "a" => btreemap! {
-                            "b" => vec![vec![1, 2], vec![3,4]],
-                            "num" => 3,
-                        },
+            let canonical = output.to_value_canonical();
+            let expected: Value = btreemap! {
+                "id" => 777,
+                "message" => btreemap! {
+                    "a" => btreemap! {
+                        "b" => vec![vec![1, 2], vec![3,4]],
+                        "num" => 3,
                     },
-                    "arr" => vec![btreemap! { "a" => 1 }, btreemap! { "b" => 1 }],
-                    "test_end" => "done",
-                }
-                .into()
-            );
+                },
+                "arr" => vec![btreemap! { "a" => 1 }, btreemap! { "b" => 1 }],
+                "test_end" => "done",
+            }
+            .into();
+            assert_eq!(canonical, expected);
 
             drop(tx);
             topology.stop().await;

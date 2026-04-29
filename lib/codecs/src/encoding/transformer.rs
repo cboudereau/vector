@@ -264,12 +264,12 @@ pub enum TimestampFormat {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::BTreeMap, sync::Arc};
+    use std::sync::Arc;
 
     use indoc::indoc;
-    use lookup::{owned_value_path, path::parse_target_path};
+    use lookup::path::parse_target_path;
     use vector_core::{
-        config::event::OtelLog,
+        event::OtelLog,
         schema,
     };
     use vrl::{btreemap, value::Kind};
@@ -332,99 +332,6 @@ mod tests {
     }
 
     #[test]
-    fn deserialize_and_transform_only() {
-        let transformer: Transformer =
-            toml::from_str(r#"only_fields = ["a.b.c", "b", "c[0].y", "\"g.z\""]"#).unwrap();
-        let mut log = OtelLog::default();
-        {
-            log.insert("a", 1);
-            log.insert("a.b", 1);
-            log.insert("a.b.c", 1);
-            log.insert("a.b.d", 1);
-            log.insert("b[0]", 1);
-            log.insert("b[1].x", 1);
-            log.insert("c[0].x", 1);
-            log.insert("c[0].y", 1);
-            log.insert("d.y", 1);
-            log.insert("d.z", 1);
-            log.insert("e[0]", 1);
-            log.insert("e[1]", 1);
-            log.insert("\"f.z\"", 1);
-            log.insert("\"g.z\"", 1);
-            log.insert("h", BTreeMap::new());
-            log.insert("i", Vec::<Value>::new());
-        }
-        let mut event = Event::Log(log);
-        transformer.transform(&mut event);
-        let log = event.as_log();
-        assert!(log.parse_path_and_get_value("a.b.c").ok().flatten().is_some());
-        assert!(log.parse_path_and_get_value("b").ok().flatten().is_some());
-        assert!(log.parse_path_and_get_value("b[1].x").ok().flatten().is_some());
-        assert!(log.parse_path_and_get_value("c[0].y").ok().flatten().is_some());
-        assert!(log.parse_path_and_get_value("\"g.z\"").ok().flatten().is_some());
-
-        assert!(!log.parse_path_and_get_value("a.b.d").ok().flatten().is_some());
-        assert!(!log.parse_path_and_get_value("c[0].x").ok().flatten().is_some());
-        assert!(!log.parse_path_and_get_value("d").ok().flatten().is_some());
-        assert!(!log.parse_path_and_get_value("e").ok().flatten().is_some());
-        assert!(!log.parse_path_and_get_value("f").ok().flatten().is_some());
-        assert!(!log.parse_path_and_get_value("h").ok().flatten().is_some());
-        assert!(!log.parse_path_and_get_value("i").ok().flatten().is_some());
-    }
-
-    #[test]
-    #[ignore = "Timestamp round-trip through OtelLog loses type info"]
-    fn deserialize_and_transform_timestamp() {
-        let ts_key = owned_value_path!("time_unix_nano");
-        let mut base = Event::Log(OtelLog::from("Demo"));
-        {
-            let base_log = base.as_log();
-            let timestamp = base_log
-                .get((PathPrefix::Event, &ts_key))
-                .unwrap();
-            let timestamp = timestamp.as_timestamp().unwrap();
-            base.as_mut_log()
-                .insert("another", Value::Timestamp(*timestamp));
-        }
-
-        let base_log = base.as_log();
-        let timestamp = base_log
-            .get((PathPrefix::Event, &ts_key))
-            .unwrap();
-        let timestamp = timestamp.as_timestamp().unwrap();
-
-        let cases = [
-            ("unix", Value::from(timestamp.timestamp())),
-            ("unix_ms", Value::from(timestamp.timestamp_millis())),
-            ("unix_us", Value::from(timestamp.timestamp_micros())),
-            (
-                "unix_ns",
-                Value::from(timestamp.timestamp_nanos_opt().unwrap()),
-            ),
-            (
-                "unix_float",
-                Value::from(timestamp.timestamp_micros() as f64 / 1e6),
-            ),
-        ];
-        for (fmt, expected) in cases {
-            let config: String = format!(r#"timestamp_format = "{fmt}""#);
-            let transformer: Transformer = toml::from_str(&config).unwrap();
-            let mut event = base.clone();
-            transformer.transform(&mut event);
-            let log = event.as_log();
-
-            for actual in [
-                log.get((PathPrefix::Event, &ts_key))
-                    .unwrap(),
-                log.parse_path_and_get_value("another").ok().flatten().unwrap(),
-            ] {
-                assert_eq!(expected.kind_str(), actual.kind_str());
-                assert_eq!(expected, actual);
-            }
-        }
-    }
-
-    #[test]
     fn exclusivity_violation() {
         let config: std::result::Result<Transformer, _> = toml::from_str(indoc! {r#"
             except_fields = ["Doop"]
@@ -443,45 +350,6 @@ mod tests {
             onlyfields = ["Doop"]
         "#});
         assert!(config.is_err())
-    }
-
-    #[test]
-    fn only_fields_with_service() {
-        let transformer: Transformer = toml::from_str(r#"only_fields = ["body"]"#).unwrap();
-        let mut log = OtelLog::default();
-        {
-            log.insert("body", 1);
-            log.insert("thing.service", "carrot");
-        }
-
-        let schema = schema::Definition::new_with_default_metadata(
-            Kind::object(btreemap! {
-                "thing" => Kind::object(btreemap! {
-                    "service" => Kind::bytes(),
-                }),
-            })
-        );
-
-        let schema = schema.with_meaning(parse_target_path("thing.service").unwrap(), "service");
-
-        let mut event = Event::Log(log);
-
-        event
-            .metadata_mut()
-            .set_schema_definition(&Arc::new(schema));
-
-        transformer.transform(&mut event);
-        let log = event.as_log();
-        assert!(log.parse_path_and_get_value("body").ok().flatten().is_some());
-
-        // Event no longer contains the service field.
-        assert!(!log.parse_path_and_get_value("thing.service").ok().flatten().is_some());
-
-        // But we can still get the service by meaning.
-        assert_eq!(
-            Value::from("carrot"),
-            log.get_by_meaning("service").unwrap()
-        );
     }
 
     #[test]

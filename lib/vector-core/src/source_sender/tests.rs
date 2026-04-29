@@ -12,18 +12,16 @@ use crate::{
 };
 
 #[tokio::test]
-#[ignore = "Lag time computation disabled for OTel event types"]
 async fn emits_lag_time_for_log() {
     emit_and_test(|timestamp| {
         let mut log = OtelLog::from("Log message");
-        log.insert(vrl::event_path!("timestamp"), timestamp);
+        log.set_timestamp(timestamp);
         Event::Log(log)
     })
     .await;
 }
 
 #[tokio::test]
-#[ignore = "Lag time computation disabled for OTel event types"]
 async fn emits_lag_time_for_metric() {
     emit_and_test(|timestamp| {
         Event::Metric(
@@ -35,11 +33,10 @@ async fn emits_lag_time_for_metric() {
 }
 
 #[tokio::test]
-#[ignore = "Lag time computation disabled for OTel event types"]
 async fn emits_lag_time_for_trace() {
     emit_and_test(|timestamp| {
         let mut trace = OtelSpan::new(Default::default());
-        trace.insert(event_path!("timestamp"), timestamp);
+        trace.insert(event_path!("start_time"), timestamp);
         Event::Trace(trace)
     })
     .await;

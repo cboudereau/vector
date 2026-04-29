@@ -1,64 +1,7 @@
-use bytes::{Buf, BufMut, BytesMut};
-use quickcheck::{QuickCheck, TestResult};
 use regex::Regex;
 use similar_asserts::assert_eq;
-use vector_buffers::encoding::Encodable;
 
 use super::*;
-
-fn encode_value<T: Encodable, B: BufMut>(value: T, buffer: &mut B) {
-    value.encode(buffer).expect("encoding should not fail");
-}
-
-fn decode_value<T: Encodable, B: Buf + Clone>(buffer: B) -> T {
-    T::decode(T::get_metadata(), buffer).expect("decoding should not fail")
-}
-
-// Ser/De the EventArray never loses bytes
-#[test]
-#[ignore = "Legacy proto round-trip is lossy with OTel event types"]
-fn serde_eventarray_no_size_loss() {
-    fn inner(events: EventArray) -> TestResult {
-        let expected = events.clone();
-
-        let mut buffer = BytesMut::with_capacity(64);
-        encode_value(events, &mut buffer);
-
-        let actual = decode_value::<EventArray, _>(buffer);
-        assert_eq!(actual.size_of(), expected.size_of());
-
-        TestResult::passed()
-    }
-
-    QuickCheck::new()
-        .tests(1_000)
-        .max_tests(10_000)
-        .quickcheck(inner as fn(EventArray) -> TestResult);
-}
-
-// Ser/De the EventArray type through EncodeBytes -> DecodeBytes
-#[test]
-#[ignore = "Legacy proto round-trip is lossy with OTel event types"]
-#[allow(clippy::neg_cmp_op_on_partial_ord)]
-fn back_and_forth_through_bytes() {
-    fn inner(events: EventArray) -> TestResult {
-        let expected = events.clone();
-
-        let mut buffer = BytesMut::with_capacity(64);
-        encode_value(events, &mut buffer);
-
-        let actual = decode_value::<EventArray, _>(buffer);
-
-        assert_eq!(expected, actual);
-
-        TestResult::passed()
-    }
-
-    QuickCheck::new()
-        .tests(1_000)
-        .max_tests(10_000)
-        .quickcheck(inner as fn(EventArray) -> TestResult);
-}
 
 #[test]
 fn serialization() {

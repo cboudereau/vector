@@ -359,12 +359,12 @@ async fn handle_metrics() {
         encoded_lines.first().unwrap(),
         r#"{"create":{"_type":"_doc","_index":"vector"}}"#
     );
-    assert!(
-        encoded_lines
-            .get(1)
-            .unwrap()
-            .starts_with(r#"{"gauge":{"value":42.0},"kind":"absolute","name":"cpu","time_unix_nano""#)
-    );
+    let metric_json: serde_json::Value =
+        serde_json::from_str(encoded_lines.get(1).unwrap()).expect("valid JSON");
+    assert_eq!(metric_json["name"], "cpu");
+    assert_eq!(metric_json["kind"], "absolute");
+    assert_eq!(metric_json["gauge"]["value"], 42.0);
+    assert!(metric_json.get("time_unix_nano").is_some());
 }
 
 #[tokio::test]

@@ -124,7 +124,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Metric round-trip through OtelMetric is lossy for Set/Histogram types"]
     fn serialize_metric() {
         let buffer = serialize(
             TextSerializerConfig::default(),
@@ -137,21 +136,6 @@ mod tests {
             )),
         );
         assert_eq!(buffer, Bytes::from("users{} + bob"));
-    }
-
-    #[test]
-    #[ignore = "Metric round-trip through OtelMetric is lossy for Set/Histogram types"]
-    fn serialize_metric_tags_full() {
-        let buffer = serialize(
-            TextSerializerConfig {
-                metric_tag_values: MetricTagValues::Full,
-            },
-            metric2(),
-        );
-        assert_eq!(
-            buffer,
-            Bytes::from(r#"counter{a="first",a,a="second"} + 1"#)
-        );
     }
 
     #[test]

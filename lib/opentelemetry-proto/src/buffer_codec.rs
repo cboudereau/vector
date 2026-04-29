@@ -133,7 +133,8 @@ fn otel_metrics_to_export(otel_metrics: &OtelMetricArray) -> ExportMetricsServic
         resource_metrics: otel_metrics
             .iter()
             .map(|otel| {
-                let metric: Metric = transcode(otel.metric());
+                let proto = otel.metric_proto();
+                let metric: Metric = transcode(&proto);
                 let resource: Option<Resource> = otel.resource_proto().map(|r| transcode(&r));
                 let scope: Option<InstrumentationScope> = otel.scope_proto().map(|s| transcode(&s));
                 ResourceMetrics {

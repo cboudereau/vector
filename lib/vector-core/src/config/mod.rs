@@ -497,12 +497,9 @@ pub fn get_vector_metadata<'a>(
 #[cfg(test)]
 mod test {
     use chrono::Utc;
-    use lookup::{OwnedTargetPath, owned_value_path};
-    use vector_common::btreemap;
-    use vrl::value::Kind;
 
     use super::*;
-    use crate::event::{Event, OtelLog};
+    use crate::event::OtelLog;
 
     #[test]
     fn test_insert_standard_vector_source_metadata() {
@@ -515,112 +512,6 @@ mod test {
             .get(path!("vector", "source_type"))
             .cloned();
         assert!(source_type.is_some());
-    }
-
-    #[test]
-    #[ignore = "Legacy LogEvent schema validation is lossy with OTel round-trip"]
-    fn test_source_definitions_legacy() {
-        let definition = schema::Definition::empty_definition()
-            .with_event_field(&owned_value_path!("zork"), Kind::bytes(), Some("zork"))
-            .with_event_field(&owned_value_path!("nork"), Kind::integer(), None);
-        let output = SourceOutput::new_maybe_logs(DataType::Log, definition);
-
-        let valid_event: Event = Event::Log(OtelLog::from(Value::from(btreemap! {
-            "zork" => "norknoog",
-            "nork" => 32
-        })));
-
-        let invalid_event: Event = Event::Log(OtelLog::from(Value::from(btreemap! {
-            "nork" => 32
-        })));
-
-        // Get a definition with schema enabled.
-        let new_definition = output.schema_definition(true).unwrap();
-
-        // Meanings should still exist.
-        assert_eq!(
-            Some(&OwnedTargetPath::event(owned_value_path!("zork"))),
-            new_definition.meaning_path("zork")
-        );
-
-        // Events should have the schema validated.
-        new_definition.assert_valid_for_event(&valid_event);
-        new_definition.assert_invalid_for_event(&invalid_event);
-
-        // There should be the default legacy definition without schemas enabled.
-        assert_eq!(
-            Some(
-                schema::Definition::default_definition()
-                    .with_meaning(OwnedTargetPath::event(owned_value_path!("zork")), "zork")
-            ),
-            output.schema_definition(false)
-        );
-    }
-
-    #[test]
-    #[ignore = "Legacy LogEvent schema validation is lossy with OTel round-trip"]
-    fn test_source_definitons_vector() {
-        let definition = schema::Definition::default_definition()
-            .with_metadata_field(
-                &owned_value_path!("vector", "zork"),
-                Kind::integer(),
-                Some("zork"),
-            )
-            .with_event_field(&owned_value_path!("nork"), Kind::integer(), None);
-
-        let output = SourceOutput::new_maybe_logs(DataType::Log, definition);
-
-        let mut valid_event = OtelLog::from(Value::from(btreemap! {
-            "nork" => 32
-        }));
-
-        valid_event
-            .metadata_mut()
-            .value_mut()
-            .insert(path!("vector").concat("zork"), 32);
-
-        let valid_event: Event = Event::Log(valid_event);
-
-        let mut invalid_event = OtelLog::from(Value::from(btreemap! {
-            "nork" => 32
-        }));
-
-        invalid_event
-            .metadata_mut()
-            .value_mut()
-            .insert(path!("vector").concat("zork"), "noog");
-
-        let invalid_event: Event = Event::Log(invalid_event);
-
-        // Get a definition with schema enabled.
-        let new_definition = output.schema_definition(true).unwrap();
-
-        // Meanings should still exist.
-        assert_eq!(
-            Some(&OwnedTargetPath::metadata(owned_value_path!(
-                "vector", "zork"
-            ))),
-            new_definition.meaning_path("zork")
-        );
-
-        // Events should have the schema validated.
-        new_definition.assert_valid_for_event(&valid_event);
-        new_definition.assert_invalid_for_event(&invalid_event);
-
-        // Get a definition without schema enabled.
-        let new_definition = output.schema_definition(false).unwrap();
-
-        // Meanings should still exist.
-        assert_eq!(
-            Some(&OwnedTargetPath::metadata(owned_value_path!(
-                "vector", "zork"
-            ))),
-            new_definition.meaning_path("zork")
-        );
-
-        // Events should not have the schema validated.
-        new_definition.assert_valid_for_event(&valid_event);
-        new_definition.assert_valid_for_event(&invalid_event);
     }
 
     #[test]

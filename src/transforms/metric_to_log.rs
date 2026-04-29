@@ -496,7 +496,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "Metric round-trip through OtelMetric is lossy"]
     async fn transform_set() {
         let set = make_metric(
             "set",
@@ -510,6 +509,10 @@ mod tests {
         metadata.set_source_id(Arc::new(ComponentKey::from("in")));
         metadata.set_upstream_id(Arc::new(OutputId::from("transform")));
         metadata.set_schema_definition(&Arc::new(schema_definition()));
+        metadata.value_mut().insert(
+            vrl::path!("vector"),
+            Value::Object(std::collections::BTreeMap::new()),
+        );
 
         let log = do_transform(set).await.unwrap();
         let collected: Vec<_> = log.all_event_fields().unwrap();
@@ -521,14 +524,16 @@ mod tests {
                 (KeyString::from("name"), Value::from("set")),
                 (KeyString::from("set.values[0]"), Value::from("one")),
                 (KeyString::from("set.values[1]"), Value::from("two")),
-                (KeyString::from("timestamp"), Value::from(ts())),
+                (
+                    KeyString::from("time_unix_nano"),
+                    Value::Integer(ts().timestamp_nanos_opt().unwrap() as i64)
+                ),
             ]
         );
         assert_eq!(log.metadata(), &metadata);
     }
 
     #[tokio::test]
-    #[ignore = "Metric round-trip through OtelMetric is lossy"]
     async fn transform_distribution() {
         let distro = make_metric(
             "distro",
@@ -543,6 +548,10 @@ mod tests {
         metadata.set_source_id(Arc::new(ComponentKey::from("in")));
         metadata.set_upstream_id(Arc::new(OutputId::from("transform")));
         metadata.set_schema_definition(&Arc::new(schema_definition()));
+        metadata.value_mut().insert(
+            vrl::path!("vector"),
+            Value::Object(std::collections::BTreeMap::new()),
+        );
 
         let log = do_transform(distro).await.unwrap();
         let collected: Vec<_> = log.all_event_fields().unwrap();
@@ -572,7 +581,10 @@ mod tests {
                 ),
                 (KeyString::from("kind"), Value::from("absolute")),
                 (KeyString::from("name"), Value::from("distro")),
-                (KeyString::from("timestamp"), Value::from(ts())),
+                (
+                    KeyString::from("time_unix_nano"),
+                    Value::Integer(ts().timestamp_nanos_opt().unwrap() as i64)
+                ),
             ]
         );
         assert_eq!(log.metadata(), &metadata);

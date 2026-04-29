@@ -85,7 +85,6 @@ impl Drop for UnsentEventCount {
 #[derive(Clone)]
 pub(super) struct Output {
     sender: LimitedSender<SourceSenderItem>,
-    #[allow(dead_code)]
     lag_time: Option<Histogram>,
     events_sent: Registered<EventsSent>,
     /// The schema definition that will be attached to Log events sent through here
@@ -244,14 +243,33 @@ impl Output {
     /// Calculate the difference between the reference time and the
     /// timestamp stored in the given event reference, and emit the
     /// different, as expressed in milliseconds, as a histogram.
-    pub(super) fn emit_lag_time(&self, _event: EventRef<'_>, _reference: i64) {
-        // OTel event types don't expose legacy timestamp fields directly.
-        // Lag time computation is deferred until OTel types expose timestamp accessors.
+    pub(super) fn emit_lag_time(&self, event: EventRef<'_>, reference: i64) {
+        if let Some(lag_time) = &self.lag_time {
+            let timestamp_millis = match event {
+                EventRef::Log(log) => log
+                    .get_timestamp()
+                    .and_then(|v| get_timestamp_millis(&v)),
+                EventRef::Metric(metric) => {
+                    metric.timestamp().map(|ts| ts.timestamp_millis())
+                }
+                EventRef::Trace(span) => {
+                    let nanos = span.start_time_unix_nano();
+                    if nanos == 0 {
+                        None
+                    } else {
+                        Some((nanos / 1_000_000) as i64)
+                    }
+                }
+            };
+            if let Some(ts_millis) = timestamp_millis {
+                let lag = reference - ts_millis;
+                lag_time.record(lag as f64 / 1000.0);
+            }
+        }
     }
 }
 
-#[allow(dead_code)]
-const fn get_timestamp_millis(value: &Value) -> Option<i64> {
+fn get_timestamp_millis(value: &Value) -> Option<i64> {
     match value {
         Value::Timestamp(timestamp) => Some(timestamp.timestamp_millis()),
         _ => None,

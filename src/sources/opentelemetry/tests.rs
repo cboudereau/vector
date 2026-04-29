@@ -261,7 +261,8 @@ async fn receive_sum_metric() {
         assert_eq!(otel_metric.metric().name, "some.random.metric");
         assert_eq!(otel_metric.metric().description, "Some random metric we use for test");
         assert_eq!(otel_metric.metric().unit, "1");
-        match &otel_metric.metric().data {
+        let proto = otel_metric.metric_proto();
+        match &proto.data {
             Some(OtelMetricData::Sum(sum)) => {
                 assert_eq!(sum.data_points.len(), 1);
                 assert!(sum.is_monotonic);
@@ -1208,7 +1209,8 @@ async fn http_json_metrics() {
         assert_eq!(otel_metric.metric().description, "Total HTTP requests");
         assert_eq!(otel_metric.metric().unit, "1");
 
-        match &otel_metric.metric().data {
+        let proto = otel_metric.metric_proto();
+        match &proto.data {
             Some(OtelMetricData::Sum(sum)) => {
                 assert!(sum.is_monotonic);
                 assert_eq!(sum.aggregation_temporality, AggregationTemporality::Cumulative as i32);

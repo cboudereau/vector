@@ -35,6 +35,7 @@ pub mod metric;
 mod r#ref;
 mod ser;
 pub mod otel_event;
+pub mod otel_fields;
 pub mod otel_json;
 pub mod otlp;
 pub use otel_event::{OtelAttributes, OtelLog, OtelMetric, OtelSpan, json_to_any_value, string_value, int_value, vrl_value_to_any_value};

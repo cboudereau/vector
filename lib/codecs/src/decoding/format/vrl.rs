@@ -131,7 +131,6 @@ impl VrlDeserializer {
 
 #[cfg(test)]
 mod tests {
-    use chrono::{DateTime, Utc};
     use indoc::indoc;
     use vrl::{btreemap, path::OwnedTargetPath, value::Value};
 
@@ -149,12 +148,11 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "VRL target for OtelLog exposes full OTLP structure, not raw bytes"]
     fn test_json_message() {
         let source = indoc!(
             r#"
             %m1 = "metadata"
-            . = string!(.)
+            . = string!(.body)
             . = parse_json!(.)
             "#
         );
@@ -177,7 +175,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "VRL target for OtelLog exposes full OTLP structure, not raw bytes"]
     fn test_ignored_returned_expression() {
         let source = indoc!(
             r#"
@@ -200,7 +197,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "VRL target for OtelLog exposes full OTLP structure, not raw bytes"]
     fn test_multiple_events() {
         let source = indoc!(". = [0,1,2]");
         let decoder = make_decoder(source);
@@ -209,21 +205,15 @@ mod tests {
         assert_eq!(result.len(), 3);
         for (i, event) in result.iter().enumerate() {
             let log = event.as_log();
-            assert_eq!(
-                log.get(&OwnedTargetPath::event_root()).unwrap(),
-                i.into()
-            );
+            assert_eq!(log.body_string(), i.to_string());
         }
     }
 
     #[test]
-    #[ignore = "VRL target for OtelLog exposes full OTLP structure, not raw bytes"]
     fn test_syslog_and_cef_input() {
         let source = indoc!(
             r#"
-            if exists(.message) {
-                . = string!(.message)
-            }
+            . = string!(.body)
             . = parse_syslog(.) ?? parse_cef(.) ?? null
             "#
         );
@@ -247,7 +237,7 @@ mod tests {
                 "message" => "'su root' failed for user on /dev/pts/8",
                 "msgid" => "ID47",
                 "severity" => "crit",
-                "timestamp" => "2024-02-06T15:04:05Z".parse::<DateTime<Utc>>().unwrap(),
+                "timestamp" => "2024-02-06T15:04:05Z",
                 "version" => 1
             }
             .into()
@@ -284,7 +274,7 @@ mod tests {
         let random_log = random_event.as_log();
         assert_eq!(
             random_log.get(&OwnedTargetPath::event_root()).unwrap(),
-            Value::Null
+            btreemap! { "body" => Value::Null }.into()
         );
     }
 

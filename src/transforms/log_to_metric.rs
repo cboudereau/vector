@@ -1259,7 +1259,6 @@ mod tests {
         }
     }
     #[tokio::test]
-    #[ignore = "Metric round-trip through OtelMetric is lossy"]
     async fn multi_value_tags_yaml() {
         // Have to use YAML to represent bare tags
         let config = parse_yaml_config(
@@ -1616,7 +1615,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "Metric round-trip through OtelMetric is lossy"]
     async fn multiple_metrics_with_multiple_templates() {
         let config = parse_config(
             r#"
@@ -1684,7 +1682,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "Metric round-trip through OtelMetric is lossy"]
     async fn user_ip_set() {
         let config = parse_config(
             r#"
@@ -1723,7 +1720,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "Metric round-trip through OtelMetric is lossy"]
     async fn response_time_histogram() {
         let config = parse_config(
             r#"
@@ -1763,7 +1759,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "Metric round-trip through OtelMetric is lossy"]
     async fn response_time_summary() {
         let config = parse_config(
             r#"
@@ -1943,7 +1938,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "Metric round-trip through OtelMetric is lossy"]
     async fn transform_distribution_histogram() {
         let config = LogToMetricConfig {
             metrics: None,
@@ -2005,7 +1999,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "Metric round-trip through OtelMetric is lossy"]
     async fn transform_distribution_summary() {
         let config = LogToMetricConfig {
             metrics: None,
@@ -2169,7 +2162,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "Metric round-trip through OtelMetric is lossy"]
     async fn transform_set() {
         let config = LogToMetricConfig {
             metrics: None,

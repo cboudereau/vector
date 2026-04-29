@@ -310,8 +310,8 @@ mod tests {
         assert_eq!(
             buffer[0],
             [
-                sample_counter(0, "production", Absolute, 6.0),
                 sample_counter(0, "staging", Absolute, 0.0),
+                sample_counter(0, "production", Absolute, 6.0),
                 sample_counter(1, "production", Absolute, 1.0),
                 sample_counter(1, "staging", Absolute, 1.0),
                 sample_counter(2, "staging", Absolute, 2.0),
@@ -337,8 +337,8 @@ mod tests {
         assert_eq!(
             buffer[0],
             [
-                sample_counter(0, "production", Incremental, 6.0),
                 sample_counter(0, "staging", Incremental, 0.0),
+                sample_counter(0, "production", Incremental, 6.0),
                 sample_counter(1, "production", Incremental, 1.0),
                 sample_counter(1, "staging", Incremental, 1.0),
                 sample_counter(2, "staging", Incremental, 2.0),

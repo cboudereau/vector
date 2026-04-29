@@ -15,9 +15,17 @@ use super::{
     storage::VectorStorage,
 };
 use crate::event::{
-    MetricValue, OtelMetric,
-    metric::{MetricData, MetricKind, MetricName, MetricSeries, MetricTags, MetricTime},
+    OtelMetric,
+    metric::{MetricKind, MetricTags},
 };
+
+fn tags_from_key(key: &Key) -> Option<MetricTags> {
+    let labels: MetricTags = key
+        .labels()
+        .map(|label| (String::from(label.key()), String::from(label.value())))
+        .collect();
+    if labels.is_empty() { None } else { Some(labels) }
+}
 
 thread_local!(static LOCAL_REGISTRY: OnceCell<Registry> = const { OnceCell::new() });
 
@@ -73,7 +81,12 @@ impl Registry {
             {
                 #[allow(clippy::cast_precision_loss)]
                 let value = counter.get_inner().load(Ordering::Relaxed) as f64;
-                metrics.push(otel_from_kv(key, MetricValue::Counter { value }, timestamp));
+                metrics.push(
+                    OtelMetric::new_counter(key.name(), MetricKind::Absolute, value)
+                        .with_namespace(Some("vector".to_string()))
+                        .with_tags(tags_from_key(&key))
+                        .with_timestamp(Some(timestamp)),
+                );
             }
         }
         for (key, gauge) in self.registry.get_gauge_handles() {
@@ -81,15 +94,25 @@ impl Registry {
                 .is_none_or(|recency| recency.should_store_gauge(&key, &gauge, &self.registry))
             {
                 let value = gauge.get_inner().load(Ordering::Relaxed);
-                metrics.push(otel_from_kv(key, MetricValue::Gauge { value }, timestamp));
+                metrics.push(
+                    OtelMetric::new_gauge(key.name(), value)
+                        .with_namespace(Some("vector".to_string()))
+                        .with_tags(tags_from_key(&key))
+                        .with_timestamp(Some(timestamp)),
+                );
             }
         }
         for (key, histogram) in self.registry.get_histogram_handles() {
             if recency.is_none_or(|recency| {
                 recency.should_store_histogram(&key, &histogram, &self.registry)
             }) {
-                let value = histogram.get_inner().make_metric();
-                metrics.push(otel_from_kv(key, value, timestamp));
+                let inner = histogram.get_inner();
+                metrics.push(
+                    OtelMetric::new_histogram(key.name(), MetricKind::Absolute, &inner.buckets(), inner.count(), inner.sum())
+                        .with_namespace(Some("vector".to_string()))
+                        .with_tags(tags_from_key(&key))
+                        .with_timestamp(Some(timestamp)),
+                );
             }
         }
         metrics
@@ -97,30 +120,6 @@ impl Registry {
 
 }
 
-/// Build an OtelMetric directly from a metrics::Key + MetricValue + timestamp.
-pub(super) fn otel_from_kv(key: Key, value: MetricValue, timestamp: chrono::DateTime<Utc>) -> OtelMetric {
-    let labels = key
-        .labels()
-        .map(|label| (String::from(label.key()), String::from(label.value())))
-        .collect::<MetricTags>();
-
-    let series = MetricSeries {
-        name: MetricName {
-            name: key.name().to_string(),
-            namespace: Some("vector".to_string()),
-        },
-        tags: (!labels.is_empty()).then_some(labels),
-    };
-    let data = MetricData {
-        time: MetricTime {
-            timestamp: Some(timestamp),
-            interval_ms: None,
-        },
-        kind: MetricKind::Absolute,
-        value,
-    };
-    OtelMetric::from_metric_parts(series, data, crate::event::EventMetadata::default())
-}
 
 impl Registry {
     fn get_counter(&self, key: &Key) -> Counter {

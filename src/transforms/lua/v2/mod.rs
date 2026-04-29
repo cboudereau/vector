@@ -466,7 +466,7 @@ mod tests {
     use crate::{
         event::{
             Event, OtelLog, Value,
-            metric::{MetricKind, MetricValue}, OtelMetric,
+            metric::MetricKind, OtelMetric,
         },
         test_util,
         test_util::{components::assert_transform_compliance, random_string},
@@ -966,11 +966,7 @@ mod tests {
             |tx, out| async move {
                 let metric = OtelMetric::new_counter("example counter", MetricKind::Absolute, 1.0);
 
-                let mut expected = {
-                    let (s, mut d, md) = metric.clone().into_metric_parts();
-                    d.value = MetricValue::Counter { value: 2.0 };
-                    OtelMetric::from_metric_parts(s, d, md)
-                };
+                let mut expected = OtelMetric::new_counter("example counter", MetricKind::Absolute, 2.0);
                 let metadata = expected.metadata_mut();
                 metadata.set_upstream_id(Arc::new(OutputId::from("transform")));
                 metadata.set_source_id(Arc::new(ComponentKey::from("in")));

@@ -7,7 +7,7 @@ use metrics::{HistogramFn, atomics::AtomicU64};
 use metrics_util::registry::Storage;
 use vector_common::atomic::AtomicF64;
 
-use crate::event::{MetricValue, metric::Bucket};
+use crate::event::metric::Bucket;
 
 pub(super) struct VectorStorage;
 
@@ -106,7 +106,7 @@ impl Histogram {
         self.sum.load(Ordering::Relaxed)
     }
 
-    fn buckets(&self) -> Vec<Bucket> {
+    pub(super) fn buckets(&self) -> Vec<Bucket> {
         self.buckets
             .iter()
             .map(|(upper_limit, count)| Bucket {
@@ -116,13 +116,6 @@ impl Histogram {
             .collect()
     }
 
-    pub(super) fn make_metric(&self) -> MetricValue {
-        MetricValue::AggregatedHistogram {
-            buckets: self.buckets(),
-            count: self.count(),
-            sum: self.sum(),
-        }
-    }
 }
 
 impl HistogramFn for Histogram {

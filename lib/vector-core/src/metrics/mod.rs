@@ -8,7 +8,6 @@ use std::{sync::OnceLock, time::Duration};
 
 use chrono::Utc;
 use metric_matcher::MetricKeyMatcher;
-use metrics::Key;
 use metrics_tracing_context::TracingContextLayer;
 use metrics_util::layers::Layer;
 use snafu::Snafu;
@@ -19,7 +18,7 @@ use self::{
 };
 use crate::{
     config::metrics_expiration::PerMetricSetExpiration,
-    event::{MetricValue, OtelMetric},
+    event::{OtelMetric, metric::MetricKind},
 };
 
 type Result<T> = std::result::Result<T, Error>;
@@ -38,15 +37,8 @@ pub enum Error {
 
 static CONTROLLER: OnceLock<Controller> = OnceLock::new();
 
-// Cardinality counter parameters, expose the internal metrics registry
-// cardinality. Useful for the end users to help understand the characteristics
-// of their environment and how vectors acts in it.
 const CARDINALITY_KEY_NAME: &str = "internal_metrics_cardinality";
-static CARDINALITY_KEY: Key = Key::from_static_name(CARDINALITY_KEY_NAME);
-
-// Older deprecated counter key name
 const CARDINALITY_COUNTER_KEY_NAME: &str = "internal_metrics_cardinality_total";
-static CARDINALITY_COUNTER_KEY: Key = Key::from_static_name(CARDINALITY_COUNTER_KEY_NAME);
 
 /// Controller allows capturing metric snapshots.
 pub struct Controller {
@@ -183,16 +175,16 @@ impl Controller {
 
         #[allow(clippy::cast_precision_loss)]
         let value = (metrics.len() + 2) as f64;
-        metrics.push(self::recorder::otel_from_kv(
-            CARDINALITY_KEY.clone(),
-            MetricValue::Gauge { value },
-            timestamp,
-        ));
-        metrics.push(self::recorder::otel_from_kv(
-            CARDINALITY_COUNTER_KEY.clone(),
-            MetricValue::Counter { value },
-            timestamp,
-        ));
+        metrics.push(
+            OtelMetric::new_gauge(CARDINALITY_KEY_NAME, value)
+                .with_namespace(Some("vector".to_string()))
+                .with_timestamp(Some(timestamp)),
+        );
+        metrics.push(
+            OtelMetric::new_counter(CARDINALITY_COUNTER_KEY_NAME, MetricKind::Absolute, value)
+                .with_namespace(Some("vector".to_string()))
+                .with_timestamp(Some(timestamp)),
+        );
 
         metrics
     }
@@ -249,7 +241,7 @@ mod tests {
         config::metrics_expiration::{
             MetricLabelMatcher, MetricLabelMatcherConfig, MetricNameMatcherConfig,
         },
-        event::MetricKind,
+        event::{MetricKind, MetricValue},
     };
 
     const IDLE_TIMEOUT: f64 = 0.5;

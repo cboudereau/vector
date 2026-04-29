@@ -93,11 +93,12 @@ kafka, syslog, …  ──────────►  OTel Span
 
 1. **Baby steps, always green.** Every PR leaves all existing tests passing.
 2. **OTLP/OTel is the only core protocol.** No vendor types in core.
-3. **Vendor logic lives exclusively in adapters.** Adapters depend on core; core never depends on adapters.
-4. **The compiler enforces the boundary.** `cargo build -p vector-core` clean = boundary correct.
-5. **No approximations in core.** `ExponentialHistogram` is the correct OTel type. Sketch conversion happens in the DD source adapter.
-6. **gRPC internally, HTTP also supported.** OTLP/gRPC for inter-Vector. HTTP at sources and sinks for external integrations.
-7. **Features are preserved, not dropped.** APM stats → pipeline telemetry (`span_metrics`), tail sampling, load balancing — all re-implemented with OTel types.
+3. **Two-format rule: OTLP/proto or OTLP/JSON only.** Every wire format, codec, and serialization path must produce one of two formats: **OTLP/proto** (binary protobuf, `application/x-protobuf`) or **OTLP/JSON** (proto3 camelCase, nested resource/scope/attributes, `application/json`). No canonical flat format, no legacy Vector JSON, no custom intermediate formats. Internal transforms operate directly on proto fields (no serialization). Format-specific encoders (GELF, Syslog, CEF, Logfmt) access proto fields directly to produce their output format.
+4. **Vendor logic lives exclusively in adapters.** Adapters depend on core; core never depends on adapters.
+5. **The compiler enforces the boundary.** `cargo build -p vector-core` clean = boundary correct.
+6. **No approximations in core.** `ExponentialHistogram` is the correct OTel type. Sketch conversion happens in the DD source adapter.
+7. **OTLP/proto for performance, OTLP/JSON for compatibility.** gRPC and inter-Vector communication uses OTLP/proto (best performance). HTTP endpoints and JSON-based sinks use OTLP/JSON (human-readable, broad compatibility). Disk buffer uses OTLP/proto.
+8. **Features are preserved, not dropped.** APM stats → pipeline telemetry (`span_metrics`), tail sampling, load balancing — all re-implemented with OTel types.
 
 ---
 
@@ -115,6 +116,10 @@ kafka, syslog, …  ──────────►  OTel Span
 | Legacy metric types | Retained as internal computation layer — MetricValue/MetricKind/MetricTags provide arithmetic and type-safe operations that OTLP proto lacks. |
 | VRL `.tags` alias removed (P20) | `.tags."key"` was a compatibility alias for `.attributes."key"` on OtelMetric VRL targets. **Removed and must not be re-introduced.** `.attributes` is the canonical OTLP path. |
 | `metric_to_log` OTLP conformance (P21) | Transform now serializes via `OtelMetric`'s OTLP `Serialize` impl instead of legacy `MetricSeries`/`MetricData` serde. Output uses OTLP field names (`sum`, `gauge`, `histogram`, `dataPoints`, `attributes`). |
+| `metric_to_log` uses `serde_json` bridge (P21) | Deliberate shortcut: `serde_json::to_value(&otel)` reuses OtelMetric's Serialize impl to get correct OTLP field names without duplicating mapping logic. **Not necessary** — direct proto field extraction would avoid JSON Value tree allocation (~2 allocs/event). Deferred optimization. |
+| `log_to_metric` `to_metrics()` legacy (P22) | The `all_metrics = true` code path reads legacy field names (`tags`, `kind`, `counter`, `gauge`, `distribution`, `aggregated_histogram`, `aggregated_summary`, `set`). **Broken for OTLP-format input.** Must be rewritten to parse OTLP structure. |
+| Two-format rule (P22) | Only two wire formats allowed: **OTLP/proto** (binary protobuf, for gRPC and HTTP `application/x-protobuf`) and **OTLP/JSON** (proto3 camelCase, nested resource/scope/attributes, for HTTP `application/json`). The "canonical flat format" used by OtelLog/OtelSpan `Serialize` is a transitional format that must be replaced by OTLP/JSON. `to_value_canonical()` stays as VRL bridge only, not for serialization. |
+| Protocol audit (P22) | Full audit of all wire formats: sources, sinks, codecs, transforms. **No legacy Vector native or JSON formats remain** (except `log_to_metric` `to_metrics()` and OtelLog/OtelSpan canonical flat Serialize). See Protocol Audit section below. |
 
 ---
 
@@ -164,6 +169,7 @@ kafka, syslog, …  ──────────►  OTel Span
 | **P19** | Code review + test cleanup: fix EventDataEq (resource/scope attrs), reserved field collision guard, flags/dropped_attributes_count round-trip, non-UTF8 BytesValue, consolidate duplicate AnyValue conversions, extract `otel_fields.rs` constants (29), delete 16 dead tests, fix 9 tests, un-ignore 5. Zero `#[ignore]` remaining in `lib/` crates. | 32 files |
 | **P20** | Remove `.tags` VRL alias for OtelMetric — `.tags."key"` was an alias for `.attributes."key"`. Removed from `VALID_OTEL_METRIC_PATHS_SET`, `precompute_otel_metric_value`, get/get_mut/set/remove handlers. `.attributes` is the only valid attribute path for metrics in VRL. **This alias must not be re-introduced.** | 3 files |
 | **P21** | `metric_to_log` OTLP/JSON conformance — Replace legacy `MetricSeries`/`MetricData` serde serialization with `OtelMetric`'s OTLP `Serialize` impl. Output now uses OTLP field names (`sum`, `gauge`, `histogram`, `summary`, `dataPoints`, `attributes`) instead of legacy (`tags`, `counter.value`, `gauge.value`, `kind`). Remap branching tests updated to use `.name` (metric-specific) instead of `.attributes` for event type detection. Elasticsearch and Humio sink tests updated. | 5 files |
+| **P22** | Protocol audit — Verified all wire formats across sources, sinks, codecs, transforms. **Results:** (1) Sources: OTLP gRPC (proto) + HTTP (proto/JSON); Vector source uses OTLP gRPC. (2) Sinks: OTLP gRPC (proto) + HTTP (JSON); Vector sink uses OTLP gRPC. (3) Codecs: All legacy Native/NativeJSON deleted (commit 726162aa). Standard codecs remain (JSON, Protobuf, OTLP, Avro, CEF, CSV, GELF, Logfmt, Raw, Syslog, Text). (4) Transforms: `log_to_metric` `to_metrics()` still reads legacy field names — needs OTLP migration. All others compliant or event-type agnostic. | 0 files (audit only) |
 
 **Total changes:** +53,115/−42,556 lines across 9,885 files (net +10,559). The net positive reflects substantial new code (OTel types, VRL targets, OtelAttributes, migration tool, new transforms) alongside large deletions (legacy types, DD sinks, native proto, test fixtures).
 
@@ -173,13 +179,16 @@ kafka, syslog, …  ──────────►  OTel Span
 
 | Component | Why it stays | Planned resolution |
 |-----------|-------------|-------------------|
-| `to_value_canonical()` / `from_value_map()` | VRL path access and flat-format encoders (GELF, Avro, protobuf, syslog, Lua) depend on Value↔proto bridge. 12 call sites across 8 codec files. | Direct proto access for encoders eliminates most; `OtelAttributes::to_object_map()` already covers attribute portion. |
-| ~~`modify_as_value()`~~ | **Done (P15).** Removed method and refactored dnstap source to build `Value` directly then construct `OtelLog` via `from_value_map()`. dnstap-parser test helper updated similarly. | — |
-| Legacy metric types (~2,164 lines) | `MetricValue` (Counter/Gauge/Set/Distribution/Histogram/Summary arithmetic), `MetricKind` (Incremental/Absolute temporality), `MetricTags` (multi-value tag support, 780 lines), `MetricSeries`/`MetricData` — used by all metric transforms/sinks. | `OtelAttributes` replaces `MetricTags`; arithmetic methods on `OtelMetric` replace `MetricValue` ops. Largest remaining cleanup. |
-| ~~`log_namespace: Option<bool>`~~ | **Done (P13+P14).** Removed config option from all 37 sources, 2 transforms, global schema, `LogNamespace::merge()` (P13). Deleted `LogNamespace` enum, `Definition.log_namespaces` field, `SourceContext::log_namespace()`, renamed legacy methods (P14). | — |
-| ~~Resource/scope attributes~~ | **Done.** `OtelLog` and `OtelSpan` resource/scope attributes now use `OtelAttributes` (BTreeMap-backed), same as record/span attributes. | — |
-| ~~OtelMetric data-point attributes~~ | **Done (P16).** Each data point's `Vec<KeyValue>` extracted into `Vec<OtelAttributes>` at ingestion, written back via `metric_proto()` / `into_parts()` at egress. O(log n) lookup for VRL and `extract_metric_data()`. `attribute_value()` + `set_attribute()` free functions deleted. | — |
-| `kvlist_to_object_map()` (9 call sites) | Converts `Vec<KeyValue>` to VRL `ObjectMap`. Used for `KvlistValue` → `ObjectMap` in `any_value_to_vrl`, metric data-point attributes, span events/links, and resource/scope in VRL target. | May be inlined or removed when VRL operates on `AnyValue` directly. |
+| `to_value_canonical()` / `from_value_map()` | VRL path access depends on Value↔proto bridge. Codec encoders also use it (12 call sites, 8 files). | **P27:** Direct proto access for encoders eliminates codec usage. VRL bridge stays until VRL operates on `AnyValue` directly. |
+| ~~`modify_as_value()`~~ | **Done (P15).** | — |
+| Legacy metric types (~2,164 lines) | `MetricValue` arithmetic, `MetricKind` temporality, `MetricTags` multi-value, `MetricSeries`/`MetricData`. | **P26:** `MetricArithmetic` trait on `OtelMetric`, `AggregationTemporality` for Sum/Histogram only, `ArrayValue` for multi-value attrs. |
+| ~~`log_namespace: Option<bool>`~~ | **Done (P13+P14).** | — |
+| ~~Resource/scope attributes~~ | **Done.** | — |
+| ~~OtelMetric data-point attributes~~ | **Done (P16).** | — |
+| `kvlist_to_object_map()` (9 call sites) | Converts `Vec<KeyValue>` to VRL `ObjectMap`. | May be inlined or removed when VRL operates on `AnyValue` directly. |
+| Canonical flat `Serialize` for OtelLog/OtelSpan | Non-OTLP format, transitional. | **P23:** Replace with OTLP/JSON as default `Serialize` impl. Delete `OtlpJsonLog`/`OtlpJsonSpan` wrappers. |
+| `log_to_metric` `to_metrics()` | Reads legacy field names, broken for OTLP input. | **P24:** Delete function, replace with VRL-based approach. |
+| `metric_to_log` `serde_json` bridge | Correct but allocates unnecessarily. | **P25:** Direct conversion, body = full OTLP/JSON metric. |
 
 ---
 
@@ -271,12 +280,147 @@ VRL .resource.x     →  direct resource + BTreeMap::get           →  O(log m)
 
 ---
 
-## Deferred to Future Release
+## Protocol Audit (P22)
 
-1. **Legacy metric types removal** (~2,164 lines) — Replace `MetricTags` with `OtelAttributes`, add arithmetic methods to `OtelMetric`, eliminate `MetricValue`/`MetricKind`/`MetricSeries`/`MetricData`. Largest remaining cleanup.
-2. **Replace `to_value_canonical()` bridge** — Direct proto access in GELF/Avro/protobuf/syslog encoders. 12 call sites across 8 codec files.
-3. **Extract remaining hardcoded field names in otel_event.rs** — ~100 uses of string literals for field names. Lower risk since otel_event.rs is the defining module.
-4. **OtelSpan remove/remove_prune** — Currently falls through to full canonical rebuild. Direct proto field removal would be more efficient.
+Full audit of all wire protocols and serialization formats. **Conclusion: no legacy Vector native or JSON formats remain in production code.**
+
+### Wire Protocols by Component
+
+| Component | Protocol | Wire Format | Performance |
+|-----------|----------|-------------|-------------|
+| **OTLP source (gRPC)** | tonic gRPC | Protobuf binary | Best (zero-copy decode) |
+| **OTLP source (HTTP)** | warp HTTP | Protobuf or JSON (Content-Type negotiated) | Proto preferred |
+| **OTLP sink (gRPC)** | tonic gRPC | Protobuf binary + optional gzip | Best |
+| **OTLP sink (HTTP)** | HTTP | JSON (newline-delimited) | Acceptable for HTTP |
+| **Vector source** | tonic gRPC (3-service: Logs/Metrics/Traces) | OTLP Protobuf | Best (same as OTLP gRPC) |
+| **Vector sink** | tonic gRPC (delegates to OTLP GrpcConfig) | OTLP Protobuf | Best |
+| **Disk buffer** | local | `otlp_buffer.proto` | Proto (no JSON overhead) |
+
+### Codecs Status
+
+| Codec | Type | Status |
+|-------|------|--------|
+| ~~NativeSerializer/NativeDeserializer~~ | Legacy Vector protobuf | **Deleted** (commit 726162aa) |
+| ~~NativeJsonSerializer/NativeJsonDeserializer~~ | Legacy Vector JSON | **Deleted** (commit 726162aa) |
+| OTLP | **Protobuf binary** (`application/x-protobuf`) for OTLP HTTP endpoints. NOT JSON. | ✅ Active |
+| JSON | Generic serde_json (calls event's `Serialize` impl). **Current:** OtelLog/OtelSpan → canonical flat format (non-OTLP), OtelMetric → OTLP JSON. **Target:** all three types → OTLP/JSON. `OtlpJsonLog`/`OtlpJsonSpan` wrappers become the default `Serialize` impl, then are deleted. | ⚠️ Needs migration |
+| Protobuf | Generic protobuf encoding | ✅ Active |
+| Avro, CEF, CSV, GELF, Logfmt, Raw, Syslog, Text | Standard formats | ✅ Active |
+
+### Transforms Status
+
+| Transform | Protocol Status | Notes |
+|-----------|----------------|-------|
+| `metric_to_log` | ⚠️ OTLP via JSON intermediate | Uses `serde_json::to_value(&otel)` — correct output but allocates JSON Value tree. Direct proto field extraction would be faster. |
+| `log_to_metric` (`to_metrics()`) | ❌ **Legacy field names** | Reads `tags`, `kind`, `counter`, `gauge`, `distribution`, `aggregated_histogram`, `aggregated_summary`, `set`. Should read OTLP: `attributes`, `aggregationTemporality`, `sum`, `gauge`, `histogram`, `summary`. |
+| `log_to_metric` (config-based) | ✅ OTLP | Config-driven metric construction uses `OtelMetric` directly |
+| `aggregate` | ✅ OTLP | Works with `OtelMetric` directly |
+| `tag_cardinality_limit` | ✅ OTLP | Uses `OtelMetric` methods (`tags()`, `remove_data_point_attribute()`) |
+| `remap`, `filter`, `route`, `dedupe`, `reduce` | ✅ Generic | Event-type agnostic, no format assumptions |
+| `lua` | ✅ OTLP | Uses `OtelLog`/`OtelMetric` directly |
+
+### Performance Assessment
+
+| Path | Current | Optimal | Gap |
+|------|---------|---------|-----|
+| OTLP gRPC → OTLP gRPC (passthrough) | Proto → Proto (zero conversion) | Same | None |
+| OTLP gRPC → OTLP HTTP | Proto → JSON at sink boundary | Same | None |
+| Vector → Vector | OTLP gRPC proto both directions | Same | None |
+| `metric_to_log` | Proto → serde_json::Value → event::Value → OtelLog | Proto → direct field extraction → OtelLog | Medium (JSON alloc overhead) |
+| `log_to_metric` (`to_metrics()`) | Reads legacy field names from log | Should read OTLP field names | **High** (broken for OTLP input) |
+
+## Planned Steps (Priority Order)
+
+### Two-Format Rule
+
+Only two wire/serialization formats are allowed anywhere in the codebase:
+
+| Format | Content-Type | When to use |
+|--------|-------------|-------------|
+| **OTLP/proto** | `application/x-protobuf` | gRPC (Vector↔Vector, OTLP source/sink), HTTP when performance matters, disk buffer |
+| **OTLP/JSON** | `application/json` | HTTP when human-readable or JSON-based sink (Elasticsearch, Kafka, console), debugging |
+
+**Internal transforms** operate directly on proto fields — no serialization needed. `OtelAttributes` (BTreeMap) provides O(log n) direct access.
+
+Format-specific encoders (GELF, Syslog, CEF, Logfmt) access proto fields directly — they produce their own format from the proto struct, not from an intermediate JSON/Value tree.
+
+### P23 — OtelLog/OtelSpan `Serialize` → OTLP/JSON
+Replace the canonical flat format with OTLP/JSON (proto3 camelCase, nested resource/scope/attributes) as the default `Serialize` impl for OtelLog and OtelSpan. OtelMetric already produces OTLP JSON.
+
+**Current state (3 paths, only 1 is OTLP):**
+| Path | Format | Used by |
+|------|--------|---------|
+| `OtelLog`/`OtelSpan` `Serialize` | Flat, snake_case (non-OTLP) | JSON codec, console, any `serde_json` sink |
+| `OtlpJsonLog`/`OtlpJsonSpan` wrappers | Nested, camelCase (OTLP/JSON) | **Nothing** — dead code |
+| `OtlpSerializer` (OTLP codec) | Proto binary via `prost::Message::encode()` | OTLP HTTP sink (`application/x-protobuf`) |
+
+**After P23 (2 paths, both OTLP):**
+| Path | Format | Used by |
+|------|--------|---------|
+| `OtelLog`/`OtelSpan`/`OtelMetric` `Serialize` | **OTLP/JSON** (camelCase, nested resource/scope) | JSON codec, console, any `serde_json` sink |
+| `OtlpSerializer` (OTLP codec) | Proto binary | OTLP HTTP sink, unchanged |
+
+**Steps:**
+- Move `OtlpJsonLog`/`OtlpJsonSpan` serialization logic into the default `Serialize` impl for OtelLog/OtelSpan
+- Delete `OtlpJsonLog`/`OtlpJsonSpan` wrapper types (dead code made redundant)
+- OTLP sink (gRPC + HTTP) is **unaffected** — uses `OtlpSerializer` (proto binary), not `Serialize`
+- `to_value_canonical()` kept only as VRL bridge, no longer called from serialization
+- **Decision:** Breaking change accepted. All output is OTLP/proto or OTLP/JSON.
+- GELF/Syslog/CEF/Logfmt encoders: direct proto field access (resolved in P27).
+- Tests: migrate to proto-level or OTLP/JSON assertions.
+- **Future (optional):** Add OTLP/JSON support to OTLP HTTP sink (`application/json` Content-Type option). Currently proto-only, which is correct and performant. JSON option useful for receivers that only accept JSON.
+
+### P24 — Delete `log_to_metric` `to_metrics()`, replace with VRL
+The `all_metrics = true` code path is replaced by VRL-based approach.
+- Delete `to_metrics()` function and all legacy field-name parsing (`tags`, `kind`, `counter`, `gauge`, etc.)
+- Delete `all_metrics` config option
+- Users write VRL to construct metrics from logs (more flexible, no hardcoded field mapping)
+- Config-driven metric construction (`metrics` array in config) remains — already OTLP-compliant.
+
+### P25 — `metric_to_log` → full OTLP metric as structured body
+Replace `serde_json::to_value(&otel)` bridge with direct conversion. Output OtelLog has body = `KvlistValue` containing the full OTLP metric structure.
+- Convert OtelMetric proto fields directly to `AnyValue::KvlistValue` (name, data points, attributes, temporality)
+- Set as OtelLog body — native proto structure, no serialization needed
+- VRL can access `.body.name`, `.body.sum.dataPoints` directly (no `parse_json!()`)
+- When serialized to OTLP/JSON, body appears as nested JSON object naturally
+- No double-encoding (vs StringValue which would be JSON-in-JSON)
+- No intermediate `serde_json::Value` → `event::Value` conversion
+- Saves ~2 heap allocations per event
+
+### P26 — Legacy metric types removal (~2,164 lines)
+Replace `MetricTags` with `OtelAttributes`, add arithmetic via `MetricArithmetic` trait on `OtelMetric`, eliminate `MetricValue`/`MetricKind`/`MetricSeries`/`MetricData`.
+
+**Decisions:**
+1. **Arithmetic:** Inherent methods on `OtelMetric` (not a trait — single implementor, trait adds ceremony with no benefit). Dispatches on proto `data` oneof (Sum, Gauge, Histogram, ExponentialHistogram, Summary). Per-data-type logic in private helper functions.
+   ```rust
+   impl OtelMetric {
+       pub fn add(&mut self, other: &Self) -> bool { ... }
+       pub fn subtract(&mut self, other: &Self) -> bool { ... }
+   }
+   ```
+2. **Temporality:** Per OTLP spec, `AggregationTemporality` exists only on Sum, Histogram, ExponentialHistogram. Gauge and Summary have no temporality (point-in-time values). `MetricKind::Incremental` → `Delta`, `MetricKind::Absolute` → `Cumulative` — applied only where the proto field exists. No temporality field set for Gauge/Summary.
+3. **Multi-value tags → `ArrayValue`:** OTLP `attributes` supports `ArrayValue` (array of `AnyValue`) as a value type. `KeyValue { key: "code", value: ArrayValue([StringValue("200"), StringValue("success")]) }` is valid OTLP. Keys must be unique — multi-value uses ArrayValue, not repeated keys. `MetricTags` multi-value maps 1:1 to `OtelAttributes` with `ArrayValue`.
+
+**Migration path:**
+- `MetricTags` → `OtelAttributes` (already BTreeMap-backed, add ArrayValue support for multi-value)
+- `MetricValue` arithmetic → `MetricArithmetic` trait on `OtelMetric`
+- `MetricKind` → `AggregationTemporality` on Sum/Histogram/ExponentialHistogram proto fields only
+- `MetricSeries`/`MetricData` → direct proto field access on `OtelMetric`
+
+### P27 — Replace `to_value_canonical()` in codec encoders
+Direct proto field access in GELF/Avro/protobuf/syslog encoders. 12 call sites across 8 codec files.
+- **Decision:** Encoders access proto fields directly (most performant). No OTLP/JSON parsing — that would add unnecessary serialization/deserialization overhead.
+- `OtelAttributes` (BTreeMap) provides direct access to attributes without conversion.
+- `to_value_canonical()` stays only for VRL bridge (proto → Value for VRL field access).
+
+### P28 — Extract remaining hardcoded field names in otel_event.rs
+~100 uses of string literals for field names. Lower risk since otel_event.rs is the defining module.
+
+### P29 — OtelSpan remove/remove_prune
+Currently falls through to full canonical rebuild. Direct proto field removal would be more efficient.
+
+### P30 — Deduplicate OtelLog/OtelSpan/OtelMetric common code (P2-1)
+~500 lines duplicated across the three event types (get/insert/remove, resource/scope handling). Extract into shared trait or helper module.
 
 ---
 

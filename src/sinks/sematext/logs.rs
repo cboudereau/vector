@@ -220,7 +220,9 @@ mod tests {
 
                 assert_eq!(token, "mylogtoken");
             } else {
-                let message = val.get("body").unwrap().as_str().unwrap();
+                // OTLP JSON: body is {"stringValue":"..."}
+                let body = val.get("body").unwrap();
+                let message = body.get("stringValue").unwrap().as_str().unwrap();
                 assert_eq!(message, &expected[expected_message_idx]);
                 expected_message_idx += 1;
             }

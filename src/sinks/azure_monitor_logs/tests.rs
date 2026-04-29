@@ -130,16 +130,13 @@ fn fails_config_missing_fields() {
         .expect_err("Config parsing failed to error with missing customer_id");
 }
 
-fn insert_timestamp_kv(log: &mut OtelLog) -> (String, String) {
+fn insert_timestamp_kv(log: &mut OtelLog) -> String {
     let now = chrono::Utc::now();
 
     let timestamp_value = now.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
     log.insert(&OwnedTargetPath::event(owned_value_path!("time_unix_nano")), now);
 
-    (
-        "time_unix_nano".to_string(),
-        timestamp_value,
-    )
+    timestamp_value
 }
 
 fn build_authorization_header_value(
@@ -174,11 +171,11 @@ async fn correct_request() {
 
     let mut log1 = OtelLog::default();
     log1.insert("body", "hello");
-    let (timestamp_key1, timestamp_value1) = insert_timestamp_kv(&mut log1);
+    let timestamp_value1 = insert_timestamp_kv(&mut log1);
 
     let mut log2 = OtelLog::default();
     log2.insert("body", "world");
-    let (timestamp_key2, timestamp_value2) = insert_timestamp_kv(&mut log2);
+    let timestamp_value2 = insert_timestamp_kv(&mut log2);
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(1);
     let mock_endpoint = spawn_blackhole_http_server(move |request| {
@@ -208,17 +205,21 @@ async fn correct_request() {
 
     let body = http_body::Body::collect(body).await.unwrap().to_bytes();
     let json: serde_json::Value = serde_json::from_slice(&body[..]).unwrap();
-    let expected_json = serde_json::json!([
-        {
-            timestamp_key1: timestamp_value1,
-            "body": "hello"
-        },
-        {
-            timestamp_key2: timestamp_value2,
-            "body": "world"
-        }
-    ]);
-    assert_eq!(json, expected_json);
+    let arr = json.as_array().unwrap();
+    assert_eq!(arr.len(), 2);
+
+    // OTLP JSON format: body is {"stringValue":"..."} and timestamp is in attributes
+    let obj1 = arr[0].as_object().unwrap();
+    assert_eq!(obj1.get("body").unwrap(), &serde_json::json!({"stringValue": "hello"}));
+    let attrs1 = obj1.get("attributes").unwrap().as_array().unwrap();
+    let ts_attr1 = attrs1.iter().find(|a| a["key"] == "time_unix_nano").unwrap();
+    assert_eq!(ts_attr1["value"]["stringValue"].as_str().unwrap(), &timestamp_value1);
+
+    let obj2 = arr[1].as_object().unwrap();
+    assert_eq!(obj2.get("body").unwrap(), &serde_json::json!({"stringValue": "world"}));
+    let attrs2 = obj2.get("attributes").unwrap().as_array().unwrap();
+    let ts_attr2 = attrs2.iter().find(|a| a["key"] == "time_unix_nano").unwrap();
+    assert_eq!(ts_attr2["value"]["stringValue"].as_str().unwrap(), &timestamp_value2);
 
     let headers = parts.headers;
 
@@ -259,16 +260,20 @@ async fn correct_request() {
 fn encode_valid() {
     let mut log = OtelLog::default();
     log.insert("body", "hello world");
-    let (timestamp_key, timestamp_value) = insert_timestamp_kv(&mut log);
+    let timestamp_value = insert_timestamp_kv(&mut log);
 
     let event = Event::from(log);
     let encoder = JsonEncoding::new(Default::default(), Some(owned_value_path!("time_unix_nano")));
     let mut encoded = vec![];
     encoder.encode_input(vec![event], &mut encoded).unwrap();
-    let expected_json = serde_json::json!([{
-        timestamp_key: timestamp_value,
-        "body": "hello world"
-    }]);
     let json: serde_json::Value = serde_json::from_slice(&encoded).unwrap();
-    assert_eq!(json, expected_json);
+    let arr = json.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+
+    // OTLP JSON format: body is {"stringValue":"..."} and timestamp is in attributes
+    let obj = arr[0].as_object().unwrap();
+    assert_eq!(obj.get("body").unwrap(), &serde_json::json!({"stringValue": "hello world"}));
+    let attrs = obj.get("attributes").unwrap().as_array().unwrap();
+    let ts_attr = attrs.iter().find(|a| a["key"] == "time_unix_nano").unwrap();
+    assert_eq!(ts_attr["value"]["stringValue"].as_str().unwrap(), &timestamp_value);
 }

@@ -3,124 +3,13 @@
 //! These produce the proto3 JSON mapping (camelCase field names, string-encoded
 //! integers for nanosecond timestamps, etc.) matching the OTLP JSON spec.
 //!
-//! Used by `Serialize for OtelMetric` to produce OTLP-native JSON output.
-//! Also provides `OtlpJsonLog` and `OtlpJsonSpan` wrappers for opt-in
-//! OTLP JSON serialization of logs and spans (per-sink migration).
+//! Used by `Serialize for OtelLog`, `Serialize for OtelSpan`, and
+//! `Serialize for OtelMetric` to produce OTLP/JSON output.
 
 use opentelemetry_proto::tonic::common::v1::{
     AnyValue, KeyValue, any_value::Value as OtelValueKind,
 };
 use serde::Serialize;
-
-use super::otel_event::{OtelLog, OtelSpan};
-
-/// Wrapper for OTLP-native JSON serialization of OtelLog.
-///
-/// Use `OtlpJsonLog(&log)` when a sink wants OTLP JSON format instead
-/// of the default legacy flat format from `Serialize for OtelLog`.
-pub struct OtlpJsonLog<'a>(pub &'a OtelLog);
-
-impl Serialize for OtlpJsonLog<'_> {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        use serde::ser::SerializeMap;
-
-        let log = self.0;
-        let mut map = serializer.serialize_map(None)?;
-
-        if let Some(ref body) = log.record().body {
-            map.serialize_entry("body", &SerializableAnyValue(body))?;
-        }
-        if !log.record().severity_text.is_empty() {
-            map.serialize_entry("severityText", &log.record().severity_text)?;
-        }
-        if log.record().severity_number != 0 {
-            map.serialize_entry("severityNumber", &log.record().severity_number)?;
-        }
-        if log.record().time_unix_nano != 0 {
-            map.serialize_entry("timeUnixNano", &log.record().time_unix_nano.to_string())?;
-        }
-        if log.record().observed_time_unix_nano != 0 {
-            map.serialize_entry("observedTimeUnixNano", &log.record().observed_time_unix_nano.to_string())?;
-        }
-        if !log.record().trace_id.is_empty() {
-            map.serialize_entry("traceId", &hex_encode_str(&log.record().trace_id))?;
-        }
-        if !log.record().span_id.is_empty() {
-            map.serialize_entry("spanId", &hex_encode_str(&log.record().span_id))?;
-        }
-        if !log.attributes().is_empty() {
-            let kvs = log.attributes().to_key_values();
-            map.serialize_entry("attributes", &SerializableAttributes(&kvs))?;
-        }
-        if let Some(ref res) = log.resource_proto() {
-            map.serialize_entry("resource", &SerializableResource(res))?;
-        }
-        if let Some(ref scope) = log.scope_proto() {
-            map.serialize_entry("scope", &SerializableScope(scope))?;
-        }
-        map.end()
-    }
-}
-
-/// Wrapper for OTLP-native JSON serialization of OtelSpan.
-pub struct OtlpJsonSpan<'a>(pub &'a OtelSpan);
-
-impl Serialize for OtlpJsonSpan<'_> {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        use serde::ser::SerializeMap;
-
-        let span = self.0;
-        let mut map = serializer.serialize_map(None)?;
-
-        if !span.span().name.is_empty() {
-            map.serialize_entry("name", &span.span().name)?;
-        }
-        if !span.span().trace_id.is_empty() {
-            map.serialize_entry("traceId", &hex_encode_str(&span.span().trace_id))?;
-        }
-        if !span.span().span_id.is_empty() {
-            map.serialize_entry("spanId", &hex_encode_str(&span.span().span_id))?;
-        }
-        if !span.span().parent_span_id.is_empty() {
-            map.serialize_entry("parentSpanId", &hex_encode_str(&span.span().parent_span_id))?;
-        }
-        if span.span().kind != 0 {
-            map.serialize_entry("kind", &span.span().kind)?;
-        }
-        if span.span().start_time_unix_nano != 0 {
-            map.serialize_entry("startTimeUnixNano", &span.span().start_time_unix_nano.to_string())?;
-        }
-        if span.span().end_time_unix_nano != 0 {
-            map.serialize_entry("endTimeUnixNano", &span.span().end_time_unix_nano.to_string())?;
-        }
-        if !span.attributes().is_empty() {
-            let kvs = span.attributes().to_key_values();
-            map.serialize_entry("attributes", &SerializableAttributes(&kvs))?;
-        }
-        if let Some(ref status) = span.span().status {
-            map.serialize_entry("status", &serde_json::json!({
-                "code": status.code,
-                "message": status.message,
-            }))?;
-        }
-        if let Some(ref res) = span.resource_proto() {
-            map.serialize_entry("resource", &SerializableResource(res))?;
-        }
-        if let Some(ref scope) = span.scope_proto() {
-            map.serialize_entry("scope", &SerializableScope(scope))?;
-        }
-        map.end()
-    }
-}
-
-fn hex_encode_str(bytes: &[u8]) -> String {
-    let mut s = String::with_capacity(bytes.len() * 2);
-    for b in bytes {
-        use std::fmt::Write;
-        let _ = write!(s, "{b:02x}");
-    }
-    s
-}
 
 /// Serialize a slice of KeyValue as OTLP JSON attributes array.
 pub(crate) struct SerializableAttributes<'a>(pub &'a [KeyValue]);

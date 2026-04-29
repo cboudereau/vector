@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use vector_lib::{
     codecs::{JsonSerializerConfig, TextSerializerConfig},
     event::{Event, OtelLog, MetricKind, OtelMetric},
@@ -30,8 +28,12 @@ fn redis_log_event_json() {
     )
     .unwrap()
     .value;
-    let map: HashMap<String, String> = serde_json::from_slice(&result[..]).unwrap();
-    assert_eq!(msg, map["body"]);
+    let json: serde_json::Value = serde_json::from_slice(&result[..]).unwrap();
+    // OTLP JSON: body is {"stringValue":"..."}
+    assert_eq!(
+        json.get("body").unwrap(),
+        &serde_json::json!({"stringValue": msg})
+    );
 }
 
 #[test]
@@ -70,8 +72,13 @@ fn redis_log_encode_event() {
     .unwrap()
     .value;
 
-    let map: HashMap<String, String> = serde_json::from_slice(&result[..]).unwrap();
-    assert!(!map.contains_key("key"));
+    let json: serde_json::Value = serde_json::from_slice(&result[..]).unwrap();
+    // After removing "key", there should be no "key" attribute in OTLP JSON
+    let has_key_attr = json.get("attributes")
+        .and_then(|a| a.as_array())
+        .map(|arr| arr.iter().any(|a| a["key"] == "key"))
+        .unwrap_or(false);
+    assert!(!has_key_attr);
 }
 
 #[test]

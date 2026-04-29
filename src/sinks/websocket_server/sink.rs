@@ -878,15 +878,25 @@ mod tests {
                 .await;
 
             pairs.iter().for_each(|(msg, expected)| {
-                let mut base_msg = serde_json::from_str::<Value>(
+                let mut base_msg: serde_json::Value = serde_json::from_str(
                     &msg.as_ref().unwrap().clone().into_text().unwrap(),
                 )
                 .unwrap();
-                // Removing message_id from message, since it is not part of the event
-                base_msg.remove("message_id", true);
-                let msg_text = serde_json::to_string(&base_msg).unwrap();
-                let expected = serde_json::to_string(&expected.clone().into_log().to_value_canonical()).unwrap();
-                assert_eq!(expected, msg_text);
+                // Removing message_id from message, since it is not part of the event.
+                // In OTLP/JSON, message_id is inside the attributes array.
+                if let Some(obj) = base_msg.as_object_mut() {
+                    obj.remove("message_id");
+                    // Also remove message_id from the OTLP attributes array
+                    if let Some(attrs) = obj.get_mut("attributes").and_then(|a| a.as_array_mut()) {
+                        attrs.retain(|kv| kv.get("key").and_then(|k| k.as_str()) != Some("message_id"));
+                        if attrs.is_empty() {
+                            obj.remove("attributes");
+                        }
+                    }
+                }
+                let expected_json: serde_json::Value =
+                    serde_json::to_value(&expected.clone().into_log()).unwrap();
+                assert_eq!(expected_json, base_msg);
             });
 
             if ack {

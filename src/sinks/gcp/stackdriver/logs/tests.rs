@@ -118,7 +118,7 @@ fn encode_valid() {
         json,
         serde_json::json!({
             "logName":"projects/project/logs/testlogs",
-            "jsonPayload":{"body":"hello world"},
+            "jsonPayload":{"body":{"stringValue":"hello world"}},
             "severity":100,
             "labels":{
                 "config_user_label_1":"config_user_value_1",
@@ -171,7 +171,7 @@ fn encode_inserts_timestamp() {
         json,
         serde_json::json!({
             "logName":"projects/project/logs/testlogs",
-            "jsonPayload":{"body":"hello world","time_unix_nano":1577881800000000000_i64},
+            "jsonPayload":{"body":{"stringValue":"hello world"},"timeUnixNano":"1577881800000000000"},
             "severity":100,
             "labels":{"config_user_label_1":"value_1"},
             "resource":{
@@ -277,7 +277,7 @@ async fn correct_request() {
                     "logName": "projects/project/logs/testlogs",
                     "severity": 0,
                     "jsonPayload": {
-                        "body": "hello"
+                        "body": {"stringValue": "hello"}
                     },
                     "labels": {
                         "config_user_label_1": "value_1"
@@ -293,7 +293,7 @@ async fn correct_request() {
                     "logName": "projects/project/logs/testlogs",
                     "severity": 0,
                     "jsonPayload": {
-                        "body": "world"
+                        "body": {"stringValue": "world"}
                     },
                     "labels": {
                         "config_user_label_1": "value_1"

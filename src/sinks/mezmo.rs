@@ -566,11 +566,13 @@ mod tests {
                     assert_eq!(line.get("env").unwrap(), &json!("production"));
                     assert_eq!(line.get("line").unwrap(), &json!(lines[i]));
 
+                    // OTLP JSON: remaining attributes are in OTLP format
+                    let meta = line.get("meta").unwrap();
+                    let attrs = meta.get("attributes").unwrap().as_array().unwrap();
+                    let hostname_attr = attrs.iter().find(|a| a["key"] == "hostname").unwrap();
                     assert_eq!(
-                        line.get("meta").unwrap(),
-                        &json!({
-                            "hostname": host,
-                        })
+                        hostname_attr["value"]["stringValue"].as_str().unwrap(),
+                        *host
                     );
                 }
             }

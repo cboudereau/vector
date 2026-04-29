@@ -272,9 +272,12 @@ mod tests {
             .sum::<JsonSize>();
 
         let (written, json_size) = encoding.encode_input(input, &mut writer).unwrap();
-        assert_eq!(written, 17);
+        assert_eq!(written, 64);
 
-        assert_eq!(String::from_utf8(writer).unwrap(), r#"[{"key":"value"}]"#);
+        assert_eq!(
+            String::from_utf8(writer).unwrap(),
+            r#"[{"attributes":[{"key":"key","value":{"stringValue":"value"}}]}]"#
+        );
         assert_eq!(CountByteSize(1, input_json_size), json_size.size().unwrap());
     }
 
@@ -310,11 +313,11 @@ mod tests {
 
         let mut writer = Vec::new();
         let (written, json_size) = encoding.encode_input(input, &mut writer).unwrap();
-        assert_eq!(written, 52);
+        assert_eq!(written, 193);
 
         assert_eq!(
             String::from_utf8(writer).unwrap(),
-            r#"[{"key":"value1"},{"key":"value2"},{"key":"value3"}]"#
+            r#"[{"attributes":[{"key":"key","value":{"stringValue":"value1"}}]},{"attributes":[{"key":"key","value":{"stringValue":"value2"}}]},{"attributes":[{"key":"key","value":{"stringValue":"value3"}}]}]"#
         );
 
         assert_eq!(CountByteSize(3, input_json_size), json_size.size().unwrap());
@@ -362,9 +365,12 @@ mod tests {
             .sum::<JsonSize>();
 
         let (written, json_size) = encoding.encode_input(input, &mut writer).unwrap();
-        assert_eq!(written, 16);
+        assert_eq!(written, 63);
 
-        assert_eq!(String::from_utf8(writer).unwrap(), "{\"key\":\"value\"}\n");
+        assert_eq!(
+            String::from_utf8(writer).unwrap(),
+            "{\"attributes\":[{\"key\":\"key\",\"value\":{\"stringValue\":\"value\"}}]}\n"
+        );
         assert_eq!(CountByteSize(1, input_json_size), json_size.size().unwrap());
     }
 
@@ -399,11 +405,11 @@ mod tests {
             .sum::<JsonSize>();
 
         let (written, json_size) = encoding.encode_input(input, &mut writer).unwrap();
-        assert_eq!(written, 51);
+        assert_eq!(written, 192);
 
         assert_eq!(
             String::from_utf8(writer).unwrap(),
-            "{\"key\":\"value1\"}\n{\"key\":\"value2\"}\n{\"key\":\"value3\"}\n"
+            "{\"attributes\":[{\"key\":\"key\",\"value\":{\"stringValue\":\"value1\"}}]}\n{\"attributes\":[{\"key\":\"key\",\"value\":{\"stringValue\":\"value2\"}}]}\n{\"attributes\":[{\"key\":\"key\",\"value\":{\"stringValue\":\"value3\"}}]}\n"
         );
         assert_eq!(CountByteSize(3, input_json_size), json_size.size().unwrap());
     }
@@ -423,9 +429,12 @@ mod tests {
         let input_json_size = input.estimated_json_encoded_size_of();
 
         let (written, json_size) = encoding.encode_input(input, &mut writer).unwrap();
-        assert_eq!(written, 15);
+        assert_eq!(written, 62);
 
-        assert_eq!(String::from_utf8(writer).unwrap(), r#"{"key":"value"}"#);
+        assert_eq!(
+            String::from_utf8(writer).unwrap(),
+            r#"{"attributes":[{"key":"key","value":{"stringValue":"value"}}]}"#
+        );
         assert_eq!(CountByteSize(1, input_json_size), json_size.size().unwrap());
     }
 

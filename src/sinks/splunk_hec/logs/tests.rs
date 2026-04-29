@@ -33,7 +33,7 @@ use crate::{
 struct HecEventJson {
     time: Option<f64>,
     event: BTreeMap<String, serde_json::Value>,
-    fields: BTreeMap<String, String>,
+    fields: serde_json::Value,
     source: Option<String>,
     sourcetype: Option<String>,
     index: Option<String>,
@@ -44,7 +44,7 @@ struct HecEventJson {
 struct HecEventText {
     time: Option<f64>,
     event: String,
-    fields: BTreeMap<String, String>,
+    fields: serde_json::Value,
     source: Option<String>,
     sourcetype: Option<String>,
     index: Option<String>,
@@ -204,25 +204,56 @@ fn splunk_encode_log_event_json() {
         get_encoded_event::<HecEventJson>(JsonSerializerConfig::default().into(), processed_event);
     let event = hec_data.event;
 
-    assert_eq!(event.get("key").unwrap(), &serde_json::Value::from("value"));
-    assert_eq!(event.get("int_val").unwrap(), &serde_json::Value::from(123));
+    // In OTLP/JSON format, body is wrapped: {"stringValue":"hello world"}
     assert_eq!(
         event.get("body").unwrap(),
-        &serde_json::Value::from("hello world")
+        &serde_json::json!({"stringValue": "hello world"})
     );
-    assert!(!event.contains_key("time_unix_nano"));
+    // Timestamp is removed from the event (extracted to hec_data.time)
+    assert!(!event.contains_key("timeUnixNano"));
+
+    // Attributes like "key", "int_val", "ts_nanos_key" are in the OTLP attributes array
+    let attrs = event.get("attributes").unwrap().as_array().unwrap();
+    let find_attr = |name: &str| -> Option<&serde_json::Value> {
+        attrs.iter().find_map(|a| {
+            if a["key"].as_str() == Some(name) {
+                Some(&a["value"])
+            } else {
+                None
+            }
+        })
+    };
+    assert_eq!(
+        find_attr("key").unwrap(),
+        &serde_json::json!({"stringValue": "value"})
+    );
+    assert_eq!(
+        find_attr("int_val").unwrap(),
+        &serde_json::json!({"intValue": "123"})
+    );
 
     assert_eq!(hec_data.source, Some("test_source".to_string()));
     assert_eq!(hec_data.sourcetype, Some("test_sourcetype".to_string()));
     assert_eq!(hec_data.index, Some("test_index".to_string()));
     assert_eq!(hec_data.host, Some("test_host".to_string()));
 
-    assert_eq!(hec_data.fields.get("event_field1").unwrap(), "test_value1");
+    // Fields are OTLP-serialized; check that the attributes array contains event_field1
+    let fields_attrs = hec_data.fields.get("attributes").unwrap().as_array().unwrap();
+    let find_field = |name: &str| -> Option<String> {
+        fields_attrs.iter().find_map(|a| {
+            if a["key"].as_str() == Some(name) {
+                a["value"]["stringValue"].as_str().map(|s| s.to_string())
+            } else {
+                None
+            }
+        })
+    };
+    assert_eq!(find_field("event_field1").unwrap(), "test_value1");
 
     assert_eq!(hec_data.time, Some(1638366107.111));
     assert_eq!(
-        event.get("ts_nanos_key").unwrap(),
-        &serde_json::Value::from(456123)
+        find_attr("ts_nanos_key").unwrap(),
+        &serde_json::json!({"intValue": "456123"})
     );
 }
 
@@ -239,7 +270,18 @@ fn splunk_encode_log_event_text() {
     assert_eq!(hec_data.index, Some("test_index".to_string()));
     assert_eq!(hec_data.host, Some("test_host".to_string()));
 
-    assert_eq!(hec_data.fields.get("event_field1").unwrap(), "test_value1");
+    // Fields are OTLP-serialized; check that the attributes array contains event_field1
+    let fields_attrs = hec_data.fields.get("attributes").unwrap().as_array().unwrap();
+    let find_field = |name: &str| -> Option<String> {
+        fields_attrs.iter().find_map(|a| {
+            if a["key"].as_str() == Some(name) {
+                a["value"]["stringValue"].as_str().map(|s| s.to_string())
+            } else {
+                None
+            }
+        })
+    };
+    assert_eq!(find_field("event_field1").unwrap(), "test_value1");
 
     assert_eq!(hec_data.time, Some(1638366107.111));
 }

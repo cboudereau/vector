@@ -602,7 +602,7 @@ mod tests {
         let record = encoder.encode_event(event).unwrap();
         assert!(
             String::from_utf8_lossy(&record.event.event)
-                .contains("time_unix_nano")
+                .contains("timeUnixNano")
         );
         assert_eq!(record.labels.len(), 1);
         assert_eq!(
@@ -657,7 +657,7 @@ mod tests {
         let record = encoder.encode_event(event).unwrap();
         assert!(
             String::from_utf8_lossy(&record.event.event)
-                .contains("time_unix_nano")
+                .contains("timeUnixNano")
         );
         assert_eq!(record.labels.len(), 4);
 
@@ -816,11 +816,11 @@ mod tests {
             chrono::Utc::now(),
         );
         let record = encoder.encode_event(event).unwrap();
-        // In the OTLP-canonical format the native timestamp field is
-        // "time_unix_nano"; remove_timestamp clears that field.
+        // In the OTLP/JSON format the native timestamp field is
+        // "timeUnixNano"; remove_timestamp clears that field.
         assert!(
             !String::from_utf8_lossy(&record.event.event)
-                .contains("time_unix_nano")
+                .contains("timeUnixNano")
         );
     }
 
@@ -854,7 +854,18 @@ mod tests {
         log.insert("name", "foo");
         log.insert("value", "bar");
         let record = encoder.encode_event(event).unwrap();
-        assert!(!String::from_utf8_lossy(&record.event.event).contains("value"));
+        // After removing label fields, the attribute "value" (which held "bar")
+        // should be gone. In OTLP/JSON the body wrapper contains "stringValue"
+        // so we check for the actual attribute value instead.
+        let serialized = String::from_utf8_lossy(&record.event.event);
+        let json: serde_json::Value = serde_json::from_str(&serialized).unwrap();
+        // The "attributes" array (if present) should not contain a key "value"
+        if let Some(attrs) = json.get("attributes") {
+            let attrs = attrs.as_array().unwrap();
+            for attr in attrs {
+                assert_ne!(attr["key"].as_str().unwrap(), "value");
+            }
+        }
     }
 
     #[test]

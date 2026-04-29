@@ -243,9 +243,19 @@ mod tests {
 
         let msg = bytes.slice(String::from_utf8_lossy(&bytes).find(": ").unwrap() + 2..bytes.len());
         let value: serde_json::Value = serde_json::from_slice(&msg).unwrap();
-        let value = value.as_object().unwrap();
+        let obj = value.as_object().unwrap();
 
-        assert!(!value.contains_key("magic"));
-        assert_eq!(value.get("process").unwrap().as_str(), Some("foo"));
+        // OTLP JSON: attributes is an array of {key, value} objects
+        let attrs = obj.get("attributes")
+            .and_then(|a| a.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let has_magic = attrs.iter().any(|a| a["key"] == "magic");
+        assert!(!has_magic, "magic attribute should have been removed");
+        let process_attr = attrs.iter().find(|a| a["key"] == "process").unwrap();
+        assert_eq!(
+            process_attr["value"]["stringValue"].as_str(),
+            Some("foo")
+        );
     }
 }

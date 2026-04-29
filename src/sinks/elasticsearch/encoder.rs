@@ -146,13 +146,15 @@ impl Encoder<Vec<ProcessedEvent>> for ElasticsearchEncoder {
                     let mut value = serde_json::to_value(log)?;
                     if self.use_at_timestamp {
                         if let Some(obj) = value.as_object_mut() {
-                            if let Some(nanos) = obj.remove("time_unix_nano").and_then(|v| v.as_i64()) {
-                                let secs = nanos / 1_000_000_000;
-                                let nsecs = (nanos % 1_000_000_000) as u32;
-                                if let Some(dt) = chrono::DateTime::from_timestamp(secs, nsecs) {
-                                    obj.insert("@timestamp".into(), serde_json::Value::String(
-                                        dt.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
-                                    ));
+                            if let Some(nanos_str) = obj.remove("timeUnixNano").and_then(|v| v.as_str().map(String::from)) {
+                                if let Ok(nanos) = nanos_str.parse::<i64>() {
+                                    let secs = nanos / 1_000_000_000;
+                                    let nsecs = (nanos % 1_000_000_000) as u32;
+                                    if let Some(dt) = chrono::DateTime::from_timestamp(secs, nsecs) {
+                                        obj.insert("@timestamp".into(), serde_json::Value::String(
+                                            dt.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+                                        ));
+                                    }
                                 }
                             }
                         }

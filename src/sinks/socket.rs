@@ -306,9 +306,12 @@ mod test {
         let packet = String::from_utf8(buf[..size].to_vec()).expect("Invalid data received");
         let data = serde_json::from_str::<Value>(&packet).expect("Invalid JSON received");
         let data = data.as_object().expect("Not a JSON object");
-        assert!(data.get("time_unix_nano").is_some());
-        let message = data.get("body").expect("No message in JSON");
-        assert_eq!(message, &Value::String("raw log line".into()));
+        assert!(data.get("timeUnixNano").is_some());
+        let body = data.get("body").expect("No body in JSON");
+        assert_eq!(
+            body.get("stringValue").unwrap(),
+            &Value::String("raw log line".into())
+        );
     }
 
     #[tokio::test]
@@ -371,7 +374,13 @@ mod test {
         assert_eq!(lines.len(), output.len());
         for (source, received) in lines.iter().zip(output) {
             let json = serde_json::from_str::<Value>(&received).expect("Invalid JSON");
-            let received = json.get("body").unwrap().as_str().unwrap();
+            let received = json
+                .get("body")
+                .unwrap()
+                .get("stringValue")
+                .unwrap()
+                .as_str()
+                .unwrap();
             assert_eq!(source, received);
         }
     }

@@ -372,7 +372,13 @@ mod tests {
         assert_eq!(lines.len(), output.len());
         for (source, received) in lines.iter().zip(output) {
             let json = serde_json::from_str::<JsonValue>(&received).expect("Invalid JSON");
-            let received = json.get("body").unwrap().as_str().unwrap();
+            let received = json
+                .get("body")
+                .unwrap()
+                .get("stringValue")
+                .unwrap()
+                .as_str()
+                .unwrap();
             assert_eq!(source, received);
         }
     }

@@ -144,7 +144,13 @@ where
     .map(Result::unwrap)
     .map(|line| {
         let val: serde_json::Value = serde_json::from_str(&line).unwrap();
-        val.get("body").unwrap().as_str().unwrap().to_owned()
+        let body = val.get("body").unwrap();
+        // OTLP/JSON: body is {"stringValue": "..."} or a plain string (legacy)
+        if let Some(sv) = body.get("stringValue") {
+            sv.as_str().unwrap().to_owned()
+        } else {
+            body.as_str().unwrap().to_owned()
+        }
     })
     .collect::<Vec<_>>()
     .await

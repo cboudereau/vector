@@ -137,9 +137,13 @@ mod tests {
         } as ObjectMap));
         let bytes = serialize(JsonSerializerConfig::default(), event);
         let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(v["x"], "23");
-        assert_eq!(v["z"], 25);
-        assert_eq!(v["a"], "0");
+        let attrs = v["attributes"].as_array().expect("attributes array");
+        let find_attr = |key: &str| -> &serde_json::Value {
+            &attrs.iter().find(|a| a["key"] == key).unwrap_or_else(|| panic!("key {key} not found"))["value"]
+        };
+        assert_eq!(find_attr("a")["stringValue"], "0");
+        assert_eq!(find_attr("x")["stringValue"], "23");
+        assert_eq!(find_attr("z")["intValue"], "25");
     }
 
     #[test]
@@ -257,9 +261,13 @@ mod tests {
             ));
             let bytes = serialize(get_pretty_json_config(), event);
             let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-            assert_eq!(v["x"], "23");
-            assert_eq!(v["z"], 25);
-            assert_eq!(v["a"], "0");
+            let attrs = v["attributes"].as_array().expect("attributes array");
+            let find_attr = |key: &str| -> &serde_json::Value {
+                &attrs.iter().find(|a| a["key"] == key).unwrap_or_else(|| panic!("key {key} not found"))["value"]
+            };
+            assert_eq!(find_attr("a")["stringValue"], "0");
+            assert_eq!(find_attr("x")["stringValue"], "23");
+            assert_eq!(find_attr("z")["intValue"], "25");
         }
         #[test]
         fn serialize_json_metric_counter() {

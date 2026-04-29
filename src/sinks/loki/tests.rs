@@ -40,7 +40,7 @@ async fn interpolate_labels() {
 
     // The final event should have timestamps and labels removed
     let expected_line = serde_json::to_string(&serde_json::json!({
-        "body": "hello world",
+        "body": {"stringValue": "hello world"},
     }))
     .unwrap();
 
@@ -77,7 +77,7 @@ async fn use_label_from_dropped_fields() {
     let record = sink.encoder.encode_event(e1).unwrap();
 
     let expected_line = serde_json::to_string(&serde_json::json!({
-        "body": "hello world",
+        "body": {"stringValue": "hello world"},
     }))
     .unwrap();
 

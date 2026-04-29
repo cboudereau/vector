@@ -172,6 +172,134 @@ fn hex_decode(value: &Value) -> Option<Vec<u8>> {
     Some(out)
 }
 
+/// Try to interpret a VRL Value::Object as an OTLP JSON AnyValue pattern.
+///
+/// When data roundtrips through OTLP JSON serialization and JSON parsing,
+/// AnyValue wrappers like `{"stringValue":"hello"}` become VRL Objects.
+/// This function recognizes these patterns and converts them back to the
+/// proper AnyValue proto representation.
+pub fn try_parse_otlp_any_value(value: &Value) -> Option<AnyValue> {
+    let map = match value {
+        Value::Object(m) if m.len() == 1 => m,
+        _ => return None,
+    };
+
+    let (key, val) = map.iter().next()?;
+    let key_str = key.as_ref();
+
+    let kind = match key_str {
+        "stringValue" => {
+            let s = match val {
+                Value::Bytes(b) => String::from_utf8(b.to_vec()).ok()?,
+                _ => return None,
+            };
+            Some(OtelValueKind::StringValue(s))
+        }
+        "intValue" => {
+            let i = match val {
+                Value::Integer(i) => *i,
+                Value::Bytes(b) => std::str::from_utf8(b).ok()?.parse::<i64>().ok()?,
+                _ => return None,
+            };
+            Some(OtelValueKind::IntValue(i))
+        }
+        "doubleValue" => {
+            let d = match val {
+                Value::Float(f) => f.into_inner(),
+                Value::Integer(i) => *i as f64,
+                _ => return None,
+            };
+            Some(OtelValueKind::DoubleValue(d))
+        }
+        "boolValue" => {
+            let b = match val {
+                Value::Boolean(b) => *b,
+                _ => return None,
+            };
+            Some(OtelValueKind::BoolValue(b))
+        }
+        "bytesValue" => {
+            let bytes = match val {
+                Value::Bytes(b) => {
+                    // May be hex-encoded
+                    hex_decode_bytes(b).unwrap_or_else(|| b.to_vec())
+                }
+                _ => return None,
+            };
+            Some(OtelValueKind::BytesValue(bytes))
+        }
+        "arrayValue" => {
+            // {"arrayValue": {"values": [...]}}
+            let arr = match val {
+                Value::Object(obj) => {
+                    match obj.get(&KeyString::from("values")) {
+                        Some(Value::Array(arr)) => {
+                            arr.iter().map(|v| {
+                                try_parse_otlp_any_value(v)
+                                    .unwrap_or_else(|| vrl_value_to_any_value(v))
+                            }).collect()
+                        }
+                        _ => return None,
+                    }
+                }
+                _ => return None,
+            };
+            Some(OtelValueKind::ArrayValue(
+                opentelemetry_proto::tonic::common::v1::ArrayValue { values: arr },
+            ))
+        }
+        "kvlistValue" => {
+            // {"kvlistValue": {"values": [{"key":"k","value":{...}}]}}
+            let kvl = match val {
+                Value::Object(obj) => {
+                    match obj.get(&KeyString::from("values")) {
+                        Some(Value::Array(arr)) => {
+                            parse_otlp_key_value_array(arr)?
+                        }
+                        _ => return None,
+                    }
+                }
+                _ => return None,
+            };
+            Some(OtelValueKind::KvlistValue(
+                opentelemetry_proto::tonic::common::v1::KeyValueList { values: kvl },
+            ))
+        }
+        _ => return None,
+    };
+
+    Some(AnyValue { value: kind })
+}
+
+/// Parse an OTLP JSON attributes array: [{"key":"k","value":{...}}, ...]
+fn parse_otlp_key_value_array(arr: &[Value]) -> Option<Vec<KeyValue>> {
+    let mut result = Vec::with_capacity(arr.len());
+    for item in arr {
+        let obj = match item {
+            Value::Object(m) => m,
+            _ => return None,
+        };
+        let key = match obj.get(&KeyString::from("key")) {
+            Some(Value::Bytes(b)) => String::from_utf8(b.to_vec()).ok()?,
+            _ => return None,
+        };
+        let value = obj.get(&KeyString::from("value")).and_then(|v| {
+            try_parse_otlp_any_value(v)
+        });
+        result.push(KeyValue { key, value });
+    }
+    Some(result)
+}
+
+/// Helper: try to decode hex-encoded bytes.
+fn hex_decode_bytes(b: &[u8]) -> Option<Vec<u8>> {
+    let s = std::str::from_utf8(b).ok()?;
+    if s.len() % 2 != 0 || !s.chars().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    hex_decode(&Value::Bytes(bytes::Bytes::copy_from_slice(b)))
+}
+
 pub fn vrl_value_to_any_value(value: &Value) -> AnyValue {
     let kind = match value {
         Value::Bytes(b) => match std::str::from_utf8(b) {
@@ -244,7 +372,25 @@ fn restore_resource(map: &mut ObjectMap) -> (Option<Resource>, OtelAttributes) {
             let dropped_count = res_map.remove("dropped_attributes_count")
                 .and_then(|v| v.as_integer())
                 .unwrap_or(0) as u32;
-            let attrs = OtelAttributes::from_object_map(&res_map);
+
+            // Try OTLP JSON format first: {"attributes":[{"key":"k","value":{...}}]}
+            let attrs = if let Some(Value::Array(arr)) = res_map.remove("attributes") {
+                if let Some(kvs) = parse_otlp_key_value_array(&arr) {
+                    let mut otel_attrs = OtelAttributes::new();
+                    for kv in kvs {
+                        otel_attrs.insert(kv.key, kv.value.unwrap_or(AnyValue { value: None }));
+                    }
+                    otel_attrs
+                } else {
+                    // Not valid OTLP format, put it back and use flat format
+                    res_map.insert("attributes".into(), Value::Array(arr));
+                    OtelAttributes::from_object_map(&res_map)
+                }
+            } else {
+                // Flat format: {"key": "value", ...}
+                OtelAttributes::from_object_map(&res_map)
+            };
+
             let resource = Resource { attributes: Vec::new(), dropped_attributes_count: dropped_count };
             (Some(resource), attrs)
         }
@@ -265,6 +411,18 @@ fn restore_scope(map: &mut ObjectMap) -> (Option<InstrumentationScope>, OtelAttr
                 _ => String::new(),
             };
             let attrs = match scope_map.remove("attributes") {
+                Some(Value::Array(arr)) => {
+                    // Try OTLP JSON format: [{"key":"k","value":{...}}]
+                    if let Some(kvs) = parse_otlp_key_value_array(&arr) {
+                        let mut otel_attrs = OtelAttributes::new();
+                        for kv in kvs {
+                            otel_attrs.insert(kv.key, kv.value.unwrap_or(AnyValue { value: None }));
+                        }
+                        otel_attrs
+                    } else {
+                        OtelAttributes::new()
+                    }
+                }
                 Some(Value::Object(attrs_map)) => OtelAttributes::from_object_map(&attrs_map),
                 _ => OtelAttributes::new(),
             };
@@ -1669,9 +1827,36 @@ impl OtelLog {
         out
     }
 
+    /// Extract a nanoseconds-timestamp field from the map, accepting both
+    /// snake_case and camelCase names, and both integer and string-encoded values.
+    fn extract_nanos_field(
+        map: &mut ObjectMap,
+        snake_name: &str,
+        camel_name: &str,
+    ) -> u64 {
+        let val = map.remove(snake_name)
+            .or_else(|| map.remove(camel_name));
+        match val {
+            Some(Value::Integer(n)) => n as u64,
+            Some(Value::Bytes(b)) => {
+                // OTLP JSON encodes nano timestamps as strings
+                std::str::from_utf8(&b)
+                    .ok()
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .unwrap_or_else(|| {
+                        map.insert(snake_name.into(), Value::Bytes(b));
+                        0
+                    })
+            }
+            Some(other) => { map.insert(snake_name.into(), other); 0 }
+            None => 0,
+        }
+    }
+
     /// Write back a Value tree to proto fields.
     ///
-    /// Accepts canonical keys (`body`/`message`, `time_unix_nano` as Integer).
+    /// Accepts canonical keys (`body`/`message`, `time_unix_nano` as Integer)
+    /// as well as OTLP JSON camelCase keys (`timeUnixNano`, `severityText`, etc.).
     /// Proto fields are extracted into their native slots;
     /// `resource`/`scope` sub-objects are restored;
     /// the remainder becomes `record.attributes`.
@@ -1692,46 +1877,58 @@ impl OtelLog {
             }
         };
 
+        // Handle body: try OTLP AnyValue pattern first (e.g. {"stringValue":"hello"})
         let body = map.remove("body")
-            .map(|v| vrl_value_to_any_value(&v));
+            .map(|v| {
+                try_parse_otlp_any_value(&v)
+                    .unwrap_or_else(|| vrl_value_to_any_value(&v))
+            });
 
-        let time_unix_nano = match map.remove("time_unix_nano") {
-            Some(Value::Integer(n)) => n as u64,
-            Some(other) => { map.insert("time_unix_nano".into(), other); 0 }
-            None => 0,
-        };
+        // time_unix_nano: accept snake_case or camelCase, integer or string-encoded
+        let time_unix_nano = Self::extract_nanos_field(&mut map, "time_unix_nano", "timeUnixNano");
 
-        let observed_time_unix_nano = match map.remove("observed_time_unix_nano") {
-            Some(Value::Integer(n)) => n as u64,
-            Some(other) => { map.insert("observed_time_unix_nano".into(), other); 0 }
-            None => 0,
-        };
+        // observed_time_unix_nano: accept snake_case or camelCase
+        let observed_time_unix_nano = Self::extract_nanos_field(
+            &mut map,
+            "observed_time_unix_nano",
+            "observedTimeUnixNano",
+        );
 
-        let severity_text = match map.remove("severity_text") {
-            Some(Value::Bytes(b)) => String::from_utf8(b.to_vec()).unwrap_or_default(),
-            Some(other) => { map.insert("severity_text".into(), other); String::new() }
-            None => String::new(),
-        };
-        let severity_number = match map.remove("severity_number") {
-            Some(Value::Integer(i)) => i as i32,
-            Some(other) => { map.insert("severity_number".into(), other); 0 }
-            None => 0,
-        };
+        // severity_text: accept snake_case or camelCase
+        let severity_text = map.remove("severity_text")
+            .or_else(|| map.remove("severityText"))
+            .map(|v| match v {
+                Value::Bytes(b) => String::from_utf8(b.to_vec()).unwrap_or_default(),
+                other => { map.insert("severity_text".into(), other); String::new() }
+            })
+            .unwrap_or_default();
 
-        let trace_id = match map.remove("trace_id") {
-            Some(v) => match hex_decode(&v) {
+        // severity_number: accept snake_case or camelCase
+        let severity_number = map.remove("severity_number")
+            .or_else(|| map.remove("severityNumber"))
+            .map(|v| match v {
+                Value::Integer(i) => i as i32,
+                other => { map.insert("severity_number".into(), other); 0 }
+            })
+            .unwrap_or(0);
+
+        // trace_id: accept snake_case or camelCase
+        let trace_id = map.remove("trace_id")
+            .or_else(|| map.remove("traceId"))
+            .map(|v| match hex_decode(&v) {
                 Some(bytes) => bytes,
                 None => { map.insert("trace_id".into(), v); Vec::new() }
-            },
-            None => Vec::new(),
-        };
-        let span_id = match map.remove("span_id") {
-            Some(v) => match hex_decode(&v) {
+            })
+            .unwrap_or_default();
+
+        // span_id: accept snake_case or camelCase
+        let span_id = map.remove("span_id")
+            .or_else(|| map.remove("spanId"))
+            .map(|v| match hex_decode(&v) {
                 Some(bytes) => bytes,
                 None => { map.insert("span_id".into(), v); Vec::new() }
-            },
-            None => Vec::new(),
-        };
+            })
+            .unwrap_or_default();
 
         let flags = match map.remove("flags") {
             Some(Value::Integer(i)) => i as u32,
@@ -1751,11 +1948,31 @@ impl OtelLog {
         self.scope = scope;
         self.scope_attrs = scope_attrs;
 
+        // Handle OTLP JSON "attributes" array format:
+        // [{"key":"k","value":{"stringValue":"v"}}, ...]
+        let mut extra_attrs = OtelAttributes::new();
+        if let Some(Value::Array(arr)) = map.remove("attributes") {
+            if let Some(kvs) = parse_otlp_key_value_array(&arr) {
+                for kv in kvs {
+                    let av = kv.value.unwrap_or(AnyValue { value: None });
+                    extra_attrs.insert(kv.key, av);
+                }
+            } else {
+                // Not a valid OTLP attributes array, put it back
+                map.insert("attributes".into(), Value::Array(arr));
+            }
+        }
+
         self.record_attrs = OtelAttributes {
             inner: map.into_iter()
                 .map(|(k, v)| (k.to_string(), vrl_value_to_any_value(&v)))
                 .collect(),
         };
+
+        // Merge any attributes parsed from OTLP JSON format
+        for (k, v) in extra_attrs.inner {
+            self.record_attrs.insert(k, v);
+        }
 
         self.record = LogRecord {
             body,
@@ -4288,141 +4505,55 @@ impl From<std::collections::HashMap<vrl::prelude::KeyString, Value>> for OtelLog
     }
 }
 
-struct SerializableAnyValue<'a>(&'a AnyValue);
-
-impl Serialize for SerializableAnyValue<'_> {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        match &self.0.value {
-            Some(OtelValueKind::StringValue(s)) => serializer.serialize_str(s),
-            Some(OtelValueKind::BoolValue(b)) => serializer.serialize_bool(*b),
-            Some(OtelValueKind::IntValue(i)) => serializer.serialize_i64(*i),
-            Some(OtelValueKind::DoubleValue(d)) => serializer.serialize_f64(*d),
-            Some(OtelValueKind::BytesValue(b)) => serializer.serialize_bytes(b),
-            Some(OtelValueKind::ArrayValue(arr)) => {
-                use serde::ser::SerializeSeq;
-                let mut seq = serializer.serialize_seq(Some(arr.values.len()))?;
-                for v in &arr.values {
-                    seq.serialize_element(&SerializableAnyValue(v))?;
-                }
-                seq.end()
-            }
-            Some(OtelValueKind::KvlistValue(kvl)) => {
-                use serde::ser::SerializeMap;
-                let mut map = serializer.serialize_map(Some(kvl.values.len()))?;
-                for kv in &kvl.values {
-                    let val = kv.value.as_ref().map(SerializableAnyValue);
-                    match val {
-                        Some(v) => map.serialize_entry(&kv.key, &v)?,
-                        None => map.serialize_entry(&kv.key, &())?,
-                    }
-                }
-                map.end()
-            }
-            None => serializer.serialize_unit(),
-        }
+fn hex_encode_bytes(bytes: &[u8]) -> String {
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        use std::fmt::Write;
+        let _ = write!(s, "{b:02x}");
     }
-}
-
-struct HexBytes<'a>(&'a [u8]);
-
-impl Serialize for HexBytes<'_> {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut s = String::with_capacity(self.0.len() * 2);
-        for b in self.0 {
-            use std::fmt::Write;
-            let _ = write!(s, "{b:02x}");
-        }
-        serializer.serialize_str(&s)
-    }
-}
-
-fn serialize_otel_attrs_flat<S: serde::ser::SerializeMap>(
-    attrs: &OtelAttributes,
-    already_serialized: &[&str],
-    map: &mut S,
-) -> Result<(), S::Error> {
-    for (k, v) in attrs.iter() {
-        if !already_serialized.contains(&k.as_str()) {
-            map.serialize_entry(k, &SerializableAnyValue(v))?;
-        }
-    }
-    Ok(())
-}
-
-fn serialize_resource_scope<S: serde::ser::SerializeMap>(
-    resource: Option<&Resource>,
-    resource_attrs: &OtelAttributes,
-    scope: Option<&InstrumentationScope>,
-    scope_attrs: &OtelAttributes,
-    map: &mut S,
-) -> Result<(), S::Error> {
-    if !resource_attrs.is_empty() || resource.map_or(false, |r| r.dropped_attributes_count != 0) {
-        let mut res_map = resource_attrs.to_object_map();
-        if let Some(r) = resource {
-            if r.dropped_attributes_count != 0 {
-                res_map.insert(
-                    "dropped_attributes_count".into(),
-                    Value::Integer(r.dropped_attributes_count as i64),
-                );
-            }
-        }
-        map.serialize_entry("resource", &res_map)?;
-    }
-    let has_scope_name = scope.map_or(false, |s| !s.name.is_empty());
-    let has_scope_ver = scope.map_or(false, |s| !s.version.is_empty());
-    if has_scope_name || has_scope_ver || !scope_attrs.is_empty() {
-        let mut scope_map = ObjectMap::new();
-        if let Some(s) = scope {
-            if !s.name.is_empty() {
-                scope_map.insert("name".into(), Value::Bytes(s.name.clone().into()));
-            }
-            if !s.version.is_empty() {
-                scope_map.insert("version".into(), Value::Bytes(s.version.clone().into()));
-            }
-        }
-        if !scope_attrs.is_empty() {
-            scope_map.insert("attributes".into(), Value::Object(scope_attrs.to_object_map()));
-        }
-        map.serialize_entry("scope", &scope_map)?;
-    }
-    Ok(())
+    s
 }
 
 impl Serialize for OtelLog {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeMap;
+        use super::otel_json::*;
+
         let mut map = serializer.serialize_map(None)?;
-        let mut emitted: Vec<&str> = Vec::new();
-        if let Some(body) = self.body() {
+        if let Some(ref body) = self.record.body {
             map.serialize_entry("body", &SerializableAnyValue(body))?;
-            emitted.push("body");
         }
         if !self.record.severity_text.is_empty() {
-            map.serialize_entry("severity_text", &self.record.severity_text)?;
-            emitted.push("severity_text");
+            map.serialize_entry("severityText", &self.record.severity_text)?;
         }
         if self.record.severity_number != 0 {
-            map.serialize_entry("severity_number", &(self.record.severity_number as i64))?;
-            emitted.push("severity_number");
+            map.serialize_entry("severityNumber", &self.record.severity_number)?;
         }
         if self.record.time_unix_nano != 0 {
-            map.serialize_entry("time_unix_nano", &(self.record.time_unix_nano as i64))?;
-            emitted.push("time_unix_nano");
+            map.serialize_entry("timeUnixNano", &self.record.time_unix_nano.to_string())?;
         }
         if self.record.observed_time_unix_nano != 0 {
-            map.serialize_entry("observed_time_unix_nano", &(self.record.observed_time_unix_nano as i64))?;
-            emitted.push("observed_time_unix_nano");
+            map.serialize_entry("observedTimeUnixNano", &self.record.observed_time_unix_nano.to_string())?;
         }
         if !self.record.trace_id.is_empty() {
-            map.serialize_entry("trace_id", &HexBytes(&self.record.trace_id))?;
-            emitted.push("trace_id");
+            map.serialize_entry("traceId", &hex_encode_bytes(&self.record.trace_id))?;
         }
         if !self.record.span_id.is_empty() {
-            map.serialize_entry("span_id", &HexBytes(&self.record.span_id))?;
-            emitted.push("span_id");
+            map.serialize_entry("spanId", &hex_encode_bytes(&self.record.span_id))?;
         }
-        serialize_otel_attrs_flat(&self.record_attrs, &emitted, &mut map)?;
-        serialize_resource_scope(self.resource.as_ref(), &self.resource_attrs, self.scope.as_ref(), &self.scope_attrs, &mut map)?;
+        if self.record.flags != 0 {
+            map.serialize_entry("flags", &self.record.flags)?;
+        }
+        if !self.record_attrs.is_empty() {
+            let kvs = self.record_attrs.to_key_values();
+            map.serialize_entry("attributes", &SerializableAttributes(&kvs))?;
+        }
+        if let Some(res) = self.resource_proto() {
+            map.serialize_entry("resource", &SerializableResource(&res))?;
+        }
+        if let Some(scope) = self.scope_proto() {
+            map.serialize_entry("scope", &SerializableScope(&scope))?;
+        }
         map.end()
     }
 }
@@ -4430,47 +4561,49 @@ impl Serialize for OtelLog {
 impl Serialize for OtelSpan {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeMap;
+        use super::otel_json::*;
+
         let mut map = serializer.serialize_map(None)?;
-        let mut emitted: Vec<&str> = Vec::new();
         if !self.span.name.is_empty() {
             map.serialize_entry("name", &self.span.name)?;
-            emitted.push("name");
         }
         if !self.span.trace_id.is_empty() {
-            map.serialize_entry("trace_id", &HexBytes(&self.span.trace_id))?;
-            emitted.push("trace_id");
+            map.serialize_entry("traceId", &hex_encode_bytes(&self.span.trace_id))?;
         }
         if !self.span.span_id.is_empty() {
-            map.serialize_entry("span_id", &HexBytes(&self.span.span_id))?;
-            emitted.push("span_id");
+            map.serialize_entry("spanId", &hex_encode_bytes(&self.span.span_id))?;
         }
         if !self.span.parent_span_id.is_empty() {
-            map.serialize_entry("parent_span_id", &HexBytes(&self.span.parent_span_id))?;
-            emitted.push("parent_span_id");
-        }
-        if self.span.start_time_unix_nano != 0 {
-            map.serialize_entry("start_time_unix_nano", &(self.span.start_time_unix_nano as i64))?;
-            emitted.push("start_time_unix_nano");
-        }
-        if self.span.end_time_unix_nano != 0 {
-            map.serialize_entry("end_time_unix_nano", &(self.span.end_time_unix_nano as i64))?;
-            emitted.push("end_time_unix_nano");
+            map.serialize_entry("parentSpanId", &hex_encode_bytes(&self.span.parent_span_id))?;
         }
         if self.span.kind != 0 {
-            map.serialize_entry("kind", &(self.span.kind as i64))?;
-            emitted.push("kind");
+            map.serialize_entry("kind", &self.span.kind)?;
         }
-        if let Some(status) = &self.span.status {
-            let mut status_map = ObjectMap::new();
-            if !status.message.is_empty() {
-                status_map.insert("message".into(), Value::Bytes(status.message.clone().into()));
-            }
-            status_map.insert("code".into(), Value::Integer(status.code as i64));
-            map.serialize_entry("status", &status_map)?;
-            emitted.push("status");
+        if self.span.start_time_unix_nano != 0 {
+            map.serialize_entry("startTimeUnixNano", &self.span.start_time_unix_nano.to_string())?;
         }
-        serialize_otel_attrs_flat(&self.span_attrs, &emitted, &mut map)?;
-        serialize_resource_scope(self.resource.as_ref(), &self.resource_attrs, self.scope.as_ref(), &self.scope_attrs, &mut map)?;
+        if self.span.end_time_unix_nano != 0 {
+            map.serialize_entry("endTimeUnixNano", &self.span.end_time_unix_nano.to_string())?;
+        }
+        if !self.span_attrs.is_empty() {
+            let kvs = self.span_attrs.to_key_values();
+            map.serialize_entry("attributes", &SerializableAttributes(&kvs))?;
+        }
+        if let Some(ref status) = self.span.status {
+            map.serialize_entry("status", &serde_json::json!({
+                "code": status.code,
+                "message": status.message,
+            }))?;
+        }
+        if self.span.flags != 0 {
+            map.serialize_entry("flags", &self.span.flags)?;
+        }
+        if let Some(res) = self.resource_proto() {
+            map.serialize_entry("resource", &SerializableResource(&res))?;
+        }
+        if let Some(scope) = self.scope_proto() {
+            map.serialize_entry("scope", &SerializableScope(&scope))?;
+        }
         map.end()
     }
 }
@@ -4855,7 +4988,7 @@ mod tests {
     }
 
     #[test]
-    fn otel_log_serializes_as_structured_json() {
+    fn otel_log_serializes_as_otlp_json() {
         use opentelemetry_proto::tonic::common::v1::any_value::Value as Kind;
         let record = LogRecord {
             severity_text: "INFO".to_string(),
@@ -4877,9 +5010,11 @@ mod tests {
         let json = serde_json::to_string(&event).expect("serialize");
 
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
-        assert_eq!(v["body"], "hello");
-        assert_eq!(v["severity_text"], "INFO");
-        assert_eq!(v["resource"]["service.name"], "test-svc");
+        assert_eq!(v["body"]["stringValue"], "hello");
+        assert_eq!(v["severityText"], "INFO");
+        assert!(v["resource"]["attributes"].is_array());
+        assert_eq!(v["resource"]["attributes"][0]["key"], "service.name");
+        assert_eq!(v["resource"]["attributes"][0]["value"]["stringValue"], "test-svc");
     }
 
     #[test]
@@ -5692,7 +5827,7 @@ mod tests {
     }
 
     #[test]
-    fn serialize_matches_to_value_canonical_for_log() {
+    fn serialize_produces_otlp_json_for_log() {
         use opentelemetry_proto::tonic::common::v1::any_value::Value as Kind;
         let record = LogRecord {
             severity_text: "WARN".into(),
@@ -5719,36 +5854,35 @@ mod tests {
         let mut log = OtelLog::from_parts(record, resource, scope, EventMetadata::default());
         log.record_attrs.insert("custom.attr".into(), string_value("val"));
 
-        let canonical = log.to_value_canonical();
-        let canonical_json: serde_json::Value = match canonical {
-            Value::Object(map) => {
-                let jmap: serde_json::Map<String, serde_json::Value> = map.iter()
-                    .map(|(k, v)| (k.to_string(), serde_json::to_value(v).unwrap()))
-                    .collect();
-                serde_json::Value::Object(jmap)
-            }
-            _ => panic!("expected object"),
-        };
+        let json: serde_json::Value = serde_json::to_value(&log).unwrap();
 
-        let direct_json: serde_json::Value = serde_json::to_value(&log).unwrap();
+        // OTLP/JSON camelCase field names
+        assert_eq!(json["body"]["stringValue"], "test body");
+        assert_eq!(json["severityText"], "WARN");
+        assert_eq!(json["severityNumber"], 13);
+        assert_eq!(json["timeUnixNano"], "1000000000");
+        assert_eq!(json["observedTimeUnixNano"], "2000000000");
+        assert_eq!(json["traceId"], "abababababababababababababababab");
+        assert_eq!(json["spanId"], "cdcdcdcdcdcdcdcd");
 
-        for (key, canonical_val) in canonical_json.as_object().unwrap() {
-            let direct_val = direct_json.get(key);
-            assert_eq!(
-                Some(canonical_val), direct_val,
-                "mismatch for key {key}: canonical={canonical_val}, direct={direct_val:?}"
-            );
-        }
-        for (key, direct_val) in direct_json.as_object().unwrap() {
-            assert!(
-                canonical_json.get(key).is_some(),
-                "direct serialize has extra key {key}={direct_val}"
-            );
-        }
+        // Attributes as OTLP array of {key, value}
+        let attrs = json["attributes"].as_array().expect("attributes array");
+        assert_eq!(attrs.len(), 1);
+        assert_eq!(attrs[0]["key"], "custom.attr");
+        assert_eq!(attrs[0]["value"]["stringValue"], "val");
+
+        // Resource with nested attributes array
+        let res_attrs = json["resource"]["attributes"].as_array().expect("resource attributes");
+        assert_eq!(res_attrs[0]["key"], "service.name");
+        assert_eq!(res_attrs[0]["value"]["stringValue"], "svc");
+
+        // Scope
+        assert_eq!(json["scope"]["name"], "my-lib");
+        assert_eq!(json["scope"]["version"], "1.0");
     }
 
     #[test]
-    fn serialize_matches_to_value_canonical_for_span() {
+    fn serialize_produces_otlp_json_for_span() {
         use opentelemetry_proto::tonic::trace::v1::Status;
         let span = Span {
             name: "GET /api".into(),
@@ -5771,31 +5905,29 @@ mod tests {
         let mut otel_span = OtelSpan::from_parts(span, resource, None, EventMetadata::default());
         otel_span.span_attrs.insert("http.method".into(), string_value("GET"));
 
-        let canonical = otel_span.to_value_canonical();
-        let canonical_json: serde_json::Value = match canonical {
-            Value::Object(map) => {
-                let jmap: serde_json::Map<String, serde_json::Value> = map.iter()
-                    .map(|(k, v)| (k.to_string(), serde_json::to_value(v).unwrap()))
-                    .collect();
-                serde_json::Value::Object(jmap)
-            }
-            _ => panic!("expected object"),
-        };
+        let json: serde_json::Value = serde_json::to_value(&otel_span).unwrap();
 
-        let direct_json: serde_json::Value = serde_json::to_value(&otel_span).unwrap();
+        // OTLP/JSON camelCase field names
+        assert_eq!(json["name"], "GET /api");
+        assert_eq!(json["traceId"], "11111111111111111111111111111111");
+        assert_eq!(json["spanId"], "2222222222222222");
+        assert_eq!(json["parentSpanId"], "3333333333333333");
+        assert_eq!(json["startTimeUnixNano"], "100");
+        assert_eq!(json["endTimeUnixNano"], "200");
+        assert_eq!(json["kind"], 2);
 
-        for (key, canonical_val) in canonical_json.as_object().unwrap() {
-            let direct_val = direct_json.get(key);
-            assert_eq!(
-                Some(canonical_val), direct_val,
-                "mismatch for key {key}: canonical={canonical_val}, direct={direct_val:?}"
-            );
-        }
-        for (key, direct_val) in direct_json.as_object().unwrap() {
-            assert!(
-                canonical_json.get(key).is_some(),
-                "direct serialize has extra key {key}={direct_val}"
-            );
-        }
+        // Status
+        assert_eq!(json["status"]["code"], 1);
+        assert_eq!(json["status"]["message"], "OK");
+
+        // Attributes as OTLP array
+        let attrs = json["attributes"].as_array().expect("attributes array");
+        assert_eq!(attrs[0]["key"], "http.method");
+        assert_eq!(attrs[0]["value"]["stringValue"], "GET");
+
+        // Resource
+        let res_attrs = json["resource"]["attributes"].as_array().expect("resource attributes");
+        assert_eq!(res_attrs[0]["key"], "host");
+        assert_eq!(res_attrs[0]["value"]["stringValue"], "box1");
     }
 }

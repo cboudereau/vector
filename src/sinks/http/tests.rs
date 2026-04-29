@@ -10,7 +10,7 @@ use flate2::read::{MultiGzDecoder, ZlibDecoder};
 use futures::stream;
 use headers::{Authorization, HeaderMapExt};
 use hyper::{Body, Method, Response, StatusCode};
-use serde::{Deserialize, de};
+use serde::de;
 use vector_lib::{
     codecs::{
         JsonSerializerConfig, NewlineDelimitedEncoderConfig, TextSerializerConfig,
@@ -107,18 +107,16 @@ fn http_encode_event_ndjson() {
     let mut encoded = vec![];
     encoder.encode_input(vec![event], &mut encoded).unwrap();
 
-    #[derive(Deserialize, Debug)]
-    #[serde(deny_unknown_fields)]
-    #[allow(dead_code)] // deserialize all fields
-    struct ExpectedEvent {
-        body: String,
-        time_unix_nano: i64,
-    }
+    let output: serde_json::Value = serde_json::from_slice(&encoded[..]).unwrap();
+    let obj = output.as_object().unwrap();
 
-    let output = serde_json::from_slice::<ExpectedEvent>(&encoded[..]).unwrap();
+    // body is now {"stringValue": "hello world"}
+    let body = obj.get("body").unwrap();
+    assert_eq!(body.get("stringValue").unwrap().as_str().unwrap(), "hello world");
 
-    assert_eq!(output.body, "hello world".to_string());
-    assert!(output.time_unix_nano > 0);
+    // timeUnixNano is now a camelCase string
+    let time = obj.get("timeUnixNano").unwrap().as_str().unwrap();
+    assert!(time.parse::<u64>().unwrap() > 0);
 }
 
 #[test]
@@ -553,7 +551,15 @@ async fn json_compression(compression: &str) {
                 let lines: Vec<serde_json::Value> = parse_compressed_json(compression, body);
                 stream::iter(lines)
             })
-            .map(|line| line.get("body").unwrap().as_str().unwrap().to_owned())
+            .map(|line| {
+                line.get("body")
+                    .unwrap()
+                    .get("stringValue")
+                    .unwrap()
+                    .as_str()
+                    .unwrap()
+                    .to_owned()
+            })
             .collect::<Vec<_>>()
             .await;
 
@@ -617,7 +623,15 @@ async fn json_compression_with_payload_wrapper(compression: &str) {
                 let lines: Vec<serde_json::Value> = message["data"].as_array().unwrap().to_vec();
                 stream::iter(lines)
             })
-            .map(|line| line.get("body").unwrap().as_str().unwrap().to_owned())
+            .map(|line| {
+                line.get("body")
+                    .unwrap()
+                    .get("stringValue")
+                    .unwrap()
+                    .as_str()
+                    .unwrap()
+                    .to_owned()
+            })
             .collect::<Vec<_>>()
             .await;
 
@@ -678,11 +692,11 @@ async fn templateable_uri_path() {
             // Assert that all the events are received
             assert_eq!(events.len(), num_events_per_id);
 
-            // Assert that all events have the same id
-            let expected_event_id = events[0]["id"].as_i64().unwrap();
+            // Assert that all events have the same id (now in OTLP attributes array)
+            let expected_event_id = otlp_attr_str(&events[0], "id").unwrap();
 
-            for event in events {
-                let event_id = event["id"].as_i64().unwrap();
+            for event in &events {
+                let event_id = otlp_attr_str(event, "id").unwrap();
                 assert_eq!(event_id, expected_event_id)
             }
 
@@ -752,13 +766,13 @@ async fn templateable_uri_auth() {
             // Assert that all the events are received
             assert_eq!(events.len(), num_events_per_auth);
 
-            // Assert that all events have the same user & pass
-            let expected_user = events[0]["user"].as_str().unwrap().to_string();
-            let expected_pass = events[0]["pass"].as_str().unwrap().to_string();
+            // Assert that all events have the same user & pass (now in OTLP attributes)
+            let expected_user = otlp_attr_str(&events[0], "user").unwrap().to_string();
+            let expected_pass = otlp_attr_str(&events[0], "pass").unwrap().to_string();
 
-            for event in events {
-                let event_user = event["user"].as_str().unwrap();
-                let event_pass = event["pass"].as_str().unwrap();
+            for event in &events {
+                let event_user = otlp_attr_str(event, "user").unwrap();
+                let event_pass = otlp_attr_str(event, "pass").unwrap();
                 assert_eq!(event_user, expected_user);
                 assert_eq!(event_pass, expected_pass);
             }
@@ -860,6 +874,20 @@ async fn http_uri_auth_conflict() {
     // No requests should have been made to the server
     let requests = rx.collect::<Vec<_>>().await;
     assert!(requests.is_empty());
+}
+
+/// Extract an OTLP attribute value from the serialized `attributes` array.
+/// Attributes are `[{"key":"k","value":{"stringValue":"v"}}, ...]`.
+fn otlp_attr_str<'a>(event: &'a serde_json::Value, key: &str) -> Option<&'a str> {
+    event["attributes"]
+        .as_array()?
+        .iter()
+        .find(|kv| kv["key"].as_str() == Some(key))
+        .and_then(|kv| {
+            kv["value"]["stringValue"]
+                .as_str()
+                .or_else(|| kv["value"]["intValue"].as_str())
+        })
 }
 
 fn parse_compressed_json<T>(compression: &str, buf: Bytes) -> T

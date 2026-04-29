@@ -2,7 +2,7 @@ use std::io;
 
 use bytes::Bytes;
 use chrono::Utc;
-use vector_lib::event::{MetricValue, OtelMetric};
+use vector_lib::event::OtelMetric;
 
 use crate::sinks::{gcp, prelude::*, util::http::HttpRequest};
 
@@ -68,41 +68,39 @@ impl encoding::Encoder<Vec<OtelMetric>> for StackdriverMetricsEncoder {
             .map(|metric| {
                 byte_size.add_event(&metric, metric.estimated_json_encoded_size_of());
 
-                let (series, data, _metadata) = metric.into_metric_parts();
-                let namespace = series
-                    .name
-                    .namespace
+                let namespace = metric
+                    .namespace()
+                    .map(|s| s.to_string())
                     .unwrap_or_else(|| self.default_namespace.clone());
                 let metric_type = format!(
                     "custom.googleapis.com/{}/metrics/{}",
-                    namespace, series.name.name
+                    namespace,
+                    metric.name()
                 );
 
-                let end_time = data.time.timestamp.unwrap_or_else(chrono::Utc::now);
+                let end_time = metric.timestamp().unwrap_or_else(chrono::Utc::now);
+                let point_value = metric.first_value_as_f64().unwrap_or(0.0);
 
-                let (point_value, interval, metric_kind) = match &data.value {
-                    MetricValue::Counter { value } => {
-                        let interval = gcp::GcpInterval {
-                            start_time: Some(self.started),
-                            end_time,
-                        };
-
-                        (*value, interval, gcp::GcpMetricKind::Cumulative)
-                    }
-                    MetricValue::Gauge { value } => {
-                        let interval = gcp::GcpInterval {
+                let (interval, metric_kind) = if metric.is_gauge() {
+                    (
+                        gcp::GcpInterval {
                             start_time: None,
                             end_time,
-                        };
-
-                        (*value, interval, gcp::GcpMetricKind::Gauge)
-                    }
-                    _ => {
-                        unreachable!("sink has filtered out all metrics that aren't counter or gauge by this point")
-                    },
+                        },
+                        gcp::GcpMetricKind::Gauge,
+                    )
+                } else {
+                    (
+                        gcp::GcpInterval {
+                            start_time: Some(self.started),
+                            end_time,
+                        },
+                        gcp::GcpMetricKind::Cumulative,
+                    )
                 };
-                let metric_labels = series
-                    .tags
+
+                let metric_labels = metric
+                    .tags()
                     .unwrap_or_default()
                     .into_iter_single()
                     .collect::<std::collections::HashMap<_, _>>();

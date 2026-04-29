@@ -27,33 +27,22 @@ fn capture_metrics() -> Vec<OtelMetric> {
 /// used to get aggregate metrics.
 pub fn sum_metrics<'a, I: IntoIterator<Item = &'a OtelMetric>>(metrics: I) -> Option<OtelMetric> {
     let mut iter = metrics.into_iter();
-    let first = iter.next()?;
-
-    // Decompose into parts so we can use MetricData::update
-    let (s, mut d, md) = first.clone().into_metric_parts();
-
+    let mut result = iter.next()?.clone();
     for m in iter {
-        let (_, d2, _) = m.clone().into_metric_parts();
-        let _ = d.update(&d2);
+        let _ = result.add(m);
     }
-
-    Some(OtelMetric::from_metric_parts(s, d, md))
+    Some(result)
 }
 
 /// Sums an iterable of `OtelMetric`, by folding metric values. Convenience function typically
 /// used to get aggregate metrics.
 fn sum_metrics_owned<I: IntoIterator<Item = OtelMetric>>(metrics: I) -> Option<OtelMetric> {
     let mut iter = metrics.into_iter();
-    let first = iter.next()?;
-
-    let (s, mut d, md) = first.into_metric_parts();
-
+    let mut result = iter.next()?;
     for m in iter {
-        let (_, d2, _) = m.into_metric_parts();
-        let _ = d.update(&d2);
+        let _ = result.add(&m);
     }
-
-    Some(OtelMetric::from_metric_parts(s, d, md))
+    Some(result)
 }
 
 pub trait MetricsFilter<'a> {

@@ -257,14 +257,16 @@ pub struct InfluxMetricNormalize;
 
 impl MetricNormalize for InfluxMetricNormalize {
     fn normalize(&mut self, state: &mut MetricSet, metric: OtelMetric) -> Option<OtelMetric> {
-        match metric.value() {
+        if metric.is_sum() {
             // Counters are disaggregated. We take the previous value from the state
             // and emit the difference between previous and current as a Counter
-            MetricValue::Counter { .. } => state.make_incremental(metric),
+            state.make_incremental(metric)
+        } else if metric.is_gauge() && !metric.is_set() {
             // Convert incremental gauges into absolute ones
-            MetricValue::Gauge { .. } => state.make_absolute(metric),
+            state.make_absolute(metric)
+        } else {
             // All others are left as-is
-            _ => Some(metric),
+            Some(metric)
         }
     }
 }

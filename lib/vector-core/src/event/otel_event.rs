@@ -4867,6 +4867,22 @@ impl OtelMetric {
         matches!(self.metric.data.as_ref(), Some(opentelemetry_proto::tonic::metrics::v1::metric::Data::Sum(_)))
     }
 
+    /// Check if this metric is a Set (stored as Gauge with vector.metric_type=set attribute).
+    pub fn is_set(&self) -> bool {
+        self.dp_attrs.first()
+            .and_then(|attrs| attrs.get("vector.metric_type"))
+            .and_then(|av| av.value.as_ref())
+            .is_some_and(|v| matches!(v, opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(s) if s == "set"))
+    }
+
+    /// Check if this metric is a Distribution (stored as Histogram with vector.metric_type=distribution attribute).
+    pub fn is_distribution(&self) -> bool {
+        self.dp_attrs.first()
+            .and_then(|attrs| attrs.get("vector.metric_type"))
+            .and_then(|av| av.value.as_ref())
+            .is_some_and(|v| matches!(v, opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(s) if s == "distribution"))
+    }
+
     /// Convert this metric to an `AnyValue::KvlistValue` suitable for use as
     /// an OtelLog body. Includes name, description, unit, and data (sum/gauge/
     /// histogram/summary/exponentialHistogram). Does NOT include resource/scope

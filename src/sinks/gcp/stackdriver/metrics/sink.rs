@@ -15,11 +15,11 @@ struct StackdriverMetricsNormalize;
 
 impl MetricNormalize for StackdriverMetricsNormalize {
     fn normalize(&mut self, state: &mut MetricSet, metric: OtelMetric) -> Option<OtelMetric> {
-        match metric.value() {
-            MetricValue::Counter { .. } => state.make_absolute(metric),
-            MetricValue::Gauge { .. } => state.make_absolute(metric),
+        if metric.is_sum() || (metric.is_gauge() && !metric.is_set()) {
+            state.make_absolute(metric)
+        } else {
             // All others are left as-is
-            _ => Some(metric),
+            Some(metric)
         }
     }
 }

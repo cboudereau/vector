@@ -202,9 +202,10 @@ struct AwsCloudwatchMetricNormalize;
 
 impl MetricNormalize for AwsCloudwatchMetricNormalize {
     fn normalize(&mut self, state: &mut MetricSet, metric: OtelMetric) -> Option<OtelMetric> {
-        match metric.value() {
-            MetricValue::Gauge { .. } => state.make_absolute(metric),
-            _ => state.make_incremental(metric),
+        if metric.is_gauge() && !metric.is_set() {
+            state.make_absolute(metric)
+        } else {
+            state.make_incremental(metric)
         }
     }
 }

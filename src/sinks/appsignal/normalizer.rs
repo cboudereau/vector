@@ -1,4 +1,4 @@
-use vector_lib::event::{MetricValue, OtelMetric};
+use vector_lib::event::OtelMetric;
 
 use crate::sinks::util::buffer::metrics::{MetricNormalize, MetricSet};
 
@@ -7,15 +7,12 @@ pub(crate) struct AppsignalMetricsNormalizer;
 
 impl MetricNormalize for AppsignalMetricsNormalizer {
     fn normalize(&mut self, state: &mut MetricSet, metric: OtelMetric) -> Option<OtelMetric> {
-        // We only care about making sure that counters are incremental, and that gauges are
-        // always absolute. Other metric types are currently unsupported.
-        match metric.value() {
-            // We always send counters as incremental and gauges as absolute. Realistically, any
-            // system sending an incremental gauge update is kind of doing it wrong, but alas.
-            MetricValue::Counter { .. } => state.make_incremental(metric),
-            MetricValue::Gauge { .. } => state.make_absolute(metric),
-            // Otherwise, send it through as-is.
-            _ => Some(metric),
+        if metric.is_sum() {
+            state.make_incremental(metric)
+        } else if metric.is_gauge() && !metric.is_set() {
+            state.make_absolute(metric)
+        } else {
+            Some(metric)
         }
     }
 }

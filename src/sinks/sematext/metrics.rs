@@ -15,10 +15,7 @@ use super::Region;
 use crate::{
     Result,
     config::{AcknowledgementsConfig, GenerateConfig, Input, SinkConfig, SinkContext},
-    event::{
-        Event, KeyString, OtelMetric,
-        metric::MetricValue,
-    },
+    event::{Event, KeyString, OtelMetric},
     http::HttpClient,
     internal_events::{SematextMetricsEncodeEventError, SematextMetricsInvalidMetricError},
     sinks::{
@@ -229,13 +226,13 @@ struct SematextMetricNormalize;
 
 impl MetricNormalize for SematextMetricNormalize {
     fn normalize(&mut self, state: &mut MetricSet, metric: OtelMetric) -> Option<OtelMetric> {
-        match metric.value() {
-            MetricValue::Gauge { .. } => state.make_absolute(metric),
-            MetricValue::Counter { .. } => state.make_incremental(metric),
-            _ => {
-                emit!(SematextMetricsInvalidMetricError { metric: &metric });
-                None
-            }
+        if metric.is_gauge() && !metric.is_set() {
+            state.make_absolute(metric)
+        } else if metric.is_sum() {
+            state.make_incremental(metric)
+        } else {
+            emit!(SematextMetricsInvalidMetricError { metric: &metric });
+            None
         }
     }
 }
@@ -262,22 +259,18 @@ fn encode_events(
     let byte_size = metrics.size_of();
     let json_byte_size = metrics.estimated_json_encoded_size_of();
     for otel in metrics.into_iter() {
-        let (series, data, _metadata) = otel.into_metric_parts();
-        let namespace = series
-            .name
-            .namespace
+        let namespace = otel
+            .namespace()
+            .map(|s| s.to_string())
             .unwrap_or_else(|| default_namespace.into());
-        let label = series.name.name;
-        let ts = encode_timestamp(data.time.timestamp);
+        let label = otel.name().to_string();
+        let ts = encode_timestamp(otel.timestamp());
 
-        // Authentication in Sematext is by inserting the token as a tag.
-        let mut tags = series.tags.unwrap_or_default();
+        let mut tags = otel.tags().unwrap_or_default();
         tags.replace("token".into(), token.to_string());
-        let (metric_type, fields) = match data.value {
-            MetricValue::Counter { value } => ("counter", to_fields(label, value)),
-            MetricValue::Gauge { value } => ("gauge", to_fields(label, value)),
-            _ => unreachable!(), // handled by SematextMetricNormalize
-        };
+        let value = otel.first_value_as_f64().unwrap_or(0.0);
+        let metric_type = if otel.is_gauge() { "gauge" } else { "counter" };
+        let fields = to_fields(label, value);
 
         tags.replace("metric_type".into(), metric_type.to_string());
 

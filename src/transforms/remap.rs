@@ -1028,7 +1028,7 @@ mod tests {
 
         let conf = RemapConfig {
             source: Some(
-                r#".tags.host = "zoobub"
+                r#".attributes.host = "zoobub"
                        .name = "zork"
                        .namespace = "zerk"
                        .kind = "incremental""#
@@ -1148,10 +1148,10 @@ mod tests {
 
         let conf = RemapConfig {
             source: Some(formatdoc! {r#"
-                if exists(.tags) {{
-                    # metrics
-                    .tags.foo = "bar"
-                    if string!(.tags.hello) == "goodbye" {{
+                if exists(.name) {{
+                    # metrics (have .name field, logs do not)
+                    .attributes.foo = "bar"
+                    if string!(.attributes.hello) == "goodbye" {{
                       abort
                     }}
                 }} else {{
@@ -1222,7 +1222,7 @@ mod tests {
             serde_json::json!({
                 "dropped": {
                     "reason": "error",
-                    "message": "function call error for \"string\" at (160:174): expected string, got integer",
+                    "message": "function call error for \"string\" at (204:218): expected string, got integer",
                     "component_id": "remapper",
                     "component_type": "remap",
                     "component_kind": "transform",
@@ -1276,7 +1276,7 @@ mod tests {
                         "metadata.dropped.component_id" => "remapper",
                         "metadata.dropped.component_kind" => "transform",
                         "metadata.dropped.component_type" => "remap",
-                        "metadata.dropped.message" => "function call error for \"string\" at (62:82): expected string, got null",
+                        "metadata.dropped.message" => "function call error for \"string\" at (100:126): expected string, got null",
                         "metadata.dropped.reason" => "error",
                     }));
                 *otel.metadata_mut() = EventMetadata::default()
@@ -1396,10 +1396,10 @@ mod tests {
 
         let conf = RemapConfig {
             source: Some(formatdoc! {r#"
-                if exists(.tags) {{
-                    # metrics
-                    .tags.foo = "bar"
-                    if string!(.tags.hello) == "goodbye" {{
+                if exists(.name) {{
+                    # metrics (have .name field, logs do not)
+                    .attributes.foo = "bar"
+                    if string!(.attributes.hello) == "goodbye" {{
                       abort
                     }}
                 }} else {{
@@ -1420,7 +1420,7 @@ mod tests {
             Kind::any_object()
         )
         .with_event_field(&owned_value_path!("foo"), Kind::any(), None)
-        .with_event_field(&owned_value_path!("tags"), Kind::any(), None);
+        .with_event_field(&owned_value_path!("attributes"), Kind::any(), None);
 
         assert_eq!(
             conf.outputs(

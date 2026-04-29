@@ -362,8 +362,7 @@ async fn handle_metrics() {
     let metric_json: serde_json::Value =
         serde_json::from_str(encoded_lines.get(1).unwrap()).expect("valid JSON");
     assert_eq!(metric_json["name"], "cpu");
-    assert_eq!(metric_json["kind"], "absolute");
-    assert_eq!(metric_json["gauge"]["value"], 42.0);
+    assert_eq!(metric_json["gauge"]["dataPoints"][0]["asDouble"], 42.0);
     assert!(metric_json.get("time_unix_nano").is_some());
 }
 

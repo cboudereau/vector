@@ -113,6 +113,8 @@ kafka, syslog, …  ──────────►  OTel Span
 | DD sink | Not re-added — DD accepts OTLP natively. Users point OTel sink at DD's OTLP endpoint. |
 | Native codecs + protos | Fully deleted. Vector source/sink speak OTLP gRPC natively. |
 | Legacy metric types | Retained as internal computation layer — MetricValue/MetricKind/MetricTags provide arithmetic and type-safe operations that OTLP proto lacks. |
+| VRL `.tags` alias removed (P20) | `.tags."key"` was a compatibility alias for `.attributes."key"` on OtelMetric VRL targets. **Removed and must not be re-introduced.** `.attributes` is the canonical OTLP path. |
+| `metric_to_log` OTLP conformance (P21) | Transform now serializes via `OtelMetric`'s OTLP `Serialize` impl instead of legacy `MetricSeries`/`MetricData` serde. Output uses OTLP field names (`sum`, `gauge`, `histogram`, `dataPoints`, `attributes`). |
 
 ---
 
@@ -160,6 +162,8 @@ kafka, syslog, …  ──────────►  OTel Span
 | **P17** | Direct `Serialize` for OtelLog/OtelSpan — serialize from proto fields without `to_value_canonical()` Value tree allocation. `HexBytes` wrapper for trace/span ID hex encoding. Round-trip tests prove output matches canonical format. | 1 file |
 | **P18** | Fix 17 skipped `cargo test -p vector` tests: un-ignore all, fix assertions + add OtelMetric VRL legacy paths (`.tags.*`, `.kind`, `.namespace`), fix `value_to_otel_log_event` for non-Object values, add metric dropped annotation | 7 files |
 | **P19** | Code review + test cleanup: fix EventDataEq (resource/scope attrs), reserved field collision guard, flags/dropped_attributes_count round-trip, non-UTF8 BytesValue, consolidate duplicate AnyValue conversions, extract `otel_fields.rs` constants (29), delete 16 dead tests, fix 9 tests, un-ignore 5. Zero `#[ignore]` remaining in `lib/` crates. | 32 files |
+| **P20** | Remove `.tags` VRL alias for OtelMetric — `.tags."key"` was an alias for `.attributes."key"`. Removed from `VALID_OTEL_METRIC_PATHS_SET`, `precompute_otel_metric_value`, get/get_mut/set/remove handlers. `.attributes` is the only valid attribute path for metrics in VRL. **This alias must not be re-introduced.** | 3 files |
+| **P21** | `metric_to_log` OTLP/JSON conformance — Replace legacy `MetricSeries`/`MetricData` serde serialization with `OtelMetric`'s OTLP `Serialize` impl. Output now uses OTLP field names (`sum`, `gauge`, `histogram`, `summary`, `dataPoints`, `attributes`) instead of legacy (`tags`, `counter.value`, `gauge.value`, `kind`). Remap branching tests updated to use `.name` (metric-specific) instead of `.attributes` for event type detection. Elasticsearch and Humio sink tests updated. | 5 files |
 
 **Total changes:** +53,115/−42,556 lines across 9,885 files (net +10,559). The net positive reflects substantial new code (OTel types, VRL targets, OtelAttributes, migration tool, new transforms) alongside large deletions (legacy types, DD sinks, native proto, test fixtures).
 

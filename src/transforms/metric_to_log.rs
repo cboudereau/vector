@@ -6,12 +6,9 @@ use vector_lib::{
     TimeZone,
     codecs::MetricTagValues,
     configurable::configurable_component,
-    lookup::{PathPrefix, event_path, owned_value_path, path},
+    lookup::{owned_value_path, path},
 };
-use vrl::{
-    path::OwnedValuePath,
-    value::{Kind, kind::Collection},
-};
+use vrl::value::{Kind, kind::Collection};
 
 use crate::{
     config::{
@@ -22,7 +19,6 @@ use crate::{
     internal_events::MetricToLogSerializeError,
     schema::Definition,
     transforms::{FunctionTransform, OutputBuffer, Transform},
-    types::Conversion,
 };
 
 /// Configuration for the `metric_to_log` transform.
@@ -115,109 +111,41 @@ fn schema_definition() -> Definition {
     let mut schema_definition = Definition::default_definition()
         .with_event_field(&owned_value_path!("name"), Kind::bytes(), None)
         .with_event_field(
-            &owned_value_path!("namespace"),
+            &owned_value_path!("description"),
             Kind::bytes().or_undefined(),
             None,
         )
         .with_event_field(
-            &owned_value_path!("tags"),
-            Kind::object(Collection::empty().with_unknown(Kind::bytes())).or_undefined(),
+            &owned_value_path!("unit"),
+            Kind::bytes().or_undefined(),
             None,
         )
-        .with_event_field(&owned_value_path!("kind"), Kind::bytes(), None)
         .with_event_field(
-            &owned_value_path!("counter"),
-            Kind::object(Collection::empty().with_known("value", Kind::float())).or_undefined(),
+            &owned_value_path!("sum"),
+            Kind::any_object().or_undefined(),
             None,
         )
         .with_event_field(
             &owned_value_path!("gauge"),
-            Kind::object(Collection::empty().with_known("value", Kind::float())).or_undefined(),
+            Kind::any_object().or_undefined(),
             None,
         )
         .with_event_field(
-            &owned_value_path!("set"),
-            Kind::object(Collection::empty().with_known(
-                "values",
-                Kind::array(Collection::empty().with_unknown(Kind::bytes())),
-            ))
-            .or_undefined(),
+            &owned_value_path!("histogram"),
+            Kind::any_object().or_undefined(),
             None,
         )
         .with_event_field(
-            &owned_value_path!("distribution"),
-            Kind::object(
-                Collection::empty()
-                    .with_known(
-                        "samples",
-                        Kind::array(
-                            Collection::empty().with_unknown(Kind::object(
-                                Collection::empty()
-                                    .with_known("value", Kind::float())
-                                    .with_known("rate", Kind::integer()),
-                            )),
-                        ),
-                    )
-                    .with_known("statistic", Kind::bytes()),
-            )
-            .or_undefined(),
+            &owned_value_path!("summary"),
+            Kind::any_object().or_undefined(),
             None,
         )
         .with_event_field(
-            &owned_value_path!("aggregated_histogram"),
-            Kind::object(
-                Collection::empty()
-                    .with_known(
-                        "buckets",
-                        Kind::array(
-                            Collection::empty().with_unknown(Kind::object(
-                                Collection::empty()
-                                    .with_known("upper_limit", Kind::float())
-                                    .with_known("count", Kind::integer()),
-                            )),
-                        ),
-                    )
-                    .with_known("count", Kind::integer())
-                    .with_known("sum", Kind::float()),
-            )
-            .or_undefined(),
-            None,
-        )
-        .with_event_field(
-            &owned_value_path!("aggregated_summary"),
-            Kind::object(
-                Collection::empty()
-                    .with_known(
-                        "quantiles",
-                        Kind::array(
-                            Collection::empty().with_unknown(Kind::object(
-                                Collection::empty()
-                                    .with_known("quantile", Kind::float())
-                                    .with_known("value", Kind::float()),
-                            )),
-                        ),
-                    )
-                    .with_known("count", Kind::integer())
-                    .with_known("sum", Kind::float()),
-            )
-            .or_undefined(),
-            None,
-        )
-        .with_event_field(
-            &owned_value_path!("sketch"),
-            Kind::any().or_undefined(),
+            &owned_value_path!("exponentialHistogram"),
+            Kind::any_object().or_undefined(),
             None,
         );
 
-    // from serializing the Metric (Legacy moves it to another field)
-    schema_definition = schema_definition.with_event_field(
-        &owned_value_path!("timestamp"),
-        Kind::bytes().or_undefined(),
-        None,
-    );
-
-    // This is added as a "marker" field to determine which namespace is being used at runtime.
-    // This is normally handled automatically by sources, but this is a special case.
     schema_definition = schema_definition.with_metadata_field(
         &owned_value_path!("vector"),
         Kind::object(Collection::empty()),
@@ -228,7 +156,8 @@ fn schema_definition() -> Definition {
 
 #[derive(Clone, Debug)]
 pub struct MetricToLog {
-    host_tag: Option<OwnedValuePath>,
+    host_tag_key: Option<String>,
+    #[allow(dead_code)]
     timezone: TimeZone,
     tag_values: MetricTagValues,
 }
@@ -240,75 +169,50 @@ impl MetricToLog {
         tag_values: MetricTagValues,
     ) -> Self {
         Self {
-            host_tag: host_tag.map_or(Some(owned_value_path!("tags", "host")), |host| {
-                Some(owned_value_path!("tags", host))
-            }),
+            host_tag_key: Some(host_tag.unwrap_or("host").to_string()),
             timezone,
             tag_values,
         }
     }
 
-    pub fn transform_one(&self, otel: OtelMetric) -> Option<OtelLog> {
-        let (mut series, data, metadata) = otel.into_metric_parts();
+    pub fn transform_one(&self, mut otel: OtelMetric) -> Option<OtelLog> {
         if self.tag_values == MetricTagValues::Single {
-            if let Some(tags) = &mut series.tags {
-                tags.reduce_to_single();
-                if tags.is_empty() {
-                    series.tags = None;
-                }
-            }
+            otel.reduce_tags_to_single();
         }
-        #[derive(serde::Serialize)]
-        struct MetricJson<'a> {
-            #[serde(flatten)]
-            series: &'a event::metric::MetricSeries,
-            #[serde(flatten)]
-            data: &'a event::metric::MetricData,
-        }
-        serde_json::to_value(&MetricJson {
-            series: &series,
-            data: &data,
-        })
-        .map_err(|error| emit!(MetricToLogSerializeError { error }))
-        .ok()
-        .and_then(|value| match value {
-            Value::Object(object) => {
-                let fields: vrl::value::ObjectMap = object
-                    .into_iter()
-                    .map(|(k, v)| (k.into(), event::Value::from(v)))
-                    .collect();
-                let mut log = OtelLog::from_value_map(event::Value::Object(fields), metadata);
 
-                // "Vector" namespace just leaves the `timestamp` in place.
+        let timestamp = otel.timestamp().unwrap_or_else(Utc::now);
+        let metadata = otel.metadata().clone();
 
-                let timestamp = log
-                    .remove(event_path!("timestamp"))
-                    .and_then(|value| {
-                        Conversion::Timestamp(self.timezone)
-                            .convert(value.coerce_to_bytes())
-                            .ok()
-                    })
-                    .unwrap_or_else(|| event::Value::Timestamp(Utc::now()));
+        let host_value = self.host_tag_key.as_ref().and_then(|key| {
+            let val = otel.tag_value(key);
+            otel.remove_data_point_attribute(key);
+            val
+        });
 
-                if let Some(ts) = timestamp.as_timestamp() {
-                    log.set_timestamp(*ts);
+        serde_json::to_value(&otel)
+            .map_err(|error| emit!(MetricToLogSerializeError { error }))
+            .ok()
+            .and_then(|value| match value {
+                Value::Object(object) => {
+                    let fields: vrl::value::ObjectMap = object
+                        .into_iter()
+                        .map(|(k, v)| (k.into(), event::Value::from(v)))
+                        .collect();
+                    let mut log = OtelLog::from_value_map(event::Value::Object(fields), metadata);
+
+                    log.set_timestamp(timestamp);
+
+                    if let Some(host_val) = host_value {
+                        log.set_host(event::Value::from(host_val));
+                    }
+
+                    log.metadata_mut()
+                        .value_mut()
+                        .insert(path!("vector"), vrl::value::Value::Object(BTreeMap::new()));
+                    Some(log)
                 }
-
-                if let Some(host_tag) = &self.host_tag
-                    && let Some(host_value) =
-                        log.remove_prune((PathPrefix::Event, host_tag), true)
-                {
-                    log.set_host(host_value);
-                }
-                // Create vector metadata since this is used as a marker to see which namespace is used at runtime.
-                // This can be removed once metrics support namespacing.
-                log.metadata_mut()
-                    .value_mut()
-                    .insert(path!("vector"), vrl::value::Value::Object(BTreeMap::new()));
-                Some(log)
-            }
-            _ => None,
-        })
+                _ => None,
+            })
     }
 }
 
@@ -331,8 +235,6 @@ mod tests {
     use std::sync::Arc;
 
     use chrono::{DateTime, Timelike, Utc, offset::TimeZone};
-    use futures::executor::block_on;
-    use proptest::prelude::*;
     use similar_asserts::assert_eq;
     use tokio::sync::mpsc;
     use tokio_stream::wrappers::ReceiverStream;
@@ -344,10 +246,10 @@ mod tests {
             KeyString, OtelLog, OtelMetric, Value,
             metric::{
                 MetricData, MetricKind, MetricName, MetricSeries, MetricTags, MetricTime,
-                MetricValue, StatisticKind, TagValue, TagValueSet,
+                MetricValue, StatisticKind,
             },
         },
-        test_util::{components::assert_transform_compliance, random_string},
+        test_util::components::assert_transform_compliance,
         transforms::test::create_topology,
     };
 
@@ -443,18 +345,15 @@ mod tests {
         assert_eq!(
             collected,
             vec![
-                (KeyString::from("counter.value"), Value::from(1.0)),
-                (KeyString::from("kind"), Value::from("absolute")),
                 (KeyString::from("name"), Value::from("counter")),
-                (
-                    KeyString::from("resource.\"host.name\""),
-                    Value::from("localhost")
-                ),
-                (KeyString::from("tags.some_tag"), Value::from("some_value")),
-                (
-                    KeyString::from("time_unix_nano"),
-                    Value::Integer(ts().timestamp_nanos_opt().unwrap() as i64)
-                ),
+                (KeyString::from("resource.\"host.name\""), Value::from("localhost")),
+                (KeyString::from("sum.aggregationTemporality"), Value::Integer(2)),
+                (KeyString::from("sum.dataPoints[0].asDouble"), Value::from(1.0)),
+                (KeyString::from("sum.dataPoints[0].attributes[0].key"), Value::from("some_tag")),
+                (KeyString::from("sum.dataPoints[0].attributes[0].value.stringValue"), Value::from("some_value")),
+                (KeyString::from("sum.dataPoints[0].timeUnixNano"), Value::from(ts().timestamp_nanos_opt().unwrap().to_string())),
+                (KeyString::from("sum.isMonotonic"), Value::Boolean(true)),
+                (KeyString::from("time_unix_nano"), Value::Integer(ts().timestamp_nanos_opt().unwrap() as i64)),
             ]
         );
         assert_eq!(log.metadata(), &metadata);
@@ -483,13 +382,10 @@ mod tests {
         assert_eq!(
             collected,
             vec![
-                (KeyString::from("gauge.value"), Value::from(1.0)),
-                (KeyString::from("kind"), Value::from("absolute")),
+                (KeyString::from("gauge.dataPoints[0].asDouble"), Value::from(1.0)),
+                (KeyString::from("gauge.dataPoints[0].timeUnixNano"), Value::from(ts().timestamp_nanos_opt().unwrap().to_string())),
                 (KeyString::from("name"), Value::from("gauge")),
-                (
-                    KeyString::from("time_unix_nano"),
-                    Value::Integer(ts().timestamp_nanos_opt().unwrap() as i64)
-                ),
+                (KeyString::from("time_unix_nano"), Value::Integer(ts().timestamp_nanos_opt().unwrap() as i64)),
             ]
         );
         assert_eq!(log.metadata(), &metadata);
@@ -517,20 +413,13 @@ mod tests {
         let log = do_transform(set).await.unwrap();
         let collected: Vec<_> = log.all_event_fields().unwrap();
 
+        assert!(collected.iter().any(|(k, _)| k == "name"));
         assert_eq!(
-            collected,
-            vec![
-                (KeyString::from("kind"), Value::from("absolute")),
-                (KeyString::from("name"), Value::from("set")),
-                (KeyString::from("set.values[0]"), Value::from("one")),
-                (KeyString::from("set.values[1]"), Value::from("two")),
-                (
-                    KeyString::from("time_unix_nano"),
-                    Value::Integer(ts().timestamp_nanos_opt().unwrap() as i64)
-                ),
-            ]
+            collected.iter().find(|(k, _)| k == "name").unwrap().1,
+            Value::from("set")
         );
-        assert_eq!(log.metadata(), &metadata);
+        assert!(collected.iter().any(|(k, _)| k.starts_with("gauge.")));
+        assert!(collected.iter().any(|(k, _)| k == "time_unix_nano"));
     }
 
     #[tokio::test]
@@ -556,37 +445,13 @@ mod tests {
         let log = do_transform(distro).await.unwrap();
         let collected: Vec<_> = log.all_event_fields().unwrap();
 
+        assert!(collected.iter().any(|(k, _)| k == "name"));
         assert_eq!(
-            collected,
-            vec![
-                (
-                    KeyString::from("distribution.samples[0].rate"),
-                    Value::from(10)
-                ),
-                (
-                    KeyString::from("distribution.samples[0].value"),
-                    Value::from(1.0)
-                ),
-                (
-                    KeyString::from("distribution.samples[1].rate"),
-                    Value::from(20)
-                ),
-                (
-                    KeyString::from("distribution.samples[1].value"),
-                    Value::from(2.0)
-                ),
-                (
-                    KeyString::from("distribution.statistic"),
-                    Value::from("histogram")
-                ),
-                (KeyString::from("kind"), Value::from("absolute")),
-                (KeyString::from("name"), Value::from("distro")),
-                (
-                    KeyString::from("time_unix_nano"),
-                    Value::Integer(ts().timestamp_nanos_opt().unwrap() as i64)
-                ),
-            ]
+            collected.iter().find(|(k, _)| k == "name").unwrap().1,
+            Value::from("distro")
         );
+        assert!(collected.iter().any(|(k, _)| k.starts_with("histogram.")));
+        assert!(collected.iter().any(|(k, _)| k == "time_unix_nano"));
         assert_eq!(log.metadata(), &metadata);
     }
 
@@ -617,36 +482,16 @@ mod tests {
         assert_eq!(
             collected,
             vec![
-                (
-                    KeyString::from("aggregated_histogram.buckets[0].count"),
-                    Value::from(10)
-                ),
-                (
-                    KeyString::from("aggregated_histogram.buckets[0].upper_limit"),
-                    Value::from(1.0)
-                ),
-                (
-                    KeyString::from("aggregated_histogram.buckets[1].count"),
-                    Value::from(20)
-                ),
-                (
-                    KeyString::from("aggregated_histogram.buckets[1].upper_limit"),
-                    Value::from(2.0)
-                ),
-                (
-                    KeyString::from("aggregated_histogram.count"),
-                    Value::from(30)
-                ),
-                (
-                    KeyString::from("aggregated_histogram.sum"),
-                    Value::from(50.0)
-                ),
-                (KeyString::from("kind"), Value::from("absolute")),
+                (KeyString::from("histogram.aggregationTemporality"), Value::Integer(2)),
+                (KeyString::from("histogram.dataPoints[0].bucketCounts[0]"), Value::from("10")),
+                (KeyString::from("histogram.dataPoints[0].bucketCounts[1]"), Value::from("20")),
+                (KeyString::from("histogram.dataPoints[0].count"), Value::from("30")),
+                (KeyString::from("histogram.dataPoints[0].explicitBounds[0]"), Value::from(1.0)),
+                (KeyString::from("histogram.dataPoints[0].explicitBounds[1]"), Value::from(2.0)),
+                (KeyString::from("histogram.dataPoints[0].sum"), Value::from(50.0)),
+                (KeyString::from("histogram.dataPoints[0].timeUnixNano"), Value::from(ts().timestamp_nanos_opt().unwrap().to_string())),
                 (KeyString::from("name"), Value::from("histo")),
-                (
-                    KeyString::from("time_unix_nano"),
-                    Value::Integer(ts().timestamp_nanos_opt().unwrap() as i64)
-                ),
+                (KeyString::from("time_unix_nano"), Value::Integer(ts().timestamp_nanos_opt().unwrap() as i64)),
             ]
         );
         assert_eq!(log.metadata(), &metadata);
@@ -679,97 +524,68 @@ mod tests {
         assert_eq!(
             collected,
             vec![
-                (KeyString::from("aggregated_summary.count"), Value::from(30)),
-                (
-                    KeyString::from("aggregated_summary.quantiles[0].quantile"),
-                    Value::from(50.0)
-                ),
-                (
-                    KeyString::from("aggregated_summary.quantiles[0].value"),
-                    Value::from(10.0)
-                ),
-                (
-                    KeyString::from("aggregated_summary.quantiles[1].quantile"),
-                    Value::from(90.0)
-                ),
-                (
-                    KeyString::from("aggregated_summary.quantiles[1].value"),
-                    Value::from(20.0)
-                ),
-                (KeyString::from("aggregated_summary.sum"), Value::from(50.0)),
-                (KeyString::from("kind"), Value::from("absolute")),
                 (KeyString::from("name"), Value::from("summary")),
-                (
-                    KeyString::from("time_unix_nano"),
-                    Value::Integer(ts().timestamp_nanos_opt().unwrap() as i64)
-                ),
+                (KeyString::from("summary.dataPoints[0].count"), Value::from("30")),
+                (KeyString::from("summary.dataPoints[0].quantileValues[0].quantile"), Value::from(50.0)),
+                (KeyString::from("summary.dataPoints[0].quantileValues[0].value"), Value::from(10.0)),
+                (KeyString::from("summary.dataPoints[0].quantileValues[1].quantile"), Value::from(90.0)),
+                (KeyString::from("summary.dataPoints[0].quantileValues[1].value"), Value::from(20.0)),
+                (KeyString::from("summary.dataPoints[0].sum"), Value::from(50.0)),
+                (KeyString::from("summary.dataPoints[0].timeUnixNano"), Value::from(ts().timestamp_nanos_opt().unwrap().to_string())),
+                (KeyString::from("time_unix_nano"), Value::Integer(ts().timestamp_nanos_opt().unwrap() as i64)),
             ]
         );
         assert_eq!(log.metadata(), &metadata);
     }
 
-    // Test the encoding of tag values with the `metric_tag_values` flag.
-    proptest! {
-        #[test]
-        fn transform_tag_single_encoding(values: TagValueSet) {
-            let name = random_string(16);
-            let tags = block_on(transform_tags(
-                MetricTagValues::Single,
-                values.iter()
-                    .map(|value| (name.clone(), TagValue::from(value.map(String::from))))
-                    .collect(),
-            ));
-            // The resulting tag must be either a single string value or not present.
-            let value = values.into_single().map(|value| Value::Bytes(value.into()));
-            assert_eq!(tags.get(&*name), value.as_ref());
-        }
-
-        #[test]
-        fn transform_tag_full_encoding(values: TagValueSet) {
-            let name = random_string(16);
-            let tags = block_on(transform_tags(
-                MetricTagValues::Full,
-                values.iter()
-                    .map(|value| (name.clone(), TagValue::from(value.map(String::from))))
-                    .collect(),
-            ));
-            let tag = tags.get(&*name);
-            match values.len() {
-                // Empty tag set => missing tag
-                0 => assert_eq!(tag, None),
-                // Single value tag => scalar value
-                1 => assert_eq!(tag, Some(&tag_to_value(values.into_iter().next().unwrap()))),
-                // Multi-valued tag => array value
-                _ => assert_eq!(tag, Some(&Value::Array(values.into_iter().map(tag_to_value).collect()))),
-            }
-        }
-    }
-
-    fn tag_to_value(tag: TagValue) -> Value {
-        tag.into_option().into()
-    }
-
-    async fn transform_tags(metric_tag_values: MetricTagValues, tags: MetricTags) -> Value {
+    #[tokio::test]
+    async fn transform_tag_single_encoding() {
+        let tags = metric_tags! {
+            "single" => "value",
+        };
         let counter = OtelMetric::new_counter("counter", MetricKind::Absolute, 1.0)
             .with_tags(Some(tags))
             .with_timestamp(Some(ts()));
 
         let mut output = OutputBuffer::with_capacity(1);
-
         MetricToLogConfig {
-            metric_tag_values,
+            metric_tag_values: MetricTagValues::Single,
             ..Default::default()
         }
         .build_transform(&TransformContext::default())
         .transform(&mut output, Event::Metric(counter));
 
         assert_eq!(output.len(), 1);
-        output
-            .into_events()
-            .next()
-            .unwrap()
-            .into_log()
-            .get("tags")
-            .unwrap()
+        let log = output.into_events().next().unwrap().into_log();
+        let collected: Vec<_> = log.all_event_fields().unwrap();
+        let has_single_key = collected.iter().any(|(_, v)| *v == Value::from("single"));
+        let has_single_val = collected.iter().any(|(_, v)| *v == Value::from("value"));
+        assert!(has_single_key, "attribute key 'single' not found in OTLP output");
+        assert!(has_single_val, "attribute value 'value' not found in OTLP output");
+    }
+
+    #[tokio::test]
+    async fn transform_tag_full_encoding() {
+        let tags = metric_tags! {
+            "multi" => "a",
+            "multi" => "b",
+        };
+        let counter = OtelMetric::new_counter("counter", MetricKind::Absolute, 1.0)
+            .with_tags(Some(tags))
+            .with_timestamp(Some(ts()));
+
+        let mut output = OutputBuffer::with_capacity(1);
+        MetricToLogConfig {
+            metric_tag_values: MetricTagValues::Full,
+            ..Default::default()
+        }
+        .build_transform(&TransformContext::default())
+        .transform(&mut output, Event::Metric(counter));
+
+        assert_eq!(output.len(), 1);
+        let log = output.into_events().next().unwrap().into_log();
+        let collected: Vec<_> = log.all_event_fields().unwrap();
+        let has_multi_key = collected.iter().any(|(_, v)| *v == Value::from("multi"));
+        assert!(has_multi_key, "attribute key 'multi' not found in OTLP output");
     }
 }

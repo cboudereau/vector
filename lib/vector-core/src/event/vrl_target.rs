@@ -24,7 +24,7 @@ use std::collections::BTreeMap;
 #[cfg(test)]
 use vrl::{prelude::Collection, value::Kind};
 
-const VALID_OTEL_METRIC_PATHS_SET: &str = ".name, .description, .unit, .resource, .scope, .attributes, .tags, .kind, .namespace, .data.*.data_points[*].attributes";
+const VALID_OTEL_METRIC_PATHS_SET: &str = ".name, .description, .unit, .resource, .scope, .attributes, .kind, .namespace, .data.*.data_points[*].attributes";
 const VALID_OTEL_METRIC_PATHS_GET: &str =
     ".name, .description, .unit, .resource, .scope, .data, .attributes";
 const MAX_OTEL_METRIC_PATH_DEPTH: usize = 4;
@@ -462,8 +462,8 @@ fn value_to_otel_span_event(value: Value, metadata: EventMetadata) -> OtelSpan {
 
 /// OTel-native Metric → VRL Value projection.
 ///
-/// Exposes both legacy paths (.tags, .kind) and OTel-native paths (.data).
-/// `.tags` flattens first data point's attributes (backward compat).
+/// Exposes legacy paths (.kind, .namespace) and OTel-native paths (.data).
+/// `.attributes` flattens first data point's attributes.
 fn precompute_otel_metric_value(
     event: &OtelMetric,
     _info: &ProgramInfo,
@@ -488,12 +488,10 @@ fn precompute_otel_metric_value(
         map.insert("scope".into(), otel_scope_to_value(&scope));
     }
 
-    // .attributes / .tags — shorthand for first data point's attributes
+    // .attributes — shorthand for first data point's attributes
     if let Some(dp) = event.first_dp_attrs() {
         if !dp.is_empty() {
-            let obj = Value::Object(dp.to_object_map());
-            map.insert("attributes".into(), obj.clone());
-            map.insert("tags".into(), obj);
+            map.insert("attributes".into(), Value::Object(dp.to_object_map()));
         }
     }
 
@@ -834,13 +832,6 @@ impl Target for VrlTarget {
                                     event.set_scope(scope);
                                 }
                             }
-                            // Legacy: .tags."key" (alias for .attributes."key")
-                            ["tags", tag_key] => {
-                                event.set_data_point_attribute(
-                                    tag_key.to_string(),
-                                    super::vrl_value_to_any_value(&value),
-                                );
-                            }
                             // Legacy: .kind ("absolute" / "incremental")
                             ["kind"] => {
                                 let v = value.clone().try_bytes().map_err(|e| e.to_string())?;
@@ -952,7 +943,7 @@ impl Target for VrlTarget {
                             ["unit"] => { event.metric_mut().unit = String::new(); }
                             ["resource"] => { event.set_resource(Default::default()); }
                             ["scope"] => { event.set_scope(Default::default()); }
-                            ["attributes", attr_key] | ["tags", attr_key] => {
+                            ["attributes", attr_key] => {
                                 event.remove_data_point_attribute(attr_key);
                             }
                             _ => {}
@@ -999,7 +990,7 @@ fn target_get_otel_metric<'a>(
 
     match paths.as_slice() {
         ["name"] | ["description"] | ["unit"] | ["resource"] | ["resource", ..]
-        | ["scope"] | ["scope", ..] | ["data"] | ["tags"] | ["tags", ..] | ["kind"]
+        | ["scope"] | ["scope", ..] | ["data"] | ["attributes"] | ["attributes", ..] | ["kind"]
         | ["namespace"] => Ok(value),
         _ => Err(MetricPathError::InvalidPath {
             path: &path.to_string(),
@@ -1025,7 +1016,7 @@ fn target_get_mut_otel_metric<'a>(
 
     match paths.as_slice() {
         ["name"] | ["description"] | ["unit"] | ["resource"] | ["resource", ..]
-        | ["scope"] | ["scope", ..] | ["tags"] | ["tags", ..] | ["kind"]
+        | ["scope"] | ["scope", ..] | ["attributes"] | ["attributes", ..] | ["kind"]
         | ["namespace"] => Ok(value),
         _ => Err(MetricPathError::InvalidPath {
             path: &path.to_string(),

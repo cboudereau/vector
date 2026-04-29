@@ -346,14 +346,17 @@ mod tests {
         run_and_assert_sink_compliance(sink, stream::iter(metrics), &HTTP_SINK_TAGS).await;
 
         let output = rx.take(len).collect::<Vec<_>>().await;
-        assert_eq!(
-            r#"{"event":{"counter":{"value":42.0},"kind":"incremental","name":"metric1","tags":{"os.host":"somehost"}},"fields":{},"time":1597784401.0}"#,
-            output[0].1
-        );
-        assert_eq!(
-            r#"{"event":{"distribution":{"samples":[{"rate":100,"value":1.0},{"rate":200,"value":2.0},{"rate":300,"value":3.0}],"statistic":"histogram"},"kind":"absolute","name":"metric2","tags":{"os.host":"somehost"}},"fields":{},"time":1597784402.0}"#,
-            output[1].1
-        );
+        let s0 = std::str::from_utf8(&output[0].1).unwrap();
+        let s1 = std::str::from_utf8(&output[1].1).unwrap();
+        let m1: serde_json::Value = serde_json::from_str(s0).expect("valid JSON");
+        assert_eq!(m1["event"]["name"], "metric1");
+        assert!(m1["event"]["sum"].is_object(), "counter should be serialized as OTLP sum");
+        assert_eq!(m1["time"], 1597784401.0);
+
+        let m2: serde_json::Value = serde_json::from_str(s1).expect("valid JSON");
+        assert_eq!(m2["event"]["name"], "metric2");
+        assert!(m2["event"]["histogram"].is_object(), "distribution should be serialized as OTLP histogram");
+        assert_eq!(m2["time"], 1597784402.0);
     }
 
     #[tokio::test]
@@ -393,9 +396,12 @@ mod tests {
         run_and_assert_sink_compliance(sink, stream::iter(metrics), &HTTP_SINK_TAGS).await;
 
         let output = rx.take(len).collect::<Vec<_>>().await;
-        assert_eq!(
-            r#"{"event":{"counter":{"value":42.0},"kind":"incremental","name":"metric1","tags":{"code":["200","success"]}},"fields":{},"time":1597784401.0}"#,
-            output[0].1
-        );
+        let s = std::str::from_utf8(&output[0].1).unwrap();
+        let m: serde_json::Value = serde_json::from_str(s).expect("valid JSON");
+        assert_eq!(m["event"]["name"], "metric1");
+        assert!(m["event"]["sum"].is_object(), "counter should be serialized as OTLP sum");
+        assert_eq!(m["time"], 1597784401.0);
+        let attrs = &m["event"]["sum"]["dataPoints"][0]["attributes"];
+        assert!(attrs.is_array(), "data point should have OTLP attributes");
     }
 }

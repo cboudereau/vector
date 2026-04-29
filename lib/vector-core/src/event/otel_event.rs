@@ -4302,6 +4302,225 @@ impl OtelMetric {
         self.metadata = self.metadata.with_batch_notifier_option(batch);
         self
     }
+
+    /// Convert this metric to an `AnyValue::KvlistValue` suitable for use as
+    /// an OtelLog body. Includes name, description, unit, and data (sum/gauge/
+    /// histogram/summary/exponentialHistogram). Does NOT include resource/scope
+    /// — those should be transferred directly to the OtelLog.
+    pub fn to_log_body(&self) -> AnyValue {
+        use opentelemetry_proto::tonic::metrics::v1::metric::Data as MetricData;
+
+        let metric = self.metric_proto();
+        let mut kvs: Vec<KeyValue> = Vec::new();
+
+        kvs.push(KeyValue { key: "name".into(), value: Some(string_value(&metric.name)) });
+        if !metric.description.is_empty() {
+            kvs.push(KeyValue { key: "description".into(), value: Some(string_value(&metric.description)) });
+        }
+        if !metric.unit.is_empty() {
+            kvs.push(KeyValue { key: "unit".into(), value: Some(string_value(&metric.unit)) });
+        }
+
+        if let Some(ref data) = metric.data {
+            match data {
+                MetricData::Sum(sum) => {
+                    kvs.push(KeyValue { key: "sum".into(), value: Some(sum_to_any_value(sum)) });
+                }
+                MetricData::Gauge(gauge) => {
+                    kvs.push(KeyValue { key: "gauge".into(), value: Some(gauge_to_any_value(gauge)) });
+                }
+                MetricData::Histogram(hist) => {
+                    kvs.push(KeyValue { key: "histogram".into(), value: Some(histogram_to_any_value(hist)) });
+                }
+                MetricData::Summary(summary) => {
+                    kvs.push(KeyValue { key: "summary".into(), value: Some(summary_to_any_value(summary)) });
+                }
+                MetricData::ExponentialHistogram(exp) => {
+                    kvs.push(KeyValue { key: "exponentialHistogram".into(), value: Some(exp_histogram_to_any_value(exp)) });
+                }
+            }
+        }
+
+        AnyValue {
+            value: Some(OtelValueKind::KvlistValue(
+                opentelemetry_proto::tonic::common::v1::KeyValueList { values: kvs },
+            )),
+        }
+    }
+}
+
+fn double_value(d: f64) -> AnyValue {
+    AnyValue { value: Some(OtelValueKind::DoubleValue(d)) }
+}
+
+fn bool_value(b: bool) -> AnyValue {
+    AnyValue { value: Some(OtelValueKind::BoolValue(b)) }
+}
+
+fn kvlist_any_value(kvs: Vec<KeyValue>) -> AnyValue {
+    AnyValue {
+        value: Some(OtelValueKind::KvlistValue(
+            opentelemetry_proto::tonic::common::v1::KeyValueList { values: kvs },
+        )),
+    }
+}
+
+fn array_any_value(values: Vec<AnyValue>) -> AnyValue {
+    AnyValue {
+        value: Some(OtelValueKind::ArrayValue(
+            opentelemetry_proto::tonic::common::v1::ArrayValue { values },
+        )),
+    }
+}
+
+fn attrs_to_any_value(attrs: &[KeyValue]) -> AnyValue {
+    array_any_value(
+        attrs.iter().map(|kv| {
+            let mut inner = vec![
+                KeyValue { key: "key".into(), value: Some(string_value(&kv.key)) },
+            ];
+            if let Some(ref v) = kv.value {
+                inner.push(KeyValue { key: "value".into(), value: Some(v.clone()) });
+            }
+            kvlist_any_value(inner)
+        }).collect()
+    )
+}
+
+fn number_dp_to_any_value(
+    dp: &opentelemetry_proto::tonic::metrics::v1::NumberDataPoint,
+) -> AnyValue {
+    use opentelemetry_proto::tonic::metrics::v1::number_data_point::Value as NDPValue;
+    let mut kvs = Vec::new();
+    if let Some(ref v) = dp.value {
+        match v {
+            NDPValue::AsDouble(d) => kvs.push(KeyValue { key: "asDouble".into(), value: Some(double_value(*d)) }),
+            NDPValue::AsInt(i) => kvs.push(KeyValue { key: "asInt".into(), value: Some(int_value(*i)) }),
+        }
+    }
+    if !dp.attributes.is_empty() {
+        kvs.push(KeyValue { key: "attributes".into(), value: Some(attrs_to_any_value(&dp.attributes)) });
+    }
+    if dp.time_unix_nano != 0 {
+        kvs.push(KeyValue { key: "timeUnixNano".into(), value: Some(string_value(dp.time_unix_nano.to_string())) });
+    }
+    if dp.start_time_unix_nano != 0 {
+        kvs.push(KeyValue { key: "startTimeUnixNano".into(), value: Some(string_value(dp.start_time_unix_nano.to_string())) });
+    }
+    kvlist_any_value(kvs)
+}
+
+fn sum_to_any_value(sum: &opentelemetry_proto::tonic::metrics::v1::Sum) -> AnyValue {
+    let mut kvs = Vec::new();
+    let dps: Vec<AnyValue> = sum.data_points.iter().map(number_dp_to_any_value).collect();
+    kvs.push(KeyValue { key: "dataPoints".into(), value: Some(array_any_value(dps)) });
+    kvs.push(KeyValue { key: "aggregationTemporality".into(), value: Some(int_value(sum.aggregation_temporality as i64)) });
+    kvs.push(KeyValue { key: "isMonotonic".into(), value: Some(bool_value(sum.is_monotonic)) });
+    kvlist_any_value(kvs)
+}
+
+fn gauge_to_any_value(gauge: &opentelemetry_proto::tonic::metrics::v1::Gauge) -> AnyValue {
+    let mut kvs = Vec::new();
+    let dps: Vec<AnyValue> = gauge.data_points.iter().map(number_dp_to_any_value).collect();
+    kvs.push(KeyValue { key: "dataPoints".into(), value: Some(array_any_value(dps)) });
+    kvlist_any_value(kvs)
+}
+
+fn histogram_to_any_value(hist: &opentelemetry_proto::tonic::metrics::v1::Histogram) -> AnyValue {
+    let mut kvs = Vec::new();
+    let dps: Vec<AnyValue> = hist.data_points.iter().map(|dp| {
+        let mut m = Vec::new();
+        if !dp.attributes.is_empty() {
+            m.push(KeyValue { key: "attributes".into(), value: Some(attrs_to_any_value(&dp.attributes)) });
+        }
+        if dp.time_unix_nano != 0 {
+            m.push(KeyValue { key: "timeUnixNano".into(), value: Some(string_value(dp.time_unix_nano.to_string())) });
+        }
+        m.push(KeyValue { key: "count".into(), value: Some(string_value(dp.count.to_string())) });
+        if let Some(sum) = dp.sum {
+            m.push(KeyValue { key: "sum".into(), value: Some(double_value(sum)) });
+        }
+        if !dp.bucket_counts.is_empty() {
+            m.push(KeyValue { key: "bucketCounts".into(), value: Some(array_any_value(
+                dp.bucket_counts.iter().map(|c| string_value(c.to_string())).collect()
+            )) });
+        }
+        if !dp.explicit_bounds.is_empty() {
+            m.push(KeyValue { key: "explicitBounds".into(), value: Some(array_any_value(
+                dp.explicit_bounds.iter().map(|b| double_value(*b)).collect()
+            )) });
+        }
+        kvlist_any_value(m)
+    }).collect();
+    kvs.push(KeyValue { key: "dataPoints".into(), value: Some(array_any_value(dps)) });
+    kvs.push(KeyValue { key: "aggregationTemporality".into(), value: Some(int_value(hist.aggregation_temporality as i64)) });
+    kvlist_any_value(kvs)
+}
+
+fn summary_to_any_value(summary: &opentelemetry_proto::tonic::metrics::v1::Summary) -> AnyValue {
+    let mut kvs = Vec::new();
+    let dps: Vec<AnyValue> = summary.data_points.iter().map(|dp| {
+        let mut m = Vec::new();
+        if !dp.attributes.is_empty() {
+            m.push(KeyValue { key: "attributes".into(), value: Some(attrs_to_any_value(&dp.attributes)) });
+        }
+        if dp.time_unix_nano != 0 {
+            m.push(KeyValue { key: "timeUnixNano".into(), value: Some(string_value(dp.time_unix_nano.to_string())) });
+        }
+        m.push(KeyValue { key: "count".into(), value: Some(string_value(dp.count.to_string())) });
+        m.push(KeyValue { key: "sum".into(), value: Some(double_value(dp.sum)) });
+        let qvs: Vec<AnyValue> = dp.quantile_values.iter().map(|q| {
+            kvlist_any_value(vec![
+                KeyValue { key: "quantile".into(), value: Some(double_value(q.quantile)) },
+                KeyValue { key: "value".into(), value: Some(double_value(q.value)) },
+            ])
+        }).collect();
+        m.push(KeyValue { key: "quantileValues".into(), value: Some(array_any_value(qvs)) });
+        kvlist_any_value(m)
+    }).collect();
+    kvs.push(KeyValue { key: "dataPoints".into(), value: Some(array_any_value(dps)) });
+    kvlist_any_value(kvs)
+}
+
+fn exp_histogram_to_any_value(
+    exp: &opentelemetry_proto::tonic::metrics::v1::ExponentialHistogram,
+) -> AnyValue {
+    let mut kvs = Vec::new();
+    let dps: Vec<AnyValue> = exp.data_points.iter().map(|dp| {
+        let mut m = Vec::new();
+        if !dp.attributes.is_empty() {
+            m.push(KeyValue { key: "attributes".into(), value: Some(attrs_to_any_value(&dp.attributes)) });
+        }
+        if dp.time_unix_nano != 0 {
+            m.push(KeyValue { key: "timeUnixNano".into(), value: Some(string_value(dp.time_unix_nano.to_string())) });
+        }
+        m.push(KeyValue { key: "count".into(), value: Some(string_value(dp.count.to_string())) });
+        if let Some(sum) = dp.sum {
+            m.push(KeyValue { key: "sum".into(), value: Some(double_value(sum)) });
+        }
+        m.push(KeyValue { key: "scale".into(), value: Some(int_value(dp.scale as i64)) });
+        m.push(KeyValue { key: "zeroCount".into(), value: Some(string_value(dp.zero_count.to_string())) });
+        if let Some(ref pos) = dp.positive {
+            m.push(KeyValue { key: "positive".into(), value: Some(kvlist_any_value(vec![
+                KeyValue { key: "offset".into(), value: Some(int_value(pos.offset as i64)) },
+                KeyValue { key: "bucketCounts".into(), value: Some(array_any_value(
+                    pos.bucket_counts.iter().map(|c| string_value(c.to_string())).collect()
+                )) },
+            ])) });
+        }
+        if let Some(ref neg) = dp.negative {
+            m.push(KeyValue { key: "negative".into(), value: Some(kvlist_any_value(vec![
+                KeyValue { key: "offset".into(), value: Some(int_value(neg.offset as i64)) },
+                KeyValue { key: "bucketCounts".into(), value: Some(array_any_value(
+                    neg.bucket_counts.iter().map(|c| string_value(c.to_string())).collect()
+                )) },
+            ])) });
+        }
+        kvlist_any_value(m)
+    }).collect();
+    kvs.push(KeyValue { key: "dataPoints".into(), value: Some(array_any_value(dps)) });
+    kvs.push(KeyValue { key: "aggregationTemporality".into(), value: Some(int_value(exp.aggregation_temporality as i64)) });
+    kvlist_any_value(kvs)
 }
 
 // -- Trait implementations --

@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 
 use chrono::Utc;
-use serde_json::Value;
 use vector_lib::{
     TimeZone,
     codecs::MetricTagValues,
@@ -16,7 +15,6 @@ use crate::{
         TransformOutput,
     },
     event::{self, Event, OtelLog, OtelMetric},
-    internal_events::MetricToLogSerializeError,
     schema::Definition,
     transforms::{FunctionTransform, OutputBuffer, Transform},
 };
@@ -189,30 +187,28 @@ impl MetricToLog {
             val
         });
 
-        serde_json::to_value(&otel)
-            .map_err(|error| emit!(MetricToLogSerializeError { error }))
-            .ok()
-            .and_then(|value| match value {
-                Value::Object(object) => {
-                    let fields: vrl::value::ObjectMap = object
-                        .into_iter()
-                        .map(|(k, v)| (k.into(), event::Value::from(v)))
-                        .collect();
-                    let mut log = OtelLog::from_value_map(event::Value::Object(fields), metadata);
+        let body = otel.to_log_body();
 
-                    log.set_timestamp(timestamp);
+        let mut log = OtelLog::new(Default::default());
+        *log.metadata_mut() = metadata;
+        log.set_body(body);
+        log.set_timestamp(timestamp);
 
-                    if let Some(host_val) = host_value {
-                        log.set_host(event::Value::from(host_val));
-                    }
+        if let Some(resource) = otel.resource_proto() {
+            log.set_resource(resource);
+        }
+        if let Some(scope) = otel.scope_proto() {
+            log.set_scope(scope);
+        }
 
-                    log.metadata_mut()
-                        .value_mut()
-                        .insert(path!("vector"), vrl::value::Value::Object(BTreeMap::new()));
-                    Some(log)
-                }
-                _ => None,
-            })
+        if let Some(host_val) = host_value {
+            log.set_host(event::Value::from(host_val));
+        }
+
+        log.metadata_mut()
+            .value_mut()
+            .insert(path!("vector"), vrl::value::Value::Object(BTreeMap::new()));
+        Some(log)
     }
 }
 
@@ -345,14 +341,14 @@ mod tests {
         assert_eq!(
             collected,
             vec![
-                (KeyString::from("name"), Value::from("counter")),
+                (KeyString::from("body.name"), Value::from("counter")),
+                (KeyString::from("body.sum.aggregationTemporality"), Value::Integer(2)),
+                (KeyString::from("body.sum.dataPoints[0].asDouble"), Value::from(1.0)),
+                (KeyString::from("body.sum.dataPoints[0].attributes[0].key"), Value::from("some_tag")),
+                (KeyString::from("body.sum.dataPoints[0].attributes[0].value"), Value::from("some_value")),
+                (KeyString::from("body.sum.dataPoints[0].timeUnixNano"), Value::from(ts().timestamp_nanos_opt().unwrap().to_string())),
+                (KeyString::from("body.sum.isMonotonic"), Value::Boolean(true)),
                 (KeyString::from("resource.\"host.name\""), Value::from("localhost")),
-                (KeyString::from("sum.aggregationTemporality"), Value::Integer(2)),
-                (KeyString::from("sum.dataPoints[0].asDouble"), Value::from(1.0)),
-                (KeyString::from("sum.dataPoints[0].attributes[0].key"), Value::from("some_tag")),
-                (KeyString::from("sum.dataPoints[0].attributes[0].value.stringValue"), Value::from("some_value")),
-                (KeyString::from("sum.dataPoints[0].timeUnixNano"), Value::from(ts().timestamp_nanos_opt().unwrap().to_string())),
-                (KeyString::from("sum.isMonotonic"), Value::Boolean(true)),
                 (KeyString::from("time_unix_nano"), Value::Integer(ts().timestamp_nanos_opt().unwrap() as i64)),
             ]
         );
@@ -382,9 +378,9 @@ mod tests {
         assert_eq!(
             collected,
             vec![
-                (KeyString::from("gauge.dataPoints[0].asDouble"), Value::from(1.0)),
-                (KeyString::from("gauge.dataPoints[0].timeUnixNano"), Value::from(ts().timestamp_nanos_opt().unwrap().to_string())),
-                (KeyString::from("name"), Value::from("gauge")),
+                (KeyString::from("body.gauge.dataPoints[0].asDouble"), Value::from(1.0)),
+                (KeyString::from("body.gauge.dataPoints[0].timeUnixNano"), Value::from(ts().timestamp_nanos_opt().unwrap().to_string())),
+                (KeyString::from("body.name"), Value::from("gauge")),
                 (KeyString::from("time_unix_nano"), Value::Integer(ts().timestamp_nanos_opt().unwrap() as i64)),
             ]
         );
@@ -413,12 +409,12 @@ mod tests {
         let log = do_transform(set).await.unwrap();
         let collected: Vec<_> = log.all_event_fields().unwrap();
 
-        assert!(collected.iter().any(|(k, _)| k == "name"));
+        assert!(collected.iter().any(|(k, _)| k == "body.name"));
         assert_eq!(
-            collected.iter().find(|(k, _)| k == "name").unwrap().1,
+            collected.iter().find(|(k, _)| k == "body.name").unwrap().1,
             Value::from("set")
         );
-        assert!(collected.iter().any(|(k, _)| k.starts_with("gauge.")));
+        assert!(collected.iter().any(|(k, _)| k.starts_with("body.gauge.")));
         assert!(collected.iter().any(|(k, _)| k == "time_unix_nano"));
     }
 
@@ -445,12 +441,12 @@ mod tests {
         let log = do_transform(distro).await.unwrap();
         let collected: Vec<_> = log.all_event_fields().unwrap();
 
-        assert!(collected.iter().any(|(k, _)| k == "name"));
+        assert!(collected.iter().any(|(k, _)| k == "body.name"));
         assert_eq!(
-            collected.iter().find(|(k, _)| k == "name").unwrap().1,
+            collected.iter().find(|(k, _)| k == "body.name").unwrap().1,
             Value::from("distro")
         );
-        assert!(collected.iter().any(|(k, _)| k.starts_with("histogram.")));
+        assert!(collected.iter().any(|(k, _)| k.starts_with("body.histogram.")));
         assert!(collected.iter().any(|(k, _)| k == "time_unix_nano"));
         assert_eq!(log.metadata(), &metadata);
     }
@@ -482,15 +478,15 @@ mod tests {
         assert_eq!(
             collected,
             vec![
-                (KeyString::from("histogram.aggregationTemporality"), Value::Integer(2)),
-                (KeyString::from("histogram.dataPoints[0].bucketCounts[0]"), Value::from("10")),
-                (KeyString::from("histogram.dataPoints[0].bucketCounts[1]"), Value::from("20")),
-                (KeyString::from("histogram.dataPoints[0].count"), Value::from("30")),
-                (KeyString::from("histogram.dataPoints[0].explicitBounds[0]"), Value::from(1.0)),
-                (KeyString::from("histogram.dataPoints[0].explicitBounds[1]"), Value::from(2.0)),
-                (KeyString::from("histogram.dataPoints[0].sum"), Value::from(50.0)),
-                (KeyString::from("histogram.dataPoints[0].timeUnixNano"), Value::from(ts().timestamp_nanos_opt().unwrap().to_string())),
-                (KeyString::from("name"), Value::from("histo")),
+                (KeyString::from("body.histogram.aggregationTemporality"), Value::Integer(2)),
+                (KeyString::from("body.histogram.dataPoints[0].bucketCounts[0]"), Value::from("10")),
+                (KeyString::from("body.histogram.dataPoints[0].bucketCounts[1]"), Value::from("20")),
+                (KeyString::from("body.histogram.dataPoints[0].count"), Value::from("30")),
+                (KeyString::from("body.histogram.dataPoints[0].explicitBounds[0]"), Value::from(1.0)),
+                (KeyString::from("body.histogram.dataPoints[0].explicitBounds[1]"), Value::from(2.0)),
+                (KeyString::from("body.histogram.dataPoints[0].sum"), Value::from(50.0)),
+                (KeyString::from("body.histogram.dataPoints[0].timeUnixNano"), Value::from(ts().timestamp_nanos_opt().unwrap().to_string())),
+                (KeyString::from("body.name"), Value::from("histo")),
                 (KeyString::from("time_unix_nano"), Value::Integer(ts().timestamp_nanos_opt().unwrap() as i64)),
             ]
         );
@@ -524,14 +520,14 @@ mod tests {
         assert_eq!(
             collected,
             vec![
-                (KeyString::from("name"), Value::from("summary")),
-                (KeyString::from("summary.dataPoints[0].count"), Value::from("30")),
-                (KeyString::from("summary.dataPoints[0].quantileValues[0].quantile"), Value::from(50.0)),
-                (KeyString::from("summary.dataPoints[0].quantileValues[0].value"), Value::from(10.0)),
-                (KeyString::from("summary.dataPoints[0].quantileValues[1].quantile"), Value::from(90.0)),
-                (KeyString::from("summary.dataPoints[0].quantileValues[1].value"), Value::from(20.0)),
-                (KeyString::from("summary.dataPoints[0].sum"), Value::from(50.0)),
-                (KeyString::from("summary.dataPoints[0].timeUnixNano"), Value::from(ts().timestamp_nanos_opt().unwrap().to_string())),
+                (KeyString::from("body.name"), Value::from("summary")),
+                (KeyString::from("body.summary.dataPoints[0].count"), Value::from("30")),
+                (KeyString::from("body.summary.dataPoints[0].quantileValues[0].quantile"), Value::from(50.0)),
+                (KeyString::from("body.summary.dataPoints[0].quantileValues[0].value"), Value::from(10.0)),
+                (KeyString::from("body.summary.dataPoints[0].quantileValues[1].quantile"), Value::from(90.0)),
+                (KeyString::from("body.summary.dataPoints[0].quantileValues[1].value"), Value::from(20.0)),
+                (KeyString::from("body.summary.dataPoints[0].sum"), Value::from(50.0)),
+                (KeyString::from("body.summary.dataPoints[0].timeUnixNano"), Value::from(ts().timestamp_nanos_opt().unwrap().to_string())),
                 (KeyString::from("time_unix_nano"), Value::Integer(ts().timestamp_nanos_opt().unwrap() as i64)),
             ]
         );
@@ -558,10 +554,10 @@ mod tests {
         assert_eq!(output.len(), 1);
         let log = output.into_events().next().unwrap().into_log();
         let collected: Vec<_> = log.all_event_fields().unwrap();
-        let has_single_key = collected.iter().any(|(_, v)| *v == Value::from("single"));
-        let has_single_val = collected.iter().any(|(_, v)| *v == Value::from("value"));
-        assert!(has_single_key, "attribute key 'single' not found in OTLP output");
-        assert!(has_single_val, "attribute value 'value' not found in OTLP output");
+        let has_single_key = collected.iter().any(|(k, v)| k.starts_with("body.") && *v == Value::from("single"));
+        let has_single_val = collected.iter().any(|(k, v)| k.starts_with("body.") && *v == Value::from("value"));
+        assert!(has_single_key, "attribute key 'single' not found in OTLP body output");
+        assert!(has_single_val, "attribute value 'value' not found in OTLP body output");
     }
 
     #[tokio::test]
@@ -585,7 +581,7 @@ mod tests {
         assert_eq!(output.len(), 1);
         let log = output.into_events().next().unwrap().into_log();
         let collected: Vec<_> = log.all_event_fields().unwrap();
-        let has_multi_key = collected.iter().any(|(_, v)| *v == Value::from("multi"));
-        assert!(has_multi_key, "attribute key 'multi' not found in OTLP output");
+        let has_multi_key = collected.iter().any(|(k, v)| k.starts_with("body.") && *v == Value::from("multi"));
+        assert!(has_multi_key, "attribute key 'multi' not found in OTLP body output");
     }
 }

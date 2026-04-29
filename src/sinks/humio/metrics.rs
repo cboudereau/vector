@@ -349,9 +349,9 @@ mod tests {
         let s0 = std::str::from_utf8(&output[0].1).unwrap();
         let s1 = std::str::from_utf8(&output[1].1).unwrap();
         let m1: serde_json::Value = serde_json::from_str(s0).expect("valid JSON");
-        // In OTLP/JSON format, metric fields become attributes in the OtelLog
-        let find_attr = |event: &serde_json::Value, name: &str| -> serde_json::Value {
-            event["attributes"]
+        // metric_to_log puts the full metric as the OtelLog body (KvlistValue)
+        let find_body_kv = |event: &serde_json::Value, name: &str| -> serde_json::Value {
+            event["body"]["kvlistValue"]["values"]
                 .as_array()
                 .and_then(|arr| {
                     arr.iter().find_map(|a| {
@@ -365,19 +365,18 @@ mod tests {
                 .unwrap_or(serde_json::Value::Null)
         };
         assert_eq!(
-            find_attr(&m1["event"], "name"),
+            find_body_kv(&m1["event"], "name"),
             serde_json::json!({"stringValue": "metric1"})
         );
-        // "sum" is stored as an attribute with a complex nested value
-        assert!(!find_attr(&m1["event"], "sum").is_null(), "counter should be serialized as OTLP sum attribute");
+        assert!(!find_body_kv(&m1["event"], "sum").is_null(), "counter should be in body as OTLP sum");
         assert_eq!(m1["time"], 1597784401.0);
 
         let m2: serde_json::Value = serde_json::from_str(s1).expect("valid JSON");
         assert_eq!(
-            find_attr(&m2["event"], "name"),
+            find_body_kv(&m2["event"], "name"),
             serde_json::json!({"stringValue": "metric2"})
         );
-        assert!(!find_attr(&m2["event"], "histogram").is_null(), "distribution should be serialized as OTLP histogram attribute");
+        assert!(!find_body_kv(&m2["event"], "histogram").is_null(), "distribution should be in body as OTLP histogram");
         assert_eq!(m2["time"], 1597784402.0);
     }
 
@@ -420,9 +419,9 @@ mod tests {
         let output = rx.take(len).collect::<Vec<_>>().await;
         let s = std::str::from_utf8(&output[0].1).unwrap();
         let m: serde_json::Value = serde_json::from_str(s).expect("valid JSON");
-        // In OTLP/JSON format, metric fields become attributes in the OtelLog
-        let find_attr = |event: &serde_json::Value, name: &str| -> serde_json::Value {
-            event["attributes"]
+        // metric_to_log puts the full metric as the OtelLog body (KvlistValue)
+        let find_body_kv = |event: &serde_json::Value, name: &str| -> serde_json::Value {
+            event["body"]["kvlistValue"]["values"]
                 .as_array()
                 .and_then(|arr| {
                     arr.iter().find_map(|a| {
@@ -436,16 +435,12 @@ mod tests {
                 .unwrap_or(serde_json::Value::Null)
         };
         assert_eq!(
-            find_attr(&m["event"], "name"),
+            find_body_kv(&m["event"], "name"),
             serde_json::json!({"stringValue": "metric1"})
         );
-        assert!(!find_attr(&m["event"], "sum").is_null(), "counter should be serialized as OTLP sum attribute");
+        assert!(!find_body_kv(&m["event"], "sum").is_null(), "counter should be in body as OTLP sum");
         assert_eq!(m["time"], 1597784401.0);
-        // The "sum" attribute contains the OTLP data; check that data point
-        // attributes are present (multi-value tags should be preserved)
-        let sum_val = find_attr(&m["event"], "sum");
-        // The sum value is nested in OTLP anyValue format; extract the actual sum object
-        // It may be wrapped in a kvlistValue or similar structure
-        assert!(!sum_val.is_null(), "sum attribute should exist");
+        let sum_val = find_body_kv(&m["event"], "sum");
+        assert!(!sum_val.is_null(), "sum body key should exist");
     }
 }

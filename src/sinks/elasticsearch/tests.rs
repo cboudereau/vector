@@ -361,22 +361,19 @@ async fn handle_metrics() {
     );
     let metric_json: serde_json::Value =
         serde_json::from_str(encoded_lines.get(1).unwrap()).expect("valid JSON");
-    // After OTLP/JSON serialization change, metric fields (name, gauge, etc.)
-    // are stored as OtelLog attributes and serialized in the attributes array.
-    let attrs = metric_json["attributes"].as_array().expect("attributes array");
-    let find_attr = |key: &str| -> Option<&serde_json::Value> {
-        attrs.iter().find(|a| a["key"] == key).map(|a| &a["value"])
+    // metric_to_log now puts the full metric as the OtelLog body (KvlistValue)
+    let body = &metric_json["body"];
+    let body_kvs = body["kvlistValue"]["values"].as_array().expect("body kvlistValue array");
+    let find_body_kv = |key: &str| -> Option<&serde_json::Value> {
+        body_kvs.iter().find(|a| a["key"] == key).map(|a| &a["value"])
     };
     assert_eq!(
-        find_attr("name").and_then(|v| v["stringValue"].as_str()),
+        find_body_kv("name").and_then(|v| v["stringValue"].as_str()),
         Some("cpu"),
     );
-    let gauge_attr = find_attr("gauge").expect("gauge attribute");
-    // The gauge value is nested: kvlistValue -> values -> [dataPoints -> ...]
-    // but the exact shape depends on OTLP serialization of the nested metric data.
-    // Just verify the gauge attribute exists and contains dataPoints with 42.0 somewhere.
-    let gauge_str = serde_json::to_string(gauge_attr).unwrap();
-    assert!(gauge_str.contains("42"), "gauge attribute should contain the value 42.0: {gauge_str}");
+    let gauge_kv = find_body_kv("gauge").expect("gauge key in body");
+    let gauge_str = serde_json::to_string(gauge_kv).unwrap();
+    assert!(gauge_str.contains("42"), "gauge body should contain the value 42.0: {gauge_str}");
 }
 
 #[tokio::test]

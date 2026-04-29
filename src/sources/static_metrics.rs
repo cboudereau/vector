@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, num::NonZeroU32, time::Duration};
+use std::{collections::BTreeMap, time::Duration};
 
 use chrono::Utc;
 use futures::StreamExt;
@@ -15,8 +15,8 @@ use crate::{
     SourceSender,
     config::{SourceConfig, SourceContext, SourceOutput},
     event::{
-        Event, EventMetadata, MetricKind, OtelMetric,
-        metric::{MetricData, MetricName, MetricSeries, MetricTime, MetricValue},
+        Event, MetricKind, OtelMetric,
+        metric::MetricValue,
     },
     internal_events::{EventsReceived, StreamClosedError},
     shutdown::ShutdownSignal,
@@ -149,24 +149,23 @@ impl StaticMetrics {
                      kind,
                      tags,
                  }| {
-                    OtelMetric::from_metric_parts(
-                        MetricSeries {
-                            name: MetricName {
-                                name,
-                                namespace: Some(self.namespace.clone()),
-                            },
-                            tags: Some(tags.into()),
-                        },
-                        MetricData {
-                            time: MetricTime {
-                                timestamp: None,
-                                interval_ms: NonZeroU32::new(self.interval.as_millis() as u32),
-                            },
-                            kind,
-                            value: value.clone(),
-                        },
-                        EventMetadata::default(),
-                    )
+                    let metric = match value {
+                        MetricValue::Counter { value: v } => {
+                            OtelMetric::new_counter(&name, kind, v)
+                        }
+                        MetricValue::Gauge { value: v } => OtelMetric::new_gauge(&name, v),
+                        other => {
+                            warn!(
+                                metric_name = %name,
+                                metric_type = ?other,
+                                "Unsupported metric value type for static_metrics, creating gauge with value 0.0"
+                            );
+                            OtelMetric::new_gauge(&name, 0.0)
+                        }
+                    };
+                    metric
+                        .with_namespace(Some(self.namespace.clone()))
+                        .with_tags(Some(tags.into()))
                 },
             )
             .collect();

@@ -3552,21 +3552,103 @@ impl OtelMetric {
         Self::new_gauge(name, cardinality as f64)
     }
 
-    /// Convenience constructor for a distribution metric.
-    /// OTel has no direct distribution equivalent; represented as a Gauge
-    /// with value 0 and an attribute `"vector.metric_type" = "distribution"`.
-    /// Use `from_metric_parts` for lossless round-trips.
-    pub fn new_distribution(name: impl Into<String>, kind: super::MetricKind) -> Self {
-        let mut m = Self::new_gauge(name, 0.0);
-        if kind == super::MetricKind::Incremental {
-            m.set_data_point_attribute(
-                "vector.metric_kind".to_string(),
-                string_value("incremental"),
-            );
-        }
+    /// Convenience constructor for a distribution metric from samples.
+    /// Represented as an OTLP Histogram with vector.metric_type=distribution
+    /// and vector.statistic attribute indicating histogram vs summary.
+    pub fn new_distribution_from_samples(
+        name: impl Into<String>,
+        kind: super::MetricKind,
+        samples: &[super::metric::Sample],
+        statistic: super::StatisticKind,
+    ) -> Self {
+        use opentelemetry_proto::tonic::metrics::v1::{
+            self as otel_metrics, metric::Data, Histogram, HistogramDataPoint,
+        };
+        let temporality = match kind {
+            super::MetricKind::Incremental => otel_metrics::AggregationTemporality::Delta as i32,
+            super::MetricKind::Absolute => otel_metrics::AggregationTemporality::Cumulative as i32,
+        };
+        let count = samples.iter().map(|s| s.rate).sum::<u32>() as u64;
+        let sum: f64 = samples.iter().map(|s| s.value * s.rate as f64).sum();
+        let explicit_bounds: Vec<f64> = samples.iter().map(|s| s.value).collect();
+        let bucket_counts: Vec<u64> = samples.iter().map(|s| s.rate as u64).collect();
+
+        let proto = OtelMetricProto {
+            name: name.into(),
+            data: Some(Data::Histogram(Histogram {
+                data_points: vec![HistogramDataPoint {
+                    count,
+                    sum: Some(sum),
+                    bucket_counts,
+                    explicit_bounds,
+                    ..Default::default()
+                }],
+                aggregation_temporality: temporality,
+            })),
+            ..Default::default()
+        };
+        let mut m = Self::new(proto);
         m.set_data_point_attribute(
             "vector.metric_type".to_string(),
             string_value("distribution"),
+        );
+        m.set_data_point_attribute(
+            "vector.statistic".to_string(),
+            string_value(match statistic {
+                super::StatisticKind::Histogram => "histogram",
+                super::StatisticKind::Summary => "summary",
+            }),
+        );
+        m
+    }
+
+    /// Convenience constructor for a distribution metric (empty, no samples).
+    /// Use `new_distribution_from_samples` when you have sample data.
+    pub fn new_distribution(name: impl Into<String>, kind: super::MetricKind) -> Self {
+        Self::new_distribution_from_samples(name, kind, &[], super::StatisticKind::Histogram)
+    }
+
+    /// Convenience constructor for a set metric with its values.
+    /// Represented as an OTLP Gauge with vector.metric_type=set,
+    /// vector.set_values attribute, and cardinality as the numeric value.
+    pub fn new_set_from_values(
+        name: impl Into<String>,
+        kind: super::MetricKind,
+        values: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Self {
+        let values: Vec<String> = values.into_iter().map(Into::into).collect();
+        let cardinality = values.len() as f64;
+        let mut m = Self::new_gauge(name, cardinality);
+        m.set_data_point_attribute(
+            "vector.metric_type".to_string(),
+            string_value("set"),
+        );
+        m.set_data_point_attribute(
+            "vector.metric_kind".to_string(),
+            string_value(match kind {
+                super::MetricKind::Incremental => "incremental",
+                super::MetricKind::Absolute => "absolute",
+            }),
+        );
+        let set_values: Vec<AnyValue> = values.iter().map(|v| string_value(v)).collect();
+        m.set_data_point_attribute(
+            "vector.set_values".to_string(),
+            AnyValue {
+                value: Some(OtelValueKind::ArrayValue(
+                    opentelemetry_proto::tonic::common::v1::ArrayValue { values: set_values },
+                )),
+            },
+        );
+        m
+    }
+
+    /// Convenience constructor for a delta/signed gauge (e.g. statsd +/-).
+    /// Represented as an OTLP Gauge with vector.metric_kind=incremental attribute.
+    pub fn new_gauge_delta(name: impl Into<String>, value: f64) -> Self {
+        let mut m = Self::new_gauge(name, value);
+        m.set_data_point_attribute(
+            "vector.metric_kind".to_string(),
+            string_value("incremental"),
         );
         m
     }
@@ -4130,6 +4212,11 @@ impl OtelMetric {
             self.remove_data_point_attribute(key);
             self.set_data_point_attribute(key.to_string(), value);
         }
+        self
+    }
+
+    pub fn with_metadata(mut self, metadata: EventMetadata) -> Self {
+        self.metadata = metadata;
         self
     }
 
@@ -4750,16 +4837,24 @@ impl OtelMetric {
         }
     }
 
-    /// Check if this metric is cumulative (absolute).
+    /// Check if this metric is cumulative. Gauge and Summary have no temporality
+    /// and return `false` (per OTel spec and otelcol-contrib behavior).
     pub fn is_cumulative(&self) -> bool {
         use opentelemetry_proto::tonic::metrics::v1::{AggregationTemporality, metric::Data as MD};
         match self.metric.data.as_ref() {
             Some(MD::Sum(s)) => s.aggregation_temporality == AggregationTemporality::Cumulative as i32,
             Some(MD::Histogram(h)) => h.aggregation_temporality == AggregationTemporality::Cumulative as i32,
             Some(MD::ExponentialHistogram(eh)) => eh.aggregation_temporality == AggregationTemporality::Cumulative as i32,
-            Some(MD::Gauge(_)) | Some(MD::Summary(_)) => true,
-            None => false,
+            _ => false,
         }
+    }
+
+    /// Check if this metric type carries an aggregation temporality field.
+    /// Sum, Histogram, and ExponentialHistogram have temporality.
+    /// Gauge and Summary do not.
+    pub fn has_temporality(&self) -> bool {
+        use opentelemetry_proto::tonic::metrics::v1::metric::Data as MD;
+        matches!(self.metric.data.as_ref(), Some(MD::Sum(_) | MD::Histogram(_) | MD::ExponentialHistogram(_)))
     }
 
     /// Check if this metric is a Gauge type.
@@ -6786,7 +6881,16 @@ mod tests {
         let gauge = OtelMetric::new_gauge("g", 1.0);
         assert!(!delta.is_cumulative());
         assert!(cumulative.is_cumulative());
-        assert!(gauge.is_cumulative());
+        assert!(!gauge.is_cumulative(), "Gauge has no temporality per OTel spec");
+    }
+
+    #[test]
+    fn otel_metric_has_temporality() {
+        use crate::event::MetricKind;
+        let counter = OtelMetric::new_counter("c", MetricKind::Incremental, 1.0);
+        let gauge = OtelMetric::new_gauge("g", 1.0);
+        assert!(counter.has_temporality());
+        assert!(!gauge.has_temporality());
     }
 
     #[test]

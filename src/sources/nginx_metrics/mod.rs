@@ -17,7 +17,7 @@ use vector_lib::{EstimatedJsonEncodedSizeOf, configurable::configurable_componen
 
 use crate::{
     config::{SourceConfig, SourceContext, SourceOutput},
-    event::{Event, OtelMetric, metric::{MetricKind, MetricTags, MetricValue}},
+    event::{Event, OtelMetric, metric::{MetricKind, MetricTags}},
     http::{Auth, HttpClient},
     internal_events::{
         CollectionCompleted, EndpointBytesReceived, NginxMetricsEventsReceived,
@@ -28,22 +28,6 @@ use crate::{
 
 pub mod parser;
 use parser::NginxStubStatus;
-
-macro_rules! counter {
-    ($value:expr_2021) => {
-        MetricValue::Counter {
-            value: $value as f64,
-        }
-    };
-}
-
-macro_rules! gauge {
-    ($value:expr_2021) => {
-        MetricValue::Gauge {
-            value: $value as f64,
-        }
-    };
-}
 
 #[derive(Debug, Snafu)]
 enum NginxBuildError {
@@ -200,7 +184,7 @@ impl NginxMetrics {
 
         let byte_size = metrics.estimated_json_encoded_size_of();
 
-        metrics.push(self.create_metric("up", gauge!(up_value)));
+        metrics.push(self.create_gauge("up", up_value));
 
         emit!(NginxMetricsEventsReceived {
             count: metrics.len(),
@@ -233,13 +217,13 @@ impl NginxMetrics {
             })?;
 
         Ok(vec![
-            self.create_metric("connections_active", gauge!(status.active)),
-            self.create_metric("connections_accepted_total", counter!(status.accepts)),
-            self.create_metric("connections_handled_total", counter!(status.handled)),
-            self.create_metric("http_requests_total", counter!(status.requests)),
-            self.create_metric("connections_reading", gauge!(status.reading)),
-            self.create_metric("connections_writing", gauge!(status.writing)),
-            self.create_metric("connections_waiting", gauge!(status.waiting)),
+            self.create_gauge("connections_active", status.active as f64),
+            self.create_counter("connections_accepted_total", status.accepts as f64),
+            self.create_counter("connections_handled_total", status.handled as f64),
+            self.create_counter("http_requests_total", status.requests as f64),
+            self.create_gauge("connections_reading", status.reading as f64),
+            self.create_gauge("connections_writing", status.writing as f64),
+            self.create_gauge("connections_waiting", status.waiting as f64),
         ])
     }
 
@@ -260,13 +244,15 @@ impl NginxMetrics {
         }
     }
 
-    fn create_metric(&self, name: &str, value: MetricValue) -> OtelMetric {
-        let metric = match value {
-            MetricValue::Counter { value: v } => OtelMetric::new_counter(name, MetricKind::Absolute, v),
-            MetricValue::Gauge { value: v } => OtelMetric::new_gauge(name, v),
-            _ => unreachable!("nginx_metrics only produces counters and gauges"),
-        };
-        metric
+    fn create_counter(&self, name: &str, value: f64) -> OtelMetric {
+        OtelMetric::new_counter(name, MetricKind::Absolute, value)
+            .with_namespace(self.namespace.clone())
+            .with_tags(Some(self.tags.clone()))
+            .with_timestamp(Some(Utc::now()))
+    }
+
+    fn create_gauge(&self, name: &str, value: f64) -> OtelMetric {
+        OtelMetric::new_gauge(name, value)
             .with_namespace(self.namespace.clone())
             .with_tags(Some(self.tags.clone()))
             .with_timestamp(Some(Utc::now()))

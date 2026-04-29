@@ -21,7 +21,7 @@ use vector_lib::{
 
 use crate::{
     config::{SourceConfig, SourceContext, SourceOutput},
-    event::{Event, OtelMetric, metric::{MetricKind, MetricTags, MetricValue}},
+    event::{Event, OtelMetric, metric::{MetricKind, MetricTags}},
     internal_events::{
         CollectionCompleted, EndpointBytesReceived, MongoDbMetricsBsonParseError,
         MongoDbMetricsEventsReceived, MongoDbMetricsRequestError, StreamClosedError,
@@ -45,19 +45,11 @@ macro_rules! tags {
 }
 
 macro_rules! counter {
-    ($value:expr_2021) => {
-        MetricValue::Counter {
-            value: $value as f64,
-        }
-    };
+    ($value:expr_2021) => { $value as f64 };
 }
 
 macro_rules! gauge {
-    ($value:expr_2021) => {
-        MetricValue::Gauge {
-            value: $value as f64,
-        }
-    };
+    ($value:expr_2021) => { $value as f64 };
 }
 
 #[derive(Debug, Snafu)]
@@ -234,13 +226,15 @@ impl MongoDbMetrics {
         Ok(())
     }
 
-    fn create_metric(&self, name: &str, value: MetricValue, tags: MetricTags) -> OtelMetric {
-        let metric = match value {
-            MetricValue::Counter { value: v } => OtelMetric::new_counter(name, MetricKind::Absolute, v),
-            MetricValue::Gauge { value: v } => OtelMetric::new_gauge(name, v),
-            _ => unreachable!("mongodb_metrics only produces counters and gauges"),
-        };
-        metric
+    fn create_counter(&self, name: &str, value: f64, tags: MetricTags) -> OtelMetric {
+        OtelMetric::new_counter(name, MetricKind::Absolute, value)
+            .with_namespace(self.namespace.clone())
+            .with_tags(Some(tags))
+            .with_timestamp(Some(Utc::now()))
+    }
+
+    fn create_gauge(&self, name: &str, value: f64, tags: MetricTags) -> OtelMetric {
+        OtelMetric::new_gauge(name, value)
             .with_namespace(self.namespace.clone())
             .with_tags(Some(tags))
             .with_timestamp(Some(Utc::now()))
@@ -266,7 +260,7 @@ impl MongoDbMetrics {
             }
         };
 
-        metrics.push(self.create_metric("up", gauge!(up_value), tags!(self.tags)));
+        metrics.push(self.create_gauge("up", gauge!(up_value), tags!(self.tags)));
 
         emit!(MongoDbMetricsEventsReceived {
             byte_size: metrics.estimated_json_encoded_size_of(),
@@ -296,44 +290,44 @@ impl MongoDbMetrics {
         let status: CommandServerStatus = from_document(doc).map_err(CollectError::Bson)?;
 
         // asserts_total
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "asserts_total",
             counter!(status.asserts.regular),
             tags!(self.tags, "type" => "regular"),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "asserts_total",
             counter!(status.asserts.warning),
             tags!(self.tags, "type" => "warning"),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "asserts_total",
             counter!(status.asserts.msg),
             tags!(self.tags, "type" => "msg"),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "asserts_total",
             counter!(status.asserts.user),
             tags!(self.tags, "type" => "user"),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "asserts_total",
             counter!(status.asserts.rollovers),
             tags!(self.tags, "type" => "rollovers"),
         ));
 
         // connections
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "connections",
             counter!(status.connections.active),
             tags!(self.tags, "state" => "active"),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "connections",
             counter!(status.connections.available),
             tags!(self.tags, "state" => "available"),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "connections",
             counter!(status.connections.current),
             tags!(self.tags, "state" => "current"),
@@ -341,55 +335,55 @@ impl MongoDbMetrics {
 
         // extra_info_*
         if let Some(value) = status.extra_info.heap_usage_bytes {
-            metrics.push(self.create_metric(
+            metrics.push(self.create_gauge(
                 "extra_info_heap_usage_bytes",
                 gauge!(value),
                 tags!(self.tags),
             ));
         }
-        metrics.push(self.create_metric(
+        metrics.push(self.create_gauge(
             "extra_info_page_faults",
             gauge!(status.extra_info.page_faults),
             tags!(self.tags),
         ));
 
         // instance_*
-        metrics.push(self.create_metric(
+        metrics.push(self.create_gauge(
             "instance_local_time",
             gauge!(status.instance.local_time.timestamp_millis() / 1000),
             tags!(self.tags),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_gauge(
             "instance_uptime_estimate_seconds_total",
             gauge!(status.instance.uptime_estimate),
             tags!(self.tags),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_gauge(
             "instance_uptime_seconds_total",
             gauge!(status.instance.uptime),
             tags!(self.tags),
         ));
 
         // memory
-        metrics.push(self.create_metric(
+        metrics.push(self.create_gauge(
             "memory",
             gauge!(status.memory.resident),
             tags!(self.tags, "type" => "resident"),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_gauge(
             "memory",
             gauge!(status.memory.r#virtual),
             tags!(self.tags, "type" => "virtual"),
         ));
         if let Some(value) = status.memory.mapped {
-            metrics.push(self.create_metric(
+            metrics.push(self.create_gauge(
                 "memory",
                 gauge!(value),
                 tags!(self.tags, "type" => "mapped"),
             ))
         }
         if let Some(value) = status.memory.mapped_with_journal {
-            metrics.push(self.create_metric(
+            metrics.push(self.create_gauge(
                 "memory",
                 gauge!(value),
                 tags!(self.tags, "type" => "mapped_with_journal"),
@@ -397,37 +391,37 @@ impl MongoDbMetrics {
         }
 
         // mongod_global_lock_*
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "mongod_global_lock_total_time_seconds",
             counter!(status.global_lock.total_time),
             tags!(self.tags),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_gauge(
             "mongod_global_lock_active_clients",
             gauge!(status.global_lock.active_clients.total),
             tags!(self.tags, "type" => "total"),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_gauge(
             "mongod_global_lock_active_clients",
             gauge!(status.global_lock.active_clients.readers),
             tags!(self.tags, "type" => "readers"),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_gauge(
             "mongod_global_lock_active_clients",
             gauge!(status.global_lock.active_clients.writers),
             tags!(self.tags, "type" => "writers"),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_gauge(
             "mongod_global_lock_current_queue",
             gauge!(status.global_lock.current_queue.total),
             tags!(self.tags, "type" => "total"),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_gauge(
             "mongod_global_lock_current_queue",
             gauge!(status.global_lock.current_queue.readers),
             tags!(self.tags, "type" => "readers"),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_gauge(
             "mongod_global_lock_current_queue",
             gauge!(status.global_lock.current_queue.writers),
             tags!(self.tags, "type" => "writers"),
@@ -437,14 +431,14 @@ impl MongoDbMetrics {
         for (r#type, lock) in status.locks {
             if let Some(modes) = lock.time_acquiring_micros {
                 if let Some(value) = modes.read {
-                    metrics.push(self.create_metric(
+                    metrics.push(self.create_counter(
                         "mongod_locks_time_acquiring_global_seconds_total",
                         counter!(value),
                         tags!(self.tags, "type" => &r#type, "mode" => "read"),
                     ));
                 }
                 if let Some(value) = modes.write {
-                    metrics.push(self.create_metric(
+                    metrics.push(self.create_counter(
                         "mongod_locks_time_acquiring_global_seconds_total",
                         counter!(value),
                         tags!(self.tags, "type" => &r#type, "mode" => "write"),
@@ -454,91 +448,91 @@ impl MongoDbMetrics {
         }
 
         // mongod_metrics_cursor_*
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "mongod_metrics_cursor_timed_out_total",
             counter!(status.metrics.cursor.timed_out),
             tags!(self.tags),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_gauge(
             "mongod_metrics_cursor_open",
             gauge!(status.metrics.cursor.open.no_timeout),
             tags!(self.tags, "state" => "no_timeout"),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_gauge(
             "mongod_metrics_cursor_open",
             gauge!(status.metrics.cursor.open.pinned),
             tags!(self.tags, "state" => "pinned"),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_gauge(
             "mongod_metrics_cursor_open",
             gauge!(status.metrics.cursor.open.total),
             tags!(self.tags, "state" => "total"),
         ));
 
         // mongod_metrics_document_total
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "mongod_metrics_document_total",
             counter!(status.metrics.document.deleted),
             tags!(self.tags, "state" => "deleted"),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "mongod_metrics_document_total",
             counter!(status.metrics.document.inserted),
             tags!(self.tags, "state" => "inserted"),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "mongod_metrics_document_total",
             counter!(status.metrics.document.returned),
             tags!(self.tags, "state" => "returned"),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "mongod_metrics_document_total",
             counter!(status.metrics.document.updated),
             tags!(self.tags, "state" => "updated"),
         ));
 
         // mongod_metrics_get_last_error_*
-        metrics.push(self.create_metric(
+        metrics.push(self.create_gauge(
             "mongod_metrics_get_last_error_wtime_num",
             gauge!(status.metrics.get_last_error.wtime.num),
             tags!(self.tags),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "mongod_metrics_get_last_error_wtime_seconds_total",
             counter!(status.metrics.get_last_error.wtime.total_millis / 1000),
             tags!(self.tags),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "mongod_metrics_get_last_error_wtimeouts_total",
             counter!(status.metrics.get_last_error.wtimeouts),
             tags!(self.tags),
         ));
 
         // mongod_metrics_operation_total
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "mongod_metrics_operation_total",
             counter!(status.metrics.operation.scan_and_order),
             tags!(self.tags, "type" => "scan_and_order"),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "mongod_metrics_operation_total",
             counter!(status.metrics.operation.write_conflicts),
             tags!(self.tags, "type" => "write_conflicts"),
         ));
 
         // mongod_metrics_query_executor_total
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "mongod_metrics_query_executor_total",
             counter!(status.metrics.query_executor.scanned),
             tags!(self.tags, "state" => "scanned"),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "mongod_metrics_query_executor_total",
             counter!(status.metrics.query_executor.scanned_objects),
             tags!(self.tags, "state" => "scanned_objects"),
         ));
         if let Some(doc) = status.metrics.query_executor.collection_scans {
-            metrics.push(self.create_metric(
+            metrics.push(self.create_counter(
                 "mongod_metrics_query_executor_total",
                 counter!(doc.total),
                 tags!(self.tags, "state" => "collection_scans"),
@@ -547,7 +541,7 @@ impl MongoDbMetrics {
 
         // mongod_metrics_record_moves_total
         if let Some(record) = status.metrics.record {
-            metrics.push(self.create_metric(
+            metrics.push(self.create_counter(
                 "mongod_metrics_record_moves_total",
                 counter!(record.moves),
                 tags!(self.tags),
@@ -555,90 +549,90 @@ impl MongoDbMetrics {
         }
 
         // mongod_metrics_repl_apply_
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "mongod_metrics_repl_apply_batches_num_total",
             counter!(status.metrics.repl.apply.batches.num),
             tags!(self.tags),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "mongod_metrics_repl_apply_batches_seconds_total",
             counter!(status.metrics.repl.apply.batches.total_millis / 1000),
             tags!(self.tags),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "mongod_metrics_repl_apply_ops_total",
             counter!(status.metrics.repl.apply.ops),
             tags!(self.tags),
         ));
 
         // mongod_metrics_repl_buffer_*
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "mongod_metrics_repl_buffer_count",
             counter!(status.metrics.repl.buffer.count),
             tags!(self.tags),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "mongod_metrics_repl_buffer_max_size_bytes_total",
             counter!(status.metrics.repl.buffer.max_size_bytes),
             tags!(self.tags),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "mongod_metrics_repl_buffer_size_bytes",
             counter!(status.metrics.repl.buffer.size_bytes),
             tags!(self.tags),
         ));
 
         // mongod_metrics_repl_executor_*
-        metrics.push(self.create_metric(
+        metrics.push(self.create_gauge(
             "mongod_metrics_repl_executor_queue",
             gauge!(status.metrics.repl.executor.queues.network_in_progress),
             tags!(self.tags, "type" => "network_in_progress"),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_gauge(
             "mongod_metrics_repl_executor_queue",
             gauge!(status.metrics.repl.executor.queues.sleepers),
             tags!(self.tags, "type" => "sleepers"),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_gauge(
             "mongod_metrics_repl_executor_unsignaled_events",
             gauge!(status.metrics.repl.executor.unsignaled_events),
             tags!(self.tags),
         ));
 
         // mongod_metrics_repl_network_*
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "mongod_metrics_repl_network_bytes_total",
             counter!(status.metrics.repl.network.bytes),
             tags!(self.tags),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "mongod_metrics_repl_network_getmores_num_total",
             counter!(status.metrics.repl.network.getmores.num),
             tags!(self.tags),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "mongod_metrics_repl_network_getmores_seconds_total",
             counter!(status.metrics.repl.network.getmores.total_millis / 1000),
             tags!(self.tags),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "mongod_metrics_repl_network_ops_total",
             counter!(status.metrics.repl.network.ops),
             tags!(self.tags),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "mongod_metrics_repl_network_readers_created_total",
             counter!(status.metrics.repl.network.readers_created),
             tags!(self.tags),
         ));
 
         // mongod_metrics_ttl_*
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "mongod_metrics_ttl_deleted_documents_total",
             counter!(status.metrics.ttl.deleted_documents),
             tags!(self.tags),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "mongod_metrics_ttl_passes_total",
             counter!(status.metrics.ttl.passes),
             tags!(self.tags),
@@ -647,18 +641,18 @@ impl MongoDbMetrics {
         // mongod_op_latencies_*
         for (r#type, stat) in status.op_latencies {
             for bucket in stat.histogram {
-                metrics.push(self.create_metric(
+                metrics.push(self.create_gauge(
                     "mongod_op_latencies_histogram",
                     gauge!(bucket.count),
                     tags!(self.tags, "type" => &r#type, "micros" => bucket.micros.to_string()),
                 ));
             }
-            metrics.push(self.create_metric(
+            metrics.push(self.create_gauge(
                 "mongod_op_latencies_latency",
                 gauge!(stat.latency),
                 tags!(self.tags, "type" => &r#type),
             ));
-            metrics.push(self.create_metric(
+            metrics.push(self.create_gauge(
                 "mongod_op_latencies_ops_total",
                 gauge!(stat.ops),
                 tags!(self.tags, "type" => &r#type),
@@ -666,7 +660,7 @@ impl MongoDbMetrics {
         }
 
         // mongod_storage_engine
-        metrics.push(self.create_metric(
+        metrics.push(self.create_gauge(
             "mongod_storage_engine",
             gauge!(1),
             tags!(self.tags, "engine" => status.storage_engine.name),
@@ -675,261 +669,261 @@ impl MongoDbMetrics {
         // mongod_wiredtiger_*
         if let Some(stat) = status.wired_tiger {
             // mongod_wiredtiger_blockmanager_blocks_total
-            metrics.push(self.create_metric(
+            metrics.push(self.create_counter(
                 "mongod_wiredtiger_blockmanager_blocks_total",
                 counter!(stat.block_manager.blocks_read),
                 tags!(self.tags, "type" => "blocks_read"),
             ));
-            metrics.push(self.create_metric(
+            metrics.push(self.create_counter(
                 "mongod_wiredtiger_blockmanager_blocks_total",
                 counter!(stat.block_manager.mapped_blocks_read),
                 tags!(self.tags, "type" => "blocks_read_mapped"),
             ));
-            metrics.push(self.create_metric(
+            metrics.push(self.create_counter(
                 "mongod_wiredtiger_blockmanager_blocks_total",
                 counter!(stat.block_manager.blocks_pre_loaded),
                 tags!(self.tags, "type" => "blocks_pre_loaded"),
             ));
-            metrics.push(self.create_metric(
+            metrics.push(self.create_counter(
                 "mongod_wiredtiger_blockmanager_blocks_total",
                 counter!(stat.block_manager.blocks_written),
                 tags!(self.tags, "type" => "blocks_written"),
             ));
 
             // mongod_wiredtiger_blockmanager_bytes_total
-            metrics.push(self.create_metric(
+            metrics.push(self.create_counter(
                 "mongod_wiredtiger_blockmanager_bytes_total",
                 counter!(stat.block_manager.bytes_read),
                 tags!(self.tags, "type" => "bytes_read"),
             ));
-            metrics.push(self.create_metric(
+            metrics.push(self.create_counter(
                 "mongod_wiredtiger_blockmanager_bytes_total",
                 counter!(stat.block_manager.mapped_bytes_read),
                 tags!(self.tags, "type" => "bytes_read_mapped"),
             ));
-            metrics.push(self.create_metric(
+            metrics.push(self.create_counter(
                 "mongod_wiredtiger_blockmanager_bytes_total",
                 counter!(stat.block_manager.bytes_written),
                 tags!(self.tags, "type" => "bytes_written"),
             ));
 
             // mongod_wiredtiger_cache_bytes
-            metrics.push(self.create_metric(
+            metrics.push(self.create_gauge(
                 "mongod_wiredtiger_cache_bytes",
                 gauge!(stat.cache.bytes_total),
                 tags!(self.tags, "type" => "total"),
             ));
-            metrics.push(self.create_metric(
+            metrics.push(self.create_gauge(
                 "mongod_wiredtiger_cache_bytes",
                 gauge!(stat.cache.bytes_dirty),
                 tags!(self.tags, "type" => "dirty"),
             ));
-            metrics.push(self.create_metric(
+            metrics.push(self.create_gauge(
                 "mongod_wiredtiger_cache_bytes",
                 gauge!(stat.cache.bytes_internal_pages),
                 tags!(self.tags, "type" => "internal_pages"),
             ));
-            metrics.push(self.create_metric(
+            metrics.push(self.create_gauge(
                 "mongod_wiredtiger_cache_bytes",
                 gauge!(stat.cache.bytes_leaf_pages),
                 tags!(self.tags, "type" => "leaf_pages"),
             ));
 
             // mongod_wiredtiger_cache_bytes_total
-            metrics.push(self.create_metric(
+            metrics.push(self.create_counter(
                 "mongod_wiredtiger_cache_bytes_total",
                 counter!(stat.cache.pages_read_into),
                 tags!(self.tags, "type" => "read"),
             ));
-            metrics.push(self.create_metric(
+            metrics.push(self.create_counter(
                 "mongod_wiredtiger_cache_bytes_total",
                 counter!(stat.cache.pages_written_from),
                 tags!(self.tags, "type" => "written"),
             ));
 
             // mongod_wiredtiger_cache_evicted_total
-            metrics.push(self.create_metric(
+            metrics.push(self.create_counter(
                 "mongod_wiredtiger_cache_evicted_total",
                 counter!(stat.cache.evicted_modified),
                 tags!(self.tags, "type" => "modified"),
             ));
-            metrics.push(self.create_metric(
+            metrics.push(self.create_counter(
                 "mongod_wiredtiger_cache_evicted_total",
                 counter!(stat.cache.evicted_unmodified),
                 tags!(self.tags, "type" => "unmodified"),
             ));
 
             // mongod_wiredtiger_cache_max_bytes
-            metrics.push(self.create_metric(
+            metrics.push(self.create_gauge(
                 "mongod_wiredtiger_cache_max_bytes",
                 gauge!(stat.cache.max_bytes),
                 tags!(self.tags),
             ));
 
             // mongod_wiredtiger_cache_overhead_percent
-            metrics.push(self.create_metric(
+            metrics.push(self.create_gauge(
                 "mongod_wiredtiger_cache_overhead_percent",
                 gauge!(stat.cache.percent_overhead),
                 tags!(self.tags),
             ));
 
             // mongod_wiredtiger_cache_pages
-            metrics.push(self.create_metric(
+            metrics.push(self.create_gauge(
                 "mongod_wiredtiger_cache_pages",
                 gauge!(stat.cache.pages_total),
                 tags!(self.tags, "type" => "total"),
             ));
-            metrics.push(self.create_metric(
+            metrics.push(self.create_gauge(
                 "mongod_wiredtiger_cache_pages",
                 gauge!(stat.cache.pages_dirty),
                 tags!(self.tags, "type" => "dirty"),
             ));
 
             // mongod_wiredtiger_cache_pages_total
-            metrics.push(self.create_metric(
+            metrics.push(self.create_counter(
                 "mongod_wiredtiger_cache_pages_total",
                 counter!(stat.cache.pages_read_into),
                 tags!(self.tags, "type" => "read"),
             ));
-            metrics.push(self.create_metric(
+            metrics.push(self.create_counter(
                 "mongod_wiredtiger_cache_pages_total",
                 counter!(stat.cache.pages_written_from),
                 tags!(self.tags, "type" => "write"),
             ));
 
             // mongod_wiredtiger_concurrent_transactions_*
-            metrics.push(self.create_metric(
+            metrics.push(self.create_gauge(
                 "mongod_wiredtiger_concurrent_transactions_available_tickets",
                 gauge!(stat.concurrent_transactions.read.available),
                 tags!(self.tags, "type" => "read"),
             ));
-            metrics.push(self.create_metric(
+            metrics.push(self.create_gauge(
                 "mongod_wiredtiger_concurrent_transactions_available_tickets",
                 gauge!(stat.concurrent_transactions.write.available),
                 tags!(self.tags, "type" => "write"),
             ));
-            metrics.push(self.create_metric(
+            metrics.push(self.create_gauge(
                 "mongod_wiredtiger_concurrent_transactions_out_tickets",
                 gauge!(stat.concurrent_transactions.read.out),
                 tags!(self.tags, "type" => "read"),
             ));
-            metrics.push(self.create_metric(
+            metrics.push(self.create_gauge(
                 "mongod_wiredtiger_concurrent_transactions_out_tickets",
                 gauge!(stat.concurrent_transactions.write.out),
                 tags!(self.tags, "type" => "write"),
             ));
-            metrics.push(self.create_metric(
+            metrics.push(self.create_gauge(
                 "mongod_wiredtiger_concurrent_transactions_total_tickets",
                 gauge!(stat.concurrent_transactions.read.total_tickets),
                 tags!(self.tags, "type" => "read"),
             ));
-            metrics.push(self.create_metric(
+            metrics.push(self.create_gauge(
                 "mongod_wiredtiger_concurrent_transactions_total_tickets",
                 gauge!(stat.concurrent_transactions.write.total_tickets),
                 tags!(self.tags, "type" => "write"),
             ));
 
             // mongod_wiredtiger_log_*
-            metrics.push(self.create_metric(
+            metrics.push(self.create_counter(
                 "mongod_wiredtiger_log_bytes_total",
                 counter!(stat.log.bytes_payload_data),
                 tags!(self.tags, "type" => "payload"),
             ));
-            metrics.push(self.create_metric(
+            metrics.push(self.create_counter(
                 "mongod_wiredtiger_log_bytes_total",
                 counter!(stat.log.bytes_written),
                 tags!(self.tags, "type" => "written"),
             ));
-            metrics.push(self.create_metric(
+            metrics.push(self.create_counter(
                 "mongod_wiredtiger_log_operations_total",
                 counter!(stat.log.log_writes),
                 tags!(self.tags, "type" => "write"),
             ));
-            metrics.push(self.create_metric(
+            metrics.push(self.create_counter(
                 "mongod_wiredtiger_log_operations_total",
                 counter!(stat.log.log_scans),
                 tags!(self.tags, "type" => "scan"),
             ));
-            metrics.push(self.create_metric(
+            metrics.push(self.create_counter(
                 "mongod_wiredtiger_log_operations_total",
                 counter!(stat.log.log_scans_double),
                 tags!(self.tags, "type" => "scan_double"),
             ));
-            metrics.push(self.create_metric(
+            metrics.push(self.create_counter(
                 "mongod_wiredtiger_log_operations_total",
                 counter!(stat.log.log_syncs),
                 tags!(self.tags, "type" => "sync"),
             ));
-            metrics.push(self.create_metric(
+            metrics.push(self.create_counter(
                 "mongod_wiredtiger_log_operations_total",
                 counter!(stat.log.log_sync_dirs),
                 tags!(self.tags, "type" => "sync_dir"),
             ));
-            metrics.push(self.create_metric(
+            metrics.push(self.create_counter(
                 "mongod_wiredtiger_log_operations_total",
                 counter!(stat.log.log_flushes),
                 tags!(self.tags, "type" => "flush"),
             ));
-            metrics.push(self.create_metric(
+            metrics.push(self.create_counter(
                 "mongod_wiredtiger_log_records_scanned_total",
                 counter!(stat.log.records_compressed),
                 tags!(self.tags, "type" => "compressed"),
             ));
-            metrics.push(self.create_metric(
+            metrics.push(self.create_counter(
                 "mongod_wiredtiger_log_records_scanned_total",
                 counter!(stat.log.records_uncompressed),
                 tags!(self.tags, "type" => "uncompressed"),
             ));
-            metrics.push(self.create_metric(
+            metrics.push(self.create_counter(
                 "mongod_wiredtiger_log_records_total",
                 counter!(stat.log.records_processed_log_scan),
                 tags!(self.tags),
             ));
 
             // mongod_wiredtiger_session_open_sessions
-            metrics.push(self.create_metric(
+            metrics.push(self.create_gauge(
                 "mongod_wiredtiger_session_open_sessions",
                 gauge!(stat.session.sessions),
                 tags!(self.tags),
             ));
 
             // mongod_wiredtiger_transactions_*
-            metrics.push(self.create_metric(
+            metrics.push(self.create_gauge(
                 "mongod_wiredtiger_transactions_checkpoint_seconds",
                 gauge!(stat.transaction.checkpoint_min_ms / 1000),
                 tags!(self.tags, "type" => "min"),
             ));
-            metrics.push(self.create_metric(
+            metrics.push(self.create_gauge(
                 "mongod_wiredtiger_transactions_checkpoint_seconds",
                 gauge!(stat.transaction.checkpoint_max_ms / 1000),
                 tags!(self.tags, "type" => "max"),
             ));
-            metrics.push(self.create_metric(
+            metrics.push(self.create_counter(
                 "mongod_wiredtiger_transactions_checkpoint_seconds_total",
                 counter!(stat.transaction.checkpoint_total_ms / 1000),
                 tags!(self.tags),
             ));
-            metrics.push(self.create_metric(
+            metrics.push(self.create_gauge(
                 "mongod_wiredtiger_transactions_running_checkpoints",
                 gauge!(stat.transaction.checkpoints_running),
                 tags!(self.tags),
             ));
-            metrics.push(self.create_metric(
+            metrics.push(self.create_counter(
                 "mongod_wiredtiger_transactions_total",
                 counter!(stat.transaction.begins),
                 tags!(self.tags, "type" => "begins"),
             ));
-            metrics.push(self.create_metric(
+            metrics.push(self.create_counter(
                 "mongod_wiredtiger_transactions_total",
                 counter!(stat.transaction.checkpoints),
                 tags!(self.tags, "type" => "checkpoints"),
             ));
-            metrics.push(self.create_metric(
+            metrics.push(self.create_counter(
                 "mongod_wiredtiger_transactions_total",
                 counter!(stat.transaction.committed),
                 tags!(self.tags, "type" => "committed"),
             ));
-            metrics.push(self.create_metric(
+            metrics.push(self.create_counter(
                 "mongod_wiredtiger_transactions_total",
                 counter!(stat.transaction.rolled_back),
                 tags!(self.tags, "type" => "rolledback"),
@@ -937,17 +931,17 @@ impl MongoDbMetrics {
         }
 
         // network_*
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "network_bytes_total",
             counter!(status.network.bytes_in),
             tags!(self.tags, "state" => "bytes_in"),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "network_bytes_total",
             counter!(status.network.bytes_out),
             tags!(self.tags, "state" => "bytes_out"),
         ));
-        metrics.push(self.create_metric(
+        metrics.push(self.create_counter(
             "network_metrics_num_requests_total",
             counter!(status.network.num_requests),
             tags!(self.tags),
@@ -955,7 +949,7 @@ impl MongoDbMetrics {
 
         // op_counters_repl_total
         for (r#type, value) in status.opcounters {
-            metrics.push(self.create_metric(
+            metrics.push(self.create_counter(
                 "op_counters_repl_total",
                 counter!(value),
                 tags!(self.tags, "type" => r#type),
@@ -964,7 +958,7 @@ impl MongoDbMetrics {
 
         // op_counters_total
         for (r#type, value) in status.opcounters_repl {
-            metrics.push(self.create_metric(
+            metrics.push(self.create_counter(
                 "op_counters_total",
                 counter!(value),
                 tags!(self.tags, "type" => r#type),

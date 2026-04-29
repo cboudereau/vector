@@ -139,7 +139,7 @@ impl Aggregate {
             }
             AggregationMode::Sum => self.record_sum(series, metric),
             AggregationMode::Latest | AggregationMode::Diff => {
-                if metric.is_cumulative() {
+                if metric.is_cumulative() || metric.is_gauge() {
                     self.map.insert(series, metric);
                 }
             }
@@ -148,7 +148,7 @@ impl Aggregate {
                 self.record_comparison(series, metric)
             }
             AggregationMode::Mean | AggregationMode::Stdev => {
-                if metric.is_cumulative() && metric.is_gauge() {
+                if metric.is_gauge() {
                     match self.multi_map.entry(series) {
                         Entry::Occupied(mut entry) => entry.get_mut().push(metric),
                         Entry::Vacant(entry) => { entry.insert(vec![metric]); }
@@ -200,7 +200,7 @@ impl Aggregate {
     }
 
     fn record_comparison(&mut self, series: MetricSeries, metric: OtelMetric) {
-        if !metric.is_cumulative() { return; }
+        if !metric.is_cumulative() && !metric.is_gauge() { return; }
         match self.map.entry(series) {
             Entry::Occupied(mut entry) => {
                 let existing_val = entry.get().first_value_as_f64();

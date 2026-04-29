@@ -35,7 +35,7 @@ use vector_lib::{
 
 use crate::{
     config::{SourceConfig, SourceContext, SourceOutput},
-    event::{Event, OtelMetric, metric::{MetricKind, MetricTags, MetricValue}},
+    event::{Event, OtelMetric, metric::{MetricKind, MetricTags}},
     internal_events::{
         CollectionCompleted, EndpointBytesReceived, EventsReceived, PostgresqlMetricsCollectError,
         StreamClosedError,
@@ -56,19 +56,11 @@ macro_rules! tags {
 }
 
 macro_rules! counter {
-    ($value:expr_2021) => {
-        MetricValue::Counter {
-            value: $value as f64,
-        }
-    };
+    ($value:expr_2021) => { $value as f64 };
 }
 
 macro_rules! gauge {
-    ($value:expr_2021) => {
-        MetricValue::Gauge {
-            value: $value as f64,
-        }
-    };
+    ($value:expr_2021) => { $value as f64 };
 }
 
 #[derive(Debug, Snafu)]
@@ -540,14 +532,14 @@ impl PostgresqlMetrics {
     async fn collect(&mut self) -> Box<dyn Iterator<Item = OtelMetric> + Send> {
         match self.collect_metrics().await {
             Ok(metrics) => Box::new(
-                iter::once(self.create_metric("up", gauge!(1.0), tags!(self.tags))).chain(metrics),
+                iter::once(self.create_gauge("up", gauge!(1.0), tags!(self.tags))).chain(metrics),
             ),
             Err(error) => {
                 emit!(PostgresqlMetricsCollectError {
                     error,
                     endpoint: &self.endpoint,
                 });
-                Box::new(iter::once(self.create_metric(
+                Box::new(iter::once(self.create_gauge(
                     "up",
                     gauge!(0.0),
                     tags!(self.tags),
@@ -613,77 +605,77 @@ impl PostgresqlMetrics {
             let db = reader.read::<Option<&str>>(row, "datname")?.unwrap_or("");
 
             metrics.extend_from_slice(&[
-                self.create_metric(
+                self.create_gauge(
                     "pg_stat_database_datid",
                     gauge!(reader.read::<u32>(row, "datid")?),
                     tags!(self.tags, "db" => db),
                 ),
-                self.create_metric(
+                self.create_gauge(
                     "pg_stat_database_numbackends",
                     gauge!(reader.read::<i32>(row, "numbackends")?),
                     tags!(self.tags, "db" => db),
                 ),
-                self.create_metric(
+                self.create_counter(
                     "pg_stat_database_xact_commit_total",
                     counter!(reader.read::<i64>(row, "xact_commit")?),
                     tags!(self.tags, "db" => db),
                 ),
-                self.create_metric(
+                self.create_counter(
                     "pg_stat_database_xact_rollback_total",
                     counter!(reader.read::<i64>(row, "xact_rollback")?),
                     tags!(self.tags, "db" => db),
                 ),
-                self.create_metric(
+                self.create_counter(
                     "pg_stat_database_blks_read_total",
                     counter!(reader.read::<i64>(row, "blks_read")?),
                     tags!(self.tags, "db" => db),
                 ),
-                self.create_metric(
+                self.create_counter(
                     "pg_stat_database_blks_hit_total",
                     counter!(reader.read::<i64>(row, "blks_hit")?),
                     tags!(self.tags, "db" => db),
                 ),
-                self.create_metric(
+                self.create_counter(
                     "pg_stat_database_tup_returned_total",
                     counter!(reader.read::<i64>(row, "tup_returned")?),
                     tags!(self.tags, "db" => db),
                 ),
-                self.create_metric(
+                self.create_counter(
                     "pg_stat_database_tup_fetched_total",
                     counter!(reader.read::<i64>(row, "tup_fetched")?),
                     tags!(self.tags, "db" => db),
                 ),
-                self.create_metric(
+                self.create_counter(
                     "pg_stat_database_tup_inserted_total",
                     counter!(reader.read::<i64>(row, "tup_inserted")?),
                     tags!(self.tags, "db" => db),
                 ),
-                self.create_metric(
+                self.create_counter(
                     "pg_stat_database_tup_updated_total",
                     counter!(reader.read::<i64>(row, "tup_updated")?),
                     tags!(self.tags, "db" => db),
                 ),
-                self.create_metric(
+                self.create_counter(
                     "pg_stat_database_tup_deleted_total",
                     counter!(reader.read::<i64>(row, "tup_deleted")?),
                     tags!(self.tags, "db" => db),
                 ),
-                self.create_metric(
+                self.create_counter(
                     "pg_stat_database_conflicts_total",
                     counter!(reader.read::<i64>(row, "conflicts")?),
                     tags!(self.tags, "db" => db),
                 ),
-                self.create_metric(
+                self.create_counter(
                     "pg_stat_database_temp_files_total",
                     counter!(reader.read::<i64>(row, "temp_files")?),
                     tags!(self.tags, "db" => db),
                 ),
-                self.create_metric(
+                self.create_counter(
                     "pg_stat_database_temp_bytes_total",
                     counter!(reader.read::<i64>(row, "temp_bytes")?),
                     tags!(self.tags, "db" => db),
                 ),
-                self.create_metric(
+                self.create_counter(
                     "pg_stat_database_deadlocks_total",
                     counter!(reader.read::<i64>(row, "deadlocks")?),
                     tags!(self.tags, "db" => db),
@@ -691,7 +683,7 @@ impl PostgresqlMetrics {
             ]);
             if client_version >= 120000 {
                 metrics.extend_from_slice(&[
-                    self.create_metric(
+                    self.create_counter(
                         "pg_stat_database_checksum_failures_total",
                         counter!(
                             reader
@@ -700,7 +692,7 @@ impl PostgresqlMetrics {
                         ),
                         tags!(self.tags, "db" => db),
                     ),
-                    self.create_metric(
+                    self.create_gauge(
                         "pg_stat_database_checksum_last_failure",
                         gauge!(
                             reader
@@ -713,17 +705,17 @@ impl PostgresqlMetrics {
                 ]);
             }
             metrics.extend_from_slice(&[
-                self.create_metric(
+                self.create_counter(
                     "pg_stat_database_blk_read_time_seconds_total",
                     counter!(reader.read::<f64>(row, "blk_read_time")? / 1000f64),
                     tags!(self.tags, "db" => db),
                 ),
-                self.create_metric(
+                self.create_counter(
                     "pg_stat_database_blk_write_time_seconds_total",
                     counter!(reader.read::<f64>(row, "blk_write_time")? / 1000f64),
                     tags!(self.tags, "db" => db),
                 ),
-                self.create_metric(
+                self.create_gauge(
                     "pg_stat_database_stats_reset",
                     gauge!(
                         reader
@@ -754,27 +746,27 @@ impl PostgresqlMetrics {
             let db = reader.read::<&str>(row, "datname")?;
 
             metrics.extend_from_slice(&[
-                self.create_metric(
+                self.create_counter(
                     "pg_stat_database_conflicts_confl_tablespace_total",
                     counter!(reader.read::<i64>(row, "confl_tablespace")?),
                     tags!(self.tags, "db" => db),
                 ),
-                self.create_metric(
+                self.create_counter(
                     "pg_stat_database_conflicts_confl_lock_total",
                     counter!(reader.read::<i64>(row, "confl_lock")?),
                     tags!(self.tags, "db" => db),
                 ),
-                self.create_metric(
+                self.create_counter(
                     "pg_stat_database_conflicts_confl_snapshot_total",
                     counter!(reader.read::<i64>(row, "confl_snapshot")?),
                     tags!(self.tags, "db" => db),
                 ),
-                self.create_metric(
+                self.create_counter(
                     "pg_stat_database_conflicts_confl_bufferpin_total",
                     counter!(reader.read::<i64>(row, "confl_bufferpin")?),
                     tags!(self.tags, "db" => db),
                 ),
-                self.create_metric(
+                self.create_counter(
                     "pg_stat_database_conflicts_confl_deadlock_total",
                     counter!(reader.read::<i64>(row, "confl_deadlock")?),
                     tags!(self.tags, "db" => db),
@@ -797,57 +789,57 @@ impl PostgresqlMetrics {
 
         Ok((
             vec![
-                self.create_metric(
+                self.create_counter(
                     "pg_stat_bgwriter_checkpoints_timed_total",
                     counter!(reader.read::<i64>(&row, "checkpoints_timed")?),
                     tags!(self.tags),
                 ),
-                self.create_metric(
+                self.create_counter(
                     "pg_stat_bgwriter_checkpoints_req_total",
                     counter!(reader.read::<i64>(&row, "checkpoints_req")?),
                     tags!(self.tags),
                 ),
-                self.create_metric(
+                self.create_counter(
                     "pg_stat_bgwriter_checkpoint_write_time_seconds_total",
                     counter!(reader.read::<f64>(&row, "checkpoint_write_time")? / 1000f64),
                     tags!(self.tags),
                 ),
-                self.create_metric(
+                self.create_counter(
                     "pg_stat_bgwriter_checkpoint_sync_time_seconds_total",
                     counter!(reader.read::<f64>(&row, "checkpoint_sync_time")? / 1000f64),
                     tags!(self.tags),
                 ),
-                self.create_metric(
+                self.create_counter(
                     "pg_stat_bgwriter_buffers_checkpoint_total",
                     counter!(reader.read::<i64>(&row, "buffers_checkpoint")?),
                     tags!(self.tags),
                 ),
-                self.create_metric(
+                self.create_counter(
                     "pg_stat_bgwriter_buffers_clean_total",
                     counter!(reader.read::<i64>(&row, "buffers_clean")?),
                     tags!(self.tags),
                 ),
-                self.create_metric(
+                self.create_counter(
                     "pg_stat_bgwriter_maxwritten_clean_total",
                     counter!(reader.read::<i64>(&row, "maxwritten_clean")?),
                     tags!(self.tags),
                 ),
-                self.create_metric(
+                self.create_counter(
                     "pg_stat_bgwriter_buffers_backend_total",
                     counter!(reader.read::<i64>(&row, "buffers_backend")?),
                     tags!(self.tags),
                 ),
-                self.create_metric(
+                self.create_counter(
                     "pg_stat_bgwriter_buffers_backend_fsync_total",
                     counter!(reader.read::<i64>(&row, "buffers_backend_fsync")?),
                     tags!(self.tags),
                 ),
-                self.create_metric(
+                self.create_counter(
                     "pg_stat_bgwriter_buffers_alloc_total",
                     counter!(reader.read::<i64>(&row, "buffers_alloc")?),
                     tags!(self.tags),
                 ),
-                self.create_metric(
+                self.create_gauge(
                     "pg_stat_bgwriter_stats_reset",
                     gauge!(
                         reader
@@ -861,13 +853,15 @@ impl PostgresqlMetrics {
         ))
     }
 
-    fn create_metric(&self, name: &str, value: MetricValue, tags: MetricTags) -> OtelMetric {
-        let metric = match value {
-            MetricValue::Counter { value: v } => OtelMetric::new_counter(name, MetricKind::Absolute, v),
-            MetricValue::Gauge { value: v } => OtelMetric::new_gauge(name, v),
-            _ => unreachable!("postgresql_metrics only produces counters and gauges"),
-        };
-        metric
+    fn create_counter(&self, name: &str, value: f64, tags: MetricTags) -> OtelMetric {
+        OtelMetric::new_counter(name, MetricKind::Absolute, value)
+            .with_namespace(self.namespace.clone())
+            .with_tags(Some(tags))
+            .with_timestamp(Some(Utc::now()))
+    }
+
+    fn create_gauge(&self, name: &str, value: f64, tags: MetricTags) -> OtelMetric {
+        OtelMetric::new_gauge(name, value)
             .with_namespace(self.namespace.clone())
             .with_tags(Some(tags))
             .with_timestamp(Some(Utc::now()))
@@ -1012,7 +1006,7 @@ mod integration_tests {
     use super::*;
     use crate::{
         SourceSender,
-        event::Event,
+        event::{Event, metric::MetricValue},
         test_util::{
             components::{PULL_SOURCE_TAGS, assert_source_compliance},
             integration::postgres::{pg_socket, pg_url},

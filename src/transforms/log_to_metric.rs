@@ -19,8 +19,8 @@ use crate::{
         TransformOutput, schema::Definition,
     },
     event::{
-        Event, EventMetadata, Value,
-        metric::{MetricData, MetricKind, MetricName, MetricSeries, MetricTags, MetricTime, MetricValue, StatisticKind, TagValue},
+        Event, Value,
+        metric::{MetricKind, MetricTags, StatisticKind, TagValue},
     },
     internal_events::{
         DROP_EVENT, LogToMetricFieldNullError, LogToMetricParseFloatError,
@@ -343,7 +343,7 @@ fn to_metric_with_config(config: &MetricConfig, event: &Event) -> Result<OtelMet
 
     let tags = render_tags(&config.tags, event)?;
 
-    let (kind, value) = match &config.metric {
+    let metric = match &config.metric {
         MetricTypeConfig::Counter(counter) => {
             let value = if counter.increment_by_value {
                 value.to_string_lossy().parse().map_err(|error| {
@@ -356,38 +356,38 @@ fn to_metric_with_config(config: &MetricConfig, event: &Event) -> Result<OtelMet
                 1.0
             };
 
-            (counter.kind, MetricValue::Counter { value })
+            OtelMetric::new_counter(&name, counter.kind, value)
         }
         MetricTypeConfig::Histogram => {
-            let value = value.to_string_lossy().parse().map_err(|error| {
+            let value: f64 = value.to_string_lossy().parse().map_err(|error| {
                 TransformError::ParseFloatError {
                     path: field.to_string(),
                     error,
                 }
             })?;
+            let samples = vector_lib::samples![value => 1];
 
-            (
+            OtelMetric::new_distribution_from_samples(
+                &name,
                 MetricKind::Incremental,
-                MetricValue::Distribution {
-                    samples: vector_lib::samples![value => 1],
-                    statistic: StatisticKind::Histogram,
-                },
+                &samples,
+                StatisticKind::Histogram,
             )
         }
         MetricTypeConfig::Summary => {
-            let value = value.to_string_lossy().parse().map_err(|error| {
+            let value: f64 = value.to_string_lossy().parse().map_err(|error| {
                 TransformError::ParseFloatError {
                     path: field.to_string(),
                     error,
                 }
             })?;
+            let samples = vector_lib::samples![value => 1];
 
-            (
+            OtelMetric::new_distribution_from_samples(
+                &name,
                 MetricKind::Incremental,
-                MetricValue::Distribution {
-                    samples: vector_lib::samples![value => 1],
-                    statistic: StatisticKind::Summary,
-                },
+                &samples,
+                StatisticKind::Summary,
             )
         }
         MetricTypeConfig::Gauge => {
@@ -398,43 +398,23 @@ fn to_metric_with_config(config: &MetricConfig, event: &Event) -> Result<OtelMet
                 }
             })?;
 
-            (MetricKind::Absolute, MetricValue::Gauge { value })
+            OtelMetric::new_gauge(&name, value)
         }
         MetricTypeConfig::Set => {
             let value = value.to_string_lossy().into_owned();
 
-            (
+            OtelMetric::new_set_from_values(
+                &name,
                 MetricKind::Incremental,
-                MetricValue::Set {
-                    values: std::iter::once(value).collect(),
-                },
+                vec![value],
             )
         }
     };
-    Ok(otel_from_parts(name, kind, value, metadata)
+    Ok(metric
+        .with_metadata(metadata)
         .with_namespace(namespace)
         .with_tags(tags)
         .with_timestamp(timestamp))
-}
-
-fn otel_from_parts(
-    name: impl Into<String>,
-    kind: MetricKind,
-    value: MetricValue,
-    metadata: EventMetadata,
-) -> OtelMetric {
-    OtelMetric::from_metric_parts(
-        MetricSeries {
-            name: MetricName { name: name.into(), namespace: None },
-            tags: None,
-        },
-        MetricData {
-            time: MetricTime { timestamp: None, interval_ms: None },
-            kind,
-            value,
-        },
-        metadata,
-    )
 }
 
 impl FunctionTransform for LogToMetric {
@@ -515,12 +495,41 @@ mod tests {
     use super::*;
     use crate::{
         event::{
-            Event, OtelLog,
-            metric::{MetricKind, MetricValue, StatisticKind},
+            Event, EventMetadata, OtelLog, OtelMetric,
+            metric::{
+                MetricData, MetricKind, MetricName, MetricSeries, MetricTime, MetricValue,
+                StatisticKind,
+            },
         },
         test_util::components::assert_transform_compliance,
         transforms::test::create_topology,
     };
+
+    fn otel_from_parts(
+        name: impl Into<String>,
+        kind: MetricKind,
+        value: MetricValue,
+        metadata: EventMetadata,
+    ) -> OtelMetric {
+        OtelMetric::from_metric_parts(
+            MetricSeries {
+                name: MetricName {
+                    name: name.into(),
+                    namespace: None,
+                },
+                tags: None,
+            },
+            MetricData {
+                time: MetricTime {
+                    timestamp: None,
+                    interval_ms: None,
+                },
+                kind,
+                value,
+            },
+            metadata,
+        )
+    }
 
     const TEST_SOURCE_COMPONENT_ID: &str = "in";
     const TEST_UPSTREAM_COMPONENT_ID: &str = "transform";

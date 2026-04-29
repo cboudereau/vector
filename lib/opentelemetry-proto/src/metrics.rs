@@ -1,8 +1,8 @@
 use chrono::{TimeZone, Utc};
 use vector_core::event::{
-    Event, EventMetadata, MetricKind, MetricTags, MetricValue,
+    Event, EventMetadata, MetricKind, MetricTags,
     OtelMetric,
-    metric::{Bucket, MetricData, MetricName, MetricSeries, MetricTime, Quantile, TagValue},
+    metric::{Bucket, Quantile, TagValue},
 };
 
 use super::proto::{
@@ -291,14 +291,12 @@ impl SumMetric {
             MetricKind::Absolute
         };
 
-        // as per otel doc non_monotonic sum would be better transformed to gauge in time-series
-        let metric_value = if self.is_monotonic {
-            MetricValue::Counter { value }
+        let otel = if self.is_monotonic {
+            OtelMetric::new_counter(metric_name, kind, value)
         } else {
-            MetricValue::Gauge { value }
+            OtelMetric::new_gauge(metric_name, value)
         };
-
-        Event::Metric(make_otel_metric(metric_name, kind, metric_value, Some(attributes), timestamp))
+        Event::Metric(otel.with_tags(Some(attributes)).with_timestamp(timestamp))
     }
 }
 
@@ -308,7 +306,11 @@ impl GaugeMetric {
         let value = self.point.value.to_f64().unwrap_or(0.0);
         let attributes = build_metric_tags(self.resource, self.scope, &self.point.attributes);
 
-        Event::Metric(make_otel_metric(metric_name, MetricKind::Absolute, MetricValue::Gauge { value }, Some(attributes), timestamp))
+        Event::Metric(
+            OtelMetric::new_gauge(metric_name, value)
+                .with_tags(Some(attributes))
+                .with_timestamp(timestamp),
+        )
     }
 }
 
@@ -342,17 +344,11 @@ impl HistogramMetric {
             MetricKind::Absolute
         };
 
-        Event::Metric(make_otel_metric(
-            metric_name,
-            kind,
-            MetricValue::AggregatedHistogram {
-                buckets,
-                count: self.point.count,
-                sum: self.point.sum.unwrap_or(0.0),
-            },
-            Some(attributes),
-            timestamp,
-        ))
+        Event::Metric(
+            OtelMetric::new_histogram(metric_name, kind, &buckets, self.point.count, self.point.sum.unwrap_or(0.0))
+                .with_tags(Some(attributes))
+                .with_timestamp(timestamp),
+        )
     }
 }
 
@@ -395,17 +391,11 @@ impl ExpHistogramMetric {
             MetricKind::Absolute
         };
 
-        Event::Metric(make_otel_metric(
-            metric_name,
-            kind,
-            MetricValue::AggregatedHistogram {
-                buckets,
-                count: self.point.count,
-                sum: self.point.sum.unwrap_or(0.0),
-            },
-            Some(attributes),
-            timestamp,
-        ))
+        Event::Metric(
+            OtelMetric::new_histogram(metric_name, kind, &buckets, self.point.count, self.point.sum.unwrap_or(0.0))
+                .with_tags(Some(attributes))
+                .with_timestamp(timestamp),
+        )
     }
 }
 
@@ -424,32 +414,12 @@ impl SummaryMetric {
             })
             .collect();
 
-        Event::Metric(make_otel_metric(
-            metric_name,
-            MetricKind::Absolute,
-            MetricValue::AggregatedSummary {
-                quantiles,
-                count: self.point.count,
-                sum: self.point.sum,
-            },
-            Some(attributes),
-            timestamp,
-        ))
+        Event::Metric(
+            OtelMetric::new_summary(metric_name, &quantiles, self.point.count, self.point.sum)
+                .with_tags(Some(attributes))
+                .with_timestamp(timestamp),
+        )
     }
-}
-
-fn make_otel_metric(
-    name: String,
-    kind: MetricKind,
-    value: MetricValue,
-    tags: Option<MetricTags>,
-    timestamp: Option<chrono::DateTime<chrono::Utc>>,
-) -> OtelMetric {
-    OtelMetric::from_metric_parts(
-        MetricSeries { name: MetricName { name, namespace: None }, tags },
-        MetricData { time: MetricTime { timestamp, interval_ms: None }, kind, value },
-        EventMetadata::default(),
-    )
 }
 
 pub trait ToF64 {

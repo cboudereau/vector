@@ -5,34 +5,13 @@ use std::{
 
 use vector_lib::event::{
     Event, EventMetadata, MetricValue, OtelMetric, StatisticKind,
-    metric::{Bucket, MetricData, MetricName, MetricSeries, MetricTime, Sample},
+    metric::{Bucket, MetricData, MetricSeries, Sample},
 };
 
 use crate::{
     event::MetricKind,
     sinks::util::buffer::metrics::{MetricNormalize, MetricSet},
 };
-
-/// Build an OtelMetric directly from parts for Distribution / Set / signed-Gauge
-/// variants that have no dedicated `OtelMetric::new_*` native constructor.
-fn otel_from_parts(name: &str, kind: MetricKind, value: MetricValue) -> OtelMetric {
-    let series = MetricSeries {
-        name: MetricName {
-            name: name.to_string(),
-            namespace: None,
-        },
-        tags: None,
-    };
-    let data = MetricData {
-        time: MetricTime {
-            timestamp: None,
-            interval_ms: None,
-        },
-        kind,
-        value,
-    };
-    OtelMetric::from_metric_parts(series, data, EventMetadata::default())
-}
 
 type SplitMetrics = HashMap<MetricSeries, (MetricData, EventMetadata)>;
 pub type AbsoluteMetricState = MetricState<AbsoluteMetricNormalizer>;
@@ -322,13 +301,8 @@ where
     S: IntoIterator<Item = V>,
     V: Display,
 {
-    otel_from_parts(
-        "set",
-        kind,
-        MetricValue::Set {
-            values: values.into_iter().map(|i| i.to_string()).collect(),
-        },
-    )
+    let vals: Vec<String> = values.into_iter().map(|i| i.to_string()).collect();
+    OtelMetric::new_set_from_values("set", kind, vals)
 }
 
 pub fn get_distribution<S, V>(samples: S, kind: MetricKind) -> OtelMetric
@@ -336,20 +310,14 @@ where
     S: IntoIterator<Item = V>,
     V: Into<f64>,
 {
-    otel_from_parts(
-        "distribution",
-        kind,
-        MetricValue::Distribution {
-            samples: samples
-                .into_iter()
-                .map(|n| Sample {
-                    value: n.into(),
-                    rate: 1,
-                })
-                .collect(),
-            statistic: StatisticKind::Histogram,
-        },
-    )
+    let sample_vec: Vec<Sample> = samples
+        .into_iter()
+        .map(|n| Sample {
+            value: n.into(),
+            rate: 1,
+        })
+        .collect();
+    OtelMetric::new_distribution_from_samples("distribution", kind, &sample_vec, StatisticKind::Histogram)
 }
 
 pub fn get_aggregated_histogram<S, V>(samples: S, kind: MetricKind) -> OtelMetric
@@ -368,7 +336,10 @@ pub fn get_counter(value: f64, kind: MetricKind) -> OtelMetric {
 }
 
 pub fn get_gauge(value: f64, kind: MetricKind) -> OtelMetric {
-    otel_from_parts("gauge", kind, MetricValue::Gauge { value })
+    match kind {
+        MetricKind::Absolute => OtelMetric::new_gauge("gauge", value),
+        MetricKind::Incremental => OtelMetric::new_gauge_delta("gauge", value),
+    }
 }
 
 pub fn assert_normalize<N: MetricNormalize>(

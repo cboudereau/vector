@@ -3156,6 +3156,244 @@ impl OtelSpan {
         }
     }
 
+    pub fn remove<'a>(
+        &mut self,
+        path: impl lookup::lookup_v2::TargetPath<'a>,
+    ) -> Option<Value> {
+        self.remove_prune(path, false)
+    }
+
+    pub fn remove_prune<'a>(
+        &mut self,
+        path: impl lookup::lookup_v2::TargetPath<'a>,
+        prune: bool,
+    ) -> Option<Value> {
+        use lookup::lookup_v2::ValuePath;
+        use lookup::path::BorrowedSegment;
+
+        match path.prefix() {
+            lookup::PathPrefix::Event => {
+                let vp = path.value_path();
+                let mut iter = vp.segment_iter();
+                match iter.next() {
+                    Some(BorrowedSegment::Field(ref first)) => {
+                        match iter.next() {
+                            None => self.span_remove_single_segment(first.as_ref()),
+                            Some(BorrowedSegment::Field(ref second)) => {
+                                let mut fields = vec![first.to_string(), second.to_string()];
+                                let mut all_fields = true;
+                                for seg in iter {
+                                    match seg {
+                                        BorrowedSegment::Field(f) => fields.push(f.to_string()),
+                                        _ => { all_fields = false; break; }
+                                    }
+                                }
+                                if all_fields {
+                                    self.span_remove_field_path(&fields, prune)
+                                } else {
+                                    let mut val = self.to_value_canonical();
+                                    let old = val.remove(path.value_path(), prune);
+                                    self.apply_value_map(val);
+                                    old
+                                }
+                            }
+                            _ => {
+                                let mut val = self.to_value_canonical();
+                                let old = val.remove(path.value_path(), prune);
+                                self.apply_value_map(val);
+                                old
+                            }
+                        }
+                    }
+                    _ => {
+                        let mut val = self.to_value_canonical();
+                        let old = val.remove(path.value_path(), prune);
+                        self.apply_value_map(val);
+                        old
+                    }
+                }
+            }
+            lookup::PathPrefix::Metadata => {
+                self.metadata.value_mut().remove(path.value_path(), prune)
+            }
+        }
+    }
+
+    fn span_remove_single_segment(&mut self, field: &str) -> Option<Value> {
+        match field {
+            "name" => {
+                if self.span.name.is_empty() { return None; }
+                let old = Some(Value::Bytes(self.span.name.clone().into()));
+                self.span.name = String::new();
+                old
+            }
+            "trace_id" => {
+                if self.span.trace_id.is_empty() { return None; }
+                let old = Some(hex_encode(&self.span.trace_id));
+                self.span.trace_id.clear();
+                old
+            }
+            "span_id" => {
+                if self.span.span_id.is_empty() { return None; }
+                let old = Some(hex_encode(&self.span.span_id));
+                self.span.span_id.clear();
+                old
+            }
+            "parent_span_id" => {
+                if self.span.parent_span_id.is_empty() { return None; }
+                let old = Some(hex_encode(&self.span.parent_span_id));
+                self.span.parent_span_id.clear();
+                old
+            }
+            "start_time" | "start_time_unix_nano" => {
+                if self.span.start_time_unix_nano == 0 { return None; }
+                let old = if field == "start_time" {
+                    nanos_to_timestamp(self.span.start_time_unix_nano)
+                } else {
+                    Some(Value::Integer(self.span.start_time_unix_nano as i64))
+                };
+                self.span.start_time_unix_nano = 0;
+                old
+            }
+            "end_time" | "end_time_unix_nano" => {
+                if self.span.end_time_unix_nano == 0 { return None; }
+                let old = if field == "end_time" {
+                    nanos_to_timestamp(self.span.end_time_unix_nano)
+                } else {
+                    Some(Value::Integer(self.span.end_time_unix_nano as i64))
+                };
+                self.span.end_time_unix_nano = 0;
+                old
+            }
+            "kind" => {
+                if self.span.kind == 0 { return None; }
+                let old = Some(Value::Integer(self.span.kind as i64));
+                self.span.kind = 0;
+                old
+            }
+            "flags" => {
+                if self.span.flags == 0 { return None; }
+                let old = Some(Value::Integer(i64::from(self.span.flags)));
+                self.span.flags = 0;
+                old
+            }
+            "dropped_attributes_count" => {
+                if self.span.dropped_attributes_count == 0 { return None; }
+                let old = Some(Value::Integer(i64::from(self.span.dropped_attributes_count)));
+                self.span.dropped_attributes_count = 0;
+                old
+            }
+            "status" => {
+                let status = self.span.status.take()?;
+                let mut m = ObjectMap::new();
+                if !status.message.is_empty() {
+                    m.insert("message".into(), Value::Bytes(status.message.into()));
+                }
+                m.insert("code".into(), Value::Integer(status.code as i64));
+                Some(Value::Object(m))
+            }
+            other => {
+                self.span_attrs.remove(other)
+                    .map(|av| any_value_to_vrl(&av))
+            }
+        }
+    }
+
+    fn span_remove_field_path(&mut self, fields: &[String], prune: bool) -> Option<Value> {
+        debug_assert!(fields.len() >= 2);
+        match fields[0].as_str() {
+            "resource" => {
+                let remaining = &fields[1..];
+                if remaining.len() == 1 {
+                    self.resource_attrs.remove(remaining[0].as_str())
+                        .map(|av| any_value_to_vrl(&av))
+                } else {
+                    let key = remaining[0].as_str();
+                    let av = self.resource_attrs.get(key)?;
+                    let mut v = any_value_to_vrl(av);
+                    let result = remove_value_at(&mut v, &remaining[1..], prune);
+                    self.resource_attrs.insert(key.to_string(), vrl_value_to_any_value(&v));
+                    result
+                }
+            }
+            "scope" => {
+                let scope = self.scope.as_mut()?;
+                let remaining = &fields[1..];
+                match remaining[0].as_str() {
+                    "name" if remaining.len() == 1 => {
+                        if scope.name.is_empty() { return None; }
+                        let old = Some(Value::Bytes(scope.name.clone().into()));
+                        scope.name = String::new();
+                        old
+                    }
+                    "version" if remaining.len() == 1 => {
+                        if scope.version.is_empty() { return None; }
+                        let old = Some(Value::Bytes(scope.version.clone().into()));
+                        scope.version = String::new();
+                        old
+                    }
+                    "attributes" => {
+                        if remaining.len() == 1 {
+                            if self.scope_attrs.is_empty() { return None; }
+                            let old = Some(Value::Object(self.scope_attrs.to_object_map()));
+                            self.scope_attrs = OtelAttributes::new();
+                            old
+                        } else if remaining.len() == 2 {
+                            self.scope_attrs.remove(remaining[1].as_str())
+                                .map(|av| any_value_to_vrl(&av))
+                        } else {
+                            let key = remaining[1].as_str();
+                            let av = self.scope_attrs.get(key)?;
+                            let mut v = any_value_to_vrl(av);
+                            let result = remove_value_at(&mut v, &remaining[2..], prune);
+                            self.scope_attrs.insert(key.to_string(), vrl_value_to_any_value(&v));
+                            result
+                        }
+                    }
+                    _ => None,
+                }
+            }
+            "status" => {
+                let status = self.span.status.as_mut()?;
+                let remaining = &fields[1..];
+                match remaining[0].as_str() {
+                    "message" if remaining.len() == 1 => {
+                        if status.message.is_empty() { return None; }
+                        let old = Some(Value::Bytes(status.message.clone().into()));
+                        status.message = String::new();
+                        old
+                    }
+                    "code" if remaining.len() == 1 => {
+                        let old = Some(Value::Integer(status.code as i64));
+                        status.code = 0;
+                        old
+                    }
+                    _ => None,
+                }
+            }
+            first => {
+                let av = self.span_attrs.get(first)?;
+                let mut v = any_value_to_vrl(av);
+                let result = remove_value_at(&mut v, &fields[1..], prune);
+                if result.is_some() {
+                    if prune {
+                        if let Value::Object(ref map) = v {
+                            if map.is_empty() {
+                                self.span_attrs.remove(first);
+                                return result;
+                            }
+                        }
+                    }
+                    self.span_attrs.insert(
+                        first.to_string(),
+                        vrl_value_to_any_value(&v),
+                    );
+                }
+                result
+            }
+        }
+    }
+
     /// Check if a field exists.
     pub fn contains<'a>(&self, path: impl lookup::lookup_v2::TargetPath<'a>) -> bool {
         self.get(path).is_some()
@@ -6326,6 +6564,102 @@ mod tests {
             span_event.get(event_path!("status", "message")),
             Some(Value::Bytes("OK".into()))
         );
+    }
+
+    #[test]
+    fn otel_span_remove_single_and_multi_segment() {
+        use opentelemetry_proto::tonic::trace::v1::Span;
+
+        let mut span = OtelSpan::new(Span {
+            name: "GET /api".to_string(),
+            trace_id: vec![0xAA; 16],
+            span_id: vec![0xBB; 8],
+            kind: 2,
+            flags: 1,
+            start_time_unix_nano: 1_000_000_000,
+            end_time_unix_nano: 2_000_000_000,
+            ..Default::default()
+        });
+        span.set_attribute("http.method".to_string(), string_value("GET"));
+        span.set_resource(Resource {
+            attributes: vec![KeyValue {
+                key: "service.name".to_string(),
+                value: Some(string_value("my-svc")),
+            }],
+            dropped_attributes_count: 0,
+        });
+        span.insert(event_path!("status"), Value::Object({
+            let mut m = ObjectMap::new();
+            m.insert("message".into(), Value::Bytes("OK".into()));
+            m.insert("code".into(), Value::Integer(1));
+            m
+        }));
+
+        // Remove single-segment proto field
+        let removed = span.remove(event_path!("name"));
+        assert_eq!(removed, Some(Value::Bytes("GET /api".into())));
+        assert_eq!(span.name(), "");
+        assert_eq!(span.remove(event_path!("name")), None);
+
+        // Remove kind
+        let removed = span.remove(event_path!("kind"));
+        assert_eq!(removed, Some(Value::Integer(2)));
+        assert_eq!(span.kind(), 0);
+
+        // Remove flags
+        let removed = span.remove(event_path!("flags"));
+        assert_eq!(removed, Some(Value::Integer(1)));
+
+        // Remove start_time_unix_nano
+        let removed = span.remove(event_path!("start_time_unix_nano"));
+        assert_eq!(removed, Some(Value::Integer(1_000_000_000)));
+        assert_eq!(span.start_time_unix_nano(), 0);
+
+        // Remove end_time via alias
+        let removed = span.remove(event_path!("end_time"));
+        assert!(removed.is_some());
+        assert_eq!(span.end_time_unix_nano(), 0);
+
+        // Remove span attribute
+        let removed = span.remove(event_path!("http.method"));
+        assert_eq!(removed, Some(Value::Bytes("GET".into())));
+        assert_eq!(span.attribute("http.method"), None);
+
+        // Remove resource attribute
+        let removed = span.remove(event_path!("resource", "service.name"));
+        assert_eq!(removed, Some(Value::Bytes("my-svc".into())));
+
+        // Remove status.message sub-field
+        let removed = span.remove(event_path!("status", "message"));
+        assert_eq!(removed, Some(Value::Bytes("OK".into())));
+        assert_eq!(span.status().unwrap().message, "");
+
+        // Remove status.code sub-field
+        let removed = span.remove(event_path!("status", "code"));
+        assert_eq!(removed, Some(Value::Integer(1)));
+
+        // Remove entire status
+        span.insert(event_path!("status"), Value::Object({
+            let mut m = ObjectMap::new();
+            m.insert("code".into(), Value::Integer(2));
+            m
+        }));
+        let removed = span.remove(event_path!("status"));
+        assert!(removed.is_some());
+        assert!(span.status().is_none());
+
+        // Remove trace_id
+        let removed = span.remove(event_path!("trace_id"));
+        assert!(removed.is_some());
+        assert!(span.trace_id().is_empty());
+
+        // Remove with prune: nested attribute is cleaned up
+        let mut span2 = OtelSpan::new(Span::default());
+        span2.insert(event_path!("nested", "only_child"), "value");
+        assert!(span2.attribute("nested").is_some());
+        let removed = span2.remove_prune(event_path!("nested", "only_child"), true);
+        assert_eq!(removed, Some(Value::Bytes("value".into())));
+        assert!(span2.attribute("nested").is_none(), "prune should remove empty parent");
     }
 
     #[test]

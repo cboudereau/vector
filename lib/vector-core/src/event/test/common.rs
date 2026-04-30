@@ -7,7 +7,7 @@ use vrl::value::{ObjectMap, Value};
 use super::super::{
     Event, EventMetadata, MetricKind, MetricValue, OtelLog, OtelMetric, OtelSpan, StatisticKind,
     metric::{
-        Bucket, MetricData, MetricName, MetricSeries, MetricTags, MetricTime,
+        Bucket, MetricTags,
         Quantile, Sample,
     },
 };
@@ -109,27 +109,41 @@ impl Arbitrary for OtelSpan {
 
 impl Arbitrary for OtelMetric {
     fn arbitrary(g: &mut Gen) -> Self {
-        let data = MetricData::arbitrary(g);
-        let series = MetricSeries::arbitrary(g);
+        let kind = MetricKind::arbitrary(g);
+        let value = MetricValue::arbitrary(g);
+        let name: Name = Name::arbitrary(g);
+        let namespace: Option<Name> = Arbitrary::arbitrary(g);
+        let tags: Option<MetricTags> = Arbitrary::arbitrary(g);
+        let timestamp = if bool::arbitrary(g) { Some(datetime(g)) } else { None };
         let metadata = EventMetadata::arbitrary(g);
-        OtelMetric::from_metric_parts(series, data, metadata)
+
+        let otel = match value {
+            MetricValue::Counter { value: v } => OtelMetric::new_counter(String::from(name), kind, v),
+            MetricValue::Gauge { value: v } => match kind {
+                MetricKind::Absolute => OtelMetric::new_gauge(String::from(name), v),
+                MetricKind::Incremental => OtelMetric::new_gauge_delta(String::from(name), v),
+            },
+            MetricValue::Set { values } => {
+                OtelMetric::new_set_from_values(String::from(name), kind, values.into_iter().collect::<Vec<_>>())
+            }
+            MetricValue::Distribution { samples, statistic } => {
+                OtelMetric::new_distribution_from_samples(String::from(name), kind, &samples, statistic)
+            }
+            MetricValue::AggregatedHistogram { buckets, count, sum } => {
+                OtelMetric::new_histogram(String::from(name), kind, &buckets, count, sum)
+            }
+            MetricValue::AggregatedSummary { quantiles, count, sum } => {
+                OtelMetric::new_summary(String::from(name), &quantiles, count, sum)
+            }
+        };
+        otel.with_namespace(namespace.map(String::from))
+            .with_tags(tags)
+            .with_timestamp(timestamp)
+            .with_metadata(metadata)
     }
 
     fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
-        let (series, data, metadata) = self.clone().into_metric_parts();
-        Box::new(
-            data.shrink()
-                .map({
-                    let series = series.clone();
-                    let metadata = metadata.clone();
-                    move |d| OtelMetric::from_metric_parts(series.clone(), d, metadata.clone())
-                })
-                .chain(series.shrink().map({
-                    let data = data.clone();
-                    let metadata = metadata.clone();
-                    move |s| OtelMetric::from_metric_parts(s, data.clone(), metadata.clone())
-                })),
-        )
+        empty_shrinker()
     }
 }
 
@@ -413,131 +427,6 @@ impl Arbitrary for StatisticKind {
 
     fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
         empty_shrinker()
-    }
-}
-
-impl Arbitrary for MetricSeries {
-    fn arbitrary(g: &mut Gen) -> Self {
-        let tags = if bool::arbitrary(g) {
-            let mut map = MetricTags::default();
-            for _ in 0..(usize::arbitrary(g) % MAX_MAP_SIZE) {
-                let key = String::from(Name::arbitrary(g));
-                let value = String::from(Name::arbitrary(g));
-                map.replace(key, value);
-            }
-            if map.is_empty() { None } else { Some(map) }
-        } else {
-            None
-        };
-
-        MetricSeries {
-            name: MetricName::arbitrary(g),
-            tags,
-        }
-    }
-
-    fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
-        let metric_series = self.clone();
-
-        Box::new(
-            metric_series
-                .name
-                .shrink()
-                .map(move |nme| {
-                    let mut ms = metric_series.clone();
-                    ms.name = nme;
-                    ms
-                })
-                .flat_map(|metric_series| {
-                    metric_series.tags.shrink().map(move |tgs| {
-                        let mut ms = metric_series.clone();
-                        ms.tags = tgs;
-                        ms
-                    })
-                }),
-        )
-    }
-}
-
-impl Arbitrary for MetricName {
-    fn arbitrary(g: &mut Gen) -> Self {
-        let namespace = if bool::arbitrary(g) {
-            Some(String::from(Name::arbitrary(g)))
-        } else {
-            None
-        };
-
-        MetricName {
-            name: String::from(Name::arbitrary(g)),
-            namespace,
-        }
-    }
-
-    fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
-        let metric_name = self.clone();
-
-        Box::new(
-            metric_name
-                .name
-                .shrink()
-                .map(move |name| {
-                    let mut mn = metric_name.clone();
-                    mn.name = name;
-                    mn
-                })
-                .flat_map(|metric_name| {
-                    metric_name.namespace.shrink().map(move |namespace| {
-                        let mut mn = metric_name.clone();
-                        mn.namespace = namespace;
-                        mn
-                    })
-                }),
-        )
-    }
-}
-
-impl Arbitrary for MetricData {
-    fn arbitrary(g: &mut Gen) -> Self {
-        let dt = if bool::arbitrary(g) {
-            Some(datetime(g))
-        } else {
-            None
-        };
-
-        let interval_ms = bool::arbitrary(g)
-            .then(|| u32::arbitrary(g))
-            .and_then(std::num::NonZeroU32::new);
-
-        MetricData {
-            time: MetricTime {
-                timestamp: dt,
-                interval_ms,
-            },
-            kind: MetricKind::arbitrary(g),
-            value: MetricValue::arbitrary(g),
-        }
-    }
-
-    fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
-        let metric_data = self.clone();
-
-        Box::new(
-            metric_data
-                .kind
-                .shrink()
-                .map(move |kind| {
-                    let mut md = metric_data.clone();
-                    md.kind = kind;
-                    md
-                })
-                .flat_map(|metric_data| {
-                    metric_data.value.shrink().map(move |value| {
-                        let mut md = metric_data.clone();
-                        md.value = value;
-                        md
-                    })
-                }),
-        )
     }
 }
 

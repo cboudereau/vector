@@ -267,25 +267,6 @@ struct MetricRef {
 }
 
 impl MetricRef {
-    #[cfg(test)]
-    pub fn from_parts(series: &MetricSeries, data: &crate::event::metric::MetricData) -> Self {
-        let bounds = match &data.value {
-            MetricValue::AggregatedHistogram { buckets, .. } => {
-                Some(buckets.iter().map(|b| b.upper_limit).collect())
-            }
-            MetricValue::AggregatedSummary { quantiles, .. } => {
-                Some(quantiles.iter().map(|q| q.quantile).collect())
-            }
-            _ => None,
-        };
-
-        Self {
-            series: series.clone(),
-            value: discriminant(&data.value),
-            bounds,
-        }
-    }
-
     /// Creates a `MetricRef` from an `OtelMetric` by decoding its proto
     /// representation into series/value/bounds.
     pub fn from_otel_metric(metric: &OtelMetric) -> Self {
@@ -681,28 +662,6 @@ mod tests {
     #[test]
     fn generate_config() {
         crate::test_util::test_generate_config::<PrometheusExporterConfig>();
-    }
-
-    #[test]
-    fn metric_ref_from_otel_metric_matches_from_parts() {
-        let counter_otel = OtelMetric::new_counter("requests_total", MetricKind::Incremental, 42.0)
-            .with_namespace(Some("http"))
-            .with_tags(Some(metric_tags!("env" => "prod")));
-        let (counter_s, counter_d, _) = counter_otel.clone().into_metric_parts();
-
-        let via_parts = MetricRef::from_parts(&counter_s, &counter_d);
-        let via_otel = MetricRef::from_otel_metric(&counter_otel);
-
-        assert_eq!(via_parts, via_otel);
-
-        let histogram_otel = {
-            let buckets = vector_lib::buckets![0.1 => 10, 0.5 => 20, 1.0 => 5];
-            OtelMetric::new_histogram("request_duration", MetricKind::Absolute, &buckets, 35, 8.0)
-        };
-        let (histo_s, histo_d, _) = histogram_otel.clone().into_metric_parts();
-        let h_via_parts = MetricRef::from_parts(&histo_s, &histo_d);
-        let h_via_otel = MetricRef::from_otel_metric(&histogram_otel);
-        assert_eq!(h_via_parts, h_via_otel);
     }
 
     #[tokio::test]

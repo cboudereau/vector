@@ -21,7 +21,7 @@ pub use vector_lib::{
 
 use crate::{
     conditions,
-    event::{Value, metric::{MetricData, MetricSeries}},
+    event::{Value, MetricKind, OtelMetric, metric::{MetricData, MetricSeries, MetricValue}},
     secrets::SecretBackends,
     serde::OneOrMany,
 };
@@ -586,6 +586,36 @@ pub struct TestMetricInput {
 
     #[serde(flatten)]
     pub data: MetricData,
+}
+
+impl TestMetricInput {
+    pub fn to_otel_metric(&self) -> OtelMetric {
+        let name = &self.series.name.name;
+        let kind = self.data.kind;
+        let otel = match &self.data.value {
+            MetricValue::Counter { value } => OtelMetric::new_counter(name, kind, *value),
+            MetricValue::Gauge { value } => match kind {
+                MetricKind::Absolute => OtelMetric::new_gauge(name, *value),
+                MetricKind::Incremental => OtelMetric::new_gauge_delta(name, *value),
+            },
+            MetricValue::Set { values } => {
+                OtelMetric::new_set_from_values(name, kind, values.iter().cloned().collect::<Vec<_>>())
+            }
+            MetricValue::Distribution { samples, statistic } => {
+                OtelMetric::new_distribution_from_samples(name, kind, samples, *statistic)
+            }
+            MetricValue::AggregatedHistogram { buckets, count, sum } => {
+                OtelMetric::new_histogram(name, kind, buckets, *count, *sum)
+            }
+            MetricValue::AggregatedSummary { quantiles, count, sum } => {
+                OtelMetric::new_summary(name, quantiles, *count, *sum)
+            }
+        };
+        otel.with_namespace(self.series.name.namespace.clone())
+            .with_tags(self.series.tags.clone())
+            .with_timestamp(self.data.time.timestamp)
+            .with_interval_ms(self.data.time.interval_ms)
+    }
 }
 
 fn default_test_input_type() -> String {

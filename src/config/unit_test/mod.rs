@@ -40,7 +40,7 @@ use crate::{
         self, ComponentKey, Config, ConfigBuilder, ConfigPath, SinkOuter, SourceOuter,
         TestDefinition, TestInput, TestOutput, loading, loading::ConfigBuilderLoader,
     },
-    event::{Event, EventMetadata, OtelLog, OtelMetric},
+    event::{Event, EventMetadata, OtelLog},
     signal,
     topology::{
         RunningTopology,
@@ -635,11 +635,7 @@ fn build_input_event(input: &TestInput) -> Result<Event, String> {
         }
         "metric" => {
             if let Some(metric) = &input.metric {
-                Ok(Event::Metric(OtelMetric::from_metric_parts(
-                    metric.series.clone(),
-                    metric.data.clone(),
-                    EventMetadata::default(),
-                )))
+                Ok(Event::Metric(metric.to_otel_metric()))
             } else {
                 Err("input type 'metric' requires the field 'metric'".to_string())
             }

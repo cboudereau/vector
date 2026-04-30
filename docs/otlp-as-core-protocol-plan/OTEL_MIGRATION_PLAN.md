@@ -426,14 +426,21 @@ Keep current key (`name + namespace + data-point-attributes`). Matches metricstr
 - **OTLP ingestion** (`lib/opentelemetry-proto/src/metrics.rs`): all 5 metric types migrated to native constructors.
 - **Test helpers**: `test_util/metrics.rs` (`get_gauge`, `get_set`, `get_distribution`) migrated to native constructors. Lua test migrated.
 
-**Remaining P26 work — 60 calls across 3 categories:**
+**Completed (2026-04-30) — Full production and test migration (3 commits, 1783+ tests passing):**
+- **Deep infrastructure** (`normalize.rs`, `split.rs`, `buffer/mod.rs`): `CachedMetric` stores `OtelMetric` directly. `SplitMetrics` (test_util) stores `OtelMetric` directly. All `from_metric_parts`/`into_metric_parts` eliminated.
+- **Prometheus exporter** `normalize()`: Uses `OtelMetric::add`/`set_kind`/`set_timestamp` directly. Distribution-to-histogram conversion via `new_histogram()`.
+- **Lua integration** (`lua/event.rs`, `lua/metric.rs`): `LuaMetric` stores `OtelMetric` directly. `IntoLua` reads via accessors. `FromLua` constructs via native constructors.
+- **Test code** (22 files): All `otel_from_parts` helpers replaced with native constructors.
+- **OtelMetric enhancements**: `with_interval_ms()`, `subtract_distribution()`, `subtract_set_values()`, `merge_set_values()`, `compress_distribution()`. `new_set_from_values()` sorts/deduplicates.
 
-| Category | Calls | What's needed |
-|----------|-------|---------------|
-| Deep infrastructure (`normalize.rs`, `split.rs`, `buffer/mod.rs`) | 19 | Need `set_kind()` on OtelMetric to switch Incremental↔Absolute. Cache stores `MetricSeries` → `MetricEntry(MetricData)` — needs redesign to store `OtelMetric` directly. |
-| Prometheus exporter `normalize()` | 7 | Same as above — decomposes to mutate `data.value` and `data.kind`. Also calls `distribution_to_agg_histogram()`. |
-| Lua integration (`lua/event.rs`, `lua/metric.rs`) | 4 | `LuaMetric` struct holds `MetricSeries`/`MetricData`. Needs redesign to hold `OtelMetric` and serialize/deserialize via native accessors. |
-| Test code (test fixtures) | ~31 | Test helpers use `from_metric_parts()` to construct test OtelMetrics. Replace with native constructors or `otel_from_parts()` test helpers. |
+**Remaining P26 work — 7 test-only calls, 0 production calls:**
+
+| Category | Calls | Resolution |
+|----------|-------|------------|
+| `config/unit_test/mod.rs` | 1 | Rewrite `TestMetricInput` to construct OtelMetric via native constructors instead of `from_metric_parts(series, data)`. |
+| `prometheus/exporter.rs` test | 2 | Delete `metric_ref_from_otel_metric_matches_from_parts` validation test — no longer needed once bridge is deleted. |
+| `test/common.rs` Arbitrary impl | 4 | Generate random OtelMetric proto structures directly instead of going through `MetricSeries`/`MetricData`. |
+| **Then:** delete `from_metric_parts()` + `into_metric_parts()` | — | Remove bridge methods and all remaining legacy type imports. |
 
 ### P27 — Replace `to_value_canonical()` in codec encoders (deferred)
 5 call sites in 4 codec files (not 12/8 as originally estimated — some already migrated):

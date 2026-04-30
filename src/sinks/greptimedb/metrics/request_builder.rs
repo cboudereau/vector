@@ -210,33 +210,12 @@ mod tests {
 
     use super::*;
     use crate::event::{
-        EventMetadata, OtelMetric,
+        OtelMetric,
         metric::{
-            MetricData, MetricKind, MetricName, MetricSeries, MetricTime, MetricValue,
+            MetricKind,
             StatisticKind,
         },
     };
-
-    /// Build an OtelMetric directly from parts for Distribution / Set variants
-    /// that have no dedicated `OtelMetric::new_*` native constructor.
-    fn otel_from_parts(name: &str, kind: MetricKind, value: MetricValue) -> OtelMetric {
-        let series = MetricSeries {
-            name: MetricName {
-                name: name.to_string(),
-                namespace: None,
-            },
-            tags: None,
-        };
-        let data = MetricData {
-            time: MetricTime {
-                timestamp: None,
-                interval_ms: None,
-            },
-            kind,
-            value,
-        };
-        OtelMetric::from_metric_parts(series, data, EventMetadata::default())
-    }
 
     fn get_column(rows: &Rows, name: &str) -> f64 {
         let (col_index, _) = rows
@@ -345,12 +324,10 @@ mod tests {
 
     #[test]
     fn test_set() {
-        let otel = otel_from_parts(
+        let otel = OtelMetric::new_set_from_values(
             "cpu_seconds_total",
             MetricKind::Absolute,
-            MetricValue::Set {
-                values: ["foo".to_owned(), "bar".to_owned()].into_iter().collect(),
-            },
+            ["foo".to_owned(), "bar".to_owned()],
         );
         let options = RequestBuilderOptions {
             use_new_naming: false,
@@ -365,13 +342,11 @@ mod tests {
 
     #[test]
     fn test_distribution() {
-        let otel = otel_from_parts(
+        let otel = OtelMetric::new_distribution_from_samples(
             "cpu_seconds_total",
             MetricKind::Incremental,
-            MetricValue::Distribution {
-                samples: vector_lib::samples![1.0 => 2, 2.0 => 4, 3.0 => 2],
-                statistic: StatisticKind::Histogram,
-            },
+            &vector_lib::samples![1.0 => 2, 2.0 => 4, 3.0 => 2],
+            StatisticKind::Histogram,
         );
         let options = RequestBuilderOptions {
             use_new_naming: false,

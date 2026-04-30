@@ -497,7 +497,7 @@ mod tests {
         event::{
             Event, EventMetadata, OtelLog, OtelMetric,
             metric::{
-                MetricData, MetricKind, MetricName, MetricSeries, MetricTime, MetricValue,
+                MetricKind, MetricValue,
                 StatisticKind,
             },
         },
@@ -505,30 +505,36 @@ mod tests {
         transforms::test::create_topology,
     };
 
-    fn otel_from_parts(
+    fn otel_from_metric_value(
         name: impl Into<String>,
         kind: MetricKind,
         value: MetricValue,
         metadata: EventMetadata,
     ) -> OtelMetric {
-        OtelMetric::from_metric_parts(
-            MetricSeries {
-                name: MetricName {
-                    name: name.into(),
-                    namespace: None,
-                },
-                tags: None,
+        let name = name.into();
+        let m = match value {
+            MetricValue::Counter { value: v } => OtelMetric::new_counter(&name, kind, v),
+            MetricValue::Gauge { value: v } => match kind {
+                MetricKind::Absolute => OtelMetric::new_gauge(&name, v),
+                MetricKind::Incremental => OtelMetric::new_gauge_delta(&name, v),
             },
-            MetricData {
-                time: MetricTime {
-                    timestamp: None,
-                    interval_ms: None,
-                },
-                kind,
-                value,
-            },
-            metadata,
-        )
+            MetricValue::Set { values } => OtelMetric::new_set_from_values(&name, kind, values),
+            MetricValue::Distribution {
+                samples,
+                statistic,
+            } => OtelMetric::new_distribution_from_samples(&name, kind, &samples, statistic),
+            MetricValue::AggregatedHistogram {
+                buckets,
+                count,
+                sum,
+            } => OtelMetric::new_histogram(&name, kind, &buckets, count, sum),
+            MetricValue::AggregatedSummary {
+                quantiles,
+                count,
+                sum,
+            } => OtelMetric::new_summary(&name, &quantiles, count, sum),
+        };
+        m.with_metadata(metadata)
     }
 
     const TEST_SOURCE_COMPONENT_ID: &str = "in";
@@ -636,7 +642,7 @@ mod tests {
         assert_eq!(
             metric.into_otel_metric(),
             {
-                otel_from_parts(
+                otel_from_metric_value(
                     "status",
                     MetricKind::Incremental,
                     MetricValue::Counter { value: 1.0 },
@@ -676,7 +682,7 @@ mod tests {
         assert_eq!(
             metric.into_otel_metric(),
             {
-                otel_from_parts(
+                otel_from_metric_value(
                     "http_requests_total",
                     MetricKind::Incremental,
                     MetricValue::Counter { value: 1.0 },
@@ -727,7 +733,7 @@ mod tests {
         assert_eq!(
             metric.into_otel_metric(),
             {
-                otel_from_parts(
+                otel_from_metric_value(
                     "http_requests_total",
                     MetricKind::Incremental,
                     MetricValue::Counter { value: 1.0 },
@@ -898,7 +904,7 @@ mod tests {
         assert_eq!(
             metric.into_otel_metric(),
             {
-                otel_from_parts(
+                otel_from_metric_value(
                     "exception_total",
                     MetricKind::Incremental,
                     MetricValue::Counter { value: 1.0 },
@@ -949,7 +955,7 @@ mod tests {
         assert_eq!(
             metric.into_otel_metric(),
             {
-                otel_from_parts(
+                otel_from_metric_value(
                     "amount_total",
                     MetricKind::Incremental,
                     MetricValue::Counter { value: 33.99 },
@@ -987,7 +993,7 @@ mod tests {
         assert_eq!(
             metric.into_otel_metric(),
             {
-                otel_from_parts(
+                otel_from_metric_value(
                     "amount_total",
                     MetricKind::Absolute,
                     MetricValue::Counter { value: 33.99 },
@@ -1025,7 +1031,7 @@ mod tests {
         assert_eq!(
             metric.into_otel_metric(),
             {
-                otel_from_parts(
+                otel_from_metric_value(
                     "memory_rss_bytes",
                     MetricKind::Absolute,
                     MetricValue::Gauge { value: 123.0 },
@@ -1118,7 +1124,7 @@ mod tests {
         assert_eq!(
             output[0].clone().into_otel_metric(),
             {
-                otel_from_parts(
+                otel_from_metric_value(
                     "status",
                     MetricKind::Incremental,
                     MetricValue::Counter { value: 1.0 },
@@ -1130,7 +1136,7 @@ mod tests {
         assert_eq!(
             output[1].clone().into_otel_metric(),
             {
-                otel_from_parts(
+                otel_from_metric_value(
                     "exception_total",
                     MetricKind::Incremental,
                     MetricValue::Counter { value: 1.0 },
@@ -1182,7 +1188,7 @@ mod tests {
         assert_eq!(
             output[0].clone().into_otel_metric(),
             {
-                otel_from_parts(
+                otel_from_metric_value(
                     "local_abc_status_set",
                     MetricKind::Incremental,
                     MetricValue::Set {
@@ -1196,7 +1202,7 @@ mod tests {
         assert_eq!(
             output[1].clone().into_otel_metric(),
             {
-                otel_from_parts(
+                otel_from_metric_value(
                     "xyz_exception_total",
                     MetricKind::Incremental,
                     MetricValue::Counter { value: 1.0 },
@@ -1233,7 +1239,7 @@ mod tests {
         assert_eq!(
             metric.into_otel_metric(),
             {
-                otel_from_parts(
+                otel_from_metric_value(
                     "unique_user_ip",
                     MetricKind::Incremental,
                     MetricValue::Set {
@@ -1271,7 +1277,7 @@ mod tests {
         assert_eq!(
             metric.into_otel_metric(),
             {
-                otel_from_parts(
+                otel_from_metric_value(
                     "response_time",
                     MetricKind::Incremental,
                     MetricValue::Distribution {
@@ -1310,7 +1316,7 @@ mod tests {
         assert_eq!(
             metric.into_otel_metric(),
             {
-                otel_from_parts(
+                otel_from_metric_value(
                     "response_time",
                     MetricKind::Incremental,
                     MetricValue::Distribution {

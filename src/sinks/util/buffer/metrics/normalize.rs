@@ -10,8 +10,8 @@ use vector_config_macros::configurable_component;
 use vector_lib::{
     ByteSizeOf,
     event::{
-        Event, EventMetadata, MetricKind, OtelMetric,
-        metric::{MetricData, MetricSeries},
+        Event, MetricKind, OtelMetric,
+        metric::MetricSeries,
     },
 };
 
@@ -197,69 +197,26 @@ impl<N> From<N> for MetricNormalizer<N> {
     }
 }
 
-/// Represents a stored metric entry with its data, metadata, and timestamp.
+/// A cached metric with its last-seen timestamp for TTL tracking.
 #[derive(Clone, Debug)]
-pub struct MetricEntry {
-    /// The metric data containing the value and kind
-    pub data: MetricData,
-    /// Event metadata associated with this metric
-    pub metadata: EventMetadata,
-    /// Optional timestamp for TTL tracking
-    pub timestamp: Option<Instant>,
+struct CachedMetric {
+    metric: OtelMetric,
+    last_seen: Option<Instant>,
 }
 
-impl ByteSizeOf for MetricEntry {
+impl ByteSizeOf for CachedMetric {
     fn allocated_bytes(&self) -> usize {
-        self.data.allocated_bytes() + self.metadata.allocated_bytes()
+        self.metric.allocated_bytes()
     }
 }
 
-impl MetricEntry {
-    /// Creates a new MetricEntry with the given data, metadata, and timestamp.
-    pub const fn new(
-        data: MetricData,
-        metadata: EventMetadata,
-        timestamp: Option<Instant>,
-    ) -> Self {
-        Self {
-            data,
-            metadata,
-            timestamp,
-        }
+impl CachedMetric {
+    fn new(metric: OtelMetric, last_seen: Option<Instant>) -> Self {
+        Self { metric, last_seen }
     }
 
-    /// Creates a new MetricEntry from metric parts.
-    pub fn from_parts(series: MetricSeries, data: MetricData, metadata: EventMetadata, timestamp: Option<Instant>) -> (MetricSeries, Self) {
-        let entry = Self::new(data, metadata, timestamp);
-        (series, entry)
-    }
-
-    /// Creates a new MetricEntry from an OtelMetric.
-    pub fn from_otel(metric: OtelMetric, timestamp: Option<Instant>) -> (MetricSeries, Self) {
-        let (series, data, metadata) = metric.into_metric_parts();
-        Self::from_parts(series, data, metadata, timestamp)
-    }
-
-    /// Converts this entry back into metric parts.
-    pub fn into_metric_parts(self, series: MetricSeries) -> (MetricSeries, MetricData, EventMetadata) {
-        (series, self.data, self.metadata)
-    }
-
-    /// Converts this entry back to an OtelMetric with the given series.
-    pub fn into_otel(self, series: MetricSeries) -> OtelMetric {
-        OtelMetric::from_metric_parts(series, self.data, self.metadata)
-    }
-
-    /// Updates this entry's timestamp.
-    pub const fn update_timestamp(&mut self, timestamp: Option<Instant>) {
-        self.timestamp = timestamp;
-    }
-
-    /// Checks if this entry has expired based on the given TTL and reference time.
-    ///
-    /// Using a provided reference time ensures consistency across multiple expiration checks.
-    pub fn is_expired(&self, ttl: Duration, reference_time: Instant) -> bool {
-        match self.timestamp {
+    fn is_expired(&self, ttl: Duration, reference_time: Instant) -> bool {
+        match self.last_seen {
             Some(ts) => reference_time.duration_since(ts) >= ttl,
             None => false,
         }
@@ -299,7 +256,7 @@ impl CapacityPolicy {
 
     /// Frees the memory for an item if max_bytes is set.
     /// Only calculates and tracks memory when max_bytes is specified.
-    pub fn free_item(&mut self, series: &MetricSeries, entry: &MetricEntry) {
+    fn free_item(&mut self, series: &MetricSeries, entry: &CachedMetric) {
         if self.max_bytes.is_some() {
             let freed_memory = self.item_size(series, entry);
             self.remove_memory(freed_memory);
@@ -338,7 +295,7 @@ impl CapacityPolicy {
     }
 
     /// Gets the total memory size of entry/series, excluding LRU cache overhead.
-    pub fn item_size(&self, series: &MetricSeries, entry: &MetricEntry) -> usize {
+    fn item_size(&self, series: &MetricSeries, entry: &CachedMetric) -> usize {
         entry.allocated_bytes() + series.allocated_bytes()
     }
 }
@@ -396,8 +353,8 @@ pub struct MetricSetSettings {
 /// memory and entry count limits via CapacityPolicy, plus optional TTL via TtlPolicy.
 #[derive(Clone, Debug)]
 pub struct MetricSet {
-    /// LRU cache for storing metric entries
-    inner: LruCache<MetricSeries, MetricEntry>,
+    /// LRU cache for storing metrics
+    inner: LruCache<MetricSeries, CachedMetric>,
     /// Optional capacity policy for memory and/or entry count limits
     capacity_policy: Option<CapacityPolicy>,
     /// Optional TTL policy for time-based expiration
@@ -532,41 +489,37 @@ impl MetricSet {
     }
 
     /// Internal insert that updates memory tracking and enforces limits.
-    fn insert_with_tracking(&mut self, series: MetricSeries, entry: MetricEntry) {
+    fn insert_with_tracking(&mut self, series: MetricSeries, cached: CachedMetric) {
         let Some(ref mut capacity_policy) = self.capacity_policy else {
-            self.inner.put(series, entry);
-            return; // No capacity limits configured, return immediately
+            self.inner.put(series, cached);
+            return;
         };
 
-        // Handle differently based on whether we need to track memory
         if capacity_policy.max_bytes.is_some() {
-            // When tracking memory, we need to calculate sizes before and after
-            let entry_size = capacity_policy.item_size(&series, &entry);
-
-            if let Some(existing_entry) = self.inner.put(series.clone(), entry) {
-                // If we had an existing entry, calculate its size and adjust memory tracking
-                let existing_size = capacity_policy.item_size(&series, &existing_entry);
-                capacity_policy.replace_memory(existing_size, entry_size);
+            let new_size = capacity_policy.item_size(&series, &cached);
+            if let Some(existing) = self.inner.put(series.clone(), cached) {
+                let old_size = capacity_policy.item_size(&series, &existing);
+                capacity_policy.replace_memory(old_size, new_size);
             } else {
-                // No existing entry, just add the new entry's size
-                capacity_policy.replace_memory(0, entry_size);
+                capacity_policy.replace_memory(0, new_size);
             }
         } else {
-            // When not tracking memory (only entry count limits), just put directly
-            self.inner.put(series, entry);
+            self.inner.put(series, cached);
         }
 
-        // Enforce limits after insertion
         self.enforce_capacity_policy();
+    }
+
+    fn store(&mut self, series: MetricSeries, metric: OtelMetric, timestamp: Option<Instant>) {
+        self.insert_with_tracking(series, CachedMetric::new(metric, timestamp));
     }
 
     /// Consumes this MetricSet and returns a vector of OtelMetric.
     pub fn into_metrics(mut self) -> Vec<OtelMetric> {
-        // Clean up expired entries first (using current time)
         self.cleanup_expired(Instant::now());
         let mut metrics = Vec::new();
-        while let Some((series, entry)) = self.inner.pop_lru() {
-            metrics.push(entry.into_otel(series));
+        while let Some((_series, cached)) = self.inner.pop_lru() {
+            metrics.push(cached.metric);
         }
         metrics
     }
@@ -596,124 +549,75 @@ impl MetricSet {
     /// application uptime.
     fn incremental_to_absolute(&mut self, metric: OtelMetric) -> OtelMetric {
         let timestamp = self.create_timestamp();
-        let (series, mut data, metadata) = metric.into_metric_parts();
-        // We always call insert() to track memory usage
-        match self.inner.get_mut(&series) {
-            Some(existing) => {
-                let mut new_value = existing.data.value.clone();
-                if new_value.add(&data.value) {
-                    // Update the stored value
-                    data.value = new_value;
+        let series = metric.metric_series();
+        let mut accumulated = match self.inner.get(&series) {
+            Some(cached) => {
+                let mut acc = cached.metric.clone();
+                if !acc.add(&metric) {
+                    metric
+                } else {
+                    acc
                 }
-                // Insert the updated stored value, or as store a new reference value (if the Metric changed type)
-                let entry = MetricEntry::new(data.clone(), metadata.clone(), timestamp);
-                self.insert_with_tracking(series.clone(), entry);
             }
-            None => {
-                let entry = MetricEntry::new(data.clone(), metadata.clone(), timestamp);
-                self.insert_with_tracking(series.clone(), entry);
-            }
-        }
-        let data = data.into_absolute();
-        OtelMetric::from_metric_parts(series, data, metadata)
+            None => metric,
+        };
+        self.store(series.clone(), accumulated.clone(), timestamp);
+        accumulated.set_kind(MetricKind::Absolute);
+        accumulated
     }
 
     /// Convert the absolute metric into an incremental by calculating
     /// the increment from the last saved absolute state.
     fn absolute_to_incremental(&mut self, metric: OtelMetric) -> Option<OtelMetric> {
-        // NOTE: Crucially, like I did, you may wonder: why do we not always return a metric? Could
-        // this lead to issues where a metric isn't seen again and we, in effect, never emit it?
-        //
-        // You're not wrong, and that does happen based on the logic below.  However, the main
-        // problem this logic solves is avoiding massive counter updates when Vector restarts.
-        //
-        // If we emitted a metric for a newly-seen absolute metric in this method, we would
-        // naturally have to emit an incremental version where the value was the absolute value,
-        // with subsequent updates being only delta updates.  If we restarted Vector, however, we
-        // would be back to not having yet seen the metric before, so the first emission of the
-        // metric after converting it here would be... its absolute value.  Even if the value only
-        // changed by 1 between Vector stopping and restarting, we could be incrementing the counter
-        // by some outrageous amount.
-        //
-        // Thus, we only emit a metric when we've calculated an actual delta for it, which means
-        // that, yes, we're risking never seeing a metric if it's not re-emitted, and we're
-        // introducing a small amount of lag before a metric is emitted by having to wait to see it
-        // again, but this is a behavior we have to observe for sinks that can only handle
-        // incremental updates.
+        // We only emit a metric when we've calculated an actual delta for it.
+        // The first time an absolute metric is seen, we store it and return None.
+        // This avoids massive counter spikes on Vector restart.
         let timestamp = self.create_timestamp();
-        let (series, mut data, metadata) = metric.into_metric_parts();
-        // We always call insert() to track memory usage
-        match self.inner.get_mut(&series) {
-            Some(reference) => {
-                let new_value = data.value.clone();
-                // Create a copy of the reference so we can insert and
-                // replace the existing entry, tracking memory usage
-                let mut new_reference = reference.clone();
-                // From the stored reference value, emit an increment
-                if data.subtract(&reference.data) {
-                    new_reference.data.value = new_value;
-                    new_reference.timestamp = timestamp;
-                    self.insert_with_tracking(series.clone(), new_reference);
-                    let data = data.into_incremental();
-                    Some(OtelMetric::from_metric_parts(series, data, metadata))
+        let series = metric.metric_series();
+        match self.inner.get(&series) {
+            Some(cached) => {
+                let mut delta = metric.clone();
+                if delta.subtract(&cached.metric) {
+                    self.store(series.clone(), metric, timestamp);
+                    delta.set_kind(MetricKind::Incremental);
+                    Some(delta)
                 } else {
-                    // Metric changed type, store this and emit nothing
-                    self.insert(OtelMetric::from_metric_parts(series, data, metadata), timestamp);
+                    self.store(series.clone(), metric, timestamp);
                     None
                 }
             }
             None => {
-                // No reference so store this and emit nothing
-                self.insert(OtelMetric::from_metric_parts(series, data, metadata), timestamp);
+                self.store(series, metric, timestamp);
                 None
             }
         }
     }
 
-    fn insert(&mut self, metric: OtelMetric, timestamp: Option<Instant>) {
-        let (series, entry) = MetricEntry::from_otel(metric, timestamp);
-        self.insert_with_tracking(series, entry);
-    }
-
     pub fn insert_update(&mut self, metric: OtelMetric) {
         self.maybe_cleanup();
         let timestamp = self.create_timestamp();
-        let (series, data, metadata) = metric.into_metric_parts();
-        let update = match data.kind {
-            MetricKind::Absolute => Some((series, data, metadata)),
-            MetricKind::Incremental => {
-                // Incremental metrics update existing entries, if present
-                match self.inner.get_mut(&series) {
-                    Some(existing) => {
-                        // Create a copy of the reference so we can insert and
-                        // replace the existing entry, tracking memory usage
-                        let mut new_existing = existing.clone();
-                        if new_existing.data.update(&data) {
-                            new_existing.metadata.merge(metadata);
-                            new_existing.update_timestamp(timestamp);
-                            self.insert_with_tracking(series, new_existing);
-                            None
-                        } else {
-                            warn!(message = "Metric changed type, dropping old value.", %series);
-                            Some((series, data, metadata))
-                        }
-                    }
-                    None => Some((series, data, metadata)),
+        let series = metric.metric_series();
+        if metric.kind() == MetricKind::Incremental {
+            if let Some(cached) = self.inner.get(&series) {
+                let mut accumulated = cached.metric.clone();
+                if accumulated.add(&metric) {
+                    accumulated.metadata_mut().merge(metric.metadata().clone());
+                    self.store(series, accumulated, timestamp);
+                    return;
                 }
+                warn!(message = "Metric changed type, dropping old value.", %series);
             }
-        };
-        if let Some((series, data, metadata)) = update {
-            self.insert(OtelMetric::from_metric_parts(series, data, metadata), timestamp);
         }
+        self.store(series, metric, timestamp);
     }
 
     /// Removes a series from the cache.
     ///
     /// If the series existed and was removed, returns true.  Otherwise, false.
     pub fn remove(&mut self, series: &MetricSeries) -> bool {
-        if let Some(entry) = self.inner.pop(series) {
+        if let Some(cached) = self.inner.pop(series) {
             if let Some(ref mut capacity_policy) = self.capacity_policy {
-                capacity_policy.free_item(series, &entry);
+                capacity_policy.free_item(series, &cached);
             }
             return true;
         }

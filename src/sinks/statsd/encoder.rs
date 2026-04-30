@@ -155,8 +155,7 @@ fn encode_and_write_single_event<V: Display>(
 mod tests {
     #[cfg(feature = "sources-statsd")]
     use vector_lib::event::{
-        EventMetadata, MetricKind, MetricValue, OtelMetric, StatisticKind,
-        metric::{MetricData, MetricName, MetricSeries, MetricTime},
+        MetricKind, OtelMetric, StatisticKind,
     };
     use vector_lib::{
         event::{MetricTags, metric::TagValue},
@@ -164,33 +163,6 @@ mod tests {
     };
 
     use super::encode_tags;
-
-    /// Build an OtelMetric directly from parts for Distribution / Set / signed-Gauge
-    /// variants that have no dedicated `OtelMetric::new_*` native constructor.
-    #[cfg(feature = "sources-statsd")]
-    fn otel_from_parts(
-        name: &str,
-        kind: MetricKind,
-        value: MetricValue,
-        tags: Option<MetricTags>,
-    ) -> OtelMetric {
-        let series = MetricSeries {
-            name: MetricName {
-                name: name.to_string(),
-                namespace: None,
-            },
-            tags,
-        };
-        let data = MetricData {
-            time: MetricTime {
-                timestamp: None,
-                interval_ms: None,
-            },
-            kind,
-            value,
-        };
-        OtelMetric::from_metric_parts(series, data, EventMetadata::default())
-    }
 
     #[cfg(feature = "sources-statsd")]
     fn encode_metric(metric: &OtelMetric) -> bytes::BytesMut {
@@ -295,12 +267,8 @@ mod tests {
     #[test]
     fn test_encode_gauge() {
         let input = {
-            let otel = otel_from_parts(
-                "gauge",
-                MetricKind::Incremental,
-                MetricValue::Gauge { value: -1.5 },
-                Some(tags()),
-            );
+            let otel = OtelMetric::new_gauge_delta("gauge", -1.5)
+                .with_tags(Some(tags()));
             otel
         };
 
@@ -327,28 +295,24 @@ mod tests {
     #[test]
     fn test_encode_distribution() {
         let input = {
-            let otel = otel_from_parts(
+            let otel = OtelMetric::new_distribution_from_samples(
                 "distribution",
                 MetricKind::Incremental,
-                MetricValue::Distribution {
-                    samples: vector_lib::samples![1.5 => 1, 1.5 => 1],
-                    statistic: StatisticKind::Histogram,
-                },
-                Some(tags()),
-            );
+                &vector_lib::samples![1.5 => 1, 1.5 => 1],
+                StatisticKind::Histogram,
+            )
+            .with_tags(Some(tags()));
             otel
         };
 
         let expected = {
-            let otel = otel_from_parts(
+            let otel = OtelMetric::new_distribution_from_samples(
                 "distribution",
                 MetricKind::Incremental,
-                MetricValue::Distribution {
-                    samples: vector_lib::samples![1.5 => 2],
-                    statistic: StatisticKind::Histogram,
-                },
-                Some(tags()),
-            );
+                &vector_lib::samples![1.5 => 2],
+                StatisticKind::Histogram,
+            )
+            .with_tags(Some(tags()));
             otel
         };
 
@@ -361,40 +325,34 @@ mod tests {
     #[test]
     fn test_encode_distribution_aggregated() {
         let input = {
-            let otel = otel_from_parts(
+            let otel = OtelMetric::new_distribution_from_samples(
                 "distribution",
                 MetricKind::Incremental,
-                MetricValue::Distribution {
-                    samples: vector_lib::samples![2.5 => 1, 1.5 => 1, 1.5 => 1],
-                    statistic: StatisticKind::Histogram,
-                },
-                Some(tags()),
-            );
+                &vector_lib::samples![2.5 => 1, 1.5 => 1, 1.5 => 1],
+                StatisticKind::Histogram,
+            )
+            .with_tags(Some(tags()));
             otel
         };
 
         let expected1 = {
-            let otel = otel_from_parts(
+            let otel = OtelMetric::new_distribution_from_samples(
                 "distribution",
                 MetricKind::Incremental,
-                MetricValue::Distribution {
-                    samples: vector_lib::samples![1.5 => 2],
-                    statistic: StatisticKind::Histogram,
-                },
-                Some(tags()),
-            );
+                &vector_lib::samples![1.5 => 2],
+                StatisticKind::Histogram,
+            )
+            .with_tags(Some(tags()));
             otel
         };
         let expected2 = {
-            let otel = otel_from_parts(
+            let otel = OtelMetric::new_distribution_from_samples(
                 "distribution",
                 MetricKind::Incremental,
-                MetricValue::Distribution {
-                    samples: vector_lib::samples![2.5 => 1],
-                    statistic: StatisticKind::Histogram,
-                },
-                Some(tags()),
-            );
+                &vector_lib::samples![2.5 => 1],
+                StatisticKind::Histogram,
+            )
+            .with_tags(Some(tags()));
             otel
         };
 
@@ -408,14 +366,12 @@ mod tests {
     #[test]
     fn test_encode_set() {
         let input = {
-            let otel = otel_from_parts(
+            let otel = OtelMetric::new_set_from_values(
                 "set",
                 MetricKind::Incremental,
-                MetricValue::Set {
-                    values: vec!["abc".to_owned()].into_iter().collect(),
-                },
-                Some(tags()),
-            );
+                vec!["abc".to_owned()],
+            )
+            .with_tags(Some(tags()));
             otel
         };
 

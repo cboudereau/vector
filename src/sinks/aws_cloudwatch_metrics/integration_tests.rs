@@ -5,40 +5,14 @@ use vector_lib::metric_tags;
 use super::*;
 use crate::{
     event::{
-        Event, EventMetadata, MetricKind, MetricTags, OtelMetric,
-        metric::{
-            MetricData, MetricName, MetricSeries, MetricTime, MetricValue, StatisticKind,
-        },
+        Event, MetricKind, OtelMetric,
+        metric::StatisticKind,
     },
     test_util::{
         components::{AWS_SINK_TAGS, run_and_assert_sink_compliance},
         random_string,
     },
 };
-
-fn otel_from_parts(
-    name: impl Into<String>,
-    kind: MetricKind,
-    value: MetricValue,
-    tags: Option<MetricTags>,
-) -> OtelMetric {
-    let series = MetricSeries {
-        name: MetricName {
-            name: name.into(),
-            namespace: None,
-        },
-        tags,
-    };
-    let data = MetricData {
-        time: MetricTime {
-            timestamp: None,
-            interval_ms: None,
-        },
-        kind,
-        value,
-    };
-    OtelMetric::from_metric_parts(series, data, EventMetadata::default())
-}
 
 fn cloudwatch_address() -> String {
     std::env::var("CLOUDWATCH_ADDRESS").unwrap_or_else(|_| "http://localhost:4566".into())
@@ -95,14 +69,11 @@ async fn cloudwatch_metrics_put_data() {
     let distribution_name = random_string(10);
     for i in 0..10 {
         let event = Event::Metric(
-            otel_from_parts(
+            OtelMetric::new_distribution_from_samples(
                 format!("distribution-{distribution_name}"),
                 MetricKind::Incremental,
-                MetricValue::Distribution {
-                    samples: vector_lib::samples![i as f64 => 100],
-                    statistic: StatisticKind::Histogram,
-                },
-                None,
+                &vector_lib::samples![i as f64 => 100],
+                StatisticKind::Histogram,
             )
             .with_timestamp(Some(
                 Utc.with_ymd_and_hms(2018, 11, 14, 8, 9, 10)

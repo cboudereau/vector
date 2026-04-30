@@ -284,11 +284,11 @@ fn generates_metric_api_model_with_timestamp() {
 #[test]
 fn generates_metric_api_model_incremental_counter() {
     let stamp = Utc::now();
-    let otel = OtelMetric::new_counter("my_metric", MetricKind::Incremental, 100.0);
-    let (s, mut d, md) = otel.into_metric_parts();
-    d.time.timestamp = Some(stamp);
-    d.time.interval_ms = NonZeroU32::new(1000);
-    let event = Event::Metric(OtelMetric::from_metric_parts(s, d, md));
+    let event = Event::Metric(
+        OtelMetric::new_counter("my_metric", MetricKind::Incremental, 100.0)
+            .with_timestamp(Some(stamp))
+            .with_interval_ms(NonZeroU32::new(1000)),
+    );
     let model =
         MetricsApiModel::try_from(vec![event]).expect("Failed mapping metrics into API model");
 

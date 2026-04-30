@@ -233,9 +233,9 @@ mod tests {
     use super::*;
     use crate::{
         event::{
-            Event, EventMetadata, MetricTags, OtelMetric,
+            Event, OtelMetric,
             metric::{
-                MetricData, MetricKind, MetricName, MetricSeries, MetricTime, MetricValue,
+                MetricKind,
                 StatisticKind,
             },
         },
@@ -245,30 +245,6 @@ mod tests {
             components::{HTTP_SINK_TAGS, run_and_assert_sink_compliance},
         },
     };
-
-    fn otel_from_parts(
-        name: &str,
-        kind: MetricKind,
-        value: MetricValue,
-        tags: Option<MetricTags>,
-    ) -> OtelMetric {
-        let series = MetricSeries {
-            name: MetricName {
-                name: name.to_string(),
-                namespace: None,
-            },
-            tags,
-        };
-        let data = MetricData {
-            time: MetricTime {
-                timestamp: None,
-                interval_ms: None,
-            },
-            kind,
-            value,
-        };
-        OtelMetric::from_metric_parts(series, data, EventMetadata::default())
-    }
 
     #[test]
     fn generate_config() {
@@ -325,15 +301,13 @@ mod tests {
                     )),
             ),
             Event::Metric(
-                otel_from_parts(
+                OtelMetric::new_distribution_from_samples(
                     "metric2",
                     MetricKind::Absolute,
-                    MetricValue::Distribution {
-                        samples: vector_lib::samples![1.0 => 100, 2.0 => 200, 3.0 => 300],
-                        statistic: StatisticKind::Histogram,
-                    },
-                    Some(metric_tags!("os.host" => "somehost")),
+                    &vector_lib::samples![1.0 => 100, 2.0 => 200, 3.0 => 300],
+                    StatisticKind::Histogram,
                 )
+                .with_tags(Some(metric_tags!("os.host" => "somehost")))
                 .with_timestamp(Some(
                     Utc.with_ymd_and_hms(2020, 8, 18, 21, 0, 2)
                         .single()

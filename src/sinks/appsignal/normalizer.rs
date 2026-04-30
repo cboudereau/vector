@@ -19,35 +19,13 @@ impl MetricNormalize for AppsignalMetricsNormalizer {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
-
     use super::AppsignalMetricsNormalizer;
     use crate::{
         event::{
-            EventMetadata, MetricKind, MetricValue, OtelMetric,
-            metric::{MetricData, MetricName, MetricSeries, MetricTime},
+            MetricKind, OtelMetric,
         },
         test_util::metrics::{assert_normalize, tests},
     };
-
-    fn otel_from_parts(name: &str, kind: MetricKind, value: MetricValue) -> OtelMetric {
-        let series = MetricSeries {
-            name: MetricName {
-                name: name.to_string(),
-                namespace: None,
-            },
-            tags: None,
-        };
-        let data = MetricData {
-            time: MetricTime {
-                timestamp: None,
-                interval_ms: None,
-            },
-            kind,
-            value,
-        };
-        OtelMetric::from_metric_parts(series, data, EventMetadata::default())
-    }
 
     #[test]
     fn absolute_counter() {
@@ -81,12 +59,10 @@ mod tests {
 
     #[test]
     fn other_metrics() {
-        let metric = otel_from_parts(
+        let metric = OtelMetric::new_set_from_values(
             "set",
             MetricKind::Incremental,
-            MetricValue::Set {
-                values: BTreeSet::new(),
-            },
+            Vec::<String>::new(),
         );
 
         assert_normalize(

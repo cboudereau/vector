@@ -84,35 +84,11 @@ impl Encoder<Event> for TextSerializer {
 mod tests {
     use bytes::{Bytes, BytesMut};
     use vector_core::{
-        event::{
-            EventMetadata, MetricKind, MetricValue, OtelLog, OtelMetric,
-            metric::{MetricData, MetricName, MetricSeries, MetricTime},
-        },
+        event::{MetricKind, OtelLog, OtelMetric},
         metric_tags,
     };
 
     use super::*;
-
-    /// Build an OtelMetric directly from parts for Set variants
-    /// that have no dedicated `OtelMetric::new_*` native constructor.
-    fn otel_from_parts(name: &str, kind: MetricKind, value: MetricValue) -> OtelMetric {
-        let series = MetricSeries {
-            name: MetricName {
-                name: name.to_string(),
-                namespace: None,
-            },
-            tags: None,
-        };
-        let data = MetricData {
-            time: MetricTime {
-                timestamp: None,
-                interval_ms: None,
-            },
-            kind,
-            value,
-        };
-        OtelMetric::from_metric_parts(series, data, EventMetadata::default())
-    }
 
     #[test]
     fn serialize_log() {
@@ -127,12 +103,10 @@ mod tests {
     fn serialize_metric() {
         let buffer = serialize(
             TextSerializerConfig::default(),
-            Event::Metric(otel_from_parts(
+            Event::Metric(OtelMetric::new_set_from_values(
                 "users",
                 MetricKind::Incremental,
-                MetricValue::Set {
-                    values: vec!["bob".into()].into_iter().collect(),
-                },
+                vec!["bob"],
             )),
         );
         assert_eq!(buffer, Bytes::from("users{} + bob"));

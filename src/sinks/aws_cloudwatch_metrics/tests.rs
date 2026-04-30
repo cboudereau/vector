@@ -4,30 +4,8 @@ use similar_asserts::assert_eq;
 use vector_lib::metric_tags;
 
 use super::*;
-use crate::event::metric::{
-    MetricData, MetricKind, MetricName, MetricSeries, MetricTime, MetricValue, StatisticKind,
-};
-use crate::event::{EventMetadata, OtelMetric};
-
-/// Build an OtelMetric directly from parts for arbitrary MetricValue variants.
-fn otel_from_parts(name: &str, kind: MetricKind, value: MetricValue) -> OtelMetric {
-    let series = MetricSeries {
-        name: MetricName {
-            name: name.to_string(),
-            namespace: None,
-        },
-        tags: None,
-    };
-    let data = MetricData {
-        time: MetricTime {
-            timestamp: None,
-            interval_ms: None,
-        },
-        kind,
-        value,
-    };
-    OtelMetric::from_metric_parts(series, data, EventMetadata::default())
-}
+use crate::event::metric::MetricKind;
+use crate::event::OtelMetric;
 
 fn timestamp(time: &str) -> DateTime {
     DateTime::from_millis(
@@ -126,14 +104,14 @@ async fn encode_events_absolute_gauge() {
 
 #[tokio::test]
 async fn encode_events_distribution() {
-    let events: Vec<OtelMetric> = vec![otel_from_parts(
-        "latency",
-        MetricKind::Incremental,
-        MetricValue::Distribution {
-            samples: vector_lib::samples![11.0 => 100, 12.0 => 50],
-            statistic: StatisticKind::Histogram,
-        },
-    )];
+    let events: Vec<OtelMetric> = vec![
+        OtelMetric::new_distribution_from_samples(
+            "latency",
+            MetricKind::Incremental,
+            &vector_lib::samples![11.0 => 100, 12.0 => 50],
+            crate::event::metric::StatisticKind::Histogram,
+        ),
+    ];
 
     assert_eq!(
         svc().await.encode_events(events),
@@ -149,13 +127,9 @@ async fn encode_events_distribution() {
 
 #[tokio::test]
 async fn encode_events_set() {
-    let events: Vec<OtelMetric> = vec![otel_from_parts(
-        "users",
-        MetricKind::Incremental,
-        MetricValue::Set {
-            values: vec!["alice".into(), "bob".into()].into_iter().collect(),
-        },
-    )];
+    let events: Vec<OtelMetric> = vec![
+        OtelMetric::new_set_from_values("users", MetricKind::Incremental, vec!["alice", "bob"]),
+    ];
 
     assert_eq!(
         svc().await.encode_events(events),

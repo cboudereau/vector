@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, sync::Arc};
+use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use futures_util::StreamExt;
@@ -6,8 +6,7 @@ use serde_json::{Value as JsonValue, json};
 use vector_lib::{
     ByteSizeOf,
     event::{
-        Event, EventMetadata, MetricKind, MetricValue, OtelMetric,
-        metric::{MetricData, MetricName, MetricSeries, MetricTime},
+        Event, MetricKind, OtelMetric,
     },
     metric_tags,
 };
@@ -114,27 +113,11 @@ fn test_process_metric() {
 
 #[test]
 fn test_process_metric_unsupported_type_returns_none() {
-    let mut values = BTreeSet::new();
-    values.insert(String::from("value1"));
-
-    let metric = {
-        let series = MetricSeries {
-            name: MetricName {
-                name: "example-set".to_string(),
-                namespace: None,
-            },
-            tags: None,
-        };
-        let data = MetricData {
-            time: MetricTime {
-                timestamp: None,
-                interval_ms: None,
-            },
-            kind: MetricKind::Absolute,
-            value: MetricValue::Set { values },
-        };
-        OtelMetric::from_metric_parts(series, data, EventMetadata::default())
-    };
+    let metric = OtelMetric::new_set_from_values(
+        "example-set",
+        MetricKind::Absolute,
+        vec!["value1"],
+    );
 
     let event_byte_size = metric.size_of();
     let sourcetype = None;

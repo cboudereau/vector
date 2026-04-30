@@ -414,38 +414,43 @@ mod tests {
     use super::{super::default_summary_quantiles, *};
     use crate::{
         event::metric::{
-            MetricData, MetricKind, MetricName, MetricSeries, MetricTime, MetricValue,
+            MetricKind, MetricValue,
             StatisticKind,
         },
-        event::{EventMetadata, OtelMetric},
+        event::OtelMetric,
         test_util::stats::VariableHistogram,
     };
 
-    /// Build an OtelMetric directly from parts for Distribution / Set / AggregatedSummary-like
-    /// variants that we want to keep in non-native form for test equivalence.
-    fn otel_from_parts(
+    fn otel_from_metric_value(
         name: &str,
         kind: MetricKind,
         value: MetricValue,
         tags: Option<MetricTags>,
         timestamp: Option<DateTime<Utc>>,
     ) -> OtelMetric {
-        let series = MetricSeries {
-            name: MetricName {
-                name: name.to_string(),
-                namespace: None,
+        let m = match value {
+            MetricValue::Counter { value: v } => OtelMetric::new_counter(name, kind, v),
+            MetricValue::Gauge { value: v } => match kind {
+                MetricKind::Absolute => OtelMetric::new_gauge(name, v),
+                MetricKind::Incremental => OtelMetric::new_gauge_delta(name, v),
             },
-            tags,
+            MetricValue::Set { values } => OtelMetric::new_set_from_values(name, kind, values),
+            MetricValue::Distribution {
+                samples,
+                statistic,
+            } => OtelMetric::new_distribution_from_samples(name, kind, &samples, statistic),
+            MetricValue::AggregatedHistogram {
+                buckets,
+                count,
+                sum,
+            } => OtelMetric::new_histogram(name, kind, &buckets, count, sum),
+            MetricValue::AggregatedSummary {
+                quantiles,
+                count,
+                sum,
+            } => OtelMetric::new_summary(name, &quantiles, count, sum),
         };
-        let data = MetricData {
-            time: MetricTime {
-                timestamp,
-                interval_ms: None,
-            },
-            kind,
-            value,
-        };
-        OtelMetric::from_metric_parts(series, data, EventMetadata::default())
+        m.with_tags(tags).with_timestamp(timestamp)
     }
 
     fn encode_one<T: MetricCollector>(
@@ -578,7 +583,7 @@ mod tests {
     }
 
     fn encode_set<T: MetricCollector>() -> T::Output {
-        let otel = otel_from_parts(
+        let otel = otel_from_metric_value(
             "users",
             MetricKind::Absolute,
             MetricValue::Set {
@@ -611,7 +616,7 @@ mod tests {
     }
 
     fn encode_expired_set<T: MetricCollector>() -> T::Output {
-        let otel = otel_from_parts(
+        let otel = otel_from_metric_value(
             "users",
             MetricKind::Absolute,
             MetricValue::Set {
@@ -658,7 +663,7 @@ mod tests {
     }
 
     fn encode_distribution<T: MetricCollector>() -> T::Output {
-        let otel = otel_from_parts(
+        let otel = otel_from_metric_value(
             "requests",
             MetricKind::Absolute,
             MetricValue::Distribution {
@@ -843,7 +848,7 @@ mod tests {
     }
 
     fn encode_distribution_summary<T: MetricCollector>() -> T::Output {
-        let otel = otel_from_parts(
+        let otel = otel_from_metric_value(
             "requests",
             MetricKind::Absolute,
             MetricValue::Distribution {

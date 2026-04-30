@@ -408,16 +408,14 @@ mod tests {
     use super::*;
     use crate::{
         event::metric::{
-            MetricData, MetricKind, MetricName, MetricSeries, MetricTags, MetricTime, MetricValue,
+            MetricKind, MetricTags, MetricValue,
             StatisticKind,
         },
-        event::{EventMetadata, OtelMetric},
+        event::OtelMetric,
         sinks::influxdb::test_util::{assert_fields, split_line_protocol, tags, ts},
     };
 
-    /// Build an OtelMetric directly from parts for Distribution / Set / signed-Gauge
-    /// variants that have no dedicated `OtelMetric::new_*` native constructor.
-    fn otel_from_parts(
+    fn otel_from_metric_value(
         name: &str,
         namespace: Option<&str>,
         kind: MetricKind,
@@ -425,22 +423,29 @@ mod tests {
         tags: Option<MetricTags>,
         timestamp: Option<chrono::DateTime<chrono::Utc>>,
     ) -> OtelMetric {
-        let series = MetricSeries {
-            name: MetricName {
-                name: name.to_string(),
-                namespace: namespace.map(ToString::to_string),
+        let m = match value {
+            MetricValue::Counter { value: v } => OtelMetric::new_counter(name, kind, v),
+            MetricValue::Gauge { value: v } => match kind {
+                MetricKind::Absolute => OtelMetric::new_gauge(name, v),
+                MetricKind::Incremental => OtelMetric::new_gauge_delta(name, v),
             },
-            tags,
+            MetricValue::Set { values } => OtelMetric::new_set_from_values(name, kind, values),
+            MetricValue::Distribution {
+                samples,
+                statistic,
+            } => OtelMetric::new_distribution_from_samples(name, kind, &samples, statistic),
+            MetricValue::AggregatedHistogram {
+                buckets,
+                count,
+                sum,
+            } => OtelMetric::new_histogram(name, kind, &buckets, count, sum),
+            MetricValue::AggregatedSummary {
+                quantiles,
+                count,
+                sum,
+            } => OtelMetric::new_summary(name, &quantiles, count, sum),
         };
-        let data = MetricData {
-            time: MetricTime {
-                timestamp,
-                interval_ms: None,
-            },
-            kind,
-            value,
-        };
-        OtelMetric::from_metric_parts(series, data, EventMetadata::default())
+        m.with_namespace(namespace).with_tags(tags).with_timestamp(timestamp)
     }
 
     #[test]
@@ -482,7 +487,7 @@ mod tests {
     #[test]
     fn test_encode_gauge() {
         let events = vec![
-            (otel_from_parts(
+            (otel_from_metric_value(
                 "meter",
                 Some("ns"),
                 MetricKind::Incremental,
@@ -502,7 +507,7 @@ mod tests {
     #[test]
     fn test_encode_set() {
         let events = vec![
-            (otel_from_parts(
+            (otel_from_metric_value(
                 "users",
                 Some("ns"),
                 MetricKind::Incremental,
@@ -668,7 +673,7 @@ mod tests {
     #[test]
     fn test_encode_distribution() {
         let events = vec![
-            (otel_from_parts(
+            (otel_from_metric_value(
                 "requests",
                 Some("ns"),
                 MetricKind::Incremental,
@@ -679,7 +684,7 @@ mod tests {
                 Some(tags()),
                 Some(ts()),
             )),
-            (otel_from_parts(
+            (otel_from_metric_value(
                 "dense_stats",
                 Some("ns"),
                 MetricKind::Incremental,
@@ -695,7 +700,7 @@ mod tests {
                 None,
                 Some(ts()),
             )),
-            (otel_from_parts(
+            (otel_from_metric_value(
                 "sparse_stats",
                 Some("ns"),
                 MetricKind::Incremental,
@@ -780,7 +785,7 @@ mod tests {
     #[test]
     fn test_encode_distribution_empty_stats() {
         let events = vec![
-            (otel_from_parts(
+            (otel_from_metric_value(
                 "requests",
                 Some("ns"),
                 MetricKind::Incremental,
@@ -800,7 +805,7 @@ mod tests {
     #[test]
     fn test_encode_distribution_zero_counts_stats() {
         let events = vec![
-            (otel_from_parts(
+            (otel_from_metric_value(
                 "requests",
                 Some("ns"),
                 MetricKind::Incremental,
@@ -820,7 +825,7 @@ mod tests {
     #[test]
     fn test_encode_distribution_summary() {
         let events = vec![
-            (otel_from_parts(
+            (otel_from_metric_value(
                 "requests",
                 Some("ns"),
                 MetricKind::Incremental,

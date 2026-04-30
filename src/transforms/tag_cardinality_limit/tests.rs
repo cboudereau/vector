@@ -13,7 +13,7 @@ use vrl::compiler::prelude::Kind;
 use super::*;
 use crate::{
     config::schema::Definition,
-    event::{Event, MetricTags, OtelMetric, metric, metric::TagValue},
+    event::{Event, MetricKind, MetricTags, OtelMetric, metric::TagValue},
     test_util::components::assert_transform_compliance,
     transforms::{
         tag_cardinality_limit::config::{BloomFilterConfig, Mode, default_cache_size},
@@ -29,19 +29,9 @@ fn generate_config() {
 fn make_metric_with_name(tags: MetricTags, name: &str) -> Event {
     let event_metadata = EventMetadata::default().with_source_type("unit_test_stream");
     Event::Metric(
-        OtelMetric::from_metric_parts(
-            metric::MetricSeries {
-                name: metric::MetricName { name: name.to_string(), namespace: None },
-                tags: None,
-            },
-            metric::MetricData {
-                time: metric::MetricTime { timestamp: None, interval_ms: None },
-                kind: metric::MetricKind::Incremental,
-                value: metric::MetricValue::Counter { value: 1.0 },
-            },
-            event_metadata,
-        )
-        .with_tags(Some(tags)),
+        OtelMetric::new_counter(name, MetricKind::Incremental, 1.0)
+            .with_tags(Some(tags))
+            .with_metadata(event_metadata),
     )
 }
 

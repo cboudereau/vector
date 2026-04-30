@@ -106,32 +106,37 @@ mod tests {
 
     use super::*;
     use crate::event::{
-        EventMetadata, OtelMetric,
-        metric::{MetricData, MetricKind, MetricName, MetricSeries, MetricTime, MetricValue},
+        OtelMetric,
+        metric::{MetricKind, MetricValue},
     };
 
-    /// Build an OtelMetric directly from parts for arbitrary MetricValue variants.
-    fn otel_from_parts(name: &'static str, kind: MetricKind, value: MetricValue) -> OtelMetric {
-        let series = MetricSeries {
-            name: MetricName {
-                name: name.to_string(),
-                namespace: None,
+    fn otel_from_metric_value(name: &'static str, kind: MetricKind, value: MetricValue) -> OtelMetric {
+        match value {
+            MetricValue::Counter { value: v } => OtelMetric::new_counter(name, kind, v),
+            MetricValue::Gauge { value: v } => match kind {
+                MetricKind::Absolute => OtelMetric::new_gauge(name, v),
+                MetricKind::Incremental => OtelMetric::new_gauge_delta(name, v),
             },
-            tags: None,
-        };
-        let data = MetricData {
-            time: MetricTime {
-                timestamp: None,
-                interval_ms: None,
-            },
-            kind,
-            value,
-        };
-        OtelMetric::from_metric_parts(series, data, EventMetadata::default())
+            MetricValue::Set { values } => OtelMetric::new_set_from_values(name, kind, values),
+            MetricValue::Distribution {
+                samples,
+                statistic,
+            } => OtelMetric::new_distribution_from_samples(name, kind, &samples, statistic),
+            MetricValue::AggregatedHistogram {
+                buckets,
+                count,
+                sum,
+            } => OtelMetric::new_histogram(name, kind, &buckets, count, sum),
+            MetricValue::AggregatedSummary {
+                quantiles,
+                count,
+                sum,
+            } => OtelMetric::new_summary(name, &quantiles, count, sum),
+        }
     }
 
     fn make_metric(name: &'static str, kind: MetricKind, value: MetricValue) -> Event {
-        let mut event = Event::Metric(otel_from_parts(name, kind, value))
+        let mut event = Event::Metric(otel_from_metric_value(name, kind, value))
             .with_source_id(Arc::new(ComponentKey::from("in")))
             .with_upstream_id(Arc::new(OutputId::from("transform")));
 

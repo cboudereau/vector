@@ -241,7 +241,7 @@ mod tests {
         event::{
             KeyString, OtelLog, OtelMetric, Value,
             metric::{
-                MetricData, MetricKind, MetricName, MetricSeries, MetricTags, MetricTime,
+                MetricKind, MetricTags,
                 MetricValue, StatisticKind,
             },
         },
@@ -297,24 +297,29 @@ mod tests {
     }
 
     fn make_metric(name: &str, kind: MetricKind, value: MetricValue) -> OtelMetric {
-        OtelMetric::from_metric_parts(
-            MetricSeries {
-                name: MetricName {
-                    name: name.into(),
-                    namespace: None,
-                },
-                tags: None,
+        let m = match value {
+            MetricValue::Counter { value: v } => OtelMetric::new_counter(name, kind, v),
+            MetricValue::Gauge { value: v } => match kind {
+                MetricKind::Absolute => OtelMetric::new_gauge(name, v),
+                MetricKind::Incremental => OtelMetric::new_gauge_delta(name, v),
             },
-            MetricData {
-                time: MetricTime {
-                    timestamp: None,
-                    interval_ms: None,
-                },
-                kind,
-                value,
-            },
-            event_metadata(),
-        )
+            MetricValue::Set { values } => OtelMetric::new_set_from_values(name, kind, values),
+            MetricValue::Distribution {
+                samples,
+                statistic,
+            } => OtelMetric::new_distribution_from_samples(name, kind, &samples, statistic),
+            MetricValue::AggregatedHistogram {
+                buckets,
+                count,
+                sum,
+            } => OtelMetric::new_histogram(name, kind, &buckets, count, sum),
+            MetricValue::AggregatedSummary {
+                quantiles,
+                count,
+                sum,
+            } => OtelMetric::new_summary(name, &quantiles, count, sum),
+        };
+        m.with_metadata(event_metadata())
     }
 
     #[tokio::test]

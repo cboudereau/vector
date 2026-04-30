@@ -4157,7 +4157,30 @@ impl OtelMetric {
                 MetricData::Sum(s) => s.aggregation_temporality = temp,
                 MetricData::Histogram(h) => h.aggregation_temporality = temp,
                 MetricData::ExponentialHistogram(e) => e.aggregation_temporality = temp,
-                MetricData::Gauge(_) | MetricData::Summary(_) => {}
+                MetricData::Gauge(_) | MetricData::Summary(_) => {
+                    if self.is_set() {
+                        let kind_str = match kind {
+                            super::MetricKind::Incremental => "incremental",
+                            super::MetricKind::Absolute => "absolute",
+                        };
+                        self.set_data_point_attribute(
+                            "vector.metric_kind".to_string(),
+                            string_value(kind_str),
+                        );
+                    } else {
+                        match kind {
+                            super::MetricKind::Incremental => {
+                                self.set_data_point_attribute(
+                                    "vector.metric_kind".to_string(),
+                                    string_value("incremental"),
+                                );
+                            }
+                            super::MetricKind::Absolute => {
+                                self.remove_data_point_attribute("vector.metric_kind");
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -4186,11 +4209,42 @@ impl OtelMetric {
         self
     }
 
+    /// Builder-style: set interval_ms by adjusting start_time_unix_nano relative to time_unix_nano.
+    pub fn with_interval_ms(mut self, interval: Option<std::num::NonZeroU32>) -> Self {
+        use opentelemetry_proto::tonic::metrics::v1::metric::Data as ProtoMetricData;
+        let Some(interval) = interval else { return self };
+        if let Some(data) = self.metric.data.as_mut() {
+            let adjust = |start: &mut u64, end: u64| {
+                if end > 0 {
+                    *start = end.saturating_sub(u64::from(interval.get()) * 1_000_000);
+                }
+            };
+            match data {
+                ProtoMetricData::Sum(s) => {
+                    if let Some(dp) = s.data_points.first_mut() { adjust(&mut dp.start_time_unix_nano, dp.time_unix_nano); }
+                }
+                ProtoMetricData::Gauge(g) => {
+                    if let Some(dp) = g.data_points.first_mut() { adjust(&mut dp.start_time_unix_nano, dp.time_unix_nano); }
+                }
+                ProtoMetricData::Histogram(h) => {
+                    if let Some(dp) = h.data_points.first_mut() { adjust(&mut dp.start_time_unix_nano, dp.time_unix_nano); }
+                }
+                ProtoMetricData::Summary(s) => {
+                    if let Some(dp) = s.data_points.first_mut() { adjust(&mut dp.start_time_unix_nano, dp.time_unix_nano); }
+                }
+                ProtoMetricData::ExponentialHistogram(e) => {
+                    if let Some(dp) = e.data_points.first_mut() { adjust(&mut dp.start_time_unix_nano, dp.time_unix_nano); }
+                }
+            }
+        }
+        self
+    }
+
     /// Builder-style: set tags as data point attributes.
     ///
     /// Preserves multi-value tags: each key becomes a single `KeyValue` whose
     /// value is a `StringValue` (single) or an `ArrayValue` of strings/nulls
-    /// (multi). Mirrors the tag encoding used by `from_metric_parts`.
+    /// (multi).
     pub fn with_tags(mut self, tags: Option<super::metric::MetricTags>) -> Self {
         use opentelemetry_proto::tonic::common::v1::{ArrayValue, any_value};
         let Some(tags) = tags else { return self };
@@ -4594,6 +4648,175 @@ impl OtelMetric {
         self
     }
 
+    /// Merge set values from `other` into this set metric.
+    /// Combines the `vector.set_values` arrays (deduplicating) and updates
+    /// the numeric cardinality value.
+    fn merge_set_values(&mut self, other: &Self) {
+        use opentelemetry_proto::tonic::metrics::v1::number_data_point::Value as NDPValue;
+        use std::collections::BTreeSet;
+
+        let extract_set = |m: &Self| -> BTreeSet<String> {
+            m.dp_attrs.first()
+                .and_then(|a| a.get("vector.set_values"))
+                .and_then(|av| match &av.value {
+                    Some(OtelValueKind::ArrayValue(arr)) => {
+                        Some(arr.values.iter().filter_map(|v| match &v.value {
+                            Some(OtelValueKind::StringValue(s)) => Some(s.clone()),
+                            _ => None,
+                        }).collect())
+                    }
+                    _ => None,
+                })
+                .unwrap_or_default()
+        };
+
+        let mut merged = extract_set(self);
+        merged.extend(extract_set(other));
+
+        let cardinality = merged.len() as f64;
+        let set_values: Vec<AnyValue> = merged.iter().map(|v| string_value(v)).collect();
+        self.set_data_point_attribute(
+            "vector.set_values".to_string(),
+            AnyValue {
+                value: Some(OtelValueKind::ArrayValue(
+                    opentelemetry_proto::tonic::common::v1::ArrayValue { values: set_values },
+                )),
+            },
+        );
+
+        if let Some(opentelemetry_proto::tonic::metrics::v1::metric::Data::Gauge(g)) =
+            self.metric.data.as_mut()
+        {
+            if let Some(dp) = g.data_points.first_mut() {
+                dp.value = Some(NDPValue::AsDouble(cardinality));
+            }
+        }
+    }
+
+    fn subtract_distribution(&mut self, other: &Self) -> bool {
+        use opentelemetry_proto::tonic::metrics::v1::metric::Data as MD;
+
+        let (Some(MD::Histogram(h)), Some(MD::Histogram(oh))) =
+            (self.metric.data.as_mut(), other.metric.data.as_ref())
+        else {
+            return false;
+        };
+
+        for (dp, odp) in h.data_points.iter_mut().zip(oh.data_points.iter()) {
+            let other_pairs: Vec<(f64, u64)> = odp
+                .explicit_bounds
+                .iter()
+                .copied()
+                .zip(odp.bucket_counts.iter().copied())
+                .collect();
+
+            let self_pairs: Vec<(f64, u64)> = dp
+                .explicit_bounds
+                .iter()
+                .copied()
+                .zip(dp.bucket_counts.iter().copied())
+                .collect();
+
+            let filtered: Vec<(f64, u64)> = self_pairs
+                .iter()
+                .copied()
+                .filter(|pair| other_pairs.iter().all(|op| *pair != *op))
+                .collect();
+
+            dp.explicit_bounds = filtered.iter().map(|(b, _)| *b).collect();
+            dp.bucket_counts = filtered.iter().map(|(_, c)| *c).collect();
+            dp.count = dp.bucket_counts.iter().sum();
+            dp.sum = Some(
+                dp.explicit_bounds
+                    .iter()
+                    .zip(dp.bucket_counts.iter())
+                    .map(|(b, c)| b * (*c as f64))
+                    .sum(),
+            );
+        }
+        true
+    }
+
+    fn subtract_set_values(&mut self, other: &Self) {
+        use opentelemetry_proto::tonic::metrics::v1::number_data_point::Value as NDPValue;
+        use std::collections::BTreeSet;
+
+        let extract_set = |m: &Self| -> BTreeSet<String> {
+            m.dp_attrs.first()
+                .and_then(|a| a.get("vector.set_values"))
+                .and_then(|av| match &av.value {
+                    Some(OtelValueKind::ArrayValue(arr)) => {
+                        Some(arr.values.iter().filter_map(|v| match &v.value {
+                            Some(OtelValueKind::StringValue(s)) => Some(s.clone()),
+                            _ => None,
+                        }).collect())
+                    }
+                    _ => None,
+                })
+                .unwrap_or_default()
+        };
+
+        let mut self_set = extract_set(self);
+        let other_set = extract_set(other);
+        for item in &other_set {
+            self_set.remove(item);
+        }
+
+        let cardinality = self_set.len() as f64;
+        let set_values: Vec<AnyValue> = self_set.iter().map(|v| string_value(v)).collect();
+        self.set_data_point_attribute(
+            "vector.set_values".to_string(),
+            AnyValue {
+                value: Some(OtelValueKind::ArrayValue(
+                    opentelemetry_proto::tonic::common::v1::ArrayValue { values: set_values },
+                )),
+            },
+        );
+
+        if let Some(opentelemetry_proto::tonic::metrics::v1::metric::Data::Gauge(g)) =
+            self.metric.data.as_mut()
+        {
+            if let Some(dp) = g.data_points.first_mut() {
+                dp.value = Some(NDPValue::AsDouble(cardinality));
+            }
+        }
+    }
+
+    /// Compress a distribution-type histogram in place by sorting bounds and
+    /// merging bucket counts for duplicate bound values.
+    pub fn compress_distribution(&mut self) {
+        use opentelemetry_proto::tonic::metrics::v1::metric::Data as MD;
+        if let Some(MD::Histogram(h)) = self.metric.data.as_mut() {
+            for dp in &mut h.data_points {
+                if dp.explicit_bounds.len() != dp.bucket_counts.len() {
+                    continue;
+                }
+                let mut pairs: Vec<(f64, u64)> = dp
+                    .explicit_bounds
+                    .iter()
+                    .copied()
+                    .zip(dp.bucket_counts.iter().copied())
+                    .collect();
+                pairs.sort_by(|a, b| a.0.total_cmp(&b.0));
+
+                let mut bounds = Vec::with_capacity(pairs.len());
+                let mut counts = Vec::with_capacity(pairs.len());
+                for (val, rate) in pairs {
+                    if let Some(last) = bounds.last()
+                        && *last == val
+                    {
+                        *counts.last_mut().unwrap() += rate;
+                    } else {
+                        bounds.push(val);
+                        counts.push(rate);
+                    }
+                }
+                dp.explicit_bounds = bounds;
+                dp.bucket_counts = counts;
+            }
+        }
+    }
+
     /// Add the data from `other` to this metric.
     ///
     /// Both metrics must have the same data type (Sum+Sum, Gauge+Gauge, etc.).
@@ -4603,6 +4826,11 @@ impl OtelMetric {
     pub fn add(&mut self, other: &Self) -> bool {
         use opentelemetry_proto::tonic::metrics::v1::metric::Data as MD;
         use opentelemetry_proto::tonic::metrics::v1::number_data_point::Value as NDPValue;
+
+        if self.is_set() && other.is_set() {
+            self.merge_set_values(other);
+            return true;
+        }
 
         match (self.metric.data.as_mut(), other.metric.data.as_ref()) {
             (Some(MD::Sum(s)), Some(MD::Sum(o))) => {
@@ -4685,6 +4913,18 @@ impl OtelMetric {
     pub fn subtract(&mut self, other: &Self) -> bool {
         use opentelemetry_proto::tonic::metrics::v1::metric::Data as MD;
         use opentelemetry_proto::tonic::metrics::v1::number_data_point::Value as NDPValue;
+
+        if self.is_set() && other.is_set() {
+            self.subtract_set_values(other);
+            return true;
+        }
+        if self.is_set() || other.is_set() {
+            return false;
+        }
+
+        if self.is_distribution() && other.is_distribution() {
+            return self.subtract_distribution(other);
+        }
 
         match (self.metric.data.as_mut(), other.metric.data.as_ref()) {
             (Some(MD::Sum(s)), Some(MD::Sum(o))) => {

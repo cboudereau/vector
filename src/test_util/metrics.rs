@@ -4,8 +4,8 @@ use std::{
 };
 
 use vector_lib::event::{
-    Event, EventMetadata, MetricValue, OtelMetric, StatisticKind,
-    metric::{Bucket, MetricData, MetricSeries, Sample},
+    Event, MetricValue, OtelMetric, StatisticKind,
+    metric::{Bucket, MetricSeries, Sample},
 };
 
 use crate::{
@@ -13,7 +13,7 @@ use crate::{
     sinks::util::buffer::metrics::{MetricNormalize, MetricSet},
 };
 
-type SplitMetrics = HashMap<MetricSeries, (MetricData, EventMetadata)>;
+type SplitMetrics = HashMap<MetricSeries, OtelMetric>;
 pub type AbsoluteMetricState = MetricState<AbsoluteMetricNormalizer>;
 pub type IncrementalMetricState = MetricState<IncrementalMetricNormalizer>;
 
@@ -38,28 +38,24 @@ impl MetricNormalize for IncrementalMetricNormalizer {
 pub struct MetricState<N> {
     intermediate: MetricSet,
     normalizer: N,
-    latest: HashMap<MetricSeries, (MetricData, EventMetadata)>,
+    latest: HashMap<MetricSeries, OtelMetric>,
 }
 
 impl<N: MetricNormalize> MetricState<N> {
     pub fn merge(&mut self, otel: OtelMetric) {
         if let Some(output) = self.normalizer.normalize(&mut self.intermediate, otel) {
-            let (series, data, metadata) = output.into_metric_parts();
-            self.latest.insert(series, (data, metadata));
+            let series = output.metric_series();
+            self.latest.insert(series, output);
         }
     }
 
     pub fn finish(self) -> SplitMetrics {
         let mut latest = self.latest;
 
-        // If we had an absolute value stored in the normalizer state that was never
-        // updated/seen more than once, we will never have gotten it back from the `apply_state`
-        // call, so we're adding all items in the normalizer state that aren't already present
-        // in the latest map.
         for otel in self.intermediate.into_metrics() {
-            let (series, data, metadata) = otel.into_metric_parts();
+            let series = otel.metric_series();
             if !latest.contains_key(&series) {
-                latest.insert(series, (data, metadata));
+                latest.insert(series, otel);
             }
         }
 
@@ -100,48 +96,40 @@ impl<N: Default> Default for MetricState<N> {
         Self {
             intermediate: MetricSet::default(),
             normalizer: N::default(),
-            latest: HashMap::default(),
+            latest: HashMap::new(),
         }
     }
 }
 
 pub fn read_counter_value(metrics: &SplitMetrics, series: MetricSeries) -> Option<f64> {
-    metrics
-        .get(&series)
-        .and_then(|(data, _)| match data.value() {
-            MetricValue::Counter { value } => Some(*value),
-            _ => None,
-        })
+    metrics.get(&series).and_then(|otel| match otel.value() {
+        MetricValue::Counter { value } => Some(value),
+        _ => None,
+    })
 }
 
 pub fn read_gauge_value(metrics: &SplitMetrics, series: MetricSeries) -> Option<f64> {
-    metrics
-        .get(&series)
-        .and_then(|(data, _)| match data.value() {
-            MetricValue::Gauge { value } => Some(*value),
-            _ => None,
-        })
+    metrics.get(&series).and_then(|otel| match otel.value() {
+        MetricValue::Gauge { value } => Some(value),
+        _ => None,
+    })
 }
 
 pub fn read_distribution_samples(
     metrics: &SplitMetrics,
     series: MetricSeries,
 ) -> Option<Vec<Sample>> {
-    metrics
-        .get(&series)
-        .and_then(|(data, _)| match data.value() {
-            MetricValue::Distribution { samples, .. } => Some(samples.clone()),
-            _ => None,
-        })
+    metrics.get(&series).and_then(|otel| match otel.value() {
+        MetricValue::Distribution { samples, .. } => Some(samples),
+        _ => None,
+    })
 }
 
 pub fn read_set_values(metrics: &SplitMetrics, series: MetricSeries) -> Option<HashSet<String>> {
-    metrics
-        .get(&series)
-        .and_then(|(data, _)| match data.value() {
-            MetricValue::Set { values } => Some(values.iter().cloned().collect()),
-            _ => None,
-        })
+    metrics.get(&series).and_then(|otel| match otel.value() {
+        MetricValue::Set { values } => Some(values.iter().cloned().collect()),
+        _ => None,
+    })
 }
 
 #[macro_export]

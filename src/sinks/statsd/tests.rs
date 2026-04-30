@@ -6,37 +6,11 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::{codec::BytesCodec, udp::UdpFramed};
 use vector_lib::{
     event::{
-        Event, EventMetadata, MetricKind, MetricTags, MetricValue, OtelMetric, StatisticKind,
-        metric::{MetricData, MetricName, MetricSeries, MetricTime, TagValue},
+        Event, MetricKind, MetricTags, OtelMetric, StatisticKind,
+        metric::TagValue,
     },
     metric_tags,
 };
-
-/// Build an OtelMetric directly from parts for arbitrary MetricValue variants.
-fn otel_from_parts(
-    name: &str,
-    namespace: Option<&str>,
-    kind: MetricKind,
-    value: MetricValue,
-    tags: Option<MetricTags>,
-) -> OtelMetric {
-    let series = MetricSeries {
-        name: MetricName {
-            name: name.to_string(),
-            namespace: namespace.map(ToString::to_string),
-        },
-        tags,
-    };
-    let data = MetricData {
-        time: MetricTime {
-            timestamp: None,
-            interval_ms: None,
-        },
-        kind,
-        value,
-    };
-    OtelMetric::from_metric_parts(series, data, EventMetadata::default())
-}
 
 use super::StatsdSinkConfig;
 use crate::{
@@ -82,16 +56,15 @@ async fn test_send_to_statsd() {
                 .with_namespace(Some("vector"))
                 .with_tags(Some(tags())),
         ),
-        Event::Metric(otel_from_parts(
-            "histogram",
-            Some("vector"),
-            MetricKind::Incremental,
-            MetricValue::Distribution {
-                samples: vector_lib::samples![2.0 => 100],
-                statistic: StatisticKind::Histogram,
-            },
-            None,
-        )),
+        Event::Metric(
+            OtelMetric::new_distribution_from_samples(
+                "histogram",
+                MetricKind::Incremental,
+                &vector_lib::samples![2.0 => 100],
+                StatisticKind::Histogram,
+            )
+            .with_namespace(Some("vector")),
+        ),
     ];
     let (tx, rx) = mpsc::channel(1);
 

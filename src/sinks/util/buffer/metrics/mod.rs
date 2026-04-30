@@ -1,4 +1,4 @@
-use vector_lib::event::{OtelMetric, metric::{MetricValue, Sample}};
+use vector_lib::event::{OtelMetric, metric::Sample};
 
 use crate::sinks::util::{
     Merged, SinkBatchSettings,
@@ -75,18 +75,16 @@ impl Batch for MetricsBuffer {
     }
 
     fn finish(self) -> Self::Output {
-        let otel_metrics = self
+        let mut otel_metrics = self
             .metrics
             .map(MetricSet::into_metrics)
             .unwrap_or_default();
+        for metric in &mut otel_metrics {
+            if metric.is_distribution() {
+                metric.compress_distribution();
+            }
+        }
         otel_metrics
-            .into_iter()
-            .map(|otel| {
-                let (s, mut d, md) = otel.into_metric_parts();
-                finalize_metric_value(&mut d.value);
-                OtelMetric::from_metric_parts(s, d, md)
-            })
-            .collect()
     }
 
     fn num_items(&self) -> usize {
@@ -94,13 +92,6 @@ impl Batch for MetricsBuffer {
             .as_ref()
             .map(|metrics| metrics.len())
             .unwrap_or(0)
-    }
-}
-
-fn finalize_metric_value(value: &mut MetricValue) {
-    if let MetricValue::Distribution { samples, .. } = value {
-        let compressed_samples = compress_distribution(samples);
-        *samples = compressed_samples;
     }
 }
 
@@ -136,10 +127,9 @@ mod tests {
     use similar_asserts::assert_eq;
     use vector_lib::{
         event::{
-            EventMetadata, OtelMetric,
+            OtelMetric,
             metric::{
-                MetricData, MetricKind, MetricKind::*, MetricName, MetricSeries, MetricTime,
-                MetricValue, StatisticKind,
+                MetricKind, MetricKind::*, StatisticKind,
             },
         },
         metric_tags,
@@ -153,58 +143,32 @@ mod tests {
 
     type Buffer = Vec<Vec<OtelMetric>>;
 
-    /// Build an OtelMetric directly from parts for Distribution / Set / signed-Gauge
-    /// variants that have no dedicated `OtelMetric::new_*` native constructor.
-    fn otel_from_parts(name: String, kind: MetricKind, value: MetricValue) -> OtelMetric {
-        let series = MetricSeries {
-            name: MetricName {
-                name,
-                namespace: None,
-            },
-            tags: None,
-        };
-        let data = MetricData {
-            time: MetricTime {
-                timestamp: None,
-                interval_ms: None,
-            },
-            kind,
-            value,
-        };
-        OtelMetric::from_metric_parts(series, data, EventMetadata::default())
-    }
-
     pub fn sample_counter(num: usize, tagstr: &str, kind: MetricKind, value: f64) -> OtelMetric {
         OtelMetric::new_counter(format!("counter-{num}"), kind, value)
             .with_tags(Some(metric_tags!(tagstr => "true")))
     }
 
     pub fn sample_gauge(num: usize, kind: MetricKind, value: f64) -> OtelMetric {
-        otel_from_parts(
-            format!("gauge-{num}"),
-            kind,
-            MetricValue::Gauge { value },
-        )
+        match kind {
+            MetricKind::Absolute => OtelMetric::new_gauge(format!("gauge-{num}"), value),
+            MetricKind::Incremental => OtelMetric::new_gauge_delta(format!("gauge-{num}"), value),
+        }
     }
 
     pub fn sample_set<T: ToString>(num: usize, kind: MetricKind, values: &[T]) -> OtelMetric {
-        otel_from_parts(
+        OtelMetric::new_set_from_values(
             format!("set-{num}"),
             kind,
-            MetricValue::Set {
-                values: values.iter().map(|s| s.to_string()).collect(),
-            },
+            values.iter().map(|s| s.to_string()),
         )
     }
 
     pub fn sample_distribution_histogram(num: u32, kind: MetricKind, rate: u32) -> OtelMetric {
-        otel_from_parts(
+        OtelMetric::new_distribution_from_samples(
             format!("dist-{num}"),
             kind,
-            MetricValue::Distribution {
-                samples: vector_lib::samples![num as f64 => rate],
-                statistic: StatisticKind::Histogram,
-            },
+            &vector_lib::samples![num as f64 => rate],
+            StatisticKind::Histogram,
         )
     }
 

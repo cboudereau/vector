@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use vector_lib::event::{MetricValue, OtelMetric, metric::MetricData};
+use vector_lib::event::{MetricKind, MetricValue, OtelMetric};
 
 #[allow(clippy::large_enum_variant)]
 enum SplitState {
@@ -79,70 +79,57 @@ pub struct AggregatedSummarySplitter;
 
 impl MetricSplit for AggregatedSummarySplitter {
     fn split(&mut self, input: OtelMetric) -> SplitIterator {
-        let (series, data, metadata) = input.into_metric_parts();
-        match &data.value {
-            // If it's not an aggregated summary, just send it on.
-            MetricValue::Counter { .. }
-            | MetricValue::Gauge { .. }
-            | MetricValue::Set { .. }
-            | MetricValue::Distribution { .. }
-            | MetricValue::AggregatedHistogram { .. } => {
-                SplitIterator::single(OtelMetric::from_metric_parts(series, data, metadata))
+        let value = input.value();
+        let MetricValue::AggregatedSummary {
+            quantiles,
+            count,
+            sum,
+        } = value
+        else {
+            return SplitIterator::single(input);
+        };
+
+        let name = input.name().to_string();
+        let namespace = input.namespace().map(|s| s.to_string());
+        let tags = input.tags();
+        let timestamp = input.timestamp();
+        let metadata = input.metadata().clone();
+        let kind = input.kind();
+
+        let mut metrics = VecDeque::new();
+
+        let count_metric =
+            OtelMetric::new_counter(format!("{name}_count"), kind, count as f64)
+                .with_namespace(namespace.clone())
+                .with_tags(tags.clone())
+                .with_timestamp(timestamp)
+                .with_metadata(metadata.clone());
+        metrics.push_back(count_metric);
+
+        for quantile in quantiles {
+            let mut qtags = tags.clone().unwrap_or_default();
+            qtags.replace(String::from("quantile"), quantile.to_quantile_string());
+            let q_metric = if kind == MetricKind::Incremental {
+                OtelMetric::new_gauge_delta(&name, quantile.value)
+            } else {
+                OtelMetric::new_gauge(&name, quantile.value)
             }
-            MetricValue::AggregatedSummary { .. } => {
-                let (time, kind, value) = data.into_parts();
-                let (quantiles, count, sum) = match value {
-                    MetricValue::AggregatedSummary {
-                        quantiles,
-                        count,
-                        sum,
-                    } => (quantiles, count, sum),
-                    _ => unreachable!("metric value must be aggregated summary to be here"),
-                };
-
-                let mut metrics = VecDeque::new();
-
-                let mut count_series = series.clone();
-                count_series.name_mut().name_mut().push_str("_count");
-                let count_data = MetricData::from_parts(
-                    time,
-                    kind,
-                    MetricValue::Counter {
-                        value: count as f64,
-                    },
-                );
-                let count_metadata = metadata.clone();
-                metrics.push_back(OtelMetric::from_metric_parts(count_series, count_data, count_metadata));
-
-                for quantile in quantiles {
-                    let mut quantile_series = series.clone();
-                    quantile_series
-                        .replace_tag(String::from("quantile"), quantile.to_quantile_string());
-                    let quantile_data = MetricData::from_parts(
-                        time,
-                        kind,
-                        MetricValue::Gauge {
-                            value: quantile.value,
-                        },
-                    );
-                    let quantile_metadata = metadata.clone();
-                    metrics.push_back(OtelMetric::from_metric_parts(
-                        quantile_series,
-                        quantile_data,
-                        quantile_metadata,
-                    ));
-                }
-
-                let mut sum_series = series;
-                sum_series.name_mut().name_mut().push_str("_sum");
-                let sum_data =
-                    MetricData::from_parts(time, kind, MetricValue::Counter { value: sum });
-                let sum_metadata = metadata;
-                metrics.push_back(OtelMetric::from_metric_parts(sum_series, sum_data, sum_metadata));
-
-                SplitIterator::multiple(metrics)
-            }
+            .with_namespace(namespace.clone())
+            .with_tags(Some(qtags))
+            .with_timestamp(timestamp)
+            .with_metadata(metadata.clone());
+            metrics.push_back(q_metric);
         }
+
+        let sum_metric =
+            OtelMetric::new_counter(format!("{name}_sum"), kind, sum)
+                .with_namespace(namespace)
+                .with_tags(tags)
+                .with_timestamp(timestamp)
+                .with_metadata(metadata);
+        metrics.push_back(sum_metric);
+
+        SplitIterator::multiple(metrics)
     }
 }
 

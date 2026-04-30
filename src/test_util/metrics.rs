@@ -137,20 +137,16 @@ pub fn read_set_values(metrics: &SplitMetrics, series: MetricSeries) -> Option<H
 #[macro_export]
 macro_rules! series {
 	($name:expr_2021) => {
-		vector_lib::event::metric::MetricSeries {
-			name: vector_lib::event::metric::MetricName {
-				name: $name.into(),
-				namespace: None,
-			},
+		vector_lib::event::metric::MetricIdentity {
+			name: $name.into(),
+			namespace: None,
 			tags: None,
 		}
 	};
 	($name:expr_2021, $($tk:expr_2021 => $tv:expr_2021),*) => {
-		vector_lib::event::metric::MetricSeries {
-			name: vector_lib::event::metric::MetricName {
-				name: $name.into(),
-				namespace: None,
-			},
+		vector_lib::event::metric::MetricIdentity {
+			name: $name.into(),
+			namespace: None,
 			tags: Some(vector_lib::metric_tags!( $( $tk => $tv, )* )),
 		}
 	};

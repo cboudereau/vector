@@ -4206,13 +4206,10 @@ impl OtelMetric {
     /// store MetricSeries/MetricData separately.
     /// Build a `MetricSeries` key for this metric (name + namespace + tags).
     /// This is the grouping key used by aggregate/normalization.
-    pub fn metric_series(&self) -> super::metric::MetricSeries {
-        use super::metric::{MetricName, MetricSeries};
-        MetricSeries {
-            name: MetricName {
-                name: self.metric.name.clone(),
-                namespace: self.namespace().map(|s| s.to_string()),
-            },
+    pub fn metric_series(&self) -> super::metric::MetricIdentity {
+        super::metric::MetricIdentity {
+            name: self.metric.name.clone(),
+            namespace: self.namespace().map(|s| s.to_string()),
             tags: self.tags(),
         }
     }

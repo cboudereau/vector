@@ -279,7 +279,6 @@ fn metric_type_tag(view: &MetricView<'_>) -> &'static str {
 
 impl MetricRef {
     pub fn from_otel_metric(metric: &OtelMetric) -> Self {
-        use crate::event::metric::MetricName;
         let view = metric.view();
         let bounds = match &view {
             MetricView::Histogram { bounds, .. } => {
@@ -292,10 +291,8 @@ impl MetricRef {
         };
         let mt = metric_type_tag(&view);
         let series = MetricSeries {
-            name: MetricName {
-                name: metric.name().to_owned(),
-                namespace: metric.namespace().map(str::to_owned),
-            },
+            name: metric.name().to_owned(),
+            namespace: metric.namespace().map(str::to_owned),
             tags: metric.tags(),
         };
         Self {

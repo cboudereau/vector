@@ -117,9 +117,9 @@ kafka, syslog, …  ──────────►  OTel Span
 | VRL `.tags` alias removed (P20) | `.tags."key"` was a compatibility alias for `.attributes."key"` on OtelMetric VRL targets. **Removed and must not be re-introduced.** `.attributes` is the canonical OTLP path. |
 | `metric_to_log` OTLP conformance (P21) | Transform now serializes via `OtelMetric`'s OTLP `Serialize` impl instead of legacy `MetricSeries`/`MetricData` serde. Output uses OTLP field names (`sum`, `gauge`, `histogram`, `dataPoints`, `attributes`). |
 | `metric_to_log` uses `serde_json` bridge (P21) | Deliberate shortcut: `serde_json::to_value(&otel)` reuses OtelMetric's Serialize impl to get correct OTLP field names without duplicating mapping logic. **Not necessary** — direct proto field extraction would avoid JSON Value tree allocation (~2 allocs/event). Deferred optimization. |
-| `log_to_metric` `to_metrics()` legacy (P22) | The `all_metrics = true` code path reads legacy field names (`tags`, `kind`, `counter`, `gauge`, `distribution`, `aggregated_histogram`, `aggregated_summary`, `set`). **Broken for OTLP-format input.** Must be rewritten to parse OTLP structure. |
+| `log_to_metric` `to_metrics()` legacy (P22) | **Deleted in P24.** The `all_metrics = true` code path and `to_metrics()` function have been removed. Config-driven metric construction remains (already OTLP-compliant). |
 | Two-format rule (P22) | Only two wire formats allowed: **OTLP/proto** (binary protobuf, for gRPC and HTTP `application/x-protobuf`) and **OTLP/JSON** (proto3 camelCase, nested resource/scope/attributes, for HTTP `application/json`). The "canonical flat format" used by OtelLog/OtelSpan `Serialize` is a transitional format that must be replaced by OTLP/JSON. `to_value_canonical()` stays as VRL bridge only, not for serialization. |
-| Protocol audit (P22) | Full audit of all wire formats: sources, sinks, codecs, transforms. **No legacy Vector native or JSON formats remain** (except `log_to_metric` `to_metrics()` and OtelLog/OtelSpan canonical flat Serialize). See Protocol Audit section below. |
+| Protocol audit (P22) | Full audit of all wire formats: sources, sinks, codecs, transforms. **No legacy Vector native or JSON formats remain.** `log_to_metric` `to_metrics()` deleted in P24. OtelLog/OtelSpan canonical flat Serialize replaced with OTLP/JSON in P23. See Protocol Audit section below. |
 
 ---
 
@@ -169,7 +169,7 @@ kafka, syslog, …  ──────────►  OTel Span
 | **P19** | Code review + test cleanup: fix EventDataEq (resource/scope attrs), reserved field collision guard, flags/dropped_attributes_count round-trip, non-UTF8 BytesValue, consolidate duplicate AnyValue conversions, extract `otel_fields.rs` constants (29), delete 16 dead tests, fix 9 tests, un-ignore 5. Zero `#[ignore]` remaining in `lib/` crates. | 32 files |
 | **P20** | Remove `.tags` VRL alias for OtelMetric — `.tags."key"` was an alias for `.attributes."key"`. Removed from `VALID_OTEL_METRIC_PATHS_SET`, `precompute_otel_metric_value`, get/get_mut/set/remove handlers. `.attributes` is the only valid attribute path for metrics in VRL. **This alias must not be re-introduced.** | 3 files |
 | **P21** | `metric_to_log` OTLP/JSON conformance — Replace legacy `MetricSeries`/`MetricData` serde serialization with `OtelMetric`'s OTLP `Serialize` impl. Output now uses OTLP field names (`sum`, `gauge`, `histogram`, `summary`, `dataPoints`, `attributes`) instead of legacy (`tags`, `counter.value`, `gauge.value`, `kind`). Remap branching tests updated to use `.name` (metric-specific) instead of `.attributes` for event type detection. Elasticsearch and Humio sink tests updated. | 5 files |
-| **P22** | Protocol audit — Verified all wire formats across sources, sinks, codecs, transforms. **Results:** (1) Sources: OTLP gRPC (proto) + HTTP (proto/JSON); Vector source uses OTLP gRPC. (2) Sinks: OTLP gRPC (proto) + HTTP (JSON); Vector sink uses OTLP gRPC. (3) Codecs: All legacy Native/NativeJSON deleted (commit 726162aa). Standard codecs remain (JSON, Protobuf, OTLP, Avro, CEF, CSV, GELF, Logfmt, Raw, Syslog, Text). (4) Transforms: `log_to_metric` `to_metrics()` still reads legacy field names — needs OTLP migration. All others compliant or event-type agnostic. | 0 files (audit only) |
+| **P22** | Protocol audit — Verified all wire formats across sources, sinks, codecs, transforms. **Results:** (1) Sources: OTLP gRPC (proto) + HTTP (proto/JSON); Vector source uses OTLP gRPC. (2) Sinks: OTLP gRPC (proto) + HTTP (JSON); Vector sink uses OTLP gRPC. (3) Codecs: All legacy Native/NativeJSON deleted (commit 726162aa). Standard codecs remain (JSON, Protobuf, OTLP, Avro, CEF, CSV, GELF, Logfmt, Raw, Syslog, Text). (4) Transforms: All compliant or event-type agnostic (`log_to_metric` `to_metrics()` deleted in P24). | 0 files (audit only) |
 
 **Total changes:** +53,115/−42,556 lines across 9,885 files (net +10,559). The net positive reflects substantial new code (OTel types, VRL targets, OtelAttributes, migration tool, new transforms) alongside large deletions (legacy types, DD sinks, native proto, test fixtures).
 
@@ -187,7 +187,7 @@ kafka, syslog, …  ──────────►  OTel Span
 | ~~OtelMetric data-point attributes~~ | **Done (P16).** | — |
 | `kvlist_to_object_map()` (9 call sites) | Converts `Vec<KeyValue>` to VRL `ObjectMap`. | May be inlined or removed when VRL operates on `AnyValue` directly. |
 | Canonical flat `Serialize` for OtelLog/OtelSpan | Non-OTLP format, transitional. | **P23:** Replace with OTLP/JSON as default `Serialize` impl. Delete `OtlpJsonLog`/`OtlpJsonSpan` wrappers. |
-| `log_to_metric` `to_metrics()` | Reads legacy field names, broken for OTLP input. | **P24:** Delete function, replace with VRL-based approach. |
+| ~~`log_to_metric` `to_metrics()`~~ | **Done (P24).** Deleted function and `all_metrics` config option. | — |
 | `metric_to_log` `serde_json` bridge | Correct but allocates unnecessarily. | **P25:** Direct conversion, body = full OTLP/JSON metric. |
 
 ---
@@ -312,7 +312,7 @@ Full audit of all wire protocols and serialization formats. **Conclusion: no leg
 | Transform | Protocol Status | Notes |
 |-----------|----------------|-------|
 | `metric_to_log` | ⚠️ OTLP via JSON intermediate | Uses `serde_json::to_value(&otel)` — correct output but allocates JSON Value tree. Direct proto field extraction would be faster. |
-| `log_to_metric` (`to_metrics()`) | ❌ **Legacy field names** | Reads `tags`, `kind`, `counter`, `gauge`, `distribution`, `aggregated_histogram`, `aggregated_summary`, `set`. Should read OTLP: `attributes`, `aggregationTemporality`, `sum`, `gauge`, `histogram`, `summary`. |
+| ~~`log_to_metric` (`to_metrics()`)~~ | ✅ **Deleted (P24)** | Function and `all_metrics` config option removed. Config-driven metric construction remains (already OTLP-compliant). |
 | `log_to_metric` (config-based) | ✅ OTLP | Config-driven metric construction uses `OtelMetric` directly |
 | `aggregate` | ✅ OTLP | Works with `OtelMetric` directly |
 | `tag_cardinality_limit` | ✅ OTLP | Uses `OtelMetric` methods (`tags()`, `remove_data_point_attribute()`) |
@@ -327,7 +327,7 @@ Full audit of all wire protocols and serialization formats. **Conclusion: no leg
 | OTLP gRPC → OTLP HTTP | Proto → JSON at sink boundary | Same | None |
 | Vector → Vector | OTLP gRPC proto both directions | Same | None |
 | `metric_to_log` | Proto → serde_json::Value → event::Value → OtelLog | Proto → direct field extraction → OtelLog | Medium (JSON alloc overhead) |
-| `log_to_metric` (`to_metrics()`) | Reads legacy field names from log | Should read OTLP field names | **High** (broken for OTLP input) |
+| ~~`log_to_metric` (`to_metrics()`)~~ | **Deleted (P24)** | — | — |
 
 ## Planned Steps (Priority Order)
 
@@ -387,8 +387,8 @@ Replace `serde_json::to_value(&otel)` bridge with direct conversion. Output Otel
 - No intermediate `serde_json::Value` → `event::Value` conversion
 - Saves ~2 heap allocations per event
 
-### P26 — Legacy metric types removal (~2,164 lines) 🔧 (arithmetic + aggregate done 2026-04-29, remaining consumers TBD)
-Replace `MetricTags` with `OtelAttributes`, add arithmetic via inherent methods on `OtelMetric`, eliminate `MetricValue`/`MetricKind`/`MetricSeries`/`MetricData`.
+### P26 — Legacy metric types removal (~2,164 lines) 🔧 (arithmetic + aggregate done 2026-04-29, remaining consumers planned)
+Replace `MetricTags` with `OtelAttributes`, add arithmetic via inherent methods on `OtelMetric`, eliminate `MetricValue`/`MetricKind`/`MetricSeries`/`MetricData`. Migrate `MetricTags` in same pass per-file (D8). Delete `from_metric_parts()`/`into_metric_parts()` after all consumers migrated (D7).
 
 **Completed (2026-04-29):**
 - Arithmetic methods on `OtelMetric`: `add()`, `subtract()`, `zero()`, `set_first_value()`, `first_value_as_f64()` — dispatch on proto `data` oneof (Sum, Gauge, Histogram, ExponentialHistogram, Summary). 10 unit tests.
@@ -404,39 +404,36 @@ Replace `MetricTags` with `OtelAttributes`, add arithmetic via inherent methods 
 
 Audit of arithmetic methods and aggregate transform against [OTel Metrics Data Model](https://opentelemetry.io/docs/specs/otel/metrics/data-model/) and [otelcol-contrib](https://github.com/open-telemetry/opentelemetry-collector-contrib) reference implementation.
 
-**DECISION NEEDED — `is_cumulative()` returns `true` for Gauge/Summary:**
-- **Spec:** Gauge and Summary have NO temporality. They are point-in-time values, neither delta nor cumulative.
-- **otelcol-contrib:** `deltatocumulativeprocessor` and `cumulativetodeltaprocessor` both **skip Gauges entirely**. They check `AggregationTemporalityDelta` and pass Gauges through unchanged.
-- **Current code:** `is_cumulative()` returns `true` for `Gauge` and `Summary` (otel_event.rs:4760). This is wrong per spec and per otelcol. Gauges land in Latest/Diff/Max/Min/Mean/Stdev modes only because of this incorrect mapping.
-- **Impact:** Aggregate modes `Latest`, `Diff`, `Max`, `Min` gate on `is_cumulative()`. `Mean`/`Stdev` gate on `is_cumulative() && is_gauge()`. If we fix `is_cumulative()` to return `false` for Gauge, these modes will silently drop Gauges unless we add explicit `is_gauge()` checks.
-- **Fix:** `is_cumulative()` → return `false` for Gauge/Summary. Add `has_temporality()` method. Aggregate modes gate on `is_cumulative() || is_gauge()` (or `!is_delta()` where appropriate). Each mode documents its semantic contract explicitly.
+**DECIDED (D1) — `is_cumulative()` fixed for Gauge/Summary:**
+Fix `is_cumulative()` to return `false` for Gauge/Summary. Add `has_temporality()` helper. Update aggregate guards to `is_cumulative() || is_gauge()`.
 
-**DECISION NEEDED — `add()` works on Gauges (non-additive per spec):**
-- **Spec:** *"Gauges do not provide an aggregation semantic, instead 'last sample value' is used."* Gauges are classified as **non-additive**.
-- **otelcol-contrib:** `metricstransformprocessor` treats Gauges identically to Sums — `sum`, `mean`, `min`, `max`, `median`, `count` all apply. **No special last-value-wins.** The processor does not distinguish Gauge from Sum for aggregation.
-- **Current code:** `add()` sums Gauge data points. Only used internally by Mean/Stdev (intermediate sum divided by count).
-- **Recommendation:** Keep `add()` working on Gauges — matches otelcol-contrib behavior. The `Auto` mode already does last-value-wins for Gauges (correct). Non-Auto modes (Mean, Stdev, Max, Min) intentionally aggregate Gauge values.
+**DECIDED (D2) — `add()` kept working on Gauges:**
+Keep `add()` working on Gauges — matches otelcol-contrib `metricstransformprocessor` behavior.
 
-**DECISION NEEDED — `metric_series()` grouping key:**
-- **Spec:** Metric identity = `name + Resource + Scope + unit + type + temporality + monotonicity`. Data points keyed by attribute set within a metric.
-- **otelcol-contrib `metricstransformprocessor`:** Groups data points by `(attributes + timestamp)` within a metric. Does NOT include Resource/Scope in the data-point grouping key — operates on data points within a single metric's context.
-- **otelcol-contrib `deltatocumulativeprocessor`:** Uses **full identity**: `Resource + Scope + name + unit + type + monotonic + temporality + attributes`. This is the strict identity used for stateful temporal operations.
-- **Current code:** `metric_series()` = `name + namespace + data-point-attributes`. Missing Resource/Scope/unit/type.
-- **Context:** Our aggregate transform operates on events within a single pipeline topology. Metrics from different resources would typically flow through separate pipelines (each source has its own resource). The `metricstransformprocessor` analogy applies — we're doing within-metric aggregation.
-- **Recommendation:** Keep current key for now (matches `metricstransformprocessor` level). Document as a known simplification. If users report cross-resource aggregation bugs, add Resource/Scope to the key then.
+**DECIDED (D3) — `metric_series()` grouping key kept as-is:**
+Keep current key (`name + namespace + data-point-attributes`). Matches metricstransformprocessor. Document as known simplification.
 
-**Remaining P26 work — legacy type consumers (~45 files):**
+**Completed (2026-04-30) — Phase 2 bulk migration (8 commits, 1783 tests passing):**
+- Added `is_set()`, `is_distribution()`, `interval_ms()` methods to OtelMetric.
+- **Sources** (Phase 2a): internal_metrics, nginx_metrics, mongodb_metrics, postgresql_metrics, static_metrics — all migrated to `new_counter()`/`new_gauge()` constructors.
+- **Transforms** (Phase 2b): `log_to_metric` — migrated to native constructors.
+- **API** (Phase 2f): `api/schema/metrics/filter.rs` — `sum_metrics()` uses `add()` directly.
+- **Sink normalizers** (6 sinks): appsignal, aws_cloudwatch, gcp_stackdriver, greptimedb, influxdb, sematext — all migrated from `MetricValue` matching to `is_sum()`/`is_gauge()`/`is_set()`.
+- **Sink encoders** (4 sinks): influxdb, aws_cloudwatch, new_relic, sematext — migrated from `into_metric_parts()` to native accessors (`name()`, `namespace()`, `timestamp()`, `tags()`, `value()`, `first_value_as_f64()`).
+- **Prometheus collector**: changed trait `encode_metric` to accept `&OtelMetric` — eliminates decomposition from exporter and remote_write callers.
+- **GCP Stackdriver**: request builder migrated to native accessors.
+- **Internal metrics recorder**: replaced `from_metric_parts()` with native constructors. Removed `make_metric()` from storage.
+- **OTLP ingestion** (`lib/opentelemetry-proto/src/metrics.rs`): all 5 metric types migrated to native constructors.
+- **Test helpers**: `test_util/metrics.rs` (`get_gauge`, `get_set`, `get_distribution`) migrated to native constructors. Lua test migrated.
 
-| Category | Files | Approach |
-|----------|-------|----------|
-| `sinks/util/buffer/metrics/` (normalize, split, mod) | 6 | Rewrite to use OtelMetric directly. Normalize uses `into_metric_parts()`/`from_metric_parts()` heavily. |
-| `sinks/prometheus/` (collector, exporter, remote_write) | 4 | Exporter uses `into_metric_parts()` to decompose metrics for Prometheus format. |
-| `sinks/` (influxdb, new_relic, gcp_stackdriver, greptimedb, splunk_hec, statsd, aws_cloudwatch, sematext, appsignal) | 12 | Each sink uses MetricValue match arms for format-specific serialization. |
-| `sources/` (host_metrics, prometheus/parser, internal_metrics, static_metrics, statsd/parser, datadog_agent/ddsketch) | 6 | Sources construct OtelMetric via `from_metric_parts()`. Replace with `new_counter()`/`new_gauge()`/etc. |
-| `lib/` (codecs/influxdb, metrics/storage, metrics/recorder, lua) | 5 | Codecs and internal metrics. |
-| `api/schema/metrics/` (filter, uptime) | 2 | API layer decomposes metrics for GraphQL responses. |
-| `transforms/` (incremental_to_absolute, lua, log_to_metric, metric_to_log) | 4 | Some already migrated. incremental_to_absolute needs native temporality ops. |
-| Test helpers (`from_metric_parts` in test code) | ~10 | Update test helpers to use `new_counter()`/`new_gauge()`/`otel_from_parts()`. |
+**Remaining P26 work — 60 calls across 3 categories:**
+
+| Category | Calls | What's needed |
+|----------|-------|---------------|
+| Deep infrastructure (`normalize.rs`, `split.rs`, `buffer/mod.rs`) | 19 | Need `set_kind()` on OtelMetric to switch Incremental↔Absolute. Cache stores `MetricSeries` → `MetricEntry(MetricData)` — needs redesign to store `OtelMetric` directly. |
+| Prometheus exporter `normalize()` | 7 | Same as above — decomposes to mutate `data.value` and `data.kind`. Also calls `distribution_to_agg_histogram()`. |
+| Lua integration (`lua/event.rs`, `lua/metric.rs`) | 4 | `LuaMetric` struct holds `MetricSeries`/`MetricData`. Needs redesign to hold `OtelMetric` and serialize/deserialize via native accessors. |
+| Test code (test fixtures) | ~31 | Test helpers use `from_metric_parts()` to construct test OtelMetrics. Replace with native constructors or `otel_from_parts()` test helpers. |
 
 ### P27 — Replace `to_value_canonical()` in codec encoders (deferred)
 5 call sites in 4 codec files (not 12/8 as originally estimated — some already migrated):
@@ -450,13 +447,11 @@ Audit of arithmetic methods and aggregate transform against [OTel Metrics Data M
 
 **Why deferred:** Each encoder produces a format-specific output that depends on the flat canonical layout. Replacing with OTLP/JSON (`Serialize` impl) would change the output structure — GELF consumers expect `{"version":"1.1","host":"..","short_message":".."}`, not `{"attributes":[{"key":"version","value":{"stringValue":"1.1"}}]}`. Each encoder needs a custom rewrite to read proto fields directly and produce its specific format.
 
-**DECISION NEEDED — approach for each encoder:**
-- **GELF:** After `to_gelf_event()` validates/mutates via VRL paths, required fields land in `record_attrs`. Could iterate `record_attrs` directly instead of going through `to_value_canonical()`. BUT `to_gelf_event()` also calls `convert_to_fields()` which itself calls `to_value_canonical()` — deeper refactor needed.
-- **Avro:** `apache_avro::to_value` takes `Serialize`. Could use `&log` directly (OTLP/JSON format). But this changes the Avro record structure — users with existing schemas would break.
-- **logfmt:** Needs flat key=value. Could iterate proto fields directly and build logfmt string without Value intermediate.
-- **protobuf:** `encode_message` takes VRL `Value`. This IS a VRL bridge use case — may not need migration.
-
-**Recommendation:** Migrate incrementally per encoder. logfmt is simplest (iterate proto fields). GELF needs deeper refactor. Avro/protobuf may be acceptable as-is (Value intermediate is their natural input).
+**DECIDED (D5) — approach for each encoder:**
+- **logfmt:** Iterate proto fields directly, build key=value string. Simplest — migrate first.
+- **GELF:** Deeper refactor — `to_gelf_event()` + `convert_to_fields()` both call `to_value_canonical()`. Migrate second.
+- **Avro:** Use `Serialize` impl if schema matches, or keep Value bridge. Migrate third.
+- **protobuf:** `encode_message` takes VRL `Value` — may keep Value bridge (natural input for descriptor encoding). Migrate last.
 
 ### P28 — Extract remaining hardcoded field names in otel_event.rs (deferred — low value, all in same file)
 ~239 uses of string literals for field names. Lower risk since otel_event.rs is the defining module.
@@ -469,45 +464,145 @@ Extracted shared helper functions: `append_canonical_resource_scope`, `remove_re
 
 ---
 
-## Open Decisions (answer all before next automode run)
+## Automode Execution Plan (locked 2026-04-29)
 
-All decisions below block autonomous implementation. Each has a recommendation; confirm or override.
+All decisions answered. Automode executes the following steps in order. One commit per category (D9). Run `cargo test -p vector` after each commit.
 
-### D1 — Fix `is_cumulative()` for Gauge/Summary
+### Phase 1 — Spec compliance fix (D1)
+1. Fix `is_cumulative()` to return `false` for Gauge/Summary
+2. Add `has_temporality()` helper method
+3. Update aggregate transform guards: `is_cumulative() || is_gauge()` (or `!is_delta()`)
+4. Run aggregate tests — all 14 must pass
+
+### Phase 2 — P26 legacy type migration (D4, D7, D8)
+Migrate all ~45 files off legacy metric types. One commit per category.
+
+| Commit | Category | Files | Key changes |
+|--------|----------|-------|-------------|
+| 2a | Sources | 6 | Replace `from_metric_parts()` with `new_counter()`/`new_gauge()`/etc. Replace `MetricTags` with `OtelAttributes`. |
+| 2b | Transforms | 4 | `incremental_to_absolute` → native temporality ops. Replace remaining legacy types. |
+| 2c | Sinks buffer/normalize | 6 | Rewrite normalize to use `OtelMetric` directly. Replace `MetricTags`. |
+| 2d | Individual sinks | 12 | Each sink: replace `MetricValue` match arms with proto `data` oneof. Replace `MetricTags` with `OtelAttributes`. |
+| 2e | Lib crates | 5 | Codecs, internal metrics, lua. |
+| 2f | API | 2 | GraphQL metrics filter/uptime. |
+| 2g | Delete bridge | — | Delete `from_metric_parts()`/`into_metric_parts()`, `MetricValue`, `MetricKind`, `MetricSeries`, `MetricData` types. Add `is_counter()`, `is_histogram()`, `data_type_name()` helpers on `OtelMetric`. |
+| 2h | Test helpers | ~10 | Update test code to use `new_counter()`/`new_gauge()`/`otel_from_parts()`. |
+
+### Phase 3 — P27 encoder migration (D5)
+Migrate codec encoders off `to_value_canonical()`. One commit per encoder.
+
+| Commit | Encoder | Approach |
+|--------|---------|----------|
+| 3a | logfmt | Iterate proto fields directly, build key=value string. |
+| 3b | GELF | Deeper refactor — read proto fields for GELF-specific output. |
+| 3c | Avro | Use `Serialize` impl if schema matches, or keep Value bridge. |
+| 3d | Protobuf | May keep Value bridge (VRL `Value` is its natural input for descriptor encoding). |
+
+### Phase 4 — D10.0 VRL metric unification
+Unify OtelMetric VRL path to match OtelLog/OtelSpan (full proto → Value → proto).
+
+| Commit | What |
+|--------|------|
+| 4a | Add `otel_metric_event_to_value()` + `value_to_otel_metric_event()` |
+| 4b | Replace `VrlTarget::OtelMetric { event, value }` with `VrlTarget::OtelMetric(Value, EventMetadata)` |
+| 4c | Delete `precompute_otel_metric_value()`, per-field write-back code |
+
+### Phase 5 — P28 hardcoded field names (D6)
+Extract ~239 string literals in `otel_event.rs` into named constants in `otel_fields.rs`. Last priority.
+
+---
+
+## Decisions (locked — all answered 2026-04-29)
+
+All decisions are locked. Automode proceeds based on these answers.
+
+### D1 — Fix `is_cumulative()` for Gauge/Summary ✅
 **Question:** Should `is_cumulative()` return `false` for Gauge and Summary?
-**Recommendation:** Yes. Both the OTel spec and otelcol-contrib agree Gauges have no temporality. Fix `is_cumulative()` to return `false`. Update aggregate modes to gate on `is_cumulative() || is_gauge()` (or `!is_delta()`) instead of `is_cumulative()` alone.
-**Decision:** _________________
+**Context:** Currently returns `true` for both (bug). OTel spec says Gauge/Summary have NO temporality. otelcol-contrib skips Gauges in temporal processors. If fixed, aggregate modes (Latest, Diff, Max, Min, Mean, Stdev) need explicit `|| is_gauge()` guards to keep working on Gauges.
+**Decision:** Yes — fix it. Add `has_temporality()` helper. Update aggregate guards to `is_cumulative() || is_gauge()`.
 
-### D2 — Keep `add()` working on Gauges
-**Question:** Should `add()` return `false` for Gauges (force last-value-wins everywhere), or keep it working (allow Mean/Stdev/Sum modes to aggregate Gauge values)?
-**Recommendation:** Keep working. otelcol-contrib `metricstransformprocessor` does the same — treats Gauges identically to Sums for configured aggregation functions. The `Auto` mode already does last-value-wins for Gauges.
-**Decision:** _________________
+### D2 — Keep `add()` working on Gauges ✅
+**Question:** Should `add()` keep working on Gauges, or return `false` to force last-value-wins?
+**Context:** OTel spec says Gauges are "non-additive, last sample value". But otelcol-contrib `metricstransformprocessor` treats Gauges identically to Sums for sum/mean/min/max/count. Our `Auto` mode already does last-value-wins for Gauges. `add()` is only used internally by Mean/Stdev (intermediate sum ÷ count).
+**Decision:** Yes, keep working — matches otelcol-contrib behavior.
 
-### D3 — `metric_series()` grouping key scope
-**Question:** Should `metric_series()` include Resource and Scope in the key, or stay as `name + namespace + data-point-attributes`?
-**Recommendation:** Keep current key. Matches otelcol-contrib `metricstransformprocessor` (within-metric data-point grouping). Full identity (Resource+Scope) is only needed for temporal state tracking (delta-to-cumulative), which is a different operation. Document as known simplification.
-**Decision:** _________________
+### D3 — `metric_series()` grouping key scope ✅
+**Question:** Should `metric_series()` include Resource and Scope in the grouping key, or stay as `name + namespace + data-point-attributes`?
+**Context:** Full OTel identity = name + Resource + Scope + unit + type + temporality + monotonicity. otelcol-contrib `metricstransformprocessor` groups by `(attributes + timestamp)` only (no Resource/Scope). `deltatocumulativeprocessor` uses full identity. Our aggregate is analogous to metricstransformprocessor (within-metric aggregation, not cross-resource state tracking).
+**Decision:** Keep current key — matches metricstransformprocessor. Document as known simplification.
 
-### D4 — P26 remaining consumers: priority and approach
-**Question:** Should we migrate all ~45 remaining files that use legacy metric types (`MetricValue`, `MetricKind`, `MetricSeries`, `MetricData`, `into_metric_parts()`, `from_metric_parts()`)? If yes, in what order?
-**Recommendation:** Migrate in order of blast radius:
-1. **Sources** (6 files) — replace `from_metric_parts()` with `new_counter()`/`new_gauge()`/etc.
-2. **Transforms** (4 files) — `incremental_to_absolute` needs native temporality ops
-3. **Sinks buffer/normalize** (6 files) — core infrastructure, highest code churn
-4. **Individual sinks** (12 files) — each sink's MetricValue match arms, one at a time
-5. **Lib crates** (5 files) — codecs, internal metrics, lua
-6. **API** (2 files) — lowest priority
-**Decision:** _________________
+### D4 — P26 remaining consumers: migrate all ~45 files ✅
+**Question:** Should automode migrate all remaining files using legacy metric types (`MetricValue`, `MetricKind`, `MetricSeries`, `MetricData`, `into_metric_parts()`, `from_metric_parts()`)? If yes, in what order?
+**Context:** 75 non-test call sites for `from_metric_parts`/`into_metric_parts` across sources, transforms, sinks, lib, API. These are the bridge between `OtelMetric` and the legacy computation layer. Removing them means each call site must use native `OtelMetric` methods directly.
+**Decision:** Yes, migrate all. Order by blast radius:
+1. Sources (6 files) — replace `from_metric_parts()` with `new_counter()`/`new_gauge()`/etc.
+2. Transforms (4 files) — `incremental_to_absolute` needs native temporality ops
+3. Sinks buffer/normalize (6 files) — core infrastructure
+4. Individual sinks (12 files) — each sink's MetricValue match arms
+5. Lib crates (5 files) — codecs, internal metrics, lua
+6. API (2 files) — lowest priority
 
-### D5 — P27 encoder migration approach
-**Question:** How to handle the 5 `to_value_canonical()` call sites in codec encoders?
-**Recommendation:** Migrate incrementally: logfmt first (simplest — iterate proto fields), GELF later (deeper refactor needed), Avro and protobuf last (may be acceptable as-is since Value is their natural input). Skip for now if P26 remaining consumers are higher priority.
-**Decision:** _________________
+### D5 — P27 encoder migration (`to_value_canonical()` in codecs) ✅
+**Question:** How to handle the 5 `to_value_canonical()` call sites in 4 codec encoders (avro, gelf, logfmt, protobuf)?
+**Context:** Each encoder produces a format-specific output. GELF needs `{"version":"1.1","host":"..","short_message":".."}`, not OTLP/JSON. Each needs a custom rewrite to read proto fields directly. `protobuf.rs` uses VRL `Value` for descriptor-based encoding — may not need migration.
+**Decision:** Migrate incrementally after P26. Order: logfmt first (simplest), GELF second, Avro/protobuf last (may keep Value bridge if it's their natural input).
 
-### D6 — P28 hardcoded field names
+### D6 — P28 hardcoded field names in otel_event.rs ✅
 **Question:** Should we extract ~239 string literals in `otel_event.rs` into named constants?
-**Recommendation:** Skip. All uses are in the defining module. Risk of typos is low and grep works. The 35 constants already extracted in `otel_fields.rs` (P19) cover the cross-file usage in `vrl_target.rs`.
-**Decision:** _________________
+**Context:** All uses are in the defining module. The 35 constants already in `otel_fields.rs` (P19) cover cross-file usage. Risk of typos is low — grep works.
+**Decision:** Yes, do it last — after all other migration work (P26, P27, D10.0) is complete.
+
+### D7 — `from_metric_parts()`/`into_metric_parts()` bridge: delete ✅
+**Question:** After P26 migrates all consumers, should `from_metric_parts()`/`into_metric_parts()` be deleted, or kept as public API for external/plugin use?
+**Context:** Currently 75 non-test call sites. These methods decompose `OtelMetric` into `(MetricSeries, MetricData, EventMetadata)` and reassemble. They exist because legacy types (`MetricValue`, `MetricKind`) provided arithmetic and match arms that the proto struct lacked. Now that `OtelMetric` has native arithmetic (`add()`, `subtract()`, `zero()`, `first_value_as_f64()`), the bridge is less needed. But it remains the only way to do exhaustive `match` on metric type (`MetricValue::Counter` / `Gauge` / `Distribution` / etc.) — proto `data` oneof matching is verbose.
+**Decision:** Delete after all consumers are migrated. Add helper methods (`is_counter()`, `is_histogram()`, `data_type_name()`) on `OtelMetric` for type inspection. Sinks match on proto `data` oneof directly.
+
+### D8 — `MetricTags` → `OtelAttributes` migration scope ✅
+**Question:** Should `MetricTags` be replaced by `OtelAttributes` in the same pass as `MetricValue`/`MetricKind`, or as a separate step?
+**Context:** `MetricTags` is used in 36 non-test files (188 references). It provides multi-value tag support (`TagValueSet`). `OtelAttributes` (BTreeMap-backed) supports multi-value via `ArrayValue`. The types are conceptually equivalent but `MetricTags` has metric-specific helpers (`contains_key()`, `iter_single()`, `iter_all()`, `into_iter_single()`) used by sinks (Prometheus, InfluxDB, Statsd) for tag serialization.
+**Decision:** Migrate together with `MetricValue`/`MetricKind` per-file. When a sink is migrated off `into_metric_parts()`, also replace its `MetricTags` usage with `OtelAttributes` helpers. Add equivalent helpers to `OtelAttributes` if missing.
+
+### D9 — Automode commit granularity ✅
+**Question:** Should automode create one commit per file, one per category (sources/transforms/sinks), or one per logical group?
+**Context:** P26 touches ~45 files across 6 categories. One-commit-per-file creates many small commits (easier to review/revert) but more noise. One-per-category groups related changes (6 commits total). One big commit is hardest to review.
+**Decision:** One commit per category (sources, transforms, sinks/buffer, individual sinks, lib, API). Run `cargo test -p vector` after each category. 6 reviewable checkpoints with passing tests at each.
+
+### D10 — VRL Value bridge long-term strategy ✅
+**Question:** What is the long-term plan for the proto ↔ VRL `Value` conversion boundary, and should any work be planned now?
+
+**How it actually works (not per-access — per-event):**
+
+VRL does NOT convert on every field access. Instead, the entire event is converted to a `Value` tree *once* before VRL runs, VRL operates on `Value` directly (zero overhead per read/write), then the `Value` is converted *back* to proto once after VRL finishes.
+
+| Event type | Entry conversion | VRL runtime | Exit conversion |
+|------------|-----------------|-------------|-----------------|
+| **OtelLog** | `otel_log_event_to_value()` — full proto → Value rebuild | Operates on `Value` directly (`&Value` borrows, zero copy) | `value_to_otel_log_event()` — full Value → proto rebuild |
+| **OtelSpan** | `otel_span_event_to_value()` — full proto → Value rebuild | Operates on `Value` directly | `value_to_otel_span_event()` — full Value → proto rebuild |
+| **OtelMetric** | `precompute_otel_metric_value()` — partial Value snapshot | Reads from Value, writes back to proto per-field via `vrl_value_to_any_value()` | Returns original proto (kept alongside Value) |
+
+**Performance cost:**
+- 2 full-event conversions per VRL execution (OtelLog/OtelSpan). For a typical log with 15 attributes, this means ~30 `any_value_to_vrl()` calls on entry + ~30 `vrl_value_to_any_value()` calls on exit = ~60 clones per event.
+- OtelMetric is cheaper — keeps proto, only converts touched fields.
+- VRL `target_get()` returns `&Value` (borrowed) — zero overhead during VRL execution.
+- `to_value_canonical()` used only for complex VRL paths (array index, nested subpath) inside `otel_event.rs` get/insert/remove as fallback.
+
+**Why VRL-native AnyValue (original "Strategy C") was dropped:**
+`Value` and `AnyValue` are structurally equivalent (string/int/float/bool/array/map). Rewriting all ~100+ VRL stdlib functions to use `AnyValue` instead of `Value` would be massive effort for near-zero gain — you'd just swap one tree type for another. The cost is at the 2 boundary conversions, not in VRL's internal type.
+
+**Three realistic strategies (for future reference):**
+
+**A. Status quo — keep 2 boundary conversions.** Cost is ~60 clones per event (entry + exit). Acceptable for most workloads. Simple, well-tested.
+
+**B. Lazy/incremental conversion.** Keep proto alongside Value. Convert fields lazily on first access. Write back changed fields on exit instead of full rebuild. Could cut boundary cost by 50-80%.
+
+**C. No-op passthrough for read-only VRL.** If the VRL program only reads fields (no mutations), skip the exit conversion entirely — the proto is unchanged. Read-only transforms (filter, route, sample) become zero-cost.
+
+**Decision:**
+1. **D10.0 — Unify OtelMetric VRL path now.** Convert OtelMetric to match OtelLog/OtelSpan (full proto → Value → proto). Remove `precompute_otel_metric_value()`, per-field write-back, dual storage. Add `otel_metric_event_to_value()` + `value_to_otel_metric_event()`. Consistency over micro-optimization.
+2. **Accept status quo (A) after unification.** ~5% overhead is acceptable.
+3. **Track B and C as future optimizations** — implement when VRL-heavy workloads show measurable regression in production. Not planned for current automode run.
+4. **Reduce `to_value_canonical()` fallback scope** during P26 work if encountered, but not a dedicated effort.
+5. **Remaining `to_value_canonical()` sites** (lua, schema) — leave as-is, natural bridge uses.
 
 ---
 

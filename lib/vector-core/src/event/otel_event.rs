@@ -3616,7 +3616,9 @@ impl OtelMetric {
         kind: super::MetricKind,
         values: impl IntoIterator<Item = impl Into<String>>,
     ) -> Self {
-        let values: Vec<String> = values.into_iter().map(Into::into).collect();
+        let mut values: Vec<String> = values.into_iter().map(Into::into).collect();
+        values.sort();
+        values.dedup();
         let cardinality = values.len() as f64;
         let mut m = Self::new_gauge(name, cardinality);
         m.set_data_point_attribute(

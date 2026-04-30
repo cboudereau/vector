@@ -5,14 +5,13 @@ use mlua::prelude::*;
 use super::{
     super::{
         MetricKind, MetricValue, OtelMetric, StatisticKind,
-        metric::{self, MetricData, MetricName, MetricSeries, MetricTags, MetricTime, TagValue, TagValueSet},
+        metric::{self, MetricTags, TagValue, TagValueSet},
     },
     util::{table_to_timestamp, timestamp_to_table},
 };
 
 pub struct LuaMetric {
-    pub series: MetricSeries,
-    pub data: MetricData,
+    pub otel: OtelMetric,
     pub multi_value_tags: bool,
 }
 
@@ -129,17 +128,17 @@ impl IntoLua for LuaMetric {
     fn into_lua(self, lua: &Lua) -> LuaResult<LuaValue> {
         let tbl = lua.create_table()?;
 
-        tbl.raw_set("name", self.series.name.name.as_str())?;
-        if let Some(ref namespace) = self.series.name.namespace {
-            tbl.raw_set("namespace", namespace.as_str())?;
+        tbl.raw_set("name", self.otel.name())?;
+        if let Some(namespace) = self.otel.namespace() {
+            tbl.raw_set("namespace", namespace)?;
         }
-        if let Some(ts) = self.data.time.timestamp {
+        if let Some(ts) = self.otel.timestamp() {
             tbl.raw_set("timestamp", timestamp_to_table(lua, ts)?)?;
         }
-        if let Some(i) = self.data.time.interval_ms {
+        if let Some(i) = self.otel.interval_ms() {
             tbl.raw_set("interval_ms", i.get())?;
         }
-        if let Some(tags) = self.series.tags {
+        if let Some(tags) = self.otel.tags() {
             tbl.raw_set(
                 "tags",
                 LuaMetricTags {
@@ -148,9 +147,9 @@ impl IntoLua for LuaMetric {
                 },
             )?;
         }
-        tbl.raw_set("kind", self.data.kind)?;
+        tbl.raw_set("kind", self.otel.kind())?;
 
-        match self.data.value {
+        match self.otel.value() {
             MetricValue::Counter { value } => {
                 let counter = lua.create_table()?;
                 counter.raw_set("value", value)?;
@@ -235,72 +234,51 @@ impl FromLua for OtelMetric {
             .raw_get::<Option<MetricKind>>("kind")?
             .unwrap_or(MetricKind::Absolute);
 
-        let value = if let Some(counter) = table.raw_get::<Option<LuaTable>>("counter")? {
-            MetricValue::Counter {
-                value: counter.raw_get("value")?,
-            }
+        let otel = if let Some(counter) = table.raw_get::<Option<LuaTable>>("counter")? {
+            OtelMetric::new_counter(&name, kind, counter.raw_get::<f64>("value")?)
         } else if let Some(gauge) = table.raw_get::<Option<LuaTable>>("gauge")? {
-            MetricValue::Gauge {
-                value: gauge.raw_get("value")?,
+            match kind {
+                MetricKind::Absolute => OtelMetric::new_gauge(&name, gauge.raw_get::<f64>("value")?),
+                MetricKind::Incremental => OtelMetric::new_gauge_delta(&name, gauge.raw_get::<f64>("value")?),
             }
         } else if let Some(set) = table.raw_get::<Option<LuaTable>>("set")? {
-            MetricValue::Set {
-                values: set.raw_get("values")?,
-            }
+            let values: std::collections::BTreeSet<String> = set.raw_get("values")?;
+            OtelMetric::new_set_from_values(&name, kind, values.into_iter().collect::<Vec<_>>())
         } else if let Some(distribution) = table.raw_get::<Option<LuaTable>>("distribution")? {
             let values: Vec<f64> = distribution.raw_get("values")?;
             let rates: Vec<u32> = distribution.raw_get("sample_rates")?;
-            MetricValue::Distribution {
-                samples: metric::zip_samples(values, rates),
-                statistic: distribution.raw_get("statistic")?,
-            }
+            let samples = metric::zip_samples(values, rates);
+            let statistic: StatisticKind = distribution.raw_get("statistic")?;
+            OtelMetric::new_distribution_from_samples(&name, kind, &samples, statistic)
         } else if let Some(aggregated_histogram) =
             table.raw_get::<Option<LuaTable>>("aggregated_histogram")?
         {
             let counts: Vec<u64> = aggregated_histogram.raw_get("counts")?;
             let buckets: Vec<f64> = aggregated_histogram.raw_get("buckets")?;
             let count = counts.iter().sum();
-            MetricValue::AggregatedHistogram {
-                buckets: metric::zip_buckets(buckets, counts),
-                count,
-                sum: aggregated_histogram.raw_get("sum")?,
-            }
+            let sum: f64 = aggregated_histogram.raw_get("sum")?;
+            OtelMetric::new_histogram(&name, kind, &metric::zip_buckets(buckets, counts), count, sum)
         } else if let Some(aggregated_summary) =
             table.raw_get::<Option<LuaTable>>("aggregated_summary")?
         {
-            let quantiles: Vec<f64> = aggregated_summary.raw_get("quantiles")?;
+            let quantiles_vals: Vec<f64> = aggregated_summary.raw_get("quantiles")?;
             let values: Vec<f64> = aggregated_summary.raw_get("values")?;
-            MetricValue::AggregatedSummary {
-                quantiles: metric::zip_quantiles(quantiles, values),
-                count: aggregated_summary.raw_get("count")?,
-                sum: aggregated_summary.raw_get("sum")?,
-            }
+            let count: u64 = aggregated_summary.raw_get("count")?;
+            let sum: f64 = aggregated_summary.raw_get("sum")?;
+            OtelMetric::new_summary(&name, &metric::zip_quantiles(quantiles_vals, values), count, sum)
         } else {
             return Err(LuaError::FromLuaConversionError {
                 from: value.type_name(),
                 to: String::from("Metric"),
                 message: Some("Cannot find metric value, expected presence one of \"counter\", \"gauge\", \"set\", \"distribution\", \"aggregated_histogram\", \"aggregated_summary\"".to_string()),
             });
-        };
+        }
+        .with_namespace(namespace)
+        .with_tags(tags)
+        .with_timestamp(timestamp)
+        .with_interval_ms(interval_ms.and_then(std::num::NonZeroU32::new));
 
-        Ok(OtelMetric::from_metric_parts(
-            MetricSeries {
-                name: MetricName {
-                    name,
-                    namespace,
-                },
-                tags,
-            },
-            MetricData {
-                time: MetricTime {
-                    timestamp,
-                    interval_ms: interval_ms.and_then(std::num::NonZeroU32::new),
-                },
-                kind,
-                value,
-            },
-            super::super::EventMetadata::default(),
-        ))
+        Ok(otel)
     }
 }
 
@@ -310,38 +288,15 @@ mod test {
     use vector_common::assert_event_data_eq;
 
     use super::*;
-    use crate::event::{EventMetadata, OtelMetric};
-
-    /// Build an OtelMetric directly from parts for Distribution / Set variants
-    /// that have no dedicated `OtelMetric::new_*` native constructor.
-    fn otel_from_parts(name: &str, kind: MetricKind, value: MetricValue) -> OtelMetric {
-        let series = MetricSeries {
-            name: MetricName {
-                name: name.to_string(),
-                namespace: None,
-            },
-            tags: None,
-        };
-        let data = MetricData {
-            time: MetricTime {
-                timestamp: None,
-                interval_ms: None,
-            },
-            kind,
-            value,
-        };
-        OtelMetric::from_metric_parts(series, data, EventMetadata::default())
-    }
+    use crate::event::OtelMetric;
 
     fn assert_metric(metric: OtelMetric, multi_value_tags: bool, assertions: Vec<&'static str>) {
         let lua = Lua::new();
-        let (series, data, _metadata) = metric.into_metric_parts();
         lua.globals()
             .set(
                 "metric",
                 LuaMetric {
-                    series,
-                    data,
+                    otel: metric,
                     multi_value_tags,
                 },
             )
@@ -464,14 +419,10 @@ mod test {
 
     #[test]
     fn into_lua_set() {
-        let metric = otel_from_parts(
+        let metric = OtelMetric::new_set_from_values(
             "example set",
             MetricKind::Incremental,
-            MetricValue::Set {
-                values: vec!["value".into(), "another value".into()]
-                    .into_iter()
-                    .collect(),
-            },
+            vec!["value", "another value"],
         );
         assert_metric(
             metric,
@@ -488,13 +439,11 @@ mod test {
 
     #[test]
     fn into_lua_distribution() {
-        let metric = otel_from_parts(
+        let metric = OtelMetric::new_distribution_from_samples(
             "example distribution",
             MetricKind::Incremental,
-            MetricValue::Distribution {
-                samples: crate::samples![1.0 => 10, 1.0 => 20],
-                statistic: StatisticKind::Histogram,
-            },
+            &crate::samples![1.0 => 10, 1.0 => 20],
+            StatisticKind::Histogram,
         );
         assert_metric(
             metric,
@@ -662,14 +611,10 @@ mod test {
                 values = { "value", "another value" }
             }
         }"#;
-        let expected = otel_from_parts(
+        let expected = OtelMetric::new_set_from_values(
             "example set",
             MetricKind::Absolute,
-            MetricValue::Set {
-                values: vec!["value".into(), "another value".into()]
-                    .into_iter()
-                    .collect(),
-            },
+            vec!["value", "another value"],
         );
         assert_event_data_eq!(Lua::new().load(value).eval::<OtelMetric>().unwrap(), expected);
     }
@@ -684,13 +629,11 @@ mod test {
                 statistic = "histogram"
             }
         }"#;
-        let expected = otel_from_parts(
+        let expected = OtelMetric::new_distribution_from_samples(
             "example distribution",
             MetricKind::Absolute,
-            MetricValue::Distribution {
-                samples: crate::samples![1.0 => 10, 1.0 => 20],
-                statistic: StatisticKind::Histogram,
-            },
+            &crate::samples![1.0 => 10, 1.0 => 20],
+            StatisticKind::Histogram,
         );
         assert_event_data_eq!(Lua::new().load(value).eval::<OtelMetric>().unwrap(), expected);
     }

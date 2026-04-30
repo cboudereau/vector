@@ -25,12 +25,10 @@ impl IntoLua for LuaEvent {
                 table.raw_set("log", value.into_lua(lua)?)?
             }
             Event::Metric(otel_metric) => {
-                let (series, data, _metadata) = otel_metric.into_metric_parts();
                 table.raw_set(
                     "metric",
                     LuaMetric {
-                        series,
-                        data,
+                        otel: otel_metric,
                         multi_value_tags: self.metric_multi_value_tags,
                     }
                     .into_lua(lua)?,

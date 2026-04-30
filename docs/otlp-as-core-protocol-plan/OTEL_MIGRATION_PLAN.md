@@ -182,7 +182,7 @@ kafka, syslog, …  ──────────►  OTel Span
 
 | Component | Why it stays | Planned resolution |
 |-----------|-------------|-------------------|
-| `to_value_canonical()` / `from_value_map()` | VRL path access depends on Value↔proto bridge. Codec encoders also use it (12 call sites, 8 files). | **P27:** Direct proto access for encoders eliminates codec usage. VRL bridge stays until VRL operates on `AnyValue` directly. |
+| `to_value_canonical()` / `from_value_map()` | VRL bridge (vrl_target.rs), codec encoders (logfmt, GELF, Avro, protobuf), lua bridge, schema validation. All need flat canonical layout. | **Intentional API** — produces flat snake_case layout with attributes as top-level keys. OTLP `Serialize` handles OTLP/JSON; this handles flat format. Both needed. |
 | ~~`modify_as_value()`~~ | **Done (P15).** | — |
 | ~~Legacy metric types~~ | **Done (P26).** `MetricValue`, `MetricData`, `MetricTime`, `MetricName` deleted. `MetricSeries` renamed to `MetricIdentity`. VRL metric unification (D10.0) complete. Remaining: `MetricKind`, `StatisticKind`, `MetricTags`, `Sample`/`Bucket`/`Quantile` — lightweight helpers, no planned deletion. | — |
 | ~~`log_namespace: Option<bool>`~~ | **Done (P13+P14).** | — |
@@ -500,17 +500,19 @@ Remaining types in `event/metric/` kept in place (not moved to `otel_event.rs` �
 - `MetricTags` — used in 36+ files (D8 separate pass)
 - `MetricIdentity` (née `MetricSeries`) — HashMap grouping key
 
-### P27 — Replace `to_value_canonical()` in codec encoders (deferred)
-5 call sites in 4 codec files (not 12/8 as originally estimated — some already migrated):
+### P27 — `to_value_canonical()` in codec encoders ✅ (resolved 2026-04-30)
+Investigated all 5 call sites in 4 codec files. **Decision: `to_value_canonical()` stays as the correct public API for flat canonical layout.**
 
-| File | Call sites | Encoder needs |
-|------|-----------|---------------|
-| `avro.rs:73` | `apache_avro::to_value(&log.to_value_canonical())` | `Serialize` impl (Avro schema must match) |
-| `gelf.rs:121,139` | `serde_json::to_value(log.to_value_canonical())` | Flat JSON with GELF-specific fields (`version`, `host`, `short_message`) |
-| `logfmt.rs:44` | `encode_logfmt::encode_value(&val)` | Flat key=value pairs |
-| `protobuf.rs:121` | `encode_message(&self.message_descriptor, val, ..)` | VRL `Value` for descriptor-based encoding |
+| File | Call sites | Why `to_value_canonical()` is correct |
+|------|-----------|---------------------------------------|
+| `logfmt.rs:44` | `encode_logfmt::encode_value(&val)` | VRL `encode_map` needs `BTreeMap<KeyString, Value>` — exactly what `to_value_canonical()` produces |
+| `gelf.rs:121,139` | `serde_json::to_value(log.to_value_canonical())` | `to_gelf_event()` mutates OtelLog through VRL paths first, then needs flat JSON output |
+| `avro.rs:73` | `apache_avro::to_value(&log.to_value_canonical())` | Avro schema matching requires flat Value layout (user-defined schemas match canonical field names) |
+| `protobuf.rs:121` | `encode_message(&self.message_descriptor, val, ..)` | Descriptor-based encoding operates on VRL `Value` tree — its natural input |
 
-**Why deferred:** Each encoder produces a format-specific output that depends on the flat canonical layout. Replacing with OTLP/JSON (`Serialize` impl) would change the output structure — GELF consumers expect `{"version":"1.1","host":"..","short_message":".."}`, not `{"attributes":[{"key":"version","value":{"stringValue":"1.1"}}]}`. Each encoder needs a custom rewrite to read proto fields directly and produce its specific format.
+**Why "direct proto reading" would be worse:** All 4 encoders need the **flat** canonical layout (snake_case, attributes as top-level keys). `to_value_canonical()` is the single function that produces this layout. Reimplementing it in each encoder would duplicate ~50 lines of flattening logic per encoder, with risk of behavior divergence. The function exists precisely for this use case.
+
+**Status:** `to_value_canonical()` is a deliberate public API, not a legacy artifact. Used by: VRL bridge (vrl_target.rs), codec encoders (4 files), lua bridge, schema validation. The OTLP `Serialize` impl handles the OTLP/JSON format; `to_value_canonical()` handles the flat format. Both are needed.
 
 **DECIDED (D5) — approach for each encoder:**
 - **logfmt:** Iterate proto fields directly, build key=value string. Simplest — migrate first.
@@ -562,15 +564,8 @@ Full removal of `MetricValue`, `MetricData`, `MetricSeries`, `MetricName`, `Metr
 | 3b | Migrate consumers ✅ | Replaced `value()` → `view()` in ~30 files. All `.value()` consumers migrated except `config/mod.rs` (deferred). |
 | 3c | Delete legacy types ✅ | Deleted `MetricValue`, `MetricData`, `MetricTime`, `MetricName`. Renamed `MetricSeries` → `MetricIdentity` (flattened). −986 lines. |
 
-### Phase 4 — P27 encoder migration (D5)
-Migrate codec encoders off `to_value_canonical()`. One commit per encoder.
-
-| Commit | Encoder | Approach |
-|--------|---------|----------|
-| 4a | logfmt | Iterate proto fields directly, build key=value string. |
-| 4b | GELF | Deeper refactor — read proto fields for GELF-specific output. |
-| 4c | Avro | Use `Serialize` impl if schema matches, or keep Value bridge. |
-| 4d | Protobuf | May keep Value bridge (VRL `Value` is its natural input for descriptor encoding). |
+### Phase 4 — P27 encoder audit ✅ (resolved 2026-04-30)
+Investigated all 4 codec encoders. `to_value_canonical()` is the correct API for all of them — produces the flat canonical layout they need. Direct proto reading would duplicate flattening logic without benefit. No code changes needed.
 
 ### Phase 5 — D10.0 VRL metric unification ✅ (completed 2026-04-30)
 Unify OtelMetric VRL path to match OtelLog/OtelSpan (full proto → Value → proto).

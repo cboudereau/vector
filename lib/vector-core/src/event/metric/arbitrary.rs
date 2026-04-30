@@ -1,63 +1,15 @@
 use proptest::{
-    collection::{btree_set, hash_map, hash_set},
+    collection::{hash_map, hash_set},
     option,
     prelude::*,
 };
 
 use super::{
-    Bucket, MetricTags, MetricValue, Quantile, Sample, StatisticKind, TagValue, TagValueSet,
-    samples_to_buckets,
+    Bucket, MetricTags, Quantile, Sample, StatisticKind, TagValue, TagValueSet,
 };
 
 fn realistic_float() -> proptest::num::f64::Any {
     proptest::num::f64::POSITIVE | proptest::num::f64::NEGATIVE | proptest::num::f64::ZERO
-}
-
-impl Arbitrary for MetricValue {
-    type Parameters = ();
-    type Strategy = BoxedStrategy<MetricValue>;
-
-    // TODO(jszwedko): clippy allow can be removed once
-    // https://github.com/proptest-rs/proptest/commit/466d59daeca317f815bb8358e8d981bb9bd9431a is
-    // released
-    #[allow(clippy::arc_with_non_send_sync)]
-    fn arbitrary_with((): Self::Parameters) -> Self::Strategy {
-        let strategy = prop_oneof![
-            realistic_float().prop_map(|value| MetricValue::Counter { value }),
-            realistic_float().prop_map(|value| MetricValue::Gauge { value }),
-            btree_set("[a-z0-9]{8,16}", 2..16).prop_map(|values| MetricValue::Set { values }),
-            any::<(Vec<Sample>, StatisticKind)>()
-                .prop_map(|(samples, statistic)| MetricValue::Distribution { samples, statistic }),
-            any::<Vec<Sample>>().prop_map(|samples| {
-                let (buckets, count, sum) =
-                    samples_to_buckets(&samples, &[0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0]);
-
-                MetricValue::AggregatedHistogram {
-                    buckets,
-                    count,
-                    sum,
-                }
-            }),
-            any::<Vec<Sample>>().prop_map(|samples| {
-                let quantiles = [0.5, 0.95, 0.99, 0.999]
-                    .iter()
-                    .copied()
-                    .map(|quantile| Quantile {
-                        quantile,
-                        value: 0.0,
-                    })
-                    .collect::<Vec<_>>();
-                let count = samples.len() as u64;
-                let sum = samples.iter().map(|s| s.value).sum();
-                MetricValue::AggregatedSummary {
-                    quantiles,
-                    count,
-                    sum,
-                }
-            }),
-        ];
-        strategy.boxed()
-    }
 }
 
 impl Arbitrary for StatisticKind {

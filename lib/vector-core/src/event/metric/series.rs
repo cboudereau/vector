@@ -3,7 +3,7 @@ use core::fmt;
 use vector_common::byte_size_of::ByteSizeOf;
 use vector_config::configurable_component;
 
-use super::{MetricTags, TagValue, write_list, write_word};
+use super::{MetricTags, TagValue};
 
 /// Metrics series.
 #[configurable_component]
@@ -122,27 +122,26 @@ impl MetricName {
 }
 
 impl fmt::Display for MetricSeries {
-    /// Display a metric series name using something like Prometheus' text format:
-    ///
-    /// ```text
-    /// NAMESPACE_NAME{TAGS}
-    /// ```
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(namespace) = &self.name.namespace {
-            write_word(fmt, namespace)?;
-            write!(fmt, "_")?;
+            write!(f, "{namespace}_")?;
         }
-        write_word(fmt, &self.name.name)?;
-        write!(fmt, "{{")?;
+        write!(f, "{}", self.name.name)?;
+        write!(f, "{{")?;
         if let Some(tags) = &self.tags {
-            write_list(fmt, ",", tags.iter_all(), |fmt, (tag, value)| {
-                write_word(fmt, tag).and_then(|()| match value {
-                    Some(value) => write!(fmt, "={value:?}"),
-                    None => Ok(()),
-                })
-            })?;
+            let mut first = true;
+            for (tag, value) in tags.iter_all() {
+                if !first {
+                    write!(f, ",")?;
+                }
+                first = false;
+                write!(f, "{tag}")?;
+                if let Some(value) = value {
+                    write!(f, "={value:?}")?;
+                }
+            }
         }
-        write!(fmt, "}}")
+        write!(f, "}}")
     }
 }
 

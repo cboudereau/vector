@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use lookup::{OwnedTargetPath, OwnedValuePath, PathPrefix};
+use lookup::{OwnedTargetPath, PathPrefix};
 use opentelemetry_proto::tonic::common::v1::{
     AnyValue as OtelAnyValue, KeyValue as OtelKeyValue,
     InstrumentationScope as OtelScope,
@@ -8,9 +8,8 @@ use opentelemetry_proto::tonic::common::v1::{
 #[cfg(test)]
 use opentelemetry_proto::tonic::common::v1::any_value::Value as OtelValueKind;
 use opentelemetry_proto::tonic::resource::v1::Resource as OtelResource;
-use snafu::Snafu;
 use vrl::{
-    compiler::{ProgramInfo, SecretTarget, Target, value::VrlValueConvert},
+    compiler::{ProgramInfo, SecretTarget, Target},
     value::{KeyString, ObjectMap, Value},
 };
 
@@ -23,11 +22,6 @@ use lookup::owned_value_path;
 use std::collections::BTreeMap;
 #[cfg(test)]
 use vrl::{prelude::Collection, value::Kind};
-
-const VALID_OTEL_METRIC_PATHS_SET: &str = ".name, .description, .unit, .resource, .scope, .attributes, .kind, .namespace, .data.*.data_points[*].attributes";
-const VALID_OTEL_METRIC_PATHS_GET: &str =
-    ".name, .description, .unit, .resource, .scope, .data, .attributes";
-const MAX_OTEL_METRIC_PATH_DEPTH: usize = 4;
 
 // ---------------------------------------------------------------------------
 // OTel AnyValue <-> VRL Value conversion
@@ -135,26 +129,6 @@ fn value_to_otel_scope(val: &Value) -> Option<OtelScope> {
         attributes,
         dropped_attributes_count,
     })
-}
-
-fn insert_at_segments(val: &mut Value, segments: &[&str], new_value: Value) {
-    let mut current = val;
-    for (i, seg) in segments.iter().enumerate() {
-        if i == segments.len() - 1 {
-            if let Some(map) = current.as_object_mut() {
-                map.insert((*seg).into(), new_value);
-            }
-            return;
-        }
-        if !current.is_object() {
-            *current = Value::Object(ObjectMap::new());
-        }
-        let map = current.as_object_mut().expect("just ensured object");
-        if !map.contains_key(*seg) {
-            map.insert((*seg).into(), Value::Object(ObjectMap::new()));
-        }
-        current = map.get_mut(*seg).expect("just inserted");
-    }
 }
 
 use super::otel_event::hex_encode as hex_encode_bytes;
@@ -464,10 +438,7 @@ fn value_to_otel_span_event(value: Value, metadata: EventMetadata) -> OtelSpan {
 ///
 /// Exposes legacy paths (.kind, .namespace) and OTel-native paths (.data).
 /// `.attributes` flattens first data point's attributes.
-fn precompute_otel_metric_value(
-    event: &OtelMetric,
-    _info: &ProgramInfo,
-) -> Value {
+fn otel_metric_event_to_value(event: &OtelMetric) -> Value {
     use opentelemetry_proto::tonic::metrics::v1::metric;
 
     let mut map = ObjectMap::new();
@@ -604,16 +575,342 @@ fn number_data_points_to_value(dps: &[opentelemetry_proto::tonic::metrics::v1::N
     }).collect())
 }
 
+/// VRL Value → OtelMetric reconstruction.
+///
+/// Known OTel fields are extracted from the Value and used to rebuild
+/// the proto metric. The format mirrors what `otel_metric_event_to_value()`
+/// produces.
+fn value_to_otel_metric_event(value: Value, metadata: EventMetadata) -> OtelMetric {
+    use opentelemetry_proto::tonic::metrics::v1::{
+        metric::Data as MetricData,
+        ExponentialHistogram, ExponentialHistogramDataPoint,
+        Gauge, Histogram, HistogramDataPoint, Metric as OtelMetricProto,
+        Sum, Summary, SummaryDataPoint,
+    };
+
+    let map = match value {
+        Value::Object(m) => m,
+        _ => ObjectMap::new(),
+    };
+
+    let name = map
+        .get("name")
+        .and_then(|v| v.as_bytes())
+        .map(|b| String::from_utf8_lossy(b).into_owned())
+        .unwrap_or_default();
+    let description = map
+        .get("description")
+        .and_then(|v| v.as_bytes())
+        .map(|b| String::from_utf8_lossy(b).into_owned())
+        .unwrap_or_default();
+    let unit = map
+        .get("unit")
+        .and_then(|v| v.as_bytes())
+        .map(|b| String::from_utf8_lossy(b).into_owned())
+        .unwrap_or_default();
+
+    let resource = map.get("resource").and_then(value_to_otel_resource);
+    let scope = map.get("scope").and_then(value_to_otel_scope);
+
+    // Reconstruct .data from the Value representation
+    let data = map.get("data").and_then(|d| {
+        let data_map = d.as_object()?;
+        let data_type = data_map
+            .get("type")
+            .and_then(|v| v.as_bytes())
+            .map(|b| String::from_utf8_lossy(b).into_owned())
+            .unwrap_or_default();
+
+        match data_type.as_str() {
+            "sum" => {
+                let sum_map = data_map.get("sum")?.as_object()?;
+                let is_monotonic = sum_map
+                    .get("is_monotonic")
+                    .and_then(|v| v.as_boolean())
+                    .unwrap_or(false);
+                let aggregation_temporality = sum_map
+                    .get("aggregation_temporality")
+                    .and_then(|v| v.as_integer())
+                    .unwrap_or(0) as i32;
+                let data_points = value_to_number_data_points(
+                    sum_map.get("data_points"),
+                );
+                Some(MetricData::Sum(Sum {
+                    data_points,
+                    aggregation_temporality,
+                    is_monotonic,
+                }))
+            }
+            "gauge" => {
+                let gauge_map = data_map.get("gauge")?.as_object()?;
+                let data_points = value_to_number_data_points(
+                    gauge_map.get("data_points"),
+                );
+                Some(MetricData::Gauge(Gauge { data_points }))
+            }
+            "histogram" => {
+                let h_map = data_map.get("histogram")?.as_object()?;
+                let aggregation_temporality = h_map
+                    .get("aggregation_temporality")
+                    .and_then(|v| v.as_integer())
+                    .unwrap_or(0) as i32;
+                let data_points = h_map
+                    .get("data_points")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|dp_val| {
+                                let m = dp_val.as_object()?;
+                                let attributes = m
+                                    .get("attributes")
+                                    .and_then(|v| v.as_object())
+                                    .map(object_map_to_otel_kvlist)
+                                    .unwrap_or_default();
+                                let count = m
+                                    .get("count")
+                                    .and_then(|v| v.as_integer())
+                                    .unwrap_or(0) as u64;
+                                let sum = m
+                                    .get("sum")
+                                    .and_then(|v| v.as_float())
+                                    .map(|f| f.into_inner());
+                                let bucket_counts = m
+                                    .get("bucket_counts")
+                                    .and_then(|v| v.as_array())
+                                    .map(|a| {
+                                        a.iter()
+                                            .filter_map(|v| v.as_integer().map(|i| i as u64))
+                                            .collect()
+                                    })
+                                    .unwrap_or_default();
+                                let explicit_bounds = m
+                                    .get("explicit_bounds")
+                                    .and_then(|v| v.as_array())
+                                    .map(|a| {
+                                        a.iter()
+                                            .filter_map(|v| v.as_float().map(|f| f.into_inner()))
+                                            .collect()
+                                    })
+                                    .unwrap_or_default();
+                                let time_unix_nano = m
+                                    .get("time_unix_nano")
+                                    .and_then(|v| v.as_integer())
+                                    .unwrap_or(0) as u64;
+                                Some(HistogramDataPoint {
+                                    attributes,
+                                    count,
+                                    sum,
+                                    bucket_counts,
+                                    explicit_bounds,
+                                    time_unix_nano,
+                                    ..Default::default()
+                                })
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                Some(MetricData::Histogram(Histogram {
+                    data_points,
+                    aggregation_temporality,
+                }))
+            }
+            "exponential_histogram" => {
+                let eh_map = data_map.get("exponential_histogram")?.as_object()?;
+                let aggregation_temporality = eh_map
+                    .get("aggregation_temporality")
+                    .and_then(|v| v.as_integer())
+                    .unwrap_or(0) as i32;
+                let data_points = eh_map
+                    .get("data_points")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|dp_val| {
+                                let m = dp_val.as_object()?;
+                                let attributes = m
+                                    .get("attributes")
+                                    .and_then(|v| v.as_object())
+                                    .map(object_map_to_otel_kvlist)
+                                    .unwrap_or_default();
+                                let count = m
+                                    .get("count")
+                                    .and_then(|v| v.as_integer())
+                                    .unwrap_or(0) as u64;
+                                let sum = m
+                                    .get("sum")
+                                    .and_then(|v| v.as_float())
+                                    .map(|f| f.into_inner());
+                                let scale = m
+                                    .get("scale")
+                                    .and_then(|v| v.as_integer())
+                                    .unwrap_or(0) as i32;
+                                let zero_count = m
+                                    .get("zero_count")
+                                    .and_then(|v| v.as_integer())
+                                    .unwrap_or(0) as u64;
+                                let time_unix_nano = m
+                                    .get("time_unix_nano")
+                                    .and_then(|v| v.as_integer())
+                                    .unwrap_or(0) as u64;
+                                Some(ExponentialHistogramDataPoint {
+                                    attributes,
+                                    count,
+                                    sum,
+                                    scale,
+                                    zero_count,
+                                    time_unix_nano,
+                                    ..Default::default()
+                                })
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                Some(MetricData::ExponentialHistogram(ExponentialHistogram {
+                    data_points,
+                    aggregation_temporality,
+                }))
+            }
+            "summary" => {
+                let s_map = data_map.get("summary")?.as_object()?;
+                let data_points = s_map
+                    .get("data_points")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|dp_val| {
+                                let m = dp_val.as_object()?;
+                                let attributes = m
+                                    .get("attributes")
+                                    .and_then(|v| v.as_object())
+                                    .map(object_map_to_otel_kvlist)
+                                    .unwrap_or_default();
+                                let count = m
+                                    .get("count")
+                                    .and_then(|v| v.as_integer())
+                                    .unwrap_or(0) as u64;
+                                let sum = m
+                                    .get("sum")
+                                    .and_then(|v| v.as_float())
+                                    .map(|f| f.into_inner())
+                                    .unwrap_or(0.0);
+                                let time_unix_nano = m
+                                    .get("time_unix_nano")
+                                    .and_then(|v| v.as_integer())
+                                    .unwrap_or(0) as u64;
+                                Some(SummaryDataPoint {
+                                    attributes,
+                                    count,
+                                    sum,
+                                    time_unix_nano,
+                                    ..Default::default()
+                                })
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                Some(MetricData::Summary(Summary { data_points }))
+            }
+            _ => None,
+        }
+    });
+
+    let metric_proto = OtelMetricProto {
+        name,
+        description,
+        unit,
+        data,
+        metadata: Vec::new(),
+    };
+
+    // Reconstruct .kind and .namespace from legacy fields
+    let kind = map
+        .get("kind")
+        .and_then(|v| v.as_bytes())
+        .map(|b| String::from_utf8_lossy(b).into_owned());
+
+    let namespace = map
+        .get("namespace")
+        .and_then(|v| v.as_bytes())
+        .map(|b| String::from_utf8_lossy(b).into_owned());
+
+    let mut otel_metric = OtelMetric::from_parts(metric_proto, resource, scope, metadata);
+
+    if let Some(kind_str) = &kind {
+        let metric_kind = match kind_str.as_str() {
+            "incremental" => crate::event::MetricKind::Incremental,
+            _ => crate::event::MetricKind::Absolute,
+        };
+        otel_metric.set_kind(metric_kind);
+    }
+
+    if let Some(ns) = &namespace {
+        otel_metric.set_namespace(ns.clone());
+    }
+
+    // Reconstruct shorthand .attributes into data point attributes
+    if let Some(attrs_val) = map.get("attributes") {
+        if let Some(attrs_map) = attrs_val.as_object() {
+            for (key, val) in attrs_map.iter() {
+                otel_metric.set_data_point_attribute(
+                    key.to_string(),
+                    super::vrl_value_to_any_value(val),
+                );
+            }
+        }
+    }
+
+    otel_metric
+}
+
+/// Convert Value back to NumberDataPoint array.
+fn value_to_number_data_points(
+    val: Option<&Value>,
+) -> Vec<opentelemetry_proto::tonic::metrics::v1::NumberDataPoint> {
+    use opentelemetry_proto::tonic::metrics::v1::{number_data_point, NumberDataPoint};
+    let Some(arr) = val.and_then(|v| v.as_array()) else {
+        return Vec::new();
+    };
+    arr.iter()
+        .filter_map(|dp_val| {
+            let m = dp_val.as_object()?;
+            let attributes = m
+                .get("attributes")
+                .and_then(|v| v.as_object())
+                .map(object_map_to_otel_kvlist)
+                .unwrap_or_default();
+            let time_unix_nano = m
+                .get("time_unix_nano")
+                .and_then(|v| v.as_integer())
+                .unwrap_or(0) as u64;
+            let start_time_unix_nano = m
+                .get("start_time_unix_nano")
+                .and_then(|v| v.as_integer())
+                .unwrap_or(0) as u64;
+            let value = if let Some(f) = m.get("value").and_then(|v| v.as_float()) {
+                Some(number_data_point::Value::AsDouble(f.into_inner()))
+            } else if let Some(i) = m.get("value").and_then(|v| v.as_integer()) {
+                Some(number_data_point::Value::AsInt(i))
+            } else {
+                None
+            };
+            Some(NumberDataPoint {
+                attributes,
+                time_unix_nano,
+                start_time_unix_nano,
+                value,
+                ..Default::default()
+            })
+        })
+        .collect()
+}
+
 /// An adapter to turn `Event`s into `vrl_lib::Target`s.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub enum VrlTarget {
     OtelLog(Value, EventMetadata),
     OtelSpan(Value, EventMetadata),
-    OtelMetric {
-        event: OtelMetric,
-        value: Value,
-    },
+    OtelMetric(Value, EventMetadata),
 }
 
 pub enum TargetEvents {
@@ -649,7 +946,7 @@ impl Iterator for TargetIter<OtelSpan> {
 }
 
 impl VrlTarget {
-    pub fn new(event: Event, info: &ProgramInfo, _multi_value_metric_tags: bool) -> Self {
+    pub fn new(event: Event, _info: &ProgramInfo, _multi_value_metric_tags: bool) -> Self {
         match event {
             Event::Log(event) => {
                 let metadata = event.metadata().clone();
@@ -662,8 +959,9 @@ impl VrlTarget {
                 VrlTarget::OtelSpan(value, metadata)
             }
             Event::Metric(event) => {
-                let value = precompute_otel_metric_value(&event, info);
-                VrlTarget::OtelMetric { event, value }
+                let metadata = event.metadata().clone();
+                let value = otel_metric_event_to_value(&event);
+                VrlTarget::OtelMetric(value, metadata)
             }
         }
     }
@@ -705,21 +1003,25 @@ impl VrlTarget {
                     TargetEvents::One(Event::Trace(value_to_otel_span_event(value, metadata)))
                 }
             },
-            VrlTarget::OtelMetric { event, .. } => TargetEvents::One(Event::Metric(event)),
+            VrlTarget::OtelMetric(value, metadata) => {
+                TargetEvents::One(Event::Metric(value_to_otel_metric_event(value, metadata)))
+            }
         }
     }
 
     fn metadata(&self) -> &EventMetadata {
         match self {
-            VrlTarget::OtelLog(_, metadata) | VrlTarget::OtelSpan(_, metadata) => metadata,
-            VrlTarget::OtelMetric { event, .. } => event.metadata(),
+            VrlTarget::OtelLog(_, metadata)
+            | VrlTarget::OtelSpan(_, metadata)
+            | VrlTarget::OtelMetric(_, metadata) => metadata,
         }
     }
 
     fn metadata_mut(&mut self) -> &mut EventMetadata {
         match self {
-            VrlTarget::OtelLog(_, metadata) | VrlTarget::OtelSpan(_, metadata) => metadata,
-            VrlTarget::OtelMetric { event, .. } => event.metadata_mut(),
+            VrlTarget::OtelLog(_, metadata)
+            | VrlTarget::OtelSpan(_, metadata)
+            | VrlTarget::OtelMetric(_, metadata) => metadata,
         }
     }
 }
@@ -775,108 +1077,13 @@ fn merge_array_definitions(mut definition: Definition) -> Definition {
 
 impl Target for VrlTarget {
     fn target_insert(&mut self, target_path: &OwnedTargetPath, value: Value) -> Result<(), String> {
-        let path = &target_path.path;
         match target_path.prefix {
             PathPrefix::Event => match self {
-                VrlTarget::OtelLog(log, _) | VrlTarget::OtelSpan(log, _) => {
-                    log.insert(path, value);
+                VrlTarget::OtelLog(log, _)
+                | VrlTarget::OtelSpan(log, _)
+                | VrlTarget::OtelMetric(log, _) => {
+                    log.insert(&target_path.path, value);
                     Ok(())
-                }
-                VrlTarget::OtelMetric {
-                    event,
-                    value: metric_value,
-                } => {
-                    if path.is_root() {
-                        return Err(MetricPathError::SetPathError.to_string());
-                    }
-
-                    if let Some(paths) = path.to_alternative_components(MAX_OTEL_METRIC_PATH_DEPTH) {
-                        match paths.as_slice() {
-                            ["name"] => {
-                                let v = value.clone().try_bytes().map_err(|e| e.to_string())?;
-                                event.metric_mut().name = String::from_utf8_lossy(&v).into_owned();
-                            }
-                            ["description"] => {
-                                let v = value.clone().try_bytes().map_err(|e| e.to_string())?;
-                                event.metric_mut().description = String::from_utf8_lossy(&v).into_owned();
-                            }
-                            ["unit"] => {
-                                let v = value.clone().try_bytes().map_err(|e| e.to_string())?;
-                                event.metric_mut().unit = String::from_utf8_lossy(&v).into_owned();
-                            }
-                            ["resource"] => {
-                                if let Some(resource) = value_to_otel_resource(&value) {
-                                    event.set_resource(resource);
-                                }
-                            }
-                            ["resource", rest @ ..] => {
-                                let mut res_val = event.resource_proto()
-                                    .map(|r| otel_resource_to_value(&r))
-                                    .unwrap_or_else(|| Value::Object(ObjectMap::new()));
-                                insert_at_segments(&mut res_val, rest, value.clone());
-                                if let Some(resource) = value_to_otel_resource(&res_val) {
-                                    event.set_resource(resource);
-                                }
-                            }
-                            ["scope"] => {
-                                if let Some(scope) = value_to_otel_scope(&value) {
-                                    event.set_scope(scope);
-                                }
-                            }
-                            ["scope", rest @ ..] => {
-                                let mut scope_val = event.scope_proto()
-                                    .map(|s| otel_scope_to_value(&s))
-                                    .unwrap_or_else(|| Value::Object(ObjectMap::new()));
-                                insert_at_segments(&mut scope_val, rest, value.clone());
-                                if let Some(scope) = value_to_otel_scope(&scope_val) {
-                                    event.set_scope(scope);
-                                }
-                            }
-                            // Legacy: .kind ("absolute" / "incremental")
-                            ["kind"] => {
-                                let v = value.clone().try_bytes().map_err(|e| e.to_string())?;
-                                let kind = match String::from_utf8_lossy(&v).as_ref() {
-                                    "incremental" => crate::event::MetricKind::Incremental,
-                                    _ => crate::event::MetricKind::Absolute,
-                                };
-                                event.set_kind(kind);
-                            }
-                            // Legacy: .namespace
-                            ["namespace"] => {
-                                let v = value.clone().try_bytes().map_err(|e| e.to_string())?;
-                                event.set_namespace(String::from_utf8_lossy(&v).into_owned());
-                            }
-                            // OTel-native: .data.*.data_points[*].attributes."key"
-                            // Shorthand: .attributes."key" (sets on all data points)
-                            ["attributes", attr_key] => {
-                                event.set_data_point_attribute(
-                                    attr_key.to_string(),
-                                    super::vrl_value_to_any_value(&value),
-                                );
-                            }
-                            ["data", _, "data_points", _, "attributes", attr_key] => {
-                                event.set_data_point_attribute(
-                                    attr_key.to_string(),
-                                    super::vrl_value_to_any_value(&value),
-                                );
-                            }
-                            _ => {
-                                return Err(MetricPathError::InvalidPath {
-                                    path: &path.to_string(),
-                                    expected: VALID_OTEL_METRIC_PATHS_SET,
-                                }
-                                .to_string());
-                            }
-                        }
-                        metric_value.insert(path, value);
-                        return Ok(());
-                    }
-
-                    Err(MetricPathError::InvalidPath {
-                        path: &path.to_string(),
-                        expected: VALID_OTEL_METRIC_PATHS_SET,
-                    }
-                    .to_string())
                 }
             },
             PathPrefix::Metadata => {
@@ -892,11 +1099,10 @@ impl Target for VrlTarget {
     fn target_get(&self, target_path: &OwnedTargetPath) -> Result<Option<&Value>, String> {
         match target_path.prefix {
             PathPrefix::Event => match self {
-                VrlTarget::OtelLog(log, _) | VrlTarget::OtelSpan(log, _) => {
-                    Ok(log.get(&target_path.path))
-                }
-                VrlTarget::OtelMetric { value, .. } => {
-                    target_get_otel_metric(&target_path.path, value)
+                VrlTarget::OtelLog(value, _)
+                | VrlTarget::OtelSpan(value, _)
+                | VrlTarget::OtelMetric(value, _) => {
+                    Ok(value.get(&target_path.path))
                 }
             },
             PathPrefix::Metadata => Ok(self.metadata().value().get(&target_path.path)),
@@ -909,11 +1115,10 @@ impl Target for VrlTarget {
     ) -> Result<Option<&mut Value>, String> {
         match target_path.prefix {
             PathPrefix::Event => match self {
-                VrlTarget::OtelLog(log, _) | VrlTarget::OtelSpan(log, _) => {
-                    Ok(log.get_mut(&target_path.path))
-                }
-                VrlTarget::OtelMetric { value, .. } => {
-                    target_get_mut_otel_metric(&target_path.path, value)
+                VrlTarget::OtelLog(value, _)
+                | VrlTarget::OtelSpan(value, _)
+                | VrlTarget::OtelMetric(value, _) => {
+                    Ok(value.get_mut(&target_path.path))
                 }
             },
             PathPrefix::Metadata => Ok(self.metadata_mut().value_mut().get_mut(&target_path.path)),
@@ -927,29 +1132,10 @@ impl Target for VrlTarget {
     ) -> Result<Option<vrl::value::Value>, String> {
         match target_path.prefix {
             PathPrefix::Event => match self {
-                VrlTarget::OtelLog(log, _) | VrlTarget::OtelSpan(log, _) => {
-                    Ok(log.remove(&target_path.path, compact))
-                }
-                VrlTarget::OtelMetric { event, value } => {
-                    if target_path.path.is_root() {
-                        return Err(MetricPathError::SetPathError.to_string());
-                    }
-                    let removed = value.remove(&target_path.path, false);
-                    // Write-back known mutable fields to the proto event.
-                    if let Some(paths) = target_path.path.to_alternative_components(MAX_OTEL_METRIC_PATH_DEPTH) {
-                        match paths.as_slice() {
-                            ["name"] => { event.metric_mut().name = String::new(); }
-                            ["description"] => { event.metric_mut().description = String::new(); }
-                            ["unit"] => { event.metric_mut().unit = String::new(); }
-                            ["resource"] => { event.set_resource(Default::default()); }
-                            ["scope"] => { event.set_scope(Default::default()); }
-                            ["attributes", attr_key] => {
-                                event.remove_data_point_attribute(attr_key);
-                            }
-                            _ => {}
-                        }
-                    }
-                    Ok(removed)
+                VrlTarget::OtelLog(value, _)
+                | VrlTarget::OtelSpan(value, _)
+                | VrlTarget::OtelMetric(value, _) => {
+                    Ok(value.remove(&target_path.path, compact))
                 }
             },
             PathPrefix::Metadata => Ok(self
@@ -974,70 +1160,9 @@ impl SecretTarget for VrlTarget {
     }
 }
 
-fn target_get_otel_metric<'a>(
-    path: &OwnedValuePath,
-    value: &'a Value,
-) -> Result<Option<&'a Value>, String> {
-    if path.is_root() {
-        return Ok(Some(value));
-    }
-
-    let value = value.get(path);
-
-    let Some(paths) = path.to_alternative_components(MAX_OTEL_METRIC_PATH_DEPTH) else {
-        return Ok(None);
-    };
-
-    match paths.as_slice() {
-        ["name"] | ["description"] | ["unit"] | ["resource"] | ["resource", ..]
-        | ["scope"] | ["scope", ..] | ["data"] | ["attributes"] | ["attributes", ..] | ["kind"]
-        | ["namespace"] => Ok(value),
-        _ => Err(MetricPathError::InvalidPath {
-            path: &path.to_string(),
-            expected: VALID_OTEL_METRIC_PATHS_GET,
-        }
-        .to_string()),
-    }
-}
-
-fn target_get_mut_otel_metric<'a>(
-    path: &OwnedValuePath,
-    value: &'a mut Value,
-) -> Result<Option<&'a mut Value>, String> {
-    if path.is_root() {
-        return Ok(Some(value));
-    }
-
-    let value = value.get_mut(path);
-
-    let Some(paths) = path.to_alternative_components(MAX_OTEL_METRIC_PATH_DEPTH) else {
-        return Ok(None);
-    };
-
-    match paths.as_slice() {
-        ["name"] | ["description"] | ["unit"] | ["resource"] | ["resource", ..]
-        | ["scope"] | ["scope", ..] | ["attributes"] | ["attributes", ..] | ["kind"]
-        | ["namespace"] => Ok(value),
-        _ => Err(MetricPathError::InvalidPath {
-            path: &path.to_string(),
-            expected: VALID_OTEL_METRIC_PATHS_SET,
-        }
-        .to_string()),
-    }
-}
-
-#[derive(Debug, Snafu)]
-enum MetricPathError<'a> {
-    #[snafu(display("cannot set root path"))]
-    SetPathError,
-
-    #[snafu(display("invalid path {}: expected one of {}", path, expected))]
-    InvalidPath { path: &'a str, expected: &'a str },
-}
-
 #[cfg(test)]
 mod test {
-    use lookup::owned_value_path;
+    use lookup::{owned_value_path, OwnedValuePath};
     use similar_asserts::assert_eq;
     use vrl::{btreemap, value::kind::Index};
 

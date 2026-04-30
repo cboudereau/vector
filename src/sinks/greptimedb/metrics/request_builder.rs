@@ -1,8 +1,8 @@
 use chrono::Utc;
 use greptimedb_ingester::{api::v1::*, helpers::values::*};
 use vector_lib::event::{
-    MetricValue, OtelMetric,
-    metric::{Bucket, Quantile, Sample},
+    MetricView, OtelMetric, ValueAtQuantile,
+    metric::Sample,
 };
 
 use crate::sinks::util::statistic::DistributionStatistic;
@@ -64,8 +64,8 @@ pub fn metric_to_insert_request(
     }
 
     // fields
-    match metric.value() {
-        MetricValue::Counter { value } => {
+    match metric.view() {
+        MetricView::Sum { value } | MetricView::Gauge { value } => {
             encode_f64_value(
                 if options.use_new_naming {
                     VALUE_COLUMN_NAME
@@ -77,19 +77,7 @@ pub fn metric_to_insert_request(
                 &mut columns,
             );
         }
-        MetricValue::Gauge { value } => {
-            encode_f64_value(
-                if options.use_new_naming {
-                    VALUE_COLUMN_NAME
-                } else {
-                    LEGACY_VALUE_COLUMN_NAME
-                },
-                value,
-                &mut schema,
-                &mut columns,
-            );
-        }
-        MetricValue::Set { values } => {
+        MetricView::Set { values } => {
             encode_f64_value(
                 if options.use_new_naming {
                     VALUE_COLUMN_NAME
@@ -101,28 +89,32 @@ pub fn metric_to_insert_request(
                 &mut columns,
             );
         }
-        MetricValue::Distribution { samples, .. } => {
+        MetricView::Distribution { bounds, counts } => {
+            let samples: Vec<Sample> = bounds.iter().zip(counts.iter())
+                .map(|(&value, &rate)| Sample { value, rate: rate as u32 })
+                .collect();
             encode_distribution(&samples, &mut schema, &mut columns);
         }
-
-        MetricValue::AggregatedHistogram {
-            buckets,
+        MetricView::Histogram {
+            bounds,
+            counts,
             count,
             sum,
         } => {
-            encode_histogram(buckets.as_ref(), &mut schema, &mut columns);
+            encode_histogram(bounds, counts, &mut schema, &mut columns);
             encode_f64_value("count", count as f64, &mut schema, &mut columns);
             encode_f64_value("sum", sum, &mut schema, &mut columns);
         }
-        MetricValue::AggregatedSummary {
+        MetricView::Summary {
             quantiles,
             count,
             sum,
         } => {
-            encode_quantiles(quantiles.as_ref(), &mut schema, &mut columns);
+            encode_quantiles(quantiles, &mut schema, &mut columns);
             encode_f64_value("count", count as f64, &mut schema, &mut columns);
             encode_f64_value("sum", sum, &mut schema, &mut columns);
         }
+        MetricView::ExponentialHistogram { .. } => {}
     }
 
     RowInsertRequest {
@@ -157,21 +149,21 @@ fn encode_distribution(
     }
 }
 
-fn encode_histogram(buckets: &[Bucket], schema: &mut Vec<ColumnSchema>, columns: &mut Vec<Value>) {
-    for bucket in buckets {
-        let column_name = format!("b{}", bucket.upper_limit);
-        encode_f64_value(&column_name, bucket.count as f64, schema, columns);
+fn encode_histogram(bounds: &[f64], counts: &[u64], schema: &mut Vec<ColumnSchema>, columns: &mut Vec<Value>) {
+    for (&limit, &cnt) in bounds.iter().zip(counts.iter()) {
+        let column_name = format!("b{limit}");
+        encode_f64_value(&column_name, cnt as f64, schema, columns);
     }
 }
 
 fn encode_quantiles(
-    quantiles: &[Quantile],
+    quantiles: &[ValueAtQuantile],
     schema: &mut Vec<ColumnSchema>,
     columns: &mut Vec<Value>,
 ) {
-    for quantile in quantiles {
-        let column_name = format!("p{:02}", quantile.quantile * 100f64);
-        encode_f64_value(&column_name, quantile.value, schema, columns);
+    for q in quantiles {
+        let column_name = format!("p{:02}", q.quantile * 100f64);
+        encode_f64_value(&column_name, q.value, schema, columns);
     }
 }
 

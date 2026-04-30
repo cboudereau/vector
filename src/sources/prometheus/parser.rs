@@ -213,7 +213,7 @@ mod test {
     use vector_lib::{assert_event_data_eq, metric_tags};
 
     use super::*;
-    use crate::event::metric::{MetricKind, MetricValue};
+    use crate::event::{MetricView, metric::MetricKind};
 
     static TIMESTAMP: LazyLock<DateTime<Utc>> = LazyLock::new(|| {
         Utc.with_ymd_and_hms(2021, 2, 4, 4, 5, 6)
@@ -275,8 +275,8 @@ mod test {
             name{labelname="val1",basename="basevalue"} NaN
             "#;
 
-        match events_to_metrics(parse_text(exp)).unwrap()[0].value() {
-            MetricValue::Counter { value } => {
+        match events_to_metrics(parse_text(exp)).unwrap()[0].view() {
+            MetricView::Sum { value } => {
                 assert!(value.is_nan());
             }
             _ => unreachable!(),
@@ -1200,8 +1200,8 @@ mod test {
         let result = events_to_metrics(parse_text_with_nan_filtering(exp)).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].name(), "name");
-        match result[0].value() {
-            MetricValue::Counter { value } => {
+        match result[0].view() {
+            MetricView::Sum { value } => {
                 assert_eq!(value, 123.0);
             }
             _ => unreachable!(),
@@ -1226,8 +1226,8 @@ mod test {
             .find(|m| m.tags().as_ref().and_then(|tags| tags.get("labelname")) == Some("val1"))
             .unwrap();
 
-        match nan_metric.value() {
-            MetricValue::Counter { value } => {
+        match nan_metric.view() {
+            MetricView::Sum { value } => {
                 assert!(value.is_nan());
             }
             _ => unreachable!(),
@@ -1245,8 +1245,8 @@ mod test {
         let result = events_to_metrics(parse_text_with_nan_filtering(exp)).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].name(), "name");
-        match result[0].value() {
-            MetricValue::Gauge { value } => {
+        match result[0].view() {
+            MetricView::Gauge { value } => {
                 assert_eq!(value, 123.0);
             }
             _ => unreachable!(),

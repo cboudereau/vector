@@ -38,7 +38,7 @@ pub mod otel_event;
 pub mod otel_fields;
 pub mod otel_json;
 pub mod otlp;
-pub use otel_event::{OtelAttributes, OtelLog, OtelMetric, OtelSpan, json_to_any_value, string_value, int_value, vrl_value_to_any_value};
+pub use otel_event::{MetricView, OtelAttributes, OtelLog, OtelMetric, OtelSpan, ValueAtQuantile, json_to_any_value, string_value, int_value, vrl_value_to_any_value};
 pub use opentelemetry_proto::tonic::common::v1::any_value::Value as OtelValueKind;
 
 pub use otlp::{OtlpCodec, register_otlp_codec};

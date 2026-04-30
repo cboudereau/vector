@@ -449,7 +449,7 @@ mod tests {
     use tokio::time;
 
     use vector_lib::{
-        event::MetricValue,
+        event::MetricView,
         lookup::lookup_v2::OptionalValuePath,
         metrics::Controller,
         sink::VectorSink,
@@ -818,53 +818,38 @@ mod tests {
         let insertions_counter = metrics
             .iter()
             .find(|m| {
-                matches!(m.value(), MetricValue::Counter { .. })
+                matches!(m.view(), MetricView::Sum { .. })
                     && m.name() == "memory_enrichment_table_insertions_total"
             })
             .expect("Insertions metric is missing!");
-        let MetricValue::Counter {
-            value: insertions_count,
-        } = insertions_counter.value()
-        else {
-            unreachable!();
-        };
+        let insertions_count = insertions_counter.first_value_as_f64().unwrap();
         let flushes_counter = metrics
             .iter()
             .find(|m| {
-                matches!(m.value(), MetricValue::Counter { .. })
+                matches!(m.view(), MetricView::Sum { .. })
                     && m.name() == "memory_enrichment_table_flushes_total"
             })
             .expect("Flushes metric is missing!");
-        let MetricValue::Counter {
-            value: flushes_count,
-        } = flushes_counter.value()
-        else {
-            unreachable!();
-        };
+        let flushes_count = flushes_counter.first_value_as_f64().unwrap();
         let object_count_gauge = metrics
             .iter()
             .find(|m| {
-                matches!(m.value(), MetricValue::Gauge { .. })
+                matches!(m.view(), MetricView::Gauge { .. })
                     && m.name() == "memory_enrichment_table_objects_count"
             })
             .expect("Object count metric is missing!");
-        let MetricValue::Gauge {
-            value: object_count,
-        } = object_count_gauge.value()
-        else {
-            unreachable!();
-        };
+        let object_count = object_count_gauge.first_value_as_f64().unwrap();
         let byte_size_gauge = metrics
             .iter()
             .find(|m| {
-                matches!(m.value(), MetricValue::Gauge { .. })
+                matches!(m.view(), MetricView::Gauge { .. })
                     && m.name() == "memory_enrichment_table_byte_size"
             })
             .expect("Byte size metric is missing!");
         assert_eq!(insertions_count, 1.0);
         assert_eq!(flushes_count, 1.0);
         assert_eq!(object_count, 1.0);
-        assert!(!byte_size_gauge.value().is_empty());
+        assert!(byte_size_gauge.first_value_as_f64().is_some());
     }
 
     #[tokio::test]
@@ -894,46 +879,31 @@ mod tests {
         let insertions_counter = metrics
             .iter()
             .find(|m| {
-                matches!(m.value(), MetricValue::Counter { .. })
+                matches!(m.view(), MetricView::Sum { .. })
                     && m.name() == "memory_enrichment_table_insertions_total"
             })
             .expect("Insertions metric is missing!");
-        let MetricValue::Counter {
-            value: insertions_count,
-        } = insertions_counter.value()
-        else {
-            unreachable!();
-        };
+        let insertions_count = insertions_counter.first_value_as_f64().unwrap();
         let flushes_counter = metrics
             .iter()
             .find(|m| {
-                matches!(m.value(), MetricValue::Counter { .. })
+                matches!(m.view(), MetricView::Sum { .. })
                     && m.name() == "memory_enrichment_table_flushes_total"
             })
             .expect("Flushes metric is missing!");
-        let MetricValue::Counter {
-            value: flushes_count,
-        } = flushes_counter.value()
-        else {
-            unreachable!();
-        };
+        let flushes_count = flushes_counter.first_value_as_f64().unwrap();
         let object_count_gauge = metrics
             .iter()
             .find(|m| {
-                matches!(m.value(), MetricValue::Gauge { .. })
+                matches!(m.view(), MetricView::Gauge { .. })
                     && m.name() == "memory_enrichment_table_objects_count"
             })
             .expect("Object count metric is missing!");
-        let MetricValue::Gauge {
-            value: object_count,
-        } = object_count_gauge.value()
-        else {
-            unreachable!();
-        };
+        let object_count = object_count_gauge.first_value_as_f64().unwrap();
         let byte_size_gauge = metrics
             .iter()
             .find(|m| {
-                matches!(m.value(), MetricValue::Gauge { .. })
+                matches!(m.view(), MetricView::Gauge { .. })
                     && m.name() == "memory_enrichment_table_byte_size"
             })
             .expect("Byte size metric is missing!");
@@ -942,7 +912,7 @@ mod tests {
         // One is done right away and the next one after the interval
         assert_eq!(flushes_count, 2.0);
         assert_eq!(object_count, 1.0);
-        assert!(!byte_size_gauge.value().is_empty());
+        assert!(byte_size_gauge.first_value_as_f64().is_some());
     }
 
     #[tokio::test]
@@ -969,7 +939,7 @@ mod tests {
         let insertions_counter = metrics
             .iter()
             .find(|m| {
-                matches!(m.value(), MetricValue::Counter { .. })
+                matches!(m.view(), MetricView::Sum { .. })
                     && m.name() == "memory_enrichment_table_insertions_total"
             })
             .expect("Insertions metric is missing!");
@@ -997,7 +967,7 @@ mod tests {
         let insertions_counter = metrics
             .iter()
             .find(|m| {
-                matches!(m.value(), MetricValue::Counter { .. })
+                matches!(m.view(), MetricView::Sum { .. })
                     && m.name() == "memory_enrichment_table_insertions_total"
             })
             .expect("Insertions metric is missing!");

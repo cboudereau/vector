@@ -148,7 +148,17 @@ pub(crate) fn metric_into_vrl(value: &OtelMetric) -> Value {
                 .unwrap_or_default(),
             )
         },
-        "type": { value.value().as_name() },
+        "type": {
+            match value.view() {
+                vector_core::event::MetricView::Sum { .. } => "counter",
+                vector_core::event::MetricView::Gauge { .. } => "gauge",
+                vector_core::event::MetricView::Set { .. } => "set",
+                vector_core::event::MetricView::Distribution { .. } => "distribution",
+                vector_core::event::MetricView::Histogram { .. } => "aggregated histogram",
+                vector_core::event::MetricView::Summary { .. } => "aggregated summary",
+                vector_core::event::MetricView::ExponentialHistogram { .. } => "exponential histogram",
+            }
+        },
         kind: {
             match value.kind() {
                 vector_core::event::MetricKind::Incremental => "incremental",
@@ -156,9 +166,9 @@ pub(crate) fn metric_into_vrl(value: &OtelMetric) -> Value {
             }
         },
         value: {
-            match value.value() {
-                vector_core::event::MetricValue::Counter { value }
-                | vector_core::event::MetricValue::Gauge { value } => NotNan::new(value).ok(),
+            match value.view() {
+                vector_core::event::MetricView::Sum { value }
+                | vector_core::event::MetricView::Gauge { value } => NotNan::new(value).ok(),
                 _ => None,
             }
         }

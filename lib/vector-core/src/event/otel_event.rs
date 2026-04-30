@@ -1,9 +1,10 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use opentelemetry_proto::tonic::common::v1::{
     AnyValue, InstrumentationScope, KeyValue, any_value::Value as OtelValueKind,
 };
 use opentelemetry_proto::tonic::logs::v1::LogRecord;
 use opentelemetry_proto::tonic::metrics::v1::Metric as OtelMetricProto;
+pub use opentelemetry_proto::tonic::metrics::v1::summary_data_point::ValueAtQuantile;
 use opentelemetry_proto::tonic::resource::v1::Resource;
 use opentelemetry_proto::tonic::trace::v1::Span;
 use prost::Message as _;
@@ -3368,6 +3369,57 @@ impl OtelSpan {
 
 // -- OtelMetric --
 
+/// Zero-copy view into an `OtelMetric`'s data. Variant names follow OTLP types
+/// (`Sum`, `Gauge`, `Histogram`, `Summary`, `ExponentialHistogram`) with
+/// Vector-specific extensions (`Set`, `Distribution`).
+///
+/// Scalars are copied (cheap). Histogram bounds/counts and summary quantiles
+/// are borrowed from the proto. Set values must allocate (stored in attributes).
+#[derive(Debug)]
+pub enum MetricView<'a> {
+    Sum { value: f64 },
+    Gauge { value: f64 },
+    Set { values: Vec<String> },
+    Distribution { bounds: &'a [f64], counts: &'a [u64] },
+    Histogram { bounds: &'a [f64], counts: &'a [u64], count: u64, sum: f64 },
+    Summary { quantiles: &'a [ValueAtQuantile], count: u64, sum: f64 },
+    ExponentialHistogram { count: u64, sum: f64 },
+}
+
+impl MetricView<'_> {
+    pub fn as_name(&self) -> &'static str {
+        match self {
+            Self::Sum { .. } => "counter",
+            Self::Gauge { .. } => "gauge",
+            Self::Set { .. } => "set",
+            Self::Distribution { .. } => "distribution",
+            Self::Histogram { .. } => "histogram",
+            Self::Summary { .. } => "summary",
+            Self::ExponentialHistogram { .. } => "exponential histogram",
+        }
+    }
+}
+
+impl std::fmt::Display for MetricView<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Sum { value } => write!(f, "counter: {value}"),
+            Self::Gauge { value } => write!(f, "gauge: {value}"),
+            Self::Set { values } => write!(f, "set: {} values", values.len()),
+            Self::Distribution { bounds, .. } => write!(f, "distribution: {} buckets", bounds.len()),
+            Self::Histogram { bounds, count, sum, .. } => {
+                write!(f, "histogram: {} buckets, count={count}, sum={sum}", bounds.len())
+            }
+            Self::Summary { quantiles, count, sum } => {
+                write!(f, "summary: {} quantiles, count={count}, sum={sum}", quantiles.len())
+            }
+            Self::ExponentialHistogram { count, sum } => {
+                write!(f, "exponential histogram: count={count}, sum={sum}")
+            }
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct OtelMetric {
     pub(crate) metric: OtelMetricProto,
@@ -4074,14 +4126,45 @@ impl OtelMetric {
             })
     }
 
-    /// Get the metric value directly from proto.
-    pub fn value(&self) -> super::MetricValue {
-        self.extract_metric_data().1
-    }
-
     /// Get the metric kind directly from proto.
     pub fn kind(&self) -> super::MetricKind {
-        self.extract_metric_data().0
+        use opentelemetry_proto::tonic::metrics::v1::{metric, AggregationTemporality};
+        match self.metric.data.as_ref() {
+            Some(metric::Data::Sum(sum)) => {
+                if sum.aggregation_temporality == AggregationTemporality::Delta as i32 {
+                    super::MetricKind::Incremental
+                } else {
+                    super::MetricKind::Absolute
+                }
+            }
+            Some(metric::Data::Gauge(_)) => {
+                let is_incremental = self.dp_attrs.first()
+                    .and_then(|a| a.get("vector.metric_kind"))
+                    .and_then(|av| av.value.as_ref())
+                    .map(|v| v == &OtelValueKind::StringValue("incremental".into()))
+                    .unwrap_or(false);
+                if is_incremental {
+                    super::MetricKind::Incremental
+                } else {
+                    super::MetricKind::Absolute
+                }
+            }
+            Some(metric::Data::Histogram(hist)) => {
+                if hist.aggregation_temporality == AggregationTemporality::Delta as i32 {
+                    super::MetricKind::Incremental
+                } else {
+                    super::MetricKind::Absolute
+                }
+            }
+            Some(metric::Data::ExponentialHistogram(exp)) => {
+                if exp.aggregation_temporality == AggregationTemporality::Delta as i32 {
+                    super::MetricKind::Incremental
+                } else {
+                    super::MetricKind::Absolute
+                }
+            }
+            Some(metric::Data::Summary(_)) | None => super::MetricKind::Absolute,
+        }
     }
 
     pub fn tag_value(&self, key: &str) -> Option<String> {
@@ -4116,202 +4199,6 @@ impl OtelMetric {
         self.tag_value(name)
             .filter(|v| v == value)
             .is_some()
-    }
-
-    /// Extract (MetricKind, MetricValue, timestamp, data-point attributes) from proto.
-    ///
-    /// Single source of truth for metric data interpretation — used by `value()`
-    /// and `kind()`.
-    fn extract_metric_data(
-        &self,
-    ) -> (
-        super::MetricKind,
-        super::MetricValue,
-        Option<chrono::DateTime<chrono::Utc>>,
-    ) {
-        use chrono::Utc;
-        use opentelemetry_proto::tonic::metrics::v1::{
-            metric, number_data_point::Value as NDPValue, AggregationTemporality,
-        };
-        use super::{MetricKind, MetricValue};
-        use super::metric::{Bucket, Quantile};
-
-        let nanos_to_ts = |nanos: u64| -> Option<chrono::DateTime<Utc>> {
-            if nanos == 0 {
-                None
-            } else {
-                let secs = (nanos / 1_000_000_000) as i64;
-                let nsecs = (nanos % 1_000_000_000) as u32;
-                chrono::DateTime::from_timestamp(secs, nsecs)
-            }
-        };
-
-        let dp0 = self.dp_attrs.first();
-
-        let dp_has_str = |key: &str, val: &str| -> bool {
-            dp0.and_then(|a| a.get(key))
-                .and_then(|av| av.value.as_ref())
-                .map(|v| v == &OtelValueKind::StringValue(val.into()))
-                .unwrap_or(false)
-        };
-
-        let dp_get_str = |key: &str| -> Option<String> {
-            dp0.and_then(|a| a.get(key))
-                .and_then(|av| match av.value.as_ref() {
-                    Some(OtelValueKind::StringValue(s)) => Some(s.clone()),
-                    _ => None,
-                })
-        };
-
-        match self.metric.data.as_ref() {
-            Some(metric::Data::Sum(sum)) => {
-                let dp = sum.data_points.first();
-                let val = dp.and_then(|p| p.value.as_ref()).map(|v| match v {
-                    NDPValue::AsDouble(f) => *f,
-                    NDPValue::AsInt(i) => *i as f64,
-                }).unwrap_or(0.0);
-                let kind = if sum.aggregation_temporality == AggregationTemporality::Delta as i32 {
-                    MetricKind::Incremental
-                } else {
-                    MetricKind::Absolute
-                };
-                let ts = dp.and_then(|p| nanos_to_ts(p.time_unix_nano));
-                let metric_value = if sum.is_monotonic {
-                    MetricValue::Counter { value: val }
-                } else {
-                    MetricValue::Gauge { value: val }
-                };
-                (kind, metric_value, ts)
-            }
-            Some(metric::Data::Gauge(gauge)) => {
-                let dp = gauge.data_points.first();
-                let is_set = dp_has_str("vector.metric_type", "set");
-                let ts = dp.and_then(|p| nanos_to_ts(p.time_unix_nano));
-                if is_set {
-                    let values = dp0
-                        .and_then(|a| a.get("vector.set_values"))
-                        .and_then(|av| match &av.value {
-                            Some(OtelValueKind::ArrayValue(arr)) => {
-                                let vals: BTreeSet<String> = arr
-                                    .values
-                                    .iter()
-                                    .filter_map(|v| match &v.value {
-                                        Some(OtelValueKind::StringValue(s)) => Some(s.clone()),
-                                        _ => None,
-                                    })
-                                    .collect();
-                                Some(vals)
-                            }
-                            _ => None,
-                        })
-                        .unwrap_or_default();
-                    let kind = match dp_get_str("vector.metric_kind").as_deref() {
-                        Some("incremental") => MetricKind::Incremental,
-                        _ => MetricKind::Absolute,
-                    };
-                    (kind, MetricValue::Set { values }, ts)
-                } else {
-                    let val = dp.and_then(|p| p.value.as_ref()).map(|v| match v {
-                        NDPValue::AsDouble(f) => *f,
-                        NDPValue::AsInt(i) => *i as f64,
-                    }).unwrap_or(0.0);
-                    let kind = match dp_get_str("vector.metric_kind").as_deref() {
-                        Some("incremental") => MetricKind::Incremental,
-                        _ => MetricKind::Absolute,
-                    };
-                    (kind, MetricValue::Gauge { value: val }, ts)
-                }
-            }
-            Some(metric::Data::Histogram(hist)) => {
-                let dp = hist.data_points.first();
-                let kind = if hist.aggregation_temporality == AggregationTemporality::Delta as i32 {
-                    MetricKind::Incremental
-                } else {
-                    MetricKind::Absolute
-                };
-                let is_distribution = dp_has_str("vector.metric_type", "distribution");
-                let ts = dp.and_then(|p| nanos_to_ts(p.time_unix_nano));
-                if is_distribution {
-                    let statistic = match dp_get_str("vector.statistic").as_deref() {
-                        Some("summary") => super::StatisticKind::Summary,
-                        _ => super::StatisticKind::Histogram,
-                    };
-                    let samples = dp
-                        .map(|p| {
-                            p.explicit_bounds
-                                .iter()
-                                .zip(p.bucket_counts.iter())
-                                .map(|(&value, &rate)| super::metric::Sample {
-                                    value,
-                                    rate: rate as u32,
-                                })
-                                .collect()
-                        })
-                        .unwrap_or_default();
-                    (kind, MetricValue::Distribution { samples, statistic }, ts)
-                } else {
-                    let (buckets, count, sum_val) = dp
-                        .map(|p| {
-                            let buckets: Vec<Bucket> = p.bucket_counts.iter().enumerate()
-                                .map(|(i, &c)| Bucket {
-                                    count: c,
-                                    upper_limit: p.explicit_bounds.get(i).copied().unwrap_or(f64::INFINITY),
-                                })
-                                .collect();
-                            (buckets, p.count, p.sum.unwrap_or(0.0))
-                        })
-                        .unwrap_or_default();
-                    (kind, MetricValue::AggregatedHistogram { buckets, count, sum: sum_val }, ts)
-                }
-            }
-            Some(metric::Data::Summary(summary)) => {
-                let dp = summary.data_points.first();
-                let (quantiles, count, sum_val) = dp
-                    .map(|p| {
-                        let quantiles: Vec<Quantile> = p.quantile_values.iter()
-                            .map(|q| Quantile { quantile: q.quantile, value: q.value })
-                            .collect();
-                        (quantiles, p.count, p.sum)
-                    })
-                    .unwrap_or_default();
-                let ts = dp.and_then(|p| nanos_to_ts(p.time_unix_nano));
-                (MetricKind::Absolute, MetricValue::AggregatedSummary { quantiles, count, sum: sum_val }, ts)
-            }
-            Some(metric::Data::ExponentialHistogram(exp)) => {
-                let dp = exp.data_points.first();
-                let kind = if exp.aggregation_temporality == AggregationTemporality::Delta as i32 {
-                    MetricKind::Incremental
-                } else {
-                    MetricKind::Absolute
-                };
-                let (buckets, count, sum_val) = dp
-                    .map(|p| {
-                        let scale = p.scale;
-                        let base = 2f64.powf(2f64.powi(-scale));
-                        let mut buckets = Vec::new();
-                        if let Some(ref neg) = p.negative {
-                            for (i, &c) in neg.bucket_counts.iter().enumerate() {
-                                let idx = neg.offset + i as i32;
-                                buckets.push(Bucket { count: c, upper_limit: -base.powi(idx) });
-                            }
-                        }
-                        if p.zero_count > 0 {
-                            buckets.push(Bucket { count: p.zero_count, upper_limit: 0.0 });
-                        }
-                        if let Some(ref pos) = p.positive {
-                            for (i, &c) in pos.bucket_counts.iter().enumerate() {
-                                let idx = pos.offset + i as i32;
-                                buckets.push(Bucket { count: c, upper_limit: base.powi(idx + 1) });
-                            }
-                        }
-                        (buckets, p.count, p.sum.unwrap_or(0.0))
-                    })
-                    .unwrap_or_default();
-                let ts = dp.and_then(|p| nanos_to_ts(p.time_unix_nano));
-                (kind, MetricValue::AggregatedHistogram { buckets, count, sum: sum_val }, ts)
-            }
-            None => (MetricKind::Absolute, MetricValue::Gauge { value: 0.0 }, None),
-        }
     }
 
     /// Decompose this OtelMetric into legacy metric parts without creating
@@ -4843,6 +4730,105 @@ impl OtelMetric {
             .and_then(|attrs| attrs.get("vector.metric_type"))
             .and_then(|av| av.value.as_ref())
             .is_some_and(|v| matches!(v, opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(s) if s == "distribution"))
+    }
+
+    /// Returns the `StatisticKind` for a distribution metric.
+    /// Returns `StatisticKind::Histogram` by default (including for non-distribution metrics).
+    pub fn distribution_statistic_kind(&self) -> super::StatisticKind {
+        let is_summary = self.dp_attrs.first()
+            .and_then(|attrs| attrs.get("vector.statistic"))
+            .and_then(|av| av.value.as_ref())
+            .is_some_and(|v| matches!(v, opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(s) if s == "summary"));
+        if is_summary {
+            super::StatisticKind::Summary
+        } else {
+            super::StatisticKind::Histogram
+        }
+    }
+
+    /// Returns a zero-copy view of this metric's data, borrowing from the
+    /// underlying proto where possible.
+    pub fn view(&self) -> MetricView<'_> {
+        use opentelemetry_proto::tonic::metrics::v1::{
+            metric::Data, number_data_point::Value as NDPValue,
+        };
+
+        match self.metric.data.as_ref() {
+            Some(Data::Sum(sum)) => {
+                let val = sum.data_points.first()
+                    .and_then(|p| p.value.as_ref())
+                    .map(|v| match v { NDPValue::AsDouble(f) => *f, NDPValue::AsInt(i) => *i as f64 })
+                    .unwrap_or(0.0);
+                if sum.is_monotonic {
+                    MetricView::Sum { value: val }
+                } else {
+                    MetricView::Gauge { value: val }
+                }
+            }
+            Some(Data::Gauge(_gauge)) => {
+                if self.is_set() {
+                    let values = self.dp_attrs.first()
+                        .and_then(|a| a.get("vector.set_values"))
+                        .and_then(|av| match &av.value {
+                            Some(OtelValueKind::ArrayValue(arr)) => {
+                                Some(arr.values.iter().filter_map(|v| match &v.value {
+                                    Some(OtelValueKind::StringValue(s)) => Some(s.clone()),
+                                    _ => None,
+                                }).collect())
+                            }
+                            _ => None,
+                        })
+                        .unwrap_or_default();
+                    MetricView::Set { values }
+                } else {
+                    let val = _gauge.data_points.first()
+                        .and_then(|p| p.value.as_ref())
+                        .map(|v| match v { NDPValue::AsDouble(f) => *f, NDPValue::AsInt(i) => *i as f64 })
+                        .unwrap_or(0.0);
+                    MetricView::Gauge { value: val }
+                }
+            }
+            Some(Data::Histogram(hist)) => {
+                let dp = hist.data_points.first();
+                if self.is_distribution() {
+                    match dp {
+                        Some(p) => MetricView::Distribution {
+                            bounds: &p.explicit_bounds,
+                            counts: &p.bucket_counts,
+                        },
+                        None => MetricView::Distribution { bounds: &[], counts: &[] },
+                    }
+                } else {
+                    match dp {
+                        Some(p) => MetricView::Histogram {
+                            bounds: &p.explicit_bounds,
+                            counts: &p.bucket_counts,
+                            count: p.count,
+                            sum: p.sum.unwrap_or(0.0),
+                        },
+                        None => MetricView::Histogram { bounds: &[], counts: &[], count: 0, sum: 0.0 },
+                    }
+                }
+            }
+            Some(Data::Summary(summary)) => {
+                match summary.data_points.first() {
+                    Some(p) => MetricView::Summary {
+                        quantiles: &p.quantile_values,
+                        count: p.count,
+                        sum: p.sum,
+                    },
+                    None => MetricView::Summary { quantiles: &[], count: 0, sum: 0.0 },
+                }
+            }
+            Some(Data::ExponentialHistogram(exp)) => {
+                let dp = exp.data_points.first();
+                MetricView::ExponentialHistogram {
+                    count: dp.map(|p| p.count).unwrap_or(0),
+                    sum: dp.and_then(|p| p.sum).unwrap_or(0.0),
+                }
+            }
+            None => MetricView::Gauge { value: 0.0 },
+        }
     }
 
     /// Convert this metric to an `AnyValue::KvlistValue` suitable for use as
@@ -5431,8 +5417,7 @@ impl std::fmt::Display for OtelMetric {
     /// Display in Prometheus-like text format:
     /// `TIMESTAMP NAMESPACE_NAME{TAGS} KIND VALUE`
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let (kind, value, timestamp) = self.extract_metric_data();
-        if let Some(ts) = timestamp {
+        if let Some(ts) = self.timestamp() {
             write!(fmt, "{ts:?} ")?;
         }
         if let Some(ns) = self.namespace() {
@@ -5451,11 +5436,11 @@ impl std::fmt::Display for OtelMetric {
             }
         }
         write!(fmt, "}}")?;
-        let kind_char = match kind {
+        let kind_char = match self.kind() {
             super::MetricKind::Absolute => '=',
             super::MetricKind::Incremental => '+',
         };
-        write!(fmt, " {kind_char} {value}")
+        write!(fmt, " {kind_char} {}", self.view())
     }
 }
 
@@ -5780,7 +5765,7 @@ mod tests {
 
     #[test]
     fn metric_to_otel_metric_round_trip_counter() {
-        use crate::event::{MetricKind, MetricValue};
+        use crate::event::MetricKind;
         use chrono::Utc;
 
         let otel = OtelMetric::new_counter("requests_total", MetricKind::Incremental, 42.0)
@@ -5790,29 +5775,29 @@ mod tests {
         assert_eq!(otel.name(), "requests_total");
         assert_eq!(otel.namespace(), Some("http"));
         assert_eq!(otel.kind(), MetricKind::Incremental);
-        match otel.value() {
-            MetricValue::Counter { value } => assert!((value - 42.0).abs() < f64::EPSILON),
-            other => panic!("expected Counter, got {other:?}"),
+        match otel.view() {
+            MetricView::Sum { value } => assert!((value - 42.0).abs() < f64::EPSILON),
+            other => panic!("expected Sum, got {other}"),
         }
     }
 
     #[test]
     fn metric_to_otel_metric_round_trip_gauge() {
-        use crate::event::{MetricKind, MetricValue};
+        use crate::event::MetricKind;
 
         let otel = OtelMetric::new_gauge("temperature", 98.6);
 
         assert_eq!(otel.name(), "temperature");
         assert_eq!(otel.kind(), MetricKind::Absolute);
-        match otel.value() {
-            MetricValue::Gauge { value } => assert!((value - 98.6).abs() < f64::EPSILON),
-            other => panic!("expected Gauge, got {other:?}"),
+        match otel.view() {
+            MetricView::Gauge { value } => assert!((value - 98.6).abs() < f64::EPSILON),
+            other => panic!("expected Gauge, got {other}"),
         }
     }
 
     #[test]
     fn metric_to_otel_metric_round_trip_histogram() {
-        use crate::event::{MetricKind, MetricValue};
+        use crate::event::MetricKind;
         use crate::event::metric::Bucket;
 
         let buckets = vec![
@@ -5829,15 +5814,14 @@ mod tests {
         );
 
         assert_eq!(otel.name(), "latency");
-        match otel.value() {
-            MetricValue::AggregatedHistogram { buckets, count, sum } => {
+        match otel.view() {
+            MetricView::Histogram { counts, count, sum, .. } => {
                 assert_eq!(count, 35);
                 assert!((sum - 150.0).abs() < f64::EPSILON);
-                assert_eq!(buckets.len(), 3);
-                assert_eq!(buckets[0].count, 10);
-                assert!((buckets[0].upper_limit - 5.0).abs() < f64::EPSILON);
+                assert_eq!(counts.len(), 3);
+                assert_eq!(counts[0], 10);
             }
-            other => panic!("expected AggregatedHistogram, got {other:?}"),
+            other => panic!("expected Histogram, got {other}"),
         }
     }
 
@@ -5994,7 +5978,7 @@ mod tests {
 
         assert_eq!(direct.name(), via_ctor.name());
         assert_eq!(direct.kind(), via_ctor.kind());
-        assert_eq!(direct.value(), via_ctor.value());
+        assert_eq!(direct.first_value_as_f64(), via_ctor.first_value_as_f64());
     }
 
     #[test]
@@ -6004,7 +5988,7 @@ mod tests {
 
         assert_eq!(direct.name(), via_ctor.name());
         assert_eq!(direct.kind(), via_ctor.kind());
-        assert_eq!(direct.value(), via_ctor.value());
+        assert_eq!(direct.first_value_as_f64(), via_ctor.first_value_as_f64());
     }
 
     #[test]
@@ -6029,7 +6013,7 @@ mod tests {
 
         assert_eq!(direct.name(), via_ctor.name());
         assert_eq!(direct.kind(), via_ctor.kind());
-        assert_eq!(direct.value(), via_ctor.value());
+        assert_eq!(format!("{}", direct.view()), format!("{}", via_ctor.view()));
     }
 
     #[test]
@@ -6049,7 +6033,7 @@ mod tests {
         );
 
         assert_eq!(direct.name(), via_ctor.name());
-        assert_eq!(direct.value(), via_ctor.value());
+        assert_eq!(format!("{}", direct.view()), format!("{}", via_ctor.view()));
     }
 
     #[test]
@@ -6365,7 +6349,7 @@ mod tests {
         assert_eq!(direct.name(), via_ctor.name());
         assert_eq!(direct.namespace(), via_ctor.namespace());
         assert_eq!(direct.kind(), via_ctor.kind());
-        assert_eq!(direct.value(), via_ctor.value());
+        assert_eq!(direct.first_value_as_f64(), via_ctor.first_value_as_f64());
         assert_eq!(direct.timestamp(), via_ctor.timestamp());
         assert_eq!(direct.tag_value("env"), via_ctor.tag_value("env"));
     }
@@ -6873,7 +6857,7 @@ mod tests {
 
     #[test]
     fn otel_metric_add_histogram() {
-        use crate::event::{MetricKind, MetricValue, metric::Bucket};
+        use crate::event::{MetricKind, metric::Bucket};
         let mut m1 = OtelMetric::new_histogram(
             "h",
             MetricKind::Incremental,
@@ -6889,14 +6873,14 @@ mod tests {
             15.0,
         );
         assert!(m1.add(&m2));
-        let (_, value, _) = m1.extract_metric_data();
-        if let MetricValue::AggregatedHistogram { buckets, count, sum } = value {
-            assert_eq!(count, 25);
-            assert_eq!(sum, 40.0);
-            assert_eq!(buckets[0].count, 8);
-            assert_eq!(buckets[1].count, 17);
-        } else {
-            panic!("expected AggregatedHistogram");
+        match m1.view() {
+            MetricView::Histogram { counts, count, sum, .. } => {
+                assert_eq!(count, 25);
+                assert_eq!(sum, 40.0);
+                assert_eq!(counts[0], 8);
+                assert_eq!(counts[1], 17);
+            }
+            other => panic!("expected Histogram, got {other}"),
         }
     }
 }

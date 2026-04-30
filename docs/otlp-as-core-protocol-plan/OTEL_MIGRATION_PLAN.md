@@ -433,14 +433,67 @@ Keep current key (`name + namespace + data-point-attributes`). Matches metricstr
 - **Test code** (22 files): All `otel_from_parts` helpers replaced with native constructors.
 - **OtelMetric enhancements**: `with_interval_ms()`, `subtract_distribution()`, `subtract_set_values()`, `merge_set_values()`, `compress_distribution()`. `new_set_from_values()` sorts/deduplicates.
 
-**Remaining P26 work — 7 test-only calls, 0 production calls:**
+**Completed (2026-04-30) — Bridge methods deleted (1 commit, 1782 tests passing):**
+- Deleted `from_metric_parts()` (~260 lines) and `into_metric_parts()` (~20 lines).
+- All 7 test-only consumers migrated: `TestMetricInput::to_otel_metric()`, Arbitrary via native constructors, prometheus test deleted.
+- Zero calls to bridge methods remain in codebase.
 
-| Category | Calls | Resolution |
-|----------|-------|------------|
-| `config/unit_test/mod.rs` | 1 | Rewrite `TestMetricInput` to construct OtelMetric via native constructors instead of `from_metric_parts(series, data)`. |
-| `prometheus/exporter.rs` test | 2 | Delete `metric_ref_from_otel_metric_matches_from_parts` validation test — no longer needed once bridge is deleted. |
-| `test/common.rs` Arbitrary impl | 4 | Generate random OtelMetric proto structures directly instead of going through `MetricSeries`/`MetricData`. |
-| **Then:** delete `from_metric_parts()` + `into_metric_parts()` | — | Remove bridge methods and all remaining legacy type imports. |
+**Remaining P26 work — Phase 3: Full legacy type deletion (~58 files)**
+
+Decisions (locked 2026-04-30):
+
+| Decision | Answer |
+|----------|--------|
+| **D11 — value() replacement** | `MetricView<'a>` borrowing enum via `otel.view()`. OTLP variant names: `Sum`, `Gauge`, `Histogram`, `Summary`, `ExponentialHistogram` + Vector-specific `Set`, `Distribution`. Borrows proto slices where possible (histogram bounds/counts, summary quantiles). Scalars copied. Sets must allocate (nested in attribute). ~40% production callers, ~60% test. |
+| **D12 — MetricKind** | Keep as standalone enum. Move to `otel_event.rs`, decouple from legacy module. |
+| **D13 — MetricSeries** | Rename → `MetricIdentity`. Flatten (drop `MetricName` sub-struct: just `name: String, namespace: Option<String>, tags: MetricTags`). Move next to `OtelMetric`. |
+| **D14 — StatisticKind** | Delete. Distributions are always histogram-semantics in OTLP. |
+| **D15 — Config deserialization** | Only `TestMetricInput` needs custom `Deserialize`. `log_to_metric` uses its own `MetricConfig`/`MetricTypeConfig` (does NOT use `MetricValue` for config — only tests import it for assertions). InfluxDB decoder production code already uses `OtelMetric::new_gauge()` — only tests use `MetricValue`. |
+| **D16 — Commit strategy** | Prep → Migrate consumers → Delete. Config deser is just `TestMetricInput` (folded into migrate step). |
+| **D17 — MetricView field types** | Proto-native: `Histogram { bounds: &'a [f64], counts: &'a [u64], count: u64, sum: f64 }`, `Summary { quantiles: &'a [ValueAtQuantile], count: u64, sum: f64 }`, `Distribution { bounds: &'a [f64], counts: &'a [u64] }`. `Bucket`/`Sample`/`Quantile` structs no longer in MetricView public API — callers use proto slices directly. |
+
+**Investigation findings (2026-04-30):**
+- Proto `HistogramDataPoint` stores `explicit_bounds: Vec<f64>` and `bucket_counts: Vec<u64>` separately — MetricView borrows `&[f64]` + `&[u64]`.
+- Proto `SummaryDataPoint` stores `quantile_values: Vec<ValueAtQuantile>` where `ValueAtQuantile { quantile: f64, value: f64 }` — identical to our `Quantile`. MetricView borrows `&[ValueAtQuantile]`.
+- Set values nested in `dp_attrs` as `vector.set_values` ArrayValue — must allocate `Vec<String>` in `view()`.
+- Distribution encoded as histogram bounds+counts — borrows `&[f64]` + `&[u64]`.
+- 90%+ of callers extract scalar f64 (Counter/Gauge). 35% type-check only. 7% touch complex fields.
+
+#### P26 Phase 3 Execution Plan
+
+**Step 3a — Prep:**
+1. Add `MetricView<'a>` enum + `view()` method on `OtelMetric`:
+   - `Sum { value: f64 }` — copied from `NumberDataPoint.value` oneof
+   - `Gauge { value: f64 }` — copied from `NumberDataPoint.value` oneof
+   - `Set { values: Vec<String> }` — allocated from `vector.set_values` attribute
+   - `Distribution { bounds: &'a [f64], counts: &'a [u64] }` — borrowed from `HistogramDataPoint`
+   - `Histogram { bounds: &'a [f64], counts: &'a [u64], count: u64, sum: f64 }` — borrowed from `HistogramDataPoint`
+   - `Summary { quantiles: &'a [ValueAtQuantile], count: u64, sum: f64 }` — borrowed from `SummaryDataPoint`
+   - `ExponentialHistogram { count: u64, sum: f64 }` — scalars only
+2. Add granular accessors where needed for hot paths.
+3. Move `MetricKind` into `otel_event.rs`.
+4. Rename `MetricSeries` → `MetricIdentity`, flatten, move. Update `metric_series()` → `metric_identity()`.
+5. Delete `StatisticKind`.
+
+**Step 3b — Migrate consumers ✅ (completed 2026-04-30):**
+Replaced `value()` → `view()`, `MetricValue::Counter` → `MetricView::Sum`, etc. across all consumer files.
+Added `MetricView::as_name()` and `Display` impl.
+Files migrated: ~30 files across lib core, sources, transforms, sinks, API, test code, internal events.
+Only `config/mod.rs` (TestMetricInput deserialization) deferred to Step 3c since it's structurally tied to `MetricData`/`MetricSeries`.
+
+**Step 3c — Delete + config deser migration:**
+- Inline `TestMetricInput` deserialization types to not depend on `MetricData`/`MetricSeries`/`MetricValue`.
+- Move `MetricKind`, `Sample`, `Bucket`, `Quantile`, `StatisticKind` to `otel_event.rs` (still used by OtelMetric).
+- Move `MetricTags` to `otel_event.rs` (used everywhere).
+- Rename `MetricSeries` → `MetricIdentity`, move to `otel_event.rs`.
+- Delete `MetricValue`, `MetricData`, `MetricName`, `MetricTime` types.
+- Delete `value()` method on OtelMetric (returns legacy `MetricValue`).
+- Delete `extract_metric_data()` internal method.
+- Delete the `Arbitrary` impl for `MetricValue` in `test/common.rs` (replace with `Arbitrary` for `OtelMetric` using `MetricView`).
+- Delete remaining files in `event/metric/` module tree.
+- All dead imports.
+
+End state: zero legacy metric types anywhere. `MetricKind`, `MetricIdentity`, `StatisticKind`, `Sample`, `Bucket`, `Quantile` live in `otel_event.rs`. `MetricTags` stays (migrated to `OtelAttributes` per D8 in future pass).
 
 ### P27 — Replace `to_value_canonical()` in codec encoders (deferred)
 5 call sites in 4 codec files (not 12/8 as originally estimated — some already migrated):
@@ -471,7 +524,7 @@ Extracted shared helper functions: `append_canonical_resource_scope`, `remove_re
 
 ---
 
-## Automode Execution Plan (locked 2026-04-29)
+## Automode Execution Plan (updated 2026-04-30)
 
 All decisions answered. Automode executes the following steps in order. One commit per category (D9). Run `cargo test -p vector` after each commit.
 
@@ -492,34 +545,43 @@ Migrate all ~45 files off legacy metric types. One commit per category.
 | 2d | Individual sinks | 12 | Each sink: replace `MetricValue` match arms with proto `data` oneof. Replace `MetricTags` with `OtelAttributes`. |
 | 2e | Lib crates | 5 | Codecs, internal metrics, lua. |
 | 2f | API | 2 | GraphQL metrics filter/uptime. |
-| 2g | Delete bridge | — | Delete `from_metric_parts()`/`into_metric_parts()`, `MetricValue`, `MetricKind`, `MetricSeries`, `MetricData` types. Add `is_counter()`, `is_histogram()`, `data_type_name()` helpers on `OtelMetric`. |
-| 2h | Test helpers | ~10 | Update test code to use `new_counter()`/`new_gauge()`/`otel_from_parts()`. |
+| 2g | Delete bridge | — | ✅ Done. `from_metric_parts()`/`into_metric_parts()` deleted. All test consumers migrated. |
+| 2h | Test helpers | ~10 | ✅ Done. All test code uses native constructors. |
 
-### Phase 3 — P27 encoder migration (D5)
+### Phase 3 — P26 legacy type deletion (D11–D16)
+Full removal of `MetricValue`, `MetricData`, `MetricSeries`, `MetricName`, `MetricTime`, `StatisticKind`. Replace `value()` with `MetricView<'a>` (OTLP names). ~58 files.
+
+| Commit | Step | Key changes |
+|--------|------|-------------|
+| 3a | Prep ✅ | Added `MetricView<'a>` + `view()` + `as_name()` + `Display`. |
+| 3b | Migrate consumers ✅ | Replaced `value()` → `view()` in ~30 files. All `.value()` consumers migrated except `config/mod.rs` (deferred). |
+| 3c | Delete + config deser | Move surviving types to `otel_event.rs`. Inline `TestMetricInput` deser. Delete `MetricValue`, `MetricData`, `MetricName`, `MetricTime`, `value()`, `event/metric/` module tree. |
+
+### Phase 4 — P27 encoder migration (D5)
 Migrate codec encoders off `to_value_canonical()`. One commit per encoder.
 
 | Commit | Encoder | Approach |
 |--------|---------|----------|
-| 3a | logfmt | Iterate proto fields directly, build key=value string. |
-| 3b | GELF | Deeper refactor — read proto fields for GELF-specific output. |
-| 3c | Avro | Use `Serialize` impl if schema matches, or keep Value bridge. |
-| 3d | Protobuf | May keep Value bridge (VRL `Value` is its natural input for descriptor encoding). |
+| 4a | logfmt | Iterate proto fields directly, build key=value string. |
+| 4b | GELF | Deeper refactor — read proto fields for GELF-specific output. |
+| 4c | Avro | Use `Serialize` impl if schema matches, or keep Value bridge. |
+| 4d | Protobuf | May keep Value bridge (VRL `Value` is its natural input for descriptor encoding). |
 
-### Phase 4 — D10.0 VRL metric unification
+### Phase 5 — D10.0 VRL metric unification
 Unify OtelMetric VRL path to match OtelLog/OtelSpan (full proto → Value → proto).
 
 | Commit | What |
 |--------|------|
-| 4a | Add `otel_metric_event_to_value()` + `value_to_otel_metric_event()` |
-| 4b | Replace `VrlTarget::OtelMetric { event, value }` with `VrlTarget::OtelMetric(Value, EventMetadata)` |
-| 4c | Delete `precompute_otel_metric_value()`, per-field write-back code |
+| 5a | Add `otel_metric_event_to_value()` + `value_to_otel_metric_event()` |
+| 5b | Replace `VrlTarget::OtelMetric { event, value }` with `VrlTarget::OtelMetric(Value, EventMetadata)` |
+| 5c | Delete `precompute_otel_metric_value()`, per-field write-back code |
 
-### Phase 5 — P28 hardcoded field names (D6)
+### Phase 6 — P28 hardcoded field names (D6)
 Extract ~239 string literals in `otel_event.rs` into named constants in `otel_fields.rs`. Last priority.
 
 ---
 
-## Decisions (locked — all answered 2026-04-29)
+## Decisions (locked — all answered 2026-04-30)
 
 All decisions are locked. Automode proceeds based on these answers.
 
@@ -610,6 +672,31 @@ VRL does NOT convert on every field access. Instead, the entire event is convert
 3. **Track B and C as future optimizations** — implement when VRL-heavy workloads show measurable regression in production. Not planned for current automode run.
 4. **Reduce `to_value_canonical()` fallback scope** during P26 work if encountered, but not a dedicated effort.
 5. **Remaining `to_value_canonical()` sites** (lua, schema) — leave as-is, natural bridge uses.
+
+### D11 — `value()` replacement: `MetricView<'a>` ✅
+**Question:** What replaces `OtelMetric::value()` for callers that match on metric type?
+**Context:** ~40 call sites do `match otel.value() { MetricValue::Counter{..} => ... }`. Options: (A) delete value(), use if/else with type helpers; (B) match on proto data oneof directly; (C) MetricView<'a> borrowing enum.
+**Decision:** C — `MetricView<'a>` with OTLP variant names: `Sum`, `Gauge`, `Histogram`, `Summary`, `ExponentialHistogram` + Vector-specific `Set`, `Distribution`. Method: `otel.view() -> MetricView<'_>`. Zero-copy borrows from proto.
+
+### D12 — MetricKind: keep ✅
+**Question:** Delete MetricKind or keep it?
+**Decision:** Keep as standalone 2-variant enum. Move to `otel_event.rs`, decouple from legacy `event/metric/` module.
+
+### D13 — MetricSeries → MetricIdentity ✅
+**Question:** Keep MetricSeries as HashMap grouping key or replace?
+**Decision:** Rename to `MetricIdentity`. Flatten: drop `MetricName` sub-struct, just `name: String, namespace: Option<String>, tags: MetricTags`. Move next to `OtelMetric` in `otel_event.rs`.
+
+### D14 — StatisticKind: delete ✅
+**Question:** Keep or delete `StatisticKind`?
+**Decision:** Delete. OTLP doesn't have it. Distributions are always histogram-semantics.
+
+### D15 — Config deserialization: direct into proto ✅
+**Question:** How to handle `MetricValue`/`MetricData` in config deserialization (`log_to_metric`, `TestMetricInput`, InfluxDB)?
+**Decision:** Deserialize directly into `OtelMetric` via custom `Deserialize` impls calling native constructors. No intermediate `MetricValue`/`MetricData`. Config YAML schema unchanged — the `Deserialize` impl accepts the same JSON/YAML structure.
+
+### D16 — Commit strategy: incremental ✅
+**Question:** Commit granularity for type deletion?
+**Decision:** Prep (3a) → Migrate consumers (3b) → Migrate config deser (3c) → Delete (3d). Run `cargo test -p vector` after each.
 
 ---
 

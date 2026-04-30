@@ -18,7 +18,7 @@ use vector_lib::event_test_util;
 use crate::{
     SourceSender,
     config::{SourceConfig, SourceContext},
-    event::{Event, EventArray, OtelMetric, MetricValue},
+    event::{Event, EventArray, OtelMetric, MetricView},
     metrics::Controller,
     sinks::VectorSink,
 };
@@ -256,7 +256,7 @@ impl ComponentTester {
 
         for name in names {
             if !self.metrics.iter().any(|m| {
-                matches!(m.value(), MetricValue::Counter { .. })
+                matches!(m.view(), MetricView::Sum { .. })
                     && m.name() == *name
                     && has_tags(m, tags)
             }) {
@@ -266,7 +266,7 @@ impl ComponentTester {
                     .metrics
                     .iter()
                     .filter(|m| {
-                        matches!(m.value(), MetricValue::Counter { .. })
+                        matches!(m.view(), MetricView::Sum { .. })
                             && m.name() == *name
                             && !has_tags(m, tags)
                     })
@@ -306,8 +306,8 @@ impl ComponentTester {
 
         for metric in self.metrics.iter().filter(|m| expected.contains(m.name())) {
             let tags = metric.tags();
-            let is_histogram = matches!(metric.value(), MetricValue::AggregatedHistogram { .. });
-            let is_gauge = matches!(metric.value(), MetricValue::Gauge { .. });
+            let is_histogram = matches!(metric.view(), MetricView::Histogram { .. });
+            let is_gauge = matches!(metric.view(), MetricView::Gauge { .. });
 
             let missing_tags: Vec<_> = requirement
                 .required_tags
@@ -328,7 +328,7 @@ impl ComponentTester {
 
             let mut reasons = Vec::new();
             if !is_histogram && !is_gauge {
-                reasons.push(format!("unexpected type `{}`", metric.value().as_name()));
+                reasons.push(format!("unexpected type `{}`", metric.view().as_name()));
             }
             if !missing_tags.is_empty() {
                 reasons.push(format!(

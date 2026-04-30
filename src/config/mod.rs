@@ -21,7 +21,7 @@ pub use vector_lib::{
 
 use crate::{
     conditions,
-    event::{Value, MetricKind, OtelMetric, metric::{MetricData, MetricSeries, MetricValue}},
+    event::{Value, MetricKind, MetricTags, OtelMetric, metric::{Sample, Bucket, Quantile, StatisticKind}},
     secrets::SecretBackends,
     serde::OneOrMany,
 };
@@ -581,40 +581,110 @@ pub struct TestInput {
 #[configurable_component]
 #[derive(Clone, Debug)]
 pub struct TestMetricInput {
-    #[serde(flatten)]
-    pub series: MetricSeries,
+    /// The name of the metric.
+    pub name: String,
 
+    /// The namespace of the metric.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub namespace: Option<String>,
+
+    /// The tags for the metric.
+    #[configurable(derived)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<MetricTags>,
+
+    /// The timestamp of the metric.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timestamp: Option<chrono::DateTime<chrono::Utc>>,
+
+    /// The interval in milliseconds.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub interval_ms: Option<std::num::NonZeroU32>,
+
+    /// The metric kind (incremental or absolute).
+    #[configurable(derived)]
+    pub kind: MetricKind,
+
+    /// The metric value.
     #[serde(flatten)]
-    pub data: MetricData,
+    pub value: TestMetricValue,
+}
+
+/// Metric value variants for test input deserialization.
+#[configurable_component]
+#[derive(Clone, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum TestMetricValue {
+    /// A counter metric.
+    Counter {
+        /// The counter value.
+        value: f64,
+    },
+    /// A gauge metric.
+    Gauge {
+        /// The gauge value.
+        value: f64,
+    },
+    /// A set metric.
+    Set {
+        /// The set values.
+        values: std::collections::BTreeSet<String>,
+    },
+    /// A distribution metric.
+    Distribution {
+        /// The distribution samples.
+        samples: Vec<Sample>,
+        /// The statistic kind.
+        #[configurable(derived)]
+        statistic: StatisticKind,
+    },
+    /// An aggregated histogram metric.
+    AggregatedHistogram {
+        /// The histogram buckets.
+        buckets: Vec<Bucket>,
+        /// The total count.
+        count: u64,
+        /// The total sum.
+        sum: f64,
+    },
+    /// An aggregated summary metric.
+    AggregatedSummary {
+        /// The summary quantiles.
+        quantiles: Vec<Quantile>,
+        /// The total count.
+        count: u64,
+        /// The total sum.
+        sum: f64,
+    },
 }
 
 impl TestMetricInput {
     pub fn to_otel_metric(&self) -> OtelMetric {
-        let name = &self.series.name.name;
-        let kind = self.data.kind;
-        let otel = match &self.data.value {
-            MetricValue::Counter { value } => OtelMetric::new_counter(name, kind, *value),
-            MetricValue::Gauge { value } => match kind {
+        let name = &self.name;
+        let kind = self.kind;
+        let otel = match &self.value {
+            TestMetricValue::Counter { value } => OtelMetric::new_counter(name, kind, *value),
+            TestMetricValue::Gauge { value } => match kind {
                 MetricKind::Absolute => OtelMetric::new_gauge(name, *value),
                 MetricKind::Incremental => OtelMetric::new_gauge_delta(name, *value),
             },
-            MetricValue::Set { values } => {
+            TestMetricValue::Set { values } => {
                 OtelMetric::new_set_from_values(name, kind, values.iter().cloned().collect::<Vec<_>>())
             }
-            MetricValue::Distribution { samples, statistic } => {
+            TestMetricValue::Distribution { samples, statistic } => {
                 OtelMetric::new_distribution_from_samples(name, kind, samples, *statistic)
             }
-            MetricValue::AggregatedHistogram { buckets, count, sum } => {
+            TestMetricValue::AggregatedHistogram { buckets, count, sum } => {
                 OtelMetric::new_histogram(name, kind, buckets, *count, *sum)
             }
-            MetricValue::AggregatedSummary { quantiles, count, sum } => {
+            TestMetricValue::AggregatedSummary { quantiles, count, sum } => {
                 OtelMetric::new_summary(name, quantiles, *count, *sum)
             }
         };
-        otel.with_namespace(self.series.name.namespace.clone())
-            .with_tags(self.series.tags.clone())
-            .with_timestamp(self.data.time.timestamp)
-            .with_interval_ms(self.data.time.interval_ms)
+        otel.with_namespace(self.namespace.clone())
+            .with_tags(self.tags.clone())
+            .with_timestamp(self.timestamp)
+            .with_interval_ms(self.interval_ms)
     }
 }
 

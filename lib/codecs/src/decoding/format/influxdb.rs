@@ -154,7 +154,7 @@ impl From<&InfluxdbDeserializerConfig> for InfluxdbDeserializer {
 #[cfg(test)]
 mod tests {
     use bytes::Bytes;
-    use vector_core::event::{MetricKind, MetricValue};
+    use vector_core::event::{MetricKind, MetricView};
 
     use crate::decoding::format::{Deserializer, InfluxdbDeserializer};
 
@@ -172,7 +172,7 @@ mod tests {
         let m0 = events[0].as_metric();
         assert_eq!(m0.name(), "cpu_usage_system");
         assert_eq!(m0.kind(), MetricKind::Absolute);
-        assert_eq!(m0.value(), MetricValue::Gauge { value: 64. });
+        assert!(matches!(m0.view(), MetricView::Gauge { value } if value == 64.));
         assert_eq!(m0.tag_value("host"), Some("A".to_string()));
         assert_eq!(m0.tag_value("region"), Some("west".to_string()));
         assert!(m0.timestamp().is_some());
@@ -180,7 +180,7 @@ mod tests {
         let m1 = events[1].as_metric();
         assert_eq!(m1.name(), "cpu_usage_user");
         assert_eq!(m1.kind(), MetricKind::Absolute);
-        assert_eq!(m1.value(), MetricValue::Gauge { value: 10. });
+        assert!(matches!(m1.view(), MetricView::Gauge { value } if value == 10.));
         assert_eq!(m1.tag_value("host"), Some("A".to_string()));
         assert_eq!(m1.tag_value("region"), Some("west".to_string()));
         assert!(m1.timestamp().is_some());

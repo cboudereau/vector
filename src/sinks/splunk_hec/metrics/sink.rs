@@ -1,7 +1,7 @@
 use std::{fmt, sync::Arc};
 
 use serde::Serialize;
-use vector_lib::event::{MetricValue, OtelMetric};
+use vector_lib::event::{MetricView, OtelMetric};
 use vrl::path::OwnedValuePath;
 
 use super::request_builder::HecMetricsRequestBuilder;
@@ -130,13 +130,11 @@ impl HecMetricsProcessedEventMetadata {
     }
 
     fn extract_metric_value(metric: &OtelMetric) -> Option<f64> {
-        match metric.value() {
-            MetricValue::Counter { value } => Some(value),
-            MetricValue::Gauge { value } => Some(value),
-            value => {
+        match metric.view() {
+            MetricView::Sum { value } => Some(value),
+            MetricView::Gauge { value } => Some(value),
+            _ => {
                 emit!(SplunkInvalidMetricReceivedError {
-                    value: &value,
-                    kind: &metric.kind(),
                     error: "Metric kind not supported.".into(),
                 });
                 None

@@ -9,8 +9,8 @@ use vector_lib::{
 
 use crate::{
     event::{
-        OtelMetric,
-        metric::{MetricKind, MetricValue, StatisticKind},
+        MetricView, OtelMetric,
+        metric::{MetricKind, Sample, StatisticKind},
     },
     sinks::util::{encode_namespace, statistic::DistributionStatistic},
 };
@@ -20,7 +20,7 @@ pub(super) trait MetricCollector {
 
     fn new() -> Self;
 
-    fn emit_metadata(&mut self, name: &str, fullname: &str, value: &MetricValue);
+    fn emit_metadata(&mut self, name: &str, fullname: &str, view: &MetricView<'_>, metric: &OtelMetric);
 
     fn emit_value(
         &mut self,
@@ -44,117 +44,109 @@ pub(super) trait MetricCollector {
         let name = encode_namespace(metric.namespace().or(default_namespace), '_', metric.name());
         let name = &name;
         let timestamp = metric.timestamp().map(|t| t.timestamp_millis());
-        let value = metric.value();
+        let view = metric.view();
 
         if metric.kind() == MetricKind::Absolute {
             let event_tags = metric.tags();
             let tags = event_tags.as_ref();
-            self.emit_metadata(metric.name(), name, &value);
+            self.emit_metadata(metric.name(), name, &view, metric);
 
-            match &value {
-                MetricValue::Counter { value } => {
+            match &view {
+                MetricView::Sum { value } => {
                     self.emit_value(timestamp, name, "", *value, tags, None);
                 }
-                MetricValue::Gauge { value } => {
+                MetricView::Gauge { value } => {
                     self.emit_value(timestamp, name, "", *value, tags, None);
                 }
-                MetricValue::Set { values } => {
+                MetricView::Set { values } => {
                     self.emit_value(timestamp, name, "", values.len() as f64, tags, None);
                 }
-                MetricValue::Distribution {
-                    samples,
-                    statistic: StatisticKind::Histogram,
-                } => {
-                    // convert distributions into aggregated histograms
-                    let (buckets, count, sum) = samples_to_buckets(samples, buckets);
-                    let mut bucket_count = 0.0;
-                    for bucket in buckets {
-                        bucket_count += bucket.count as f64;
-                        self.emit_value(
-                            timestamp,
-                            name,
-                            "_bucket",
-                            bucket_count,
-                            tags,
-                            Some(("le", bucket.upper_limit.to_string())),
-                        );
-                    }
-                    self.emit_value(
-                        timestamp,
-                        name,
-                        "_bucket",
-                        count as f64,
-                        tags,
-                        Some(("le", "+Inf".to_string())),
-                    );
-                    self.emit_value(timestamp, name, "_sum", sum, tags, None);
-                    self.emit_value(timestamp, name, "_count", count as f64, tags, None);
-                }
-                MetricValue::Distribution {
-                    samples,
-                    statistic: StatisticKind::Summary,
-                } => {
-                    if let Some(statistic) = DistributionStatistic::from_samples(samples, quantiles)
-                    {
-                        for (q, v) in statistic.quantiles.iter() {
+                MetricView::Distribution { bounds, counts } => {
+                    let statistic_kind = metric.distribution_statistic_kind();
+                    match statistic_kind {
+                        StatisticKind::Histogram => {
+                            let samples: Vec<Sample> = bounds.iter().zip(counts.iter())
+                                .map(|(&value, &rate)| Sample { value, rate: rate as u32 })
+                                .collect();
+                            let (hist_buckets, count, sum) = samples_to_buckets(&samples, buckets);
+                            let mut bucket_count = 0.0;
+                            for bucket in hist_buckets {
+                                bucket_count += bucket.count as f64;
+                                self.emit_value(
+                                    timestamp,
+                                    name,
+                                    "_bucket",
+                                    bucket_count,
+                                    tags,
+                                    Some(("le", bucket.upper_limit.to_string())),
+                                );
+                            }
                             self.emit_value(
                                 timestamp,
                                 name,
-                                "",
-                                *v,
+                                "_bucket",
+                                count as f64,
                                 tags,
-                                Some(("quantile", q.to_string())),
+                                Some(("le", "+Inf".to_string())),
                             );
+                            self.emit_value(timestamp, name, "_sum", sum, tags, None);
+                            self.emit_value(timestamp, name, "_count", count as f64, tags, None);
                         }
-                        self.emit_value(timestamp, name, "_sum", statistic.sum, tags, None);
-                        self.emit_value(
-                            timestamp,
-                            name,
-                            "_count",
-                            statistic.count as f64,
-                            tags,
-                            None,
-                        );
-                        self.emit_value(timestamp, name, "_min", statistic.min, tags, None);
-                        self.emit_value(timestamp, name, "_max", statistic.max, tags, None);
-                        self.emit_value(timestamp, name, "_avg", statistic.avg, tags, None);
-                    } else {
-                        self.emit_value(timestamp, name, "_sum", 0.0, tags, None);
-                        self.emit_value(timestamp, name, "_count", 0.0, tags, None);
+                        StatisticKind::Summary => {
+                            let samples: Vec<Sample> = bounds.iter().zip(counts.iter())
+                                .map(|(&value, &rate)| Sample { value, rate: rate as u32 })
+                                .collect();
+                            if let Some(statistic) = DistributionStatistic::from_samples(&samples, quantiles)
+                            {
+                                for (q, v) in statistic.quantiles.iter() {
+                                    self.emit_value(
+                                        timestamp,
+                                        name,
+                                        "",
+                                        *v,
+                                        tags,
+                                        Some(("quantile", q.to_string())),
+                                    );
+                                }
+                                self.emit_value(timestamp, name, "_sum", statistic.sum, tags, None);
+                                self.emit_value(
+                                    timestamp,
+                                    name,
+                                    "_count",
+                                    statistic.count as f64,
+                                    tags,
+                                    None,
+                                );
+                                self.emit_value(timestamp, name, "_min", statistic.min, tags, None);
+                                self.emit_value(timestamp, name, "_max", statistic.max, tags, None);
+                                self.emit_value(timestamp, name, "_avg", statistic.avg, tags, None);
+                            } else {
+                                self.emit_value(timestamp, name, "_sum", 0.0, tags, None);
+                                self.emit_value(timestamp, name, "_count", 0.0, tags, None);
+                            }
+                        }
                     }
                 }
-                MetricValue::AggregatedHistogram {
-                    buckets,
+                MetricView::Histogram {
+                    bounds,
+                    counts,
                     count,
                     sum,
                 } => {
                     let mut bucket_count = 0.0;
-                    for bucket in buckets {
-                        // Aggregated histograms are cumulative in Prometheus.  This means that the
-                        // count of values in a bucket should only go up at the upper limit goes up,
-                        // because if you count a value in a specific bucket, by definition, it is
-                        // less than the upper limit of the next bucket.
-                        //
-                        // While most sources should give us buckets that have an "infinity" bucket
-                        // -- everything else that didn't fit in the non-infinity-upper-limit buckets
-                        // -- we can't be sure, so we calculate that bucket ourselves.  This is why
-                        // we make sure to avoid encoding a bucket if its upper limit is already
-                        // infinity, so that we don't double report.
-                        //
-                        // This check will also avoid printing out a bucket whose upper limit is
-                        // negative infinity, because that would make no sense.
-                        if bucket.upper_limit.is_infinite() {
+                    for (&limit, &cnt) in bounds.iter().zip(counts.iter()) {
+                        if limit.is_infinite() {
                             continue;
                         }
 
-                        bucket_count += bucket.count as f64;
+                        bucket_count += cnt as f64;
                         self.emit_value(
                             timestamp,
                             name,
                             "_bucket",
                             bucket_count,
                             tags,
-                            Some(("le", bucket.upper_limit.to_string())),
+                            Some(("le", limit.to_string())),
                         );
                     }
                     self.emit_value(
@@ -168,24 +160,25 @@ pub(super) trait MetricCollector {
                     self.emit_value(timestamp, name, "_sum", *sum, tags, None);
                     self.emit_value(timestamp, name, "_count", *count as f64, tags, None);
                 }
-                MetricValue::AggregatedSummary {
-                    quantiles,
+                MetricView::Summary {
+                    quantiles: qs,
                     count,
                     sum,
                 } => {
-                    for quantile in quantiles {
+                    for q in *qs {
                         self.emit_value(
                             timestamp,
                             name,
                             "",
-                            quantile.value,
+                            q.value,
                             tags,
-                            Some(("quantile", quantile.quantile.to_string())),
+                            Some(("quantile", q.quantile.to_string())),
                         );
                     }
                     self.emit_value(timestamp, name, "_sum", *sum, tags, None);
                     self.emit_value(timestamp, name, "_count", *count as f64, tags, None);
                 }
+                MetricView::ExponentialHistogram { .. } => {}
             }
         }
     }
@@ -204,9 +197,9 @@ impl MetricCollector for StringCollector {
         Self { processed }
     }
 
-    fn emit_metadata(&mut self, name: &str, fullname: &str, value: &MetricValue) {
+    fn emit_metadata(&mut self, name: &str, fullname: &str, view: &MetricView<'_>, metric: &OtelMetric) {
         if !self.processed.contains_key(fullname) {
-            let header = Self::encode_header(name, fullname, value);
+            let header = Self::encode_header(name, fullname, view, metric);
             self.processed.insert(fullname.into(), header);
         }
     }
@@ -261,8 +254,8 @@ impl StringCollector {
         .ok();
     }
 
-    fn encode_header(name: &str, fullname: &str, value: &MetricValue) -> String {
-        let r#type = prometheus_metric_type(value).as_str();
+    fn encode_header(name: &str, fullname: &str, view: &MetricView<'_>, metric: &OtelMetric) -> String {
+        let r#type = prometheus_metric_type(view, metric).as_str();
         format!("# HELP {fullname} {name}\n# TYPE {fullname} {type}\n")
     }
 
@@ -337,9 +330,9 @@ impl MetricCollector for TimeSeries {
         }
     }
 
-    fn emit_metadata(&mut self, name: &str, fullname: &str, value: &MetricValue) {
+    fn emit_metadata(&mut self, name: &str, fullname: &str, view: &MetricView<'_>, metric: &OtelMetric) {
         if !self.metadata.contains_key(name) {
-            let r#type = prometheus_metric_type(value);
+            let r#type = prometheus_metric_type(view, metric);
             let metadata = proto::MetricMetadata {
                 r#type: r#type as i32,
                 metric_family_name: fullname.into(),
@@ -384,28 +377,24 @@ impl MetricCollector for TimeSeries {
     }
 }
 
-const fn prometheus_metric_type(metric_value: &MetricValue) -> proto::MetricType {
+fn prometheus_metric_type(view: &MetricView<'_>, metric: &OtelMetric) -> proto::MetricType {
     use proto::MetricType;
-    match metric_value {
-        MetricValue::Counter { .. } => MetricType::Counter,
-        MetricValue::Gauge { .. } | MetricValue::Set { .. } => MetricType::Gauge,
-        MetricValue::Distribution {
-            statistic: StatisticKind::Histogram,
-            ..
-        } => MetricType::Histogram,
-        MetricValue::Distribution {
-            statistic: StatisticKind::Summary,
-            ..
-        } => MetricType::Summary,
-        MetricValue::AggregatedHistogram { .. } => MetricType::Histogram,
-        MetricValue::AggregatedSummary { .. } => MetricType::Summary,
+    match view {
+        MetricView::Sum { .. } => MetricType::Counter,
+        MetricView::Gauge { .. } | MetricView::Set { .. } => MetricType::Gauge,
+        MetricView::Distribution { .. } => {
+            match metric.distribution_statistic_kind() {
+                StatisticKind::Histogram => MetricType::Histogram,
+                StatisticKind::Summary => MetricType::Summary,
+            }
+        }
+        MetricView::Histogram { .. } | MetricView::ExponentialHistogram { .. } => MetricType::Histogram,
+        MetricView::Summary { .. } => MetricType::Summary,
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
-
     use chrono::{DateTime, TimeZone, Timelike};
     use indoc::indoc;
     use similar_asserts::assert_eq;
@@ -414,44 +403,12 @@ mod tests {
     use super::{super::default_summary_quantiles, *};
     use crate::{
         event::metric::{
-            MetricKind, MetricValue,
+            MetricKind,
             StatisticKind,
         },
         event::OtelMetric,
         test_util::stats::VariableHistogram,
     };
-
-    fn otel_from_metric_value(
-        name: &str,
-        kind: MetricKind,
-        value: MetricValue,
-        tags: Option<MetricTags>,
-        timestamp: Option<DateTime<Utc>>,
-    ) -> OtelMetric {
-        let m = match value {
-            MetricValue::Counter { value: v } => OtelMetric::new_counter(name, kind, v),
-            MetricValue::Gauge { value: v } => match kind {
-                MetricKind::Absolute => OtelMetric::new_gauge(name, v),
-                MetricKind::Incremental => OtelMetric::new_gauge_delta(name, v),
-            },
-            MetricValue::Set { values } => OtelMetric::new_set_from_values(name, kind, values),
-            MetricValue::Distribution {
-                samples,
-                statistic,
-            } => OtelMetric::new_distribution_from_samples(name, kind, &samples, statistic),
-            MetricValue::AggregatedHistogram {
-                buckets,
-                count,
-                sum,
-            } => OtelMetric::new_histogram(name, kind, &buckets, count, sum),
-            MetricValue::AggregatedSummary {
-                quantiles,
-                count,
-                sum,
-            } => OtelMetric::new_summary(name, &quantiles, count, sum),
-        };
-        m.with_tags(tags).with_timestamp(timestamp)
-    }
 
     fn encode_one<T: MetricCollector>(
         default_namespace: Option<&str>,
@@ -583,15 +540,8 @@ mod tests {
     }
 
     fn encode_set<T: MetricCollector>() -> T::Output {
-        let otel = otel_from_metric_value(
-            "users",
-            MetricKind::Absolute,
-            MetricValue::Set {
-                values: vec!["foo".into()].into_iter().collect(),
-            },
-            None,
-            Some(timestamp()),
-        );
+        let otel = OtelMetric::new_set_from_values("users", MetricKind::Absolute, vec!["foo"])
+            .with_timestamp(Some(timestamp()));
         encode_one::<T>(Some("vector"), &[], &[], otel)
     }
 
@@ -616,15 +566,8 @@ mod tests {
     }
 
     fn encode_expired_set<T: MetricCollector>() -> T::Output {
-        let otel = otel_from_metric_value(
-            "users",
-            MetricKind::Absolute,
-            MetricValue::Set {
-                values: BTreeSet::new(),
-            },
-            None,
-            Some(timestamp()),
-        );
+        let otel = OtelMetric::new_set_from_values("users", MetricKind::Absolute, Vec::<String>::new())
+            .with_timestamp(Some(timestamp()));
         encode_one::<T>(Some("vector"), &[], &[], otel)
     }
 
@@ -663,16 +606,9 @@ mod tests {
     }
 
     fn encode_distribution<T: MetricCollector>() -> T::Output {
-        let otel = otel_from_metric_value(
-            "requests",
-            MetricKind::Absolute,
-            MetricValue::Distribution {
-                samples: vector_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2],
-                statistic: StatisticKind::Histogram,
-            },
-            None,
-            Some(timestamp()),
-        );
+        let samples = vector_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2];
+        let otel = OtelMetric::new_distribution_from_samples("requests", MetricKind::Absolute, &samples, StatisticKind::Histogram)
+            .with_timestamp(Some(timestamp()));
         encode_one::<T>(Some("vector"), &[0.0, 2.5, 5.0], &[], otel)
     }
 
@@ -848,16 +784,10 @@ mod tests {
     }
 
     fn encode_distribution_summary<T: MetricCollector>() -> T::Output {
-        let otel = otel_from_metric_value(
-            "requests",
-            MetricKind::Absolute,
-            MetricValue::Distribution {
-                samples: vector_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2],
-                statistic: StatisticKind::Summary,
-            },
-            Some(tags()),
-            Some(timestamp()),
-        );
+        let samples = vector_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2];
+        let otel = OtelMetric::new_distribution_from_samples("requests", MetricKind::Absolute, &samples, StatisticKind::Summary)
+            .with_tags(Some(tags()))
+            .with_timestamp(Some(timestamp()));
         encode_one::<T>(Some("ns"), &[], &default_summary_quantiles(), otel)
     }
 

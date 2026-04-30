@@ -14,10 +14,7 @@ mod sink {
         ComponentEventsDropped, InternalEvent, UNINTENTIONAL, error_stage, error_type,
     };
 
-    use crate::{
-        event::metric::{MetricKind, MetricValue},
-        sinks::splunk_hec::common::acknowledgements::HecAckApiError,
-    };
+    use crate::sinks::splunk_hec::common::acknowledgements::HecAckApiError;
 
     #[derive(Debug, NamedInternalEvent)]
     pub struct SplunkEventEncodeError {
@@ -46,21 +43,17 @@ mod sink {
     }
 
     #[derive(Debug, NamedInternalEvent)]
-    pub(crate) struct SplunkInvalidMetricReceivedError<'a> {
-        pub value: &'a MetricValue,
-        pub kind: &'a MetricKind,
+    pub(crate) struct SplunkInvalidMetricReceivedError {
         pub error: crate::Error,
     }
 
-    impl InternalEvent for SplunkInvalidMetricReceivedError<'_> {
+    impl InternalEvent for SplunkInvalidMetricReceivedError {
         fn emit(self) {
             error!(
                 message = "Invalid metric received.",
                 error = ?self.error,
                 error_type = error_type::INVALID_METRIC,
                 stage = error_stage::PROCESSING,
-                value = ?self.value,
-                kind = ?self.kind,
             );
             counter!(
                 "component_errors_total",

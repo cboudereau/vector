@@ -241,8 +241,8 @@ fn sum_counters(
     let mut errs = Vec::new();
 
     for m in metrics {
-        match m.value() {
-            vector_lib::event::MetricValue::Counter { value } => {
+        match m.view() {
+            vector_lib::event::MetricView::Sum { value } => {
                 if let MetricKind::Absolute = m.kind() {
                     sum = value;
                 } else {

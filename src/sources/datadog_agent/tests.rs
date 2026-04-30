@@ -41,7 +41,7 @@ use crate::{
     config::{SourceConfig, SourceContext},
     event::{
         Event, EventStatus, OtelMetric, OtelSpan, Value, into_event_stream,
-        metric::{MetricKind, MetricValue},
+        metric::MetricKind, MetricView,
     },
     schema,
     schema::Definition,
@@ -968,7 +968,7 @@ async fn decode_series_endpoint_v1() {
                 )
             );
             assert_eq!(metric.kind(), MetricKind::Absolute);
-            assert_eq!(metric.value(), MetricValue::Gauge { value: 3.14 });
+            assert!(matches!(metric.view(), MetricView::Gauge { value: 3.14 }));
             assert_tags(
                 &metric,
                 metric_tags!(
@@ -995,7 +995,7 @@ async fn decode_series_endpoint_v1() {
                 )
             );
             assert_eq!(metric.kind(), MetricKind::Absolute);
-            assert_eq!(metric.value(), MetricValue::Gauge { value: 3.1415 });
+            assert!(matches!(metric.view(), MetricView::Gauge { value: 3.1415 }));
             assert_tags(
                 &metric,
                 metric_tags!(
@@ -1022,12 +1022,7 @@ async fn decode_series_endpoint_v1() {
                 )
             );
             assert_eq!(metric.kind(), MetricKind::Incremental);
-            assert_eq!(
-                metric.value(),
-                MetricValue::Counter {
-                    value: 3.14 * (10_f64)
-                }
-            );
+            assert!(matches!(metric.view(), MetricView::Sum { value } if value == 3.14 * 10_f64));
             assert_tags(
                 &metric,
                 metric_tags!(
@@ -1054,12 +1049,7 @@ async fn decode_series_endpoint_v1() {
                 )
             );
             assert_eq!(metric.kind(), MetricKind::Incremental);
-            assert_eq!(
-                metric.value(),
-                MetricValue::Counter {
-                    value: 16777216_f64
-                }
-            );
+            assert!(matches!(metric.view(), MetricView::Sum { value: 16777216.0 }));
             assert_tags(
                 &metric,
                 metric_tags!(
@@ -1413,7 +1403,7 @@ async fn split_outputs() {
                 )
             );
             assert_eq!(metric.kind(), MetricKind::Absolute);
-            assert_eq!(metric.value(), MetricValue::Gauge { value: 3.14 });
+            assert!(matches!(metric.view(), MetricView::Gauge { value: 3.14 }));
             assert_tags(
                 &metric,
                 metric_tags!(
@@ -1959,7 +1949,7 @@ async fn decode_series_endpoint_v2() {
                 )
             );
             assert_eq!(metric.kind(), MetricKind::Absolute);
-            assert_eq!(metric.value(), MetricValue::Gauge { value: 3.14 });
+            assert!(matches!(metric.view(), MetricView::Gauge { value: 3.14 }));
             assert_tags(
                 &metric,
                 metric_tags!(
@@ -1984,7 +1974,7 @@ async fn decode_series_endpoint_v2() {
                 Some(Utc.with_ymd_and_hms(2018, 11, 14, 8, 9, 11).unwrap())
             );
             assert_eq!(metric.kind(), MetricKind::Absolute);
-            assert_eq!(metric.value(), MetricValue::Gauge { value: 3.1415 });
+            assert!(matches!(metric.view(), MetricView::Gauge { value: 3.1415 }));
             assert_tags(
                 &metric,
                 metric_tags!(
@@ -2013,12 +2003,7 @@ async fn decode_series_endpoint_v2() {
                 )
             );
             assert_eq!(metric.kind(), MetricKind::Incremental);
-            assert_eq!(
-                metric.value(),
-                MetricValue::Counter {
-                    value: 3.14 * (10_f64)
-                }
-            );
+            assert!(matches!(metric.view(), MetricView::Sum { value } if value == 3.14 * 10_f64));
             assert_tags(
                 &metric,
                 metric_tags!(
@@ -2048,12 +2033,7 @@ async fn decode_series_endpoint_v2() {
                 )
             );
             assert_eq!(metric.kind(), MetricKind::Incremental);
-            assert_eq!(
-                metric.value(),
-                MetricValue::Counter {
-                    value: 16777216_f64
-                }
-            );
+            assert!(matches!(metric.view(), MetricView::Sum { value: 16777216.0 }));
             assert_tags(
                 &metric,
                 metric_tags!(

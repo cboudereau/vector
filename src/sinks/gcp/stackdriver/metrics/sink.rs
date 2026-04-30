@@ -1,4 +1,4 @@
-use vector_lib::event::{MetricValue, OtelMetric};
+use vector_lib::event::{MetricView, OtelMetric};
 
 use super::request_builder::StackdriverMetricsRequestBuilder;
 use crate::sinks::{
@@ -59,8 +59,8 @@ where
                 };
 
                 // Filter unsupported types before normalization
-                future::ready(match otel.value() {
-                    MetricValue::Counter { .. } | MetricValue::Gauge { .. } => {
+                future::ready(match otel.view() {
+                    MetricView::Sum { .. } | MetricView::Gauge { .. } => {
                         normalizer.normalize_otel(otel).and_then(|e| e.try_into_otel_metric())
                     }
                     not_supported => {

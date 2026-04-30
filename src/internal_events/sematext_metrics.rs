@@ -19,7 +19,7 @@ impl InternalEvent for SematextMetricsInvalidMetricError<'_> {
             error_code = "invalid_metric",
             error_type =  error_type::ENCODER_FAILED,
             stage = error_stage::PROCESSING,
-            value = ?self.metric.value(),
+            value = %self.metric.view(),
             kind = ?self.metric.kind(),
         );
         counter!(

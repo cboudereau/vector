@@ -1,5 +1,5 @@
 use vector_lib::{
-    event::{MetricValue, OtelMetric},
+    event::{MetricView, OtelMetric},
     stream::batcher::limiter::ItemBatchSize,
 };
 
@@ -32,11 +32,12 @@ impl GreptimeDBBatchSizer {
             + I64_BYTE_SIZE
             +
         // value size
-            match item.value() {
-                MetricValue::Counter { .. } | MetricValue::Gauge { .. } | MetricValue::Set { ..} => F64_BYTE_SIZE,
-                MetricValue::Distribution { .. } => F64_BYTE_SIZE * (DISTRIBUTION_QUANTILES.len() + DISTRIBUTION_STAT_FIELD_COUNT),
-                MetricValue::AggregatedHistogram { buckets, .. }  => F64_BYTE_SIZE * (buckets.len() + SUMMARY_STAT_FIELD_COUNT),
-                MetricValue::AggregatedSummary { quantiles, .. } => F64_BYTE_SIZE * (quantiles.len() + SUMMARY_STAT_FIELD_COUNT),
+            match item.view() {
+                MetricView::Sum { .. } | MetricView::Gauge { .. } | MetricView::Set { ..} => F64_BYTE_SIZE,
+                MetricView::Distribution { .. } => F64_BYTE_SIZE * (DISTRIBUTION_QUANTILES.len() + DISTRIBUTION_STAT_FIELD_COUNT),
+                MetricView::Histogram { bounds, .. }  => F64_BYTE_SIZE * (bounds.len() + SUMMARY_STAT_FIELD_COUNT),
+                MetricView::Summary { quantiles, .. } => F64_BYTE_SIZE * (quantiles.len() + SUMMARY_STAT_FIELD_COUNT),
+                MetricView::ExponentialHistogram { .. } => F64_BYTE_SIZE,
             }
     }
 }

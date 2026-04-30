@@ -5,11 +5,11 @@ use std::{
 
 use bytes::{BufMut, BytesMut};
 use tokio_util::codec::Encoder;
-use vector_lib::event::{MetricKind, MetricTags, MetricValue, OtelMetric, StatisticKind};
+use vector_lib::event::{MetricKind, MetricTags, MetricView, OtelMetric, StatisticKind};
 
 use crate::{
     internal_events::StatsdInvalidMetricError,
-    sinks::util::{buffer::metrics::compress_distribution, encode_namespace},
+    sinks::util::encode_namespace,
 };
 
 /// Error type for errors that can never happen, but for use with `Encoder`.
@@ -47,11 +47,11 @@ impl<'a> Encoder<&'a OtelMetric> for StatsdEncoder {
         let name = encode_namespace(namespace, '.', metric.name());
         let tags = metric.tags().as_ref().map(encode_tags);
 
-        match metric.value() {
-            MetricValue::Counter { value } => {
+        match metric.view() {
+            MetricView::Sum { value } => {
                 encode_and_write_single_event(buf, &name, tags.as_deref(), value, "c", None);
             }
-            MetricValue::Gauge { value } => {
+            MetricView::Gauge { value } => {
                 match metric.kind() {
                     MetricKind::Incremental => encode_and_write_single_event(
                         buf,
@@ -66,40 +66,46 @@ impl<'a> Encoder<&'a OtelMetric> for StatsdEncoder {
                     }
                 };
             }
-            MetricValue::Distribution { samples, statistic } => {
-                let metric_type = match statistic {
+            MetricView::Distribution { bounds, counts } => {
+                let metric_type = match metric.distribution_statistic_kind() {
                     StatisticKind::Histogram => "h",
                     StatisticKind::Summary => "d",
                 };
 
-                // TODO: This would actually be good to potentially add a helper combinator for, in the same vein as
-                // `SinkBuilderExt::normalized`, that provides a metric "optimizer" for doing these sorts of things. We
-                // don't actually compress distributions as-is in other metrics sinks unless they use the old-style
-                // approach coupled with `MetricBuffer`. While not every sink would benefit from this -- the
-                // `datadog_metrics` sink always converts distributions to sketches anyways, for example -- a lot of
-                // them could.
-                let mut samples = samples.clone();
-                let compressed_samples = compress_distribution(&mut samples);
-                for sample in compressed_samples {
+                let mut pairs: Vec<(f64, u64)> = bounds.iter().copied()
+                    .zip(counts.iter().copied())
+                    .collect();
+                pairs.sort_by(|a, b| a.0.total_cmp(&b.0));
+                let mut compressed: Vec<(f64, u64)> = Vec::new();
+                for (val, cnt) in pairs {
+                    if let Some(last) = compressed.last_mut() {
+                        if last.0 == val {
+                            last.1 += cnt;
+                            continue;
+                        }
+                    }
+                    compressed.push((val, cnt));
+                }
+
+                for (val, cnt) in compressed {
                     encode_and_write_single_event(
                         buf,
                         &name,
                         tags.as_deref(),
-                        sample.value,
+                        val,
                         metric_type,
-                        Some(sample.rate),
+                        Some(cnt as u32),
                     );
                 }
             }
-            MetricValue::Set { values } => {
+            MetricView::Set { values } => {
                 for val in values {
                     encode_and_write_single_event(buf, &name, tags.as_deref(), val, "s", None);
                 }
             }
-            value => {
+            _ => {
                 emit!(StatsdInvalidMetricError {
-                    value: &value,
-                    kind: metric.kind(),
+                    error: "Unsupported metric type for StatsD.".into(),
                 });
 
                 return Ok(());

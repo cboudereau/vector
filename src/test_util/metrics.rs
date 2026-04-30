@@ -4,7 +4,7 @@ use std::{
 };
 
 use vector_lib::event::{
-    Event, MetricValue, OtelMetric, StatisticKind,
+    Event, MetricView, OtelMetric, StatisticKind,
     metric::{Bucket, MetricSeries, Sample},
 };
 
@@ -102,15 +102,15 @@ impl<N: Default> Default for MetricState<N> {
 }
 
 pub fn read_counter_value(metrics: &SplitMetrics, series: MetricSeries) -> Option<f64> {
-    metrics.get(&series).and_then(|otel| match otel.value() {
-        MetricValue::Counter { value } => Some(value),
+    metrics.get(&series).and_then(|otel| match otel.view() {
+        MetricView::Sum { value } => Some(value),
         _ => None,
     })
 }
 
 pub fn read_gauge_value(metrics: &SplitMetrics, series: MetricSeries) -> Option<f64> {
-    metrics.get(&series).and_then(|otel| match otel.value() {
-        MetricValue::Gauge { value } => Some(value),
+    metrics.get(&series).and_then(|otel| match otel.view() {
+        MetricView::Gauge { value } => Some(value),
         _ => None,
     })
 }
@@ -119,15 +119,17 @@ pub fn read_distribution_samples(
     metrics: &SplitMetrics,
     series: MetricSeries,
 ) -> Option<Vec<Sample>> {
-    metrics.get(&series).and_then(|otel| match otel.value() {
-        MetricValue::Distribution { samples, .. } => Some(samples),
+    metrics.get(&series).and_then(|otel| match otel.view() {
+        MetricView::Distribution { bounds, counts } => {
+            Some(bounds.iter().zip(counts.iter()).map(|(&value, &rate)| Sample { value, rate: rate as u32 }).collect())
+        }
         _ => None,
     })
 }
 
 pub fn read_set_values(metrics: &SplitMetrics, series: MetricSeries) -> Option<HashSet<String>> {
-    metrics.get(&series).and_then(|otel| match otel.value() {
-        MetricValue::Set { values } => Some(values.iter().cloned().collect()),
+    metrics.get(&series).and_then(|otel| match otel.view() {
+        MetricView::Set { values } => Some(values.into_iter().collect()),
         _ => None,
     })
 }

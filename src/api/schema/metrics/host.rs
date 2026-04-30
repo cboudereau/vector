@@ -2,7 +2,7 @@ use async_graphql::Object;
 use cfg_if::cfg_if;
 
 use crate::{
-    event::{MetricValue, OtelMetric},
+    event::{MetricView, OtelMetric},
     sources::host_metrics,
 };
 
@@ -364,9 +364,9 @@ fn filter_host_metric(metrics: &[OtelMetric], name: &str) -> f64 {
     metrics
         .iter()
         .find(|m| matches!(m.namespace(), Some(n) if n == "host") && m.name() == name)
-        .map(|m| match m.value() {
-            MetricValue::Gauge { value } => value,
-            MetricValue::Counter { value } => value,
+        .map(|m| match m.view() {
+            MetricView::Gauge { value } => value,
+            MetricView::Sum { value } => value,
             _ => 0.00,
         })
         .unwrap_or_else(|| 0.00)

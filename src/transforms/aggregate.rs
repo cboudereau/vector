@@ -336,45 +336,20 @@ mod tests {
     use crate::{
         event::{
             Event, OtelMetric,
-            metric::{MetricKind, MetricValue},
+            metric::MetricKind,
         },
         schema::Definition,
         test_util::components::assert_transform_compliance,
         transforms::test::create_topology,
     };
 
-    fn otel_from_metric_value(name: &'static str, kind: MetricKind, value: MetricValue) -> OtelMetric {
-        match value {
-            MetricValue::Counter { value: v } => OtelMetric::new_counter(name, kind, v),
-            MetricValue::Gauge { value: v } => match kind {
-                MetricKind::Absolute => OtelMetric::new_gauge(name, v),
-                MetricKind::Incremental => OtelMetric::new_gauge_delta(name, v),
-            },
-            MetricValue::Set { values } => OtelMetric::new_set_from_values(name, kind, values),
-            MetricValue::Distribution {
-                samples,
-                statistic,
-            } => OtelMetric::new_distribution_from_samples(name, kind, &samples, statistic),
-            MetricValue::AggregatedHistogram {
-                buckets,
-                count,
-                sum,
-            } => OtelMetric::new_histogram(name, kind, &buckets, count, sum),
-            MetricValue::AggregatedSummary {
-                quantiles,
-                count,
-                sum,
-            } => OtelMetric::new_summary(name, &quantiles, count, sum),
-        }
-    }
-
     #[test]
     fn generate_config() {
         crate::test_util::test_generate_config::<AggregateConfig>();
     }
 
-    fn make_metric(name: &'static str, kind: MetricKind, value: MetricValue) -> Event {
-        let mut event = Event::Metric(otel_from_metric_value(name, kind, value))
+    fn make_metric(_name: &'static str, otel: OtelMetric) -> Event {
+        let mut event = Event::Metric(otel)
             .with_source_id(Arc::new(ComponentKey::from("in")))
             .with_upstream_id(Arc::new(OutputId::from("transform")));
         event.metadata_mut().set_schema_definition(&Arc::new(
@@ -394,21 +369,9 @@ mod tests {
         })
         .unwrap();
 
-        let counter_a_1 = make_metric(
-            "counter_a",
-            MetricKind::Incremental,
-            MetricValue::Counter { value: 42.0 },
-        );
-        let counter_a_2 = make_metric(
-            "counter_a",
-            MetricKind::Incremental,
-            MetricValue::Counter { value: 43.0 },
-        );
-        let counter_a_summed = make_metric(
-            "counter_a",
-            MetricKind::Incremental,
-            MetricValue::Counter { value: 85.0 },
-        );
+        let counter_a_1 = make_metric("counter_a", OtelMetric::new_counter("counter_a", MetricKind::Incremental, 42.0));
+        let counter_a_2 = make_metric("counter_a", OtelMetric::new_counter("counter_a", MetricKind::Incremental, 43.0));
+        let counter_a_summed = make_metric("counter_a", OtelMetric::new_counter("counter_a", MetricKind::Incremental, 85.0));
 
         // Single item, just stored regardless of kind
         agg.record(counter_a_1.clone());
@@ -436,11 +399,7 @@ mod tests {
         assert_eq!(1, out.len());
         assert_eq!(counter_a_summed.clone().into_otel_metric(), out[0].clone().into_otel_metric());
 
-        let counter_b_1 = make_metric(
-            "counter_b",
-            MetricKind::Incremental,
-            MetricValue::Counter { value: 44.0 },
-        );
+        let counter_b_1 = make_metric("counter_b", OtelMetric::new_counter("counter_b", MetricKind::Incremental, 44.0));
         // Two increments with the different series, should get each back as-is
         agg.record(counter_a_1.clone());
         agg.record(counter_b_1.clone());
@@ -466,16 +425,8 @@ mod tests {
         })
         .unwrap();
 
-        let gauge_a_1 = make_metric(
-            "gauge_a",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 42.0 },
-        );
-        let gauge_a_2 = make_metric(
-            "gauge_a",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 43.0 },
-        );
+        let gauge_a_1 = make_metric("gauge_a", OtelMetric::new_gauge("gauge_a", 42.0));
+        let gauge_a_2 = make_metric("gauge_a", OtelMetric::new_gauge("gauge_a", 43.0));
 
         // Single item, just stored regardless of kind
         agg.record(gauge_a_1.clone());
@@ -503,11 +454,7 @@ mod tests {
         assert_eq!(1, out.len());
         assert_eq!(&gauge_a_2, &out[0]);
 
-        let gauge_b_1 = make_metric(
-            "gauge_b",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 44.0 },
-        );
+        let gauge_b_1 = make_metric("gauge_b", OtelMetric::new_gauge("gauge_b", 44.0));
         // Two increments with the different series, should get each back as-is
         agg.record(gauge_a_1.clone());
         agg.record(gauge_b_1.clone());
@@ -533,26 +480,10 @@ mod tests {
         })
         .unwrap();
 
-        let gauge_a_1 = make_metric(
-            "gauge_a",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 42.0 },
-        );
-        let gauge_a_2 = make_metric(
-            "gauge_a",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 43.0 },
-        );
-        let result_count = make_metric(
-            "gauge_a",
-            MetricKind::Absolute,
-            MetricValue::Counter { value: 1.0 },
-        );
-        let result_count_2 = make_metric(
-            "gauge_a",
-            MetricKind::Absolute,
-            MetricValue::Counter { value: 2.0 },
-        );
+        let gauge_a_1 = make_metric("gauge_a", OtelMetric::new_gauge("gauge_a", 42.0));
+        let gauge_a_2 = make_metric("gauge_a", OtelMetric::new_gauge("gauge_a", 43.0));
+        let result_count = make_metric("gauge_a", OtelMetric::new_counter("gauge_a", MetricKind::Absolute, 1.0));
+        let result_count_2 = make_metric("gauge_a", OtelMetric::new_counter("gauge_a", MetricKind::Absolute, 2.0));
 
         // Single item, counter should be 1
         agg.record(gauge_a_1.clone());
@@ -589,16 +520,8 @@ mod tests {
         })
         .unwrap();
 
-        let gauge_a_1 = make_metric(
-            "gauge_a",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 112.0 },
-        );
-        let gauge_a_2 = make_metric(
-            "gauge_a",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 89.0 },
-        );
+        let gauge_a_1 = make_metric("gauge_a", OtelMetric::new_gauge("gauge_a", 112.0));
+        let gauge_a_2 = make_metric("gauge_a", OtelMetric::new_gauge("gauge_a", 89.0));
 
         // Single item, it should be returned as is
         agg.record(gauge_a_2.clone());
@@ -635,16 +558,8 @@ mod tests {
         })
         .unwrap();
 
-        let gauge_a_1 = make_metric(
-            "gauge_a",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 32.0 },
-        );
-        let gauge_a_2 = make_metric(
-            "gauge_a",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 89.0 },
-        );
+        let gauge_a_1 = make_metric("gauge_a", OtelMetric::new_gauge("gauge_a", 32.0));
+        let gauge_a_2 = make_metric("gauge_a", OtelMetric::new_gauge("gauge_a", 89.0));
 
         // Single item, it should be returned as is
         agg.record(gauge_a_2.clone());
@@ -681,21 +596,9 @@ mod tests {
         })
         .unwrap();
 
-        let gauge_a_1 = make_metric(
-            "gauge_a",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 32.0 },
-        );
-        let gauge_a_2 = make_metric(
-            "gauge_a",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 82.0 },
-        );
-        let result = make_metric(
-            "gauge_a",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 50.0 },
-        );
+        let gauge_a_1 = make_metric("gauge_a", OtelMetric::new_gauge("gauge_a", 32.0));
+        let gauge_a_2 = make_metric("gauge_a", OtelMetric::new_gauge("gauge_a", 82.0));
+        let result = make_metric("gauge_a", OtelMetric::new_gauge("gauge_a", 50.0));
 
         // Single item, it should be returned as is
         agg.record(gauge_a_2.clone());
@@ -737,16 +640,8 @@ mod tests {
         })
         .unwrap();
 
-        let gauge_a_1 = make_metric(
-            "gauge_a",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 32.0 },
-        );
-        let gauge_a_2 = make_metric(
-            "gauge_a",
-            MetricKind::Absolute,
-            MetricValue::Counter { value: 1.0 },
-        );
+        let gauge_a_1 = make_metric("gauge_a", OtelMetric::new_gauge("gauge_a", 32.0));
+        let gauge_a_2 = make_metric("gauge_a", OtelMetric::new_counter("gauge_a", MetricKind::Absolute, 1.0));
 
         let mut out = vec![];
         // Two absolutes in 2 separate flushes, result should be second one due to different types
@@ -772,26 +667,10 @@ mod tests {
         })
         .unwrap();
 
-        let gauge_a_1 = make_metric(
-            "gauge_a",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 32.0 },
-        );
-        let gauge_a_2 = make_metric(
-            "gauge_a",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 82.0 },
-        );
-        let gauge_a_3 = make_metric(
-            "gauge_a",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 51.0 },
-        );
-        let mean_result = make_metric(
-            "gauge_a",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 55.0 },
-        );
+        let gauge_a_1 = make_metric("gauge_a", OtelMetric::new_gauge("gauge_a", 32.0));
+        let gauge_a_2 = make_metric("gauge_a", OtelMetric::new_gauge("gauge_a", 82.0));
+        let gauge_a_3 = make_metric("gauge_a", OtelMetric::new_gauge("gauge_a", 51.0));
+        let mean_result = make_metric("gauge_a", OtelMetric::new_gauge("gauge_a", 55.0));
 
         // Single item, it should be returned as is
         agg.record(gauge_a_2.clone());
@@ -830,47 +709,15 @@ mod tests {
         .unwrap();
 
         let gauges = vec![
-            make_metric(
-                "gauge_a",
-                MetricKind::Absolute,
-                MetricValue::Gauge { value: 25.0 },
-            ),
-            make_metric(
-                "gauge_a",
-                MetricKind::Absolute,
-                MetricValue::Gauge { value: 30.0 },
-            ),
-            make_metric(
-                "gauge_a",
-                MetricKind::Absolute,
-                MetricValue::Gauge { value: 35.0 },
-            ),
-            make_metric(
-                "gauge_a",
-                MetricKind::Absolute,
-                MetricValue::Gauge { value: 40.0 },
-            ),
-            make_metric(
-                "gauge_a",
-                MetricKind::Absolute,
-                MetricValue::Gauge { value: 45.0 },
-            ),
-            make_metric(
-                "gauge_a",
-                MetricKind::Absolute,
-                MetricValue::Gauge { value: 50.0 },
-            ),
-            make_metric(
-                "gauge_a",
-                MetricKind::Absolute,
-                MetricValue::Gauge { value: 55.0 },
-            ),
+            make_metric("gauge_a", OtelMetric::new_gauge("gauge_a", 25.0)),
+            make_metric("gauge_a", OtelMetric::new_gauge("gauge_a", 30.0)),
+            make_metric("gauge_a", OtelMetric::new_gauge("gauge_a", 35.0)),
+            make_metric("gauge_a", OtelMetric::new_gauge("gauge_a", 40.0)),
+            make_metric("gauge_a", OtelMetric::new_gauge("gauge_a", 45.0)),
+            make_metric("gauge_a", OtelMetric::new_gauge("gauge_a", 50.0)),
+            make_metric("gauge_a", OtelMetric::new_gauge("gauge_a", 55.0)),
         ];
-        let stdev_result = make_metric(
-            "gauge_a",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 10.0 },
-        );
+        let stdev_result = make_metric("gauge_a", OtelMetric::new_gauge("gauge_a", 10.0));
 
         for gauge in gauges {
             agg.record(gauge);
@@ -889,24 +736,12 @@ mod tests {
         })
         .unwrap();
 
-        let counter = make_metric(
-            "the-thing",
-            MetricKind::Incremental,
-            MetricValue::Counter { value: 42.0 },
-        );
+        let counter = make_metric("the-thing", OtelMetric::new_counter("the-thing", MetricKind::Incremental, 42.0));
         let mut values = BTreeSet::<String>::new();
         values.insert("a".into());
         values.insert("b".into());
-        let set = make_metric(
-            "the-thing",
-            MetricKind::Incremental,
-            MetricValue::Set { values },
-        );
-        let summed = make_metric(
-            "the-thing",
-            MetricKind::Incremental,
-            MetricValue::Counter { value: 84.0 },
-        );
+        let set = make_metric("the-thing", OtelMetric::new_set_from_values("the-thing", MetricKind::Incremental, values));
+        let summed = make_metric("the-thing", OtelMetric::new_counter("the-thing", MetricKind::Incremental, 84.0));
 
         // when types conflict the new values replaces whatever is there
 
@@ -947,21 +782,9 @@ mod tests {
         })
         .unwrap();
 
-        let incremental = make_metric(
-            "the-thing",
-            MetricKind::Incremental,
-            MetricValue::Counter { value: 42.0 },
-        );
-        let absolute = make_metric(
-            "the-thing",
-            MetricKind::Absolute,
-            MetricValue::Counter { value: 43.0 },
-        );
-        let summed = make_metric(
-            "the-thing",
-            MetricKind::Incremental,
-            MetricValue::Counter { value: 84.0 },
-        );
+        let incremental = make_metric("the-thing", OtelMetric::new_counter("the-thing", MetricKind::Incremental, 42.0));
+        let absolute = make_metric("the-thing", OtelMetric::new_counter("the-thing", MetricKind::Absolute, 43.0));
+        let summed = make_metric("the-thing", OtelMetric::new_counter("the-thing", MetricKind::Incremental, 84.0));
 
         // when types conflict the new values replaces whatever is there
 
@@ -1008,31 +831,11 @@ interval_ms = 999999
 
         let agg = agg.into_task();
 
-        let counter_a_1 = make_metric(
-            "counter_a",
-            MetricKind::Incremental,
-            MetricValue::Counter { value: 42.0 },
-        );
-        let counter_a_2 = make_metric(
-            "counter_a",
-            MetricKind::Incremental,
-            MetricValue::Counter { value: 43.0 },
-        );
-        let counter_a_summed = make_metric(
-            "counter_a",
-            MetricKind::Incremental,
-            MetricValue::Counter { value: 85.0 },
-        );
-        let gauge_a_1 = make_metric(
-            "gauge_a",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 42.0 },
-        );
-        let gauge_a_2 = make_metric(
-            "gauge_a",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 43.0 },
-        );
+        let counter_a_1 = make_metric("counter_a", OtelMetric::new_counter("counter_a", MetricKind::Incremental, 42.0));
+        let counter_a_2 = make_metric("counter_a", OtelMetric::new_counter("counter_a", MetricKind::Incremental, 43.0));
+        let counter_a_summed = make_metric("counter_a", OtelMetric::new_counter("counter_a", MetricKind::Incremental, 85.0));
+        let gauge_a_1 = make_metric("gauge_a", OtelMetric::new_gauge("gauge_a", 42.0));
+        let gauge_a_2 = make_metric("gauge_a", OtelMetric::new_gauge("gauge_a", 43.0));
         let inputs = vec![counter_a_1, counter_a_2, gauge_a_1, gauge_a_2.clone()];
 
         // Queue up some events to be consumed & recorded
@@ -1061,31 +864,11 @@ interval_ms = 999999
     async fn transform_interval() {
         let transform_config = toml::from_str::<AggregateConfig>("").unwrap();
 
-        let counter_a_1 = make_metric(
-            "counter_a",
-            MetricKind::Incremental,
-            MetricValue::Counter { value: 42.0 },
-        );
-        let counter_a_2 = make_metric(
-            "counter_a",
-            MetricKind::Incremental,
-            MetricValue::Counter { value: 43.0 },
-        );
-        let counter_a_summed = make_metric(
-            "counter_a",
-            MetricKind::Incremental,
-            MetricValue::Counter { value: 85.0 },
-        );
-        let gauge_a_1 = make_metric(
-            "gauge_a",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 42.0 },
-        );
-        let gauge_a_2 = make_metric(
-            "gauge_a",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 43.0 },
-        );
+        let counter_a_1 = make_metric("counter_a", OtelMetric::new_counter("counter_a", MetricKind::Incremental, 42.0));
+        let counter_a_2 = make_metric("counter_a", OtelMetric::new_counter("counter_a", MetricKind::Incremental, 43.0));
+        let counter_a_summed = make_metric("counter_a", OtelMetric::new_counter("counter_a", MetricKind::Incremental, 85.0));
+        let gauge_a_1 = make_metric("gauge_a", OtelMetric::new_gauge("gauge_a", 42.0));
+        let gauge_a_2 = make_metric("gauge_a", OtelMetric::new_gauge("gauge_a", 43.0));
 
         assert_transform_compliance(async {
             let (tx, rx) = mpsc::channel(10);

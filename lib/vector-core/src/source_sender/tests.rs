@@ -7,7 +7,7 @@ use vrl::event_path;
 use super::*;
 use crate::{
     config::{DataType, SourceOutput},
-    event::{Event, MetricValue, OtelLog, OtelMetric, OtelSpan},
+    event::{Event, MetricView, OtelLog, OtelMetric, OtelSpan},
     metrics::{self, Controller},
 };
 
@@ -65,19 +65,20 @@ async fn emit_and_test(make_event: impl FnOnce(DateTime<Utc>) -> Event) {
     assert_eq!(lag_times.len(), 1);
 
     let lag_time = &lag_times[0];
-    match lag_time.value() {
-        MetricValue::AggregatedHistogram {
-            buckets,
+    match lag_time.view() {
+        MetricView::Histogram {
+            bounds,
+            counts,
             count,
             sum,
         } => {
             let mut done = false;
-            for bucket in buckets {
-                if !done && bucket.upper_limit >= expected {
-                    assert_eq!(bucket.count, 1);
+            for (&upper_limit, &bucket_count) in bounds.iter().zip(counts.iter()) {
+                if !done && upper_limit >= expected {
+                    assert_eq!(bucket_count, 1);
                     done = true;
                 } else {
-                    assert_eq!(bucket.count, 0);
+                    assert_eq!(bucket_count, 0);
                 }
             }
             assert_eq!(count, 1);
@@ -122,7 +123,7 @@ async fn emits_component_discarded_events_total_for_send_event() {
     assert_eq!(component_discarded_events_total.len(), 1);
 
     let component_discarded_events_total = &component_discarded_events_total[0];
-    let MetricValue::Counter { value } = component_discarded_events_total.value() else {
+    let MetricView::Sum { value } = component_discarded_events_total.view() else {
         panic!("component_discarded_events_total has invalid type")
     };
     assert_eq!(value, 1.0);
@@ -286,7 +287,7 @@ fn assert_counter_metric(metrics: &[OtelMetric], name: &str, expected: f64) {
     let Some(metric) = filter.next() else {
         panic!("Metric {name} should be present");
     };
-    let MetricValue::Counter { value } = metric.value() else {
+    let MetricView::Sum { value } = metric.view() else {
         panic!("Metric {name} should be a counter");
     };
     assert_eq!(value, expected);
@@ -344,19 +345,19 @@ fn assert_buffer_metrics(buffer_size: usize, level: usize) {
     assert_eq!(tags.get("output"), Some("_default"));
 
     let metric = find_metric("source_buffer_utilization_level");
-    let MetricValue::Gauge { value } = metric.value() else {
+    let MetricView::Gauge { value } = metric.view() else {
         panic!("source_buffer_utilization_level should be a gauge");
     };
     assert_eq!(value, level as f64);
 
     let metric = find_metric("source_buffer_max_event_size");
-    let MetricValue::Gauge { value } = metric.value() else {
+    let MetricView::Gauge { value } = metric.view() else {
         panic!("source_buffer_max_event_size should be a gauge");
     };
     assert_eq!(value, buffer_size as f64);
 
     let metric = find_metric("source_buffer_max_size_events");
-    let MetricValue::Gauge { value } = metric.value() else {
+    let MetricView::Gauge { value } = metric.view() else {
         panic!("source_buffer_max_size_events should be a gauge");
     };
     assert_eq!(value, buffer_size as f64);

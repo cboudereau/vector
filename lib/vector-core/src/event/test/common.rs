@@ -5,7 +5,7 @@ use quickcheck::{Arbitrary, Gen, empty_shrinker};
 use vrl::value::{ObjectMap, Value};
 
 use super::super::{
-    Event, EventMetadata, MetricKind, MetricValue, OtelLog, OtelMetric, OtelSpan, StatisticKind,
+    Event, EventMetadata, MetricKind, OtelLog, OtelMetric, OtelSpan, StatisticKind,
     metric::{
         Bucket, MetricTags,
         Quantile, Sample,
@@ -110,31 +110,46 @@ impl Arbitrary for OtelSpan {
 impl Arbitrary for OtelMetric {
     fn arbitrary(g: &mut Gen) -> Self {
         let kind = MetricKind::arbitrary(g);
-        let value = MetricValue::arbitrary(g);
         let name: Name = Name::arbitrary(g);
         let namespace: Option<Name> = Arbitrary::arbitrary(g);
         let tags: Option<MetricTags> = Arbitrary::arbitrary(g);
         let timestamp = if bool::arbitrary(g) { Some(datetime(g)) } else { None };
         let metadata = EventMetadata::arbitrary(g);
 
-        let otel = match value {
-            MetricValue::Counter { value: v } => OtelMetric::new_counter(String::from(name), kind, v),
-            MetricValue::Gauge { value: v } => match kind {
-                MetricKind::Absolute => OtelMetric::new_gauge(String::from(name), v),
-                MetricKind::Incremental => OtelMetric::new_gauge_delta(String::from(name), v),
-            },
-            MetricValue::Set { values } => {
+        let otel = match u8::arbitrary(g) % 6 {
+            0 => {
+                let value = f64::arbitrary(g) % MAX_F64_SIZE;
+                OtelMetric::new_counter(String::from(name), kind, value)
+            }
+            1 => {
+                let value = f64::arbitrary(g) % MAX_F64_SIZE;
+                match kind {
+                    MetricKind::Absolute => OtelMetric::new_gauge(String::from(name), value),
+                    MetricKind::Incremental => OtelMetric::new_gauge_delta(String::from(name), value),
+                }
+            }
+            2 => {
+                let values: BTreeSet<String> = BTreeSet::arbitrary(g);
                 OtelMetric::new_set_from_values(String::from(name), kind, values.into_iter().collect::<Vec<_>>())
             }
-            MetricValue::Distribution { samples, statistic } => {
+            3 => {
+                let samples: Vec<Sample> = Vec::arbitrary(g);
+                let statistic = StatisticKind::arbitrary(g);
                 OtelMetric::new_distribution_from_samples(String::from(name), kind, &samples, statistic)
             }
-            MetricValue::AggregatedHistogram { buckets, count, sum } => {
+            4 => {
+                let buckets: Vec<Bucket> = Vec::arbitrary(g);
+                let count = u64::arbitrary(g);
+                let sum = f64::arbitrary(g) % MAX_F64_SIZE;
                 OtelMetric::new_histogram(String::from(name), kind, &buckets, count, sum)
             }
-            MetricValue::AggregatedSummary { quantiles, count, sum } => {
+            5 => {
+                let quantiles: Vec<Quantile> = Vec::arbitrary(g);
+                let count = u64::arbitrary(g);
+                let sum = f64::arbitrary(g) % MAX_F64_SIZE;
                 OtelMetric::new_summary(String::from(name), &quantiles, count, sum)
             }
+            _ => unreachable!(),
         };
         otel.with_namespace(namespace.map(String::from))
             .with_tags(tags)
@@ -161,165 +176,6 @@ impl Arbitrary for MetricKind {
 
     fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
         empty_shrinker()
-    }
-}
-
-impl Arbitrary for MetricValue {
-    fn arbitrary(g: &mut Gen) -> Self {
-        // Quickcheck can't derive Arbitrary for enums, see
-        // https://github.com/BurntSushi/quickcheck/issues/98.
-        match u8::arbitrary(g) % 6 {
-            0 => MetricValue::Counter {
-                value: f64::arbitrary(g) % MAX_F64_SIZE,
-            },
-            1 => MetricValue::Gauge {
-                value: f64::arbitrary(g) % MAX_F64_SIZE,
-            },
-            2 => MetricValue::Set {
-                values: BTreeSet::arbitrary(g),
-            },
-            3 => MetricValue::Distribution {
-                samples: Vec::arbitrary(g),
-                statistic: StatisticKind::arbitrary(g),
-            },
-            4 => MetricValue::AggregatedHistogram {
-                buckets: Vec::arbitrary(g),
-                count: u64::arbitrary(g),
-                sum: f64::arbitrary(g) % MAX_F64_SIZE,
-            },
-            5 => MetricValue::AggregatedSummary {
-                quantiles: Vec::arbitrary(g),
-                count: u64::arbitrary(g),
-                sum: f64::arbitrary(g) % MAX_F64_SIZE,
-            },
-            _ => unreachable!(),
-        }
-    }
-
-    #[allow(clippy::too_many_lines)] // no real way to make this shorter
-    fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
-        match self {
-            MetricValue::Counter { value } => {
-                Box::new(value.shrink().map(|value| MetricValue::Counter { value }))
-            }
-            MetricValue::Gauge { value } => {
-                Box::new(value.shrink().map(|value| MetricValue::Gauge { value }))
-            }
-            MetricValue::Set { values } => {
-                Box::new(values.shrink().map(|values| MetricValue::Set { values }))
-            }
-            MetricValue::Distribution { samples, statistic } => {
-                let statistic = *statistic;
-                Box::new(
-                    samples
-                        .shrink()
-                        .map(move |samples| MetricValue::Distribution { samples, statistic })
-                        .flat_map(|metric_value| match metric_value {
-                            MetricValue::Distribution { samples, statistic } => statistic
-                                .shrink()
-                                .map(move |statistic| MetricValue::Distribution {
-                                    samples: samples.clone(),
-                                    statistic,
-                                }),
-                            _ => unreachable!(),
-                        }),
-                )
-            }
-            MetricValue::AggregatedHistogram {
-                buckets,
-                count,
-                sum,
-            } => {
-                let buckets = buckets.clone();
-                let count = *count;
-                let sum = *sum;
-
-                Box::new(
-                    buckets
-                        .shrink()
-                        .map(move |buckets| MetricValue::AggregatedHistogram {
-                            buckets,
-                            count,
-                            sum,
-                        })
-                        .flat_map(move |hist| match hist {
-                            MetricValue::AggregatedHistogram {
-                                buckets,
-                                count,
-                                sum,
-                            } => {
-                                count
-                                    .shrink()
-                                    .map(move |count| MetricValue::AggregatedHistogram {
-                                        buckets: buckets.clone(),
-                                        count,
-                                        sum,
-                                    })
-                            }
-                            _ => unreachable!(),
-                        })
-                        .flat_map(move |hist| match hist {
-                            MetricValue::AggregatedHistogram {
-                                buckets,
-                                count,
-                                sum,
-                            } => sum
-                                .shrink()
-                                .map(move |sum| MetricValue::AggregatedHistogram {
-                                    buckets: buckets.clone(),
-                                    count,
-                                    sum,
-                                }),
-                            _ => unreachable!(),
-                        }),
-                )
-            }
-            MetricValue::AggregatedSummary {
-                quantiles,
-                count,
-                sum,
-            } => {
-                let quantiles = quantiles.clone();
-                let count = *count;
-                let sum = *sum;
-
-                Box::new(
-                    quantiles
-                        .shrink()
-                        .map(move |quantiles| MetricValue::AggregatedSummary {
-                            quantiles,
-                            count,
-                            sum,
-                        })
-                        .flat_map(move |hist| match hist {
-                            MetricValue::AggregatedSummary {
-                                quantiles,
-                                count,
-                                sum,
-                            } => count
-                                .shrink()
-                                .map(move |count| MetricValue::AggregatedSummary {
-                                    quantiles: quantiles.clone(),
-                                    count,
-                                    sum,
-                                }),
-                            _ => unreachable!(),
-                        })
-                        .flat_map(move |hist| match hist {
-                            MetricValue::AggregatedSummary {
-                                quantiles,
-                                count,
-                                sum,
-                            } => sum.shrink().map(move |sum| MetricValue::AggregatedSummary {
-                                quantiles: quantiles.clone(),
-                                count,
-                                sum,
-                            }),
-                            _ => unreachable!(),
-                        }),
-                )
-            }
-        }
     }
 }
 

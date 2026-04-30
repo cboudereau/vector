@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use super::{Output, OutputThroughput};
 use crate::{
     config::ComponentKey,
-    event::{MetricValue, OtelMetric},
+    event::{MetricView, OtelMetric},
 };
 
 pub struct SentEventsTotal(OtelMetric);
@@ -19,8 +19,8 @@ impl SentEventsTotal {
     }
 
     pub fn get_sent_events_total(&self) -> f64 {
-        match self.0.value() {
-            MetricValue::Counter { value } => value,
+        match self.0.view() {
+            MetricView::Sum { value } => value,
             _ => 0.00,
         }
     }

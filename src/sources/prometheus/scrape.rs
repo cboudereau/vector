@@ -766,7 +766,7 @@ mod integration_tests {
 
     use super::*;
     use crate::{
-        event::{MetricKind, MetricValue},
+        event::{MetricKind, MetricView},
         test_util::components::{HTTP_PULL_SOURCE_TAGS, run_and_assert_source_compliance},
     };
 
@@ -807,7 +807,7 @@ mod integration_tests {
         // Sample some well-known metrics
         let build = find_metric("prometheus_build_info");
         assert!(matches!(build.kind(), MetricKind::Absolute));
-        assert!(matches!(build.value(), MetricValue::Gauge { .. }));
+        assert!(matches!(build.view(), MetricView::Gauge { .. }));
         assert!(build.tags().unwrap().contains_key("branch"));
         assert!(build.tags().unwrap().contains_key("version"));
         assert_eq!(
@@ -821,7 +821,7 @@ mod integration_tests {
 
         let queries = find_metric("prometheus_engine_queries");
         assert!(matches!(queries.kind(), MetricKind::Absolute));
-        assert!(matches!(queries.value(), MetricValue::Gauge { .. }));
+        assert!(matches!(queries.view(), MetricView::Gauge { .. }));
         assert_eq!(
             queries.tag_value("instance"),
             Some("prometheus:9090".to_string())
@@ -833,7 +833,7 @@ mod integration_tests {
 
         let go_info = find_metric("go_info");
         assert!(matches!(go_info.kind(), MetricKind::Absolute));
-        assert!(matches!(go_info.value(), MetricValue::Gauge { .. }));
+        assert!(matches!(go_info.view(), MetricView::Gauge { .. }));
         assert!(go_info.tags().unwrap().contains_key("version"));
         assert_eq!(
             go_info.tag_value("instance"),

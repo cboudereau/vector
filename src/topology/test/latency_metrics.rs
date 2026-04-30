@@ -7,7 +7,7 @@ use vector_lib::metrics::Controller;
 
 use crate::{
     config::Config,
-    event::{Event, OtelLog, OtelMetric, MetricValue},
+    event::{Event, MetricView, OtelLog, OtelMetric},
     test_util::{
         mock::{
             basic_source,
@@ -100,14 +100,14 @@ fn assert_histogram_count(metrics: &[OtelMetric], metric_name: &str, tags_match:
         .find(|metric| metric.name() == metric_name && tags_match(metric))
         .unwrap_or_else(|| panic!("{metric_name} histogram missing"));
 
-    match histogram.value() {
-        MetricValue::AggregatedHistogram { count, .. } => {
+    match histogram.view() {
+        MetricView::Histogram { count, .. } => {
             assert_eq!(
                 count, EVENT_COUNT as u64,
                 "histogram count should match number of events"
             );
         }
-        other => panic!("expected aggregated histogram, got {other:?}"),
+        other => panic!("expected histogram, got {other:?}"),
     }
 }
 
@@ -123,8 +123,8 @@ fn assert_gauge_range(
         .find(|metric| metric.name() == metric_name && tags_match(metric))
         .unwrap_or_else(|| panic!("{metric_name} gauge missing"));
 
-    match gauge.value() {
-        MetricValue::Gauge { value } => {
+    match gauge.view() {
+        MetricView::Gauge { value } => {
             assert!(
                 value >= expected_min,
                 "expected mean latency to be >= {expected_min}, got {value}"

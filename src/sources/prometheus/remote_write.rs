@@ -205,7 +205,7 @@ impl HttpSource for RemoteWriteSource {
 mod test {
     use chrono::{SubsecRound as _, Utc};
     use vector_lib::{
-        event::{EventStatus, MetricKind, MetricValue, OtelMetric},
+        event::{EventStatus, MetricKind, MetricView, OtelMetric},
         metric_tags,
     };
 
@@ -546,7 +546,7 @@ mod test {
 
         let metric = output[0].as_metric();
         assert_eq!(metric.name(), "test_metric_valid");
-        assert_eq!(metric.value(), MetricValue::Gauge { value: 42.0 });
+        assert!(matches!(metric.view(), MetricView::Gauge { value: 42.0 }));
     }
 
     #[tokio::test]
@@ -621,8 +621,8 @@ mod test {
         // Check the NaN metric
         let nan_metric = output[0].as_metric();
         assert_eq!(nan_metric.name(), "test_metric_nan");
-        match nan_metric.value() {
-            MetricValue::Gauge { value } => {
+        match nan_metric.view() {
+            MetricView::Gauge { value } => {
                 assert!(value.is_nan());
             }
             _ => panic!("Expected gauge metric"),
@@ -631,7 +631,7 @@ mod test {
         // Check the valid metric
         let valid_metric = output[1].as_metric();
         assert_eq!(valid_metric.name(), "test_metric_valid");
-        assert_eq!(valid_metric.value(), MetricValue::Gauge { value: 42.0 });
+        assert!(matches!(valid_metric.view(), MetricView::Gauge { value: 42.0 }));
     }
 
     #[tokio::test]
@@ -754,7 +754,7 @@ mod test {
 
         let metric = output[0].as_metric();
         assert_eq!(metric.name(), "test_metric");
-        assert_eq!(metric.value(), MetricValue::Gauge { value: 42.0 });
+        assert!(matches!(metric.view(), MetricView::Gauge { value: 42.0 }));
     }
 
     #[tokio::test]
@@ -835,7 +835,7 @@ mod test {
 
         let metric = output[0].as_metric();
         assert_eq!(metric.name(), "test_metric");
-        assert_eq!(metric.value(), MetricValue::Gauge { value: 42.0 });
+        assert!(matches!(metric.view(), MetricView::Gauge { value: 42.0 }));
     }
 
     #[tokio::test]

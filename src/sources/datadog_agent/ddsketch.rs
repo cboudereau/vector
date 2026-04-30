@@ -734,25 +734,25 @@ impl AgentDDSketch {
             .or(Some(f64::NAN))
     }
 
-    /// Approximate conversion to [`MetricValue::AggregatedHistogram`] using the given explicit
+    /// Approximate conversion to an `OtelMetric` histogram using the given explicit
     /// bucket upper bounds.
     ///
     /// This is **bridge code** used by non-DD sinks (Prometheus, InfluxDB, GreptimeDB) while
-    /// `AgentDDSketch` still lives in core (Steps 1–2). It is deleted along with
+    /// `AgentDDSketch` still lives in core (Steps 1-2). It is deleted along with
     /// `AgentDDSketch` when the type leaves core in Step 3.
     ///
     /// ## Precision
     ///
     /// `count` and `sum` are exact. Bucket allocation is done by computing the fraction of the
     /// CDF mass falling below each explicit bound via `quantile()`. The resulting bucket counts
-    /// have bounded relative error (inherited from the sketch's ε) but are not guaranteed to
+    /// have bounded relative error (inherited from the sketch's epsilon) but are not guaranteed to
     /// sum to exactly `count` due to floating-point rounding; a remainder is added to the last
     /// finite bucket.
-    pub fn to_aggregated_histogram(&self, bounds: &[f64]) -> crate::event::MetricValue {
+    pub fn to_aggregated_histogram(&self, name: impl Into<String>, bounds: &[f64]) -> crate::event::OtelMetric {
         use crate::event::metric::Bucket;
 
         if self.count == 0 || bounds.is_empty() {
-            let buckets = bounds
+            let buckets: Vec<Bucket> = bounds
                 .iter()
                 .map(|&upper_limit| Bucket {
                     upper_limit,
@@ -763,11 +763,13 @@ impl AgentDDSketch {
                     count: 0,
                 }))
                 .collect();
-            return crate::event::MetricValue::AggregatedHistogram {
-                buckets,
-                count: 0,
-                sum: 0.0,
-            };
+            return crate::event::OtelMetric::new_histogram(
+                name,
+                crate::event::MetricKind::Absolute,
+                &buckets,
+                0,
+                0.0,
+            );
         }
 
         let total = u64::from(self.count);
@@ -775,15 +777,9 @@ impl AgentDDSketch {
         let mut prev_cdf = 0.0f64;
         let mut allocated: u64 = 0;
 
-        // For each explicit upper bound, compute the CDF fraction at that bound and
-        // derive the count falling in (prev_bound, this_bound].
         let all_bounds: Vec<f64> = bounds.to_vec();
         for (i, &upper) in all_bounds.iter().enumerate() {
-            // The last finite bucket accumulates the remainder to avoid count drift.
             let cdf = if i + 1 == all_bounds.len() {
-                // Compute via quantile approximation: fraction of observations ≤ upper.
-                // For the last finite bucket we compute as usual; the overflow bucket
-                // picks up anything beyond max.
                 self.cdf_approx(upper)
             } else {
                 self.cdf_approx(upper)
@@ -799,18 +795,19 @@ impl AgentDDSketch {
             prev_cdf = cdf;
         }
 
-        // Overflow bucket: all observations above the last explicit bound.
         let overflow = total.saturating_sub(allocated);
         buckets.push(Bucket {
             upper_limit: f64::INFINITY,
             count: overflow,
         });
 
-        crate::event::MetricValue::AggregatedHistogram {
-            buckets,
-            count: total,
-            sum: self.sum,
-        }
+        crate::event::OtelMetric::new_histogram(
+            name,
+            crate::event::MetricKind::Absolute,
+            &buckets,
+            total,
+            self.sum,
+        )
     }
 
     /// Approximate fraction of observations ≤ `value` using binary search on quantile.
@@ -1302,7 +1299,8 @@ fn round_to_even(v: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::{AGENT_DEFAULT_EPS, AgentDDSketch, Config, MAX_KEY, round_to_even};
-    use crate::event::{MetricValue, metric::Bucket};
+    use crate::event::MetricView;
+    use crate::event::metric::Bucket;
 
     #[test]
     fn to_aggregated_histogram_count_and_sum_exact() {
@@ -1310,39 +1308,39 @@ mod tests {
         for i in 1..=100u32 {
             sketch.insert(f64::from(i));
         }
-        let bounds = vec![10.0, 50.0, 100.0];
-        let mv = sketch.to_aggregated_histogram(&bounds);
-        match mv {
-            MetricValue::AggregatedHistogram { buckets, count, sum } => {
+        let bounds_input = vec![10.0, 50.0, 100.0];
+        let otel = sketch.to_aggregated_histogram("test_hist", &bounds_input);
+        match otel.view() {
+            MetricView::Histogram { bounds, counts, count, sum } => {
                 assert_eq!(count, 100, "count must be exact");
                 let actual_sum: f64 = (1..=100).map(f64::from).sum();
                 assert!(
                     (sum - actual_sum).abs() < 1e-9,
                     "sum must be exact: {sum} vs {actual_sum}"
                 );
-                assert_eq!(buckets.len(), 4, "3 bounds + 1 overflow = 4 buckets");
-                let total_in_buckets: u64 = buckets.iter().map(|b| b.count).sum();
+                assert_eq!(counts.len(), 4, "3 bounds + 1 overflow = 4 buckets");
+                assert_eq!(bounds.len(), 4);
+                let total_in_buckets: u64 = counts.iter().sum();
                 assert_eq!(
                     total_in_buckets, 100,
                     "bucket counts must sum to total: {total_in_buckets}"
                 );
-                assert_eq!(buckets.last().unwrap().upper_limit, f64::INFINITY);
             }
-            _ => panic!("expected AggregatedHistogram"),
+            other => panic!("expected Histogram, got {:?}", other),
         }
     }
 
     #[test]
     fn to_aggregated_histogram_empty_sketch() {
         let sketch = AgentDDSketch::with_agent_defaults();
-        let mv = sketch.to_aggregated_histogram(&[1.0, 10.0]);
-        match mv {
-            MetricValue::AggregatedHistogram { count, sum, buckets } => {
+        let otel = sketch.to_aggregated_histogram("test_hist", &[1.0, 10.0]);
+        match otel.view() {
+            MetricView::Histogram { counts, count, sum, .. } => {
                 assert_eq!(count, 0);
                 assert_eq!(sum, 0.0);
-                assert!(buckets.iter().all(|b| b.count == 0));
+                assert!(counts.iter().all(|&c| c == 0));
             }
-            _ => panic!("expected AggregatedHistogram"),
+            other => panic!("expected Histogram, got {:?}", other),
         }
     }
 

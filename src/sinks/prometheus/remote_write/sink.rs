@@ -65,10 +65,6 @@ impl Partitioner for PrometheusTenantIdPartitioner {
 
 /// Holds metrics in either aggregated (deduped via `MetricSet`) or
 /// unaggregated form for the prometheus remote_write batcher.
-///
-/// Now uses `OtelMetric` at the boundary — conversion to legacy `Metric`
-/// happens inside the encoding functions where `MetricValue`'s variant
-/// structure is needed for the prometheus wire format.
 pub(super) enum BatchedMetrics {
     Aggregated(MetricSet),
     Unaggregated(Vec<OtelMetric>),

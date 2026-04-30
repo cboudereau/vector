@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 
 use crate::{
     config::ComponentKey,
-    event::{MetricValue, OtelMetric},
+    event::{MetricView, OtelMetric},
 };
 
 pub struct ReceivedBytesTotal(OtelMetric);
@@ -18,8 +18,8 @@ impl ReceivedBytesTotal {
     }
 
     pub fn get_received_bytes_total(&self) -> f64 {
-        match self.0.value() {
-            MetricValue::Counter { value } => value,
+        match self.0.view() {
+            MetricView::Sum { value } => value,
             _ => 0.00,
         }
     }

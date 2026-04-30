@@ -16,7 +16,6 @@ use crate::{
     config::{SourceConfig, SourceContext, SourceOutput},
     event::{
         Event, MetricKind, OtelMetric,
-        metric::MetricValue,
     },
     internal_events::{EventsReceived, StreamClosedError},
     shutdown::ShutdownSignal,
@@ -56,6 +55,23 @@ impl Default for StaticMetricsConfig {
     }
 }
 
+/// Supported metric value types for static metric configuration.
+#[configurable_component]
+#[derive(Clone, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum MetricValueConfig {
+    /// A counter metric value.
+    Counter {
+        /// The counter value.
+        value: f64,
+    },
+    /// A gauge metric value.
+    Gauge {
+        /// The gauge value.
+        value: f64,
+    },
+}
+
 /// Tag configuration for the `internal_metrics` source.
 #[configurable_component]
 #[derive(Clone, Debug)]
@@ -65,7 +81,7 @@ pub struct StaticMetricConfig {
     pub name: String,
 
     /// "Observed" value of the static metric
-    pub value: MetricValue,
+    pub value: MetricValueConfig,
 
     /// Kind of the static metric - either absolute or incremental
     pub kind: MetricKind,
@@ -150,18 +166,10 @@ impl StaticMetrics {
                      tags,
                  }| {
                     let metric = match value {
-                        MetricValue::Counter { value: v } => {
+                        MetricValueConfig::Counter { value: v } => {
                             OtelMetric::new_counter(&name, kind, v)
                         }
-                        MetricValue::Gauge { value: v } => OtelMetric::new_gauge(&name, v),
-                        other => {
-                            warn!(
-                                metric_name = %name,
-                                metric_type = ?other,
-                                "Unsupported metric value type for static_metrics, creating gauge with value 0.0"
-                            );
-                            OtelMetric::new_gauge(&name, 0.0)
-                        }
+                        MetricValueConfig::Gauge { value: v } => OtelMetric::new_gauge(&name, v),
                     };
                     metric
                         .with_namespace(Some(self.namespace.clone()))
@@ -198,7 +206,7 @@ impl StaticMetrics {
 mod tests {
     use super::*;
     use crate::{
-        event::Event,
+        event::{Event, MetricView},
         test_util::{
             self,
             components::{SOURCE_TAGS, run_and_assert_source_compliance},
@@ -218,7 +226,7 @@ mod tests {
     fn default_metric() -> StaticMetricConfig {
         StaticMetricConfig {
             name: "".to_string(),
-            value: MetricValue::Gauge { value: 0.0 },
+            value: MetricValueConfig::Gauge { value: 0.0 },
             kind: MetricKind::Absolute,
             tags: BTreeMap::default(),
         }
@@ -281,7 +289,7 @@ mod tests {
         let mut events = events_from_config(StaticMetricsConfig {
             metrics: vec![StaticMetricConfig {
                 name: "test".to_string(),
-                value: MetricValue::Gauge { value: 2.3 },
+                value: MetricValueConfig::Gauge { value: 2.3 },
                 kind: MetricKind::Absolute,
                 tags: BTreeMap::from([("custom_tag".to_string(), "custom_tag_value".to_string())]),
             }],
@@ -294,7 +302,7 @@ mod tests {
         let metric = event.as_metric();
 
         assert_eq!(metric.name(), "test");
-        assert!(matches!(metric.value(), MetricValue::Gauge { value: 2.3 }));
+        assert!(matches!(metric.view(), MetricView::Gauge { value: 2.3 }));
         assert_eq!(
             metric.tag_value("custom_tag"),
             Some("custom_tag_value".to_string())

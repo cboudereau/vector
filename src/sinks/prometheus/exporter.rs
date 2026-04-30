@@ -1,7 +1,6 @@
 use std::{
     convert::Infallible,
     hash::Hash,
-    mem::{Discriminant, discriminant},
     net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::{Arc, RwLock},
     time::{Duration, Instant},
@@ -36,8 +35,8 @@ use super::collector::{MetricCollector, StringCollector};
 use crate::{
     config::{AcknowledgementsConfig, GenerateConfig, Input, Resource, SinkConfig, SinkContext},
     event::{
-        Event, EventStatus, Finalizable, OtelMetric,
-        metric::{MetricKind, MetricSeries, MetricValue},
+        Event, EventStatus, Finalizable, MetricView, OtelMetric,
+        metric::{MetricKind, MetricSeries, Sample},
     },
     http::{Auth, build_http_trace_layer},
     internal_events::PrometheusNormalizationError,
@@ -262,25 +261,36 @@ impl MetricMetadata {
 #[derive(Clone, Debug)]
 struct MetricRef {
     series: MetricSeries,
-    value: Discriminant<MetricValue>,
+    metric_type: &'static str,
     bounds: Option<Vec<f64>>,
 }
 
+fn metric_type_tag(view: &MetricView<'_>) -> &'static str {
+    match view {
+        MetricView::Sum { .. } => "sum",
+        MetricView::Gauge { .. } => "gauge",
+        MetricView::Set { .. } => "set",
+        MetricView::Distribution { .. } => "distribution",
+        MetricView::Histogram { .. } => "histogram",
+        MetricView::Summary { .. } => "summary",
+        MetricView::ExponentialHistogram { .. } => "exponential_histogram",
+    }
+}
+
 impl MetricRef {
-    /// Creates a `MetricRef` from an `OtelMetric` by decoding its proto
-    /// representation into series/value/bounds.
     pub fn from_otel_metric(metric: &OtelMetric) -> Self {
         use crate::event::metric::MetricName;
-        let value = metric.value();
-        let bounds = match &value {
-            MetricValue::AggregatedHistogram { buckets, .. } => {
-                Some(buckets.iter().map(|b| b.upper_limit).collect())
+        let view = metric.view();
+        let bounds = match &view {
+            MetricView::Histogram { bounds, .. } => {
+                Some(bounds.to_vec())
             }
-            MetricValue::AggregatedSummary { quantiles, .. } => {
+            MetricView::Summary { quantiles, .. } => {
                 Some(quantiles.iter().map(|q| q.quantile).collect())
             }
             _ => None,
         };
+        let mt = metric_type_tag(&view);
         let series = MetricSeries {
             name: MetricName {
                 name: metric.name().to_owned(),
@@ -290,7 +300,7 @@ impl MetricRef {
         };
         Self {
             series,
-            value: discriminant(&value),
+            metric_type: mt,
             bounds,
         }
     }
@@ -298,7 +308,7 @@ impl MetricRef {
 
 impl PartialEq for MetricRef {
     fn eq(&self, other: &Self) -> bool {
-        self.series == other.series && self.value == other.value && self.bounds == other.bounds
+        self.series == other.series && self.metric_type == other.metric_type && self.bounds == other.bounds
     }
 }
 
@@ -307,7 +317,7 @@ impl Eq for MetricRef {}
 impl Hash for MetricRef {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.series.hash(state);
-        self.value.hash(state);
+        self.metric_type.hash(state);
         if let Some(bounds) = &self.bounds {
             for bound in bounds {
                 bound.to_bits().hash(state);
@@ -493,10 +503,12 @@ impl PrometheusExporter {
 
     fn normalize(&mut self, mut otel: OtelMetric) -> Option<OtelMetric> {
         if otel.is_distribution() {
-            let value = otel.value();
-            if let MetricValue::Distribution { ref samples, .. } = value {
+            if let MetricView::Distribution { bounds, counts } = otel.view() {
                 use crate::event::metric::samples_to_buckets;
-                let (buckets, count, sum) = samples_to_buckets(samples, &self.config.buckets);
+                let samples: Vec<Sample> = bounds.iter().zip(counts.iter())
+                    .map(|(&value, &rate)| Sample { value, rate: rate as u32 })
+                    .collect();
+                let (buckets, count, sum) = samples_to_buckets(&samples, &self.config.buckets);
                 otel = OtelMetric::new_histogram(otel.name(), otel.kind(), &buckets, count, sum)
                     .with_namespace(otel.namespace().map(|s| s.to_string()))
                     .with_tags(otel.tags())
@@ -613,7 +625,7 @@ mod tests {
         config::ProxyConfig,
         event::{
             OtelMetric,
-            metric::{MetricKind, MetricValue},
+            metric::MetricKind,
         },
         http::HttpClient,
         test_util::{
@@ -623,41 +635,6 @@ mod tests {
         },
         tls::MaybeTlsSettings,
     };
-
-    fn otel_from_metric_value(
-        name: &str,
-        kind: MetricKind,
-        value: MetricValue,
-        tags: Option<MetricTags>,
-    ) -> OtelMetric {
-        match value {
-            MetricValue::Counter { value: v } => {
-                OtelMetric::new_counter(name, kind, v).with_tags(tags)
-            }
-            MetricValue::Gauge { value: v } => match kind {
-                MetricKind::Absolute => OtelMetric::new_gauge(name, v).with_tags(tags),
-                MetricKind::Incremental => OtelMetric::new_gauge_delta(name, v).with_tags(tags),
-            },
-            MetricValue::Set { values } => {
-                OtelMetric::new_set_from_values(name, kind, values).with_tags(tags)
-            }
-            MetricValue::Distribution {
-                samples,
-                statistic,
-            } => OtelMetric::new_distribution_from_samples(name, kind, &samples, statistic)
-                .with_tags(tags),
-            MetricValue::AggregatedHistogram {
-                buckets,
-                count,
-                sum,
-            } => OtelMetric::new_histogram(name, kind, &buckets, count, sum).with_tags(tags),
-            MetricValue::AggregatedSummary {
-                quantiles,
-                count,
-                sum,
-            } => OtelMetric::new_summary(name, &quantiles, count, sum).with_tags(tags),
-        }
-    }
 
     #[test]
     fn generate_config() {
@@ -906,7 +883,7 @@ mod tests {
     async fn prometheus_duplicate_labels() {
         let (name, event) = create_metric_with_tags(
             None,
-            MetricValue::Gauge { value: 123.4 },
+            |n| OtelMetric::new_gauge_delta(n, 123.4),
             Some(metric_tags!("code" => "200", "code" => "success")),
         );
         let events = vec![event];
@@ -1113,35 +1090,27 @@ mod tests {
     }
 
     pub fn create_metric_gauge(name: Option<String>, value: f64) -> (String, Event) {
-        create_metric(name, MetricValue::Gauge { value })
+        let name = name.unwrap_or_else(|| format!("vector_set_{}", random_string(16)));
+        let otel = OtelMetric::new_gauge_delta(&name, value)
+            .with_tags(Some(metric_tags!("some_tag" => "some_value")));
+        (name, Event::Metric(otel))
     }
 
     pub fn create_metric_set(name: Option<String>, values: Vec<&'static str>) -> (String, Event) {
-        create_metric(
-            name,
-            MetricValue::Set {
-                values: values.into_iter().map(Into::into).collect(),
-            },
-        )
-    }
-
-    fn create_metric(name: Option<String>, value: MetricValue) -> (String, Event) {
-        create_metric_with_tags(name, value, Some(metric_tags!("some_tag" => "some_value")))
+        let name = name.unwrap_or_else(|| format!("vector_set_{}", random_string(16)));
+        let otel = OtelMetric::new_set_from_values(&name, MetricKind::Incremental, values)
+            .with_tags(Some(metric_tags!("some_tag" => "some_value")));
+        (name, Event::Metric(otel))
     }
 
     fn create_metric_with_tags(
         name: Option<String>,
-        value: MetricValue,
+        make_metric: impl FnOnce(&str) -> OtelMetric,
         tags: Option<MetricTags>,
     ) -> (String, Event) {
         let name = name.unwrap_or_else(|| format!("vector_set_{}", random_string(16)));
-        let event = Event::Metric(otel_from_metric_value(
-            &name,
-            MetricKind::Incremental,
-            value,
-            tags,
-        ));
-        (name, event)
+        let otel = make_metric(&name).with_tags(tags);
+        (name, Event::Metric(otel))
     }
 
     #[tokio::test]
@@ -1177,58 +1146,54 @@ mod tests {
         let actual_m1 = metrics_after
             .get(&MetricRef::from_otel_metric(&otel_m1))
             .expect("m1 should exist");
-        assert_eq!(actual_m1.0.value(), MetricValue::Counter { value: 40. });
+        assert!(matches!(actual_m1.0.view(), MetricView::Sum { value } if value == 40.));
 
         let actual_m2 = metrics_after
             .get(&MetricRef::from_otel_metric(&otel_m2))
             .expect("m2 should exist");
-        assert_eq!(actual_m2.0.value(), MetricValue::Counter { value: 33. });
+        assert!(matches!(actual_m2.0.view(), MetricView::Sum { value } if value == 33.));
     }
 
     #[tokio::test]
     async fn sink_distributions_as_histograms() {
+        use crate::event::metric::{Sample, samples_to_buckets};
+
         let (_guard, address) = next_addr();
         let config = PrometheusExporterConfig {
             address,
             tls: None,
             ..Default::default()
         };
-        let buckets = config.buckets.clone();
+        let bucket_bounds = config.buckets.clone();
 
         let sink = PrometheusExporter::new(config);
 
-        let summary_values = [
-            MetricValue::Distribution { statistic: StatisticKind::Summary, samples: samples!(1.0 => 1, 3.0 => 2) },
-            MetricValue::Distribution { statistic: StatisticKind::Summary, samples: samples!(1.0 => 2, 2.9 => 1) },
-            MetricValue::Distribution { statistic: StatisticKind::Summary, samples: samples!(1.0 => 4, 3.2 => 1) },
+        let summary_samples: Vec<Vec<Sample>> = vec![
+            samples!(1.0 => 1, 3.0 => 2),
+            samples!(1.0 => 2, 2.9 => 1),
+            samples!(1.0 => 4, 3.2 => 1),
         ];
-        let histo_values = [
-            MetricValue::Distribution { statistic: StatisticKind::Histogram, samples: samples!(7.0 => 1, 9.0 => 2) },
-            MetricValue::Distribution { statistic: StatisticKind::Histogram, samples: samples!(7.0 => 2, 9.9 => 1) },
-            MetricValue::Distribution { statistic: StatisticKind::Histogram, samples: samples!(7.0 => 4, 10.2 => 1) },
+        let histo_samples: Vec<Vec<Sample>> = vec![
+            samples!(7.0 => 1, 9.0 => 2),
+            samples!(7.0 => 2, 9.9 => 1),
+            samples!(7.0 => 4, 10.2 => 1),
         ];
 
-        let mut merged_summary_value = summary_values[0].clone();
-        assert!(merged_summary_value.add(&summary_values[1]));
-        assert!(merged_summary_value.add(&summary_values[2]));
-        let expected_summary_value = merged_summary_value
-            .distribution_to_agg_histogram(&buckets)
-            .expect("should convert summary distribution");
+        let all_summary: Vec<Sample> = summary_samples.iter().flatten().cloned().collect();
+        let (expected_summary_buckets, expected_summary_count, expected_summary_sum) =
+            samples_to_buckets(&all_summary, &bucket_bounds);
 
-        let mut merged_histo_value = histo_values[0].clone();
-        assert!(merged_histo_value.add(&histo_values[1]));
-        assert!(merged_histo_value.add(&histo_values[2]));
-        let expected_histo_value = merged_histo_value
-            .distribution_to_agg_histogram(&buckets)
-            .expect("should convert histogram distribution");
+        let all_histo: Vec<Sample> = histo_samples.iter().flatten().cloned().collect();
+        let (expected_histo_buckets, expected_histo_count, expected_histo_sum) =
+            samples_to_buckets(&all_histo, &bucket_bounds);
 
         let metrics_handle = Arc::clone(&sink.metrics);
 
-        let events: Vec<Event> = summary_values
+        let events: Vec<Event> = summary_samples
             .iter()
-            .map(|v| Event::Metric(otel_from_metric_value("distrib_summary", MetricKind::Incremental, v.clone(), None)))
-            .chain(histo_values.iter().map(|v| {
-                Event::Metric(otel_from_metric_value("distrib_histo", MetricKind::Incremental, v.clone(), None))
+            .map(|s| Event::Metric(OtelMetric::new_distribution_from_samples("distrib_summary", MetricKind::Incremental, s, StatisticKind::Summary)))
+            .chain(histo_samples.iter().map(|s| {
+                Event::Metric(OtelMetric::new_distribution_from_samples("distrib_histo", MetricKind::Incremental, s, StatisticKind::Histogram))
             }))
             .collect();
 
@@ -1239,21 +1204,35 @@ mod tests {
         let metrics_after = metrics_handle.read().unwrap();
         assert_eq!(metrics_after.len(), 2);
 
-        let expected_summary_otel = otel_from_metric_value("distrib_summary", MetricKind::Absolute, expected_summary_value.clone(), None);
+        let expected_summary_otel = OtelMetric::new_histogram("distrib_summary", MetricKind::Absolute, &expected_summary_buckets, expected_summary_count, expected_summary_sum);
         let actual_summary = metrics_after
             .get(&MetricRef::from_otel_metric(&expected_summary_otel))
             .expect("summary metric should exist");
-        assert_eq!(actual_summary.0.value(), expected_summary_value);
+        match actual_summary.0.view() {
+            MetricView::Histogram { count, sum, .. } => {
+                assert_eq!(count, expected_summary_count);
+                assert!((sum - expected_summary_sum).abs() < 1e-10, "sum mismatch: {sum} vs {expected_summary_sum}");
+            }
+            other => panic!("expected Histogram view, got {:?}", other),
+        }
 
-        let expected_histo_otel = otel_from_metric_value("distrib_histo", MetricKind::Absolute, expected_histo_value.clone(), None);
+        let expected_histo_otel = OtelMetric::new_histogram("distrib_histo", MetricKind::Absolute, &expected_histo_buckets, expected_histo_count, expected_histo_sum);
         let actual_histogram = metrics_after
             .get(&MetricRef::from_otel_metric(&expected_histo_otel))
             .expect("histogram metric should exist");
-        assert_eq!(actual_histogram.0.value(), expected_histo_value);
+        match actual_histogram.0.view() {
+            MetricView::Histogram { count, sum, .. } => {
+                assert_eq!(count, expected_histo_count);
+                assert!((sum - expected_histo_sum).abs() < 1e-10, "sum mismatch: {sum} vs {expected_histo_sum}");
+            }
+            other => panic!("expected Histogram view, got {:?}", other),
+        }
     }
 
     #[tokio::test]
     async fn sink_distributions_as_summaries() {
+        use crate::event::metric::{Sample, samples_to_buckets};
+
         let (_guard, address) = next_addr();
         let config = PrometheusExporterConfig {
             address,
@@ -1262,41 +1241,35 @@ mod tests {
             ..Default::default()
         };
 
-        let buckets = config.buckets.clone();
+        let bucket_bounds = config.buckets.clone();
         let sink = PrometheusExporter::new(config);
 
-        let summary_values = [
-            MetricValue::Distribution { statistic: StatisticKind::Summary, samples: samples!(1.0 => 1, 3.0 => 2) },
-            MetricValue::Distribution { statistic: StatisticKind::Summary, samples: samples!(1.0 => 2, 2.9 => 1) },
-            MetricValue::Distribution { statistic: StatisticKind::Summary, samples: samples!(1.0 => 4, 3.2 => 1) },
+        let summary_samples: Vec<Vec<Sample>> = vec![
+            samples!(1.0 => 1, 3.0 => 2),
+            samples!(1.0 => 2, 2.9 => 1),
+            samples!(1.0 => 4, 3.2 => 1),
         ];
-        let histo_values = [
-            MetricValue::Distribution { statistic: StatisticKind::Histogram, samples: samples!(7.0 => 1, 9.0 => 2) },
-            MetricValue::Distribution { statistic: StatisticKind::Histogram, samples: samples!(7.0 => 2, 9.9 => 1) },
-            MetricValue::Distribution { statistic: StatisticKind::Histogram, samples: samples!(7.0 => 4, 10.2 => 1) },
+        let histo_samples: Vec<Vec<Sample>> = vec![
+            samples!(7.0 => 1, 9.0 => 2),
+            samples!(7.0 => 2, 9.9 => 1),
+            samples!(7.0 => 4, 10.2 => 1),
         ];
 
-        let mut merged_summary_value = summary_values[0].clone();
-        assert!(merged_summary_value.add(&summary_values[1]));
-        assert!(merged_summary_value.add(&summary_values[2]));
-        let expected_summary_value = merged_summary_value
-            .distribution_to_agg_histogram(&buckets)
-            .expect("should convert summary distribution");
+        let all_summary: Vec<Sample> = summary_samples.iter().flatten().cloned().collect();
+        let (expected_summary_buckets, expected_summary_count, expected_summary_sum) =
+            samples_to_buckets(&all_summary, &bucket_bounds);
 
-        let mut merged_histo_value = histo_values[0].clone();
-        assert!(merged_histo_value.add(&histo_values[1]));
-        assert!(merged_histo_value.add(&histo_values[2]));
-        let expected_histo_value = merged_histo_value
-            .distribution_to_agg_histogram(&buckets)
-            .expect("should convert histogram distribution");
+        let all_histo: Vec<Sample> = histo_samples.iter().flatten().cloned().collect();
+        let (expected_histo_buckets, expected_histo_count, expected_histo_sum) =
+            samples_to_buckets(&all_histo, &bucket_bounds);
 
         let metrics_handle = Arc::clone(&sink.metrics);
 
-        let events: Vec<Event> = summary_values
+        let events: Vec<Event> = summary_samples
             .iter()
-            .map(|v| Event::Metric(otel_from_metric_value("distrib_summary", MetricKind::Incremental, v.clone(), None)))
-            .chain(histo_values.iter().map(|v| {
-                Event::Metric(otel_from_metric_value("distrib_histo", MetricKind::Incremental, v.clone(), None))
+            .map(|s| Event::Metric(OtelMetric::new_distribution_from_samples("distrib_summary", MetricKind::Incremental, s, StatisticKind::Summary)))
+            .chain(histo_samples.iter().map(|s| {
+                Event::Metric(OtelMetric::new_distribution_from_samples("distrib_histo", MetricKind::Incremental, s, StatisticKind::Histogram))
             }))
             .collect();
 
@@ -1307,17 +1280,29 @@ mod tests {
         let metrics_after = metrics_handle.read().unwrap();
         assert_eq!(metrics_after.len(), 2);
 
-        let expected_summary_otel = otel_from_metric_value("distrib_summary", MetricKind::Absolute, expected_summary_value.clone(), None);
+        let expected_summary_otel = OtelMetric::new_histogram("distrib_summary", MetricKind::Absolute, &expected_summary_buckets, expected_summary_count, expected_summary_sum);
         let actual_summary = metrics_after
             .get(&MetricRef::from_otel_metric(&expected_summary_otel))
             .expect("summary metric should exist");
-        assert_eq!(actual_summary.0.value(), expected_summary_value);
+        match actual_summary.0.view() {
+            MetricView::Histogram { count, sum, .. } => {
+                assert_eq!(count, expected_summary_count);
+                assert!((sum - expected_summary_sum).abs() < 1e-10, "sum mismatch: {sum} vs {expected_summary_sum}");
+            }
+            other => panic!("expected Histogram view, got {:?}", other),
+        }
 
-        let expected_histo_otel = otel_from_metric_value("distrib_histo", MetricKind::Absolute, expected_histo_value.clone(), None);
+        let expected_histo_otel = OtelMetric::new_histogram("distrib_histo", MetricKind::Absolute, &expected_histo_buckets, expected_histo_count, expected_histo_sum);
         let actual_histogram = metrics_after
             .get(&MetricRef::from_otel_metric(&expected_histo_otel))
             .expect("histogram metric should exist");
-        assert_eq!(actual_histogram.0.value(), expected_histo_value);
+        match actual_histogram.0.view() {
+            MetricView::Histogram { count, sum, .. } => {
+                assert_eq!(count, expected_histo_count);
+                assert!((sum - expected_histo_sum).abs() < 1e-10, "sum mismatch: {sum} vs {expected_histo_sum}");
+            }
+            other => panic!("expected Histogram view, got {:?}", other),
+        }
     }
 
     #[tokio::test]
@@ -1351,7 +1336,7 @@ mod tests {
         let actual_gauge = metrics_after
             .get(&MetricRef::from_otel_metric(&expected_gauge))
             .expect("gauge metric should exist");
-        assert_eq!(actual_gauge.0.value(), MetricValue::Gauge { value: 327.0 });
+        assert!(matches!(actual_gauge.0.view(), MetricView::Gauge { value } if value == 327.0));
     }
 }
 

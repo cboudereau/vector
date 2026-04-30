@@ -4,7 +4,7 @@ use mlua::prelude::*;
 
 use super::{
     super::{
-        MetricKind, MetricValue, OtelMetric, StatisticKind,
+        MetricKind, MetricView, OtelMetric, StatisticKind,
         metric::{self, MetricTags, TagValue, TagValueSet},
     },
     util::{table_to_timestamp, timestamp_to_table},
@@ -149,58 +149,65 @@ impl IntoLua for LuaMetric {
         }
         tbl.raw_set("kind", self.otel.kind())?;
 
-        match self.otel.value() {
-            MetricValue::Counter { value } => {
+        match self.otel.view() {
+            MetricView::Sum { value } => {
                 let counter = lua.create_table()?;
                 counter.raw_set("value", value)?;
                 tbl.raw_set("counter", counter)?;
             }
-            MetricValue::Gauge { value } => {
+            MetricView::Gauge { value } => {
                 let gauge = lua.create_table()?;
                 gauge.raw_set("value", value)?;
                 tbl.raw_set("gauge", gauge)?;
             }
-            MetricValue::Set { values } => {
+            MetricView::Set { values } => {
                 let set = lua.create_table()?;
                 set.raw_set("values", lua.create_sequence_from(values.into_iter())?)?;
                 tbl.raw_set("set", set)?;
             }
-            MetricValue::Distribution { samples, statistic } => {
+            MetricView::Distribution { bounds, counts } => {
                 let distribution = lua.create_table()?;
-                let sample_rates: Vec<_> = samples.iter().map(|s| s.rate).collect();
-                let values: Vec<_> = samples.into_iter().map(|s| s.value).collect();
+                let sample_rates: Vec<u32> = counts.iter().map(|&c| c as u32).collect();
+                let values: Vec<f64> = bounds.to_vec();
                 distribution.raw_set("values", values)?;
                 distribution.raw_set("sample_rates", sample_rates)?;
-                distribution.raw_set("statistic", statistic)?;
+                distribution.raw_set("statistic", StatisticKind::Histogram)?;
                 tbl.raw_set("distribution", distribution)?;
             }
-            MetricValue::AggregatedHistogram {
-                buckets,
+            MetricView::Histogram {
+                bounds,
+                counts,
                 count,
                 sum,
             } => {
                 let aggregated_histogram = lua.create_table()?;
-                let counts: Vec<_> = buckets.iter().map(|b| b.count).collect();
-                let buckets: Vec<_> = buckets.into_iter().map(|b| b.upper_limit).collect();
-                aggregated_histogram.raw_set("buckets", buckets)?;
-                aggregated_histogram.raw_set("counts", counts)?;
+                let count_vec: Vec<u64> = counts.to_vec();
+                let bucket_vec: Vec<f64> = bounds.to_vec();
+                aggregated_histogram.raw_set("buckets", bucket_vec)?;
+                aggregated_histogram.raw_set("counts", count_vec)?;
                 aggregated_histogram.raw_set("count", count)?;
                 aggregated_histogram.raw_set("sum", sum)?;
                 tbl.raw_set("aggregated_histogram", aggregated_histogram)?;
             }
-            MetricValue::AggregatedSummary {
+            MetricView::Summary {
                 quantiles,
                 count,
                 sum,
             } => {
                 let aggregated_summary = lua.create_table()?;
-                let values: Vec<_> = quantiles.iter().map(|q| q.value).collect();
-                let quantiles: Vec<_> = quantiles.into_iter().map(|q| q.quantile).collect();
-                aggregated_summary.raw_set("quantiles", quantiles)?;
+                let values: Vec<f64> = quantiles.iter().map(|q| q.value).collect();
+                let quantile_vec: Vec<f64> = quantiles.iter().map(|q| q.quantile).collect();
+                aggregated_summary.raw_set("quantiles", quantile_vec)?;
                 aggregated_summary.raw_set("values", values)?;
                 aggregated_summary.raw_set("count", count)?;
                 aggregated_summary.raw_set("sum", sum)?;
                 tbl.raw_set("aggregated_summary", aggregated_summary)?;
+            }
+            MetricView::ExponentialHistogram { count, sum } => {
+                let exp_hist = lua.create_table()?;
+                exp_hist.raw_set("count", count)?;
+                exp_hist.raw_set("sum", sum)?;
+                tbl.raw_set("exponential_histogram", exp_hist)?;
             }
         }
 

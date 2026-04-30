@@ -1006,7 +1006,7 @@ mod integration_tests {
     use super::*;
     use crate::{
         SourceSender,
-        event::{Event, metric::MetricValue},
+        event::{Event, MetricView},
         test_util::{
             components::{PULL_SOURCE_TAGS, assert_source_compliance},
             integration::postgres::{pg_socket, pg_url},
@@ -1062,15 +1062,15 @@ mod integration_tests {
             assert!(events.len() > 1);
 
             // test up metric
-            assert_eq!(
+            assert!(matches!(
                 events
                     .iter()
                     .map(|e| e.as_metric())
                     .find(|e| e.name() == "up")
                     .unwrap()
-                    .value(),
-                gauge!(1)
-            );
+                    .view(),
+                MetricView::Gauge { value: 1.0 }
+            ));
 
             // test namespace and tags
             for event in &events {

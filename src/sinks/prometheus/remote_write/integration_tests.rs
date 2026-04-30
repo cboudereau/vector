@@ -5,7 +5,7 @@ use serde_json::Value;
 use super::tests::*;
 use crate::{
     config::{SinkConfig, SinkContext},
-    event::{Event, metric::MetricValue},
+    event::{Event, MetricView},
     sinks::{
         influxdb::test_util::{cleanup_v1, format_timestamp, onboarding_v1, query_v1},
         prometheus::remote_write::config::RemoteWriteConfig,
@@ -63,8 +63,8 @@ async fn insert_metrics(url: &str) {
             assert_eq!(metrics.len(), 1);
             let output = &metrics[0];
 
-            match metric.value() {
-                MetricValue::Gauge { value } => {
+            match metric.view() {
+                MetricView::Gauge { value } => {
                     assert_eq!(output["value"], Value::Number((value as u32).into()))
                 }
                 _ => panic!("Unhandled metric value, fix the test"),

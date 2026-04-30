@@ -52,9 +52,9 @@ fn aggregate_metrics(
     let key_str = key.as_str().expect("argument must be a string");
     let metrics = metrics_storage.find_metrics(&key_str, tags);
 
-    let metric_values = metrics.into_iter().filter_map(|m| match m.value() {
-        vector_core::event::MetricValue::Counter { value }
-        | vector_core::event::MetricValue::Gauge { value } => NotNan::new(value).ok(),
+    let metric_values = metrics.into_iter().filter_map(|m| match m.view() {
+        vector_core::event::MetricView::Sum { value }
+        | vector_core::event::MetricView::Gauge { value } => NotNan::new(value).ok(),
         _ => None,
     });
 

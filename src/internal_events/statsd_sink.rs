@@ -4,15 +4,12 @@ use vector_lib::internal_event::{
     ComponentEventsDropped, InternalEvent, UNINTENTIONAL, error_stage, error_type,
 };
 
-use crate::event::metric::{MetricKind, MetricValue};
-
 #[derive(Debug, NamedInternalEvent)]
-pub struct StatsdInvalidMetricError<'a> {
-    pub value: &'a MetricValue,
-    pub kind: MetricKind,
+pub struct StatsdInvalidMetricError {
+    pub error: crate::Error,
 }
 
-impl InternalEvent for StatsdInvalidMetricError<'_> {
+impl InternalEvent for StatsdInvalidMetricError {
     fn emit(self) {
         let reason = "Invalid metric type received.";
         error!(
@@ -20,8 +17,7 @@ impl InternalEvent for StatsdInvalidMetricError<'_> {
             error_code = "invalid_metric",
             error_type = error_type::ENCODER_FAILED,
             stage = error_stage::PROCESSING,
-            value = ?self.value,
-            kind = ?self.kind,
+            error = ?self.error,
         );
         counter!(
             "component_errors_total",

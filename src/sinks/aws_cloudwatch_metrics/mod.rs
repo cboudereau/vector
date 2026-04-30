@@ -28,8 +28,8 @@ use crate::{
     },
     config::{AcknowledgementsConfig, Input, ProxyConfig, SinkConfig, SinkContext},
     event::{
-        Event, OtelMetric,
-        metric::{MetricTags, MetricValue},
+        Event, MetricView, OtelMetric,
+        metric::MetricTags,
     },
     sinks::util::{
         Compression, EncodedEvent, PartitionBuffer, PartitionInnerBuffer, SinkBatchSettings,
@@ -290,31 +290,30 @@ impl CloudWatchMetricsSvc {
                 let event_tags = otel.tags();
                 let dimensions = event_tags.as_ref().map(tags_to_dimensions);
                 let resolution = resolutions.get(&metric_name).copied();
-                let value = otel.value();
-                match &value {
-                    MetricValue::Counter { value } => Some(
+                match otel.view() {
+                    MetricView::Sum { value } => Some(
                         MetricDatum::builder()
                             .metric_name(metric_name)
-                            .value(*value)
+                            .value(value)
                             .set_timestamp(timestamp)
                             .set_dimensions(dimensions)
                             .set_storage_resolution(resolution)
                             .build(),
                     ),
-                    MetricValue::Distribution {
-                        samples,
-                        statistic: _,
+                    MetricView::Distribution {
+                        bounds,
+                        counts,
                     } => Some(
                         MetricDatum::builder()
                             .metric_name(metric_name)
-                            .set_values(Some(samples.iter().map(|s| s.value).collect()))
-                            .set_counts(Some(samples.iter().map(|s| s.rate as f64).collect()))
+                            .set_values(Some(bounds.iter().copied().collect()))
+                            .set_counts(Some(counts.iter().map(|&c| c as f64).collect()))
                             .set_timestamp(timestamp)
                             .set_dimensions(dimensions)
                             .set_storage_resolution(resolution)
                             .build(),
                     ),
-                    MetricValue::Set { values } => Some(
+                    MetricView::Set { values } => Some(
                         MetricDatum::builder()
                             .metric_name(metric_name)
                             .value(values.len() as f64)
@@ -323,10 +322,10 @@ impl CloudWatchMetricsSvc {
                             .set_storage_resolution(resolution)
                             .build(),
                     ),
-                    MetricValue::Gauge { value } => Some(
+                    MetricView::Gauge { value } => Some(
                         MetricDatum::builder()
                             .metric_name(metric_name)
-                            .value(*value)
+                            .value(value)
                             .set_timestamp(timestamp)
                             .set_dimensions(dimensions)
                             .set_storage_resolution(resolution)

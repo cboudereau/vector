@@ -497,45 +497,13 @@ mod tests {
         event::{
             Event, EventMetadata, OtelLog, OtelMetric,
             metric::{
-                MetricKind, MetricValue,
+                MetricKind,
                 StatisticKind,
             },
         },
         test_util::components::assert_transform_compliance,
         transforms::test::create_topology,
     };
-
-    fn otel_from_metric_value(
-        name: impl Into<String>,
-        kind: MetricKind,
-        value: MetricValue,
-        metadata: EventMetadata,
-    ) -> OtelMetric {
-        let name = name.into();
-        let m = match value {
-            MetricValue::Counter { value: v } => OtelMetric::new_counter(&name, kind, v),
-            MetricValue::Gauge { value: v } => match kind {
-                MetricKind::Absolute => OtelMetric::new_gauge(&name, v),
-                MetricKind::Incremental => OtelMetric::new_gauge_delta(&name, v),
-            },
-            MetricValue::Set { values } => OtelMetric::new_set_from_values(&name, kind, values),
-            MetricValue::Distribution {
-                samples,
-                statistic,
-            } => OtelMetric::new_distribution_from_samples(&name, kind, &samples, statistic),
-            MetricValue::AggregatedHistogram {
-                buckets,
-                count,
-                sum,
-            } => OtelMetric::new_histogram(&name, kind, &buckets, count, sum),
-            MetricValue::AggregatedSummary {
-                quantiles,
-                count,
-                sum,
-            } => OtelMetric::new_summary(&name, &quantiles, count, sum),
-        };
-        m.with_metadata(metadata)
-    }
 
     const TEST_SOURCE_COMPONENT_ID: &str = "in";
     const TEST_UPSTREAM_COMPONENT_ID: &str = "transform";
@@ -641,16 +609,10 @@ mod tests {
 
         assert_eq!(
             metric.into_otel_metric(),
-            {
-                otel_from_metric_value(
-                    "status",
-                    MetricKind::Incremental,
-                    MetricValue::Counter { value: 1.0 },
-                    metadata,
-                )
+            OtelMetric::new_counter("status", MetricKind::Incremental, 1.0)
+                .with_metadata(metadata)
                 .with_timestamp(Some(ts()))
-
-            });
+        );
     }
 
     #[tokio::test]
@@ -681,13 +643,8 @@ mod tests {
 
         assert_eq!(
             metric.into_otel_metric(),
-            {
-                otel_from_metric_value(
-                    "http_requests_total",
-                    MetricKind::Incremental,
-                    MetricValue::Counter { value: 1.0 },
-                    metadata,
-                )
+            OtelMetric::new_counter("http_requests_total", MetricKind::Incremental, 1.0)
+                .with_metadata(metadata)
                 .with_namespace(Some("app"))
                 .with_tags(Some(metric_tags!(
                     "method" => "post",
@@ -695,8 +652,7 @@ mod tests {
                     "host" => "localhost",
                 )))
                 .with_timestamp(Some(ts()))
-
-            });
+        );
     }
 
     #[tokio::test]
@@ -732,21 +688,15 @@ mod tests {
 
         assert_eq!(
             metric.into_otel_metric(),
-            {
-                otel_from_metric_value(
-                    "http_requests_total",
-                    MetricKind::Incremental,
-                    MetricValue::Counter { value: 1.0 },
-                    metadata,
-                )
+            OtelMetric::new_counter("http_requests_total", MetricKind::Incremental, 1.0)
+                .with_metadata(metadata)
                 .with_namespace(Some("app"))
                 .with_tags(Some(metric_tags!(
                     "one" => "foo",
                     "two" => "baz",
                 )))
                 .with_timestamp(Some(ts()))
-
-            });
+        );
     }
     #[tokio::test]
     async fn count_http_requests_with_colliding_dynamic_tags() {
@@ -903,16 +853,10 @@ mod tests {
 
         assert_eq!(
             metric.into_otel_metric(),
-            {
-                otel_from_metric_value(
-                    "exception_total",
-                    MetricKind::Incremental,
-                    MetricValue::Counter { value: 1.0 },
-                    metadata
-                )
+            OtelMetric::new_counter("exception_total", MetricKind::Incremental, 1.0)
+                .with_metadata(metadata)
                 .with_timestamp(Some(ts()))
-
-            });
+        );
     }
 
     #[tokio::test]
@@ -954,16 +898,10 @@ mod tests {
 
         assert_eq!(
             metric.into_otel_metric(),
-            {
-                otel_from_metric_value(
-                    "amount_total",
-                    MetricKind::Incremental,
-                    MetricValue::Counter { value: 33.99 },
-                    metadata,
-                )
+            OtelMetric::new_counter("amount_total", MetricKind::Incremental, 33.99)
+                .with_metadata(metadata)
                 .with_timestamp(Some(ts()))
-
-            });
+        );
     }
 
     #[tokio::test]
@@ -992,16 +930,10 @@ mod tests {
 
         assert_eq!(
             metric.into_otel_metric(),
-            {
-                otel_from_metric_value(
-                    "amount_total",
-                    MetricKind::Absolute,
-                    MetricValue::Counter { value: 33.99 },
-                    metadata,
-                )
+            OtelMetric::new_counter("amount_total", MetricKind::Absolute, 33.99)
+                .with_metadata(metadata)
                 .with_timestamp(Some(ts()))
-
-            });
+        );
     }
 
     #[tokio::test]
@@ -1030,16 +962,10 @@ mod tests {
 
         assert_eq!(
             metric.into_otel_metric(),
-            {
-                otel_from_metric_value(
-                    "memory_rss_bytes",
-                    MetricKind::Absolute,
-                    MetricValue::Gauge { value: 123.0 },
-                    metadata,
-                )
+            OtelMetric::new_gauge("memory_rss_bytes", 123.0)
+                .with_metadata(metadata)
                 .with_timestamp(Some(ts()))
-
-            });
+        );
     }
 
     #[tokio::test]
@@ -1123,28 +1049,16 @@ mod tests {
         assert_eq!(2, output.len());
         assert_eq!(
             output[0].clone().into_otel_metric(),
-            {
-                otel_from_metric_value(
-                    "status",
-                    MetricKind::Incremental,
-                    MetricValue::Counter { value: 1.0 },
-                    metadata.clone(),
-                )
+            OtelMetric::new_counter("status", MetricKind::Incremental, 1.0)
+                .with_metadata(metadata.clone())
                 .with_timestamp(Some(ts()))
-
-            });
+        );
         assert_eq!(
             output[1].clone().into_otel_metric(),
-            {
-                otel_from_metric_value(
-                    "exception_total",
-                    MetricKind::Incremental,
-                    MetricValue::Counter { value: 1.0 },
-                    metadata,
-                )
+            OtelMetric::new_counter("exception_total", MetricKind::Incremental, 1.0)
+                .with_metadata(metadata)
                 .with_timestamp(Some(ts()))
-
-            });
+        );
     }
 
     #[tokio::test]
@@ -1187,31 +1101,17 @@ mod tests {
         assert_eq!(2, output.len());
         assert_eq!(
             output[0].clone().into_otel_metric(),
-            {
-                otel_from_metric_value(
-                    "local_abc_status_set",
-                    MetricKind::Incremental,
-                    MetricValue::Set {
-                        values: vec!["42".into()].into_iter().collect()
-                    },
-                    metadata.clone(),
-                )
+            OtelMetric::new_set_from_values("local_abc_status_set", MetricKind::Incremental, vec![String::from("42")])
+                .with_metadata(metadata.clone())
                 .with_timestamp(Some(ts()))
-
-            });
+        );
         assert_eq!(
             output[1].clone().into_otel_metric(),
-            {
-                otel_from_metric_value(
-                    "xyz_exception_total",
-                    MetricKind::Incremental,
-                    MetricValue::Counter { value: 1.0 },
-                    metadata,
-                )
+            OtelMetric::new_counter("xyz_exception_total", MetricKind::Incremental, 1.0)
+                .with_metadata(metadata)
                 .with_namespace(Some("local"))
                 .with_timestamp(Some(ts()))
-
-            });
+        );
     }
 
     #[tokio::test]
@@ -1238,18 +1138,10 @@ mod tests {
 
         assert_eq!(
             metric.into_otel_metric(),
-            {
-                otel_from_metric_value(
-                    "unique_user_ip",
-                    MetricKind::Incremental,
-                    MetricValue::Set {
-                        values: vec!["1.2.3.4".into()].into_iter().collect()
-                    },
-                    metadata,
-                )
+            OtelMetric::new_set_from_values("unique_user_ip", MetricKind::Incremental, vec![String::from("1.2.3.4")])
+                .with_metadata(metadata)
                 .with_timestamp(Some(ts()))
-
-            });
+        );
     }
 
     #[tokio::test]
@@ -1276,19 +1168,10 @@ mod tests {
 
         assert_eq!(
             metric.into_otel_metric(),
-            {
-                otel_from_metric_value(
-                    "response_time",
-                    MetricKind::Incremental,
-                    MetricValue::Distribution {
-                        samples: vector_lib::samples![2.5 => 1],
-                        statistic: StatisticKind::Histogram
-                    },
-                    metadata
-                )
+            OtelMetric::new_distribution_from_samples("response_time", MetricKind::Incremental, &vector_lib::samples![2.5 => 1], StatisticKind::Histogram)
+                .with_metadata(metadata)
                 .with_timestamp(Some(ts()))
-
-            });
+        );
     }
 
     #[tokio::test]
@@ -1315,19 +1198,10 @@ mod tests {
 
         assert_eq!(
             metric.into_otel_metric(),
-            {
-                otel_from_metric_value(
-                    "response_time",
-                    MetricKind::Incremental,
-                    MetricValue::Distribution {
-                        samples: vector_lib::samples![2.5 => 1],
-                        statistic: StatisticKind::Summary
-                    },
-                    metadata
-                )
+            OtelMetric::new_distribution_from_samples("response_time", MetricKind::Incremental, &vector_lib::samples![2.5 => 1], StatisticKind::Summary)
+                .with_metadata(metadata)
                 .with_timestamp(Some(ts()))
-
-            });
+        );
     }
 
 }

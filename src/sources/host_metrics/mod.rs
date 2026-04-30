@@ -678,8 +678,7 @@ mod tests {
     use std::{collections::HashSet, future::Future, time::Duration};
 
     use super::*;
-    use crate::event::OtelMetric;
-    use crate::event::metric::MetricValue;
+    use crate::event::{MetricView, OtelMetric};
     use crate::test_util::components::{SOURCE_TAGS, run_and_assert_source_compliance};
 
     #[test]
@@ -858,13 +857,13 @@ mod tests {
     pub(super) fn all_counters(metrics: &[OtelMetric]) -> bool {
         !metrics
             .iter()
-            .any(|metric| !matches!(metric.value(), MetricValue::Counter { .. }))
+            .any(|metric| !matches!(metric.view(), MetricView::Sum { .. }))
     }
 
     pub(super) fn all_gauges(metrics: &[OtelMetric]) -> bool {
         !metrics
             .iter()
-            .any(|metric| !matches!(metric.value(), MetricValue::Gauge { .. }))
+            .any(|metric| !matches!(metric.view(), MetricView::Gauge { .. }))
     }
 
     fn all_tags_match(metrics: &[OtelMetric], tag: &str, matches: impl Fn(&str) -> bool) -> bool {

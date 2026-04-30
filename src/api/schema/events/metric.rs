@@ -92,12 +92,12 @@ impl Metric {
 
     /// Metric type
     async fn value_type(&self) -> &str {
-        self.event.value().as_name()
+        self.event.view().as_name()
     }
 
     /// Metric value in human readable form
     async fn value(&self) -> String {
-        self.event.value().to_string()
+        self.event.view().to_string()
     }
 
     /// Metric tags

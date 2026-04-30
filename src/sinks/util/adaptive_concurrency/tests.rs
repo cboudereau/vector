@@ -32,7 +32,7 @@ use vector_lib::{configurable::configurable_component, json_size::JsonSize};
 use super::{AdaptiveConcurrencySettings, controller::ControllerStatistics};
 use crate::{
     config::{self, AcknowledgementsConfig, Input, SinkConfig, SinkContext},
-    event::{Event, metric::MetricValue},
+    event::{Event, MetricView},
     metrics,
     sinks::{
         Healthcheck, VectorSink,
@@ -476,28 +476,28 @@ async fn run_test(params: TestParams) -> TestResults {
         metrics
             .get("adaptive_concurrency_observed_rtt")
             .unwrap()
-            .value(),
-        MetricValue::AggregatedHistogram { .. }
+            .view(),
+        MetricView::Histogram { .. }
     ));
     assert!(matches!(
         metrics
             .get("adaptive_concurrency_averaged_rtt")
             .unwrap()
-            .value(),
-        MetricValue::AggregatedHistogram { .. }
+            .view(),
+        MetricView::Histogram { .. }
     ));
     if params.concurrency == Concurrency::Adaptive {
         assert!(matches!(
-            metrics.get("adaptive_concurrency_limit").unwrap().value(),
-            MetricValue::AggregatedHistogram { .. }
+            metrics.get("adaptive_concurrency_limit").unwrap().view(),
+            MetricView::Histogram { .. }
         ));
     }
     assert!(matches!(
         metrics
             .get("adaptive_concurrency_in_flight")
             .unwrap()
-            .value(),
-        MetricValue::AggregatedHistogram { .. }
+            .view(),
+        MetricView::Histogram { .. }
     ));
 
     TestResults { stats, cstats }

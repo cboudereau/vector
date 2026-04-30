@@ -199,8 +199,7 @@ mod tests {
     use super::*;
     use crate::{
         event::{
-            Event, OtelMetric,
-            metric::MetricValue,
+            Event, MetricView, OtelMetric,
         },
         test_util::{
             self,
@@ -240,38 +239,40 @@ mod tests {
             .map(|metric| (metric.name().to_string(), metric))
             .collect::<BTreeMap<String, OtelMetric>>();
 
-        assert_eq!(MetricValue::Gauge { value: 2.0 }, output["foo"].value());
-        assert_eq!(MetricValue::Counter { value: 7.0 }, output["bar"].value());
+        assert!(matches!(output["foo"].view(), MetricView::Gauge { value: 2.0 }));
+        assert!(matches!(output["bar"].view(), MetricView::Sum { value: 7.0 }));
 
-        match output["baz"].value() {
-            MetricValue::AggregatedHistogram {
-                buckets,
+        match output["baz"].view() {
+            MetricView::Histogram {
+                counts,
                 count,
                 sum,
+                ..
             } => {
                 // This index is _only_ stable so long as the offsets in
                 // [`metrics::handle::Histogram::new`] are hard-coded. If this
                 // check fails you might look there and see if we've allowed
                 // users to set their own bucket widths.
-                assert_eq!(buckets[15].count, 2);
+                assert_eq!(counts[15], 2);
                 assert_eq!(count, 2);
                 assert_eq!(sum, 11.0);
             }
             _ => panic!("wrong type"),
         }
 
-        match output["quux"].value() {
-            MetricValue::AggregatedHistogram {
-                buckets,
+        match output["quux"].view() {
+            MetricView::Histogram {
+                counts,
                 count,
                 sum,
+                ..
             } => {
                 // This index is _only_ stable so long as the offsets in
                 // [`metrics::handle::Histogram::new`] are hard-coded. If this
                 // check fails you might look there and see if we've allowed
                 // users to set their own bucket widths.
-                assert_eq!(buckets[15].count, 1);
-                assert_eq!(buckets[16].count, 1);
+                assert_eq!(counts[15], 1);
+                assert_eq!(counts[16], 1);
                 assert_eq!(count, 2);
                 assert_eq!(sum, 16.1);
             }

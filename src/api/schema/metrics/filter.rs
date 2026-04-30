@@ -10,7 +10,7 @@ use super::{
 };
 use crate::{
     config::ComponentKey,
-    event::{MetricValue, OtelMetric},
+    event::{MetricView, OtelMetric},
     metrics::Controller,
 };
 
@@ -171,7 +171,7 @@ pub fn by_component_key(component_key: &ComponentKey) -> Vec<OtelMetric> {
 type MetricFilterFn = dyn Fn(&OtelMetric) -> bool + Send + Sync;
 
 /// Returns a stream of `Vec<OtelMetric>`, where `metric_name` matches the name of the metric
-/// (e.g. "component_sent_events_total"), and the value is derived from `MetricValue::Counter`. Uses a
+/// (e.g. "component_sent_events_total"), and the value is derived from `MetricView::Sum`. Uses a
 /// local cache to match against the `component_id` of a metric, to return results only when
 /// the value of a current iteration is greater than the previous. This is useful for the client
 /// to be notified as metrics increase without returning 'empty' or identical results.
@@ -185,8 +185,8 @@ pub fn component_counter_metrics(
         map.into_iter()
             .filter_map(|(id, metrics)| {
                 let m = sum_metrics_owned(metrics)?;
-                match m.value() {
-                    MetricValue::Counter { value }
+                match m.view() {
+                    MetricView::Sum { value }
                         if cache.insert(id, value).unwrap_or(0.00) < value =>
                     {
                         Some(m)
@@ -199,7 +199,7 @@ pub fn component_counter_metrics(
 }
 
 /// Returns a stream of `Vec<OtelMetric>`, where `metric_name` matches the name of the metric
-/// (e.g. "component_sent_events_total"), and the value is derived from `MetricValue::Gauge`. Uses a
+/// (e.g. "component_sent_events_total"), and the value is derived from `MetricView::Gauge`. Uses a
 /// local cache to match against the `component_id` of a metric, to return results only when
 /// the value of a current iteration is greater than the previous. This is useful for the client
 /// to be notified as metrics increase without returning 'empty' or identical results.
@@ -213,8 +213,8 @@ pub fn component_gauge_metrics(
         map.into_iter()
             .filter_map(|(id, metrics)| {
                 let m = sum_metrics_owned(metrics)?;
-                match m.value() {
-                    MetricValue::Gauge { value }
+                match m.view() {
+                    MetricView::Gauge { value }
                         if cache.insert(id, value).unwrap_or(0.00) < value =>
                     {
                         Some(m)
@@ -236,8 +236,8 @@ pub fn counter_throughput(
 
     get_metrics(interval)
         .filter(filter_fn)
-        .filter_map(move |m| match m.value() {
-            MetricValue::Counter { value } if value > last => {
+        .filter_map(move |m| match m.view() {
+            MetricView::Sum { value } if value > last => {
                 let throughput = value - last;
                 last = value;
                 Some((m, throughput))
@@ -261,8 +261,8 @@ pub fn component_counter_throughputs(
             map.into_iter()
                 .filter_map(|(id, metrics)| {
                     let m = sum_metrics_owned(metrics)?;
-                    match m.value() {
-                        MetricValue::Counter { value } => {
+                    match m.view() {
+                        MetricView::Sum { value } => {
                             let last = cache.insert(id, value).unwrap_or(0.00);
                             let throughput = value - last;
                             Some((m, throughput))
@@ -297,8 +297,8 @@ pub fn component_sent_events_totals_metrics_with_outputs(
                         .iter()
                         .filter_map(|output| {
                             let m = filter_output_metric(metrics.as_ref(), output.as_ref())?;
-                            match m.value() {
-                                MetricValue::Counter { value }
+                            match m.view() {
+                                MetricView::Sum { value }
                                     if cache
                                         .insert(format!("{id}.{output}"), value)
                                         .unwrap_or(0.00)
@@ -312,8 +312,8 @@ pub fn component_sent_events_totals_metrics_with_outputs(
                         .collect();
 
                     let sum = sum_metrics_owned(metrics)?;
-                    match sum.value() {
-                        MetricValue::Counter { value }
+                    match sum.view() {
+                        MetricView::Sum { value }
                             if cache.insert(id, value).unwrap_or(0.00) < value =>
                         {
                             Some((sum, metric_by_outputs))
@@ -387,8 +387,8 @@ fn component_to_filtered_metrics(
 
 /// Returns throughput based on a metric and provided `cache` of previous values
 fn throughput(metric: &OtelMetric, id: String, cache: &mut BTreeMap<String, f64>) -> Option<f64> {
-    match metric.value() {
-        MetricValue::Counter { value } => {
+    match metric.view() {
+        MetricView::Sum { value } => {
             let last = cache.insert(id, value).unwrap_or(0.00);
             let throughput = value - last;
             Some(throughput)

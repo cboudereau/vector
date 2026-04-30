@@ -262,7 +262,7 @@ mod test {
     use super::*;
     use crate::{
         Error,
-        event::MetricValue,
+        event::MetricView,
         test_util::{
             addr::next_addr,
             components::{SOURCE_TAGS, run_and_assert_source_compliance},
@@ -601,7 +601,7 @@ mod test {
             .find(|m| m.name() == "network_receive_bytes_total")
         {
             Some(m) => {
-                assert_eq!(m.value(), MetricValue::Counter { value: 329932716.0 });
+                assert!(matches!(m.view(), MetricView::Sum { value: 329932716.0 }));
                 assert_eq!(m.namespace(), Some("awsecs"));
 
                 match m.tags() {

@@ -6,14 +6,14 @@ use tower::Service;
 use vector_lib::{
     ByteSizeOf, EstimatedJsonEncodedSizeOf,
     configurable::configurable_component,
-    event::metric::MetricTags,
+    event::{MetricView, metric::MetricTags},
 };
 
 use crate::{
     config::{AcknowledgementsConfig, Input, SinkConfig, SinkContext},
     event::{
         Event, KeyString, OtelMetric,
-        metric::{MetricValue, Sample, StatisticKind},
+        metric::{Sample, StatisticKind},
     },
     http::HttpClient,
     internal_events::InfluxdbEncodingError,
@@ -286,8 +286,9 @@ fn encode_events(
         let ts = encode_timestamp(otel.timestamp());
         let event_tags = otel.tags();
         let tags = merge_tags(event_tags.as_ref(), tags);
-        let value = otel.value();
-        let (metric_type, fields) = get_type_and_fields(&value, quantiles);
+        let view = otel.view();
+        let statistic_kind = otel.distribution_statistic_kind();
+        let (metric_type, fields) = get_type_and_fields(&view, statistic_kind, quantiles);
 
         let mut unwrapped_tags = tags.unwrap_or_default();
         unwrapped_tags.replace("metric_type".to_owned(), metric_type.to_owned());
@@ -315,24 +316,27 @@ fn encode_events(
 }
 
 fn get_type_and_fields(
-    value: &MetricValue,
+    view: &MetricView<'_>,
+    statistic_kind: StatisticKind,
     quantiles: &[f64],
 ) -> (&'static str, Option<HashMap<KeyString, Field>>) {
-    match value {
-        MetricValue::Counter { value } => ("counter", Some(to_fields(*value))),
-        MetricValue::Gauge { value } => ("gauge", Some(to_fields(*value))),
-        MetricValue::Set { values } => ("set", Some(to_fields(values.len() as f64))),
-        MetricValue::AggregatedHistogram {
-            buckets,
+    match view {
+        MetricView::Sum { value } => ("counter", Some(to_fields(*value))),
+        MetricView::Gauge { value } => ("gauge", Some(to_fields(*value))),
+        MetricView::Set { values } => ("set", Some(to_fields(values.len() as f64))),
+        MetricView::Histogram {
+            bounds,
+            counts,
             count,
             sum,
         } => {
-            let mut fields: HashMap<KeyString, Field> = buckets
+            let mut fields: HashMap<KeyString, Field> = bounds
                 .iter()
-                .map(|sample| {
+                .zip(counts.iter())
+                .map(|(&limit, &cnt)| {
                     (
-                        format!("bucket_{}", sample.upper_limit).into(),
-                        Field::UnsignedInt(sample.count),
+                        format!("bucket_{limit}").into(),
+                        Field::UnsignedInt(cnt),
                     )
                 })
                 .collect();
@@ -341,17 +345,17 @@ fn get_type_and_fields(
 
             ("histogram", Some(fields))
         }
-        MetricValue::AggregatedSummary {
-            quantiles,
+        MetricView::Summary {
+            quantiles: qs,
             count,
             sum,
         } => {
-            let mut fields: HashMap<KeyString, Field> = quantiles
+            let mut fields: HashMap<KeyString, Field> = qs
                 .iter()
-                .map(|quantile| {
+                .map(|q| {
                     (
-                        format!("quantile_{}", quantile.quantile).into(),
-                        Field::Float(quantile.value),
+                        format!("quantile_{}", q.quantile).into(),
+                        Field::Float(q.value),
                     )
                 })
                 .collect();
@@ -360,14 +364,18 @@ fn get_type_and_fields(
 
             ("summary", Some(fields))
         }
-        MetricValue::Distribution { samples, statistic } => {
-            let quantiles = match statistic {
+        MetricView::Distribution { bounds, counts } => {
+            let samples: Vec<Sample> = bounds.iter().zip(counts.iter())
+                .map(|(&value, &rate)| Sample { value, rate: rate as u32 })
+                .collect();
+            let quantiles = match statistic_kind {
                 StatisticKind::Histogram => &[0.95] as &[_],
                 StatisticKind::Summary => quantiles,
             };
-            let fields = encode_distribution(samples, quantiles);
+            let fields = encode_distribution(&samples, quantiles);
             ("distribution", fields)
         }
+        MetricView::ExponentialHistogram { .. } => ("histogram", None),
     }
 }
 
@@ -408,45 +416,11 @@ mod tests {
     use super::*;
     use crate::{
         event::metric::{
-            MetricKind, MetricTags, MetricValue,
-            StatisticKind,
+            MetricKind, Sample, StatisticKind,
         },
         event::OtelMetric,
         sinks::influxdb::test_util::{assert_fields, split_line_protocol, tags, ts},
     };
-
-    fn otel_from_metric_value(
-        name: &str,
-        namespace: Option<&str>,
-        kind: MetricKind,
-        value: MetricValue,
-        tags: Option<MetricTags>,
-        timestamp: Option<chrono::DateTime<chrono::Utc>>,
-    ) -> OtelMetric {
-        let m = match value {
-            MetricValue::Counter { value: v } => OtelMetric::new_counter(name, kind, v),
-            MetricValue::Gauge { value: v } => match kind {
-                MetricKind::Absolute => OtelMetric::new_gauge(name, v),
-                MetricKind::Incremental => OtelMetric::new_gauge_delta(name, v),
-            },
-            MetricValue::Set { values } => OtelMetric::new_set_from_values(name, kind, values),
-            MetricValue::Distribution {
-                samples,
-                statistic,
-            } => OtelMetric::new_distribution_from_samples(name, kind, &samples, statistic),
-            MetricValue::AggregatedHistogram {
-                buckets,
-                count,
-                sum,
-            } => OtelMetric::new_histogram(name, kind, &buckets, count, sum),
-            MetricValue::AggregatedSummary {
-                quantiles,
-                count,
-                sum,
-            } => OtelMetric::new_summary(name, &quantiles, count, sum),
-        };
-        m.with_namespace(namespace).with_tags(tags).with_timestamp(timestamp)
-    }
 
     #[test]
     fn generate_config() {
@@ -487,14 +461,10 @@ mod tests {
     #[test]
     fn test_encode_gauge() {
         let events = vec![
-            (otel_from_metric_value(
-                "meter",
-                Some("ns"),
-                MetricKind::Incremental,
-                MetricValue::Gauge { value: -1.5 },
-                Some(tags()),
-                Some(ts()),
-            )),
+            OtelMetric::new_gauge_delta("meter", -1.5)
+                .with_namespace(Some("ns"))
+                .with_tags(Some(tags()))
+                .with_timestamp(Some(ts())),
         ];
 
         let line_protocols = encode_events(ProtocolVersion::V2, events, None, None, &[]);
@@ -507,16 +477,10 @@ mod tests {
     #[test]
     fn test_encode_set() {
         let events = vec![
-            (otel_from_metric_value(
-                "users",
-                Some("ns"),
-                MetricKind::Incremental,
-                MetricValue::Set {
-                    values: vec!["alice".into(), "bob".into()].into_iter().collect(),
-                },
-                Some(tags()),
-                Some(ts()),
-            )),
+            OtelMetric::new_set_from_values("users", MetricKind::Incremental, vec!["alice".to_string(), "bob".to_string()])
+                .with_namespace(Some("ns"))
+                .with_tags(Some(tags()))
+                .with_timestamp(Some(ts())),
         ];
 
         let line_protocols = encode_events(ProtocolVersion::V2, events, None, None, &[]);
@@ -673,49 +637,41 @@ mod tests {
     #[test]
     fn test_encode_distribution() {
         let events = vec![
-            (otel_from_metric_value(
+            OtelMetric::new_distribution_from_samples(
                 "requests",
-                Some("ns"),
                 MetricKind::Incremental,
-                MetricValue::Distribution {
-                    samples: vector_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2],
-                    statistic: StatisticKind::Histogram,
-                },
-                Some(tags()),
-                Some(ts()),
-            )),
-            (otel_from_metric_value(
+                &vector_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2],
+                StatisticKind::Histogram,
+            )
+                .with_namespace(Some("ns"))
+                .with_tags(Some(tags()))
+                .with_timestamp(Some(ts())),
+            OtelMetric::new_distribution_from_samples(
                 "dense_stats",
-                Some("ns"),
                 MetricKind::Incremental,
-                MetricValue::Distribution {
-                    samples: (0..20)
-                        .map(|v| Sample {
-                            value: f64::from(v),
-                            rate: 1,
-                        })
-                        .collect(),
-                    statistic: StatisticKind::Histogram,
-                },
-                None,
-                Some(ts()),
-            )),
-            (otel_from_metric_value(
+                &(0..20)
+                    .map(|v| Sample {
+                        value: f64::from(v),
+                        rate: 1,
+                    })
+                    .collect::<Vec<_>>(),
+                StatisticKind::Histogram,
+            )
+                .with_namespace(Some("ns"))
+                .with_timestamp(Some(ts())),
+            OtelMetric::new_distribution_from_samples(
                 "sparse_stats",
-                Some("ns"),
                 MetricKind::Incremental,
-                MetricValue::Distribution {
-                    samples: (1..5)
-                        .map(|v| Sample {
-                            value: f64::from(v),
-                            rate: v,
-                        })
-                        .collect(),
-                    statistic: StatisticKind::Histogram,
-                },
-                None,
-                Some(ts()),
-            )),
+                &(1..5)
+                    .map(|v| Sample {
+                        value: f64::from(v),
+                        rate: v,
+                    })
+                    .collect::<Vec<_>>(),
+                StatisticKind::Histogram,
+            )
+                .with_namespace(Some("ns"))
+                .with_timestamp(Some(ts())),
         ];
 
         let line_protocols = encode_events(ProtocolVersion::V2, events, None, None, &[]);
@@ -785,17 +741,15 @@ mod tests {
     #[test]
     fn test_encode_distribution_empty_stats() {
         let events = vec![
-            (otel_from_metric_value(
+            OtelMetric::new_distribution_from_samples(
                 "requests",
-                Some("ns"),
                 MetricKind::Incremental,
-                MetricValue::Distribution {
-                    samples: vec![],
-                    statistic: StatisticKind::Histogram,
-                },
-                Some(tags()),
-                Some(ts()),
-            )),
+                &[],
+                StatisticKind::Histogram,
+            )
+                .with_namespace(Some("ns"))
+                .with_tags(Some(tags()))
+                .with_timestamp(Some(ts())),
         ];
 
         let line_protocols = encode_events(ProtocolVersion::V2, events, None, None, &[]);
@@ -805,17 +759,15 @@ mod tests {
     #[test]
     fn test_encode_distribution_zero_counts_stats() {
         let events = vec![
-            (otel_from_metric_value(
+            OtelMetric::new_distribution_from_samples(
                 "requests",
-                Some("ns"),
                 MetricKind::Incremental,
-                MetricValue::Distribution {
-                    samples: vector_lib::samples![1.0 => 0, 2.0 => 0],
-                    statistic: StatisticKind::Histogram,
-                },
-                Some(tags()),
-                Some(ts()),
-            )),
+                &vector_lib::samples![1.0 => 0, 2.0 => 0],
+                StatisticKind::Histogram,
+            )
+                .with_namespace(Some("ns"))
+                .with_tags(Some(tags()))
+                .with_timestamp(Some(ts())),
         ];
 
         let line_protocols = encode_events(ProtocolVersion::V2, events, None, None, &[]);
@@ -825,17 +777,15 @@ mod tests {
     #[test]
     fn test_encode_distribution_summary() {
         let events = vec![
-            (otel_from_metric_value(
+            OtelMetric::new_distribution_from_samples(
                 "requests",
-                Some("ns"),
                 MetricKind::Incremental,
-                MetricValue::Distribution {
-                    samples: vector_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2],
-                    statistic: StatisticKind::Summary,
-                },
-                Some(tags()),
-                Some(ts()),
-            )),
+                &vector_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2],
+                StatisticKind::Summary,
+            )
+                .with_namespace(Some("ns"))
+                .with_tags(Some(tags()))
+                .with_timestamp(Some(ts())),
         ];
 
         let line_protocols = encode_events(
@@ -928,7 +878,7 @@ mod integration_tests {
         config::{SinkConfig, SinkContext},
         event::{
             Event, OtelMetric,
-            metric::{MetricKind, MetricValue},
+            metric::MetricKind,
         },
         http::HttpClient,
         sinks::influxdb::{
@@ -1018,8 +968,8 @@ mod integration_tests {
         for event in events {
             let metric = event.into_otel_metric();
             let name = format!("{}.{}", metric.namespace().unwrap(), metric.name());
-            let value = match metric.value() {
-                MetricValue::Counter { value } => value,
+            let value = match metric.view() {
+                vector_lib::event::MetricView::Sum { value } => value,
                 _ => unreachable!(),
             };
             let timestamp = format_timestamp(metric.timestamp().unwrap(), SecondsFormat::Nanos);

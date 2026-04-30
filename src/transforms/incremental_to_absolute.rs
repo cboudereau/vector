@@ -107,36 +107,11 @@ mod tests {
     use super::*;
     use crate::event::{
         OtelMetric,
-        metric::{MetricKind, MetricValue},
+        metric::MetricKind,
     };
 
-    fn otel_from_metric_value(name: &'static str, kind: MetricKind, value: MetricValue) -> OtelMetric {
-        match value {
-            MetricValue::Counter { value: v } => OtelMetric::new_counter(name, kind, v),
-            MetricValue::Gauge { value: v } => match kind {
-                MetricKind::Absolute => OtelMetric::new_gauge(name, v),
-                MetricKind::Incremental => OtelMetric::new_gauge_delta(name, v),
-            },
-            MetricValue::Set { values } => OtelMetric::new_set_from_values(name, kind, values),
-            MetricValue::Distribution {
-                samples,
-                statistic,
-            } => OtelMetric::new_distribution_from_samples(name, kind, &samples, statistic),
-            MetricValue::AggregatedHistogram {
-                buckets,
-                count,
-                sum,
-            } => OtelMetric::new_histogram(name, kind, &buckets, count, sum),
-            MetricValue::AggregatedSummary {
-                quantiles,
-                count,
-                sum,
-            } => OtelMetric::new_summary(name, &quantiles, count, sum),
-        }
-    }
-
-    fn make_metric(name: &'static str, kind: MetricKind, value: MetricValue) -> Event {
-        let mut event = Event::Metric(otel_from_metric_value(name, kind, value))
+    fn make_metric(_name: &'static str, otel: OtelMetric) -> Event {
+        let mut event = Event::Metric(otel)
             .with_source_id(Arc::new(ComponentKey::from("in")))
             .with_upstream_id(Arc::new(OutputId::from("transform")));
 
@@ -176,16 +151,8 @@ max_events = 100
         let (mut tx, rx) = futures::channel::mpsc::channel(10);
         let mut out_stream = incremental_to_absolute.transform_events(Box::pin(rx));
 
-        let inc_counter_1 = make_metric(
-            "incremental_counter",
-            MetricKind::Incremental,
-            MetricValue::Counter { value: 10.0 },
-        );
-        let expected_inc_counter_1 = make_metric(
-            "incremental_counter",
-            MetricKind::Absolute,
-            MetricValue::Counter { value: 10.0 },
-        );
+        let inc_counter_1 = make_metric("incremental_counter", OtelMetric::new_counter("incremental_counter", MetricKind::Incremental, 10.0));
+        let expected_inc_counter_1 = make_metric("incremental_counter", OtelMetric::new_counter("incremental_counter", MetricKind::Absolute, 10.0));
         assert_metric_eq(
             &mut tx,
             &mut out_stream,
@@ -194,16 +161,8 @@ max_events = 100
         )
         .await;
 
-        let inc_counter_2 = make_metric(
-            "incremental_counter",
-            MetricKind::Incremental,
-            MetricValue::Counter { value: 10.0 },
-        );
-        let expected_inc_counter_2 = make_metric(
-            "incremental_counter",
-            MetricKind::Absolute,
-            MetricValue::Counter { value: 20.0 },
-        );
+        let inc_counter_2 = make_metric("incremental_counter", OtelMetric::new_counter("incremental_counter", MetricKind::Incremental, 10.0));
+        let expected_inc_counter_2 = make_metric("incremental_counter", OtelMetric::new_counter("incremental_counter", MetricKind::Absolute, 20.0));
         assert_metric_eq(
             &mut tx,
             &mut out_stream,
@@ -212,16 +171,8 @@ max_events = 100
         )
         .await;
 
-        let inc_counter_3 = make_metric(
-            "incremental_counter",
-            MetricKind::Incremental,
-            MetricValue::Counter { value: 10.0 },
-        );
-        let expected_inc_counter_3 = make_metric(
-            "incremental_counter",
-            MetricKind::Absolute,
-            MetricValue::Counter { value: 30.0 },
-        );
+        let inc_counter_3 = make_metric("incremental_counter", OtelMetric::new_counter("incremental_counter", MetricKind::Incremental, 10.0));
+        let expected_inc_counter_3 = make_metric("incremental_counter", OtelMetric::new_counter("incremental_counter", MetricKind::Absolute, 30.0));
         assert_metric_eq(
             &mut tx,
             &mut out_stream,
@@ -231,19 +182,11 @@ max_events = 100
         .await;
 
         // Absolute counters and gauges are emitted unchanged
-        let gauge = make_metric(
-            "gauge",
-            MetricKind::Absolute,
-            MetricValue::Gauge { value: 42.0 },
-        );
+        let gauge = make_metric("gauge", OtelMetric::new_gauge("gauge", 42.0));
         let expected_gauge = gauge.clone();
         assert_metric_eq(&mut tx, &mut out_stream, gauge, expected_gauge).await;
 
-        let absolute_counter = make_metric(
-            "absolute_counter",
-            MetricKind::Absolute,
-            MetricValue::Counter { value: 42.0 },
-        );
+        let absolute_counter = make_metric("absolute_counter", OtelMetric::new_counter("absolute_counter", MetricKind::Absolute, 42.0));
         let absolute_counter_expected = absolute_counter.clone();
         assert_metric_eq(
             &mut tx,

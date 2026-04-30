@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use vector_lib::event::{MetricKind, MetricValue, OtelMetric};
+use vector_lib::event::{MetricKind, MetricView, OtelMetric};
 
 #[allow(clippy::large_enum_variant)]
 enum SplitState {
@@ -79,12 +79,11 @@ pub struct AggregatedSummarySplitter;
 
 impl MetricSplit for AggregatedSummarySplitter {
     fn split(&mut self, input: OtelMetric) -> SplitIterator {
-        let value = input.value();
-        let MetricValue::AggregatedSummary {
+        let MetricView::Summary {
             quantiles,
             count,
             sum,
-        } = value
+        } = input.view()
         else {
             return SplitIterator::single(input);
         };
@@ -106,13 +105,14 @@ impl MetricSplit for AggregatedSummarySplitter {
                 .with_metadata(metadata.clone());
         metrics.push_back(count_metric);
 
-        for quantile in quantiles {
+        for q in quantiles {
             let mut qtags = tags.clone().unwrap_or_default();
-            qtags.replace(String::from("quantile"), quantile.to_quantile_string());
+            let quantile_str: String = q.quantile.clamp(0.0, 1.0).to_string().chars().take(6).collect();
+            qtags.replace(String::from("quantile"), quantile_str);
             let q_metric = if kind == MetricKind::Incremental {
-                OtelMetric::new_gauge_delta(&name, quantile.value)
+                OtelMetric::new_gauge_delta(&name, q.value)
             } else {
-                OtelMetric::new_gauge(&name, quantile.value)
+                OtelMetric::new_gauge(&name, q.value)
             }
             .with_namespace(namespace.clone())
             .with_tags(Some(qtags))

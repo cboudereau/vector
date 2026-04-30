@@ -113,7 +113,7 @@ kafka, syslog, …  ──────────►  OTel Span
 | Migration strategy | Wrapper types (incremental, always-compilable) over big-bang replacement. |
 | DD sink | Not re-added — DD accepts OTLP natively. Users point OTel sink at DD's OTLP endpoint. |
 | Native codecs + protos | Fully deleted. Vector source/sink speak OTLP gRPC natively. |
-| Legacy metric types | Retained as internal computation layer — MetricValue/MetricKind/MetricTags provide arithmetic and type-safe operations that OTLP proto lacks. |
+| Legacy metric types | **MetricValue/MetricData/MetricTime/MetricName deleted (P26).** MetricKind, MetricTags, StatisticKind, Sample/Bucket/Quantile remain as lightweight helpers. MetricView<'a> borrowing enum for type inspection. |
 | VRL `.tags` alias removed (P20) | `.tags."key"` was a compatibility alias for `.attributes."key"` on OtelMetric VRL targets. **Removed and must not be re-introduced.** `.attributes` is the canonical OTLP path. |
 | `metric_to_log` OTLP conformance (P21) | Transform now serializes via `OtelMetric`'s OTLP `Serialize` impl instead of legacy `MetricSeries`/`MetricData` serde. Output uses OTLP field names (`sum`, `gauge`, `histogram`, `dataPoints`, `attributes`). |
 | `metric_to_log` uses `serde_json` bridge (P21) | Deliberate shortcut: `serde_json::to_value(&otel)` reuses OtelMetric's Serialize impl to get correct OTLP field names without duplicating mapping logic. **Not necessary** — direct proto field extraction would avoid JSON Value tree allocation (~2 allocs/event). Deferred optimization. |
@@ -171,6 +171,9 @@ kafka, syslog, …  ──────────►  OTel Span
 | **P21** | `metric_to_log` OTLP/JSON conformance — Replace legacy `MetricSeries`/`MetricData` serde serialization with `OtelMetric`'s OTLP `Serialize` impl. Output now uses OTLP field names (`sum`, `gauge`, `histogram`, `summary`, `dataPoints`, `attributes`) instead of legacy (`tags`, `counter.value`, `gauge.value`, `kind`). Remap branching tests updated to use `.name` (metric-specific) instead of `.attributes` for event type detection. Elasticsearch and Humio sink tests updated. | 5 files |
 | **P22** | Protocol audit — Verified all wire formats across sources, sinks, codecs, transforms. **Results:** (1) Sources: OTLP gRPC (proto) + HTTP (proto/JSON); Vector source uses OTLP gRPC. (2) Sinks: OTLP gRPC (proto) + HTTP (JSON); Vector sink uses OTLP gRPC. (3) Codecs: All legacy Native/NativeJSON deleted (commit 726162aa). Standard codecs remain (JSON, Protobuf, OTLP, Avro, CEF, CSV, GELF, Logfmt, Raw, Syslog, Text). (4) Transforms: All compliant or event-type agnostic (`log_to_metric` `to_metrics()` deleted in P24). | 0 files (audit only) |
 
+| **P26-3** | Phase 3 legacy type deletion: delete `MetricValue` (6 variants + all methods), `MetricData`, `MetricTime`, `MetricName`. Rename `MetricSeries` → `MetricIdentity` (flatten). Delete write_list/write_word, MetricValue Arbitrary, MetricData tests. | −986 lines, 10 files |
+| **D10.0** | VRL metric unification: `VrlTarget::OtelMetric { event, value }` → `OtelMetric(Value, EventMetadata)`. Full proto→Value→proto round-trip matching OtelLog/OtelSpan. Add `otel_metric_event_to_value()` + `value_to_otel_metric_event()` for all 5 metric types. Delete `precompute_otel_metric_value()`, per-field write-back, `target_get_otel_metric()`, `MetricPathError`, `insert_at_segments()`. | 1 file, +363/−238 |
+
 **Total changes:** +53,115/−42,556 lines across 9,885 files (net +10,559). The net positive reflects substantial new code (OTel types, VRL targets, OtelAttributes, migration tool, new transforms) alongside large deletions (legacy types, DD sinks, native proto, test fixtures).
 
 ---
@@ -181,7 +184,7 @@ kafka, syslog, …  ──────────►  OTel Span
 |-----------|-------------|-------------------|
 | `to_value_canonical()` / `from_value_map()` | VRL path access depends on Value↔proto bridge. Codec encoders also use it (12 call sites, 8 files). | **P27:** Direct proto access for encoders eliminates codec usage. VRL bridge stays until VRL operates on `AnyValue` directly. |
 | ~~`modify_as_value()`~~ | **Done (P15).** | — |
-| Legacy metric types (~2,164 lines) | `MetricValue` arithmetic, `MetricKind` temporality, `MetricTags` multi-value, `MetricSeries`/`MetricData`. | **P26:** `MetricArithmetic` trait on `OtelMetric`, `AggregationTemporality` for Sum/Histogram only, `ArrayValue` for multi-value attrs. |
+| ~~Legacy metric types~~ | **Done (P26).** `MetricValue`, `MetricData`, `MetricTime`, `MetricName` deleted. `MetricSeries` renamed to `MetricIdentity`. VRL metric unification (D10.0) complete. Remaining: `MetricKind`, `StatisticKind`, `MetricTags`, `Sample`/`Bucket`/`Quantile` — lightweight helpers, no planned deletion. | — |
 | ~~`log_namespace: Option<bool>`~~ | **Done (P13+P14).** | — |
 | ~~Resource/scope attributes~~ | **Done.** | — |
 | ~~OtelMetric data-point attributes~~ | **Done (P16).** | — |
@@ -481,19 +484,21 @@ Added `MetricView::as_name()` and `Display` impl.
 Files migrated: ~30 files across lib core, sources, transforms, sinks, API, test code, internal events.
 Only `config/mod.rs` (TestMetricInput deserialization) deferred to Step 3c since it's structurally tied to `MetricData`/`MetricSeries`.
 
-**Step 3c — Delete + config deser migration:**
-- Inline `TestMetricInput` deserialization types to not depend on `MetricData`/`MetricSeries`/`MetricValue`.
-- Move `MetricKind`, `Sample`, `Bucket`, `Quantile`, `StatisticKind` to `otel_event.rs` (still used by OtelMetric).
-- Move `MetricTags` to `otel_event.rs` (used everywhere).
-- Rename `MetricSeries` → `MetricIdentity`, move to `otel_event.rs`.
-- Delete `MetricValue`, `MetricData`, `MetricName`, `MetricTime` types.
-- Delete `value()` method on OtelMetric (returns legacy `MetricValue`).
-- Delete `extract_metric_data()` internal method.
-- Delete the `Arbitrary` impl for `MetricValue` in `test/common.rs` (replace with `Arbitrary` for `OtelMetric` using `MetricView`).
-- Delete remaining files in `event/metric/` module tree.
-- All dead imports.
+**Step 3c — Delete legacy types ✅ (completed 2026-04-30):**
+- Deleted `MetricValue` enum (6 variants + all methods and trait impls) from `value.rs`
+- Deleted `MetricData` struct, `MetricTime` struct, all methods from `data.rs` (file deleted)
+- Deleted `MetricName` sub-struct — fields flattened into `MetricIdentity`
+- Renamed `MetricSeries` → `MetricIdentity` (type alias kept for backward compat)
+- Deleted `Arbitrary` impl for `MetricValue`, `write_list`/`write_word` helpers
+- Deleted MetricData add/subtract test module (~250 lines)
+- Total: −986 lines across 10 files
 
-End state: zero legacy metric types anywhere. `MetricKind`, `MetricIdentity`, `StatisticKind`, `Sample`, `Bucket`, `Quantile` live in `otel_event.rs`. `MetricTags` stays (migrated to `OtelAttributes` per D8 in future pass).
+Remaining types in `event/metric/` kept in place (not moved to `otel_event.rs` — file already 6886 lines):
+- `MetricKind` — standalone 2-variant enum (D12)
+- `StatisticKind` — still used by statsd, log_to_metric, constructors (D14 deferred)
+- `Sample`, `Bucket`, `Quantile` — used by `samples_to_buckets()` and constructors
+- `MetricTags` — used in 36+ files (D8 separate pass)
+- `MetricIdentity` (née `MetricSeries`) — HashMap grouping key
 
 ### P27 — Replace `to_value_canonical()` in codec encoders (deferred)
 5 call sites in 4 codec files (not 12/8 as originally estimated — some already migrated):
@@ -555,7 +560,7 @@ Full removal of `MetricValue`, `MetricData`, `MetricSeries`, `MetricName`, `Metr
 |--------|------|-------------|
 | 3a | Prep ✅ | Added `MetricView<'a>` + `view()` + `as_name()` + `Display`. |
 | 3b | Migrate consumers ✅ | Replaced `value()` → `view()` in ~30 files. All `.value()` consumers migrated except `config/mod.rs` (deferred). |
-| 3c | Delete + config deser | Move surviving types to `otel_event.rs`. Inline `TestMetricInput` deser. Delete `MetricValue`, `MetricData`, `MetricName`, `MetricTime`, `value()`, `event/metric/` module tree. |
+| 3c | Delete legacy types ✅ | Deleted `MetricValue`, `MetricData`, `MetricTime`, `MetricName`. Renamed `MetricSeries` → `MetricIdentity` (flattened). −986 lines. |
 
 ### Phase 4 — P27 encoder migration (D5)
 Migrate codec encoders off `to_value_canonical()`. One commit per encoder.
@@ -567,14 +572,14 @@ Migrate codec encoders off `to_value_canonical()`. One commit per encoder.
 | 4c | Avro | Use `Serialize` impl if schema matches, or keep Value bridge. |
 | 4d | Protobuf | May keep Value bridge (VRL `Value` is its natural input for descriptor encoding). |
 
-### Phase 5 — D10.0 VRL metric unification
+### Phase 5 — D10.0 VRL metric unification ✅ (completed 2026-04-30)
 Unify OtelMetric VRL path to match OtelLog/OtelSpan (full proto → Value → proto).
 
 | Commit | What |
 |--------|------|
-| 5a | Add `otel_metric_event_to_value()` + `value_to_otel_metric_event()` |
-| 5b | Replace `VrlTarget::OtelMetric { event, value }` with `VrlTarget::OtelMetric(Value, EventMetadata)` |
-| 5c | Delete `precompute_otel_metric_value()`, per-field write-back code |
+| 5a ✅ | Add `otel_metric_event_to_value()` + `value_to_otel_metric_event()` — all 5 metric types round-trip |
+| 5b ✅ | Replace `VrlTarget::OtelMetric { event, value }` with `VrlTarget::OtelMetric(Value, EventMetadata)` |
+| 5c ✅ | Delete `precompute_otel_metric_value()`, per-field write-back code, `target_get_otel_metric()`, `MetricPathError`, `insert_at_segments()` |
 
 ### Phase 6 — P28 hardcoded field names (D6)
 Extract ~239 string literals in `otel_event.rs` into named constants in `otel_fields.rs`. Last priority.

@@ -6,7 +6,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::{codec::BytesCodec, udp::UdpFramed};
 use vector_lib::{
     event::{
-        Event, MetricKind, MetricTags, OtelMetric, StatisticKind,
+        Event, MetricKind, MetricTags, OtelMetric,
         metric::TagValue,
     },
     metric_tags,
@@ -61,7 +61,7 @@ async fn test_send_to_statsd() {
                 "histogram",
                 MetricKind::Incremental,
                 &vector_lib::samples![2.0 => 100],
-                StatisticKind::Histogram,
+                "histogram",
             )
             .with_namespace(Some("vector")),
         ),

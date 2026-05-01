@@ -611,7 +611,7 @@ mod tests {
     use similar_asserts::assert_eq;
     use tokio::{sync::oneshot::error::TryRecvError, time};
     use vector_lib::{
-        event::{MetricTags, StatisticKind},
+        event::MetricTags,
         finalization::{BatchNotifier, BatchStatus},
         metric_tags, samples,
         sensitive_string::SensitiveString,
@@ -1188,9 +1188,9 @@ mod tests {
 
         let events: Vec<Event> = summary_samples
             .iter()
-            .map(|s| Event::Metric(OtelMetric::new_distribution_from_samples("distrib_summary", MetricKind::Incremental, s, StatisticKind::Summary)))
+            .map(|s| Event::Metric(OtelMetric::new_distribution_from_samples("distrib_summary", MetricKind::Incremental, s, "summary")))
             .chain(histo_samples.iter().map(|s| {
-                Event::Metric(OtelMetric::new_distribution_from_samples("distrib_histo", MetricKind::Incremental, s, StatisticKind::Histogram))
+                Event::Metric(OtelMetric::new_distribution_from_samples("distrib_histo", MetricKind::Incremental, s, "histogram"))
             }))
             .collect();
 
@@ -1264,9 +1264,9 @@ mod tests {
 
         let events: Vec<Event> = summary_samples
             .iter()
-            .map(|s| Event::Metric(OtelMetric::new_distribution_from_samples("distrib_summary", MetricKind::Incremental, s, StatisticKind::Summary)))
+            .map(|s| Event::Metric(OtelMetric::new_distribution_from_samples("distrib_summary", MetricKind::Incremental, s, "summary")))
             .chain(histo_samples.iter().map(|s| {
-                Event::Metric(OtelMetric::new_distribution_from_samples("distrib_histo", MetricKind::Incremental, s, StatisticKind::Histogram))
+                Event::Metric(OtelMetric::new_distribution_from_samples("distrib_histo", MetricKind::Incremental, s, "histogram"))
             }))
             .collect();
 

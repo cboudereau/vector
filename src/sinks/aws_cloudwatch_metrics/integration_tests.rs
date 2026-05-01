@@ -6,7 +6,6 @@ use super::*;
 use crate::{
     event::{
         Event, MetricKind, OtelMetric,
-        metric::StatisticKind,
     },
     test_util::{
         components::{AWS_SINK_TAGS, run_and_assert_sink_compliance},
@@ -73,7 +72,7 @@ async fn cloudwatch_metrics_put_data() {
                 format!("distribution-{distribution_name}"),
                 MetricKind::Incremental,
                 &vector_lib::samples![i as f64 => 100],
-                StatisticKind::Histogram,
+                "histogram",
             )
             .with_timestamp(Some(
                 Utc.with_ymd_and_hms(2018, 11, 14, 8, 9, 10)

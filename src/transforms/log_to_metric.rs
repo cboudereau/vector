@@ -20,7 +20,7 @@ use crate::{
     },
     event::{
         Event, Value,
-        metric::{MetricKind, MetricTags, StatisticKind, TagValue},
+        metric::{MetricKind, MetricTags, TagValue},
     },
     internal_events::{
         DROP_EVENT, LogToMetricFieldNullError, LogToMetricParseFloatError,
@@ -371,7 +371,7 @@ fn to_metric_with_config(config: &MetricConfig, event: &Event) -> Result<OtelMet
                 &name,
                 MetricKind::Incremental,
                 &samples,
-                StatisticKind::Histogram,
+                "histogram",
             )
         }
         MetricTypeConfig::Summary => {
@@ -387,7 +387,7 @@ fn to_metric_with_config(config: &MetricConfig, event: &Event) -> Result<OtelMet
                 &name,
                 MetricKind::Incremental,
                 &samples,
-                StatisticKind::Summary,
+                "summary",
             )
         }
         MetricTypeConfig::Gauge => {
@@ -496,10 +496,7 @@ mod tests {
     use crate::{
         event::{
             Event, EventMetadata, OtelLog, OtelMetric,
-            metric::{
-                MetricKind,
-                StatisticKind,
-            },
+            metric::MetricKind,
         },
         test_util::components::assert_transform_compliance,
         transforms::test::create_topology,
@@ -1171,7 +1168,7 @@ mod tests {
 
         assert_eq!(
             metric.into_otel_metric(),
-            OtelMetric::new_distribution_from_samples("response_time", MetricKind::Incremental, &vector_lib::samples![2.5 => 1], StatisticKind::Histogram)
+            OtelMetric::new_distribution_from_samples("response_time", MetricKind::Incremental, &vector_lib::samples![2.5 => 1], "histogram")
                 .with_metadata(metadata)
                 .with_timestamp(Some(ts()))
         );
@@ -1201,7 +1198,7 @@ mod tests {
 
         assert_eq!(
             metric.into_otel_metric(),
-            OtelMetric::new_distribution_from_samples("response_time", MetricKind::Incremental, &vector_lib::samples![2.5 => 1], StatisticKind::Summary)
+            OtelMetric::new_distribution_from_samples("response_time", MetricKind::Incremental, &vector_lib::samples![2.5 => 1], "summary")
                 .with_metadata(metadata)
                 .with_timestamp(Some(ts()))
         );

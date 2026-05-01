@@ -109,7 +109,7 @@ async fn encode_events_distribution() {
             "latency",
             MetricKind::Incremental,
             &vector_lib::samples![11.0 => 100, 12.0 => 50],
-            crate::event::metric::StatisticKind::Histogram,
+            "histogram",
         ),
     ];
 

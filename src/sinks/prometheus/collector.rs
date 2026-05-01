@@ -10,7 +10,7 @@ use vector_lib::{
 use crate::{
     event::{
         MetricView, OtelMetric,
-        metric::{MetricKind, Sample, StatisticKind},
+        metric::{MetricKind, Sample},
     },
     sinks::util::{encode_namespace, statistic::DistributionStatistic},
 };
@@ -62,9 +62,8 @@ pub(super) trait MetricCollector {
                     self.emit_value(timestamp, name, "", values.len() as f64, tags, None);
                 }
                 MetricView::Distribution { bounds, counts } => {
-                    let statistic_kind = metric.distribution_statistic_kind();
-                    match statistic_kind {
-                        StatisticKind::Histogram => {
+                    match metric.distribution_statistic() {
+                        "histogram" => {
                             let samples: Vec<Sample> = bounds.iter().zip(counts.iter())
                                 .map(|(&value, &rate)| Sample { value, rate: rate as u32 })
                                 .collect();
@@ -92,7 +91,7 @@ pub(super) trait MetricCollector {
                             self.emit_value(timestamp, name, "_sum", sum, tags, None);
                             self.emit_value(timestamp, name, "_count", count as f64, tags, None);
                         }
-                        StatisticKind::Summary => {
+                        _ => {
                             let samples: Vec<Sample> = bounds.iter().zip(counts.iter())
                                 .map(|(&value, &rate)| Sample { value, rate: rate as u32 })
                                 .collect();
@@ -383,9 +382,9 @@ fn prometheus_metric_type(view: &MetricView<'_>, metric: &OtelMetric) -> proto::
         MetricView::Sum { .. } => MetricType::Counter,
         MetricView::Gauge { .. } | MetricView::Set { .. } => MetricType::Gauge,
         MetricView::Distribution { .. } => {
-            match metric.distribution_statistic_kind() {
-                StatisticKind::Histogram => MetricType::Histogram,
-                StatisticKind::Summary => MetricType::Summary,
+            match metric.distribution_statistic() {
+                "summary" => MetricType::Summary,
+                _ => MetricType::Histogram,
             }
         }
         MetricView::Histogram { .. } | MetricView::ExponentialHistogram { .. } => MetricType::Histogram,
@@ -402,10 +401,7 @@ mod tests {
 
     use super::{super::default_summary_quantiles, *};
     use crate::{
-        event::metric::{
-            MetricKind,
-            StatisticKind,
-        },
+        event::metric::MetricKind,
         event::OtelMetric,
         test_util::stats::VariableHistogram,
     };
@@ -607,7 +603,7 @@ mod tests {
 
     fn encode_distribution<T: MetricCollector>() -> T::Output {
         let samples = vector_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2];
-        let otel = OtelMetric::new_distribution_from_samples("requests", MetricKind::Absolute, &samples, StatisticKind::Histogram)
+        let otel = OtelMetric::new_distribution_from_samples("requests", MetricKind::Absolute, &samples, "histogram")
             .with_timestamp(Some(timestamp()));
         encode_one::<T>(Some("vector"), &[0.0, 2.5, 5.0], &[], otel)
     }
@@ -785,7 +781,7 @@ mod tests {
 
     fn encode_distribution_summary<T: MetricCollector>() -> T::Output {
         let samples = vector_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2];
-        let otel = OtelMetric::new_distribution_from_samples("requests", MetricKind::Absolute, &samples, StatisticKind::Summary)
+        let otel = OtelMetric::new_distribution_from_samples("requests", MetricKind::Absolute, &samples, "summary")
             .with_tags(Some(tags()))
             .with_timestamp(Some(timestamp()));
         encode_one::<T>(Some("ns"), &[], &default_summary_quantiles(), otel)

@@ -492,7 +492,7 @@ mod tests {
     use chrono::NaiveDate;
     use std::sync::Arc;
     use vector_core::event::{
-        Event, MetricKind, OtelMetric, StatisticKind,
+        Event, MetricKind, OtelMetric,
     };
     use vrl::path::parse_target_path;
     use vrl::prelude::Kind;
@@ -787,7 +787,7 @@ mod tests {
             "metric1",
             MetricKind::Incremental,
             &vector_core::samples![10.0 => 1],
-            StatisticKind::Histogram,
+            "histogram",
         ));
 
         let mut serializer = SyslogSerializer::new(&config);

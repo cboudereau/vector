@@ -3883,11 +3883,13 @@ impl OtelMetric {
     /// Convenience constructor for a distribution metric from samples.
     /// Represented as an OTLP Histogram with vector.metric_type=distribution
     /// and vector.statistic attribute indicating histogram vs summary.
+    ///
+    /// `statistic` should be `"histogram"` or `"summary"`.
     pub fn new_distribution_from_samples(
         name: impl Into<String>,
         kind: super::MetricKind,
         samples: &[super::metric::Sample],
-        statistic: super::StatisticKind,
+        statistic: &str,
     ) -> Self {
         use opentelemetry_proto::tonic::metrics::v1::{
             self as otel_metrics, metric::Data, Histogram, HistogramDataPoint,
@@ -3922,10 +3924,7 @@ impl OtelMetric {
         );
         m.set_data_point_attribute(
             f::VECTOR_STATISTIC.to_string(),
-            string_value(match statistic {
-                super::StatisticKind::Histogram => f::METRIC_TYPE_HISTOGRAM,
-                super::StatisticKind::Summary => f::METRIC_TYPE_SUMMARY,
-            }),
+            string_value(statistic),
         );
         m
     }
@@ -3933,7 +3932,7 @@ impl OtelMetric {
     /// Convenience constructor for a distribution metric (empty, no samples).
     /// Use `new_distribution_from_samples` when you have sample data.
     pub fn new_distribution(name: impl Into<String>, kind: super::MetricKind) -> Self {
-        Self::new_distribution_from_samples(name, kind, &[], super::StatisticKind::Histogram)
+        Self::new_distribution_from_samples(name, kind, &[], f::METRIC_TYPE_HISTOGRAM)
     }
 
     /// Convenience constructor for a set metric with its values.
@@ -5044,18 +5043,20 @@ impl OtelMetric {
             .is_some_and(|v| matches!(v, opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(s) if s == f::METRIC_TYPE_DISTRIBUTION))
     }
 
-    /// Returns the `StatisticKind` for a distribution metric.
-    /// Returns `StatisticKind::Histogram` by default (including for non-distribution metrics).
-    pub fn distribution_statistic_kind(&self) -> super::StatisticKind {
-        let is_summary = self.dp_attrs.first()
+    /// Returns the distribution statistic type string ("histogram" or "summary").
+    /// Returns "histogram" by default (including for non-distribution metrics).
+    pub fn distribution_statistic(&self) -> &str {
+        self.dp_attrs.first()
             .and_then(|attrs| attrs.get(f::VECTOR_STATISTIC))
-            .and_then(|av| av.value.as_ref())
-            .is_some_and(|v| matches!(v, opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(s) if s == f::METRIC_TYPE_SUMMARY));
-        if is_summary {
-            super::StatisticKind::Summary
-        } else {
-            super::StatisticKind::Histogram
-        }
+            .and_then(|av| match &av.value {
+                Some(OtelValueKind::StringValue(s)) => Some(s.as_str()),
+                _ => None,
+            })
+            .unwrap_or(f::METRIC_TYPE_HISTOGRAM)
+    }
+
+    pub fn is_distribution_summary(&self) -> bool {
+        self.distribution_statistic() == f::METRIC_TYPE_SUMMARY
     }
 
     /// Returns a zero-copy view of this metric's data, borrowing from the

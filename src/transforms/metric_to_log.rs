@@ -240,10 +240,7 @@ mod tests {
     use crate::{
         event::{
             KeyString, OtelLog, OtelMetric, Value,
-            metric::{
-                MetricKind, MetricTags,
-                StatisticKind,
-            },
+            metric::{MetricKind, MetricTags},
         },
         test_util::components::assert_transform_compliance,
         transforms::test::create_topology,
@@ -388,7 +385,7 @@ mod tests {
 
     #[tokio::test]
     async fn transform_distribution() {
-        let distro = OtelMetric::new_distribution_from_samples("distro", MetricKind::Absolute, &vector_lib::samples![1.0 => 10, 2.0 => 20], StatisticKind::Histogram)
+        let distro = OtelMetric::new_distribution_from_samples("distro", MetricKind::Absolute, &vector_lib::samples![1.0 => 10, 2.0 => 20], "histogram")
             .with_metadata(event_metadata())
             .with_timestamp(Some(ts()));
         let mut metadata = distro.metadata().clone();

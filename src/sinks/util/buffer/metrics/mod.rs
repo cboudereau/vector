@@ -129,7 +129,7 @@ mod tests {
         event::{
             OtelMetric,
             metric::{
-                MetricKind, MetricKind::*, StatisticKind,
+                MetricKind, MetricKind::*,
             },
         },
         metric_tags,
@@ -168,7 +168,7 @@ mod tests {
             format!("dist-{num}"),
             kind,
             &vector_lib::samples![num as f64 => rate],
-            StatisticKind::Histogram,
+            "histogram",
         )
     }
 

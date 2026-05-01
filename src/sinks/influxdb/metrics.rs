@@ -13,7 +13,7 @@ use crate::{
     config::{AcknowledgementsConfig, Input, SinkConfig, SinkContext},
     event::{
         Event, KeyString, OtelMetric,
-        metric::{Sample, StatisticKind},
+        metric::Sample,
     },
     http::HttpClient,
     internal_events::InfluxdbEncodingError,
@@ -288,8 +288,8 @@ fn encode_events(
         let event_tags = otel.tags();
         let tags = merge_tags(event_tags, tags);
         let view = otel.view();
-        let statistic_kind = otel.distribution_statistic_kind();
-        let (metric_type, fields) = get_type_and_fields(&view, statistic_kind, quantiles);
+        let statistic = otel.distribution_statistic();
+        let (metric_type, fields) = get_type_and_fields(&view, statistic, quantiles);
 
         let mut unwrapped_tags = tags.unwrap_or_default();
         unwrapped_tags.replace("metric_type".to_owned(), metric_type.to_owned());
@@ -318,7 +318,7 @@ fn encode_events(
 
 fn get_type_and_fields(
     view: &MetricView<'_>,
-    statistic_kind: StatisticKind,
+    statistic: &str,
     quantiles: &[f64],
 ) -> (&'static str, Option<HashMap<KeyString, Field>>) {
     match view {
@@ -369,9 +369,9 @@ fn get_type_and_fields(
             let samples: Vec<Sample> = bounds.iter().zip(counts.iter())
                 .map(|(&value, &rate)| Sample { value, rate: rate as u32 })
                 .collect();
-            let quantiles = match statistic_kind {
-                StatisticKind::Histogram => &[0.95] as &[_],
-                StatisticKind::Summary => quantiles,
+            let quantiles = match statistic {
+                "summary" => quantiles,
+                _ => &[0.95] as &[_],
             };
             let fields = encode_distribution(&samples, quantiles);
             ("distribution", fields)
@@ -417,7 +417,7 @@ mod tests {
     use super::*;
     use crate::{
         event::metric::{
-            MetricKind, Sample, StatisticKind,
+            MetricKind, Sample,
         },
         event::OtelMetric,
         sinks::influxdb::test_util::{assert_fields, split_line_protocol, tags, ts},
@@ -642,7 +642,7 @@ mod tests {
                 "requests",
                 MetricKind::Incremental,
                 &vector_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2],
-                StatisticKind::Histogram,
+                "histogram",
             )
                 .with_namespace(Some("ns"))
                 .with_metric_tags(Some(tags()))
@@ -656,7 +656,7 @@ mod tests {
                         rate: 1,
                     })
                     .collect::<Vec<_>>(),
-                StatisticKind::Histogram,
+                "histogram",
             )
                 .with_namespace(Some("ns"))
                 .with_timestamp(Some(ts())),
@@ -669,7 +669,7 @@ mod tests {
                         rate: v,
                     })
                     .collect::<Vec<_>>(),
-                StatisticKind::Histogram,
+                "histogram",
             )
                 .with_namespace(Some("ns"))
                 .with_timestamp(Some(ts())),
@@ -746,7 +746,7 @@ mod tests {
                 "requests",
                 MetricKind::Incremental,
                 &[],
-                StatisticKind::Histogram,
+                "histogram",
             )
                 .with_namespace(Some("ns"))
                 .with_metric_tags(Some(tags()))
@@ -764,7 +764,7 @@ mod tests {
                 "requests",
                 MetricKind::Incremental,
                 &vector_lib::samples![1.0 => 0, 2.0 => 0],
-                StatisticKind::Histogram,
+                "histogram",
             )
                 .with_namespace(Some("ns"))
                 .with_metric_tags(Some(tags()))
@@ -782,7 +782,7 @@ mod tests {
                 "requests",
                 MetricKind::Incremental,
                 &vector_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2],
-                StatisticKind::Summary,
+                "summary",
             )
                 .with_namespace(Some("ns"))
                 .with_metric_tags(Some(tags()))

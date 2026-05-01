@@ -21,7 +21,7 @@ pub use vector_lib::{
 
 use crate::{
     conditions,
-    event::{Value, MetricKind, MetricTags, OtelMetric, metric::{Sample, Bucket, Quantile, StatisticKind}},
+    event::{Value, MetricKind, MetricTags, OtelMetric, metric::{Sample, Bucket, Quantile}},
     secrets::SecretBackends,
     serde::OneOrMany,
 };
@@ -577,6 +577,10 @@ pub struct TestInput {
     pub metric: Option<TestMetricInput>,
 }
 
+fn default_statistic() -> String {
+    "histogram".to_string()
+}
+
 /// A metric definition for unit test inputs.
 #[configurable_component]
 #[derive(Clone, Debug)]
@@ -634,9 +638,9 @@ pub enum TestMetricValue {
     Distribution {
         /// The distribution samples.
         samples: Vec<Sample>,
-        /// The statistic kind.
-        #[configurable(derived)]
-        statistic: StatisticKind,
+        /// The statistic type ("histogram" or "summary").
+        #[serde(default = "default_statistic")]
+        statistic: String,
     },
     /// An aggregated histogram metric.
     AggregatedHistogram {
@@ -672,7 +676,7 @@ impl TestMetricInput {
                 OtelMetric::new_set_from_values(name, kind, values.iter().cloned().collect::<Vec<_>>())
             }
             TestMetricValue::Distribution { samples, statistic } => {
-                OtelMetric::new_distribution_from_samples(name, kind, samples, *statistic)
+                OtelMetric::new_distribution_from_samples(name, kind, samples, statistic.as_str())
             }
             TestMetricValue::AggregatedHistogram { buckets, count, sum } => {
                 OtelMetric::new_histogram(name, kind, buckets, *count, *sum)

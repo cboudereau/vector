@@ -2,7 +2,7 @@ use mlua::prelude::*;
 
 use super::{
     super::{
-        MetricKind, MetricView, OtelAttributes, OtelMetric, StatisticKind,
+        MetricKind, MetricView, OtelAttributes, OtelMetric,
         metric::{self},
     },
     util::{table_to_timestamp, timestamp_to_table},
@@ -44,31 +44,6 @@ impl FromLua for MetricKind {
     }
 }
 
-impl IntoLua for StatisticKind {
-    fn into_lua(self, lua: &Lua) -> LuaResult<LuaValue> {
-        let kind = match self {
-            StatisticKind::Summary => "summary",
-            StatisticKind::Histogram => "histogram",
-        };
-        lua.create_string(kind).map(LuaValue::String)
-    }
-}
-
-impl FromLua for StatisticKind {
-    fn from_lua(value: LuaValue, _: &Lua) -> LuaResult<Self> {
-        match value {
-            LuaValue::String(s) if s == "summary" => Ok(StatisticKind::Summary),
-            LuaValue::String(s) if s == "histogram" => Ok(StatisticKind::Histogram),
-            _ => Err(LuaError::FromLuaConversionError {
-                from: value.type_name(),
-                to: String::from("StatisticKind"),
-                message: Some(
-                    "Statistic kind should be either \"summary\" or \"histogram\"".to_string(),
-                ),
-            }),
-        }
-    }
-}
 
 impl FromLua for OtelAttributes {
     fn from_lua(value: LuaValue, _: &Lua) -> LuaResult<Self> {
@@ -145,7 +120,7 @@ impl IntoLua for LuaMetric {
                 let values: Vec<f64> = bounds.to_vec();
                 distribution.raw_set("values", values)?;
                 distribution.raw_set("sample_rates", sample_rates)?;
-                distribution.raw_set("statistic", StatisticKind::Histogram)?;
+                distribution.raw_set("statistic", "histogram")?;
                 tbl.raw_set("distribution", distribution)?;
             }
             MetricView::Histogram {
@@ -229,8 +204,8 @@ impl FromLua for OtelMetric {
             let values: Vec<f64> = distribution.raw_get("values")?;
             let rates: Vec<u32> = distribution.raw_get("sample_rates")?;
             let samples = metric::zip_samples(values, rates);
-            let statistic: StatisticKind = distribution.raw_get("statistic")?;
-            OtelMetric::new_distribution_from_samples(&name, kind, &samples, statistic)
+            let statistic: String = distribution.raw_get("statistic").unwrap_or_else(|_| "histogram".to_string());
+            OtelMetric::new_distribution_from_samples(&name, kind, &samples, &statistic)
         } else if let Some(aggregated_histogram) =
             table.raw_get::<Option<LuaTable>>("aggregated_histogram")?
         {
@@ -424,7 +399,7 @@ mod test {
             "example distribution",
             MetricKind::Incremental,
             &crate::samples![1.0 => 10, 1.0 => 20],
-            StatisticKind::Histogram,
+            "histogram",
         );
         assert_metric(
             metric,
@@ -614,7 +589,7 @@ mod test {
             "example distribution",
             MetricKind::Absolute,
             &crate::samples![1.0 => 10, 1.0 => 20],
-            StatisticKind::Histogram,
+            "histogram",
         );
         assert_event_data_eq!(Lua::new().load(value).eval::<OtelMetric>().unwrap(), expected);
     }

@@ -5,22 +5,13 @@ use proptest::{
 };
 
 use super::{
-    Bucket, MetricTags, Quantile, Sample, StatisticKind, TagValue, TagValueSet,
+    Bucket, MetricTags, Quantile, Sample, TagValue, TagValueSet,
 };
 
 fn realistic_float() -> proptest::num::f64::Any {
     proptest::num::f64::POSITIVE | proptest::num::f64::NEGATIVE | proptest::num::f64::ZERO
 }
 
-impl Arbitrary for StatisticKind {
-    type Parameters = ();
-    type Strategy = BoxedStrategy<StatisticKind>;
-
-    fn arbitrary_with((): Self::Parameters) -> Self::Strategy {
-        let strategy = prop_oneof![Just(StatisticKind::Histogram), Just(StatisticKind::Summary)];
-        strategy.boxed()
-    }
-}
 
 impl Arbitrary for Sample {
     type Parameters = ();

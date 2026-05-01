@@ -4,7 +4,7 @@ use std::{
 };
 
 use vector_lib::event::{
-    Event, MetricView, OtelMetric, StatisticKind,
+    Event, MetricView, OtelMetric,
     metric::{Bucket, MetricSeries, Sample},
 };
 
@@ -303,7 +303,7 @@ where
             rate: 1,
         })
         .collect();
-    OtelMetric::new_distribution_from_samples("distribution", kind, &sample_vec, StatisticKind::Histogram)
+    OtelMetric::new_distribution_from_samples("distribution", kind, &sample_vec, "histogram")
 }
 
 pub fn get_aggregated_histogram<S, V>(samples: S, kind: MetricKind) -> OtelMetric

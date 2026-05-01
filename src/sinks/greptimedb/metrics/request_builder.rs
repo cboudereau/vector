@@ -203,10 +203,7 @@ mod tests {
     use super::*;
     use crate::event::{
         OtelMetric,
-        metric::{
-            MetricKind,
-            StatisticKind,
-        },
+        metric::MetricKind,
     };
 
     fn get_column(rows: &Rows, name: &str) -> f64 {
@@ -338,7 +335,7 @@ mod tests {
             "cpu_seconds_total",
             MetricKind::Incremental,
             &vector_lib::samples![1.0 => 2, 2.0 => 4, 3.0 => 2],
-            StatisticKind::Histogram,
+            "histogram",
         );
         let options = RequestBuilderOptions {
             use_new_naming: false,

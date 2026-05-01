@@ -8,7 +8,7 @@ use std::{
 use regex::Regex;
 
 use crate::{
-    event::metric::{MetricKind, MetricTags, StatisticKind},
+    event::metric::{MetricKind, MetricTags},
     event::OtelMetric,
     sources::{statsd::ConversionUnit, util::extract_tag_key_and_value},
 };
@@ -178,10 +178,10 @@ fn sanitize_sampling(sampling: f64) -> f64 {
     if sampling == 0.0 { 1.0 } else { sampling }
 }
 
-fn convert_to_statistic(unit: &str) -> StatisticKind {
+fn convert_to_statistic(unit: &str) -> &'static str {
     match unit {
-        "d" => StatisticKind::Summary,
-        _ => StatisticKind::Histogram,
+        "d" => "summary",
+        _ => "histogram",
     }
 }
 
@@ -222,7 +222,7 @@ mod test {
 
     use super::{ParseError, Parser, sanitize_key, sanitize_sampling};
     use crate::{
-        event::metric::{MetricKind, StatisticKind},
+        event::metric::MetricKind,
         event::OtelMetric,
         sources::statsd::ConversionUnit,
     };
@@ -315,7 +315,7 @@ mod test {
                 "glork",
                 MetricKind::Incremental,
                 &samples,
-                StatisticKind::Histogram,
+                "histogram",
             )),
         );
     }
@@ -329,7 +329,7 @@ mod test {
                 "glork",
                 MetricKind::Incremental,
                 &samples,
-                StatisticKind::Histogram,
+                "histogram",
             )),
         );
     }
@@ -343,7 +343,7 @@ mod test {
                 "glork",
                 MetricKind::Incremental,
                 &samples,
-                StatisticKind::Histogram,
+                "histogram",
             )
             .with_metric_tags(Some(metric_tags!(
                 "region" => "us-west1",
@@ -362,7 +362,7 @@ mod test {
                 "glork",
                 MetricKind::Incremental,
                 &samples,
-                StatisticKind::Summary,
+                "summary",
             )
             .with_metric_tags(Some(metric_tags!(
                 "region" => "us-west1",

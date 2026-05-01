@@ -5,7 +5,7 @@ use quickcheck::{Arbitrary, Gen, empty_shrinker};
 use vrl::value::{ObjectMap, Value};
 
 use super::super::{
-    Event, EventMetadata, MetricKind, OtelLog, OtelMetric, OtelSpan, StatisticKind,
+    Event, EventMetadata, MetricKind, OtelLog, OtelMetric, OtelSpan,
     metric::{
         Bucket, MetricTags,
         Quantile, Sample,
@@ -137,7 +137,7 @@ impl Arbitrary for OtelMetric {
             }
             3 => {
                 let samples: Vec<Sample> = Vec::arbitrary(g);
-                let statistic = StatisticKind::arbitrary(g);
+                let statistic = if bool::arbitrary(g) { "histogram" } else { "summary" };
                 OtelMetric::new_distribution_from_samples(String::from(name), kind, &samples, statistic)
             }
             4 => {
@@ -272,22 +272,6 @@ impl Arbitrary for Bucket {
     }
 }
 
-impl Arbitrary for StatisticKind {
-    fn arbitrary(g: &mut Gen) -> Self {
-        let choice: u8 = u8::arbitrary(g);
-        // Quickcheck can't derive Arbitrary for enums, see
-        // https://github.com/BurntSushi/quickcheck/issues/98
-        if choice.is_multiple_of(2) {
-            StatisticKind::Histogram
-        } else {
-            StatisticKind::Summary
-        }
-    }
-
-    fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
-        empty_shrinker()
-    }
-}
 
 impl Arbitrary for EventMetadata {
     fn arbitrary(g: &mut Gen) -> Self {

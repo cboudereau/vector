@@ -5,7 +5,7 @@ use std::{
 
 use bytes::{BufMut, BytesMut};
 use tokio_util::codec::Encoder;
-use vector_lib::event::{MetricKind, MetricView, OtelAttributes, OtelMetric, StatisticKind};
+use vector_lib::event::{MetricKind, MetricView, OtelAttributes, OtelMetric};
 
 use crate::{
     internal_events::StatsdInvalidMetricError,
@@ -67,9 +67,9 @@ impl<'a> Encoder<&'a OtelMetric> for StatsdEncoder {
                 };
             }
             MetricView::Distribution { bounds, counts } => {
-                let metric_type = match metric.distribution_statistic_kind() {
-                    StatisticKind::Histogram => "h",
-                    StatisticKind::Summary => "d",
+                let metric_type = match metric.distribution_statistic() {
+                    "summary" => "d",
+                    _ => "h",
                 };
 
                 let mut pairs: Vec<(f64, u64)> = bounds.iter().copied()
@@ -161,7 +161,7 @@ fn encode_and_write_single_event<V: Display>(
 mod tests {
     #[cfg(feature = "sources-statsd")]
     use vector_lib::event::{
-        MetricKind, OtelMetric, StatisticKind,
+        MetricKind, OtelMetric,
     };
     use vector_lib::event::OtelAttributes;
 
@@ -299,7 +299,7 @@ mod tests {
                 "distribution",
                 MetricKind::Incremental,
                 &vector_lib::samples![1.5 => 1, 1.5 => 1],
-                StatisticKind::Histogram,
+                "histogram",
             )
             .with_tags(Some(tags()));
             otel
@@ -310,7 +310,7 @@ mod tests {
                 "distribution",
                 MetricKind::Incremental,
                 &vector_lib::samples![1.5 => 2],
-                StatisticKind::Histogram,
+                "histogram",
             )
             .with_tags(Some(tags()));
             otel
@@ -329,7 +329,7 @@ mod tests {
                 "distribution",
                 MetricKind::Incremental,
                 &vector_lib::samples![2.5 => 1, 1.5 => 1, 1.5 => 1],
-                StatisticKind::Histogram,
+                "histogram",
             )
             .with_tags(Some(tags()));
             otel
@@ -340,7 +340,7 @@ mod tests {
                 "distribution",
                 MetricKind::Incremental,
                 &vector_lib::samples![1.5 => 2],
-                StatisticKind::Histogram,
+                "histogram",
             )
             .with_tags(Some(tags()));
             otel
@@ -350,7 +350,7 @@ mod tests {
                 "distribution",
                 MetricKind::Incremental,
                 &vector_lib::samples![2.5 => 1],
-                StatisticKind::Histogram,
+                "histogram",
             )
             .with_tags(Some(tags()));
             otel

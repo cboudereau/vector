@@ -10,18 +10,6 @@ const INFINITY: &str = "inf";
 const NEG_INFINITY: &str = "-inf";
 const NAN: &str = "NaN";
 
-/// Type of statistics to generate for a distribution.
-#[configurable_component]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd)]
-#[serde(rename_all = "snake_case")]
-pub enum StatisticKind {
-    /// A histogram representation.
-    Histogram,
-
-    /// Corresponds to Datadog's Distribution Metric
-    /// <https://docs.datadoghq.com/developers/metrics/types/?tab=distribution#definition>
-    Summary,
-}
 
 /// A single observation.
 #[configurable_component]

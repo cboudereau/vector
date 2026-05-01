@@ -234,10 +234,7 @@ mod tests {
     use crate::{
         event::{
             Event, OtelMetric,
-            metric::{
-                MetricKind,
-                StatisticKind,
-            },
+            metric::MetricKind,
         },
         sinks::util::test::{build_test_server, load_sink},
         test_util::{
@@ -305,7 +302,7 @@ mod tests {
                     "metric2",
                     MetricKind::Absolute,
                     &vector_lib::samples![1.0 => 100, 2.0 => 200, 3.0 => 300],
-                    StatisticKind::Histogram,
+                    "histogram",
                 )
                 .with_metric_tags(Some(metric_tags!("os.host" => "somehost")))
                 .with_timestamp(Some(

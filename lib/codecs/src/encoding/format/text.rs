@@ -109,7 +109,7 @@ mod tests {
                 vec!["bob"],
             )),
         );
-        assert_eq!(buffer, Bytes::from("users{} + bob"));
+        assert_eq!(buffer, Bytes::from("users{} + set: 1 values"));
     }
 
     #[test]
@@ -120,12 +120,12 @@ mod tests {
             },
             metric2(),
         );
-        assert_eq!(buffer, Bytes::from(r#"counter{a="second"} + 1"#));
+        assert_eq!(buffer, Bytes::from(r#"counter{a="second"} + counter: 1"#));
     }
 
     fn metric2() -> Event {
         Event::Metric(
-            OtelMetric::new_counter("counter", MetricKind::Incremental, 1.0).with_tags(Some(
+            OtelMetric::new_counter("counter", MetricKind::Incremental, 1.0).with_metric_tags(Some(
                 metric_tags!(
                     "a" => "first",
                     "a" => None,

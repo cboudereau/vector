@@ -950,6 +950,29 @@ impl OtelAttributes {
         })
     }
 
+    /// Iterate over all tag values, expanding ArrayValue entries into multiple pairs.
+    /// This is the multi-valued counterpart to `iter_single()`.
+    pub fn iter_all(&self) -> impl Iterator<Item = (&str, Option<&str>)> {
+        self.inner.iter().flat_map(|(k, v)| {
+            let pairs: Vec<(&str, Option<&str>)> = match &v.value {
+                Some(OtelValueKind::StringValue(s)) => vec![(k.as_str(), Some(s.as_str()))],
+                None => vec![(k.as_str(), None)],
+                Some(OtelValueKind::ArrayValue(arr)) => {
+                    arr.values.iter().map(|item| {
+                        let s = match &item.value {
+                            Some(OtelValueKind::StringValue(s)) => Some(s.as_str()),
+                            None => None,
+                            Some(other) => Some(otel_value_to_str_ref(other)),
+                        };
+                        (k.as_str(), s)
+                    }).collect()
+                }
+                Some(other) => vec![(k.as_str(), Some(otel_value_to_str_ref(other)))],
+            };
+            pairs.into_iter()
+        })
+    }
+
     pub fn iter_single(&self) -> impl Iterator<Item = (&str, Option<&str>)> {
         self.inner.iter().map(|(k, v)| {
             let s = match &v.value {
@@ -971,6 +994,14 @@ impl OtelAttributes {
         self.inner.into_iter().filter_map(|(k, v)| {
             match v.value {
                 Some(OtelValueKind::StringValue(s)) => Some((k, s)),
+                Some(OtelValueKind::ArrayValue(arr)) => {
+                    // For array values, take the last element (consistent with iter_single).
+                    arr.values.into_iter().last().and_then(|item| match item.value {
+                        Some(OtelValueKind::StringValue(s)) => Some((k, s)),
+                        Some(other) => Some((k, otel_value_to_tag_string(&other))),
+                        None => None,
+                    })
+                }
                 Some(other) => Some((k, otel_value_to_tag_string(&other))),
                 None => None,
             }
@@ -1610,6 +1641,7 @@ impl OtelLog {
                             }
                         }
                     }
+                    None => Some(self.to_value_canonical()),
                     _ => None,
                 }
             }
@@ -5823,7 +5855,10 @@ impl std::fmt::Display for OtelMetric {
                     write!(fmt, ",")?;
                 }
                 first = false;
-                write!(fmt, "{tag}={value:?}")?;
+                match value {
+                    Some(v) => write!(fmt, "{tag}={v:?}")?,
+                    None => write!(fmt, "{tag}")?,
+                }
             }
         }
         write!(fmt, "}}")?;

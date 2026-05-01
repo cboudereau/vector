@@ -151,7 +151,7 @@ mod tests {
         let event = Event::Metric(
             OtelMetric::new_counter("foos", MetricKind::Incremental, 100.0)
                 .with_namespace(Some("vector"))
-                .with_tags(Some(metric_tags!(
+                .with_metric_tags(Some(metric_tags!(
                     "key2" => "value2",
                     "key1" => "value1",
                     "Key3" => "Value3",
@@ -222,7 +222,7 @@ mod tests {
     fn metric2() -> Event {
         Event::Metric(
             OtelMetric::new_counter("counter", MetricKind::Incremental, 1.0)
-                .with_tags(Some(metric_tags! (
+                .with_metric_tags(Some(metric_tags! (
                     "a" => "first",
                     "a" => None,
                     "a" => "second",
@@ -274,7 +274,7 @@ mod tests {
             let event = Event::Metric(
                 OtelMetric::new_counter("foos", MetricKind::Incremental, 100.0)
                     .with_namespace(Some("vector"))
-                    .with_tags(Some(
+                    .with_metric_tags(Some(
                         metric_tags!("key2" => "value2","key1" => "value1","Key3" => "Value3",),
                     ))
                     .with_timestamp(Some(
@@ -420,7 +420,7 @@ mod tests {
         fn metric2() -> Event {
             Event::Metric(
                 OtelMetric::new_counter("counter", MetricKind::Incremental, 1.0)
-                    .with_tags(Some(
+                    .with_metric_tags(Some(
                         metric_tags! ("a" => "first","a" => None,"a" => "second",),
                     ))
             )

@@ -304,12 +304,12 @@ mod tests {
         storage.cache.store(
             vec![
                 (OtelMetric::new_gauge("test", 1.0)
-                .with_tags(Some(MetricTags::from_iter([(
+                .with_metric_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "a".to_string(),
                 )])))),
                 (OtelMetric::new_gauge("test", 1.0)
-                .with_tags(Some(MetricTags::from_iter([(
+                .with_metric_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "b".to_string(),
                 )])))),
@@ -346,12 +346,12 @@ mod tests {
         storage.cache.store(
             vec![
                 (OtelMetric::new_gauge("test", 1.0)
-                .with_tags(Some(MetricTags::from_iter([(
+                .with_metric_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "a".to_string(),
                 )])))),
                 (OtelMetric::new_gauge("test", 1.0)
-                .with_tags(Some(MetricTags::from_iter([(
+                .with_metric_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "b".to_string(),
                 )])))),
@@ -377,12 +377,12 @@ mod tests {
         storage.cache.store(
             vec![
                 (OtelMetric::new_gauge("test", 1.0)
-                .with_tags(Some(MetricTags::from_iter([(
+                .with_metric_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "a".to_string(),
                 )])))),
                 (OtelMetric::new_gauge("test", 1.0)
-                .with_tags(Some(MetricTags::from_iter([(
+                .with_metric_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "b".to_string(),
                 )])))),
@@ -422,17 +422,17 @@ mod tests {
         storage.cache.store(
             vec![
                 (OtelMetric::new_gauge("test", 1.0)
-                .with_tags(Some(MetricTags::from_iter([(
+                .with_metric_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "prefix.a".to_string(),
                 )])))),
                 (OtelMetric::new_gauge("test", 1.0)
-                .with_tags(Some(MetricTags::from_iter([(
+                .with_metric_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "something_else".to_string(),
                 )])))),
                 (OtelMetric::new_gauge("test", 1.0)
-                .with_tags(Some(MetricTags::from_iter([(
+                .with_metric_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "prefix.c".to_string(),
                 )])))),
@@ -470,17 +470,17 @@ mod tests {
         storage.cache.store(
             vec![
                 (OtelMetric::new_gauge("test", 1.0)
-                .with_tags(Some(MetricTags::from_iter([(
+                .with_metric_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "a.suffix".to_string(),
                 )])))),
                 (OtelMetric::new_gauge("test", 1.0)
-                .with_tags(Some(MetricTags::from_iter([(
+                .with_metric_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "something_else".to_string(),
                 )])))),
                 (OtelMetric::new_gauge("test", 1.0)
-                .with_tags(Some(MetricTags::from_iter([(
+                .with_metric_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "c.suffix".to_string(),
                 )])))),
@@ -518,17 +518,17 @@ mod tests {
         storage.cache.store(
             vec![
                 (OtelMetric::new_gauge("test", 1.0)
-                .with_tags(Some(MetricTags::from_iter([(
+                .with_metric_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "start.a.end".to_string(),
                 )])))),
                 (OtelMetric::new_gauge("test", 1.0)
-                .with_tags(Some(MetricTags::from_iter([(
+                .with_metric_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "something_else".to_string(),
                 )])))),
                 (OtelMetric::new_gauge("test", 1.0)
-                .with_tags(Some(MetricTags::from_iter([(
+                .with_metric_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "start.c.end".to_string(),
                 )])))),
@@ -566,17 +566,17 @@ mod tests {
         storage.cache.store(
             vec![
                 (OtelMetric::new_gauge("test", 6.0)
-                .with_tags(Some(MetricTags::from_iter([(
+                .with_metric_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "start.a.end".to_string(),
                 )])))),
                 (OtelMetric::new_gauge("test", 1.0)
-                .with_tags(Some(MetricTags::from_iter([(
+                .with_metric_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "something_else".to_string(),
                 )])))),
                 (OtelMetric::new_gauge("test", 3.0)
-                .with_tags(Some(MetricTags::from_iter([(
+                .with_metric_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "start.c.end".to_string(),
                 )])))),
@@ -602,17 +602,17 @@ mod tests {
         storage.cache.store(
             vec![
                 (OtelMetric::new_gauge("test", 6.0)
-                .with_tags(Some(MetricTags::from_iter([(
+                .with_metric_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "start.a.end".to_string(),
                 )])))),
                 (OtelMetric::new_gauge("test", 1.0)
-                .with_tags(Some(MetricTags::from_iter([(
+                .with_metric_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "something_else".to_string(),
                 )])))),
                 (OtelMetric::new_gauge("test", 3.0)
-                .with_tags(Some(MetricTags::from_iter([(
+                .with_metric_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "start.c.end".to_string(),
                 )])))),
@@ -638,17 +638,17 @@ mod tests {
         storage.cache.store(
             vec![
                 (OtelMetric::new_gauge("test", 6.0)
-                .with_tags(Some(MetricTags::from_iter([(
+                .with_metric_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "start.a.end".to_string(),
                 )])))),
                 (OtelMetric::new_gauge("test", 1.0)
-                .with_tags(Some(MetricTags::from_iter([(
+                .with_metric_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "something_else".to_string(),
                 )])))),
                 (OtelMetric::new_gauge("test", 3.0)
-                .with_tags(Some(MetricTags::from_iter([(
+                .with_metric_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "start.c.end".to_string(),
                 )])))),
@@ -674,17 +674,17 @@ mod tests {
         storage.cache.store(
             vec![
                 (OtelMetric::new_gauge("test", 6.0)
-                .with_tags(Some(MetricTags::from_iter([(
+                .with_metric_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "start.a.end".to_string(),
                 )])))),
                 (OtelMetric::new_gauge("test", 1.0)
-                .with_tags(Some(MetricTags::from_iter([(
+                .with_metric_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "something_else".to_string(),
                 )])))),
                 (OtelMetric::new_gauge("test", 3.0)
-                .with_tags(Some(MetricTags::from_iter([(
+                .with_metric_tags(Some(MetricTags::from_iter([(
                     "component_id".to_string(),
                     "start.c.end".to_string(),
                 )])))),

@@ -1024,15 +1024,20 @@ async fn decode_series_endpoint_v1() {
             );
             assert_eq!(metric.kind(), MetricKind::Incremental);
             assert!(matches!(metric.view(), MetricView::Sum { value } if value == 3.14 * 10_f64));
-            assert_tags(
-                &metric,
-                otel_tags!(
+            {
+                let mut expected_tags = otel_tags!(
                     "resource.host.name" => "another_random_host",
                     "resource.source_type" => "datadog_agent",
                     "foo" => "bar:baz",
-                    "interval_ms" => "10000",
-                ),
-            );
+                );
+                expected_tags.insert(
+                    "interval_ms".to_string(),
+                    AnyValue {
+                        value: Some(opentelemetry_proto::tonic::common::v1::any_value::Value::IntValue(10000)),
+                    },
+                );
+                assert_tags(&metric, expected_tags);
+            }
 
             assert_eq!(
                 &events[2].metadata().secrets().get("datadog_api_key").unwrap()[..],
@@ -1951,16 +1956,21 @@ async fn decode_series_endpoint_v2() {
             );
             assert_eq!(metric.kind(), MetricKind::Absolute);
             assert!(matches!(metric.view(), MetricView::Gauge { value: 3.14 }));
-            assert_tags(
-                &metric,
-                otel_tags!(
+            {
+                let mut expected_tags = otel_tags!(
                     "resource.host.name" => "random_host",
                     "resource.source_type" => "datadog_agent",
                     "foo" => "bar",
                     "source_type_name" => "a_random_source_type_name",
-                    "interval_ms" => "10000",
-                ),
-            );
+                );
+                expected_tags.insert(
+                    "interval_ms".to_string(),
+                    AnyValue {
+                        value: Some(opentelemetry_proto::tonic::common::v1::any_value::Value::IntValue(10000)),
+                    },
+                );
+                assert_tags(&metric, expected_tags);
+            }
             assert_eq!(metric.namespace(), Some("namespace"));
 
             assert_eq!(
@@ -1976,16 +1986,21 @@ async fn decode_series_endpoint_v2() {
             );
             assert_eq!(metric.kind(), MetricKind::Absolute);
             assert!(matches!(metric.view(), MetricView::Gauge { value: 3.1415 }));
-            assert_tags(
-                &metric,
-                otel_tags!(
+            {
+                let mut expected_tags = otel_tags!(
                     "resource.host.name" => "random_host",
                     "resource.source_type" => "datadog_agent",
                     "foo" => "bar",
                     "source_type_name" => "a_random_source_type_name",
-                    "interval_ms" => "10000",
-                ),
-            );
+                );
+                expected_tags.insert(
+                    "interval_ms".to_string(),
+                    AnyValue {
+                        value: Some(opentelemetry_proto::tonic::common::v1::any_value::Value::IntValue(10000)),
+                    },
+                );
+                assert_tags(&metric, expected_tags);
+            }
             assert_eq!(metric.namespace(), Some("namespace"));
 
             assert_eq!(
@@ -2005,17 +2020,32 @@ async fn decode_series_endpoint_v2() {
             );
             assert_eq!(metric.kind(), MetricKind::Incremental);
             assert!(matches!(metric.view(), MetricView::Sum { value } if value == 3.14 * 10_f64));
-            assert_tags(
-                &metric,
-                otel_tags!(
+            {
+                use opentelemetry_proto::tonic::common::v1::ArrayValue;
+                let mut expected_tags = otel_tags!(
                     "resource.host.name" => "another_random_host",
                     "resource.source_type" => "datadog_agent",
-                    "foo" => "bar:baz",
-                    "foo" => "bizbaz",
                     "source_type_name" => "another_random_source_type_name",
-                    "interval_ms" => "10000",
-                ),
-            );
+                );
+                expected_tags.insert(
+                    "foo".to_string(),
+                    AnyValue {
+                        value: Some(opentelemetry_proto::tonic::common::v1::any_value::Value::ArrayValue(ArrayValue {
+                            values: vec![
+                                AnyValue { value: Some(opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue("bar:baz".to_string())) },
+                                AnyValue { value: Some(opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue("bizbaz".to_string())) },
+                            ],
+                        })),
+                    },
+                );
+                expected_tags.insert(
+                    "interval_ms".to_string(),
+                    AnyValue {
+                        value: Some(opentelemetry_proto::tonic::common::v1::any_value::Value::IntValue(10000)),
+                    },
+                );
+                assert_tags(&metric, expected_tags);
+            }
             assert_eq!(metric.namespace(), Some("another_namespace"));
 
             assert_eq!(

@@ -144,10 +144,37 @@ impl TagCardinalityLimit {
             None
         };
         if let Some(tags_map) = otel_metric.tags() {
-            // Convert OtelAttributes iter_single to (key, TagValueSet) pairs for cardinality logic
+            // Convert OtelAttributes to (key, TagValueSet) pairs for cardinality logic.
+            // We use iter() instead of iter_single() so that ArrayValue entries
+            // (multi-value tags) are properly expanded into TagValueSet::Set with
+            // all individual values, rather than collapsing to a single value.
             let tag_pairs: Vec<(String, TagValueSet)> = tags_map
-                .iter_single()
-                .map(|(k, v)| (k.to_string(), TagValueSet::from([TagValue::from(v.unwrap_or(""))])))
+                .iter()
+                .map(|(k, av)| {
+                    use crate::event::OtelValueKind;
+                    let tvs = match &av.value {
+                        Some(OtelValueKind::ArrayValue(arr)) => {
+                            let values: Vec<TagValue> = arr
+                                .values
+                                .iter()
+                                .map(|item| match &item.value {
+                                    Some(OtelValueKind::StringValue(s)) => {
+                                        TagValue::Value(s.clone())
+                                    }
+                                    Some(_other) => TagValue::Bare,
+                                    None => TagValue::Bare,
+                                })
+                                .collect();
+                            TagValueSet::from(values)
+                        }
+                        Some(OtelValueKind::StringValue(s)) => {
+                            TagValueSet::from([TagValue::Value(s.clone())])
+                        }
+                        Some(_other) => TagValueSet::from([TagValue::Bare]),
+                        None => TagValueSet::from([TagValue::Bare]),
+                    };
+                    (k.clone(), tvs)
+                })
                 .collect();
             match self
                 .get_config_for_metric(metric_key.as_ref())

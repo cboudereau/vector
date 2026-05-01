@@ -121,7 +121,7 @@ impl<'a> Encoder<&'a OtelMetric> for StatsdEncoder {
 // This is not an issue, but noting as it may be an observed behavior.
 fn encode_tags(tags: &OtelAttributes) -> String {
     let parts: Vec<_> = tags
-        .iter_single()
+        .iter_all()
         .map(|(name, tag_value)| match tag_value {
             Some(value) => format!("{name}:{value}"),
             None => name.to_owned(),

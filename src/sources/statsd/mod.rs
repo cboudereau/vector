@@ -430,6 +430,31 @@ mod test {
         },
     };
 
+    /// Build a `MetricIdentity` for statsd tests that supports bare tags.
+    /// Bare tags (value `None`) are stored as `AnyValue { value: None }` in OTel,
+    /// matching how `with_metric_tags` converts `TagValue::Bare`.
+    fn statsd_series(
+        name: &str,
+        tags: &[(&str, Option<&str>)],
+    ) -> vector_lib::event::metric::MetricIdentity {
+        use opentelemetry_proto::tonic::common::v1::AnyValue;
+        use vector_lib::event::{OtelAttributes, string_value};
+
+        let mut attrs = OtelAttributes::new();
+        for &(k, v) in tags {
+            let av = match v {
+                Some(s) => string_value(s),
+                None => AnyValue { value: None },
+            };
+            attrs.insert(k.to_string(), av);
+        }
+        vector_lib::event::metric::MetricIdentity {
+            name: name.into(),
+            namespace: None,
+            tags: Some(attrs),
+        }
+    }
+
     #[test]
     fn generate_config() {
         crate::test_util::test_generate_config::<StatsdConfig>();
@@ -627,21 +652,13 @@ mod test {
 
         assert_counter(
             &metrics,
-            series!(
-                "foo",
-                "a" => "",
-                "b" => "b"
-            ),
+            statsd_series("foo", &[("a", None), ("b", Some("b"))]),
             100.0,
         );
 
         assert_counter(
             &metrics,
-            series!(
-                "foo",
-                "a" => "",
-                "b" => "c"
-            ),
+            statsd_series("foo", &[("a", None), ("b", Some("c"))]),
             100.0,
         );
 

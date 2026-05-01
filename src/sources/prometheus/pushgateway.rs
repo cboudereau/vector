@@ -423,12 +423,12 @@ mod test {
 
             let expected = vec![
                 OtelMetric::new_counter("jobs_total", MetricKind::Incremental, 1.0)
-                    .with_tags(Some(
+                    .with_metric_tags(Some(
                         metric_tags! { "job" => "async_worker", "type" => "a" },
                     ))
                     .with_timestamp(Some(timestamp)),
                 OtelMetric::new_gauge("jobs_current", 5.0)
-                    .with_tags(Some(
+                    .with_metric_tags(Some(
                         metric_tags! { "job" => "async_worker", "type" => "a" },
                     ))
                     .with_timestamp(Some(timestamp)),
@@ -442,7 +442,7 @@ mod test {
                         1,
                         8.0,
                     )
-                    .with_tags(Some(
+                    .with_metric_tags(Some(
                         metric_tags! { "job" => "async_worker", "type" => "a" },
                     ))
                     .with_timestamp(Some(timestamp))
@@ -450,7 +450,7 @@ mod test {
                 {
                     let quantiles = vector_lib::quantiles![];
                     OtelMetric::new_summary("jobs_summary", &quantiles, 1, 8.0)
-                        .with_tags(Some(
+                        .with_metric_tags(Some(
                             metric_tags! { "job" => "async_worker", "type" => "a" },
                         ))
                         .with_timestamp(Some(timestamp))

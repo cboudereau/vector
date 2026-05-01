@@ -145,7 +145,7 @@ mod tests {
 
     pub fn sample_counter(num: usize, tagstr: &str, kind: MetricKind, value: f64) -> OtelMetric {
         OtelMetric::new_counter(format!("counter-{num}"), kind, value)
-            .with_tags(Some(metric_tags!(tagstr => "true")))
+            .with_metric_tags(Some(metric_tags!(tagstr => "true")))
     }
 
     pub fn sample_gauge(num: usize, kind: MetricKind, value: f64) -> OtelMetric {

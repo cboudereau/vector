@@ -296,7 +296,7 @@ impl SumMetric {
         } else {
             OtelMetric::new_gauge(metric_name, value)
         };
-        Event::Metric(otel.with_tags(Some(attributes)).with_timestamp(timestamp))
+        Event::Metric(otel.with_metric_tags(Some(attributes)).with_timestamp(timestamp))
     }
 }
 
@@ -308,7 +308,7 @@ impl GaugeMetric {
 
         Event::Metric(
             OtelMetric::new_gauge(metric_name, value)
-                .with_tags(Some(attributes))
+                .with_metric_tags(Some(attributes))
                 .with_timestamp(timestamp),
         )
     }
@@ -346,7 +346,7 @@ impl HistogramMetric {
 
         Event::Metric(
             OtelMetric::new_histogram(metric_name, kind, &buckets, self.point.count, self.point.sum.unwrap_or(0.0))
-                .with_tags(Some(attributes))
+                .with_metric_tags(Some(attributes))
                 .with_timestamp(timestamp),
         )
     }
@@ -393,7 +393,7 @@ impl ExpHistogramMetric {
 
         Event::Metric(
             OtelMetric::new_histogram(metric_name, kind, &buckets, self.point.count, self.point.sum.unwrap_or(0.0))
-                .with_tags(Some(attributes))
+                .with_metric_tags(Some(attributes))
                 .with_timestamp(timestamp),
         )
     }
@@ -416,7 +416,7 @@ impl SummaryMetric {
 
         Event::Metric(
             OtelMetric::new_summary(metric_name, &quantiles, self.point.count, self.point.sum)
-                .with_tags(Some(attributes))
+                .with_metric_tags(Some(attributes))
                 .with_timestamp(timestamp),
         )
     }

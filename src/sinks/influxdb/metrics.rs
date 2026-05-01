@@ -6,7 +6,7 @@ use tower::Service;
 use vector_lib::{
     ByteSizeOf, EstimatedJsonEncodedSizeOf,
     configurable::configurable_component,
-    event::{MetricView, metric::MetricTags},
+    event::{MetricView, OtelAttributes, metric::MetricTags},
 };
 
 use crate::{
@@ -235,8 +235,9 @@ fn create_build_request(
     }
 }
 
-fn merge_tags(event_tags: Option<&MetricTags>, config_tags: Option<&HashMap<String, String>>) -> Option<MetricTags> {
-    match (event_tags.cloned(), config_tags) {
+fn merge_tags(event_tags: Option<OtelAttributes>, config_tags: Option<&HashMap<String, String>>) -> Option<MetricTags> {
+    let otel_as_metric: Option<MetricTags> = event_tags.map(|t| t.into_iter_single().collect());
+    match (otel_as_metric, config_tags) {
         (Some(mut event_tags), Some(config_tags)) => {
             event_tags.extend(config_tags.iter().map(|(k, v)| (k.clone(), v.clone())));
             Some(event_tags)
@@ -285,7 +286,7 @@ fn encode_events(
         let fullname = encode_namespace(otel.namespace().or(default_namespace), '.', otel.name());
         let ts = encode_timestamp(otel.timestamp());
         let event_tags = otel.tags();
-        let tags = merge_tags(event_tags.as_ref(), tags);
+        let tags = merge_tags(event_tags, tags);
         let view = otel.view();
         let statistic_kind = otel.distribution_statistic_kind();
         let (metric_type, fields) = get_type_and_fields(&view, statistic_kind, quantiles);
@@ -446,7 +447,7 @@ mod tests {
                 .with_timestamp(Some(ts())),
             OtelMetric::new_counter("check", MetricKind::Incremental, 1.0)
                 .with_namespace(Some("ns"))
-                .with_tags(Some(tags()))
+                .with_metric_tags(Some(tags()))
                 .with_timestamp(Some(ts())),
         ];
 
@@ -463,7 +464,7 @@ mod tests {
         let events = vec![
             OtelMetric::new_gauge_delta("meter", -1.5)
                 .with_namespace(Some("ns"))
-                .with_tags(Some(tags()))
+                .with_metric_tags(Some(tags()))
                 .with_timestamp(Some(ts())),
         ];
 
@@ -479,7 +480,7 @@ mod tests {
         let events = vec![
             OtelMetric::new_set_from_values("users", MetricKind::Incremental, vec!["alice".to_string(), "bob".to_string()])
                 .with_namespace(Some("ns"))
-                .with_tags(Some(tags()))
+                .with_metric_tags(Some(tags()))
                 .with_timestamp(Some(ts())),
         ];
 
@@ -496,7 +497,7 @@ mod tests {
         let events = vec![
             OtelMetric::new_histogram("requests", MetricKind::Absolute, &buckets, 6, 12.5)
                 .with_namespace(Some("ns"))
-                .with_tags(Some(tags()))
+                .with_metric_tags(Some(tags()))
                 .with_timestamp(Some(ts())),
         ];
 
@@ -532,7 +533,7 @@ mod tests {
         let events = vec![
             OtelMetric::new_histogram("requests", MetricKind::Absolute, &buckets, 6, 12.5)
                 .with_namespace(Some("ns"))
-                .with_tags(Some(tags()))
+                .with_metric_tags(Some(tags()))
                 .with_timestamp(Some(ts())),
         ];
 
@@ -568,7 +569,7 @@ mod tests {
         let events = vec![
             OtelMetric::new_summary("requests_sum", &quantiles, 6, 12.0)
                 .with_namespace(Some("ns"))
-                .with_tags(Some(tags()))
+                .with_metric_tags(Some(tags()))
                 .with_timestamp(Some(ts())),
         ];
 
@@ -604,7 +605,7 @@ mod tests {
         let events = vec![
             OtelMetric::new_summary("requests_sum", &quantiles, 6, 12.0)
                 .with_namespace(Some("ns"))
-                .with_tags(Some(tags()))
+                .with_metric_tags(Some(tags()))
                 .with_timestamp(Some(ts())),
         ];
 
@@ -644,7 +645,7 @@ mod tests {
                 StatisticKind::Histogram,
             )
                 .with_namespace(Some("ns"))
-                .with_tags(Some(tags()))
+                .with_metric_tags(Some(tags()))
                 .with_timestamp(Some(ts())),
             OtelMetric::new_distribution_from_samples(
                 "dense_stats",
@@ -748,7 +749,7 @@ mod tests {
                 StatisticKind::Histogram,
             )
                 .with_namespace(Some("ns"))
-                .with_tags(Some(tags()))
+                .with_metric_tags(Some(tags()))
                 .with_timestamp(Some(ts())),
         ];
 
@@ -766,7 +767,7 @@ mod tests {
                 StatisticKind::Histogram,
             )
                 .with_namespace(Some("ns"))
-                .with_tags(Some(tags()))
+                .with_metric_tags(Some(tags()))
                 .with_timestamp(Some(ts())),
         ];
 
@@ -784,7 +785,7 @@ mod tests {
                 StatisticKind::Summary,
             )
                 .with_namespace(Some("ns"))
-                .with_tags(Some(tags()))
+                .with_metric_tags(Some(tags()))
                 .with_timestamp(Some(ts())),
         ];
 
@@ -836,7 +837,7 @@ mod tests {
                 .with_timestamp(Some(ts())),
             OtelMetric::new_gauge("mem", 1000.0)
                 .with_namespace(Some("vector"))
-                .with_tags(Some(tags()))
+                .with_metric_tags(Some(tags()))
                 .with_timestamp(Some(ts())),
         ];
 

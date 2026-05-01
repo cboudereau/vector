@@ -27,7 +27,7 @@ impl Stats {
         result.push(
             OtelMetric::new_gauge("process_memory_used_bytes", self.proc.mem as f64)
                 .with_namespace(Some(namespace.clone()))
-                .with_tags(Some(tags.clone()))
+                .with_metric_tags(Some(tags.clone()))
                 .with_timestamp(Some(now)),
         );
 
@@ -38,7 +38,7 @@ impl Stats {
                 self.proc.disk_io.read_bytes as f64,
             )
             .with_namespace(Some(namespace.clone()))
-            .with_tags(Some(tags.clone()))
+            .with_metric_tags(Some(tags.clone()))
             .with_timestamp(Some(now)),
         );
 
@@ -49,7 +49,7 @@ impl Stats {
                 self.proc.disk_io.written_bytes as f64,
             )
             .with_namespace(Some(namespace.clone()))
-            .with_tags(Some(tags.clone()))
+            .with_metric_tags(Some(tags.clone()))
             .with_timestamp(Some(now)),
         );
 
@@ -60,7 +60,7 @@ impl Stats {
                 self.proc.disk_io.read_ops as f64,
             )
             .with_namespace(Some(namespace.clone()))
-            .with_tags(Some(tags.clone()))
+            .with_metric_tags(Some(tags.clone()))
             .with_timestamp(Some(now)),
         );
 
@@ -71,14 +71,14 @@ impl Stats {
                 self.proc.disk_io.write_ops as f64,
             )
             .with_namespace(Some(namespace.clone()))
-            .with_tags(Some(tags.clone()))
+            .with_metric_tags(Some(tags.clone()))
             .with_timestamp(Some(now)),
         );
 
         result.push(
             OtelMetric::new_gauge("memory_free_bytes", self.sys.free_mem as f64)
                 .with_namespace(Some(namespace.clone()))
-                .with_tags(Some(tags.clone()))
+                .with_metric_tags(Some(tags.clone()))
                 .with_timestamp(Some(now)),
         );
 
@@ -88,21 +88,21 @@ impl Stats {
             result.push(
                 OtelMetric::new_gauge("disk_total_bytes", drive.stats.total_bytes as f64)
                     .with_namespace(Some(namespace.clone()))
-                    .with_tags(Some(tags.clone()))
+                    .with_metric_tags(Some(tags.clone()))
                     .with_timestamp(Some(now)),
             );
 
             result.push(
                 OtelMetric::new_gauge("disk_free_bytes", drive.stats.available_bytes as f64)
                     .with_namespace(Some(namespace.clone()))
-                    .with_tags(Some(tags.clone()))
+                    .with_metric_tags(Some(tags.clone()))
                     .with_timestamp(Some(now)),
             );
 
             result.push(
                 OtelMetric::new_gauge("disk_used_bytes", drive.stats.used_bytes as f64)
                     .with_namespace(Some(namespace))
-                    .with_tags(Some(tags))
+                    .with_metric_tags(Some(tags))
                     .with_timestamp(Some(now)),
             );
         }

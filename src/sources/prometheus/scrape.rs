@@ -540,13 +540,13 @@ mod test {
 
         let tags = metric.tags().unwrap();
         let code_tag = tags
-            .iter_all()
+            .iter_single()
             .filter(|(name, _value)| *name == "code")
             .map(|(_name, value)| value)
             .collect::<Vec<_>>();
 
         assert_eq!(1, code_tag.len());
-        assert_eq!("success", code_tag[0].unwrap());
+        assert_eq!(Some("success"), code_tag[0]);
     }
 
     #[tokio::test]

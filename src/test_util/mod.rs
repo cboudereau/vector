@@ -317,7 +317,7 @@ pub fn random_metrics_with_stream_timestamp(
                     index as f64,
                 )
                 .with_timestamp(Some(ts))
-                .with_tags(tags.clone()),
+                .with_metric_tags(tags.clone()),
             )
             // this ensures we get Origin Metadata, with an undefined service but that's ok.
             .with_source_type("a_source_like_none_other")

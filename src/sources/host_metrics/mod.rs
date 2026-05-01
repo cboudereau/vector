@@ -515,7 +515,7 @@ impl MetricsBuffer {
         self.metrics.push(
             OtelMetric::new_counter(name, MetricKind::Absolute, value)
                 .with_namespace(self.namespace.clone())
-                .with_tags(Some(self.tags(tags)))
+                .with_metric_tags(Some(self.tags(tags)))
                 .with_timestamp(Some(self.timestamp)),
         )
     }
@@ -524,7 +524,7 @@ impl MetricsBuffer {
         self.metrics.push(
             OtelMetric::new_gauge(name, value)
                 .with_namespace(self.namespace.clone())
-                .with_tags(Some(self.tags(tags)))
+                .with_metric_tags(Some(self.tags(tags)))
                 .with_timestamp(Some(self.timestamp)),
         )
     }
@@ -788,7 +788,7 @@ mod tests {
             event
                 .tags()
                 .expect("Missing tags")
-                .get("host")
+                .get_string("host")
                 .expect("Missing \"host\" tag")
                 != hostname
         }));
@@ -871,7 +871,7 @@ mod tests {
             metric
                 .tags()
                 .unwrap()
-                .get(tag)
+                .get_string(tag)
                 .map(|value| !matches(value))
                 .unwrap_or(false)
         })
@@ -899,7 +899,7 @@ mod tests {
     fn collect_tag_values(metrics: &[OtelMetric], tag: &str) -> HashSet<String> {
         metrics
             .iter()
-            .filter_map(|metric| metric.tags().unwrap().get(tag).map(ToOwned::to_owned))
+            .filter_map(|metric| metric.tags().unwrap().get_string(tag).map(ToOwned::to_owned))
             .collect::<HashSet<_>>()
     }
 

@@ -106,7 +106,7 @@ impl Metric {
             tags.iter_single()
                 .map(|(key, value)| MetricTag {
                     key: key.to_owned(),
-                    value: value.to_owned(),
+                    value: value.unwrap_or("").to_owned(),
                 })
                 .collect()
         })

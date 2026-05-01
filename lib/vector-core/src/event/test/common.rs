@@ -113,6 +113,9 @@ impl Arbitrary for OtelMetric {
         let name: Name = Name::arbitrary(g);
         let namespace: Option<Name> = Arbitrary::arbitrary(g);
         let tags: Option<MetricTags> = Arbitrary::arbitrary(g);
+        let tags = tags.map(|mt| {
+            mt.into_iter_single().collect::<super::OtelAttributes>()
+        });
         let timestamp = if bool::arbitrary(g) { Some(datetime(g)) } else { None };
         let metadata = EventMetadata::arbitrary(g);
 

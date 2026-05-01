@@ -342,7 +342,7 @@ fn assert_buffer_metrics(buffer_size: usize, level: usize) {
 
     let metric = find_metric("source_buffer_utilization");
     let tags = metric.tags().expect("utilization histogram has tags");
-    assert_eq!(tags.get("output"), Some("_default"));
+    assert_eq!(tags.get_string("output"), Some("_default"));
 
     let metric = find_metric("source_buffer_utilization_level");
     let MetricView::Gauge { value } = metric.view() else {

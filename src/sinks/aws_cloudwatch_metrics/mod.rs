@@ -19,6 +19,7 @@ use indexmap::IndexMap;
 use tower::Service;
 use vector_lib::{
     ByteSizeOf, EstimatedJsonEncodedSizeOf, configurable::configurable_component, sink::VectorSink,
+    event::OtelAttributes,
 };
 
 use super::util::service::TowerRequestConfigDefaults;
@@ -29,7 +30,6 @@ use crate::{
     config::{AcknowledgementsConfig, Input, ProxyConfig, SinkConfig, SinkContext},
     event::{
         Event, MetricView, OtelMetric,
-        metric::MetricTags,
     },
     sinks::util::{
         Compression, EncodedEvent, PartitionBuffer, PartitionInnerBuffer, SinkBatchSettings,
@@ -223,11 +223,11 @@ impl RetryLogic for CloudWatchMetricsRetryLogic {
     }
 }
 
-fn tags_to_dimensions(tags: &MetricTags) -> Vec<Dimension> {
+fn tags_to_dimensions(tags: &OtelAttributes) -> Vec<Dimension> {
     // according to the API, up to 30 dimensions per metric can be provided
     tags.iter_single()
         .take(30)
-        .map(|(k, v)| Dimension::builder().name(k).value(v).build())
+        .map(|(k, v)| Dimension::builder().name(k).value(v.unwrap_or("")).build())
         .collect()
 }
 

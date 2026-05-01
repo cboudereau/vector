@@ -30,6 +30,19 @@ macro_rules! metric_tags {
     };
 }
 
+#[macro_export]
+macro_rules! otel_tags {
+    () => { $crate::event::OtelAttributes::default() };
+
+    ($($key:expr => $value:expr,)+) => { $crate::otel_tags!($($key => $value),+) };
+
+    ($($key:expr => $value:expr),*) => {
+        [
+            $( (String::from($key), String::from($value)), )*
+        ].into_iter().collect::<$crate::event::OtelAttributes>()
+    };
+}
+
 /// Metric kind.
 ///
 /// Metrics can be either absolute or incremental. Absolute metrics represent a sort of "last write wins" scenario,

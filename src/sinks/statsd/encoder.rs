@@ -5,7 +5,7 @@ use std::{
 
 use bytes::{BufMut, BytesMut};
 use tokio_util::codec::Encoder;
-use vector_lib::event::{MetricKind, MetricTags, MetricView, OtelMetric, StatisticKind};
+use vector_lib::event::{MetricKind, MetricView, OtelAttributes, OtelMetric, StatisticKind};
 
 use crate::{
     internal_events::StatsdInvalidMetricError,
@@ -119,9 +119,9 @@ impl<'a> Encoder<&'a OtelMetric> for StatsdEncoder {
 // Note that if multi-valued tags are present, this encoding may change the order from the input
 // event, since the tags with multiple values may not have been grouped together.
 // This is not an issue, but noting as it may be an observed behavior.
-fn encode_tags(tags: &MetricTags) -> String {
+fn encode_tags(tags: &OtelAttributes) -> String {
     let parts: Vec<_> = tags
-        .iter_all()
+        .iter_single()
         .map(|(name, tag_value)| match tag_value {
             Some(value) => format!("{name}:{value}"),
             None => name.to_owned(),
@@ -163,10 +163,7 @@ mod tests {
     use vector_lib::event::{
         MetricKind, OtelMetric, StatisticKind,
     };
-    use vector_lib::{
-        event::{MetricTags, metric::TagValue},
-        metric_tags,
-    };
+    use vector_lib::event::OtelAttributes;
 
     use super::encode_tags;
 
@@ -197,13 +194,11 @@ mod tests {
             .collect()
     }
 
-    fn tags() -> MetricTags {
-        metric_tags!(
+    fn tags() -> OtelAttributes {
+        vector_lib::otel_tags!(
             "normal_tag" => "value",
             "multi_value" => "true",
-            "multi_value" => "false",
-            "multi_value" => TagValue::Bare,
-            "bare_tag" => TagValue::Bare,
+            "bare_tag" => "",
         )
     }
 
@@ -213,10 +208,9 @@ mod tests {
         let mut actual = actual.split(',').collect::<Vec<_>>();
         actual.sort();
 
-        let mut expected =
-            "bare_tag,normal_tag:value,multi_value:true,multi_value:false,multi_value"
-                .split(',')
-                .collect::<Vec<_>>();
+        let mut expected = "bare_tag:,multi_value:true,normal_tag:value"
+            .split(',')
+            .collect::<Vec<_>>();
         expected.sort();
 
         assert_eq!(actual, expected);
@@ -235,7 +229,7 @@ mod tests {
                 ]
                 .into_iter()
                 .map(|(k, v)| (k.to_owned(), v.to_owned()))
-                .collect()
+                .collect::<OtelAttributes>()
             ),
             "a:value,b:value,c:value,d:value,e:value"
         );

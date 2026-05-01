@@ -194,7 +194,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     use metrics::{counter, gauge, histogram};
-    use vector_lib::{metric_tags, metrics::Controller};
+    use vector_lib::{otel_tags, metrics::Controller};
 
     use super::*;
     use crate::{
@@ -279,7 +279,7 @@ mod tests {
             _ => panic!("wrong type"),
         }
 
-        let labels = metric_tags!("host" => "foo");
+        let labels = otel_tags!("host" => "foo");
         assert_eq!(Some(labels), output["quux"].tags());
     }
 

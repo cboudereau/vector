@@ -1,11 +1,9 @@
-use std::collections::BTreeMap;
-
 use mlua::prelude::*;
 
 use super::{
     super::{
-        MetricKind, MetricView, OtelMetric, StatisticKind,
-        metric::{self, MetricTags, TagValue, TagValueSet},
+        MetricKind, MetricView, OtelAttributes, OtelMetric, StatisticKind,
+        metric::{self},
     },
     util::{table_to_timestamp, timestamp_to_table},
 };
@@ -15,9 +13,8 @@ pub struct LuaMetric {
     pub multi_value_tags: bool,
 }
 
-pub struct LuaMetricTags {
-    pub tags: MetricTags,
-    pub multi_value_tags: bool,
+pub struct LuaOtelAttributes {
+    pub attrs: OtelAttributes,
 }
 
 impl IntoLua for MetricKind {
@@ -73,53 +70,33 @@ impl FromLua for StatisticKind {
     }
 }
 
-impl FromLua for TagValueSet {
+impl FromLua for OtelAttributes {
     fn from_lua(value: LuaValue, _: &Lua) -> LuaResult<Self> {
-        match value {
-            LuaValue::Nil => Ok(Self::Single(TagValue::Bare)),
-            LuaValue::Table(table) => {
-                let mut string_values: Vec<String> = vec![];
-                for value in table.sequence_values() {
-                    match value {
-                        Ok(value) => string_values.push(value),
-                        Err(_) => unimplemented!(),
-                    }
-                }
-                Ok(Self::from(string_values))
-            }
-            LuaValue::String(x) => Ok(Self::from([x.to_string_lossy().clone()])),
-            _ => Err(mlua::Error::FromLuaConversionError {
+        let LuaValue::Table(table) = value else {
+            return Err(mlua::Error::FromLuaConversionError {
                 from: value.type_name(),
-                to: String::from("metric tag value"),
-                message: None,
-            }),
+                to: String::from("OtelAttributes"),
+                message: Some("Expected a table for metric tags".to_string()),
+            });
+        };
+        let mut attrs = OtelAttributes::new();
+        for pair in table.pairs::<String, LuaValue>() {
+            let (key, val) = pair?;
+            match val {
+                LuaValue::String(s) => { attrs.insert_string(key, s.to_string_lossy().to_string()); }
+                LuaValue::Nil => {}
+                _ => { attrs.insert_string(key, format!("{val:?}")); }
+            }
         }
+        Ok(attrs)
     }
 }
 
-impl FromLua for MetricTags {
-    fn from_lua(value: LuaValue, lua: &Lua) -> LuaResult<Self> {
-        Ok(Self(BTreeMap::from_lua(value, lua)?))
-    }
-}
-
-impl IntoLua for LuaMetricTags {
+impl IntoLua for LuaOtelAttributes {
     fn into_lua(self, lua: &Lua) -> LuaResult<LuaValue> {
-        if self.multi_value_tags {
-            Ok(LuaValue::Table(lua.create_table_from(
-                self.tags.0.into_iter().map(|(key, value)| {
-                    let value: Vec<_> = value
-                        .into_iter()
-                        .filter_map(|tag_value| tag_value.into_option().into_lua(lua).ok())
-                        .collect();
-                    (key, value)
-                }),
-            )?))
-        } else {
-            Ok(LuaValue::Table(
-                lua.create_table_from(self.tags.iter_single())?,
-            ))
-        }
+        Ok(LuaValue::Table(
+            lua.create_table_from(self.attrs.into_iter_single())?,
+        ))
     }
 }
 
@@ -138,13 +115,10 @@ impl IntoLua for LuaMetric {
         if let Some(i) = self.otel.interval_ms() {
             tbl.raw_set("interval_ms", i.get())?;
         }
-        if let Some(tags) = self.otel.tags() {
+        if let Some(attrs) = self.otel.tags() {
             tbl.raw_set(
                 "tags",
-                LuaMetricTags {
-                    tags,
-                    multi_value_tags: self.multi_value_tags,
-                },
+                LuaOtelAttributes { attrs },
             )?;
         }
         tbl.raw_set("kind", self.otel.kind())?;
@@ -236,7 +210,7 @@ impl FromLua for OtelMetric {
             .transpose()?;
         let interval_ms: Option<u32> = table.raw_get("interval_ms")?;
         let namespace: Option<String> = table.raw_get("namespace")?;
-        let tags: Option<MetricTags> = table.raw_get("tags")?;
+        let tags: Option<OtelAttributes> = table.raw_get("tags")?;
         let kind = table
             .raw_get::<Option<MetricKind>>("kind")?
             .unwrap_or(MetricKind::Absolute);

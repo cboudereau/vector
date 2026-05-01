@@ -229,14 +229,14 @@ impl MongoDbMetrics {
     fn create_counter(&self, name: &str, value: f64, tags: MetricTags) -> OtelMetric {
         OtelMetric::new_counter(name, MetricKind::Absolute, value)
             .with_namespace(self.namespace.clone())
-            .with_tags(Some(tags))
+            .with_metric_tags(Some(tags))
             .with_timestamp(Some(Utc::now()))
     }
 
     fn create_gauge(&self, name: &str, value: f64, tags: MetricTags) -> OtelMetric {
         OtelMetric::new_gauge(name, value)
             .with_namespace(self.namespace.clone())
-            .with_tags(Some(tags))
+            .with_metric_tags(Some(tags))
             .with_timestamp(Some(Utc::now()))
     }
 

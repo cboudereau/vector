@@ -217,7 +217,7 @@ mod test {
                 Event::Metric(
                     OtelMetric::new_counter("zork", MetricKind::Incremental, 1.0)
                         .with_namespace(Some("zerk"))
-                        .with_tags(Some(metric_tags!("host" => "zoobub"))),
+                        .with_metric_tags(Some(metric_tags!("host" => "zoobub"))),
                 ),
                 r#".name == "zork""#,
                 Ok(()),

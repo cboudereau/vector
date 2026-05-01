@@ -198,7 +198,7 @@ fn apache_metrics(
                                     1.0,
                                 )
                                 .with_namespace(namespace.clone())
-                                .with_tags(Some(tags.clone()))
+                                .with_metric_tags(Some(tags.clone()))
                                 .with_timestamp(Some(Utc::now())))]);
 
                                 let metrics = results
@@ -232,7 +232,7 @@ fn apache_metrics(
                                         1.0,
                                     )
                                     .with_namespace(namespace.clone())
-                                    .with_tags(Some(tags.clone()))
+                                    .with_metric_tags(Some(tags.clone()))
                                     .with_timestamp(Some(Utc::now())),
                                 ]))
                             }
@@ -247,7 +247,7 @@ fn apache_metrics(
                                         0.0,
                                     )
                                     .with_namespace(namespace.clone())
-                                    .with_tags(Some(tags.clone()))
+                                    .with_metric_tags(Some(tags.clone()))
                                     .with_timestamp(Some(Utc::now())),
                                 ]))
                             }
@@ -381,10 +381,10 @@ Scoreboard: ____S_____I______R____I_______KK___D__C__G_L____________W___________
                 match m.tags() {
                     Some(tags) => {
                         assert_eq!(
-                            tags.get("endpoint"),
+                            tags.get_string("endpoint"),
                             Some(&format!("http://{in_addr}/metrics")[..])
                         );
-                        assert_eq!(tags.get("host"), Some(&in_addr.to_string()[..]));
+                        assert_eq!(tags.get_string("host"), Some(&in_addr.to_string()[..]));
                     }
                     None => error!(message = "No tags for metric.", metric = ?m),
                 }

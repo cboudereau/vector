@@ -271,7 +271,7 @@ async fn send_request(config: &str, events: Vec<Event>) -> Vec<(HeaderMap, proto
 pub(super) fn create_event(name: String, value: f64) -> Event {
     Event::Metric(
         OtelMetric::new_gauge(name, value)
-            .with_tags(Some(metric_tags!(
+            .with_metric_tags(Some(metric_tags!(
                 "region" => "us-west-1",
                 "production" => "true",
             )))

@@ -919,10 +919,10 @@ mod tests {
                     panic!("Expected metric {metric_name} to have tags!");
                 };
                 for (key, value) in expected {
-                    let Some(tag_value) = tags.get(key.as_str()) else {
+                    let Some(tag_value) = tags.get_string(key.as_str()) else {
                         panic!("Expected metric {metric_name} to have {key} tag!");
                     };
-                    assert_eq!(tag_value.to_string(), *value);
+                    assert_eq!(tag_value, value.as_str());
                 }
                 found_metrics = true;
             }

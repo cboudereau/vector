@@ -916,7 +916,7 @@ mod tests {
                     .single()
                     .expect("invalid timestamp"),
             ))
-            .with_tags(Some(metric_tags!(
+            .with_metric_tags(Some(metric_tags!(
                 "test" => "true",
                 "component" => "template",
             ))));

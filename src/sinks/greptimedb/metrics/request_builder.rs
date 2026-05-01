@@ -59,7 +59,7 @@ pub fn metric_to_insert_request(
     if let Some(tags) = metric.tags() {
         for (key, value) in tags.iter_single() {
             schema.push(tag_column(key));
-            columns.push(string_value(value.to_owned()));
+            columns.push(string_value(value.unwrap_or("").to_owned()));
         }
     }
 
@@ -232,7 +232,7 @@ mod tests {
     fn test_metric_data_to_insert_request() {
         let metric = OtelMetric::new_gauge("load1", 1.1)
             .with_namespace(Some("ns"))
-            .with_tags(Some([("host".to_owned(), "my_host".to_owned())].into()))
+            .with_tags(Some(vec![("host".to_owned(), "my_host".to_owned())].into_iter().collect()))
             .with_timestamp(Some(Utc::now()));
 
         let options = RequestBuilderOptions {
@@ -266,7 +266,7 @@ mod tests {
     fn test_metric_data_to_insert_request_new_naming() {
         let metric = OtelMetric::new_gauge("load1", 1.1)
             .with_namespace(Some("ns"))
-            .with_tags(Some([("host".to_owned(), "my_host".to_owned())].into()))
+            .with_tags(Some(vec![("host".to_owned(), "my_host".to_owned())].into_iter().collect()))
             .with_timestamp(Some(Utc::now()));
 
         let options = RequestBuilderOptions {

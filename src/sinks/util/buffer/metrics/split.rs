@@ -108,7 +108,7 @@ impl MetricSplit for AggregatedSummarySplitter {
         for q in quantiles {
             let mut qtags = tags.clone().unwrap_or_default();
             let quantile_str: String = q.quantile.clamp(0.0, 1.0).to_string().chars().take(6).collect();
-            qtags.replace(String::from("quantile"), quantile_str);
+            qtags.replace_string(String::from("quantile"), quantile_str);
             let q_metric = if kind == MetricKind::Incremental {
                 OtelMetric::new_gauge_delta(&name, q.value)
             } else {

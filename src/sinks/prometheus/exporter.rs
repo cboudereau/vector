@@ -1089,14 +1089,14 @@ mod tests {
     pub fn create_metric_gauge(name: Option<String>, value: f64) -> (String, Event) {
         let name = name.unwrap_or_else(|| format!("vector_set_{}", random_string(16)));
         let otel = OtelMetric::new_gauge_delta(&name, value)
-            .with_tags(Some(metric_tags!("some_tag" => "some_value")));
+            .with_metric_tags(Some(metric_tags!("some_tag" => "some_value")));
         (name, Event::Metric(otel))
     }
 
     pub fn create_metric_set(name: Option<String>, values: Vec<&'static str>) -> (String, Event) {
         let name = name.unwrap_or_else(|| format!("vector_set_{}", random_string(16)));
         let otel = OtelMetric::new_set_from_values(&name, MetricKind::Incremental, values)
-            .with_tags(Some(metric_tags!("some_tag" => "some_value")));
+            .with_metric_tags(Some(metric_tags!("some_tag" => "some_value")));
         (name, Event::Metric(otel))
     }
 
@@ -1106,7 +1106,7 @@ mod tests {
         tags: Option<MetricTags>,
     ) -> (String, Event) {
         let name = name.unwrap_or_else(|| format!("vector_set_{}", random_string(16)));
-        let otel = make_metric(&name).with_tags(tags);
+        let otel = make_metric(&name).with_metric_tags(tags);
         (name, Event::Metric(otel))
     }
 
@@ -1122,14 +1122,14 @@ mod tests {
         let sink = PrometheusExporter::new(config);
 
         let otel_m1 = OtelMetric::new_counter("absolute", MetricKind::Absolute, 32.)
-            .with_tags(Some(metric_tags!("tag1" => "value1")));
+            .with_metric_tags(Some(metric_tags!("tag1" => "value1")));
         let otel_m2 = OtelMetric::new_counter("absolute", MetricKind::Absolute, 33.)
-            .with_tags(Some(metric_tags!("tag1" => "value2")));
+            .with_metric_tags(Some(metric_tags!("tag1" => "value2")));
 
         let events = vec![
-            Event::Metric(OtelMetric::new_counter("absolute", MetricKind::Absolute, 32.).with_tags(Some(metric_tags!("tag1" => "value1")))),
-            Event::Metric(OtelMetric::new_counter("absolute", MetricKind::Absolute, 33.).with_tags(Some(metric_tags!("tag1" => "value2")))),
-            Event::Metric(OtelMetric::new_counter("absolute", MetricKind::Absolute, 40.).with_tags(Some(metric_tags!("tag1" => "value1")))),
+            Event::Metric(OtelMetric::new_counter("absolute", MetricKind::Absolute, 32.).with_metric_tags(Some(metric_tags!("tag1" => "value1")))),
+            Event::Metric(OtelMetric::new_counter("absolute", MetricKind::Absolute, 33.).with_metric_tags(Some(metric_tags!("tag1" => "value2")))),
+            Event::Metric(OtelMetric::new_counter("absolute", MetricKind::Absolute, 40.).with_metric_tags(Some(metric_tags!("tag1" => "value1")))),
         ];
 
         let metrics_handle = Arc::clone(&sink.metrics);

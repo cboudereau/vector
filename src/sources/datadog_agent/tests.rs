@@ -15,6 +15,7 @@ use prost::Message;
 use quickcheck::{Arbitrary, Gen, QuickCheck, TestResult};
 use similar_asserts::assert_eq;
 use tokio::time::timeout;
+use opentelemetry_proto::tonic::common::v1::AnyValue;
 use vector_lib::{
     codecs::{
         BytesDecoder, BytesDeserializer, CharacterDelimitedDecoderConfig,
@@ -24,9 +25,9 @@ use vector_lib::{
         },
     },
     config::{DataType},
-    event::{MetricTags, metric::TagValue},
+    event::OtelAttributes,
     lookup::owned_value_path,
-    metric_tags,
+    otel_tags,
 };
 use vrl::{
     compiler::value::Collection,
@@ -971,7 +972,7 @@ async fn decode_series_endpoint_v1() {
             assert!(matches!(metric.view(), MetricView::Gauge { value: 3.14 }));
             assert_tags(
                 &metric,
-                metric_tags!(
+                otel_tags!(
                     "resource.host.name" => "random_host",
                     "resource.source_type" => "datadog_agent",
                     "foo" => "bar",
@@ -998,7 +999,7 @@ async fn decode_series_endpoint_v1() {
             assert!(matches!(metric.view(), MetricView::Gauge { value: 3.1415 }));
             assert_tags(
                 &metric,
-                metric_tags!(
+                otel_tags!(
                     "resource.host.name" => "random_host",
                     "resource.source_type" => "datadog_agent",
                     "foo" => "bar",
@@ -1025,7 +1026,7 @@ async fn decode_series_endpoint_v1() {
             assert!(matches!(metric.view(), MetricView::Sum { value } if value == 3.14 * 10_f64));
             assert_tags(
                 &metric,
-                metric_tags!(
+                otel_tags!(
                     "resource.host.name" => "another_random_host",
                     "resource.source_type" => "datadog_agent",
                     "foo" => "bar:baz",
@@ -1050,14 +1051,14 @@ async fn decode_series_endpoint_v1() {
             );
             assert_eq!(metric.kind(), MetricKind::Incremental);
             assert!(matches!(metric.view(), MetricView::Sum { value: 16777216.0 }));
-            assert_tags(
-                &metric,
-                metric_tags!(
+            {
+                let mut expected_tags = otel_tags!(
                     "resource.host.name" => "a_host",
                     "resource.source_type" => "datadog_agent",
-                    "foobar" => TagValue::Bare,
-                ),
-            );
+                );
+                expected_tags.insert("foobar".to_string(), AnyValue { value: None });
+                assert_tags(&metric, expected_tags);
+            }
 
             metric = events[4].as_metric();
             assert_eq!(metric.name(), "disk.free");
@@ -1406,7 +1407,7 @@ async fn split_outputs() {
             assert!(matches!(metric.view(), MetricView::Gauge { value: 3.14 }));
             assert_tags(
                 &metric,
-                metric_tags!(
+                otel_tags!(
                     "resource.host.name" => "random_host",
                     "resource.source_type" => "datadog_agent",
                     "foo" => "bar",
@@ -1952,7 +1953,7 @@ async fn decode_series_endpoint_v2() {
             assert!(matches!(metric.view(), MetricView::Gauge { value: 3.14 }));
             assert_tags(
                 &metric,
-                metric_tags!(
+                otel_tags!(
                     "resource.host.name" => "random_host",
                     "resource.source_type" => "datadog_agent",
                     "foo" => "bar",
@@ -1977,7 +1978,7 @@ async fn decode_series_endpoint_v2() {
             assert!(matches!(metric.view(), MetricView::Gauge { value: 3.1415 }));
             assert_tags(
                 &metric,
-                metric_tags!(
+                otel_tags!(
                     "resource.host.name" => "random_host",
                     "resource.source_type" => "datadog_agent",
                     "foo" => "bar",
@@ -2006,7 +2007,7 @@ async fn decode_series_endpoint_v2() {
             assert!(matches!(metric.view(), MetricView::Sum { value } if value == 3.14 * 10_f64));
             assert_tags(
                 &metric,
-                metric_tags!(
+                otel_tags!(
                     "resource.host.name" => "another_random_host",
                     "resource.source_type" => "datadog_agent",
                     "foo" => "bar:baz",
@@ -2034,15 +2035,15 @@ async fn decode_series_endpoint_v2() {
             );
             assert_eq!(metric.kind(), MetricKind::Incremental);
             assert!(matches!(metric.view(), MetricView::Sum { value: 16777216.0 }));
-            assert_tags(
-                &metric,
-                metric_tags!(
+            {
+                let mut expected_tags = otel_tags!(
                     "resource.host.name" => "a_host",
                     "resource.source_type" => "datadog_agent",
-                    "foobar" => TagValue::Bare,
                     "source_type_name" => "a_very_random_source_type_name",
-                ),
-            );
+                );
+                expected_tags.insert("foobar".to_string(), AnyValue { value: None });
+                assert_tags(&metric, expected_tags);
+            }
             assert_eq!(metric.namespace(), None);
 
             assert_eq!(
@@ -2179,7 +2180,7 @@ fn test_output_schema_definition_bytes_vector_namespace() {
     )
 }
 
-fn assert_tags(metric: &OtelMetric, tags: MetricTags) {
+fn assert_tags(metric: &OtelMetric, tags: OtelAttributes) {
     assert_eq!(metric.tags().expect("Missing tags"), tags);
 }
 

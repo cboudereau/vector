@@ -8,7 +8,7 @@ use smallvec::SmallVec;
 use vector_config::configurable_component;
 use vector_core::{
     config::{DataType},
-    event::{Event, MetricTags, OtelMetric},
+    event::{Event, OtelAttributes, OtelMetric},
     schema,
 };
 use vrl::value::{Kind, kind::Collection};
@@ -128,7 +128,7 @@ impl Deserializer for InfluxdbDeserializer {
                                 val,
                             )
                             .with_tags(tags.map(|ts| {
-                                MetricTags::from_iter(
+                                OtelAttributes::from_iter(
                                     ts.iter().map(|t| (t.0.to_string(), t.1.to_string())),
                                 )
                             }))

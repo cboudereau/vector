@@ -21,7 +21,7 @@ mod tests;
 pub use config::{TagCardinalityLimitConfig, TagCardinalityLimitInnerConfig};
 use tag_value_set::AcceptedTagValueSet;
 
-use crate::event::metric::TagValueSet;
+use crate::event::metric::{TagValue, TagValueSet};
 
 type MetricId = (Option<String>, String);
 
@@ -144,12 +144,17 @@ impl TagCardinalityLimit {
             None
         };
         if let Some(tags_map) = otel_metric.tags() {
+            // Convert OtelAttributes iter_single to (key, TagValueSet) pairs for cardinality logic
+            let tag_pairs: Vec<(String, TagValueSet)> = tags_map
+                .iter_single()
+                .map(|(k, v)| (k.to_string(), TagValueSet::from([TagValue::from(v.unwrap_or(""))])))
+                .collect();
             match self
                 .get_config_for_metric(metric_key.as_ref())
                 .limit_exceeded_action
             {
                 LimitExceededAction::DropEvent => {
-                    for (key, value) in tags_map.iter_sets() {
+                    for (key, value) in &tag_pairs {
                         if self.tag_limit_exceeded(metric_key.as_ref(), key, value) {
                             emit!(TagCardinalityLimitRejectingEvent {
                                 metric_name: &metric_name,
@@ -159,28 +164,25 @@ impl TagCardinalityLimit {
                             return None;
                         }
                     }
-                    for (key, value) in tags_map.iter_sets() {
+                    for (key, value) in &tag_pairs {
                         self.record_tag_value(metric_key.as_ref(), key, value);
                     }
                 }
                 LimitExceededAction::DropTag => {
                     // Collect keys to remove, then remove them from proto attributes
-                    let keys_to_remove: Vec<String> = tags_map
-                        .iter_sets()
-                        .filter(|(key, value)| {
-                            if self.try_accept_tag(metric_key.as_ref(), key, value) {
-                                false // keep
-                            } else {
-                                emit!(TagCardinalityLimitRejectingTag {
-                                    metric_name: &metric_name,
-                                    tag_key: key,
-                                    tag_value: &value.to_string(),
-                                });
-                                true // remove
-                            }
-                        })
-                        .map(|(key, _)| key.to_string())
-                        .collect();
+                    let mut keys_to_remove: Vec<String> = Vec::new();
+                    for (key, value) in &tag_pairs {
+                        if self.try_accept_tag(metric_key.as_ref(), key, value) {
+                            // keep
+                        } else {
+                            emit!(TagCardinalityLimitRejectingTag {
+                                metric_name: &metric_name,
+                                tag_key: key,
+                                tag_value: &value.to_string(),
+                            });
+                            keys_to_remove.push(key.clone());
+                        }
+                    }
                     for key in keys_to_remove {
                         otel_metric.remove_data_point_attribute(&key);
                     }

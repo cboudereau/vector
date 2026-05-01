@@ -682,7 +682,7 @@ impl TestMetricInput {
             }
         };
         otel.with_namespace(self.namespace.clone())
-            .with_tags(self.tags.clone())
+            .with_metric_tags(self.tags.clone())
             .with_timestamp(self.timestamp)
             .with_interval_ms(self.interval_ms)
     }

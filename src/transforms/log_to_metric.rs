@@ -413,7 +413,7 @@ fn to_metric_with_config(config: &MetricConfig, event: &Event) -> Result<OtelMet
     Ok(metric
         .with_metadata(metadata)
         .with_namespace(namespace)
-        .with_tags(tags)
+        .with_metric_tags(tags)
         .with_timestamp(timestamp))
 }
 
@@ -646,7 +646,7 @@ mod tests {
             OtelMetric::new_counter("http_requests_total", MetricKind::Incremental, 1.0)
                 .with_metadata(metadata)
                 .with_namespace(Some("app"))
-                .with_tags(Some(metric_tags!(
+                .with_metric_tags(Some(metric_tags!(
                     "method" => "post",
                     "code" => "200",
                     "host" => "localhost",
@@ -691,7 +691,7 @@ mod tests {
             OtelMetric::new_counter("http_requests_total", MetricKind::Incremental, 1.0)
                 .with_metadata(metadata)
                 .with_namespace(Some("app"))
-                .with_tags(Some(metric_tags!(
+                .with_metric_tags(Some(metric_tags!(
                     "one" => "foo",
                     "two" => "baz",
                 )))
@@ -735,8 +735,9 @@ mod tests {
 
         assert_eq!(tags.iter_single().collect::<Vec<_>>()[0].0, "l1_key1");
 
-        assert_eq!(tags.iter_all().count(), 2);
-        for (name, value) in tags.iter_all() {
+        // With OtelAttributes, only single values per key; multi-value maps to last value
+        assert_eq!(tags.iter_single().count(), 1);
+        for (name, value) in tags.iter_single() {
             assert_eq!(name, "l1_key1");
             assert!(value == Some("val1") || value == Some("val2"));
         }
@@ -761,10 +762,11 @@ mod tests {
         let metric = do_transform(config, event).await.unwrap().into_otel_metric();
         let tags = metric.tags().expect("Metric should have tags");
 
-        assert_eq!(tags.iter_single().collect::<Vec<_>>(), vec![("tag", "two")]);
+        assert_eq!(tags.iter_single().collect::<Vec<_>>(), vec![("tag", Some("two"))]);
 
-        assert_eq!(tags.iter_all().count(), 3);
-        for (name, value) in tags.iter_all() {
+        // With OtelAttributes, last value wins for multi-value tags
+        assert_eq!(tags.iter_single().count(), 1);
+        for (name, value) in tags.iter_single() {
             assert_eq!(name, "tag");
             assert!(value.is_none() || value == Some("one") || value == Some("two"));
         }
@@ -794,11 +796,11 @@ mod tests {
 
         assert_eq!(
             tags.iter_single().collect::<Vec<_>>(),
-            vec![("one", "[\"foo\",\"baz\"]")]
+            vec![("one", Some("[\"foo\",\"baz\"]"))]
         );
 
-        assert_eq!(tags.iter_all().count(), 1);
-        for (name, value) in tags.iter_all() {
+        assert_eq!(tags.iter_single().count(), 1);
+        for (name, value) in tags.iter_single() {
             assert_eq!(name, "one");
             assert_eq!(value, Some("[\"foo\",\"baz\"]"));
         }
@@ -820,10 +822,11 @@ mod tests {
         let metric = do_transform(config, event).await.unwrap().into_otel_metric();
         let tags = metric.tags().expect("Metric should have tags");
 
-        assert_eq!(tags.iter_single().collect::<Vec<_>>(), vec![("tag", "two")]);
+        assert_eq!(tags.iter_single().collect::<Vec<_>>(), vec![("tag", Some("two"))]);
 
-        assert_eq!(tags.iter_all().count(), 2);
-        for (name, value) in tags.iter_all() {
+        // With OtelAttributes, last value wins for multi-value tags
+        assert_eq!(tags.iter_single().count(), 1);
+        for (name, value) in tags.iter_single() {
             assert_eq!(name, "tag");
             assert!(value == Some("one") || value == Some("two"));
         }

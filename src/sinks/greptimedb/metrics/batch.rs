@@ -22,10 +22,10 @@ impl GreptimeDBBatchSizer {
         + item.namespace().map(|s| s.len() + 1).unwrap_or(0)
         // Metric tags, with an additional 1 per tag to account for the tag key/value separator.
         + item.tags().map(|t| {
-            t.iter_all().map(|(k, v)| {
+            t.iter_single().map(|(k, v)| {
                 k.len() + 1 + v.map(|v| v.len()).unwrap_or(0)
             })
-            .sum()
+            .sum::<usize>()
         })
             .unwrap_or(0)
             // timestamp

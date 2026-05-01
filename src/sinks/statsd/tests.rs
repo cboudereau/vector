@@ -54,7 +54,7 @@ async fn test_send_to_statsd() {
         Event::Metric(
             OtelMetric::new_counter("counter", MetricKind::Incremental, 1.5)
                 .with_namespace(Some("vector"))
-                .with_tags(Some(tags())),
+                .with_metric_tags(Some(tags())),
         ),
         Event::Metric(
             OtelMetric::new_distribution_from_samples(

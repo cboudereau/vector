@@ -11,10 +11,9 @@ use tokio::{
     fs::{self, File},
     io::AsyncReadExt,
 };
-use vector_lib::metric_tags;
+use vector_lib::{event::metric::MetricTags, metric_tags};
 
 use super::{CGroupsConfig, HostMetrics, MetricsBuffer, filter_result_sync};
-use crate::event::MetricTags;
 
 const MICROSECONDS: f64 = 1.0 / 1_000_000.0;
 
@@ -714,7 +713,7 @@ mod tests {
                 metric
                     .tags()
                     .expect("The metrics should have tags")
-                    .get(tag)
+                    .get_string(tag)
                     .expect("The metric is missing the specified tag")
                     .to_string()
             })

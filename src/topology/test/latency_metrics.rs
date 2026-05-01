@@ -140,8 +140,8 @@ fn assert_gauge_range(
 
 fn has_component_tags(metric: &OtelMetric) -> bool {
     metric.tags().is_some_and(|tags| {
-        tags.get("component_id") == Some(TRANSFORM_ID)
-            && tags.get("component_type") == Some(TRANSFORM_TYPE)
-            && tags.get("component_kind") == Some(TRANSFORM_KIND)
+        tags.get_string("component_id") == Some(TRANSFORM_ID)
+            && tags.get_string("component_type") == Some(TRANSFORM_TYPE)
+            && tags.get_string("component_kind") == Some(TRANSFORM_KIND)
     })
 }

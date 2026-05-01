@@ -300,7 +300,7 @@ mod tests {
     async fn transform_counter() {
         let counter = OtelMetric::new_counter("counter", MetricKind::Absolute, 1.0)
             .with_metadata(event_metadata())
-            .with_tags(Some(tags()))
+            .with_metric_tags(Some(tags()))
             .with_timestamp(Some(ts()));
         let mut metadata = counter.metadata().clone();
         metadata.set_source_id(Arc::new(ComponentKey::from("in")));
@@ -488,7 +488,7 @@ mod tests {
             "single" => "value",
         };
         let counter = OtelMetric::new_counter("counter", MetricKind::Absolute, 1.0)
-            .with_tags(Some(tags))
+            .with_metric_tags(Some(tags))
             .with_timestamp(Some(ts()));
 
         let mut output = OutputBuffer::with_capacity(1);
@@ -515,7 +515,7 @@ mod tests {
             "multi" => "b",
         };
         let counter = OtelMetric::new_counter("counter", MetricKind::Absolute, 1.0)
-            .with_tags(Some(tags))
+            .with_metric_tags(Some(tags))
             .with_timestamp(Some(ts()));
 
         let mut output = OutputBuffer::with_capacity(1);

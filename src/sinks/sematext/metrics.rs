@@ -15,7 +15,7 @@ use super::Region;
 use crate::{
     Result,
     config::{AcknowledgementsConfig, GenerateConfig, Input, SinkConfig, SinkContext},
-    event::{Event, KeyString, OtelMetric},
+    event::{Event, KeyString, OtelMetric, metric::MetricTags},
     http::HttpClient,
     internal_events::{SematextMetricsEncodeEventError, SematextMetricsInvalidMetricError},
     sinks::{
@@ -266,13 +266,14 @@ fn encode_events(
         let label = otel.name().to_string();
         let ts = encode_timestamp(otel.timestamp());
 
-        let mut tags = otel.tags().unwrap_or_default();
-        tags.replace("token".into(), token.to_string());
+        let mut otel_tags = otel.tags().unwrap_or_default();
+        otel_tags.replace_string("token".into(), token.to_string());
         let value = otel.first_value_as_f64().unwrap_or(0.0);
         let metric_type = if otel.is_gauge() { "gauge" } else { "counter" };
         let fields = to_fields(label, value);
 
-        tags.replace("metric_type".into(), metric_type.to_string());
+        otel_tags.replace_string("metric_type".into(), metric_type.to_string());
+        let tags: MetricTags = otel_tags.into_iter_single().collect();
 
         if let Err(error) = influx_line_protocol(
             ProtocolVersion::V1,
@@ -423,7 +424,7 @@ mod tests {
             let event = Event::Metric(
                 OtelMetric::new_counter(*metric, MetricKind::Incremental, *val)
                     .with_namespace(Some(*namespace))
-                    .with_tags(Some(metric_tags!("os.host" => "somehost")))
+                    .with_metric_tags(Some(metric_tags!("os.host" => "somehost")))
                     .with_timestamp(Some(Utc.with_ymd_and_hms(2020, 8, 18, 21, 0, 0).single()
                                          .and_then(|t| t.with_nanosecond(i as u32))
                                          .expect("invalid timestamp"))),

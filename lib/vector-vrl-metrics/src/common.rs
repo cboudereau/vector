@@ -130,20 +130,14 @@ pub(crate) fn metric_into_vrl(value: &OtelMetric) -> Value {
                 value
                 .tags()
                 .map(|t| {
-                    t.iter_sets()
+                    t.into_iter_single()
                         .map(|(k, v)| {
                             (
                                 k.into(),
-                                Value::Array(
-                                    v.iter()
-                                    .filter_map(|v| {
-                                        v.map(ToString::to_string).map(Into::into).map(Value::Bytes)
-                                    })
-                                    .collect(),
-                                ),
+                                Value::Array(vec![Value::Bytes(v.into())]),
                             )
                         })
-                    .collect::<Vec<_>>()
+                    .collect::<Vec<(KeyString, Value)>>()
                 })
                 .unwrap_or_default(),
             )

@@ -128,7 +128,7 @@ fn counter(
 ) -> OtelMetric {
     OtelMetric::new_counter(format!("{prefix}_{name}"), MetricKind::Absolute, value)
         .with_namespace(namespace)
-        .with_tags(Some(tags))
+        .with_metric_tags(Some(tags))
         .with_timestamp(Some(timestamp))
 }
 
@@ -142,7 +142,7 @@ fn gauge(
 ) -> OtelMetric {
     OtelMetric::new_gauge(format!("{prefix}_{name}"), value)
         .with_namespace(namespace)
-        .with_tags(Some(tags))
+        .with_metric_tags(Some(tags))
         .with_timestamp(Some(timestamp))
 }
 
@@ -628,7 +628,7 @@ mod test {
                     0.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_tags(Some(metric_tags!(
+                .with_metric_tags(Some(metric_tags!(
                     "device" => "202:26368",
                     "op" => "read",
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
@@ -641,7 +641,7 @@ mod test {
                     520192.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_tags(Some(metric_tags!(
+                .with_metric_tags(Some(metric_tags!(
                     "device" => "202:26368",
                     "op" => "write",
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
@@ -693,7 +693,7 @@ mod test {
                     2.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_tags(Some(metric_tags!(
+                .with_metric_tags(Some(metric_tags!(
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2"
                 )))
@@ -704,7 +704,7 @@ mod test {
                     2007130000000.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_tags(Some(metric_tags!(
+                .with_metric_tags(Some(metric_tags!(
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
                 )))
@@ -715,7 +715,7 @@ mod test {
                     510000000.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_tags(Some(metric_tags!(
+                .with_metric_tags(Some(metric_tags!(
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
                 )))
@@ -726,7 +726,7 @@ mod test {
                     190000000.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_tags(Some(metric_tags!(
+                .with_metric_tags(Some(metric_tags!(
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
                 )))
@@ -737,7 +737,7 @@ mod test {
                     2324920942.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_tags(Some(metric_tags!(
+                .with_metric_tags(Some(metric_tags!(
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
                 )))
@@ -748,7 +748,7 @@ mod test {
                     0.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_tags(Some(metric_tags!(
+                .with_metric_tags(Some(metric_tags!(
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
                 )))
@@ -759,7 +759,7 @@ mod test {
                     0.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_tags(Some(metric_tags!(
+                .with_metric_tags(Some(metric_tags!(
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
                 )))
@@ -770,7 +770,7 @@ mod test {
                     0.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_tags(Some(metric_tags!(
+                .with_metric_tags(Some(metric_tags!(
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
                 )))
@@ -781,7 +781,7 @@ mod test {
                     1095931487.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_tags(Some(metric_tags!(
+                .with_metric_tags(Some(metric_tags!(
                     "cpu" => "0",
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
@@ -793,7 +793,7 @@ mod test {
                     1228989455.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_tags(Some(metric_tags!(
+                .with_metric_tags(Some(metric_tags!(
                     "cpu" => "1",
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
@@ -842,7 +842,7 @@ mod test {
                     2.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_tags(Some(metric_tags!(
+                .with_metric_tags(Some(metric_tags!(
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2"
                 )))
@@ -853,7 +853,7 @@ mod test {
                     2007130000000.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_tags(Some(metric_tags!(
+                .with_metric_tags(Some(metric_tags!(
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
                 )))
@@ -864,7 +864,7 @@ mod test {
                     510000000.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_tags(Some(metric_tags!(
+                .with_metric_tags(Some(metric_tags!(
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
                 )))
@@ -875,7 +875,7 @@ mod test {
                     190000000.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_tags(Some(metric_tags!(
+                .with_metric_tags(Some(metric_tags!(
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
                 )))
@@ -886,7 +886,7 @@ mod test {
                     2324920942.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_tags(Some(metric_tags!(
+                .with_metric_tags(Some(metric_tags!(
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
                 )))
@@ -897,7 +897,7 @@ mod test {
                     0.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_tags(Some(metric_tags!(
+                .with_metric_tags(Some(metric_tags!(
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
                 )))
@@ -908,7 +908,7 @@ mod test {
                     0.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_tags(Some(metric_tags!(
+                .with_metric_tags(Some(metric_tags!(
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
                 )))
@@ -919,7 +919,7 @@ mod test {
                     0.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_tags(Some(metric_tags!(
+                .with_metric_tags(Some(metric_tags!(
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
                 )))
@@ -930,7 +930,7 @@ mod test {
                     1095931487.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_tags(Some(metric_tags!(
+                .with_metric_tags(Some(metric_tags!(
                     "cpu" => "0",
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
@@ -942,7 +942,7 @@ mod test {
                     1228989455.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_tags(Some(metric_tags!(
+                .with_metric_tags(Some(metric_tags!(
                     "cpu" => "1",
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
@@ -1014,7 +1014,7 @@ mod test {
                 40120320.0,
             )
             .with_namespace(Some(namespace()))
-            .with_tags(Some(metric_tags!(
+            .with_metric_tags(Some(metric_tags!(
                 "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                 "container_name" => "vector2",
             )))
@@ -1031,7 +1031,7 @@ mod test {
                 47177728.0,
             )
             .with_namespace(Some(namespace()))
-            .with_tags(Some(metric_tags!(
+            .with_metric_tags(Some(metric_tags!(
                 "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                 "container_name" => "vector2",
             )))
@@ -1048,7 +1048,7 @@ mod test {
                 34885632.0,
             )
             .with_namespace(Some(namespace()))
-            .with_tags(Some(metric_tags!(
+            .with_metric_tags(Some(metric_tags!(
                 "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                 "container_name" => "vector2",
             )))
@@ -1066,7 +1066,7 @@ mod test {
                 31131.0,
             )
             .with_namespace(Some(namespace()))
-            .with_tags(Some(metric_tags!(
+            .with_metric_tags(Some(metric_tags!(
                 "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                 "container_name" => "vector2",
             )))
@@ -1110,7 +1110,7 @@ mod test {
                 329932716.0,
             )
             .with_namespace(Some(namespace()))
-            .with_tags(Some(metric_tags!(
+            .with_metric_tags(Some(metric_tags!(
                 "device" => "eth1",
                 "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                 "container_name" => "vector2",
@@ -1129,7 +1129,7 @@ mod test {
                 2001229.0,
             )
             .with_namespace(Some(namespace()))
-            .with_tags(Some(metric_tags!(
+            .with_metric_tags(Some(metric_tags!(
                 "device" => "eth1",
                 "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                 "container_name" => "vector2",

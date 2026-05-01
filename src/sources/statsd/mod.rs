@@ -411,7 +411,7 @@ mod test {
     };
     use vector_lib::{
         config::ComponentKey,
-        event::{EventContainer, metric::TagValue},
+        event::EventContainer,
     };
 
     use super::*;
@@ -629,7 +629,7 @@ mod test {
             &metrics,
             series!(
                 "foo",
-                "a" => TagValue::Bare,
+                "a" => "",
                 "b" => "b"
             ),
             100.0,
@@ -639,7 +639,7 @@ mod test {
             &metrics,
             series!(
                 "foo",
-                "a" => TagValue::Bare,
+                "a" => "",
                 "b" => "c"
             ),
             100.0,

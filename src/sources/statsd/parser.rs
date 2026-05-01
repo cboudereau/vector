@@ -71,7 +71,7 @@ impl Parser {
             "c" => {
                 let val: f64 = parts[0].parse()?;
                 OtelMetric::new_counter(name, MetricKind::Incremental, val * sample_rate)
-                    .with_tags(tags)
+                    .with_metric_tags(tags)
             }
             unit @ "h" | unit @ "ms" | unit @ "d" => {
                 let val: f64 = parts[0].parse()?;
@@ -89,7 +89,7 @@ impl Parser {
                     &samples,
                     convert_to_statistic(unit),
                 )
-                .with_tags(tags)
+                .with_metric_tags(tags)
             }
             "g" => {
                 let value = if parts[0]
@@ -104,9 +104,9 @@ impl Parser {
                 };
 
                 match parse_direction(parts[0])? {
-                    None => OtelMetric::new_gauge(name, value).with_tags(tags),
+                    None => OtelMetric::new_gauge(name, value).with_metric_tags(tags),
                     Some(sign) => OtelMetric::new_gauge_delta(name, value * sign)
-                        .with_tags(tags),
+                        .with_metric_tags(tags),
                 }
             }
             "s" => OtelMetric::new_set_from_values(
@@ -114,7 +114,7 @@ impl Parser {
                 MetricKind::Incremental,
                 vec![parts[0].to_string()],
             )
-            .with_tags(tags),
+            .with_metric_tags(tags),
             other => return Err(ParseError::UnknownMetricType(other.into())),
         };
         Ok(metric)
@@ -255,7 +255,7 @@ mod test {
         assert_event_data_eq!(
             parse("foo/how@ever baz:1|c|#tag1,tag2:value"),
             Ok(OtelMetric::new_counter("foo-however_baz", MetricKind::Incremental, 1.0)
-                .with_tags(Some(metric_tags!(
+                .with_metric_tags(Some(metric_tags!(
                     "tag1" => TagValue::Bare,
                     "tag2" => "value",
                 )))),
@@ -267,7 +267,7 @@ mod test {
         assert_event_data_eq!(
             unsanitized_parse("foo/bar@baz baz:1|c|#tag1,tag2:value"),
             Ok(OtelMetric::new_counter("foo/bar@baz baz", MetricKind::Incremental, 1.0)
-                .with_tags(Some(metric_tags!(
+                .with_metric_tags(Some(metric_tags!(
                     "tag1" => TagValue::Bare,
                     "tag2" => "value",
                 )))),
@@ -279,7 +279,7 @@ mod test {
         assert_event_data_eq!(
             parse("foo:1|c|#tag1,tag2:valueA,tag2:valueB,tag3:value,tag3,tag4:"),
             Ok(OtelMetric::new_counter("foo", MetricKind::Incremental, 1.0)
-                .with_tags(Some(metric_tags!(
+                .with_metric_tags(Some(metric_tags!(
                     "tag1" => TagValue::Bare,
                     "tag2" => "valueA",
                     "tag2" => "valueB",
@@ -345,7 +345,7 @@ mod test {
                 &samples,
                 StatisticKind::Histogram,
             )
-            .with_tags(Some(metric_tags!(
+            .with_metric_tags(Some(metric_tags!(
                 "region" => "us-west1",
                 "production" => TagValue::Bare,
                 "e" => "",
@@ -364,7 +364,7 @@ mod test {
                 &samples,
                 StatisticKind::Summary,
             )
-            .with_tags(Some(metric_tags!(
+            .with_metric_tags(Some(metric_tags!(
                 "region" => "us-west1",
                 "production" => TagValue::Bare,
                 "e" => "",

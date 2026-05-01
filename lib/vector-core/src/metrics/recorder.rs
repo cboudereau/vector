@@ -84,7 +84,7 @@ impl Registry {
                 metrics.push(
                     OtelMetric::new_counter(key.name(), MetricKind::Absolute, value)
                         .with_namespace(Some("vector".to_string()))
-                        .with_tags(tags_from_key(&key))
+                        .with_metric_tags(tags_from_key(&key))
                         .with_timestamp(Some(timestamp)),
                 );
             }
@@ -97,7 +97,7 @@ impl Registry {
                 metrics.push(
                     OtelMetric::new_gauge(key.name(), value)
                         .with_namespace(Some("vector".to_string()))
-                        .with_tags(tags_from_key(&key))
+                        .with_metric_tags(tags_from_key(&key))
                         .with_timestamp(Some(timestamp)),
                 );
             }
@@ -110,7 +110,7 @@ impl Registry {
                 metrics.push(
                     OtelMetric::new_histogram(key.name(), MetricKind::Absolute, &inner.buckets(), inner.count(), inner.sum())
                         .with_namespace(Some("vector".to_string()))
-                        .with_tags(tags_from_key(&key))
+                        .with_metric_tags(tags_from_key(&key))
                         .with_timestamp(Some(timestamp)),
                 );
             }

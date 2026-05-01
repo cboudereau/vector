@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, fmt::Write as _};
 use chrono::Utc;
 use indexmap::map::IndexMap;
 use vector_lib::{
-    event::metric::{MetricTags, samples_to_buckets},
+    event::{OtelAttributes, metric::samples_to_buckets},
     prometheus::parser::{METRIC_NAME_LABEL, proto},
 };
 
@@ -28,7 +28,7 @@ pub(super) trait MetricCollector {
         name: &str,
         suffix: &str,
         value: f64,
-        tags: Option<&MetricTags>,
+        tags: Option<&OtelAttributes>,
         extra: Option<(&str, String)>,
     );
 
@@ -210,7 +210,7 @@ impl MetricCollector for StringCollector {
         name: &str,
         suffix: &str,
         value: f64,
-        tags: Option<&MetricTags>,
+        tags: Option<&OtelAttributes>,
         extra: Option<(&str, String)>,
     ) {
         let result = self
@@ -233,14 +233,14 @@ impl MetricCollector for StringCollector {
 }
 
 impl StringCollector {
-    fn encode_tags(result: &mut String, tags: Option<&MetricTags>, extra: Option<(&str, String)>) {
+    fn encode_tags(result: &mut String, tags: Option<&OtelAttributes>, extra: Option<(&str, String)>) {
         match (tags, extra) {
             (None, None) => Ok(()),
             (None, Some(tag)) => write!(result, "{{{}}}", Self::format_tag(tag.0, &tag.1)),
             (Some(tags), ref tag) => {
                 let mut parts = tags
                     .iter_single()
-                    .map(|(key, value)| Self::format_tag(key, value))
+                    .map(|(key, value)| Self::format_tag(key, value.unwrap_or("")))
                     .collect::<Vec<_>>();
 
                 if let Some((key, value)) = tag {
@@ -287,7 +287,7 @@ pub(super) struct TimeSeries {
 
 impl TimeSeries {
     fn make_labels(
-        tags: Option<&MetricTags>,
+        tags: Option<&OtelAttributes>,
         name: &str,
         suffix: &str,
         extra: Option<(&str, String)>,
@@ -297,9 +297,9 @@ impl TimeSeries {
         // label for the actual metric name. For convenience below, an
         // optional extra tag is added.
         let mut labels = tags.cloned().unwrap_or_default();
-        labels.replace(METRIC_NAME_LABEL.into(), [name, suffix].join(""));
+        labels.replace_string(METRIC_NAME_LABEL.into(), [name, suffix].join(""));
         if let Some((name, value)) = extra {
-            labels.replace(name.into(), value);
+            labels.replace_string(name.into(), value);
         }
 
         // Extract the labels into a vec and sort to produce a
@@ -349,7 +349,7 @@ impl MetricCollector for TimeSeries {
         name: &str,
         suffix: &str,
         value: f64,
-        tags: Option<&MetricTags>,
+        tags: Option<&OtelAttributes>,
         extra: Option<(&str, String)>,
     ) {
         let timestamp = timestamp_millis.unwrap_or_else(|| self.default_timestamp());
@@ -398,7 +398,7 @@ mod tests {
     use chrono::{DateTime, TimeZone, Timelike};
     use indoc::indoc;
     use similar_asserts::assert_eq;
-    use vector_lib::metric_tags;
+    use vector_lib::otel_tags;
 
     use super::{super::default_summary_quantiles, *};
     use crate::{
@@ -421,8 +421,8 @@ mod tests {
         s.finish()
     }
 
-    fn tags() -> MetricTags {
-        metric_tags!("code" => "200")
+    fn tags() -> OtelAttributes {
+        otel_tags!("code" => "200")
     }
 
     macro_rules! write_request {
@@ -834,7 +834,7 @@ mod tests {
 
     #[test]
     fn escapes_tags_text() {
-        let tags = metric_tags!(
+        let tags = otel_tags!(
             "code" => "200",
             "quoted" => r#"host"1""#,
             "path" => r"c:\Windows",
@@ -860,7 +860,7 @@ mod tests {
     /// compatible with older versions of Vector, we only publish the last tag in the list.
     #[test]
     fn encodes_duplicate_tags() {
-        let tags = metric_tags!(
+        let tags = otel_tags!(
             "code" => "200",
             "code" => "success",
         );

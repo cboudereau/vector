@@ -147,7 +147,7 @@ macro_rules! series {
 		vector_lib::event::metric::MetricIdentity {
 			name: $name.into(),
 			namespace: None,
-			tags: Some(vector_lib::metric_tags!( $( $tk => $tv, )* )),
+			tags: Some(vector_lib::otel_tags!( $( $tk => $tv, )* )),
 		}
 	};
 }

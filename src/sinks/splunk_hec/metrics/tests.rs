@@ -33,7 +33,7 @@ fn get_counter() -> OtelMetric {
 
     OtelMetric::new_counter("example-counter", MetricKind::Absolute, 26.8)
         .with_timestamp(Some(timestamp))
-        .with_tags(Some(metric_tags! {
+        .with_metric_tags(Some(metric_tags! {
             "template_index".to_string() => "index_value".to_string(),
             "template_source".to_string() => "source_value".to_string(),
             "template_sourcetype".to_string() => "sourcetype_value".to_string(),

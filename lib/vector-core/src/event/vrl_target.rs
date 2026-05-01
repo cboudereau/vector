@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use lookup::{OwnedTargetPath, PathPrefix};
 use opentelemetry_proto::tonic::common::v1::{
-    AnyValue as OtelAnyValue, KeyValue as OtelKeyValue,
+    KeyValue as OtelKeyValue,
     InstrumentationScope as OtelScope,
 };
 #[cfg(test)]
@@ -24,38 +24,11 @@ use std::collections::BTreeMap;
 use vrl::{prelude::Collection, value::Kind};
 
 // ---------------------------------------------------------------------------
-// OTel AnyValue <-> VRL Value conversion
+// OTel AnyValue <-> VRL Value conversion — delegates to otel_event.rs
 // ---------------------------------------------------------------------------
 
-fn otel_any_value_to_vrl(av: &OtelAnyValue) -> Value {
-    super::otel_event::any_value_to_vrl(av)
-}
-
-fn vrl_value_to_otel_any_value(val: &Value) -> OtelAnyValue {
-    super::vrl_value_to_any_value(val)
-}
-
-fn otel_kvlist_to_object_map(kvs: &[OtelKeyValue]) -> ObjectMap {
-    kvs.iter()
-        .map(|kv| {
-            let v = kv
-                .value
-                .as_ref()
-                .map(otel_any_value_to_vrl)
-                .unwrap_or(Value::Null);
-            (kv.key.clone().into(), v)
-        })
-        .collect()
-}
-
-fn object_map_to_otel_kvlist(map: &ObjectMap) -> Vec<OtelKeyValue> {
-    map.iter()
-        .map(|(k, v)| OtelKeyValue {
-            key: k.to_string(),
-            value: Some(vrl_value_to_otel_any_value(v)),
-        })
-        .collect()
-}
+use super::otel_event::{any_value_to_vrl as otel_any_value_to_vrl, kvlist_to_object_map as otel_kvlist_to_object_map, object_map_to_kvlist as object_map_to_otel_kvlist};
+use super::vrl_value_to_any_value as vrl_value_to_otel_any_value;
 
 fn otel_resource_to_value(resource: &OtelResource) -> Value {
     let mut map = ObjectMap::new();

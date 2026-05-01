@@ -355,7 +355,7 @@ pub(crate) fn any_value_to_vrl(av: &AnyValue) -> Value {
     }
 }
 
-pub(crate) fn kvlist_to_object_map(kvs: &[KeyValue]) -> ObjectMap {
+pub fn kvlist_to_object_map(kvs: &[KeyValue]) -> ObjectMap {
     kvs.iter()
         .map(|kv| {
             let v = kv
@@ -364,6 +364,15 @@ pub(crate) fn kvlist_to_object_map(kvs: &[KeyValue]) -> ObjectMap {
                 .map(any_value_to_vrl)
                 .unwrap_or(Value::Null);
             (kv.key.clone().into(), v)
+        })
+        .collect()
+}
+
+pub fn object_map_to_kvlist(map: &ObjectMap) -> Vec<KeyValue> {
+    map.iter()
+        .map(|(k, v)| KeyValue {
+            key: k.to_string(),
+            value: Some(vrl_value_to_any_value(v)),
         })
         .collect()
 }

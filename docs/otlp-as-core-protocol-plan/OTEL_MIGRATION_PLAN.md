@@ -1,6 +1,8 @@
 # OTLP as Core Protocol — Forward Plan
 
-Vector's internal event model uses OpenTelemetry (OTLP) as its sole core protocol.
+**Sol** (**S**ingle **O**bservability **L**ayer) is a true fork of [Vector](https://github.com/vectordotdev/vector), rebuilt around an OpenTelemetry-centric core. See [MARKET.md](MARKET.md) for the full product vision and market positioning.
+
+Sol's internal event model uses OpenTelemetry (OTLP) as its sole core protocol.
 
 ```rust
 pub enum Event {
@@ -335,6 +337,8 @@ Each commit migrates one caller. Run full tests after each.
 
 ## Architecture
 
+Sol is a true fork of Vector, rebuilt with OpenTelemetry as its native protocol. The original Vector's proprietary types are gone from core — but Sol retains the original Vector wire protocol as a source adapter, so existing Vector fleets can send data to Sol without any changes.
+
 ```
 Sources (adapters)              Core (OTel-native)                    Sinks (adapters)
 ──────────────────────────────  ────────────────────────────────────  ───────────────────────
@@ -345,6 +349,17 @@ kafka, syslog, … ──────────►   OtelSpan (Span)
                                 OtelAttributes (BTreeMap wrapper)
                                 Disk buffer: otlp_buffer.proto
 ```
+
+### What Sol changes from the original Vector
+
+| Aspect | Original Vector | Sol |
+|--------|----------------|-----|
+| **Core event model** | Proprietary types (`LogEvent`, `Metric`, `TraceEvent`) | OTel-native (`OtelLog`, `OtelMetric`, `OtelSpan`) |
+| **Wire protocol** | Custom `event.proto` / `vector.proto` | OTLP (proto + JSON) — the standard |
+| **OTLP support** | Partial (source + sink, but not core) | Native — OTLP IS the core |
+| **Vendor types in core** | DD sketches, `MetricValue`, `StatisticKind` | None — vendor logic in adapters only |
+| **`vector` sink** | Custom proto → another Vector | Deleted — use `opentelemetry` sink |
+| **`vector` source** | Custom proto only | Dual: original Vector proto + OTLP gRPC |
 
 ### Vector Source: Dual-Protocol Ingestion
 
@@ -358,7 +373,7 @@ The `vector` source serves two gRPC protocols on the same port:
 
 2. **OTLP gRPC** (3-service model):
    - `LogsService`, `MetricsService`, `TraceService`
-   - Accepts connections from any OTLP-compliant client (OTel Collector, newer Vector, any agent)
+   - Accepts connections from any OTLP-compliant client (OTel Collector, Sol, any OTLP agent)
 
 ```
 Original Vector ── vector sink (native proto) ──► ┌──────────────────┐
@@ -366,11 +381,11 @@ Original Vector ── vector sink (native proto) ──► ┌─────�
                                                    │                  │ ──► Core (OtelLog,
 OTel Collector  ── otlp exporter ──────────────► │  Dual-protocol:  │      OtelMetric,
                                                    │  • Vector native │      OtelSpan)
-New Vector      ── opentelemetry sink (OTLP) ───► │  • OTLP gRPC     │
+Sol / any OTLP  ── opentelemetry sink ─────────► │  • OTLP gRPC     │
                                                    └──────────────────┘
 ```
 
-There is **no `vector` sink** — it was a thin wrapper around `opentelemetry` and has been deleted. To send data to another Vector instance (or any OTLP-compatible receiver), use `type = "opentelemetry"` directly.
+There is **no `vector` sink** — it was a redundant wrapper around `opentelemetry`. To send data to another Sol/Vector instance (or any OTLP-compatible receiver), use `type = "opentelemetry"` directly.
 
 ### Why keep the original protocol?
 

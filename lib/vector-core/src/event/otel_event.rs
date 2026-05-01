@@ -946,6 +946,12 @@ impl OtelAttributes {
             let s = match &v.value {
                 Some(OtelValueKind::StringValue(s)) => Some(s.as_str()),
                 None => None,
+                Some(OtelValueKind::ArrayValue(arr)) => {
+                    arr.values.last().and_then(|v| match &v.value {
+                        Some(OtelValueKind::StringValue(s)) => Some(s.as_str()),
+                        _ => None,
+                    })
+                }
                 Some(other) => Some(otel_value_to_str_ref(other)),
             };
             (k.as_str(), s)

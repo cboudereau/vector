@@ -556,6 +556,25 @@ fn remove_value_at(v: &mut Value, remaining: &[String], prune: bool) -> Option<V
     }
 }
 
+/// Build an `OwnedValuePath` from remaining path segments (used for navigating
+/// into a VRL Value subtree after resolving the proto root field).
+fn remaining_value_path<'a>(
+    segments: impl Iterator<Item = lookup::path::BorrowedSegment<'a>>,
+) -> vrl::path::OwnedValuePath {
+    use vrl::path::{OwnedSegment, OwnedValuePath};
+    OwnedValuePath {
+        segments: segments
+            .filter_map(|seg| match seg {
+                lookup::path::BorrowedSegment::Field(f) => {
+                    Some(OwnedSegment::Field(f.as_ref().into()))
+                }
+                lookup::path::BorrowedSegment::Index(i) => Some(OwnedSegment::Index(i)),
+                lookup::path::BorrowedSegment::Invalid => None,
+            })
+            .collect(),
+    }
+}
+
 /// Coerce a VRL `Value` to a `Timestamp` if it's a string that can be
 /// parsed as RFC 3339. This is needed because OTLP `AnyValue` has no native
 /// timestamp type, so timestamps round-trip as strings.
@@ -1509,7 +1528,7 @@ impl OtelLog {
     // Field access methods
     //
     // Single-segment and multi-segment field paths use direct proto
-    // accessors. Array-index paths fall back to `to_value_canonical()`.
+    // accessors. Array-index paths resolve the root field then navigate the Value subtree.
     // -----------------------------------------------------------------------
 
     /// Get a field value by its semantic meaning (looks up schema definition).
@@ -1531,7 +1550,8 @@ impl OtelLog {
     }
 
     /// Get a field value by path.
-    /// Fast path for well-known single-segment proto fields; falls back to legacy layout.
+    /// Navigates proto fields and OtelAttributes directly. For paths containing
+    /// array indices, resolves the root field then navigates the Value subtree.
     pub fn get<'a>(&self, path: impl lookup::lookup_v2::TargetPath<'a>) -> Option<Value> {
         use lookup::lookup_v2::ValuePath;
         use lookup::path::BorrowedSegment;
@@ -1546,30 +1566,36 @@ impl OtelLog {
                             None => self.get_single_segment(first.as_ref()),
                             Some(BorrowedSegment::Field(ref second)) => {
                                 let mut fields = vec![first.to_string(), second.to_string()];
-                                let mut all_fields = true;
-                                for seg in iter {
+                                let mut remaining_iter = None;
+                                for seg in &mut iter {
                                     match seg {
                                         BorrowedSegment::Field(f) => fields.push(f.to_string()),
-                                        _ => { all_fields = false; break; }
+                                        _ => {
+                                            remaining_iter = Some((seg, iter));
+                                            break;
+                                        }
                                     }
                                 }
-                                if all_fields {
-                                    self.get_field_path(&fields)
+                                if let Some((non_field_seg, rest)) = remaining_iter {
+                                    let base = self.get_field_path(&fields)?;
+                                    let sub = remaining_value_path(
+                                        std::iter::once(non_field_seg).chain(rest),
+                                    );
+                                    base.get(&sub).cloned()
                                 } else {
-                                    let value = self.to_value_canonical();
-                                    value.get(path.value_path()).cloned()
+                                    self.get_field_path(&fields)
                                 }
                             }
-                            _ => {
-                                let value = self.to_value_canonical();
-                                value.get(path.value_path()).cloned()
+                            Some(non_field_seg) => {
+                                let base = self.get_single_segment(first.as_ref())?;
+                                let sub = remaining_value_path(
+                                    std::iter::once(non_field_seg).chain(iter),
+                                );
+                                base.get(&sub).cloned()
                             }
                         }
                     }
-                    _ => {
-                        let value = self.to_value_canonical();
-                        value.get(path.value_path()).cloned()
-                    }
+                    _ => None,
                 }
             }
             lookup::PathPrefix::Metadata => {
@@ -1687,36 +1713,41 @@ impl OtelLog {
                             None => self.insert_single_segment(first.as_ref(), value),
                             Some(BorrowedSegment::Field(ref second)) => {
                                 let mut fields = vec![first.to_string(), second.to_string()];
-                                let mut all_fields = true;
-                                for seg in iter {
+                                let mut remaining_iter = None;
+                                for seg in &mut iter {
                                     match seg {
                                         BorrowedSegment::Field(f) => fields.push(f.to_string()),
-                                        _ => { all_fields = false; break; }
+                                        _ => {
+                                            remaining_iter = Some((seg, iter));
+                                            break;
+                                        }
                                     }
                                 }
-                                if all_fields {
-                                    self.insert_field_path(&fields, value)
-                                } else {
-                                    let mut val = self.to_value_canonical();
-                                    let old = val.insert(path.value_path(), value);
-                                    self.apply_value_map(val);
+                                if let Some((non_field_seg, rest)) = remaining_iter {
+                                    let mut base = self.get_field_path(&fields).unwrap_or(Value::Null);
+                                    let sub = remaining_value_path(
+                                        std::iter::once(non_field_seg).chain(rest),
+                                    );
+                                    let old = base.insert(&sub, value);
+                                    self.insert_field_path(&fields, base);
                                     old
+                                } else {
+                                    self.insert_field_path(&fields, value)
                                 }
                             }
-                            _ => {
-                                let mut val = self.to_value_canonical();
-                                let old = val.insert(path.value_path(), value);
-                                self.apply_value_map(val);
+                            Some(non_field_seg) => {
+                                let first_str = first.as_ref();
+                                let mut base = self.get_single_segment(first_str).unwrap_or(Value::Null);
+                                let sub = remaining_value_path(
+                                    std::iter::once(non_field_seg).chain(iter),
+                                );
+                                let old = base.insert(&sub, value);
+                                self.insert_single_segment(first_str, base);
                                 old
                             }
                         }
                     }
-                    _ => {
-                        let mut val = self.to_value_canonical();
-                        let old = val.insert(path.value_path(), value);
-                        self.apply_value_map(val);
-                        old
-                    }
+                    _ => None,
                 }
             }
             lookup::PathPrefix::Metadata => {
@@ -1937,36 +1968,41 @@ impl OtelLog {
                             None => self.remove_single_segment(first.as_ref()),
                             Some(BorrowedSegment::Field(ref second)) => {
                                 let mut fields = vec![first.to_string(), second.to_string()];
-                                let mut all_fields = true;
-                                for seg in iter {
+                                let mut remaining_iter = None;
+                                for seg in &mut iter {
                                     match seg {
                                         BorrowedSegment::Field(f) => fields.push(f.to_string()),
-                                        _ => { all_fields = false; break; }
+                                        _ => {
+                                            remaining_iter = Some((seg, iter));
+                                            break;
+                                        }
                                     }
                                 }
-                                if all_fields {
-                                    self.remove_field_path(&fields, prune)
-                                } else {
-                                    let mut val = self.to_value_canonical();
-                                    let old = val.remove(path.value_path(), prune);
-                                    self.apply_value_map(val);
+                                if let Some((non_field_seg, rest)) = remaining_iter {
+                                    let mut base = self.get_field_path(&fields)?;
+                                    let sub = remaining_value_path(
+                                        std::iter::once(non_field_seg).chain(rest),
+                                    );
+                                    let old = base.remove(&sub, prune);
+                                    self.insert_field_path(&fields, base);
                                     old
+                                } else {
+                                    self.remove_field_path(&fields, prune)
                                 }
                             }
-                            _ => {
-                                let mut val = self.to_value_canonical();
-                                let old = val.remove(path.value_path(), prune);
-                                self.apply_value_map(val);
+                            Some(non_field_seg) => {
+                                let first_str = first.as_ref();
+                                let mut base = self.get_single_segment(first_str)?;
+                                let sub = remaining_value_path(
+                                    std::iter::once(non_field_seg).chain(iter),
+                                );
+                                let old = base.remove(&sub, prune);
+                                self.insert_single_segment(first_str, base);
                                 old
                             }
                         }
                     }
-                    _ => {
-                        let mut val = self.to_value_canonical();
-                        let old = val.remove(path.value_path(), prune);
-                        self.apply_value_map(val);
-                        old
-                    }
+                    _ => None,
                 }
             }
             lookup::PathPrefix::Metadata => {
@@ -3020,30 +3056,36 @@ impl OtelSpan {
                             None => self.span_get_single_segment(first.as_ref()),
                             Some(BorrowedSegment::Field(ref second)) => {
                                 let mut fields = vec![first.to_string(), second.to_string()];
-                                let mut all_fields = true;
-                                for seg in iter {
+                                let mut remaining_iter = None;
+                                for seg in &mut iter {
                                     match seg {
                                         BorrowedSegment::Field(f) => fields.push(f.to_string()),
-                                        _ => { all_fields = false; break; }
+                                        _ => {
+                                            remaining_iter = Some((seg, iter));
+                                            break;
+                                        }
                                     }
                                 }
-                                if all_fields {
-                                    self.span_get_field_path(&fields)
+                                if let Some((non_field_seg, rest)) = remaining_iter {
+                                    let base = self.span_get_field_path(&fields)?;
+                                    let sub = remaining_value_path(
+                                        std::iter::once(non_field_seg).chain(rest),
+                                    );
+                                    base.get(&sub).cloned()
                                 } else {
-                                    let value = self.to_value_canonical();
-                                    value.get(path.value_path()).cloned()
+                                    self.span_get_field_path(&fields)
                                 }
                             }
-                            _ => {
-                                let value = self.to_value_canonical();
-                                value.get(path.value_path()).cloned()
+                            Some(non_field_seg) => {
+                                let base = self.span_get_single_segment(first.as_ref())?;
+                                let sub = remaining_value_path(
+                                    std::iter::once(non_field_seg).chain(iter),
+                                );
+                                base.get(&sub).cloned()
                             }
                         }
                     }
-                    _ => {
-                        let value = self.to_value_canonical();
-                        value.get(path.value_path()).cloned()
-                    }
+                    _ => None,
                 }
             }
             lookup::PathPrefix::Metadata => {
@@ -3188,36 +3230,41 @@ impl OtelSpan {
                             None => self.span_insert_single_segment(first.as_ref(), value),
                             Some(BorrowedSegment::Field(ref second)) => {
                                 let mut fields = vec![first.to_string(), second.to_string()];
-                                let mut all_fields = true;
-                                for seg in iter {
+                                let mut remaining_iter = None;
+                                for seg in &mut iter {
                                     match seg {
                                         BorrowedSegment::Field(f) => fields.push(f.to_string()),
-                                        _ => { all_fields = false; break; }
+                                        _ => {
+                                            remaining_iter = Some((seg, iter));
+                                            break;
+                                        }
                                     }
                                 }
-                                if all_fields {
-                                    self.span_insert_field_path(&fields, value)
-                                } else {
-                                    let mut val = self.to_value_canonical();
-                                    let old = val.insert(path.value_path(), value);
-                                    self.apply_value_map(val);
+                                if let Some((non_field_seg, rest)) = remaining_iter {
+                                    let mut base = self.span_get_field_path(&fields).unwrap_or(Value::Null);
+                                    let sub = remaining_value_path(
+                                        std::iter::once(non_field_seg).chain(rest),
+                                    );
+                                    let old = base.insert(&sub, value);
+                                    self.span_insert_field_path(&fields, base);
                                     old
+                                } else {
+                                    self.span_insert_field_path(&fields, value)
                                 }
                             }
-                            _ => {
-                                let mut val = self.to_value_canonical();
-                                let old = val.insert(path.value_path(), value);
-                                self.apply_value_map(val);
+                            Some(non_field_seg) => {
+                                let first_str = first.as_ref();
+                                let mut base = self.span_get_single_segment(first_str).unwrap_or(Value::Null);
+                                let sub = remaining_value_path(
+                                    std::iter::once(non_field_seg).chain(iter),
+                                );
+                                let old = base.insert(&sub, value);
+                                self.span_insert_single_segment(first_str, base);
                                 old
                             }
                         }
                     }
-                    _ => {
-                        let mut val = self.to_value_canonical();
-                        let old = val.insert(path.value_path(), value);
-                        self.apply_value_map(val);
-                        old
-                    }
+                    _ => None,
                 }
             }
             lookup::PathPrefix::Metadata => {
@@ -3468,36 +3515,41 @@ impl OtelSpan {
                             None => self.span_remove_single_segment(first.as_ref()),
                             Some(BorrowedSegment::Field(ref second)) => {
                                 let mut fields = vec![first.to_string(), second.to_string()];
-                                let mut all_fields = true;
-                                for seg in iter {
+                                let mut remaining_iter = None;
+                                for seg in &mut iter {
                                     match seg {
                                         BorrowedSegment::Field(f) => fields.push(f.to_string()),
-                                        _ => { all_fields = false; break; }
+                                        _ => {
+                                            remaining_iter = Some((seg, iter));
+                                            break;
+                                        }
                                     }
                                 }
-                                if all_fields {
-                                    self.span_remove_field_path(&fields, prune)
-                                } else {
-                                    let mut val = self.to_value_canonical();
-                                    let old = val.remove(path.value_path(), prune);
-                                    self.apply_value_map(val);
+                                if let Some((non_field_seg, rest)) = remaining_iter {
+                                    let mut base = self.span_get_field_path(&fields)?;
+                                    let sub = remaining_value_path(
+                                        std::iter::once(non_field_seg).chain(rest),
+                                    );
+                                    let old = base.remove(&sub, prune);
+                                    self.span_insert_field_path(&fields, base);
                                     old
+                                } else {
+                                    self.span_remove_field_path(&fields, prune)
                                 }
                             }
-                            _ => {
-                                let mut val = self.to_value_canonical();
-                                let old = val.remove(path.value_path(), prune);
-                                self.apply_value_map(val);
+                            Some(non_field_seg) => {
+                                let first_str = first.as_ref();
+                                let mut base = self.span_get_single_segment(first_str)?;
+                                let sub = remaining_value_path(
+                                    std::iter::once(non_field_seg).chain(iter),
+                                );
+                                let old = base.remove(&sub, prune);
+                                self.span_insert_single_segment(first_str, base);
                                 old
                             }
                         }
                     }
-                    _ => {
-                        let mut val = self.to_value_canonical();
-                        let old = val.remove(path.value_path(), prune);
-                        self.apply_value_map(val);
-                        old
-                    }
+                    _ => None,
                 }
             }
             lookup::PathPrefix::Metadata => {

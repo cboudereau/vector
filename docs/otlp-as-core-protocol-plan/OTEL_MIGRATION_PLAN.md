@@ -108,9 +108,10 @@ This is rarely needed since Strategy 2 provides direct native protocol compatibi
 | **protobuf output** | Descriptor must match OTLP/JSON field names | Update proto descriptors |
 | **Lua scripts** | Table layout is structured: `event.log.attributes.key` not `event.log.key` | Update Lua scripts manually |
 | **JSON output** | OTLP/JSON (camelCase, nested resource/scope/attributes) | Update JSON parsers |
-| **Vector source** | Accepts both native proto AND OTLP gRPC | No change needed — existing `vector` sink works |
+| **Vector source** | Native proto only (backward compat adapter) | No change needed — existing `vector` sink works |
 | **Vector sink** | Deleted — use `type = "opentelemetry"` instead | Replace `type = "vector"` with `type = "opentelemetry"` in configs |
-| **honeycomb sink** | `data` field uses OTLP/JSON layout | Honeycomb handles nested JSON natively |
+| **Transformer `only_fields`/`except_fields`** | Paths are OTLP-aware: `body`, `attributes.X`, `resource.X` | Update transformer configs |
+| **honeycomb sink** | `data` field uses OTLP/JSON layout (was flat key-value) | Honeycomb handles nested JSON natively |
 | **new_relic sink** | Attributes built from proto structure | Transparent — NR API accepts any attributes |
 | **influxdb/logs sink** | Fields iterated from proto + attrs | Update tag/field key expectations |
 
@@ -169,76 +170,87 @@ All decisions locked. Autopilot proceeds without stopping.
 | D15 | Delete convert_to_fields/as_map methods | **Yes** — after callers migrated |
 | D16 | get(event_root()): OTLP/JSON-shaped Value | **Yes** |
 | D17 | Delete MetricTags type entirely | **Yes** |
-| D18 | Delete Sample/Bucket/Quantile | **Yes** |
+| D18 | ~~Delete Sample/Bucket/Quantile~~ | **No** — keep as convenience constructors. Used in 20+ files, no legacy semantics, never on wire |
 | D19 | Split otel_event.rs | **Yes** — otel_log.rs + otel_metric.rs + otel_attributes.rs + otel_event.rs |
 | D20 | Document all breaking changes | **Yes** — in this file's Migration Guide |
 | D21 | Delete `vector` sink entirely | **Yes** — redundant wrapper around `opentelemetry` sink. Users use `type = "opentelemetry"` directly |
 | D22 | Restore native Vector protocol in `vector` source | **Yes** — `event.proto`/`vector.proto` as source-scoped adapter for backward compatibility with original Vector |
+| D23 | Delete `metric_tags!` macro, replace with `otel_tags!` | **Yes** — clean break, Sol is a new product. 3 bare-tag sites get manual `AnyValue { value: None }` |
+| D24 | Combine A5 (delete vector sink) + A6 (restore native proto) | **Yes** — one coherent step, avoids intermediate broken state |
+| D25 | Transformer `only_fields`/`except_fields` paths become OTLP-aware | **Yes** — `body`, `attributes.X`, `resource.X`. Breaking change, documented |
+| D26 | `vrl-migrate` tool | **Already built** — `src/vrl_migrate/`, 3-pass rewriter. No new phase needed |
+| D27 | Performance gate verified via `cargo bench` | **Yes** — `cargo bench --features remap-benches --bench remap` (VRL), `--features statistic-benches --bench distribution_statistic`. Run before/after Phase B |
+| D28 | A6 metric conversion: Counter→Sum, Gauge→Gauge, Set→Gauge+attr, Distribution(H)→Histogram, Distribution(S)→Summary, AggHistogram→Histogram, AggSummary→Summary, Sketch→ExponentialHistogram. Incremental→DELTA, Absolute→CUMULATIVE | **Yes** |
+| D29 | A6 log conversion: `Log.value`→body, `Log.fields`→attributes, `message` key promoted to body if value absent | **Yes** |
+| D30 | A6 trace conversion: best-effort extraction of trace_id/span_id/name/start_time/end_time from fields, rest→span attributes | **Yes** |
+| D31 | A6 `interval_ms` → compute `startTimeUnixNano = timeUnixNano - interval_ms × 1_000_000` | **Yes** |
 
 ---
 
 ## Autopilot Execution Plan
 
-### Phase A — Clean Deletes (low risk, no behavior change)
+### Phase A — Clean Deletes and Source/Sink Restructure
 
 Run `cargo test -p vector -p vector-core -p codecs -p vector-vrl-metrics` after each commit.
 
-**A1. Delete `MetricTags` type and bridge**
-- Replace remaining `MetricTags::from_iter` in tests with `otel_tags!` or `OtelAttributes` constructors
+**A1. Delete `MetricTags` type — replace `metric_tags!` with `otel_tags!`**
+- Delete `metric_tags!` macro from `event/metric/mod.rs`
+- Replace all ~200 `metric_tags!(...)` call sites with `otel_tags!(...)` across lib/ and src/
+- 3 sites with `None` values (bare tags in json.rs, text.rs) → manual `AnyValue { value: None }` construction
+- Replace all `.with_metric_tags(Some(MetricTags::from_iter(...)))` with `.with_tags(Some(OtelAttributes::from_iter(...)))`
+- Replace all `.with_metric_tags(Some(metric_tags!(...)))` with `.with_tags(Some(otel_tags!(...)))`
+- Change `tags_from_key()` in `lib/vector-core/src/metrics/recorder.rs` to return `Option<OtelAttributes>`
 - Delete `with_metric_tags()` bridge method on OtelMetric
 - Delete `event/metric/tags.rs` (`MetricTags`, `TagValue`, `TagValueSet`)
 - Delete `MetricTags` re-export from `event/mod.rs`
-- Update `metric_tags!` macro to produce `OtelAttributes` directly (or delete and use `otel_tags!`)
+- Delete `MetricTags` Arbitrary impl from `event/metric/arbitrary.rs`
 
-**A2. Delete `Sample`/`Bucket`/`Quantile`**
-- Inline into callers or replace with `(f64, u64)` tuples / proto `ValueAtQuantile`
-- Delete Arbitrary impls in `event/metric/arbitrary.rs`
-- Update `event/metric/mod.rs` exports
-
-**A3. Clean `vector.statistic` attribute writes**
+**A2. Clean `vector.statistic` attribute writes**
+- Remove `VECTOR_STATISTIC` constant from `otel_fields.rs`
 - Grep and remove any code that sets `vector.statistic` attribute
 - StatisticKind is already deleted — this is residual writes
 
-**A4. Split `otel_event.rs` (7,312 lines)**
+**A3. Split `otel_event.rs` (7,312 lines)**
 - Extract `OtelMetric` + metric helpers → `otel_metric.rs` (~3,000 lines)
 - Extract `OtelAttributes` + helpers → `otel_attributes.rs` (~500 lines)
 - Keep `OtelLog` + `OtelSpan` + shared helpers in `otel_event.rs` (~3,800 lines)
 - Update all imports
 
-**A5. Delete `vector` sink**
-- The `vector` sink is a thin wrapper around `opentelemetry` — it adds no value
+**A4. Delete `vector` sink + restore native Vector protocol in `vector` source**
+
+Combined step (D24). The vector sink dies and the vector source becomes a native-proto-only adapter in one coherent commit.
+
+*Delete vector sink:*
 - Delete `src/sinks/vector/` entirely (mod.rs, config.rs)
 - Remove `sinks-vector` feature from `Cargo.toml`
-- Update any integration tests that reference `sinks::vector::VectorConfig` to use `opentelemetry` sink directly
 - Update `component-validation-runner` feature list
 
-**A6. Restore native Vector protocol in `vector` source (backward compatibility)**
-
-The `vector` source must accept the original Vector native gRPC protocol so existing Vector deployments can send data to this fork without any configuration changes. The proto definitions and conversion logic are **source-scoped adapters** — they do not live in core.
-
+*Restore native proto in vector source:*
 - Restore `event.proto` and `vector.proto` into `src/sources/vector/proto/`
   - `event.proto`: `EventWrapper`, `Log`, `Metric`, `Trace`, `Value`, etc.
   - `vector.proto`: `service Vector { rpc PushEvents(...) }`, `rpc HealthCheck(...)`
-- Add `build.rs` (or `src/sources/vector/build.rs`) to compile these protos with `tonic-build`
+- Add proto compilation via `tonic-build` (in root `build.rs` or source-scoped)
 - Implement `proto::vector::Service` for the vector source's `Service` struct:
-  - `push_events()`: receives `PushEventsRequest` (Vec<EventWrapper>), converts each to `Event` (OtelLog/OtelMetric/OtelSpan), sends through the pipeline
-  - Conversion functions: `event.Log` → `OtelLog`, `event.Metric` → `OtelMetric`, `event.Trace` → `OtelSpan`
-- Register `VectorServer` on the gRPC server (the `opentelemetry` source handles OTLP ingestion separately)
+  - `push_events()`: receives `PushEventsRequest` (Vec<EventWrapper>), converts to `Event` (OtelLog/OtelMetric/OtelSpan), sends through pipeline
+- Register `VectorServer` on the gRPC server (the `opentelemetry` source handles OTLP separately)
 - Conversion at source boundary (adapter logic in `src/sources/vector/`):
-  - `Log.value` / `Log.fields` → `OtelLog` (body from value, fields as attributes)
-  - `Metric` (Counter/Gauge/Set/Distribution/Histogram/Summary/Sketch) → `OtelMetric` (Sum/Gauge/Histogram/ExponentialHistogram/Summary with `vector.*` attributes for concepts OTLP lacks)
-  - `Trace.fields` → `OtelSpan` (fields as span attributes)
-  - `Metadata` → `EventMetadata` sidecar
+  - **Logs:** `Log.value` → `body` (AnyValue). `Log.fields` → `attributes`. If value absent, promote `message` key from fields to body. If both present, value is body, fields are attributes.
+  - **Metrics:** Counter→Sum(isMonotonic=true), Gauge→Gauge, Set→Gauge+`vector.set_values`, Distribution(Histogram)→Histogram, Distribution(Summary)→Summary, AggregatedHistogram→Histogram, AggregatedSummary→Summary, Sketch→ExponentialHistogram. Incremental→DELTA(1), Absolute→CUMULATIVE(2). `interval_ms` → `startTimeUnixNano = timeUnixNano - interval_ms × 1_000_000`.
+  - **Traces:** Extract `trace_id`, `span_id`, `parent_span_id`, `name`/`operation_name`, `start_time`, `end_time`, `status` from fields into OtelSpan structured fields. Everything else → span attributes.
+  - **Metadata:** `metadata_full` → `EventMetadata` sidecar (source_type, source_id, secrets, upstream_id)
+- Rewrite integration tests with native proto test client (no more vector sink dependency)
 
 ### Phase B — Eliminate `to_value_canonical()` from internal methods (medium risk)
+
+Run `cargo bench --features remap-benches --bench remap` before Phase B starts (baseline) and after B5 (result).
 
 **B1. Replace `convert_to_fields()` / `convert_to_fields_unquoted()` on OtelLog**
 - New implementation: iterate proto fields (body, severity_text, severity_number, time_unix_nano, observed_time_unix_nano, trace_id, span_id, flags, dropped_attributes_count) then `OtelAttributes` entries
 - Yield `(KeyString, Value)` pairs without intermediate BTreeMap
 - For `_unquoted` variant: same but unquoted keys
 
-**B2. Replace `all_event_fields_skip_array_elements()` on OtelLog**
-- Same proto iteration, but skip array elements within attribute values
+**B2. Replace `all_event_fields()` and `all_event_fields_skip_array_elements()` on OtelLog**
+- Same proto iteration. The `_skip_array_elements` variant adds a minor filter — same replacement strategy.
 
 **B3. Replace `as_map()` on OtelLog and OtelSpan**
 - Build ObjectMap directly from proto fields + attributes
@@ -250,7 +262,7 @@ The `vector` source must accept the original Vector native gRPC protocol so exis
 
 **B5. Same for OtelSpan** — `convert_to_fields()`, `as_map()`
 
-### Phase C — Migrate external callers of `to_value_canonical()` (breaking changes)
+### Phase C — Migrate external callers (breaking changes)
 
 Each commit migrates one caller. Run full tests after each.
 
@@ -303,31 +315,50 @@ Each commit migrates one caller. Run full tests after each.
 **C13. enrichment_tables** (`src/enrichment_tables/memory/table.rs`)
 - Replace `as_map()` with attribute-level matching via `OtelAttributes::get()`
 
+**C14. codec transformer** (`lib/codecs/src/encoding/transformer.rs`)
+- Replace `convert_to_fields()` with proto field + attribute iteration for `only_fields`/`except_fields` filtering
+- Field paths become OTLP-aware: `body`, `attributes.X`, `resource.X` (breaking change — documented)
+
+**C15. dedupe transform** (`src/transforms/dedupe/transform.rs`)
+- Replace `all_event_fields()` with direct proto field + attribute iteration for dedup key extraction
+
+**C16. API trace schema** (`src/api/schema/events/trace.rs`)
+- Replace `as_map()` with direct OtelSpan field access
+
+**C17. Test migrations** (batch commit)
+- `src/sources/dnstap/mod.rs` — replace `all_event_fields()` in tests
+- `src/sinks/postgres/integration_tests.rs` — replace `to_value_canonical()` in tests
+- `src/transforms/metric_to_log.rs` — replace `all_event_fields()` in 8 test sites
+- `src/sinks/gcp/pubsub.rs` — replace `all_event_fields()` in tests
+- `src/sinks/azure_blob/integration_tests.rs` — replace `all_event_fields()` in tests
+- `lib/vector-core/src/event/test/{common,mod,serialization}.rs` — replace `as_map()` / `all_event_fields()` in test helpers
+
 ### Phase D — Delete `to_value_canonical()` and cleanup
 
 **D1. Delete `to_value_canonical()` from OtelLog**
 - Delete method definition (~50 lines)
 - Delete collision guard code
-- Delete `as_map()`, `convert_to_fields()`, `convert_to_fields_unquoted()`, `all_event_fields_skip_array_elements()` (already empty/unused after Phase C)
+- Delete `as_map()`, `convert_to_fields()`, `convert_to_fields_unquoted()`, `all_event_fields()`, `all_event_fields_skip_array_elements()` (all unused after Phase C)
 
 **D2. Delete `to_value_canonical()` from OtelSpan**
 - Same cleanup
 
-**D3. Final test sweep**
+**D3. Final test sweep + benchmark**
 - `cargo test -p vector -p vector-core -p codecs -p vector-vrl-metrics`
 - Verify zero `to_value_canonical` references remain: `grep -rn to_value_canonical lib/ src/`
+- Run `cargo bench --features remap-benches --bench remap` — compare with Phase B baseline
 
 ### Gate
 
-| Metric | Target |
-|--------|--------|
-| Tests passing | ≥ 2,170 |
-| `to_value_canonical()` call sites | 0 |
-| `MetricTags` references | 0 |
-| `Sample`/`Bucket`/`Quantile` references | 0 |
-| `vector.statistic` attribute writes | 0 |
-| VRL typical remap regression | ≤ 5% |
-| VRL complex path regression | < 20% (was 100-200%) |
+| Metric | Target | Verification |
+|--------|--------|--------------|
+| Tests passing | ≥ 2,170 | `cargo test -p vector -p vector-core -p codecs -p vector-vrl-metrics` |
+| `to_value_canonical()` call sites | 0 | `grep -rn to_value_canonical lib/ src/` |
+| `MetricTags` references | 0 | `grep -rn MetricTags lib/ src/` |
+| `vector.statistic` attribute writes | 0 | `grep -rn vector.statistic lib/ src/` |
+| `metric_tags!` macro references | 0 | `grep -rn 'metric_tags!' lib/ src/` |
+| VRL remap regression | ≤ 5% | `cargo bench --features remap-benches --bench remap` |
+| VRL complex path regression | < 20% (was 100-200%) | Same bench, complex path scenarios |
 
 ---
 

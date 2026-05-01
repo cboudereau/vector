@@ -1,26 +1,18 @@
 pub(crate) mod grpc;
+pub(crate) mod http;
 pub mod load_balancing;
 
 use indoc::indoc;
 use vector_config::component::GenerateConfig;
-use vector_lib::{
-    codecs::{
-        JsonSerializerConfig,
-        encoding::{FramingConfig, SerializerConfig},
-    },
-    configurable::configurable_component,
-};
+use vector_lib::configurable::configurable_component;
 
 use crate::{
-    codecs::{EncodingConfigWithFraming, Transformer},
     config::{AcknowledgementsConfig, Input, SinkConfig, SinkContext},
-    sinks::{
-        Healthcheck, VectorSink,
-        http::config::{HttpMethod, HttpSinkConfig},
-    },
+    sinks::{Healthcheck, VectorSink},
 };
 
 pub use grpc::GrpcConfig;
+pub use http::OtlpHttpConfig;
 
 /// Configuration for the `OpenTelemetry` sink.
 #[configurable_component(sink("opentelemetry", "Deliver OTLP data over HTTP or gRPC."))]
@@ -37,32 +29,17 @@ pub struct OpenTelemetryConfig {
 #[serde(rename_all = "snake_case", tag = "type")]
 #[configurable(metadata(docs::enum_tag_description = "The communication protocol."))]
 pub enum Protocol {
-    /// Send data over HTTP (default).
-    Http(HttpSinkConfig),
+    /// Send OTLP data over HTTP with `application/json` Content-Type.
+    /// Events are serialized as OTLP/JSON and POSTed to per-signal
+    /// endpoints (`/v1/logs`, `/v1/metrics`, `/v1/traces`).
+    Http(OtlpHttpConfig),
     /// Send data over gRPC (OTLP/gRPC).
     Grpc(GrpcConfig),
 }
 
 impl Default for Protocol {
     fn default() -> Self {
-        Protocol::Http(HttpSinkConfig {
-            encoding: EncodingConfigWithFraming::new(
-                Some(FramingConfig::NewlineDelimited),
-                SerializerConfig::Json(JsonSerializerConfig::default()),
-                Transformer::default(),
-            ),
-            uri: Default::default(),
-            method: HttpMethod::Post,
-            auth: Default::default(),
-            headers: Default::default(),
-            compression: Default::default(),
-            payload_prefix: Default::default(),
-            payload_suffix: Default::default(),
-            batch: Default::default(),
-            request: Default::default(),
-            tls: Default::default(),
-            acknowledgements: Default::default(),
-        })
+        Protocol::Http(OtlpHttpConfig::default())
     }
 }
 
@@ -71,8 +48,7 @@ impl GenerateConfig for OpenTelemetryConfig {
         toml::from_str(indoc! {r#"
             [protocol]
             type = "http"
-            uri = "http://localhost:5318/v1/logs"
-            encoding.codec = "json"
+            endpoint = "http://localhost:4318"
         "#})
         .unwrap()
     }

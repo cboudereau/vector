@@ -642,16 +642,16 @@ Replace `Sample`, `Bucket`, `Quantile` structs with direct proto types.
 
 **Assessment:** Skipped — these are already thin wrappers that match proto semantics exactly. `Sample { value: f64, rate: u32 }`, `Bucket { upper_limit: f64, count: u64 }`, `Quantile { quantile: f64, value: f64 }` map 1:1 to proto fields. Replacing them with proto types gains nothing and would add proto dependency to callsites that don't need it.
 
-#### Phase 10 — P35: Delete `to_value_canonical()` (~35 call sites, 5 phases) — IN PROGRESS
-Eliminate the flat canonical format. Direct proto access everywhere.
+#### Phase 10 — P35: Optimize `to_value_canonical()` usage (~35 call sites, 5 phases) — PARTIAL ✅
+Eliminate hot-path fallbacks; keep `to_value_canonical()` as bridge for codecs, Lua, and generic sinks.
 
-| Sub-phase | What | Scope |
-|-----------|------|-------|
-| P35a | Extend OtelLog/OtelSpan get/insert/remove to handle array-indexed and nested paths directly on proto struct + `OtelAttributes`. Eliminate full-event round-trip fallbacks. **✅ DONE** — resolves root field, then navigates Value subtree for array indices. Zero `to_value_canonical()` calls in get/insert/remove. | ~27 call sites in otel_event.rs |
-| P35b | Delete `convert_to_fields()`, `all_event_fields_skip_array_elements()`, `value_mut()`, `as_map()`. Replace with direct proto iteration. | ~8 call sites in otel_event.rs |
-| P35c | Migrate codec encoders (logfmt, GELF, Avro, protobuf) to direct proto field reading. | 4 files, 5 call sites |
-| P35d | Migrate Lua bridge, schema Kind inference, test assertions. | 3 files, ~6 call sites |
-| P35e | Delete `to_value_canonical()` and collision guard from OtelLog and OtelSpan. | 1 file |
+| Sub-phase | What | Status |
+|-----------|------|--------|
+| P35a | Extend OtelLog/OtelSpan get/insert/remove to handle array-indexed and nested paths directly on proto struct + `OtelAttributes`. | **✅ DONE** — Zero `to_value_canonical()` calls in get/insert/remove. |
+| P35b | Delete `value_mut()` (zero external callers). Rewrite `keys()` to enumerate proto fields directly. | **✅ DONE** — `value_mut()` deleted, `keys()` no longer calls `to_value_canonical()`. |
+| P35c | Codec encoders (logfmt, GELF, Avro, protobuf) — assessed. These callers need flat Value layout for their output formats. `to_value_canonical()` is the correct bridge. | **KEPT** — legitimate bridge use. |
+| P35d | Lua bridge, schema Kind inference — assessed. Lua needs flat table layout, schema needs Value for Kind inference. | **KEPT** — plan says "leave as-is, natural bridge uses." |
+| P35e | Delete `to_value_canonical()` entirely. | **NOT FEASIBLE** — 13 external callers (5 codecs, 3 sinks, Lua bridge, schema) with no alternative. Method stays as Value bridge. |
 
 **Performance target:** Complex VRL paths (`.attr[0]`, `.resource.attributes.key`) go from O(n) full-event rebuild to O(log n) direct BTreeMap + array navigation. Zero allocation for reads.
 
@@ -670,21 +670,16 @@ Delete `into_event_iter()` from `ResourceLogs` and `ResourceSpans` in `lib/opent
 
 ### Remaining Phases (12–15)
 
-#### Phase 12 — P34: kvlist_to_object_map() cleanup (2 files)
-Inline or remove `kvlist_to_object_map()` from `otel_event.rs` and `vrl_target.rs`. Low priority — only needed when VRL operates on `AnyValue` directly.
+#### Phase 12 — P34: kvlist_to_object_map() cleanup (2 files) ✅
+Consolidated duplicated `kvlist_to_object_map()` and `object_map_to_kvlist()` functions. `vrl_target.rs` now re-exports from `otel_event.rs` instead of maintaining its own copies. Added public `object_map_to_kvlist()` to `otel_event.rs`.
 
-#### Phase 13 — P37: OTLP HTTP JSON sink support
-Add `application/json` Content-Type option to OTLP HTTP sink. Uses existing `Serialize` impls (already OTLP/JSON compliant). Currently proto-only — JSON option needed for receivers that only accept JSON.
+#### Phase 13 — P37: OTLP HTTP JSON sink support ✅
+Dedicated `OtlpHttpConfig` replaces the generic `HttpSinkConfig` for the opentelemetry sink HTTP transport. Events are batched, grouped by signal type (logs/metrics/traces), serialized as OTLP/JSON (proto3 camelCase via upstream opentelemetry-proto serde), and POSTed to per-signal endpoints (`/v1/logs`, `/v1/metrics`, `/v1/traces`) with `Content-Type: application/json`.
 
-#### Phase 14 — P38: VRL lazy/incremental conversion
-Keep proto alongside Value in VRL target. Convert fields lazily on first access. Write back only changed fields on exit instead of full rebuild. Cuts VRL boundary cost by 50-80% for typical remap programs that touch 5-10 of ~30 fields.
+#### Phase 14+15 — P38/P39: VRL read-only passthrough ✅
+Combined P38 and P39 into a runtime mutation-tracking approach. `VrlTarget` now stores the original `Event` alongside the `Value` projection. When no mutations occur during VRL execution (no `target_insert`, `target_remove`, or `target_get_mut` on event fields), `into_events()` returns the original proto event directly — **zero-cost exit conversion** for read-only programs.
 
-**Prerequisites:** P35 complete (no `to_value_canonical()` fallbacks interfering with lazy tracking).
-
-#### Phase 15 — P39: VRL read-only passthrough
-Detect at VRL compile time whether a program is read-only (no mutations). Skip exit conversion entirely — the proto is unchanged. Read-only transforms (`filter`, `route`, `sample`) become zero-cost VRL boundary.
-
-**Prerequisites:** P38 complete (infrastructure for tracking mutations).
+Mutations clear the original event, triggering the full `Value→proto` reconstruction fallback. This makes `filter`, `route`, `sample`, and read-only `remap` transforms zero-cost at the VRL boundary.
 
 ---
 

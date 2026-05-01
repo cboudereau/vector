@@ -2561,12 +2561,28 @@ impl OtelLog {
             .unwrap_or(Value::Null)
     }
 
-    /// Get all top-level keys from the event.
+    /// Get all top-level keys from the event (enumerates proto fields directly).
     pub fn keys(&self) -> Option<std::vec::IntoIter<vrl::value::KeyString>> {
-        match self.to_value_canonical() {
-            Value::Object(map) => Some(map.into_keys().collect::<Vec<_>>().into_iter()),
-            _ => None,
+        let mut keys = Vec::new();
+        if self.record.body.is_some() { keys.push(KeyString::from(f::BODY)); }
+        if !self.record.severity_text.is_empty() { keys.push(KeyString::from(f::SEVERITY_TEXT)); }
+        if self.record.severity_number != 0 { keys.push(KeyString::from(f::SEVERITY_NUMBER)); }
+        if self.record.time_unix_nano != 0 { keys.push(KeyString::from(f::TIME_UNIX_NANO)); }
+        if self.record.observed_time_unix_nano != 0 { keys.push(KeyString::from(f::OBSERVED_TIME_UNIX_NANO)); }
+        if !self.record.trace_id.is_empty() { keys.push(KeyString::from(f::LOG_TRACE_ID)); }
+        if !self.record.span_id.is_empty() { keys.push(KeyString::from(f::LOG_SPAN_ID)); }
+        if self.record.flags != 0 { keys.push(KeyString::from(f::LOG_FLAGS)); }
+        if self.record.dropped_attributes_count != 0 { keys.push(KeyString::from(f::DROPPED_ATTRIBUTES_COUNT)); }
+        for k in self.record_attrs.keys() {
+            keys.push(KeyString::from(k.clone()));
         }
+        if self.resource.is_some() || !self.resource_attrs.is_empty() {
+            keys.push(KeyString::from(f::RESOURCE));
+        }
+        if self.scope.is_some() || !self.scope_attrs.is_empty() {
+            keys.push(KeyString::from(f::SCOPE));
+        }
+        if keys.is_empty() { None } else { Some(keys.into_iter()) }
     }
 
     /// Check if the log has no body and no attributes.
@@ -2582,11 +2598,6 @@ impl OtelLog {
                 .collect(),
             _ => vec![],
         }
-    }
-
-    /// Get a snapshot of the value (mutations won't persist — use insert/remove).
-    pub fn value_mut(&mut self) -> Value {
-        self.to_value_canonical()
     }
 
     /// Get as an object map.

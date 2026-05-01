@@ -100,7 +100,7 @@ This is rarely needed since Strategy 2 provides direct native protocol compatibi
 | **Lua scripts** | Table layout is structured: `event.log.attributes.key` not `event.log.key` | Update Lua scripts manually |
 | **JSON output** | OTLP/JSON (camelCase, nested resource/scope/attributes) | Update JSON parsers |
 | **Vector source** | Accepts both native proto AND OTLP gRPC | No change needed — existing `vector` sink works |
-| **Vector sink** | Speaks OTLP gRPC only (delegates to `opentelemetry`) | If downstream expects native proto, use this fork's `vector` source |
+| **Vector sink** | Deleted — use `type = "opentelemetry"` instead | Replace `type = "vector"` with `type = "opentelemetry"` in configs |
 | **honeycomb sink** | `data` field uses OTLP/JSON layout | Honeycomb handles nested JSON natively |
 | **new_relic sink** | Attributes built from proto structure | Transparent — NR API accepts any attributes |
 | **influxdb/logs sink** | Fields iterated from proto + attrs | Update tag/field key expectations |
@@ -163,6 +163,8 @@ All decisions locked. Autopilot proceeds without stopping.
 | D18 | Delete Sample/Bucket/Quantile | **Yes** |
 | D19 | Split otel_event.rs | **Yes** — otel_log.rs + otel_metric.rs + otel_attributes.rs + otel_event.rs |
 | D20 | Document all breaking changes | **Yes** — in this file's Migration Guide |
+| D21 | Delete `vector` sink entirely | **Yes** — redundant wrapper around `opentelemetry` sink. Users use `type = "opentelemetry"` directly |
+| D22 | Restore native Vector protocol in `vector` source | **Yes** — `event.proto`/`vector.proto` as source-scoped adapter for backward compatibility with original Vector |
 
 ---
 
@@ -194,7 +196,14 @@ Run `cargo test -p vector -p vector-core -p codecs -p vector-vrl-metrics` after 
 - Keep `OtelLog` + `OtelSpan` + shared helpers in `otel_event.rs` (~3,800 lines)
 - Update all imports
 
-**A5. Restore native Vector protocol in `vector` source (backward compatibility)**
+**A5. Delete `vector` sink**
+- The `vector` sink is a thin wrapper around `opentelemetry` — it adds no value
+- Delete `src/sinks/vector/` entirely (mod.rs, config.rs)
+- Remove `sinks-vector` feature from `Cargo.toml`
+- Update any integration tests that reference `sinks::vector::VectorConfig` to use `opentelemetry` sink directly
+- Update `component-validation-runner` feature list
+
+**A6. Restore native Vector protocol in `vector` source (backward compatibility)**
 
 The `vector` source must accept the original Vector native gRPC protocol so existing Vector deployments can send data to this fork without any configuration changes. The proto definitions and conversion logic are **source-scoped adapters** — they do not live in core.
 
@@ -357,11 +366,11 @@ Original Vector ── vector sink (native proto) ──► ┌─────�
                                                    │                  │ ──► Core (OtelLog,
 OTel Collector  ── otlp exporter ──────────────► │  Dual-protocol:  │      OtelMetric,
                                                    │  • Vector native │      OtelSpan)
-New Vector      ── vector sink (OTLP gRPC) ────► │  • OTLP gRPC     │
+New Vector      ── opentelemetry sink (OTLP) ───► │  • OTLP gRPC     │
                                                    └──────────────────┘
 ```
 
-The **vector sink** speaks OTLP gRPC only (delegates to the `opentelemetry` sink). The native protocol is receive-only — this fork does not send in the legacy format.
+There is **no `vector` sink** — it was a thin wrapper around `opentelemetry` and has been deleted. To send data to another Vector instance (or any OTLP-compatible receiver), use `type = "opentelemetry"` directly.
 
 ### Why keep the original protocol?
 

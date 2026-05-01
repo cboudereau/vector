@@ -10,7 +10,7 @@ pub enum Event {
 }
 ```
 
-All legacy types (`LogEvent`, `Metric`, `TraceEvent`, `MetricValue`, `MetricData`, `NativeSerializer`, DD sinks, `event.proto`) are deleted. 2,170 tests pass.
+All legacy core types (`LogEvent`, `Metric`, `TraceEvent`, `MetricValue`, `MetricData`, `NativeSerializer`, DD sinks) are deleted from core. The original `event.proto`/`vector.proto` is retained as a source-scoped adapter for backward compatibility with the original Vector. 2,170 tests pass.
 
 ---
 
@@ -42,30 +42,23 @@ vector vrl-migrate --config /etc/vector/vector.toml
 - Custom conditions referencing legacy field names
 - Lua scripts (covered separately below)
 
-### Strategy 2 — Gradual Migration via Vector-to-Vector Bridge
+### Strategy 2 — Direct Vector-to-Vector Connection (native protocol)
 
-If you cannot migrate all VRL/configs at once, run two Vector instances side-by-side:
+The `vector` source accepts the **original Vector native gRPC protocol** (`event.proto`/`vector.proto`). Existing Vector instances can send data using their standard `vector` sink with zero configuration changes:
 
 ```
-┌─────────────────────┐         OTLP gRPC          ┌─────────────────────┐
-│  Old Vector          │  ── vector sink ──────────► │  New Vector (OTLP)   │
-│  (pre-migration)     │      port 6000              │  (this version)      │
-│  original configs    │                              │  new configs + sinks │
+┌─────────────────────┐      native Vector gRPC     ┌─────────────────────┐
+│  Original Vector     │  ── vector sink ──────────► │  This fork           │
+│  (any version)       │      port 6000              │  (vector source)     │
+│  original configs    │                              │  dual-protocol       │
 └─────────────────────┘                              └─────────────────────┘
 ```
 
-**Old Vector config (sender):**
+**Old Vector config (sender) — no changes needed:**
 ```toml
 [sinks.bridge]
-type = "opentelemetry"
-# Old Vector already has an opentelemetry sink that speaks OTLP gRPC.
-# If your old Vector version doesn't have it, use the `vector` sink instead —
-# but note that the native Vector protocol (event.proto) is removed in this
-# version. The `vector` source now speaks OTLP gRPC, not the legacy protocol.
-
-[sinks.bridge.protocol]
-type = "grpc"
-endpoint = "http://new-vector-host:6000"
+type = "vector"
+address = "new-vector-host:6000"
 ```
 
 **New Vector config (receiver):**
@@ -73,27 +66,27 @@ endpoint = "http://new-vector-host:6000"
 [sources.from_old]
 type = "vector"
 address = "0.0.0.0:6000"
-# The `vector` source speaks OTLP gRPC (3-service: Logs, Metrics, Traces).
-# It accepts connections from any OTLP gRPC client, including:
-# - Another Vector instance using the `vector` or `opentelemetry` sink
-# - An OTel Collector using the otlpgrpc exporter
-# - Any OTLP-compliant agent
+# The `vector` source accepts both protocols:
+# - Original Vector native gRPC (PushEvents with EventWrapper)
+# - OTLP gRPC (LogsService, MetricsService, TraceService)
+# Incoming native events are converted to OTLP types at the source boundary.
 ```
 
 **Key compatibility notes:**
-- The `vector` source/sink now speak **OTLP gRPC**, not the old native proto (`event.proto`/`vector.proto`).
-- Old Vector instances that only have the native `vector` sink (pre-OTLP) **cannot connect directly** to this version's `vector` source. Use the `opentelemetry` sink on the old instance instead.
-- If the old Vector version has no `opentelemetry` sink, upgrade it to a version that does, or use an OTel Collector as a bridge.
+- The `vector` source supports **both** the original native proto and OTLP gRPC on the same port.
+- Old Vector instances using the native `vector` sink connect directly — no reconfiguration needed.
+- Old Vector instances with an `opentelemetry` sink also work — they connect via OTLP gRPC.
+- The `vector` **sink** in this fork speaks OTLP gRPC only (delegates to `opentelemetry` sink).
 
-### Strategy 3 — OTel Collector as Bridge
+### Strategy 3 — OTel Collector as Bridge (optional)
 
-For environments already running the OTel Collector:
+For environments already running the OTel Collector, it can serve as an intermediary:
 
 ```
 Old Vector ──► OTel Collector (otlp receiver → otlp exporter) ──► New Vector (vector source)
 ```
 
-This adds one hop but requires zero changes to the old Vector config — just point the old `opentelemetry` sink at the Collector.
+This is rarely needed since Strategy 2 provides direct native protocol compatibility. Use this if you want the OTel Collector to perform additional processing (filtering, sampling, enrichment) between the old and new Vector.
 
 ### Breaking Changes Summary
 
@@ -106,7 +99,8 @@ This adds one hop but requires zero changes to the old Vector config — just po
 | **protobuf output** | Descriptor must match OTLP/JSON field names | Update proto descriptors |
 | **Lua scripts** | Table layout is structured: `event.log.attributes.key` not `event.log.key` | Update Lua scripts manually |
 | **JSON output** | OTLP/JSON (camelCase, nested resource/scope/attributes) | Update JSON parsers |
-| **Vector source** | Speaks OTLP gRPC, not native proto | Use `opentelemetry` sink from old Vector |
+| **Vector source** | Accepts both native proto AND OTLP gRPC | No change needed — existing `vector` sink works |
+| **Vector sink** | Speaks OTLP gRPC only (delegates to `opentelemetry`) | If downstream expects native proto, use this fork's `vector` source |
 | **honeycomb sink** | `data` field uses OTLP/JSON layout | Honeycomb handles nested JSON natively |
 | **new_relic sink** | Attributes built from proto structure | Transparent — NR API accepts any attributes |
 | **influxdb/logs sink** | Fields iterated from proto + attrs | Update tag/field key expectations |
@@ -199,6 +193,24 @@ Run `cargo test -p vector -p vector-core -p codecs -p vector-vrl-metrics` after 
 - Extract `OtelAttributes` + helpers → `otel_attributes.rs` (~500 lines)
 - Keep `OtelLog` + `OtelSpan` + shared helpers in `otel_event.rs` (~3,800 lines)
 - Update all imports
+
+**A5. Restore native Vector protocol in `vector` source (backward compatibility)**
+
+The `vector` source must accept the original Vector native gRPC protocol so existing Vector deployments can send data to this fork without any configuration changes. The proto definitions and conversion logic are **source-scoped adapters** — they do not live in core.
+
+- Restore `event.proto` and `vector.proto` into `src/sources/vector/proto/`
+  - `event.proto`: `EventWrapper`, `Log`, `Metric`, `Trace`, `Value`, etc.
+  - `vector.proto`: `service Vector { rpc PushEvents(...) }`, `rpc HealthCheck(...)`
+- Add `build.rs` (or `src/sources/vector/build.rs`) to compile these protos with `tonic-build`
+- Implement `proto::vector::Service` for the vector source's `Service` struct:
+  - `push_events()`: receives `PushEventsRequest` (Vec<EventWrapper>), converts each to `Event` (OtelLog/OtelMetric/OtelSpan), sends through the pipeline
+  - Conversion functions: `event.Log` → `OtelLog`, `event.Metric` → `OtelMetric`, `event.Trace` → `OtelSpan`
+- Register both the native `VectorServer` and the OTLP services (LogsServiceServer, MetricsServiceServer, TraceServiceServer) on the same gRPC `RoutesBuilder`
+- Conversion at source boundary (adapter logic in `src/sources/vector/`):
+  - `Log.value` / `Log.fields` → `OtelLog` (body from value, fields as attributes)
+  - `Metric` (Counter/Gauge/Set/Distribution/Histogram/Summary/Sketch) → `OtelMetric` (Sum/Gauge/Histogram/ExponentialHistogram/Summary with `vector.*` attributes for concepts OTLP lacks)
+  - `Trace.fields` → `OtelSpan` (fields as span attributes)
+  - `Metadata` → `EventMetadata` sidecar
 
 ### Phase B — Eliminate `to_value_canonical()` from internal methods (medium risk)
 
@@ -308,6 +320,7 @@ Each commit migrates one caller. Run full tests after each.
 3. **Vendor logic in adapters only.** Core never depends on adapters.
 4. **`vector.*` attributes are acceptable.** They encode Vector concepts OTLP lacks. Never injected on passthrough paths.
 5. **Features preserved.** Tail sampling, load balancing, span_metrics, aggregate — all OTel-native.
+6. **Original Vector protocol supported at source boundary.** The `vector` source accepts the original Vector native gRPC protocol (`event.proto`/`vector.proto`) for backward compatibility. The proto definitions live in the source scope — they are adapter code, not core types.
 
 ---
 
@@ -318,8 +331,41 @@ Sources (adapters)              Core (OTel-native)                    Sinks (ada
 ──────────────────────────────  ────────────────────────────────────  ───────────────────────
 opentelemetry (gRPC + HTTP)     OtelLog  (LogRecord)                  opentelemetry (gRPC+HTTP)
 datadog_agent ──────────────►   OtelMetric (Sum/Gauge/Histogram/  ──► prometheus, influxdb
-vector (OTLP gRPC) ────────►     ExponentialHistogram/Summary)   ──► kafka, loki, ES, …
+vector (native + OTLP gRPC)─►    ExponentialHistogram/Summary)   ──► kafka, loki, ES, …
 kafka, syslog, … ──────────►   OtelSpan (Span)
                                 OtelAttributes (BTreeMap wrapper)
                                 Disk buffer: otlp_buffer.proto
 ```
+
+### Vector Source: Dual-Protocol Ingestion
+
+The `vector` source serves two gRPC protocols on the same port:
+
+1. **Original Vector protocol** (`event.proto` / `vector.proto`):
+   - `service Vector { rpc PushEvents(PushEventsRequest) returns (PushEventsResponse) }`
+   - Accepts `EventWrapper` (Log, Metric, Trace) from original Vector instances
+   - Converts at the source boundary: `event.Log` → `OtelLog`, `event.Metric` → `OtelMetric`, `event.Trace` → `OtelSpan`
+   - **This is an adapter** — the proto definitions live in `src/sources/vector/proto/`, not in core
+
+2. **OTLP gRPC** (3-service model):
+   - `LogsService`, `MetricsService`, `TraceService`
+   - Accepts connections from any OTLP-compliant client (OTel Collector, newer Vector, any agent)
+
+```
+Original Vector ── vector sink (native proto) ──► ┌──────────────────┐
+                                                   │  vector source    │
+                                                   │                  │ ──► Core (OtelLog,
+OTel Collector  ── otlp exporter ──────────────► │  Dual-protocol:  │      OtelMetric,
+                                                   │  • Vector native │      OtelSpan)
+New Vector      ── vector sink (OTLP gRPC) ────► │  • OTLP gRPC     │
+                                                   └──────────────────┘
+```
+
+The **vector sink** speaks OTLP gRPC only (delegates to the `opentelemetry` sink). The native protocol is receive-only — this fork does not send in the legacy format.
+
+### Why keep the original protocol?
+
+The original Vector has **partial** OTLP support — not all versions ship an `opentelemetry` sink, and the OTLP support that exists may not cover all signal types. Supporting the native protocol at the source means:
+- **Zero-config migration**: existing Vector fleets can point their `vector` sink at this fork without changing anything
+- **No bridge needed**: no OTel Collector middlebox, no sink reconfiguration on the sender side
+- **Adapter-scoped complexity**: the `event.proto` / `vector.proto` definitions and conversion logic live entirely within `src/sources/vector/` — core remains pure OTLP

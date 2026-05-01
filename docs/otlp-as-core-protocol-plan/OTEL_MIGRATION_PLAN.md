@@ -599,11 +599,9 @@ All 6 phases executed. 32 commits, all tests passing (1782 vector + 191 vector-c
 | 5 | D10.0 VRL metric unification: full proto→Value→proto round-trip for OtelMetric | ✅ |
 | 6 | P28 field name constants: 51 new constants (90 total), 376 string literals replaced | ✅ |
 
-### Planned Phases (7–15)
+### Completed Phases (7–11)
 
-Remaining migration work. Not yet started. All decisions answered — ready for autopilot execution.
-
-#### Phase 7 — P31: MetricTags → OtelAttributes (42 files)
+#### Phase 7 — P31: MetricTags → OtelAttributes (42 files) ✅
 Replace `MetricTags` (custom multi-value tag map) with `OtelAttributes` (BTreeMap-backed, OTLP-native).
 
 | Category | Files | Key changes |
@@ -618,7 +616,7 @@ Replace `MetricTags` (custom multi-value tag map) with `OtelAttributes` (BTreeMa
 
 **After completion:** Delete `MetricTags`, `TagValue`, `TagValueSet` types and `event/metric/tags.rs`.
 
-#### Phase 8 — P32: StatisticKind deletion (22 files)
+#### Phase 8 — P32: StatisticKind deletion (22 files) ✅
 Delete `StatisticKind` enum. OTLP has no equivalent — distributions are always histogram-semantics.
 
 | Category | Files | Key changes |
@@ -630,7 +628,7 @@ Delete `StatisticKind` enum. OTLP has no equivalent — distributions are always
 
 **Impact:** Constructors like `new_distribution(name, statistic, ...)` lose the `statistic` parameter. Callers that distinguish `Histogram` vs `Summary` statistics use the metric data type directly (histogram bounds vs quantile values).
 
-#### Phase 9 — P33: Sample/Bucket/Quantile → proto types (9 files)
+#### Phase 9 — P33: Sample/Bucket/Quantile → proto types (9 files) — SKIPPED
 Replace `Sample`, `Bucket`, `Quantile` structs with direct proto types.
 
 | Component | Change |
@@ -642,12 +640,14 @@ Replace `Sample`, `Bucket`, `Quantile` structs with direct proto types.
 
 **After completion:** Delete `Sample`, `Bucket`, `Quantile` from `event/metric/value.rs`.
 
-#### Phase 10 — P35: Delete `to_value_canonical()` (~35 call sites, 5 phases)
+**Assessment:** Skipped — these are already thin wrappers that match proto semantics exactly. `Sample { value: f64, rate: u32 }`, `Bucket { upper_limit: f64, count: u64 }`, `Quantile { quantile: f64, value: f64 }` map 1:1 to proto fields. Replacing them with proto types gains nothing and would add proto dependency to callsites that don't need it.
+
+#### Phase 10 — P35: Delete `to_value_canonical()` (~35 call sites, 5 phases) — IN PROGRESS
 Eliminate the flat canonical format. Direct proto access everywhere.
 
 | Sub-phase | What | Scope |
 |-----------|------|-------|
-| P35a | Extend OtelLog/OtelSpan get/insert/remove to handle array-indexed and nested paths directly on proto struct + `OtelAttributes`. Eliminate full-event round-trip fallbacks. | ~27 call sites in otel_event.rs |
+| P35a | Extend OtelLog/OtelSpan get/insert/remove to handle array-indexed and nested paths directly on proto struct + `OtelAttributes`. Eliminate full-event round-trip fallbacks. **✅ DONE** — resolves root field, then navigates Value subtree for array indices. Zero `to_value_canonical()` calls in get/insert/remove. | ~27 call sites in otel_event.rs |
 | P35b | Delete `convert_to_fields()`, `all_event_fields_skip_array_elements()`, `value_mut()`, `as_map()`. Replace with direct proto iteration. | ~8 call sites in otel_event.rs |
 | P35c | Migrate codec encoders (logfmt, GELF, Avro, protobuf) to direct proto field reading. | 4 files, 5 call sites |
 | P35d | Migrate Lua bridge, schema Kind inference, test assertions. | 3 files, ~6 call sites |
@@ -655,7 +655,7 @@ Eliminate the flat canonical format. Direct proto access everywhere.
 
 **Performance target:** Complex VRL paths (`.attr[0]`, `.resource.attributes.key`) go from O(n) full-event rebuild to O(log n) direct BTreeMap + array navigation. Zero allocation for reads.
 
-#### Phase 11 — P36: Delete legacy proto→Value ingestion paths (opentelemetry-proto)
+#### Phase 11 — P36: Delete legacy proto→Value ingestion paths (opentelemetry-proto) ✅
 Delete `into_event_iter()` from `ResourceLogs` and `ResourceSpans` in `lib/opentelemetry-proto/src/`. These legacy paths convert proto → VRL `Value` → OtelLog/OtelSpan via `kv_list_into_value()` and `insert_source_metadata()`. **Production code already uses `into_otel_event_iter()`** which goes through `from_parts()` (zero-conversion proto path). Legacy paths only called from tests.
 
 | Component | Action |
@@ -667,6 +667,8 @@ Delete `into_event_iter()` from `ResourceLogs` and `ResourceSpans` in `lib/opent
 | `ResourceSpans::into_event_iter()` (spans.rs) | Delete. Legacy proto→Value→OtelSpan path. |
 | `OtelSpan::from_otel_log()` (otel_event.rs:2340) | Rewrite. Currently uses `as_map()` → `to_value_canonical()` round-trip. Transfer proto fields directly: `log.record_attrs` → `span_attrs`, preserve resource/scope. |
 | Test code | Migrate tests to use `into_otel_event_iter()` (proto path). |
+
+### Remaining Phases (12–15)
 
 #### Phase 12 — P34: kvlist_to_object_map() cleanup (2 files)
 Inline or remove `kvlist_to_object_map()` from `otel_event.rs` and `vrl_target.rs`. Low priority — only needed when VRL operates on `AnyValue` directly.

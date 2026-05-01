@@ -881,9 +881,9 @@ fn value_to_number_data_points(
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub enum VrlTarget {
-    OtelLog(Value, EventMetadata),
-    OtelSpan(Value, EventMetadata),
-    OtelMetric(Value, EventMetadata),
+    OtelLog(Value, EventMetadata, Option<Event>),
+    OtelSpan(Value, EventMetadata, Option<Event>),
+    OtelMetric(Value, EventMetadata, Option<Event>),
 }
 
 pub enum TargetEvents {
@@ -920,21 +920,21 @@ impl Iterator for TargetIter<OtelSpan> {
 
 impl VrlTarget {
     pub fn new(event: Event, _info: &ProgramInfo, _multi_value_metric_tags: bool) -> Self {
-        match event {
-            Event::Log(event) => {
-                let metadata = event.metadata().clone();
-                let value = otel_log_event_to_value(&event);
-                VrlTarget::OtelLog(value, metadata)
+        match &event {
+            Event::Log(log) => {
+                let metadata = log.metadata().clone();
+                let value = otel_log_event_to_value(log);
+                VrlTarget::OtelLog(value, metadata, Some(event))
             }
-            Event::Trace(event) => {
-                let metadata = event.metadata().clone();
-                let value = otel_span_event_to_value(&event);
-                VrlTarget::OtelSpan(value, metadata)
+            Event::Trace(span) => {
+                let metadata = span.metadata().clone();
+                let value = otel_span_event_to_value(span);
+                VrlTarget::OtelSpan(value, metadata, Some(event))
             }
-            Event::Metric(event) => {
-                let metadata = event.metadata().clone();
-                let value = otel_metric_event_to_value(&event);
-                VrlTarget::OtelMetric(value, metadata)
+            Event::Metric(metric) => {
+                let metadata = metric.metadata().clone();
+                let value = otel_metric_event_to_value(metric);
+                VrlTarget::OtelMetric(value, metadata, Some(event))
             }
         }
     }
@@ -950,33 +950,49 @@ impl VrlTarget {
     /// array to `.` in VRL.
     pub fn into_events(self) -> TargetEvents {
         match self {
-            VrlTarget::OtelLog(value, metadata) => match value {
-                value @ Value::Object(_) => {
-                    TargetEvents::One(Event::Log(value_to_otel_log_event(value, metadata)))
+            VrlTarget::OtelLog(value, metadata, original) => {
+                if let Some(mut orig) = original {
+                    *orig.metadata_mut() = metadata;
+                    return TargetEvents::One(orig);
                 }
-                Value::Array(values) => TargetEvents::OtelLogs(TargetIter {
-                    iter: values.into_iter(),
-                    metadata,
-                    _marker: PhantomData,
-                }),
-                value => {
-                    TargetEvents::One(Event::Log(value_to_otel_log_event(value, metadata)))
+                match value {
+                    value @ Value::Object(_) => {
+                        TargetEvents::One(Event::Log(value_to_otel_log_event(value, metadata)))
+                    }
+                    Value::Array(values) => TargetEvents::OtelLogs(TargetIter {
+                        iter: values.into_iter(),
+                        metadata,
+                        _marker: PhantomData,
+                    }),
+                    value => {
+                        TargetEvents::One(Event::Log(value_to_otel_log_event(value, metadata)))
+                    }
                 }
-            },
-            VrlTarget::OtelSpan(value, metadata) => match value {
-                value @ Value::Object(_) => {
-                    TargetEvents::One(Event::Trace(value_to_otel_span_event(value, metadata)))
+            }
+            VrlTarget::OtelSpan(value, metadata, original) => {
+                if let Some(mut orig) = original {
+                    *orig.metadata_mut() = metadata;
+                    return TargetEvents::One(orig);
                 }
-                Value::Array(values) => TargetEvents::OtelSpans(TargetIter {
-                    iter: values.into_iter(),
-                    metadata,
-                    _marker: PhantomData,
-                }),
-                value => {
-                    TargetEvents::One(Event::Trace(value_to_otel_span_event(value, metadata)))
+                match value {
+                    value @ Value::Object(_) => {
+                        TargetEvents::One(Event::Trace(value_to_otel_span_event(value, metadata)))
+                    }
+                    Value::Array(values) => TargetEvents::OtelSpans(TargetIter {
+                        iter: values.into_iter(),
+                        metadata,
+                        _marker: PhantomData,
+                    }),
+                    value => {
+                        TargetEvents::One(Event::Trace(value_to_otel_span_event(value, metadata)))
+                    }
                 }
-            },
-            VrlTarget::OtelMetric(value, metadata) => {
+            }
+            VrlTarget::OtelMetric(value, metadata, original) => {
+                if let Some(mut orig) = original {
+                    *orig.metadata_mut() = metadata;
+                    return TargetEvents::One(orig);
+                }
                 TargetEvents::One(Event::Metric(value_to_otel_metric_event(value, metadata)))
             }
         }
@@ -984,17 +1000,17 @@ impl VrlTarget {
 
     fn metadata(&self) -> &EventMetadata {
         match self {
-            VrlTarget::OtelLog(_, metadata)
-            | VrlTarget::OtelSpan(_, metadata)
-            | VrlTarget::OtelMetric(_, metadata) => metadata,
+            VrlTarget::OtelLog(_, metadata, _)
+            | VrlTarget::OtelSpan(_, metadata, _)
+            | VrlTarget::OtelMetric(_, metadata, _) => metadata,
         }
     }
 
     fn metadata_mut(&mut self) -> &mut EventMetadata {
         match self {
-            VrlTarget::OtelLog(_, metadata)
-            | VrlTarget::OtelSpan(_, metadata)
-            | VrlTarget::OtelMetric(_, metadata) => metadata,
+            VrlTarget::OtelLog(_, metadata, _)
+            | VrlTarget::OtelSpan(_, metadata, _)
+            | VrlTarget::OtelMetric(_, metadata, _) => metadata,
         }
     }
 }
@@ -1052,9 +1068,10 @@ impl Target for VrlTarget {
     fn target_insert(&mut self, target_path: &OwnedTargetPath, value: Value) -> Result<(), String> {
         match target_path.prefix {
             PathPrefix::Event => match self {
-                VrlTarget::OtelLog(log, _)
-                | VrlTarget::OtelSpan(log, _)
-                | VrlTarget::OtelMetric(log, _) => {
+                VrlTarget::OtelLog(log, _, orig)
+                | VrlTarget::OtelSpan(log, _, orig)
+                | VrlTarget::OtelMetric(log, _, orig) => {
+                    *orig = None;
                     log.insert(&target_path.path, value);
                     Ok(())
                 }
@@ -1072,9 +1089,9 @@ impl Target for VrlTarget {
     fn target_get(&self, target_path: &OwnedTargetPath) -> Result<Option<&Value>, String> {
         match target_path.prefix {
             PathPrefix::Event => match self {
-                VrlTarget::OtelLog(value, _)
-                | VrlTarget::OtelSpan(value, _)
-                | VrlTarget::OtelMetric(value, _) => {
+                VrlTarget::OtelLog(value, _, _)
+                | VrlTarget::OtelSpan(value, _, _)
+                | VrlTarget::OtelMetric(value, _, _) => {
                     Ok(value.get(&target_path.path))
                 }
             },
@@ -1088,9 +1105,10 @@ impl Target for VrlTarget {
     ) -> Result<Option<&mut Value>, String> {
         match target_path.prefix {
             PathPrefix::Event => match self {
-                VrlTarget::OtelLog(value, _)
-                | VrlTarget::OtelSpan(value, _)
-                | VrlTarget::OtelMetric(value, _) => {
+                VrlTarget::OtelLog(value, _, orig)
+                | VrlTarget::OtelSpan(value, _, orig)
+                | VrlTarget::OtelMetric(value, _, orig) => {
+                    *orig = None;
                     Ok(value.get_mut(&target_path.path))
                 }
             },
@@ -1105,9 +1123,10 @@ impl Target for VrlTarget {
     ) -> Result<Option<vrl::value::Value>, String> {
         match target_path.prefix {
             PathPrefix::Event => match self {
-                VrlTarget::OtelLog(value, _)
-                | VrlTarget::OtelSpan(value, _)
-                | VrlTarget::OtelMetric(value, _) => {
+                VrlTarget::OtelLog(value, _, orig)
+                | VrlTarget::OtelSpan(value, _, orig)
+                | VrlTarget::OtelMetric(value, _, orig) => {
+                    *orig = None;
                     Ok(value.remove(&target_path.path, compact))
                 }
             },

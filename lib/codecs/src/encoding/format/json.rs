@@ -120,10 +120,8 @@ impl Encoder<Event> for JsonSerializer {
 mod tests {
     use bytes::{Bytes, BytesMut};
     use chrono::{TimeZone, Timelike, Utc};
-    use vector_core::{
-        event::{MetricKind, ObjectMap, OtelLog, OtelMetric, Value},
-        metric_tags,
-    };
+    use vector_core::event::{MetricKind, ObjectMap, OtelAttributes, OtelLog, OtelMetric, Value};
+    use vector_core::otel_tags;
     use vrl::btreemap;
 
     use super::*;
@@ -151,7 +149,7 @@ mod tests {
         let event = Event::Metric(
             OtelMetric::new_counter("foos", MetricKind::Incremental, 100.0)
                 .with_namespace(Some("vector"))
-                .with_metric_tags(Some(metric_tags!(
+                .with_tags(Some(otel_tags!(
                     "key2" => "value2",
                     "key1" => "value1",
                     "Key3" => "Value3",
@@ -220,13 +218,21 @@ mod tests {
     }
 
     fn metric2() -> Event {
+        use opentelemetry_proto::tonic::common::v1::{AnyValue, ArrayValue, any_value};
+        let array_tag = AnyValue {
+            value: Some(any_value::Value::ArrayValue(ArrayValue {
+                values: vec![
+                    AnyValue { value: Some(any_value::Value::StringValue("first".into())) },
+                    AnyValue { value: None },
+                    AnyValue { value: Some(any_value::Value::StringValue("second".into())) },
+                ],
+            })),
+        };
+        let mut tags = OtelAttributes::default();
+        tags.insert("a".into(), array_tag);
         Event::Metric(
             OtelMetric::new_counter("counter", MetricKind::Incremental, 1.0)
-                .with_metric_tags(Some(metric_tags! (
-                    "a" => "first",
-                    "a" => None,
-                    "a" => "second",
-                )))
+                .with_tags(Some(tags))
         )
     }
 
@@ -239,10 +245,8 @@ mod tests {
     mod pretty_json {
         use bytes::{Bytes, BytesMut};
         use chrono::{TimeZone, Timelike, Utc};
-        use vector_core::{
-            event::{MetricKind, ObjectMap, OtelLog, OtelMetric, Value},
-            metric_tags,
-        };
+        use vector_core::event::{MetricKind, ObjectMap, OtelAttributes, OtelLog, OtelMetric, Value};
+        use vector_core::otel_tags;
         use vrl::btreemap;
 
         use super::*;
@@ -274,8 +278,8 @@ mod tests {
             let event = Event::Metric(
                 OtelMetric::new_counter("foos", MetricKind::Incremental, 100.0)
                     .with_namespace(Some("vector"))
-                    .with_metric_tags(Some(
-                        metric_tags!("key2" => "value2","key1" => "value1","Key3" => "Value3",),
+                    .with_tags(Some(
+                        otel_tags!("key2" => "value2","key1" => "value1","Key3" => "Value3",),
                     ))
                     .with_timestamp(Some(
                         Utc.with_ymd_and_hms(2018, 11, 14, 8, 9, 10)
@@ -418,11 +422,21 @@ mod tests {
             );
         }
         fn metric2() -> Event {
+            use opentelemetry_proto::tonic::common::v1::{AnyValue, ArrayValue, any_value};
+            let array_tag = AnyValue {
+                value: Some(any_value::Value::ArrayValue(ArrayValue {
+                    values: vec![
+                        AnyValue { value: Some(any_value::Value::StringValue("first".into())) },
+                        AnyValue { value: None },
+                        AnyValue { value: Some(any_value::Value::StringValue("second".into())) },
+                    ],
+                })),
+            };
+            let mut tags = OtelAttributes::default();
+            tags.insert("a".into(), array_tag);
             Event::Metric(
                 OtelMetric::new_counter("counter", MetricKind::Incremental, 1.0)
-                    .with_metric_tags(Some(
-                        metric_tags! ("a" => "first","a" => None,"a" => "second",),
-                    ))
+                    .with_tags(Some(tags))
             )
         }
         fn serialize(config: JsonSerializerConfig, input: Event) -> Bytes {

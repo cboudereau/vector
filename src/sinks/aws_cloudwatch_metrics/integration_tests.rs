@@ -1,6 +1,6 @@
 use chrono::{Timelike, Utc, offset::TimeZone};
 use rand::seq::SliceRandom;
-use vector_lib::metric_tags;
+use vector_lib::otel_tags;
 
 use super::*;
 use crate::{
@@ -47,7 +47,7 @@ async fn cloudwatch_metrics_put_data() {
     for i in 0..100 {
         let event = Event::Metric(
             OtelMetric::new_counter(format!("counter-{}", 0), MetricKind::Incremental, i as f64)
-                .with_tags(Some(metric_tags!(
+                .with_tags(Some(otel_tags!(
                     "region" => "us-west-1",
                     "production" => "true",
                     "e" => "",

@@ -13,11 +13,11 @@ use serde_with::serde_as;
 use snafu::{ResultExt, Snafu};
 use tokio::time;
 use tokio_stream::wrappers::IntervalStream;
-use vector_lib::{EstimatedJsonEncodedSizeOf, configurable::configurable_component, metric_tags};
+use vector_lib::{EstimatedJsonEncodedSizeOf, configurable::configurable_component, otel_tags};
 
 use crate::{
     config::{SourceConfig, SourceContext, SourceOutput},
-    event::{Event, OtelMetric, metric::{MetricKind, MetricTags}},
+    event::{Event, OtelAttributes, OtelMetric, metric::MetricKind},
     http::{Auth, HttpClient},
     internal_events::{
         CollectionCompleted, EndpointBytesReceived, NginxMetricsEventsReceived,
@@ -144,7 +144,7 @@ struct NginxMetrics {
     endpoint: String,
     auth: Option<Auth>,
     namespace: Option<String>,
-    tags: MetricTags,
+    tags: OtelAttributes,
 }
 
 impl NginxMetrics {
@@ -154,7 +154,7 @@ impl NginxMetrics {
         auth: Option<Auth>,
         namespace: Option<String>,
     ) -> crate::Result<Self> {
-        let tags = metric_tags!(
+        let tags = otel_tags!(
             "endpoint" => endpoint.clone(),
             "host" => Self::get_endpoint_host(&endpoint)?,
         );
@@ -247,14 +247,14 @@ impl NginxMetrics {
     fn create_counter(&self, name: &str, value: f64) -> OtelMetric {
         OtelMetric::new_counter(name, MetricKind::Absolute, value)
             .with_namespace(self.namespace.clone())
-            .with_metric_tags(Some(self.tags.clone()))
+            .with_tags(Some(self.tags.clone()))
             .with_timestamp(Some(Utc::now()))
     }
 
     fn create_gauge(&self, name: &str, value: f64) -> OtelMetric {
         OtelMetric::new_gauge(name, value)
             .with_namespace(self.namespace.clone())
-            .with_metric_tags(Some(self.tags.clone()))
+            .with_tags(Some(self.tags.clone()))
             .with_timestamp(Some(Utc::now()))
     }
 }

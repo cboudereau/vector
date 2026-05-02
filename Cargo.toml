@@ -729,7 +729,7 @@ sources-utils-net-udp = ["listenfd"]
 sources-utils-net-unix = []
 sources-websocket = ["dep:tokio-tungstenite"]
 
-sources-vector = ["dep:tonic", "vector-lib/opentelemetry"]
+sources-vector = ["dep:tonic", "vector-lib/opentelemetry", "protobuf-build", "dep:prost"]
 
 # Transforms
 transforms = ["transforms-logs", "transforms-metrics"]
@@ -1047,8 +1047,7 @@ vector-unit-test-tests = [
   "sinks-console"
 ]
 
-component-validation-runner = ["dep:tonic", "sources-internal_logs", "sources-internal_metrics", "sources-vector", "sinks-vector"]
-sinks-vector = ["dep:tonic", "sinks-opentelemetry"]
+component-validation-runner = ["dep:tonic", "sources-internal_logs", "sources-internal_metrics", "sources-vector", "sinks-opentelemetry"]
 # For now, only include components that implement ValidatableComponent.
 # In the future, this can change to simply reference the targets `sources`, `transforms`, `sinks`
 component-validation-tests = [

@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use tokio_util::codec::Encoder;
 use vector_common::encode_logfmt;
 use vector_core::{config::DataType, event::Event, schema};
+use vrl::value::ObjectMap;
 
 /// Config used to build a `LogfmtSerializer`.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -41,8 +42,8 @@ impl Encoder<Event> for LogfmtSerializer {
 
     fn encode(&mut self, event: Event, buffer: &mut BytesMut) -> Result<(), Self::Error> {
         let log = event.into_log();
-        let val = log.to_value_canonical();
-        let string = encode_logfmt::encode_value(&val)?;
+        let map: ObjectMap = log.as_map().unwrap_or_default();
+        let string = encode_logfmt::encode_map(&map)?;
         buffer.extend_from_slice(string.as_bytes());
 
         Ok(())

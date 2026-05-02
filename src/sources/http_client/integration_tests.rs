@@ -14,6 +14,7 @@ use super::{
 use crate::{
     SourceSender,
     config::{ComponentKey, SourceConfig, SourceContext},
+    event::string_value,
     http::Auth,
     serde::{default_decoding, default_framing_message_based},
     sources::util::http::HttpMethod,
@@ -137,9 +138,8 @@ async fn collected_metrics_native_json() {
         metric
             .tags()
             .unwrap()
-            .get("source_type")
-            .map(AsRef::as_ref),
-        Some(HttpClientConfig::NAME)
+            .get("source_type"),
+        Some(&string_value(HttpClientConfig::NAME))
     );
 }
 

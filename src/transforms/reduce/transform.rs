@@ -903,7 +903,7 @@ merge_strategies.bar = "concat"
             output.remove_timestamp();
             output.remove("timestamp_end");
 
-            let canonical = output.to_value_canonical();
+            let canonical = Value::Object(output.as_map().unwrap_or_default());
             let expected: Value = btreemap! {
                 "id" => 777,
                 "message" => btreemap! {
@@ -1003,7 +1003,7 @@ merge_strategies.bar = "concat"
                 "a-b" => 2,
                 "test_end" => "done"
             });
-            assert_eq!(output.to_value_canonical(), expected_value);
+            assert_eq!(Value::Object(output.as_map().unwrap_or_default()), expected_value);
 
             drop(tx);
             topology.stop().await;
@@ -1039,7 +1039,7 @@ merge_strategies.bar = "concat"
                 "a b" => 3,
                 "test_end" => "done"
             });
-            assert_eq!(output.to_value_canonical(), expected_value);
+            assert_eq!(Value::Object(output.as_map().unwrap_or_default()), expected_value);
 
             drop(tx);
             topology.stop().await;

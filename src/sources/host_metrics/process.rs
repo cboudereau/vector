@@ -3,7 +3,7 @@ use std::ffi::OsStr;
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, UpdateKind};
 use vector_lib::configurable::configurable_component;
 #[cfg(target_os = "linux")]
-use vector_lib::metric_tags;
+use vector_lib::otel_tags;
 
 use super::{FilterList, HostMetrics, default_all_processes, example_processes};
 
@@ -41,7 +41,7 @@ impl HostMetrics {
                 .contains_str(proc.name().to_str())
         }) {
             let tags = || {
-                metric_tags!(
+                otel_tags!(
                 "pid" => pid.as_u32().to_string(),
                 "name" => process.name().to_str().unwrap_or("unknown"),
                 "command" => process.cmd().join(sep).to_str().unwrap_or(""))

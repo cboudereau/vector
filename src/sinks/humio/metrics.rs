@@ -228,7 +228,7 @@ mod tests {
     use futures::stream;
     use indoc::indoc;
     use similar_asserts::assert_eq;
-    use vector_lib::metric_tags;
+    use vector_lib::otel_tags;
 
     use super::*;
     use crate::{
@@ -290,7 +290,7 @@ mod tests {
         let metrics = vec![
             Event::Metric(
                 OtelMetric::new_counter("metric1", MetricKind::Incremental, 42.0)
-                    .with_metric_tags(Some(metric_tags!("os.host" => "somehost")))
+                    .with_tags(Some(otel_tags!("os.host" => "somehost")))
                     .with_timestamp(Some(
                         Utc.with_ymd_and_hms(2020, 8, 18, 21, 0, 1)
                             .single()
@@ -304,7 +304,7 @@ mod tests {
                     &vector_lib::samples![1.0 => 100, 2.0 => 200, 3.0 => 300],
                     "histogram",
                 )
-                .with_metric_tags(Some(metric_tags!("os.host" => "somehost")))
+                .with_tags(Some(otel_tags!("os.host" => "somehost")))
                 .with_timestamp(Some(
                     Utc.with_ymd_and_hms(2020, 8, 18, 21, 0, 2)
                         .single()
@@ -373,7 +373,7 @@ mod tests {
         // Make our test metrics.
         let metrics = vec![Event::Metric(
             OtelMetric::new_counter("metric1", MetricKind::Incremental, 42.0)
-                .with_metric_tags(Some(metric_tags!(
+                .with_tags(Some(otel_tags!(
                     "code" => "200",
                     "code" => "success"
                 )))

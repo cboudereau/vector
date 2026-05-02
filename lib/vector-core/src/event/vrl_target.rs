@@ -6,6 +6,8 @@ use opentelemetry_proto::tonic::common::v1::{
     InstrumentationScope as OtelScope,
 };
 #[cfg(test)]
+use opentelemetry_proto::tonic::common::v1::AnyValue as OtelAnyValue;
+#[cfg(test)]
 use opentelemetry_proto::tonic::common::v1::any_value::Value as OtelValueKind;
 use opentelemetry_proto::tonic::resource::v1::Resource as OtelResource;
 use vrl::{

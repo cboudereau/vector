@@ -135,7 +135,7 @@ fn encode_tags(tags: &OtelAttributes) -> String {
 fn encode_and_write_single_event<V: Display>(
     buf: &mut BytesMut,
     metric_name: &str,
-    metric_tags: Option<&str>,
+    otel_tags: Option<&str>,
     val: V,
     metric_type: &str,
     sample_rate: Option<u32>,
@@ -150,7 +150,7 @@ fn encode_and_write_single_event<V: Display>(
         write!(&mut writer, "|@{}", 1.0 / f64::from(sample_rate)).unwrap();
     };
 
-    if let Some(t) = metric_tags {
+    if let Some(t) = otel_tags {
         write!(&mut writer, "|#{t}").unwrap();
     };
 

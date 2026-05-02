@@ -118,7 +118,7 @@ impl GelfSerializer {
     pub fn to_json_value(&self, event: Event) -> Result<serde_json::Value, vector_common::Error> {
         let mut log = event.into_log();
         to_gelf_event(&mut log)?;
-        serde_json::to_value(log.to_value_canonical()).map_err(|e| e.to_string().into())
+        serde_json::to_value(log.as_map().unwrap_or_default()).map_err(|e| e.to_string().into())
     }
 
     /// Instantiates the GELF chunking configuration.
@@ -136,7 +136,8 @@ impl Encoder<Event> for GelfSerializer {
         let mut log = event.into_log();
         to_gelf_event(&mut log)?;
         let writer = buffer.writer();
-        serde_json::to_writer(writer, &log.to_value_canonical())?;
+        let map = log.as_map().unwrap_or_default();
+        serde_json::to_writer(writer, &map)?;
         Ok(())
     }
 }

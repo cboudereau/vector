@@ -6,10 +6,9 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::{codec::BytesCodec, udp::UdpFramed};
 use vector_lib::{
     event::{
-        Event, MetricKind, MetricTags, OtelMetric,
-        metric::TagValue,
+        AnyValue, Event, MetricKind, OtelAttributes, OtelMetric,
     },
-    metric_tags,
+    otel_tags,
 };
 
 use super::StatsdSinkConfig;
@@ -24,14 +23,14 @@ use crate::{
     },
 };
 
-fn tags() -> MetricTags {
-    metric_tags!(
+fn tags() -> OtelAttributes {
+    let mut attrs = otel_tags!(
         "normal_tag" => "value",
-        "multi_value" => "true",
-        "multi_value" => "false",
-        "multi_value" => TagValue::Bare,
-        "bare_tag" => TagValue::Bare,
-    )
+        "multi_value" => "true"
+    );
+    // bare_tag has no value (bare tag)
+    attrs.insert("bare_tag".to_string(), AnyValue { value: None });
+    attrs
 }
 
 #[tokio::test]
@@ -54,7 +53,7 @@ async fn test_send_to_statsd() {
         Event::Metric(
             OtelMetric::new_counter("counter", MetricKind::Incremental, 1.5)
                 .with_namespace(Some("vector"))
-                .with_metric_tags(Some(tags())),
+                .with_tags(Some(tags())),
         ),
         Event::Metric(
             OtelMetric::new_distribution_from_samples(
@@ -93,7 +92,7 @@ async fn test_send_to_statsd() {
     assert_eq!(
         messages[0],
         Bytes::from(
-            "vector.counter:1.5|c|#bare_tag,multi_value:true,multi_value:false,multi_value,normal_tag:value\nvector.histogram:2|h|@0.01\n"
+            "vector.counter:1.5|c|#bare_tag,multi_value:true,normal_tag:value\nvector.histogram:2|h|@0.01\n"
         ),
     );
 }

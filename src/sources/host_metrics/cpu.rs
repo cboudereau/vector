@@ -2,7 +2,7 @@ use futures::StreamExt;
 #[cfg(target_os = "linux")]
 use heim::cpu::os::linux::CpuTimeExt;
 use heim::units::time::second;
-use vector_lib::{event::MetricTags, metric_tags};
+use vector_lib::{event::OtelAttributes, otel_tags};
 
 use super::{HostMetrics, filter_result};
 use crate::internal_events::{HostMetricsScrapeDetailError, HostMetricsScrapeError};
@@ -23,7 +23,7 @@ impl HostMetrics {
                     .await;
                 output.name = "cpu";
                 for (index, times) in times.into_iter().enumerate() {
-                    let tags = |name: &str| metric_tags!(MODE => name, "cpu" => index.to_string());
+                    let tags = |name: &str| otel_tags!(MODE => name, "cpu" => index.to_string());
                     output.counter(CPU_SECS_TOTAL, times.idle().get::<second>(), tags("idle"));
                     #[cfg(target_os = "linux")]
                     output.counter(
@@ -50,7 +50,7 @@ impl HostMetrics {
         }
         // adds the logical cpu count gauge
         match heim::cpu::logical_count().await {
-            Ok(count) => output.gauge(LOGICAL_CPUS, count as f64, MetricTags::default()),
+            Ok(count) => output.gauge(LOGICAL_CPUS, count as f64, OtelAttributes::default()),
             Err(error) => {
                 emit!(HostMetricsScrapeDetailError {
                     message: "Failed to load logical CPU count.",
@@ -60,7 +60,7 @@ impl HostMetrics {
         }
         // adds the physical cpu count gauge
         match heim::cpu::physical_count().await {
-            Ok(Some(count)) => output.gauge(PHYSICAL_CPUS, count as f64, MetricTags::default()),
+            Ok(Some(count)) => output.gauge(PHYSICAL_CPUS, count as f64, OtelAttributes::default()),
             Ok(None) => {
                 emit!(HostMetricsScrapeError {
                     message: "Unable to determine physical CPU count.",

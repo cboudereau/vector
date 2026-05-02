@@ -5,9 +5,9 @@ use quickcheck::{Arbitrary, Gen, empty_shrinker};
 use vrl::value::{ObjectMap, Value};
 
 use super::super::{
-    Event, EventMetadata, MetricKind, OtelLog, OtelMetric, OtelSpan,
+    Event, EventMetadata, MetricKind, OtelAttributes, OtelLog, OtelMetric, OtelSpan,
     metric::{
-        Bucket, MetricTags,
+        Bucket,
         Quantile, Sample,
     },
 };
@@ -112,10 +112,18 @@ impl Arbitrary for OtelMetric {
         let kind = MetricKind::arbitrary(g);
         let name: Name = Name::arbitrary(g);
         let namespace: Option<Name> = Arbitrary::arbitrary(g);
-        let tags: Option<MetricTags> = Arbitrary::arbitrary(g);
-        let tags = tags.map(|mt| {
-            mt.into_iter_single().collect::<super::OtelAttributes>()
-        });
+        let tags: Option<OtelAttributes> = if bool::arbitrary(g) {
+            let count = usize::arbitrary(g) % 4;
+            let mut attrs = OtelAttributes::default();
+            for _ in 0..count {
+                let key: Name = Name::arbitrary(g);
+                let val: Name = Name::arbitrary(g);
+                attrs.insert(String::from(key), super::super::string_value(String::from(val)));
+            }
+            if attrs.is_empty() { None } else { Some(attrs) }
+        } else {
+            None
+        };
         let timestamp = if bool::arbitrary(g) { Some(datetime(g)) } else { None };
         let metadata = EventMetadata::arbitrary(g);
 

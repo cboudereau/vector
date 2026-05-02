@@ -30,12 +30,12 @@ use vector_lib::{
     configurable::configurable_component,
     internal_event::{CountByteSize, InternalEventHandle as _, Registered},
     json_size::JsonSize,
-    metric_tags,
+    otel_tags,
 };
 
 use crate::{
     config::{SourceConfig, SourceContext, SourceOutput},
-    event::{Event, OtelMetric, metric::{MetricKind, MetricTags}},
+    event::{Event, OtelAttributes, OtelMetric, metric::MetricKind},
     internal_events::{
         CollectionCompleted, EndpointBytesReceived, EventsReceived, PostgresqlMetricsCollectError,
         StreamClosedError,
@@ -48,7 +48,7 @@ macro_rules! tags {
         {
             let mut tags = $tags.clone();
             $(
-                tags.replace($key.into(), String::from($value));
+                tags.insert_string($key.into(), String::from($value));
             )*
             tags
         }
@@ -482,7 +482,7 @@ struct PostgresqlMetrics {
     client: PostgresqlClient,
     endpoint: String,
     namespace: Option<String>,
-    tags: MetricTags,
+    tags: OtelAttributes,
     datname_filter: DatnameFilter,
     events_received: Registered<EventsReceived>,
 }
@@ -514,7 +514,7 @@ impl PostgresqlMetrics {
             }
         };
 
-        let tags = metric_tags!(
+        let tags = otel_tags!(
             "endpoint" => endpoint.clone(),
             "host" => host,
         );
@@ -853,17 +853,17 @@ impl PostgresqlMetrics {
         ))
     }
 
-    fn create_counter(&self, name: &str, value: f64, tags: MetricTags) -> OtelMetric {
+    fn create_counter(&self, name: &str, value: f64, tags: OtelAttributes) -> OtelMetric {
         OtelMetric::new_counter(name, MetricKind::Absolute, value)
             .with_namespace(self.namespace.clone())
-            .with_metric_tags(Some(tags))
+            .with_tags(Some(tags))
             .with_timestamp(Some(Utc::now()))
     }
 
-    fn create_gauge(&self, name: &str, value: f64, tags: MetricTags) -> OtelMetric {
+    fn create_gauge(&self, name: &str, value: f64, tags: OtelAttributes) -> OtelMetric {
         OtelMetric::new_gauge(name, value)
             .with_namespace(self.namespace.clone())
-            .with_metric_tags(Some(tags))
+            .with_tags(Some(tags))
             .with_timestamp(Some(Utc::now()))
     }
 }
@@ -1006,7 +1006,7 @@ mod integration_tests {
     use super::*;
     use crate::{
         SourceSender,
-        event::{Event, MetricView},
+        event::{Event, MetricView, string_value},
         test_util::{
             components::{PULL_SOURCE_TAGS, assert_source_compliance},
             integration::postgres::{pg_socket, pg_url},
@@ -1078,10 +1078,10 @@ mod integration_tests {
 
                 assert_eq!(metric.namespace(), Some("postgresql"));
                 assert_eq!(
-                    metric.tags().unwrap().get("endpoint").unwrap(),
-                    &tags_endpoint
+                    metric.tags().unwrap().get("endpoint"),
+                    Some(&string_value(&tags_endpoint))
                 );
-                assert_eq!(metric.tags().unwrap().get("host").unwrap(), &tags_host);
+                assert_eq!(metric.tags().unwrap().get("host"), Some(&string_value(&tags_host)));
             }
 
             // test metrics from different queries
@@ -1139,7 +1139,7 @@ mod integration_tests {
         for event in events {
             let metric = event.into_otel_metric();
 
-            if let Some(db) = metric.tags().unwrap().get("db") {
+            if let Some(db) = metric.tag_value("db") {
                 assert!(db == "vector" || db == "postgres");
             }
         }
@@ -1158,7 +1158,7 @@ mod integration_tests {
         for event in events {
             let metric = event.into_otel_metric();
 
-            if let Some(db) = metric.tags().unwrap().get("db") {
+            if let Some(db) = metric.tag_value("db") {
                 assert!(db != "vector" && db != "postgres");
             }
         }
@@ -1182,7 +1182,7 @@ mod integration_tests {
         for event in events {
             let metric = event.into_otel_metric();
 
-            if let Some(db) = metric.tags().unwrap().get("db") {
+            if let Some(db) = metric.tag_value("db") {
                 assert!(db == "template1");
             }
         }

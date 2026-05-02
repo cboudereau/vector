@@ -270,7 +270,7 @@ mod integration_tests {
         log: &'static str,
         docker: &Docker,
     ) -> String {
-        let out = source_with(&[name], None, None).await;
+        let out = source_with(&[name], None).await;
         let docker = docker.clone();
 
         let id = eternal_container(name, label, log, &docker).await;
@@ -307,7 +307,7 @@ mod integration_tests {
             let message = "log container_with_tty";
             let name = "container_with_tty_namespaced";
 
-            let out = source_with(&[name], None, Some(true)).await;
+            let out = source_with(&[name], None).await;
 
             let docker = docker(None, None).unwrap();
 
@@ -337,7 +337,7 @@ mod integration_tests {
             let message = "log container_with_tty";
             let name = "container_with_tty";
 
-            let out = source_with(&[name], None, None).await;
+            let out = source_with(&[name], None).await;
 
             let docker = docker(None, None).unwrap();
 
@@ -371,7 +371,7 @@ mod integration_tests {
             let name = "vector_test_newly_started_namespaced";
             let label = "vector_test_label_newly_started";
 
-            let out = source_with(&[name], None, Some(true)).await;
+            let out = source_with(&[name], None).await;
 
             let docker = docker(None, None).unwrap();
 
@@ -434,7 +434,7 @@ mod integration_tests {
             let name = "vector_test_newly_started";
             let label = "vector_test_label_newly_started";
 
-            let out = source_with(&[name], None, None).await;
+            let out = source_with(&[name], None).await;
 
             let docker = docker(None, None).unwrap();
 
@@ -474,7 +474,7 @@ mod integration_tests {
             let message = "10";
             let name = "vector_test_restart";
 
-            let out = source_with(&[name], None, None).await;
+            let out = source_with(&[name], None).await;
 
             let docker = docker(None, None).unwrap();
 
@@ -507,7 +507,7 @@ mod integration_tests {
             let name0 = "vector_test_include_container_0";
             let name1 = "vector_test_include_container_1";
 
-            let out = source_with(&[name1], None, None).await;
+            let out = source_with(&[name1], None).await;
 
             let docker = docker(None, None).unwrap();
 
@@ -593,7 +593,7 @@ mod integration_tests {
             let name1 = "vector_test_include_labels_1";
             let label = "vector_test_include_label";
 
-            let out = source_with(&[name0, name1], label, None).await;
+            let out = source_with(&[name0, name1], label).await;
 
             let docker = docker(None, None).unwrap();
 
@@ -631,7 +631,7 @@ mod integration_tests {
 
             let docker = docker(None, None).unwrap();
             let id = running_container(name, Some(label), message, &docker).await;
-            let out = source_with(&[name], None, None).await;
+            let out = source_with(&[name], None).await;
 
             let events = collect_n(out, 1).await;
             _ = container_kill(&id, &docker).await;
@@ -766,7 +766,7 @@ mod integration_tests {
 
             let docker = docker(None, None).unwrap();
             let id = running_container(name, Some(label), message, &docker).await;
-            let out = source_with(&[name], None, None).await;
+            let out = source_with(&[name], None).await;
 
             let events = collect_n(out, 1).await;
             _ = container_kill(&id, &docker).await;
@@ -814,7 +814,7 @@ mod integration_tests {
             }
             let name = "vector_test_log_longer_than_16kb";
 
-            let out = source_with(&[name], None, None).await;
+            let out = source_with(&[name], None).await;
 
             let docker = docker(None, None).unwrap();
 

@@ -10,7 +10,7 @@ use crate::{
         util::GrpcAddress,
     },
     config::{BoxedSink, BoxedSource, BoxedTransform, ConfigBuilder},
-    sinks::vector::VectorConfig as VectorSinkConfig,
+    sinks::opentelemetry::{OpenTelemetryConfig, GrpcConfig, Protocol},
     sources::vector::VectorConfig as VectorSourceConfig,
     test_util::addr::next_addr,
 };
@@ -139,14 +139,20 @@ fn build_output_edge() -> (OutputEdge, impl Into<BoxedSink>) {
     let output_listen_addr = GrpcAddress::from(next_addr().1);
     debug!(endpoint = %output_listen_addr, "Creating controlled output edge.");
 
-    let mut output_sink = VectorSinkConfig::from_address(output_listen_addr.as_uri());
+    let mut grpc_config = GrpcConfig {
+        endpoint: output_listen_addr.as_uri().to_string(),
+        load_balancing: None,
+        compression: false,
+        batch: Default::default(),
+        request: Default::default(),
+        tls: None,
+        acknowledgements: Default::default(),
+    };
 
-    // We want to ensure that the output sink is flushed as soon as possible, so
-    // we set the batch timeout to a very low value. We also disable retries, as
-    // we don't want to waste time performing retries, especially when the test
-    // harness is shutting down.
-    output_sink.batch.timeout_secs = Some(0.1);
-    output_sink.request.retry_attempts = 0;
+    grpc_config.batch.timeout_secs = Some(0.1);
+    grpc_config.request.retry_attempts = 0;
+
+    let output_sink = OpenTelemetryConfig::from_protocol(Protocol::Grpc(grpc_config));
 
     let output_edge = OutputEdge::from_address(output_listen_addr);
 

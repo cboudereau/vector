@@ -8,7 +8,7 @@ use vector_lib::{
     event::{
         Event, MetricKind, OtelMetric,
     },
-    metric_tags,
+    otel_tags,
 };
 use vrl::owned_value_path;
 
@@ -33,7 +33,7 @@ fn get_counter() -> OtelMetric {
 
     OtelMetric::new_counter("example-counter", MetricKind::Absolute, 26.8)
         .with_timestamp(Some(timestamp))
-        .with_metric_tags(Some(metric_tags! {
+        .with_tags(Some(otel_tags! {
             "template_index".to_string() => "index_value".to_string(),
             "template_source".to_string() => "source_value".to_string(),
             "template_sourcetype".to_string() => "sourcetype_value".to_string(),

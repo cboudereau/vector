@@ -1,5 +1,5 @@
 use std::{
-    fs::{create_dir, read_dir},
+    fs::read_dir,
     io::Write,
     net::SocketAddr,
     path::PathBuf,
@@ -13,7 +13,6 @@ use nix::{
     sys::signal::{Signal, kill},
     unistd::Pid,
 };
-use serde_json::{Value, json};
 use similar_asserts::assert_eq;
 use vector::test_util::{addr::next_addr, temp_file};
 

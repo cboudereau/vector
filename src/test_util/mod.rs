@@ -38,7 +38,7 @@ use tokio_util::codec::{Encoder, FramedRead, FramedWrite, LinesCodec};
 use vector_lib::{
     buffers::topology::channel::LimitedReceiver,
     event::{
-        BatchNotifier, BatchStatusReceiver, Event, EventArray, MetricKind, MetricTags,
+        BatchNotifier, BatchStatusReceiver, Event, EventArray, MetricKind, OtelAttributes,
         OtelLog, OtelMetric,
     },
 };
@@ -278,7 +278,7 @@ pub fn generate_events_with_stream<Gen: FnMut(usize) -> Event>(
 pub fn random_metrics_with_stream(
     count: usize,
     batch: Option<BatchNotifier>,
-    tags: Option<MetricTags>,
+    tags: Option<OtelAttributes>,
 ) -> (Vec<Event>, impl Stream<Item = EventArray>) {
     random_metrics_with_stream_timestamp(
         count,
@@ -303,7 +303,7 @@ pub fn random_metrics_with_stream(
 pub fn random_metrics_with_stream_timestamp(
     count: usize,
     batch: Option<BatchNotifier>,
-    tags: Option<MetricTags>,
+    tags: Option<OtelAttributes>,
     timestamp: DateTime<Utc>,
     timestamp_offset: std::time::Duration,
 ) -> (Vec<Event>, impl Stream<Item = EventArray>) {
@@ -317,7 +317,7 @@ pub fn random_metrics_with_stream_timestamp(
                     index as f64,
                 )
                 .with_timestamp(Some(ts))
-                .with_metric_tags(tags.clone()),
+                .with_tags(tags.clone()),
             )
             // this ensures we get Origin Metadata, with an undefined service but that's ok.
             .with_source_type("a_source_like_none_other")

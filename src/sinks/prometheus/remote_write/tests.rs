@@ -3,7 +3,7 @@ use futures::StreamExt;
 use http::HeaderMap;
 use indoc::indoc;
 use prost::Message;
-use vector_lib::{metric_tags, prometheus::parser::proto};
+use vector_lib::{otel_tags, prometheus::parser::proto};
 
 use super::*;
 use crate::{
@@ -271,7 +271,7 @@ async fn send_request(config: &str, events: Vec<Event>) -> Vec<(HeaderMap, proto
 pub(super) fn create_event(name: String, value: f64) -> Event {
     Event::Metric(
         OtelMetric::new_gauge(name, value)
-            .with_metric_tags(Some(metric_tags!(
+            .with_tags(Some(otel_tags!(
                 "region" => "us-west-1",
                 "production" => "true",
             )))

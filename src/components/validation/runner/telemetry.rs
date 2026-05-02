@@ -10,7 +10,7 @@ use crate::{
         util::GrpcAddress,
     },
     config::ConfigBuilder,
-    sinks::vector::VectorConfig as VectorSinkConfig,
+    sinks::opentelemetry::{OpenTelemetryConfig, GrpcConfig, Protocol},
     sources::{internal_logs::InternalLogsConfig, internal_metrics::InternalMetricsConfig},
     test_util::addr::next_addr,
 };
@@ -40,10 +40,19 @@ impl Telemetry {
             scrape_interval_secs: Duration::from_millis(100),
             ..Default::default()
         };
-        let mut vector_sink = VectorSinkConfig::from_address(listen_addr.as_uri());
+        let mut grpc_config = GrpcConfig {
+            endpoint: listen_addr.as_uri().to_string(),
+            load_balancing: None,
+            compression: false,
+            batch: Default::default(),
+            request: Default::default(),
+            tls: None,
+            acknowledgements: Default::default(),
+        };
 
-        vector_sink.batch.timeout_secs = Some(0.1);
-        vector_sink.request.retry_attempts = 0;
+        grpc_config.batch.timeout_secs = Some(0.1);
+        grpc_config.request.retry_attempts = 0;
+        let vector_sink = OpenTelemetryConfig::from_protocol(Protocol::Grpc(grpc_config));
 
         config_builder.add_source(INTERNAL_LOGS_KEY, internal_logs);
         config_builder.add_source(INTERNAL_METRICS_KEY, internal_metrics);

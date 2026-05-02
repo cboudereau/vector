@@ -4,7 +4,7 @@ use heim::units::information::byte;
 use heim::units::ratio::ratio;
 #[cfg(unix)]
 use nix::sys::statvfs::statvfs;
-use vector_lib::{configurable::configurable_component, metric_tags};
+use vector_lib::{configurable::configurable_component, otel_tags};
 
 use super::{FilterList, HostMetrics, default_all_devices, example_devices, filter_result};
 use crate::internal_events::{HostMetricsScrapeDetailError, HostMetricsScrapeFilesystemError};
@@ -104,12 +104,12 @@ impl HostMetrics {
                     .await
                 {
                     let fs = partition.file_system();
-                    let mut tags = metric_tags! {
+                    let mut tags = otel_tags! {
                         "filesystem" => fs.as_str(),
                         "mountpoint" => partition.mount_point().to_string_lossy()
                     };
                     if let Some(device) = partition.device() {
-                        tags.replace("device".into(), device.to_string_lossy().to_string());
+                        tags.insert_string("device".into(), device.to_string_lossy().to_string());
                     }
                     output.gauge(
                         "filesystem_free_bytes",

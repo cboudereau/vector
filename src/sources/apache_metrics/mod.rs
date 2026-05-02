@@ -7,7 +7,7 @@ use hyper::{Body, Request};
 use serde_with::serde_as;
 use snafu::ResultExt;
 use tokio_stream::wrappers::IntervalStream;
-use vector_lib::{EstimatedJsonEncodedSizeOf, configurable::configurable_component, metric_tags};
+use vector_lib::{EstimatedJsonEncodedSizeOf, configurable::configurable_component, otel_tags};
 
 use crate::{
     SourceSender,
@@ -161,7 +161,7 @@ fn apache_metrics(
                     .body(Body::empty())
                     .expect("error creating request");
 
-                let tags = metric_tags! {
+                let tags = otel_tags! {
                     "endpoint" => sanitized_url.to_string(),
                     "host" => url.sanitized_authority(),
                 };
@@ -198,7 +198,7 @@ fn apache_metrics(
                                     1.0,
                                 )
                                 .with_namespace(namespace.clone())
-                                .with_metric_tags(Some(tags.clone()))
+                                .with_tags(Some(tags.clone()))
                                 .with_timestamp(Some(Utc::now())))]);
 
                                 let metrics = results
@@ -232,7 +232,7 @@ fn apache_metrics(
                                         1.0,
                                     )
                                     .with_namespace(namespace.clone())
-                                    .with_metric_tags(Some(tags.clone()))
+                                    .with_tags(Some(tags.clone()))
                                     .with_timestamp(Some(Utc::now())),
                                 ]))
                             }
@@ -247,7 +247,7 @@ fn apache_metrics(
                                         0.0,
                                     )
                                     .with_namespace(namespace.clone())
-                                    .with_metric_tags(Some(tags.clone()))
+                                    .with_tags(Some(tags.clone()))
                                     .with_timestamp(Some(Utc::now())),
                                 ]))
                             }

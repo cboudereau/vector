@@ -6,7 +6,7 @@ use vector_lib::{
     config::{Tags, Telemetry, init_telemetry},
     event::{BatchNotifier, BatchStatus, Event},
     lookup::lookup_v2::OptionalValuePath,
-    metric_tags,
+    otel_tags,
 };
 
 use super::config::HecMetricsSinkConfig;
@@ -52,7 +52,7 @@ async fn config() -> HecMetricsSinkConfig {
 fn get_gauge(batch: BatchNotifier) -> Event {
     OtelMetric::new_gauge("example-gauge", 26.28)
         .with_tags(Some(
-            metric_tags! {"tag_gauge_test".to_string() => "tag_gauge_value".to_string()},
+            otel_tags! {"tag_gauge_test".to_string() => "tag_gauge_value".to_string()},
         ))
         .with_batch_notifier(&batch)
         .into()
@@ -61,7 +61,7 @@ fn get_gauge(batch: BatchNotifier) -> Event {
 fn get_counter(batch: BatchNotifier) -> Event {
     OtelMetric::new_counter("example-counter", MetricKind::Absolute, 26.28)
         .with_tags(Some(
-            metric_tags! {"tag_counter_test".to_string() => "tag_counter_value".to_string()},
+            otel_tags! {"tag_counter_test".to_string() => "tag_counter_value".to_string()},
         ))
         .with_batch_notifier(&batch)
         .into()

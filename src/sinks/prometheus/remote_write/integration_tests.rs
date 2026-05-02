@@ -70,8 +70,10 @@ async fn insert_metrics(url: &str) {
                 _ => panic!("Unhandled metric value, fix the test"),
             }
             let tags = metric.tags().unwrap();
-            for (tag, value) in tags.iter_single() {
-                assert_eq!(output[tag], Value::String(value.to_string()));
+            for (tag, value) in tags.iter() {
+                if let Some(opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(s)) = &value.value {
+                    assert_eq!(output[tag.as_str()], Value::String(s.clone()));
+                }
             }
             let timestamp =
                 format_timestamp(metric.timestamp().unwrap(), chrono::SecondsFormat::Millis);

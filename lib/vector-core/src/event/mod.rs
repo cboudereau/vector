@@ -10,7 +10,7 @@ pub use finalization::{
     Finalizable,
 };
 pub use metadata::{EventMetadata, WithMetadata};
-pub use metric::{MetricKind, MetricTags};
+pub use metric::MetricKind;
 pub use r#ref::{EventMutRef, EventRef};
 use serde::Serialize;
 use vector_buffers::EventCount;
@@ -34,11 +34,15 @@ mod metadata;
 pub mod metric;
 mod r#ref;
 mod ser;
+pub mod otel_attributes;
 pub mod otel_event;
 pub mod otel_fields;
 pub mod otel_json;
+pub mod otel_metric;
 pub mod otlp;
-pub use otel_event::{MetricView, OtelAttributes, OtelLog, OtelMetric, OtelSpan, ValueAtQuantile, json_to_any_value, string_value, int_value, vrl_value_to_any_value};
+pub use otel_attributes::OtelAttributes;
+pub use otel_event::{AnyValue, OtelLog, OtelSpan, ValueAtQuantile, json_to_any_value, string_value, int_value, vrl_value_to_any_value};
+pub use otel_metric::{MetricView, OtelMetric};
 pub use opentelemetry_proto::tonic::common::v1::any_value::Value as OtelValueKind;
 
 pub use otlp::{OtlpCodec, register_otlp_codec};

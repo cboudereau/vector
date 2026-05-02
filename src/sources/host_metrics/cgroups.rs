@@ -11,7 +11,7 @@ use tokio::{
     fs::{self, File},
     io::AsyncReadExt,
 };
-use vector_lib::{event::metric::MetricTags, metric_tags};
+use vector_lib::{event::OtelAttributes, otel_tags};
 
 use super::{CGroupsConfig, HostMetrics, MetricsBuffer, filter_result_sync};
 
@@ -140,7 +140,7 @@ impl<'a> CGroupRecurser<'a> {
     }
 
     /// Try to load the `cpu` controller data file and emit metrics if it is found.
-    async fn load_cpu(&mut self, cgroup: &CGroup, tags: &MetricTags) {
+    async fn load_cpu(&mut self, cgroup: &CGroup, tags: &OtelAttributes) {
         if let Some(Some(cpu)) = filter_result_sync(
             cgroup.load_cpu(&mut self.buffer).await,
             "Failed to load cgroups CPU statistics.",
@@ -164,7 +164,7 @@ impl<'a> CGroupRecurser<'a> {
     }
 
     /// Try to load the `memory` controller data files and emit metrics if they are found.
-    async fn load_memory(&mut self, cgroup: &CGroup, tags: &MetricTags) {
+    async fn load_memory(&mut self, cgroup: &CGroup, tags: &OtelAttributes) {
         if let Some(Some(current)) = filter_result_sync(
             cgroup.load_memory_current(&mut self.buffer).await,
             "Failed to load cgroups current memory.",
@@ -295,8 +295,8 @@ struct CGroup {
 }
 
 impl CGroup {
-    fn tags(&self) -> MetricTags {
-        metric_tags! {
+    fn tags(&self) -> OtelAttributes {
+        otel_tags! {
             "cgroup" => self.name.to_string_lossy(),
             "collector" => "cgroups",
         }

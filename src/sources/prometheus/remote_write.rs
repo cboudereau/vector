@@ -206,7 +206,7 @@ mod test {
     use chrono::{SubsecRound as _, Utc};
     use vector_lib::{
         event::{EventStatus, MetricKind, MetricView, OtelMetric},
-        metric_tags,
+        otel_tags,
     };
 
     use super::*;
@@ -449,7 +449,7 @@ mod test {
             Event::Metric(
                 OtelMetric::new_gauge("gauge_2", 41.0)
                     .with_timestamp(Some(timestamp))
-                    .with_metric_tags(Some(metric_tags! {
+                    .with_tags(Some(otel_tags! {
                         "code" => "200".to_string(),
                         "code" => "success".to_string(),
                     })),
@@ -460,7 +460,7 @@ mod test {
             Event::Metric(
                 OtelMetric::new_gauge("gauge_2", 41.0)
                     .with_timestamp(Some(timestamp))
-                    .with_metric_tags(Some(metric_tags! {
+                    .with_tags(Some(otel_tags! {
                         "code" => "success".to_string(),
                     })),
             ),

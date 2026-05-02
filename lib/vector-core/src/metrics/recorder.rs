@@ -15,12 +15,13 @@ use super::{
     storage::VectorStorage,
 };
 use crate::event::{
+    OtelAttributes,
     OtelMetric,
-    metric::{MetricKind, MetricTags},
+    metric::MetricKind,
 };
 
-fn tags_from_key(key: &Key) -> Option<MetricTags> {
-    let labels: MetricTags = key
+fn tags_from_key(key: &Key) -> Option<OtelAttributes> {
+    let labels: OtelAttributes = key
         .labels()
         .map(|label| (String::from(label.key()), String::from(label.value())))
         .collect();
@@ -84,7 +85,7 @@ impl Registry {
                 metrics.push(
                     OtelMetric::new_counter(key.name(), MetricKind::Absolute, value)
                         .with_namespace(Some("vector".to_string()))
-                        .with_metric_tags(tags_from_key(&key))
+                        .with_tags(tags_from_key(&key))
                         .with_timestamp(Some(timestamp)),
                 );
             }
@@ -97,7 +98,7 @@ impl Registry {
                 metrics.push(
                     OtelMetric::new_gauge(key.name(), value)
                         .with_namespace(Some("vector".to_string()))
-                        .with_metric_tags(tags_from_key(&key))
+                        .with_tags(tags_from_key(&key))
                         .with_timestamp(Some(timestamp)),
                 );
             }
@@ -110,7 +111,7 @@ impl Registry {
                 metrics.push(
                     OtelMetric::new_histogram(key.name(), MetricKind::Absolute, &inner.buckets(), inner.count(), inner.sum())
                         .with_namespace(Some("vector".to_string()))
-                        .with_metric_tags(tags_from_key(&key))
+                        .with_tags(tags_from_key(&key))
                         .with_timestamp(Some(timestamp)),
                 );
             }

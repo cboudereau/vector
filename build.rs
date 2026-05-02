@@ -119,6 +119,8 @@ fn main() {
         println!("cargo:rerun-if-changed=proto/vector/dd_metric.proto");
         println!("cargo:rerun-if-changed=proto/vector/dd_trace.proto");
         println!("cargo:rerun-if-changed=proto/vector/ddsketch_full.proto");
+        println!("cargo:rerun-if-changed=proto/vector/event.proto");
+        println!("cargo:rerun-if-changed=proto/vector/vector.proto");
 
         let protobuf_fds_path =
             Path::new(&std::env::var("OUT_DIR").expect("OUT_DIR environment variable not set"))
@@ -137,6 +139,8 @@ fn main() {
                     "proto/vector/ddsketch_full.proto",
                     "proto/vector/dd_metric.proto",
                     "proto/vector/dd_trace.proto",
+                    "proto/vector/event.proto",
+                    "proto/vector/vector.proto",
                     "proto/third-party/google/pubsub/v1/pubsub.proto",
                     "proto/third-party/google/rpc/status.proto",
                 ],

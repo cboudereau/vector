@@ -21,7 +21,7 @@ pub use vector_config::impl_generate_config_from_default;
 pub use vector_core::compile_vrl;
 pub use vector_core::{
     EstimatedJsonEncodedSizeOf, buckets, default_data_dir, emit, event, fanout, ipallowlist,
-    latency, metric_tags, metrics, otel_tags, partition, quantiles, register, samples, schema, serde, sink,
+    latency, metrics, otel_tags, partition, quantiles, register, samples, schema, serde, sink,
     source, source_sender, tcp, tls, transform,
 };
 pub use vector_lookup as lookup;

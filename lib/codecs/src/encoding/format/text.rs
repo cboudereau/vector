@@ -83,10 +83,7 @@ impl Encoder<Event> for TextSerializer {
 #[cfg(test)]
 mod tests {
     use bytes::{Bytes, BytesMut};
-    use vector_core::{
-        event::{MetricKind, OtelLog, OtelMetric},
-        metric_tags,
-    };
+    use vector_core::event::{MetricKind, OtelAttributes, OtelLog, OtelMetric};
 
     use super::*;
 
@@ -124,14 +121,21 @@ mod tests {
     }
 
     fn metric2() -> Event {
+        use opentelemetry_proto::tonic::common::v1::{AnyValue, ArrayValue, any_value};
+        let array_tag = AnyValue {
+            value: Some(any_value::Value::ArrayValue(ArrayValue {
+                values: vec![
+                    AnyValue { value: Some(any_value::Value::StringValue("first".into())) },
+                    AnyValue { value: None },
+                    AnyValue { value: Some(any_value::Value::StringValue("second".into())) },
+                ],
+            })),
+        };
+        let mut tags = OtelAttributes::default();
+        tags.insert("a".into(), array_tag);
         Event::Metric(
-            OtelMetric::new_counter("counter", MetricKind::Incremental, 1.0).with_metric_tags(Some(
-                metric_tags!(
-                    "a" => "first",
-                    "a" => None,
-                    "a" => "second",
-                ),
-            )),
+            OtelMetric::new_counter("counter", MetricKind::Incremental, 1.0)
+                .with_tags(Some(tags)),
         )
     }
 

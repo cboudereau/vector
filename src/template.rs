@@ -613,7 +613,7 @@ mod tests {
     use chrono_tz::Tz;
     use vector_lib::{
         lookup::metadata_path,
-        metric_tags,
+        otel_tags,
     };
     use vrl::path;
 
@@ -916,7 +916,7 @@ mod tests {
                     .single()
                     .expect("invalid timestamp"),
             ))
-            .with_metric_tags(Some(metric_tags!(
+            .with_tags(Some(otel_tags!(
                 "test" => "true",
                 "component" => "template",
             ))));

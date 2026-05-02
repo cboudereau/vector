@@ -8,7 +8,7 @@ use std::{
 use regex::Regex;
 
 use crate::{
-    event::metric::{MetricKind, MetricTags},
+    event::{AnyValue, OtelAttributes, metric::MetricKind, string_value},
     event::OtelMetric,
     sources::{statsd::ConversionUnit, util::extract_tag_key_and_value},
 };
@@ -71,7 +71,7 @@ impl Parser {
             "c" => {
                 let val: f64 = parts[0].parse()?;
                 OtelMetric::new_counter(name, MetricKind::Incremental, val * sample_rate)
-                    .with_metric_tags(tags)
+                    .with_tags(tags)
             }
             unit @ "h" | unit @ "ms" | unit @ "d" => {
                 let val: f64 = parts[0].parse()?;
@@ -89,7 +89,7 @@ impl Parser {
                     &samples,
                     convert_to_statistic(unit),
                 )
-                .with_metric_tags(tags)
+                .with_tags(tags)
             }
             "g" => {
                 let value = if parts[0]
@@ -104,9 +104,9 @@ impl Parser {
                 };
 
                 match parse_direction(parts[0])? {
-                    None => OtelMetric::new_gauge(name, value).with_metric_tags(tags),
+                    None => OtelMetric::new_gauge(name, value).with_tags(tags),
                     Some(sign) => OtelMetric::new_gauge_delta(name, value * sign)
-                        .with_metric_tags(tags),
+                        .with_tags(tags),
                 }
             }
             "s" => OtelMetric::new_set_from_values(
@@ -114,7 +114,7 @@ impl Parser {
                 MetricKind::Incremental,
                 vec![parts[0].to_string()],
             )
-            .with_metric_tags(tags),
+            .with_tags(tags),
             other => return Err(ParseError::UnknownMetricType(other.into())),
         };
         Ok(metric)
@@ -137,17 +137,22 @@ fn parse_sampling(input: &str) -> Result<f64, ParseError> {
 }
 
 /// Statsd (and dogstatsd) support bare, single and multi-value tags.
-fn parse_tags(input: &&str) -> Result<MetricTags, ParseError> {
+fn parse_tags(input: &&str) -> Result<OtelAttributes, ParseError> {
     if !input.starts_with('#') || input.len() < 2 {
         return Err(ParseError::Malformed(
             "expected non empty '#'-prefixed tags component",
         ));
     }
 
-    Ok(input[1..]
-        .split(',')
-        .map(extract_tag_key_and_value)
-        .collect())
+    let mut attrs = OtelAttributes::default();
+    for (key, tag_value) in input[1..].split(',').map(extract_tag_key_and_value) {
+        let av = match tag_value {
+            Some(s) => string_value(s),
+            None => AnyValue { value: None },
+        };
+        attrs.insert(key, av);
+    }
+    Ok(attrs)
 }
 
 fn parse_direction(input: &str) -> Result<Option<f64>, ParseError> {
@@ -218,14 +223,27 @@ impl From<ParseFloatError> for ParseError {
 
 #[cfg(test)]
 mod test {
-    use vector_lib::{assert_event_data_eq, event::metric::TagValue, metric_tags};
+    use vector_lib::assert_event_data_eq;
 
     use super::{ParseError, Parser, sanitize_key, sanitize_sampling};
     use crate::{
-        event::metric::MetricKind,
+        event::{AnyValue, OtelAttributes, metric::MetricKind, string_value},
         event::OtelMetric,
         sources::statsd::ConversionUnit,
     };
+
+    /// Build OtelAttributes with support for bare tags (None value).
+    fn build_tags(entries: Vec<(&str, Option<&str>)>) -> OtelAttributes {
+        let mut attrs = OtelAttributes::default();
+        for (key, value) in entries {
+            let av = match value {
+                Some(s) => string_value(s),
+                None => AnyValue { value: None },
+            };
+            attrs.insert(key.to_string(), av);
+        }
+        attrs
+    }
 
     const SANITIZING_PARSER: Parser = Parser::new(true, ConversionUnit::Seconds);
     fn parse(packet: &str) -> Result<OtelMetric, ParseError> {
@@ -255,10 +273,10 @@ mod test {
         assert_event_data_eq!(
             parse("foo/how@ever baz:1|c|#tag1,tag2:value"),
             Ok(OtelMetric::new_counter("foo-however_baz", MetricKind::Incremental, 1.0)
-                .with_metric_tags(Some(metric_tags!(
-                    "tag1" => TagValue::Bare,
-                    "tag2" => "value",
-                )))),
+                .with_tags(Some(build_tags(vec![
+                    ("tag1", None),
+                    ("tag2", Some("value")),
+                ])))),
         );
     }
 
@@ -267,26 +285,26 @@ mod test {
         assert_event_data_eq!(
             unsanitized_parse("foo/bar@baz baz:1|c|#tag1,tag2:value"),
             Ok(OtelMetric::new_counter("foo/bar@baz baz", MetricKind::Incremental, 1.0)
-                .with_metric_tags(Some(metric_tags!(
-                    "tag1" => TagValue::Bare,
-                    "tag2" => "value",
-                )))),
+                .with_tags(Some(build_tags(vec![
+                    ("tag1", None),
+                    ("tag2", Some("value")),
+                ])))),
         );
     }
 
     #[test]
     fn enhanced_tags() {
+        // With OtelAttributes, duplicate keys are overwritten (last one wins).
+        // tag2:valueA is overwritten by tag2:valueB, tag3:value is overwritten by tag3 (bare).
         assert_event_data_eq!(
             parse("foo:1|c|#tag1,tag2:valueA,tag2:valueB,tag3:value,tag3,tag4:"),
             Ok(OtelMetric::new_counter("foo", MetricKind::Incremental, 1.0)
-                .with_metric_tags(Some(metric_tags!(
-                    "tag1" => TagValue::Bare,
-                    "tag2" => "valueA",
-                    "tag2" => "valueB",
-                    "tag3" => "value",
-                    "tag3" => TagValue::Bare,
-                    "tag4" => "",
-                )))),
+                .with_tags(Some(build_tags(vec![
+                    ("tag1", None),
+                    ("tag2", Some("valueB")),
+                    ("tag3", None),
+                    ("tag4", Some("")),
+                ])))),
         );
     }
 
@@ -345,11 +363,11 @@ mod test {
                 &samples,
                 "histogram",
             )
-            .with_metric_tags(Some(metric_tags!(
-                "region" => "us-west1",
-                "production" => TagValue::Bare,
-                "e" => "",
-            )))),
+            .with_tags(Some(build_tags(vec![
+                ("e", Some("")),
+                ("production", None),
+                ("region", Some("us-west1")),
+            ])))),
         );
     }
 
@@ -364,11 +382,11 @@ mod test {
                 &samples,
                 "summary",
             )
-            .with_metric_tags(Some(metric_tags!(
-                "region" => "us-west1",
-                "production" => TagValue::Bare,
-                "e" => "",
-            )))),
+            .with_tags(Some(build_tags(vec![
+                ("e", Some("")),
+                ("production", None),
+                ("region", Some("us-west1")),
+            ])))),
         );
     }
 

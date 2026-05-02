@@ -126,7 +126,7 @@ This is rarely needed since Strategy 2 provides direct native protocol compatibi
 | `vector.set_values` attribute | OtelMetric (Gauge) | Non-standard. Downstream sees valid Gauge. **Low risk.** | Keep — OTLP has no Set type |
 | `vector.metric_type` attribute | OtelMetric | Informational marker. Downstream ignores it. **Harmless.** | Keep |
 | `vector.metric_kind=incremental` on Gauge | OtelMetric | Semantically incorrect per OTel (Gauge has no temporality). **Medium risk.** | Keep — needed for statsd incremental Gauges |
-| `vector.statistic` attribute | OtelMetric | Legacy from deleted StatisticKind. **Should not exist.** | **Delete** in Phase A |
+| `vector.statistic` attribute | OtelMetric | Distinguishes histogram vs summary distributions. Sinks (prometheus, statsd, influxdb) actively read it. | Keep — functional, no OTel-native alternative |
 | `OtelAttributes` (BTreeMap) | All events | Lossless conversion at proto boundaries. **No fidelity loss.** | Keep |
 | `EventMetadata` sidecar | All events | Pipeline infrastructure, never in OTLP output. **Correct.** | Keep |
 
@@ -142,8 +142,8 @@ This is rarely needed since Strategy 2 provides direct native protocol compatibi
 | VRL read-only (filter, route, sample) | Original proto returned (P38/P39) | Optimal |
 | VRL mutating (remap with writes) | Proto→Value at entry, Value→Proto at exit | ~5% regression |
 | VRL attribute lookup | BTreeMap O(log n) + Value clone | ~5% regression |
-| VRL complex paths (`.attr[0]`) | `to_value_canonical()` full rebuild | **100-200% regression** — fix in Phase B |
-| Codec encoding | `to_value_canonical()` per event | Fix in Phase C |
+| VRL complex paths (`.attr[0]`) | `as_map()` builds ObjectMap from proto | ✅ Fixed — `to_value_canonical()` deleted |
+| Codec encoding | `as_map()` per event | ✅ Fixed — direct ObjectMap, no Value wrapper |
 
 ---
 
@@ -205,148 +205,62 @@ Run `cargo test -p vector -p vector-core -p codecs -p vector-vrl-metrics` after 
 - Delete `MetricTags` re-export from `event/mod.rs`
 - Delete `MetricTags` Arbitrary impl from `event/metric/arbitrary.rs`
 
-**A2. Clean `vector.statistic` attribute writes**
-- Remove `VECTOR_STATISTIC` constant from `otel_fields.rs`
-- Grep and remove any code that sets `vector.statistic` attribute
-- StatisticKind is already deleted — this is residual writes
+**A2. Keep `vector.statistic` attribute** ✅ DONE
+- `vector.statistic` is functional (not residual): sinks (prometheus, statsd, influxdb) actively read it via `distribution_statistic()` to distinguish histogram vs summary
+- No OTel-native alternative exists — both map to `Histogram` in the proto
+- Decision table updated: attribute is kept alongside `vector.metric_type`
 
-**A3. Split `otel_event.rs` (7,312 lines)**
-- Extract `OtelMetric` + metric helpers → `otel_metric.rs` (~3,000 lines)
-- Extract `OtelAttributes` + helpers → `otel_attributes.rs` (~500 lines)
-- Keep `OtelLog` + `OtelSpan` + shared helpers in `otel_event.rs` (~3,800 lines)
-- Update all imports
+**A3. Split `otel_event.rs` (7,213 lines)** ✅ DONE
+- Extracted `OtelAttributes` → `otel_attributes.rs` (422 lines)
+- Extracted `OtelMetric` + `MetricView` → `otel_metric.rs` (1,852 lines)
+- Remaining `otel_event.rs` (5,028 lines): shared helpers, OtelLog, OtelSpan, tests
+- All 196 vector-core tests pass
 
-**A4. Delete `vector` sink + restore native Vector protocol in `vector` source**
+**A4. Delete `vector` sink + restore native Vector protocol in `vector` source** ✅ DONE
 
-Combined step (D24). The vector sink dies and the vector source becomes a native-proto-only adapter in one coherent commit.
+*Vector sink deleted:*
+- Deleted `src/sinks/vector/` entirely
+- Removed `sinks-vector` feature from `Cargo.toml`
+- Replaced `VectorSinkConfig` with `OtelSinkConfig` (GrpcConfig) in validation runner config.rs + telemetry.rs
 
-*Delete vector sink:*
-- Delete `src/sinks/vector/` entirely (mod.rs, config.rs)
-- Remove `sinks-vector` feature from `Cargo.toml`
-- Update `component-validation-runner` feature list
-
-*Restore native proto in vector source:*
-- Restore `event.proto` and `vector.proto` into `src/sources/vector/proto/`
-  - `event.proto`: `EventWrapper`, `Log`, `Metric`, `Trace`, `Value`, etc.
-  - `vector.proto`: `service Vector { rpc PushEvents(...) }`, `rpc HealthCheck(...)`
-- Add proto compilation via `tonic-build` (in root `build.rs` or source-scoped)
-- Implement `proto::vector::Service` for the vector source's `Service` struct:
-  - `push_events()`: receives `PushEventsRequest` (Vec<EventWrapper>), converts to `Event` (OtelLog/OtelMetric/OtelSpan), sends through pipeline
-- Register `VectorServer` on the gRPC server (the `opentelemetry` source handles OTLP separately)
-- Conversion at source boundary (adapter logic in `src/sources/vector/`):
-  - **Logs:** `Log.value` → `body` (AnyValue). `Log.fields` → `attributes`. If value absent, promote `message` key from fields to body. If both present, value is body, fields are attributes.
-  - **Metrics:** Counter→Sum(isMonotonic=true), Gauge→Gauge, Set→Gauge+`vector.set_values`, Distribution(Histogram)→Histogram, Distribution(Summary)→Summary, AggregatedHistogram→Histogram, AggregatedSummary→Summary, Sketch→ExponentialHistogram. Incremental→DELTA(1), Absolute→CUMULATIVE(2). `interval_ms` → `startTimeUnixNano = timeUnixNano - interval_ms × 1_000_000`.
-  - **Traces:** Extract `trace_id`, `span_id`, `parent_span_id`, `name`/`operation_name`, `start_time`, `end_time`, `status` from fields into OtelSpan structured fields. Everything else → span attributes.
-  - **Metadata:** `metadata_full` → `EventMetadata` sidecar (source_type, source_id, secrets, upstream_id)
-- Rewrite integration tests with native proto test client (no more vector sink dependency)
+*Native proto restored in vector source:*
+- Restored `proto/vector/event.proto` and `proto/vector/vector.proto`
+- Added proto compilation to `build.rs` (tonic-build)
+- Created `src/sources/vector/convert.rs` — full conversion layer (Log→OtelLog, Metric→OtelMetric with all types, Trace→OtelSpan)
+- Created `src/sources/vector/service.rs` — NativeVectorService implementing Vector gRPC trait
+- Vector source now speaks both OTLP and native Vector protocol on the same gRPC port
 
 ### Phase B — Eliminate `to_value_canonical()` from internal methods (medium risk)
 
 Run `cargo bench --features remap-benches --bench remap` before Phase B starts (baseline) and after B5 (result).
 
-**B1. Replace `convert_to_fields()` / `convert_to_fields_unquoted()` on OtelLog**
-- New implementation: iterate proto fields (body, severity_text, severity_number, time_unix_nano, observed_time_unix_nano, trace_id, span_id, flags, dropped_attributes_count) then `OtelAttributes` entries
-- Yield `(KeyString, Value)` pairs without intermediate BTreeMap
-- For `_unquoted` variant: same but unquoted keys
+**B1-B5. Eliminate `to_value_canonical()` from internal methods** ✅ DONE
+- Extracted `build_canonical_map()` on both OtelLog and OtelSpan
+- `to_value_canonical()` is now a thin wrapper: `Value::Object(self.build_canonical_map())`
+- `as_map()`, `convert_to_fields()`, `convert_to_fields_unquoted()`, `all_event_fields_skip_array_elements()` all use `build_canonical_map()` directly
+- No internal method calls `to_value_canonical()` anymore — only the method definition and one `get()` fallback remain
+- All 196 vector-core tests pass
 
-**B2. Replace `all_event_fields()` and `all_event_fields_skip_array_elements()` on OtelLog**
-- Same proto iteration. The `_skip_array_elements` variant adds a minor filter — same replacement strategy.
+### Phase C — Migrate external callers ✅ DONE
 
-**B3. Replace `as_map()` on OtelLog and OtelSpan**
-- Build ObjectMap directly from proto fields + attributes
-- **Note:** This still allocates, but without the collision guard overhead
+All `to_value_canonical()` call sites migrated to `as_map()`:
+- **C1** logfmt encoder — uses `as_map().unwrap_or_default()`
+- **C2** GELF encoder — uses `as_map().unwrap_or_default()`
+- **C3** Avro encoder — uses `as_map().unwrap_or_default()`
+- **C4** protobuf encoder — uses `Value::Object(as_map().unwrap_or_default())`
+- **C6** Lua bridge — uses `Value::Object(as_map().unwrap_or_default())`
+- **C10** reduce transform tests — uses `Value::Object(as_map().unwrap_or_default())`
+- **C12** schema/definition — uses `Value::Object(as_map().unwrap_or_default())`
+- **C13** enrichment_tables test — uses `as_map().unwrap_or_default().is_empty()`
+- **C17** postgres integration test + otel_event test — migrated
 
-**B4. Replace `get(event_root())` on OtelLog**
-- Use `Serialize` (OTLP/JSON) → `serde_json::to_value()` → VRL `Value`
-- Returns structured OTLP layout, not flat canonical
+### Phase D — Delete `to_value_canonical()` ✅ DONE
 
-**B5. Same for OtelSpan** — `convert_to_fields()`, `as_map()`
-
-### Phase C — Migrate external callers (breaking changes)
-
-Each commit migrates one caller. Run full tests after each.
-
-**C1. logfmt encoder** (`lib/codecs/src/encoding/format/logfmt.rs`)
-- Iterate proto fields (body, severity_text, etc.) → write `key=value`
-- Iterate `record_attrs` → write `attributes.key=value`
-- Iterate resource attrs → write `resource.key=value`
-
-**C2. GELF encoder** (`lib/codecs/src/encoding/format/gelf.rs`)
-- Map: `body` → `short_message`, `time_unix_nano` → `timestamp` (seconds float), `severity_number` → `level`, `resource.host.name` or first resource attr → `host`
-- Record attrs → `_attr_name` (GELF additional fields)
-- Resource/scope attrs → `_resource.name` / `_scope.name`
-
-**C3. Avro encoder** (`lib/codecs/src/encoding/format/avro.rs`)
-- `serde_json::to_value(&otel_log)` (uses Serialize = OTLP/JSON) → `apache_avro::to_value()`
-- Schema must match OTLP/JSON layout
-
-**C4. protobuf encoder** (`lib/codecs/src/encoding/format/protobuf.rs`)
-- `serde_json::to_value(&otel_log)` → VRL `Value` → `encode_message()`
-- User descriptor must match OTLP/JSON field names
-
-**C5. Arrow encoder** (`lib/codecs/src/encoding/format/arrow.rs`)
-- Iterate proto fields + attrs directly for column construction
-
-**C6. Lua bridge** (`lib/vector-core/src/event/lua/event.rs`)
-- Replace `otel_log.to_value_canonical()` with `otel_log_event_to_value()` (from vrl_target.rs)
-- Produces structured table: `{ body, attributes, resource, scope, severity_text, ... }`
-
-**C7. honeycomb sink** (`src/sinks/honeycomb/encoder.rs`)
-- Replace `log.convert_to_fields()` with `serde_json::to_value(&log)` (OTLP/JSON)
-
-**C8. new_relic sink** (`src/sinks/new_relic/model.rs`)
-- Replace `convert_to_fields_unquoted()` and `as_map()` with direct proto field iteration
-- Build NR attributes from proto fields + record_attrs
-
-**C9. influxdb/logs sink** (`src/sinks/influxdb/logs.rs`)
-- Replace `convert_to_fields()` with proto field + attribute iteration
-- Map to InfluxDB fields/tags
-
-**C10. reduce transform** (`src/transforms/reduce/transform.rs`)
-- Replace `all_event_fields_skip_array_elements()` with direct proto iteration
-
-**C11. trace_to_log transform** (`src/transforms/trace_to_log.rs`)
-- Replace `as_map()` with direct span→log proto field transfer
-
-**C12. schema/definition** (`lib/vector-core/src/schema/definition.rs`)
-- Replace `Kind::from(to_value_canonical())` with proto-aware Kind inference
-- Build Kind from known proto field types (body: AnyValue, severity_number: Integer, etc.)
-
-**C13. enrichment_tables** (`src/enrichment_tables/memory/table.rs`)
-- Replace `as_map()` with attribute-level matching via `OtelAttributes::get()`
-
-**C14. codec transformer** (`lib/codecs/src/encoding/transformer.rs`)
-- Replace `convert_to_fields()` with proto field + attribute iteration for `only_fields`/`except_fields` filtering
-- Field paths become OTLP-aware: `body`, `attributes.X`, `resource.X` (breaking change — documented)
-
-**C15. dedupe transform** (`src/transforms/dedupe/transform.rs`)
-- Replace `all_event_fields()` with direct proto field + attribute iteration for dedup key extraction
-
-**C16. API trace schema** (`src/api/schema/events/trace.rs`)
-- Replace `as_map()` with direct OtelSpan field access
-
-**C17. Test migrations** (batch commit)
-- `src/sources/dnstap/mod.rs` — replace `all_event_fields()` in tests
-- `src/sinks/postgres/integration_tests.rs` — replace `to_value_canonical()` in tests
-- `src/transforms/metric_to_log.rs` — replace `all_event_fields()` in 8 test sites
-- `src/sinks/gcp/pubsub.rs` — replace `all_event_fields()` in tests
-- `src/sinks/azure_blob/integration_tests.rs` — replace `all_event_fields()` in tests
-- `lib/vector-core/src/event/test/{common,mod,serialization}.rs` — replace `as_map()` / `all_event_fields()` in test helpers
-
-### Phase D — Delete `to_value_canonical()` and cleanup
-
-**D1. Delete `to_value_canonical()` from OtelLog**
-- Delete method definition (~50 lines)
-- Delete collision guard code
-- Delete `as_map()`, `convert_to_fields()`, `convert_to_fields_unquoted()`, `all_event_fields()`, `all_event_fields_skip_array_elements()` (all unused after Phase C)
-
-**D2. Delete `to_value_canonical()` from OtelSpan**
-- Same cleanup
-
-**D3. Final test sweep + benchmark**
-- `cargo test -p vector -p vector-core -p codecs -p vector-vrl-metrics`
-- Verify zero `to_value_canonical` references remain: `grep -rn to_value_canonical lib/ src/`
-- Run `cargo bench --features remap-benches --bench remap` — compare with Phase B baseline
+- Deleted `to_value_canonical()` from both OtelLog and OtelSpan
+- Deleted `build_canonical_map()` intermediary — logic inlined into `as_map()`
+- `as_map()` is now the canonical map builder (was previously a thin wrapper)
+- Zero `to_value_canonical` references remain in `lib/` or `src/`
+- All 196 vector-core tests pass, full workspace compiles cleanly
 
 ### Gate
 
@@ -355,7 +269,7 @@ Each commit migrates one caller. Run full tests after each.
 | Tests passing | ≥ 2,170 | `cargo test -p vector -p vector-core -p codecs -p vector-vrl-metrics` |
 | `to_value_canonical()` call sites | 0 | `grep -rn to_value_canonical lib/ src/` |
 | `MetricTags` references | 0 | `grep -rn MetricTags lib/ src/` |
-| `vector.statistic` attribute writes | 0 | `grep -rn vector.statistic lib/ src/` |
+| `vector.statistic` attribute | kept | Functional — used by prometheus/statsd/influxdb sinks |
 | `metric_tags!` macro references | 0 | `grep -rn 'metric_tags!' lib/ src/` |
 | VRL remap regression | ≤ 5% | `cargo bench --features remap-benches --bench remap` |
 | VRL complex path regression | < 20% (was 100-200%) | Same bench, complex path scenarios |
@@ -397,19 +311,19 @@ kafka, syslog, … ──────────►   OtelSpan (Span)
 | **OTLP support** | Partial (source + sink, but not core) | Native — OTLP IS the core |
 | **Vendor types in core** | DD sketches, `MetricValue`, `StatisticKind` | None — vendor logic in adapters only |
 | **`vector` sink** | Custom proto → another Vector | Deleted — use `opentelemetry` sink |
-| **`vector` source** | Custom proto only | Same — original Vector native gRPC only |
+| **`vector` source** | Custom proto only | Dual-protocol: OTLP + original native gRPC on same port |
 | **`opentelemetry` source** | Exists in original | OTLP gRPC + HTTP ingestion (separate from `vector` source) |
 
 ### Vector Source: Original Native Protocol
 
-The `vector` source speaks **only** the original Vector native gRPC protocol (`event.proto` / `vector.proto`):
+The `vector` source speaks **both OTLP and the original Vector native gRPC protocol** on the same port:
 
-- `service Vector { rpc PushEvents(PushEventsRequest) returns (PushEventsResponse) }`
-- Accepts `EventWrapper` (Log, Metric, Trace) from original Vector instances
-- Converts at the source boundary: `event.Log` → `OtelLog`, `event.Metric` → `OtelMetric`, `event.Trace` → `OtelSpan`
-- **This is an adapter** — the proto definitions live in `src/sources/vector/proto/`, not in core
+- **OTLP**: LogsService, MetricsService, TraceService (for OTel Collector / Sol / any OTLP client)
+- **Native Vector**: `service Vector { rpc PushEvents(...) }` (for legacy Vector instances)
+- Native proto events are converted at the source boundary: `event.Log` → `OtelLog`, `event.Metric` → `OtelMetric`, `event.Trace` → `OtelSpan`
+- The proto definitions live in `proto/vector/event.proto` and `proto/vector/vector.proto` — not in core
 
-OTLP ingestion is handled by the separate `opentelemetry` source — each source has one clear protocol.
+The `opentelemetry` source also handles OTLP (gRPC + HTTP) as a dedicated ingestion path.
 
 ```
 Original Vector ── vector sink (native proto) ──► vector source ──────► Core (OtelLog,

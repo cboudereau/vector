@@ -4,7 +4,8 @@ use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
 use crate::event::OtelMetric;
-use crate::event::metric::{MetricKind, MetricTags};
+use crate::event::OtelAttributes;
+use crate::event::metric::MetricKind;
 
 #[derive(Deserialize)]
 struct BlockIoStat {
@@ -124,11 +125,11 @@ fn counter(
     namespace: Option<String>,
     timestamp: DateTime<Utc>,
     value: f64,
-    tags: MetricTags,
+    tags: OtelAttributes,
 ) -> OtelMetric {
     OtelMetric::new_counter(format!("{prefix}_{name}"), MetricKind::Absolute, value)
         .with_namespace(namespace)
-        .with_metric_tags(Some(tags))
+        .with_tags(Some(tags))
         .with_timestamp(Some(timestamp))
 }
 
@@ -138,18 +139,18 @@ fn gauge(
     namespace: Option<String>,
     timestamp: DateTime<Utc>,
     value: f64,
-    tags: MetricTags,
+    tags: OtelAttributes,
 ) -> OtelMetric {
     OtelMetric::new_gauge(format!("{prefix}_{name}"), value)
         .with_namespace(namespace)
-        .with_metric_tags(Some(tags))
+        .with_tags(Some(tags))
         .with_timestamp(Some(timestamp))
 }
 
-fn blkio_tags(item: &BlockIoStat, tags: &MetricTags) -> MetricTags {
+fn blkio_tags(item: &BlockIoStat, tags: &OtelAttributes) -> OtelAttributes {
     let mut tags = tags.clone();
-    tags.replace("device".into(), format!("{}:{}", item.major, item.minor));
-    tags.replace("op".into(), item.op.to_lowercase());
+    tags.insert_string("device".into(), format!("{}:{}", item.major, item.minor));
+    tags.insert_string("op".into(), item.op.to_lowercase());
     tags
 }
 
@@ -158,7 +159,7 @@ fn blkio_metrics(
     blkio: &BlockIoStats,
     timestamp: DateTime<Utc>,
     namespace: &Option<String>,
-    tags: &MetricTags,
+    tags: &OtelAttributes,
 ) -> Vec<OtelMetric> {
     let mut metrics = vec![];
 
@@ -250,7 +251,7 @@ fn cpu_metrics(
     cpu: &CpuStats,
     timestamp: DateTime<Utc>,
     namespace: &Option<String>,
-    tags: &MetricTags,
+    tags: &OtelAttributes,
     usage: &str,
 ) -> Vec<OtelMetric> {
     // Eight expected metrics not including online_cpus
@@ -339,7 +340,7 @@ fn cpu_metrics(
         metrics.extend((0..online_cpus).filter_map(|index| {
             percpu_usage.get(index).map(|value| {
                 let mut tags = tags.clone();
-                tags.replace("cpu".into(), index.to_string());
+                tags.insert_string("cpu".into(), index.to_string());
 
                 counter(
                     usage,
@@ -360,7 +361,7 @@ fn memory_metrics(
     memory: &MemoryStats,
     timestamp: DateTime<Utc>,
     namespace: &Option<String>,
-    tags: &MetricTags,
+    tags: &OtelAttributes,
 ) -> Vec<OtelMetric> {
     let mut metrics = Vec::with_capacity(35);
 
@@ -469,10 +470,10 @@ fn network_metrics(
     network: &NetworkStats,
     timestamp: DateTime<Utc>,
     namespace: &Option<String>,
-    tags: &MetricTags,
+    tags: &OtelAttributes,
 ) -> Vec<OtelMetric> {
     let mut tags = tags.clone();
-    tags.replace("device".into(), interface.to_string());
+    tags.insert_string("device".into(), interface.to_string());
 
     [
         ("receive_bytes_total", network.rx_bytes),
@@ -521,10 +522,10 @@ pub(super) fn parse(
             _ => continue,
         };
 
-        let mut tags = MetricTags::default();
-        tags.replace("container_id".into(), id);
+        let mut tags = OtelAttributes::default();
+        tags.insert_string("container_id".into(), id);
         if let Some(name) = container.name {
-            tags.replace("container_name".into(), name);
+            tags.insert_string("container_name".into(), name);
         }
 
         if let Some(blkio) = container.blkio_stats {
@@ -566,7 +567,7 @@ pub(super) fn parse(
 #[cfg(test)]
 mod test {
     use chrono::{DateTime, Timelike, Utc, offset::TimeZone};
-    use vector_lib::{assert_event_data_eq, metric_tags};
+    use vector_lib::{assert_event_data_eq, otel_tags};
 
     use super::parse;
     use crate::event::OtelMetric;
@@ -628,7 +629,7 @@ mod test {
                     0.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_metric_tags(Some(metric_tags!(
+                .with_tags(Some(otel_tags!(
                     "device" => "202:26368",
                     "op" => "read",
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
@@ -641,7 +642,7 @@ mod test {
                     520192.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_metric_tags(Some(metric_tags!(
+                .with_tags(Some(otel_tags!(
                     "device" => "202:26368",
                     "op" => "write",
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
@@ -693,7 +694,7 @@ mod test {
                     2.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_metric_tags(Some(metric_tags!(
+                .with_tags(Some(otel_tags!(
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2"
                 )))
@@ -704,7 +705,7 @@ mod test {
                     2007130000000.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_metric_tags(Some(metric_tags!(
+                .with_tags(Some(otel_tags!(
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
                 )))
@@ -715,7 +716,7 @@ mod test {
                     510000000.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_metric_tags(Some(metric_tags!(
+                .with_tags(Some(otel_tags!(
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
                 )))
@@ -726,7 +727,7 @@ mod test {
                     190000000.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_metric_tags(Some(metric_tags!(
+                .with_tags(Some(otel_tags!(
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
                 )))
@@ -737,7 +738,7 @@ mod test {
                     2324920942.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_metric_tags(Some(metric_tags!(
+                .with_tags(Some(otel_tags!(
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
                 )))
@@ -748,7 +749,7 @@ mod test {
                     0.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_metric_tags(Some(metric_tags!(
+                .with_tags(Some(otel_tags!(
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
                 )))
@@ -759,7 +760,7 @@ mod test {
                     0.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_metric_tags(Some(metric_tags!(
+                .with_tags(Some(otel_tags!(
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
                 )))
@@ -770,7 +771,7 @@ mod test {
                     0.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_metric_tags(Some(metric_tags!(
+                .with_tags(Some(otel_tags!(
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
                 )))
@@ -781,7 +782,7 @@ mod test {
                     1095931487.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_metric_tags(Some(metric_tags!(
+                .with_tags(Some(otel_tags!(
                     "cpu" => "0",
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
@@ -793,7 +794,7 @@ mod test {
                     1228989455.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_metric_tags(Some(metric_tags!(
+                .with_tags(Some(otel_tags!(
                     "cpu" => "1",
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
@@ -842,7 +843,7 @@ mod test {
                     2.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_metric_tags(Some(metric_tags!(
+                .with_tags(Some(otel_tags!(
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2"
                 )))
@@ -853,7 +854,7 @@ mod test {
                     2007130000000.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_metric_tags(Some(metric_tags!(
+                .with_tags(Some(otel_tags!(
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
                 )))
@@ -864,7 +865,7 @@ mod test {
                     510000000.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_metric_tags(Some(metric_tags!(
+                .with_tags(Some(otel_tags!(
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
                 )))
@@ -875,7 +876,7 @@ mod test {
                     190000000.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_metric_tags(Some(metric_tags!(
+                .with_tags(Some(otel_tags!(
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
                 )))
@@ -886,7 +887,7 @@ mod test {
                     2324920942.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_metric_tags(Some(metric_tags!(
+                .with_tags(Some(otel_tags!(
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
                 )))
@@ -897,7 +898,7 @@ mod test {
                     0.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_metric_tags(Some(metric_tags!(
+                .with_tags(Some(otel_tags!(
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
                 )))
@@ -908,7 +909,7 @@ mod test {
                     0.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_metric_tags(Some(metric_tags!(
+                .with_tags(Some(otel_tags!(
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
                 )))
@@ -919,7 +920,7 @@ mod test {
                     0.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_metric_tags(Some(metric_tags!(
+                .with_tags(Some(otel_tags!(
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
                 )))
@@ -930,7 +931,7 @@ mod test {
                     1095931487.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_metric_tags(Some(metric_tags!(
+                .with_tags(Some(otel_tags!(
                     "cpu" => "0",
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
@@ -942,7 +943,7 @@ mod test {
                     1228989455.0,
                 )
                 .with_namespace(Some(namespace()))
-                .with_metric_tags(Some(metric_tags!(
+                .with_tags(Some(otel_tags!(
                     "cpu" => "1",
                     "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                     "container_name" => "vector2",
@@ -1014,7 +1015,7 @@ mod test {
                 40120320.0,
             )
             .with_namespace(Some(namespace()))
-            .with_metric_tags(Some(metric_tags!(
+            .with_tags(Some(otel_tags!(
                 "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                 "container_name" => "vector2",
             )))
@@ -1031,7 +1032,7 @@ mod test {
                 47177728.0,
             )
             .with_namespace(Some(namespace()))
-            .with_metric_tags(Some(metric_tags!(
+            .with_tags(Some(otel_tags!(
                 "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                 "container_name" => "vector2",
             )))
@@ -1048,7 +1049,7 @@ mod test {
                 34885632.0,
             )
             .with_namespace(Some(namespace()))
-            .with_metric_tags(Some(metric_tags!(
+            .with_tags(Some(otel_tags!(
                 "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                 "container_name" => "vector2",
             )))
@@ -1066,7 +1067,7 @@ mod test {
                 31131.0,
             )
             .with_namespace(Some(namespace()))
-            .with_metric_tags(Some(metric_tags!(
+            .with_tags(Some(otel_tags!(
                 "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                 "container_name" => "vector2",
             )))
@@ -1110,7 +1111,7 @@ mod test {
                 329932716.0,
             )
             .with_namespace(Some(namespace()))
-            .with_metric_tags(Some(metric_tags!(
+            .with_tags(Some(otel_tags!(
                 "device" => "eth1",
                 "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                 "container_name" => "vector2",
@@ -1129,7 +1130,7 @@ mod test {
                 2001229.0,
             )
             .with_namespace(Some(namespace()))
-            .with_metric_tags(Some(metric_tags!(
+            .with_tags(Some(otel_tags!(
                 "device" => "eth1",
                 "container_id" => "0cf54b87-f0f0-4044-b9d6-20dc54d5c414-4057181352",
                 "container_name" => "vector2",

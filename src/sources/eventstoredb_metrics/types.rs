@@ -6,7 +6,7 @@ use serde::{
     de::{self, Error, MapAccess, Unexpected, Visitor},
 };
 
-use crate::event::{MetricKind, MetricTags, OtelMetric};
+use crate::event::{MetricKind, OtelAttributes, OtelMetric};
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -18,16 +18,16 @@ pub struct Stats {
 impl Stats {
     pub fn metrics(&self, namespace: Option<String>) -> Vec<OtelMetric> {
         let mut result = Vec::new();
-        let mut tags = MetricTags::default();
+        let mut tags = OtelAttributes::default();
         let now = chrono::Utc::now();
         let namespace = namespace.unwrap_or_else(|| "eventstoredb".to_string());
 
-        tags.replace("id".to_string(), self.proc.id.to_string());
+        tags.insert_string("id".to_string(), self.proc.id.to_string());
 
         result.push(
             OtelMetric::new_gauge("process_memory_used_bytes", self.proc.mem as f64)
                 .with_namespace(Some(namespace.clone()))
-                .with_metric_tags(Some(tags.clone()))
+                .with_tags(Some(tags.clone()))
                 .with_timestamp(Some(now)),
         );
 
@@ -38,7 +38,7 @@ impl Stats {
                 self.proc.disk_io.read_bytes as f64,
             )
             .with_namespace(Some(namespace.clone()))
-            .with_metric_tags(Some(tags.clone()))
+            .with_tags(Some(tags.clone()))
             .with_timestamp(Some(now)),
         );
 
@@ -49,7 +49,7 @@ impl Stats {
                 self.proc.disk_io.written_bytes as f64,
             )
             .with_namespace(Some(namespace.clone()))
-            .with_metric_tags(Some(tags.clone()))
+            .with_tags(Some(tags.clone()))
             .with_timestamp(Some(now)),
         );
 
@@ -60,7 +60,7 @@ impl Stats {
                 self.proc.disk_io.read_ops as f64,
             )
             .with_namespace(Some(namespace.clone()))
-            .with_metric_tags(Some(tags.clone()))
+            .with_tags(Some(tags.clone()))
             .with_timestamp(Some(now)),
         );
 
@@ -71,38 +71,38 @@ impl Stats {
                 self.proc.disk_io.write_ops as f64,
             )
             .with_namespace(Some(namespace.clone()))
-            .with_metric_tags(Some(tags.clone()))
+            .with_tags(Some(tags.clone()))
             .with_timestamp(Some(now)),
         );
 
         result.push(
             OtelMetric::new_gauge("memory_free_bytes", self.sys.free_mem as f64)
                 .with_namespace(Some(namespace.clone()))
-                .with_metric_tags(Some(tags.clone()))
+                .with_tags(Some(tags.clone()))
                 .with_timestamp(Some(now)),
         );
 
         if let Some(drive) = self.sys.drive.as_ref() {
-            tags.replace("path".to_string(), drive.path.clone());
+            tags.insert_string("path".to_string(), drive.path.clone());
 
             result.push(
                 OtelMetric::new_gauge("disk_total_bytes", drive.stats.total_bytes as f64)
                     .with_namespace(Some(namespace.clone()))
-                    .with_metric_tags(Some(tags.clone()))
+                    .with_tags(Some(tags.clone()))
                     .with_timestamp(Some(now)),
             );
 
             result.push(
                 OtelMetric::new_gauge("disk_free_bytes", drive.stats.available_bytes as f64)
                     .with_namespace(Some(namespace.clone()))
-                    .with_metric_tags(Some(tags.clone()))
+                    .with_tags(Some(tags.clone()))
                     .with_timestamp(Some(now)),
             );
 
             result.push(
                 OtelMetric::new_gauge("disk_used_bytes", drive.stats.used_bytes as f64)
                     .with_namespace(Some(namespace))
-                    .with_metric_tags(Some(tags))
+                    .with_tags(Some(tags))
                     .with_timestamp(Some(now)),
             );
         }

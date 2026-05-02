@@ -271,7 +271,7 @@ mod test {
     fn into_lua_counter_full() {
         let metric = OtelMetric::new_counter("example counter", MetricKind::Incremental, 1.0)
             .with_namespace(Some("namespace_example"))
-            .with_tags(Some(crate::metric_tags!("example tag" => "example value")))
+            .with_tags(Some(crate::otel_tags!("example tag" => "example value")))
             .with_timestamp(Some(
                 Utc.with_ymd_and_hms(2018, 11, 14, 8, 9, 10)
                     .single()
@@ -325,14 +325,18 @@ mod test {
 
     #[test]
     fn read_multi_value_tag() {
+        use opentelemetry_proto::tonic::common::v1::{AnyValue, ArrayValue, any_value};
+        let mut tags = OtelAttributes::default();
+        tags.insert("example tag".to_string(), AnyValue {
+            value: Some(any_value::Value::ArrayValue(ArrayValue {
+                values: vec![
+                    AnyValue { value: Some(any_value::Value::StringValue("a".into())) },
+                    AnyValue { value: Some(any_value::Value::StringValue("b".into())) },
+                ],
+            })),
+        });
         let metric = OtelMetric::new_counter("example counter", MetricKind::Incremental, 1.0)
-            .with_tags(Some(MetricTags(BTreeMap::from([(
-                "example tag".to_string(),
-                TagValueSet::from(vec![
-                    TagValue::from("a".to_string()),
-                    TagValue::from("b".to_string()),
-                ]),
-            )]))));
+            .with_tags(Some(tags));
 
         assert_metric(
             metric,
@@ -500,7 +504,7 @@ mod test {
         }"#;
         let expected = OtelMetric::new_counter("example counter", MetricKind::Incremental, 1.0)
             .with_namespace(Some("example_namespace"))
-            .with_tags(Some(crate::metric_tags!("example tag" => "example value")))
+            .with_tags(Some(crate::otel_tags!("example tag" => "example value")))
             .with_timestamp(Some(
                 Utc.with_ymd_and_hms(2018, 11, 14, 8, 9, 10)
                     .single()
@@ -530,15 +534,21 @@ mod test {
                 value = 1
             }
         }"#;
+        let mut tags = OtelAttributes::default();
+        {
+            use opentelemetry_proto::tonic::common::v1::{AnyValue, ArrayValue, any_value};
+            tags.insert("example tag".to_string(), AnyValue {
+                value: Some(any_value::Value::ArrayValue(ArrayValue {
+                    values: vec![
+                        AnyValue { value: Some(any_value::Value::StringValue("a".into())) },
+                        AnyValue { value: Some(any_value::Value::StringValue("b".into())) },
+                    ],
+                })),
+            });
+        }
         let expected = OtelMetric::new_counter("example counter", MetricKind::Incremental, 1.0)
             .with_namespace(Some("example_namespace"))
-            .with_tags(Some(MetricTags(BTreeMap::from([(
-                "example tag".to_string(),
-                TagValueSet::from(vec![
-                    TagValue::from("a".to_string()),
-                    TagValue::from("b".to_string()),
-                ]),
-            )]))))
+            .with_tags(Some(tags))
             .with_timestamp(Some(
                 Utc.with_ymd_and_hms(2018, 11, 14, 8, 9, 10)
                     .single()

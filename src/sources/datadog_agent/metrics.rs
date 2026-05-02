@@ -219,13 +219,12 @@ fn decode_datadog_series_v2(
 
 /// Converts DD tags (key:value strings) into OTel KeyValue attributes.
 fn dd_tags_to_attributes(tags: Vec<String>) -> Vec<KeyValue> {
-    use vector_lib::event::metric::TagValue;
     tags.iter()
         .map(|tag| {
             let (key, tag_value) = extract_tag_key_and_value(tag);
             let value = match tag_value {
-                TagValue::Value(v) => Some(string_value(v)),
-                TagValue::Bare => None, // bare tags have no value in OTel
+                Some(v) => Some(string_value(v)),
+                None => None,
             };
             KeyValue { key, value }
         })

@@ -85,16 +85,11 @@ pub use self::message_decoding::decode_message;
 #[cfg(any(feature = "sources-statsd", feature = "sources-datadog_agent"))]
 pub fn extract_tag_key_and_value<S: AsRef<str>>(
     tag_chunk: S,
-) -> (String, vector_lib::event::metric::TagValue) {
-    use vector_lib::event::metric::TagValue;
-
+) -> (String, Option<String>) {
     let tag_chunk = tag_chunk.as_ref();
 
-    // tag_chunk is expected to be formatted as "tag_name:tag_value"
-    // If no colon is found, then it is classified as a Bare tag.
     match tag_chunk.split_once(':') {
-        // the notation `tag:` is valid for StatsD. The effect is an empty string value.
-        Some((prefix, suffix)) => (prefix.to_string(), TagValue::Value(suffix.to_string())),
-        None => (tag_chunk.to_string(), TagValue::Bare),
+        Some((prefix, suffix)) => (prefix.to_string(), Some(suffix.to_string())),
+        None => (tag_chunk.to_string(), None),
     }
 }

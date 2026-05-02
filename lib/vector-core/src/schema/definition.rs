@@ -428,6 +428,7 @@ impl Definition {
 mod test_utils {
     use super::{Definition, Kind};
     use crate::event::Event;
+    use vrl::value::Value;
 
     impl Definition {
         /// Checks that the schema definition is _valid_ for the given event.
@@ -437,7 +438,7 @@ mod test_utils {
         /// If the definition is not valid, debug info will be returned.
         pub fn is_valid_for_event(&self, event: &Event) -> Result<(), String> {
             if let Some(otel_log) = event.maybe_as_log() {
-                let actual_kind = Kind::from(otel_log.to_value_canonical());
+                let actual_kind = Kind::from(Value::Object(otel_log.as_map().unwrap_or_default()));
                 if let Err(path) = self.event_kind.is_superset(&actual_kind) {
                     return Result::Err(format!(
                         "Event value doesn't match at path: {}\n\nEvent type at path = {:?}\n\nDefinition at path = {:?}",

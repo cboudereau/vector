@@ -16,12 +16,12 @@ use snafu::{ResultExt, Snafu};
 use tokio::time;
 use tokio_stream::wrappers::IntervalStream;
 use vector_lib::{
-    ByteSizeOf, EstimatedJsonEncodedSizeOf, configurable::configurable_component, metric_tags,
+    ByteSizeOf, EstimatedJsonEncodedSizeOf, configurable::configurable_component, otel_tags,
 };
 
 use crate::{
     config::{SourceConfig, SourceContext, SourceOutput},
-    event::{Event, OtelMetric, metric::{MetricKind, MetricTags}},
+    event::{Event, OtelAttributes, OtelMetric, metric::MetricKind},
     internal_events::{
         CollectionCompleted, EndpointBytesReceived, MongoDbMetricsBsonParseError,
         MongoDbMetricsEventsReceived, MongoDbMetricsRequestError, StreamClosedError,
@@ -37,7 +37,7 @@ macro_rules! tags {
         {
             let mut tags = $tags.clone();
             $(
-                tags.replace($key.into(), $value.to_string());
+                tags.insert_string($key.into(), $value.to_string());
             )*
             tags
         }
@@ -98,7 +98,7 @@ struct MongoDbMetrics {
     client: Client,
     endpoint: String,
     namespace: Option<String>,
-    tags: MetricTags,
+    tags: OtelAttributes,
 }
 
 pub const fn default_scrape_interval_secs() -> Duration {
@@ -169,7 +169,7 @@ impl MongoDbMetrics {
         client_options.direct_connection = Some(true);
 
         let endpoint = sanitize_endpoint(endpoint, &client_options);
-        let tags = metric_tags!(
+        let tags = otel_tags!(
             "endpoint" => endpoint.clone(),
             "host" => client_options.hosts[0].to_string(),
         );
@@ -226,17 +226,17 @@ impl MongoDbMetrics {
         Ok(())
     }
 
-    fn create_counter(&self, name: &str, value: f64, tags: MetricTags) -> OtelMetric {
+    fn create_counter(&self, name: &str, value: f64, tags: OtelAttributes) -> OtelMetric {
         OtelMetric::new_counter(name, MetricKind::Absolute, value)
             .with_namespace(self.namespace.clone())
-            .with_metric_tags(Some(tags))
+            .with_tags(Some(tags))
             .with_timestamp(Some(Utc::now()))
     }
 
-    fn create_gauge(&self, name: &str, value: f64, tags: MetricTags) -> OtelMetric {
+    fn create_gauge(&self, name: &str, value: f64, tags: OtelAttributes) -> OtelMetric {
         OtelMetric::new_gauge(name, value)
             .with_namespace(self.namespace.clone())
-            .with_metric_tags(Some(tags))
+            .with_tags(Some(tags))
             .with_timestamp(Some(Utc::now()))
     }
 
@@ -1090,6 +1090,7 @@ mod integration_tests {
     use super::*;
     use crate::{
         SourceSender,
+        event::string_value,
         test_util::{
             components::{PULL_SOURCE_TAGS, assert_source_compliance},
             trace_init,
@@ -1163,8 +1164,8 @@ mod integration_tests {
                 assert!((timestamp - Utc::now()).num_seconds() < 1);
                 // validate basic tags
                 let tags = metric.tags().expect("existed tags");
-                assert_eq!(tags.get("endpoint"), Some(&clean_endpoint[..]));
-                assert_eq!(tags.get("host"), Some(&host[..]));
+                assert_eq!(tags.get("endpoint"), Some(&string_value(&clean_endpoint)));
+                assert_eq!(tags.get("host"), Some(&string_value(&host)));
             }
         })
         .await;

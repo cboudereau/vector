@@ -118,7 +118,7 @@ impl Encoder<Event> for ProtobufSerializer {
     fn encode(&mut self, event: Event, buffer: &mut BytesMut) -> Result<(), Self::Error> {
         let message = match event {
             Event::Log(otel_log) => {
-                let val = otel_log.to_value_canonical();
+                let val = Value::Object(otel_log.as_map().unwrap_or_default());
                 encode_message(&self.message_descriptor, val, &self.options)
             }
             Event::Metric(_) => unimplemented!(),

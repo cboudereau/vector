@@ -234,13 +234,13 @@ mod tests {
     use similar_asserts::assert_eq;
     use tokio::sync::mpsc;
     use tokio_stream::wrappers::ReceiverStream;
-    use vector_lib::{config::ComponentKey, event::EventMetadata, metric_tags};
+    use vector_lib::{config::ComponentKey, event::EventMetadata, otel_tags};
 
     use super::*;
     use crate::{
         event::{
-            KeyString, OtelLog, OtelMetric, Value,
-            metric::{MetricKind, MetricTags},
+            KeyString, OtelAttributes, OtelLog, OtelMetric, Value,
+            metric::MetricKind,
         },
         test_util::components::assert_transform_compliance,
         transforms::test::create_topology,
@@ -282,8 +282,8 @@ mod tests {
             .expect("invalid timestamp")
     }
 
-    fn tags() -> MetricTags {
-        metric_tags! {
+    fn tags() -> OtelAttributes {
+        otel_tags! {
             "host" => "localhost",
             "some_tag" => "some_value",
         }
@@ -297,7 +297,7 @@ mod tests {
     async fn transform_counter() {
         let counter = OtelMetric::new_counter("counter", MetricKind::Absolute, 1.0)
             .with_metadata(event_metadata())
-            .with_metric_tags(Some(tags()))
+            .with_tags(Some(tags()))
             .with_timestamp(Some(ts()));
         let mut metadata = counter.metadata().clone();
         metadata.set_source_id(Arc::new(ComponentKey::from("in")));
@@ -481,11 +481,11 @@ mod tests {
 
     #[tokio::test]
     async fn transform_tag_single_encoding() {
-        let tags = metric_tags! {
+        let tags = otel_tags! {
             "single" => "value",
         };
         let counter = OtelMetric::new_counter("counter", MetricKind::Absolute, 1.0)
-            .with_metric_tags(Some(tags))
+            .with_tags(Some(tags))
             .with_timestamp(Some(ts()));
 
         let mut output = OutputBuffer::with_capacity(1);
@@ -507,12 +507,12 @@ mod tests {
 
     #[tokio::test]
     async fn transform_tag_full_encoding() {
-        let tags = metric_tags! {
+        let tags = otel_tags! {
             "multi" => "a",
             "multi" => "b",
         };
         let counter = OtelMetric::new_counter("counter", MetricKind::Absolute, 1.0)
-            .with_metric_tags(Some(tags))
+            .with_tags(Some(tags))
             .with_timestamp(Some(ts()));
 
         let mut output = OutputBuffer::with_capacity(1);

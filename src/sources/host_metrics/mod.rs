@@ -24,7 +24,7 @@ use vector_lib::{
 use crate::{
     SourceSender,
     config::{SourceConfig, SourceContext, SourceOutput},
-    event::{Event, OtelMetric, metric::{MetricKind, MetricTags}},
+    event::{Event, OtelAttributes, OtelMetric, metric::MetricKind, string_value},
     internal_events::{EventsReceived, HostMetricsScrapeDetailError, StreamClosedError},
     shutdown::ShutdownSignal,
 };
@@ -437,17 +437,17 @@ impl HostMetrics {
                 output.gauge(
                     "load1",
                     loadavg.0.get::<ratio>() as f64,
-                    MetricTags::default(),
+                    OtelAttributes::default(),
                 );
                 output.gauge(
                     "load5",
                     loadavg.1.get::<ratio>() as f64,
-                    MetricTags::default(),
+                    OtelAttributes::default(),
                 );
                 output.gauge(
                     "load15",
                     loadavg.2.get::<ratio>() as f64,
-                    MetricTags::default(),
+                    OtelAttributes::default(),
                 );
             }
             Err(error) => {
@@ -462,7 +462,7 @@ impl HostMetrics {
     pub async fn host_metrics(&self, output: &mut MetricsBuffer) {
         output.name = "host";
         match heim::host::uptime().await {
-            Ok(time) => output.gauge("uptime", time.get::<second>(), MetricTags::default()),
+            Ok(time) => output.gauge("uptime", time.get::<second>(), OtelAttributes::default()),
             Err(error) => {
                 emit!(HostMetricsScrapeDetailError {
                     message: "Failed to load host uptime info",
@@ -472,7 +472,7 @@ impl HostMetrics {
         }
 
         match heim::host::boot_time().await {
-            Ok(time) => output.gauge("boot_time", time.get::<second>(), MetricTags::default()),
+            Ok(time) => output.gauge("boot_time", time.get::<second>(), OtelAttributes::default()),
             Err(error) => {
                 emit!(HostMetricsScrapeDetailError {
                     message: "Failed to load host boot time info",
@@ -503,28 +503,28 @@ impl MetricsBuffer {
         }
     }
 
-    fn tags(&self, mut tags: MetricTags) -> MetricTags {
-        tags.replace("collector".into(), self.name.to_string());
+    fn tags(&self, mut tags: OtelAttributes) -> OtelAttributes {
+        tags.insert("collector".into(), string_value(self.name.to_string()));
         if let Some(host) = &self.host {
-            tags.replace("host".into(), host.clone());
+            tags.insert("host".into(), string_value(host.clone()));
         }
         tags
     }
 
-    fn counter(&mut self, name: &str, value: f64, tags: MetricTags) {
+    fn counter(&mut self, name: &str, value: f64, tags: OtelAttributes) {
         self.metrics.push(
             OtelMetric::new_counter(name, MetricKind::Absolute, value)
                 .with_namespace(self.namespace.clone())
-                .with_metric_tags(Some(self.tags(tags)))
+                .with_tags(Some(self.tags(tags)))
                 .with_timestamp(Some(self.timestamp)),
         )
     }
 
-    fn gauge(&mut self, name: &str, value: f64, tags: MetricTags) {
+    fn gauge(&mut self, name: &str, value: f64, tags: OtelAttributes) {
         self.metrics.push(
             OtelMetric::new_gauge(name, value)
                 .with_namespace(self.namespace.clone())
-                .with_metric_tags(Some(self.tags(tags)))
+                .with_tags(Some(self.tags(tags)))
                 .with_timestamp(Some(self.timestamp)),
         )
     }

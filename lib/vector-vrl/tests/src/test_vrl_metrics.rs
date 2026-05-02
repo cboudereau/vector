@@ -1,9 +1,9 @@
-use vector_core::event::{MetricTags, OtelMetric};
+use vector_core::event::{OtelAttributes, OtelMetric};
 use vector_vrl_metrics::MetricsStorage;
 
 pub(crate) fn test_vrl_metrics_storage() -> MetricsStorage {
     let storage = MetricsStorage::default();
-    let metric = OtelMetric::new_gauge("utilization", 0.5).with_tags(Some(MetricTags::from_iter(
+    let metric = OtelMetric::new_gauge("utilization", 0.5).with_tags(Some(OtelAttributes::from_iter(
         [("component_id".to_string(), "test".to_string())],
     )));
     storage.cache.store(vec![metric].into());

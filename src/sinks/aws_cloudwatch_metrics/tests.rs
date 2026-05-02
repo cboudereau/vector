@@ -1,7 +1,7 @@
 use aws_smithy_types::DateTime;
 use chrono::{Timelike, Utc, offset::TimeZone};
 use similar_asserts::assert_eq;
-use vector_lib::metric_tags;
+use vector_lib::otel_tags;
 
 use super::*;
 use crate::event::metric::MetricKind;
@@ -53,7 +53,7 @@ async fn encode_events_basic_counter() {
                     .expect("invalid timestamp"),
             )),
         OtelMetric::new_counter("healthcheck", MetricKind::Incremental, 1.0)
-            .with_metric_tags(Some(metric_tags!("region" => "local")))
+            .with_tags(Some(otel_tags!("region" => "local")))
             .with_timestamp(Some(
                 Utc.with_ymd_and_hms(2018, 11, 14, 8, 9, 10)
                     .single()

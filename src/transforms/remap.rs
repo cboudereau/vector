@@ -657,7 +657,7 @@ mod tests {
     use indoc::{formatdoc, indoc};
     use tokio::sync::mpsc;
     use tokio_stream::wrappers::ReceiverStream;
-    use vector_lib::{config::{GlobalOptions}, event::EventMetadata, metric_tags};
+    use vector_lib::{config::{GlobalOptions}, event::EventMetadata, otel_tags};
     use vrl::{btreemap, event_path, value::kind::Collection};
 
     use super::*;
@@ -1047,7 +1047,7 @@ mod tests {
             Event::Metric({
                 let mut otel = OtelMetric::new_counter("zork", MetricKind::Incremental, 1.0)
                     .with_namespace(Some("zerk"))
-                    .with_metric_tags(Some(metric_tags! {
+                    .with_tags(Some(otel_tags! {
                         "host" => "zoobub",
                     }));
                 *otel.metadata_mut() = metadata;
@@ -1237,7 +1237,7 @@ mod tests {
             output,
             Event::Metric({
                 let mut otel = OtelMetric::new_counter("counter", MetricKind::Absolute, 1.0)
-                    .with_metric_tags(Some(metric_tags! {
+                    .with_tags(Some(otel_tags! {
                         "hello" => "world",
                         "foo" => "bar",
                     }));
@@ -1252,7 +1252,7 @@ mod tests {
             output,
             Event::Metric({
                 let mut otel = OtelMetric::new_counter("counter", MetricKind::Absolute, 1.0)
-                    .with_metric_tags(Some(metric_tags! {
+                    .with_tags(Some(otel_tags! {
                         "hello" => "goodbye",
                         "metadata.dropped.component_id" => "remapper",
                         "metadata.dropped.component_kind" => "transform",
@@ -1271,7 +1271,7 @@ mod tests {
             output,
             Event::Metric({
                 let mut otel = OtelMetric::new_counter("counter", MetricKind::Absolute, 1.0)
-                    .with_metric_tags(Some(metric_tags! {
+                    .with_tags(Some(otel_tags! {
                         "not_hello" => "oops",
                         "metadata.dropped.component_id" => "remapper",
                         "metadata.dropped.component_kind" => "transform",

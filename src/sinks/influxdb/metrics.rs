@@ -6,7 +6,7 @@ use tower::Service;
 use vector_lib::{
     ByteSizeOf, EstimatedJsonEncodedSizeOf,
     configurable::configurable_component,
-    event::{MetricView, OtelAttributes, metric::MetricTags},
+    event::{MetricView, OtelAttributes},
 };
 
 use crate::{
@@ -235,11 +235,11 @@ fn create_build_request(
     }
 }
 
-fn merge_tags(event_tags: Option<OtelAttributes>, config_tags: Option<&HashMap<String, String>>) -> Option<MetricTags> {
-    let otel_as_metric: Option<MetricTags> = event_tags.map(|t| t.into_iter_single().collect());
+fn merge_tags(event_tags: Option<OtelAttributes>, config_tags: Option<&HashMap<String, String>>) -> Option<OtelAttributes> {
+    let otel_as_metric: Option<OtelAttributes> = event_tags.map(|t| t.into_iter_single().collect());
     match (otel_as_metric, config_tags) {
         (Some(mut event_tags), Some(config_tags)) => {
-            event_tags.extend(config_tags.iter().map(|(k, v)| (k.clone(), v.clone())));
+            event_tags.extend_strings(config_tags.iter().map(|(k, v)| (k.clone(), v.clone())));
             Some(event_tags)
         }
         (Some(event_tags), None) => Some(event_tags),
@@ -292,7 +292,7 @@ fn encode_events(
         let (metric_type, fields) = get_type_and_fields(&view, statistic, quantiles);
 
         let mut unwrapped_tags = tags.unwrap_or_default();
-        unwrapped_tags.replace("metric_type".to_owned(), metric_type.to_owned());
+        unwrapped_tags.insert_string("metric_type".to_owned(), metric_type.to_owned());
 
         if let Err(error_message) = influx_line_protocol(
             protocol_version,
@@ -447,7 +447,7 @@ mod tests {
                 .with_timestamp(Some(ts())),
             OtelMetric::new_counter("check", MetricKind::Incremental, 1.0)
                 .with_namespace(Some("ns"))
-                .with_metric_tags(Some(tags()))
+                .with_tags(Some(tags()))
                 .with_timestamp(Some(ts())),
         ];
 
@@ -464,7 +464,7 @@ mod tests {
         let events = vec![
             OtelMetric::new_gauge_delta("meter", -1.5)
                 .with_namespace(Some("ns"))
-                .with_metric_tags(Some(tags()))
+                .with_tags(Some(tags()))
                 .with_timestamp(Some(ts())),
         ];
 
@@ -480,7 +480,7 @@ mod tests {
         let events = vec![
             OtelMetric::new_set_from_values("users", MetricKind::Incremental, vec!["alice".to_string(), "bob".to_string()])
                 .with_namespace(Some("ns"))
-                .with_metric_tags(Some(tags()))
+                .with_tags(Some(tags()))
                 .with_timestamp(Some(ts())),
         ];
 
@@ -497,7 +497,7 @@ mod tests {
         let events = vec![
             OtelMetric::new_histogram("requests", MetricKind::Absolute, &buckets, 6, 12.5)
                 .with_namespace(Some("ns"))
-                .with_metric_tags(Some(tags()))
+                .with_tags(Some(tags()))
                 .with_timestamp(Some(ts())),
         ];
 
@@ -533,7 +533,7 @@ mod tests {
         let events = vec![
             OtelMetric::new_histogram("requests", MetricKind::Absolute, &buckets, 6, 12.5)
                 .with_namespace(Some("ns"))
-                .with_metric_tags(Some(tags()))
+                .with_tags(Some(tags()))
                 .with_timestamp(Some(ts())),
         ];
 
@@ -569,7 +569,7 @@ mod tests {
         let events = vec![
             OtelMetric::new_summary("requests_sum", &quantiles, 6, 12.0)
                 .with_namespace(Some("ns"))
-                .with_metric_tags(Some(tags()))
+                .with_tags(Some(tags()))
                 .with_timestamp(Some(ts())),
         ];
 
@@ -605,7 +605,7 @@ mod tests {
         let events = vec![
             OtelMetric::new_summary("requests_sum", &quantiles, 6, 12.0)
                 .with_namespace(Some("ns"))
-                .with_metric_tags(Some(tags()))
+                .with_tags(Some(tags()))
                 .with_timestamp(Some(ts())),
         ];
 
@@ -645,7 +645,7 @@ mod tests {
                 "histogram",
             )
                 .with_namespace(Some("ns"))
-                .with_metric_tags(Some(tags()))
+                .with_tags(Some(tags()))
                 .with_timestamp(Some(ts())),
             OtelMetric::new_distribution_from_samples(
                 "dense_stats",
@@ -749,7 +749,7 @@ mod tests {
                 "histogram",
             )
                 .with_namespace(Some("ns"))
-                .with_metric_tags(Some(tags()))
+                .with_tags(Some(tags()))
                 .with_timestamp(Some(ts())),
         ];
 
@@ -767,7 +767,7 @@ mod tests {
                 "histogram",
             )
                 .with_namespace(Some("ns"))
-                .with_metric_tags(Some(tags()))
+                .with_tags(Some(tags()))
                 .with_timestamp(Some(ts())),
         ];
 
@@ -785,7 +785,7 @@ mod tests {
                 "summary",
             )
                 .with_namespace(Some("ns"))
-                .with_metric_tags(Some(tags()))
+                .with_tags(Some(tags()))
                 .with_timestamp(Some(ts())),
         ];
 
@@ -837,7 +837,7 @@ mod tests {
                 .with_timestamp(Some(ts())),
             OtelMetric::new_gauge("mem", 1000.0)
                 .with_namespace(Some("vector"))
-                .with_metric_tags(Some(tags()))
+                .with_tags(Some(tags()))
                 .with_timestamp(Some(ts())),
         ];
 
@@ -873,7 +873,7 @@ mod integration_tests {
     use chrono::{SecondsFormat, Utc};
     use futures::stream;
     use similar_asserts::assert_eq;
-    use vector_lib::metric_tags;
+    use vector_lib::otel_tags;
 
     use crate::{
         config::{SinkConfig, SinkContext},
@@ -1039,7 +1039,7 @@ mod integration_tests {
             let event = Event::Metric(
                 OtelMetric::new_counter(metric.clone(), MetricKind::Incremental, i as f64)
                     .with_namespace(Some("ns"))
-                    .with_tags(Some(metric_tags!(
+                    .with_tags(Some(otel_tags!(
                         "region" => "us-west-1",
                         "production" => "true",
                     ))),
@@ -1116,7 +1116,7 @@ mod integration_tests {
         Event::Metric(
             OtelMetric::new_counter(format!("counter-{i}"), MetricKind::Incremental, i as f64)
                 .with_namespace(Some("ns"))
-                .with_tags(Some(metric_tags!(
+                .with_tags(Some(otel_tags!(
                     "region" => "us-west-1",
                     "production" => "true",
                 )))

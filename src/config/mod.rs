@@ -21,7 +21,7 @@ pub use vector_lib::{
 
 use crate::{
     conditions,
-    event::{Value, MetricKind, MetricTags, OtelMetric, metric::{Sample, Bucket, Quantile}},
+    event::{Value, MetricKind, OtelAttributes, OtelMetric, metric::{Sample, Bucket, Quantile}},
     secrets::SecretBackends,
     serde::OneOrMany,
 };
@@ -593,9 +593,12 @@ pub struct TestMetricInput {
     pub namespace: Option<String>,
 
     /// The tags for the metric.
-    #[configurable(derived)]
+    ///
+    /// Stored as a simple string map for configuration compatibility.
+    /// Converted to `OtelAttributes` when building the metric.
+    #[configurable(metadata(docs::additional_props_description = "A tag key/value pair."))]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tags: Option<MetricTags>,
+    pub tags: Option<std::collections::HashMap<String, String>>,
 
     /// The timestamp of the metric.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -685,8 +688,11 @@ impl TestMetricInput {
                 OtelMetric::new_summary(name, quantiles, *count, *sum)
             }
         };
+        let tags: Option<OtelAttributes> = self.tags.as_ref().map(|t| {
+            t.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+        });
         otel.with_namespace(self.namespace.clone())
-            .with_metric_tags(self.tags.clone())
+            .with_tags(tags)
             .with_timestamp(self.timestamp)
             .with_interval_ms(self.interval_ms)
     }

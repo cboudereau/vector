@@ -18,7 +18,7 @@ use super::{
 use crate::{
     codecs::Transformer,
     config::{AcknowledgementsConfig, GenerateConfig, Input, SinkConfig, SinkContext},
-    event::{Event, KeyString, MetricTags, Value},
+    event::{Event, KeyString, OtelAttributes, Value},
     http::HttpClient,
     internal_events::InfluxdbEncodingError,
     sinks::{
@@ -272,11 +272,11 @@ impl HttpEventEncoder<BytesMut> for InfluxDbLogsEncoder {
         };
 
         // Tags + Fields
-        let mut tags = MetricTags::default();
+        let mut tags = OtelAttributes::default();
         let mut fields: HashMap<KeyString, Field> = HashMap::new();
         for (key, value) in log.convert_to_fields() {
             if self.tags.contains(&key[..]) {
-                tags.replace(key.into(), value.to_string_lossy().into_owned());
+                tags.insert_string(key.into(), value.to_string_lossy().into_owned());
             } else {
                 fields.insert(key, to_field(&value));
             }

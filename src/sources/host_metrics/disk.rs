@@ -1,6 +1,6 @@
 use futures::StreamExt;
 use heim::units::information::byte;
-use vector_lib::{configurable::configurable_component, metric_tags};
+use vector_lib::{configurable::configurable_component, otel_tags};
 
 use super::{FilterList, HostMetrics, default_all_devices, example_devices, filter_result};
 use crate::internal_events::HostMetricsScrapeDetailError;
@@ -35,7 +35,7 @@ impl HostMetrics {
                     .collect::<Vec<_>>()
                     .await
                 {
-                    let tags = metric_tags! {
+                    let tags = otel_tags! {
                         "device" => counter.device_name().to_string_lossy()
                     };
                     output.name = "disk";

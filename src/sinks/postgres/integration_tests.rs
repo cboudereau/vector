@@ -38,7 +38,7 @@ fn create_event(id: i64) -> Event {
     let mut event = OtelLog::from("raw log line");
     event.insert("id", id);
     event.insert("host", "example.com");
-    let event_payload = event.clone().to_value_canonical();
+    let event_payload = Value::Object(event.clone().as_map().unwrap_or_default());
     event.insert("payload", event_payload);
     event.insert("timestamp", timestamp());
     event.into()
@@ -59,7 +59,7 @@ fn create_events(count: usize) -> (Vec<Event>, BatchStatusReceiver) {
 fn create_metric(name: &str) -> OtelMetric {
     OtelMetric::new_counter(name, MetricKind::Absolute, 1.0)
         .with_namespace(Some("vector"))
-        .with_tags(Some(metric_tags!("some_tag" => "some_value")))
+        .with_tags(Some(otel_tags!("some_tag" => "some_value")))
         .with_timestamp(Some(timestamp()))
 }
 

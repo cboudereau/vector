@@ -2,7 +2,7 @@ use chrono::{DateTime, Duration, Utc};
 use futures::stream;
 use vector_lib::{
     event::{Event, MetricKind, OtelMetric},
-    metric_tags,
+    otel_tags,
 };
 
 use crate::{
@@ -136,7 +136,7 @@ fn create_event(name: &str, i: i32, base_time: DateTime<Utc>) -> Event {
     Event::Metric(
         OtelMetric::new_counter(name.to_owned(), MetricKind::Incremental, i as f64)
             .with_namespace(Some("ns"))
-            .with_tags(Some(metric_tags!(
+            .with_tags(Some(otel_tags!(
                 "region" => "us-west-1",
                 "production" => "true",
             )))

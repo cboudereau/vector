@@ -8,8 +8,8 @@ use vector_lib::prometheus::parser::{
 };
 
 use crate::event::{
-    Event, OtelMetric,
-    metric::{Bucket, MetricKind, MetricTags, Quantile},
+    Event, OtelAttributes, OtelMetric,
+    metric::{Bucket, MetricKind, Quantile},
 };
 
 fn utc_timestamp(timestamp: Option<i64>, default: DateTime<Utc>) -> DateTime<Utc> {
@@ -80,7 +80,7 @@ fn reparse_groups(
 
                     let counter = OtelMetric::new_counter(group.name.clone(), metric_kind, metric.value)
                         .with_timestamp(Some(utc_timestamp(key.timestamp, start)))
-                        .with_metric_tags(tags.as_option());
+                        .with_tags(tags.as_option());
                     result.push(Event::Metric(counter));
                 }
             }
@@ -94,7 +94,7 @@ fn reparse_groups(
 
                     let gauge = OtelMetric::new_gauge(group.name.clone(), metric.value)
                         .with_timestamp(Some(utc_timestamp(key.timestamp, start)))
-                        .with_metric_tags(tags.as_option());
+                        .with_tags(tags.as_option());
                     result.push(Event::Metric(gauge));
                 }
             }
@@ -137,7 +137,7 @@ fn reparse_groups(
                         metric.sum,
                     )
                     .with_timestamp(Some(utc_timestamp(key.timestamp, start)))
-                    .with_metric_tags(tags.as_option());
+                    .with_tags(tags.as_option());
                     result.push(Event::Metric(hist));
                 }
             }
@@ -170,7 +170,7 @@ fn reparse_groups(
                         metric.sum,
                     )
                     .with_timestamp(Some(utc_timestamp(key.timestamp, start)))
-                    .with_metric_tags(tags.as_option());
+                    .with_tags(tags.as_option());
                     result.push(Event::Metric(summ));
                 }
             }
@@ -191,12 +191,12 @@ impl From<MetadataConflictStrategy> for ParserMetadataConflictStrategy {
 }
 
 fn combine_tags(
-    base_tags: impl Into<MetricTags>,
+    base_tags: impl Into<OtelAttributes>,
     tag_overrides: impl IntoIterator<Item = (String, String)>,
-) -> MetricTags {
+) -> OtelAttributes {
     let mut tags = base_tags.into();
     for (k, v) in tag_overrides.into_iter() {
-        tags.replace(k, v);
+        tags.insert_string(k, v);
     }
 
     tags
@@ -210,7 +210,7 @@ mod test {
     use chrono::{TimeZone, Timelike, Utc};
     use itertools::Itertools;
     use similar_asserts::assert_eq;
-    use vector_lib::{assert_event_data_eq, metric_tags};
+    use vector_lib::{assert_event_data_eq, otel_tags};
 
     use super::*;
     use crate::event::{MetricView, metric::MetricKind};
@@ -301,19 +301,19 @@ mod test {
             events_to_metrics(parse_text(exp)),
             Ok(vec![
                 OtelMetric::new_counter("name", MetricKind::Absolute, 0.23)
-                    .with_metric_tags(Some(metric_tags!(
+                    .with_tags(Some(otel_tags!(
                         "labelname" => "val2",
                         "basename" => "base\"v\\al\nue",
                     )))
                     .with_timestamp(Some(*TIMESTAMP)),
                 OtelMetric::new_counter("name2", MetricKind::Absolute, f64::INFINITY)
-                    .with_metric_tags(Some(metric_tags!(
+                    .with_tags(Some(otel_tags!(
                         "labelname" => "val2",
                         "basename" => "basevalue2",
                     )))
                     .with_timestamp(Some(*TIMESTAMP)),
                 OtelMetric::new_counter("name2", MetricKind::Absolute, f64::NEG_INFINITY)
-                    .with_metric_tags(Some(metric_tags!("labelname" => "val1")))
+                    .with_tags(Some(otel_tags!("labelname" => "val1")))
                     .with_timestamp(Some(*TIMESTAMP)),
             ]),
         );
@@ -333,13 +333,13 @@ mod test {
             Ok(vec![
                 OtelMetric::new_counter("http_requests_total", MetricKind::Absolute, 1027.0)
                     .with_timestamp(Utc.timestamp_opt(1395066363, 0).latest())
-                    .with_metric_tags(Some(metric_tags!(
+                    .with_tags(Some(otel_tags!(
                         "method" => "post",
                         "code" => "200",
                     ))),
                 OtelMetric::new_counter("http_requests_total", MetricKind::Absolute, 3.0)
                     .with_timestamp(Utc.timestamp_opt(1395066363, 0).latest())
-                    .with_metric_tags(Some(metric_tags!(
+                    .with_tags(Some(otel_tags!(
                         "method" => "post",
                         "code" => "400"
                     )))
@@ -404,7 +404,7 @@ mod test {
             events_to_metrics(parse_text(exp)),
             Ok(vec![
                 OtelMetric::new_gauge("msdos_file_access_time_seconds", 1458255915.0)
-                    .with_metric_tags(Some(metric_tags!(
+                    .with_tags(Some(otel_tags!(
                         "path" => "C:\\DIR\\FILE.TXT",
                         "error" => "Cannot find file:\n\"FILE.TXT\"",
                     )))
@@ -424,7 +424,7 @@ mod test {
             events_to_metrics(parse_text(exp)),
             Ok(vec![
                 OtelMetric::new_counter("name", MetricKind::Absolute, 0.0)
-                    .with_metric_tags(Some(metric_tags! { "tag" => "}" }))
+                    .with_tags(Some(otel_tags! { "tag" => "}" }))
                     .with_timestamp(Some(*TIMESTAMP))
             ]),
         );
@@ -441,7 +441,7 @@ mod test {
             events_to_metrics(parse_text(exp)),
             Ok(vec![
                 OtelMetric::new_counter("name", MetricKind::Absolute, 0.0)
-                    .with_metric_tags(Some(metric_tags! { "tag" => "a,b" }))
+                    .with_tags(Some(otel_tags! { "tag" => "a,b" }))
                     .with_timestamp(Some(*TIMESTAMP))
             ]),
         );
@@ -458,7 +458,7 @@ mod test {
             events_to_metrics(parse_text(exp)),
             Ok(vec![
                 OtelMetric::new_counter("name", MetricKind::Absolute, 0.0)
-                    .with_metric_tags(Some(metric_tags! { "tag" => "\\n" }))
+                    .with_tags(Some(otel_tags! { "tag" => "\\n" }))
                     .with_timestamp(Some(*TIMESTAMP))
             ]),
         );
@@ -475,7 +475,7 @@ mod test {
             events_to_metrics(parse_text(exp)),
             Ok(vec![
                 OtelMetric::new_counter("name", MetricKind::Absolute, 0.0)
-                    .with_metric_tags(Some(metric_tags! { "tag" => " * " }))
+                    .with_tags(Some(otel_tags! { "tag" => " * " }))
                     .with_timestamp(Some(*TIMESTAMP))
             ]),
         );
@@ -491,7 +491,7 @@ mod test {
             events_to_metrics(parse_text(exp)),
             Ok(vec![
                 OtelMetric::new_gauge("telemetry_scrape_size_bytes_count", 1890.0)
-                    .with_metric_tags(Some(metric_tags!( "registry" => "default",
+                    .with_tags(Some(otel_tags!( "registry" => "default",
                         "content_type" => "text/plain; version=0.0.4" )))
                     .with_timestamp(Some(*TIMESTAMP))
             ]),
@@ -527,7 +527,7 @@ mod test {
             Ok(vec![
                 OtelMetric::new_gauge("something_weird", f64::INFINITY)
                     .with_timestamp(Utc.timestamp_opt(-3982045, 0).latest())
-                    .with_metric_tags(Some(metric_tags!("problem" => "division by zero")))
+                    .with_tags(Some(otel_tags!("problem" => "division by zero")))
             ]),
         );
     }
@@ -545,10 +545,10 @@ mod test {
             Ok(vec![
                 OtelMetric::new_gauge("latency", 1.0)
                     .with_timestamp(Utc.timestamp_opt(1395066363, 0).latest())
-                    .with_metric_tags(Some(metric_tags!("env" => "production"))),
+                    .with_tags(Some(otel_tags!("env" => "production"))),
                 OtelMetric::new_gauge("latency", 2.0)
                     .with_timestamp(Utc.timestamp_opt(1395066363, 0).latest())
-                    .with_metric_tags(Some(metric_tags!("env" => "testing")))
+                    .with_tags(Some(otel_tags!("env" => "testing")))
             ]),
         );
     }
@@ -808,7 +808,7 @@ mod test {
                         536,
                         19690.129384881966,
                     )
-                    .with_metric_tags(Some(metric_tags!("runner" => "z")))
+                    .with_tags(Some(otel_tags!("runner" => "z")))
                     .with_timestamp(Some(*TIMESTAMP))
                 },
                 {
@@ -831,7 +831,7 @@ mod test {
                         1,
                         28.975436316,
                     )
-                    .with_metric_tags(Some(metric_tags!("runner" => "x")))
+                    .with_tags(Some(otel_tags!("runner" => "x")))
                     .with_timestamp(Some(*TIMESTAMP))
                 },
                 {
@@ -846,7 +846,7 @@ mod test {
                         3255,
                         381111.7498891335,
                     )
-                    .with_metric_tags(Some(metric_tags!("runner" => "y")))
+                    .with_tags(Some(otel_tags!("runner" => "y")))
                     .with_timestamp(Some(*TIMESTAMP))
                 }
             ]),
@@ -893,7 +893,7 @@ mod test {
                         2693,
                         1.7560473e+07,
                     )
-                    .with_metric_tags(Some(metric_tags!("service" => "a")))
+                    .with_tags(Some(otel_tags!("service" => "a")))
                     .with_timestamp(Some(*TIMESTAMP))
                 },
                 {
@@ -953,46 +953,46 @@ mod test {
             result,
             vec![
                 OtelMetric::new_counter("nginx_server_bytes", MetricKind::Absolute, 263719.0)
-                    .with_metric_tags(Some(metric_tags! { "direction" => "in", "host" => "*" }))
+                    .with_tags(Some(otel_tags! { "direction" => "in", "host" => "*" }))
                     .with_timestamp(Some(*TIMESTAMP)),
                 OtelMetric::new_counter("nginx_server_bytes", MetricKind::Absolute, 255061.0)
-                    .with_metric_tags(Some(metric_tags! { "direction" => "in", "host" => "_" }))
+                    .with_tags(Some(otel_tags! { "direction" => "in", "host" => "_" }))
                     .with_timestamp(Some(*TIMESTAMP)),
                 OtelMetric::new_counter("nginx_server_bytes", MetricKind::Absolute, 8658.0)
-                    .with_metric_tags(Some(
-                        metric_tags! { "direction" => "in", "host" => "nginx-vts-status" }
+                    .with_tags(Some(
+                        otel_tags! { "direction" => "in", "host" => "nginx-vts-status" }
                     ))
                     .with_timestamp(Some(*TIMESTAMP)),
                 OtelMetric::new_counter("nginx_server_bytes", MetricKind::Absolute, 944199.0)
-                    .with_metric_tags(Some(metric_tags! { "direction" => "out", "host" => "*" }))
+                    .with_tags(Some(otel_tags! { "direction" => "out", "host" => "*" }))
                     .with_timestamp(Some(*TIMESTAMP)),
                 OtelMetric::new_counter("nginx_server_bytes", MetricKind::Absolute, 360775.0)
-                    .with_metric_tags(Some(metric_tags! { "direction" => "out", "host" => "_" }))
+                    .with_tags(Some(otel_tags! { "direction" => "out", "host" => "_" }))
                     .with_timestamp(Some(*TIMESTAMP)),
                 OtelMetric::new_counter("nginx_server_bytes", MetricKind::Absolute, 583424.0)
-                    .with_metric_tags(Some(
-                        metric_tags! { "direction" => "out", "host" => "nginx-vts-status" }
+                    .with_tags(Some(
+                        otel_tags! { "direction" => "out", "host" => "nginx-vts-status" }
                     ))
                     .with_timestamp(Some(*TIMESTAMP)),
                 OtelMetric::new_counter("nginx_server_cache", MetricKind::Absolute, 0.0)
-                    .with_metric_tags(Some(metric_tags! { "host" => "*", "status" => "bypass" }))
+                    .with_tags(Some(otel_tags! { "host" => "*", "status" => "bypass" }))
                     .with_timestamp(Some(*TIMESTAMP)),
                 OtelMetric::new_counter("nginx_server_cache", MetricKind::Absolute, 0.0)
-                    .with_metric_tags(Some(metric_tags! { "host" => "*", "status" => "expired" }))
+                    .with_tags(Some(otel_tags! { "host" => "*", "status" => "expired" }))
                     .with_timestamp(Some(*TIMESTAMP)),
                 OtelMetric::new_counter("nginx_server_cache", MetricKind::Absolute, 0.0)
-                    .with_metric_tags(Some(metric_tags! { "host" => "*", "status" => "hit" }))
+                    .with_tags(Some(otel_tags! { "host" => "*", "status" => "hit" }))
                     .with_timestamp(Some(*TIMESTAMP)),
                 OtelMetric::new_counter("nginx_server_cache", MetricKind::Absolute, 0.0)
-                    .with_metric_tags(Some(metric_tags! { "host" => "*", "status" => "miss" }))
+                    .with_tags(Some(otel_tags! { "host" => "*", "status" => "miss" }))
                     .with_timestamp(Some(*TIMESTAMP)),
                 OtelMetric::new_counter("nginx_server_cache", MetricKind::Absolute, 0.0)
-                    .with_metric_tags(Some(
-                        metric_tags! { "host" => "*", "status" => "revalidated" }
+                    .with_tags(Some(
+                        otel_tags! { "host" => "*", "status" => "revalidated" }
                     ))
                     .with_timestamp(Some(*TIMESTAMP)),
                 OtelMetric::new_counter("nginx_server_cache", MetricKind::Absolute, 0.0)
-                    .with_metric_tags(Some(metric_tags! { "host" => "*", "status" => "scarce" }))
+                    .with_tags(Some(otel_tags! { "host" => "*", "status" => "scarce" }))
                     .with_timestamp(Some(*TIMESTAMP))
             ]
         );
@@ -1010,7 +1010,7 @@ mod test {
             events_to_metrics(parse_text_with_overrides(exp, vec![], false)),
             Ok(vec![
                 OtelMetric::new_counter("jobs_total", MetricKind::Absolute, 1.0)
-                    .with_metric_tags(Some(metric_tags! { "type" => "a" }))
+                    .with_tags(Some(otel_tags! { "type" => "a" }))
                     .with_timestamp(Some(*TIMESTAMP))
             ]),
         );
@@ -1032,7 +1032,7 @@ mod test {
             )),
             Ok(vec![
                 OtelMetric::new_counter("jobs_total", MetricKind::Absolute, 1.0)
-                    .with_metric_tags(Some(metric_tags! { "type" => "b" }))
+                    .with_tags(Some(otel_tags! { "type" => "b" }))
                     .with_timestamp(Some(*TIMESTAMP))
             ]),
         );
@@ -1059,7 +1059,7 @@ mod test {
             )),
             Ok(vec![
                 OtelMetric::new_counter("jobs_total", MetricKind::Absolute, 1.0)
-                    .with_metric_tags(Some(metric_tags! { "type" => "c" }))
+                    .with_tags(Some(otel_tags! { "type" => "c" }))
                     .with_timestamp(Some(*TIMESTAMP))
             ]),
         );
@@ -1093,10 +1093,10 @@ mod test {
             events_to_metrics(parse_text_with_overrides(exp, vec![], true)),
             Ok(vec![
                 OtelMetric::new_counter("jobs_total", MetricKind::Incremental, 1.0)
-                    .with_metric_tags(Some(metric_tags! { "type" => "a" }))
+                    .with_tags(Some(otel_tags! { "type" => "a" }))
                     .with_timestamp(Some(*TIMESTAMP)),
                 OtelMetric::new_gauge("jobs_current", 5.0)
-                    .with_metric_tags(Some(metric_tags! { "type" => "a" }))
+                    .with_tags(Some(otel_tags! { "type" => "a" }))
                     .with_timestamp(Some(*TIMESTAMP)),
                 {
                     let buckets = vector_lib::buckets![
@@ -1109,7 +1109,7 @@ mod test {
                         1,
                         8.0,
                     )
-                    .with_metric_tags(Some(metric_tags! { "type" => "a" }))
+                    .with_tags(Some(otel_tags! { "type" => "a" }))
                     .with_timestamp(Some(*TIMESTAMP))
                 },
                 {
@@ -1120,7 +1120,7 @@ mod test {
                         1,
                         8.0,
                     )
-                    .with_metric_tags(Some(metric_tags! { "type" => "a" }))
+                    .with_tags(Some(otel_tags! { "type" => "a" }))
                     .with_timestamp(Some(*TIMESTAMP))
                 },
             ]),
@@ -1155,10 +1155,10 @@ mod test {
             events_to_metrics(parse_text_with_overrides(exp, vec![], false)),
             Ok(vec![
                 OtelMetric::new_counter("jobs_total", MetricKind::Absolute, 1.0)
-                    .with_metric_tags(Some(metric_tags! { "type" => "a" }))
+                    .with_tags(Some(otel_tags! { "type" => "a" }))
                     .with_timestamp(Some(*TIMESTAMP)),
                 OtelMetric::new_gauge("jobs_current", 5.0)
-                    .with_metric_tags(Some(metric_tags! { "type" => "a" }))
+                    .with_tags(Some(otel_tags! { "type" => "a" }))
                     .with_timestamp(Some(*TIMESTAMP)),
                 {
                     let buckets = vector_lib::buckets![
@@ -1171,7 +1171,7 @@ mod test {
                         1,
                         8.0,
                     )
-                    .with_metric_tags(Some(metric_tags! { "type" => "a" }))
+                    .with_tags(Some(otel_tags! { "type" => "a" }))
                     .with_timestamp(Some(*TIMESTAMP))
                 },
                 {
@@ -1182,7 +1182,7 @@ mod test {
                         1,
                         8.0,
                     )
-                    .with_metric_tags(Some(metric_tags! { "type" => "a" }))
+                    .with_tags(Some(otel_tags! { "type" => "a" }))
                     .with_timestamp(Some(*TIMESTAMP))
                 },
             ]),

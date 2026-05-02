@@ -18,19 +18,6 @@ mod value;
 pub use self::value::*;
 
 #[macro_export]
-macro_rules! metric_tags {
-    () => { $crate::event::MetricTags::default() };
-
-    ($($key:expr => $value:expr,)+) => { $crate::metric_tags!($($key => $value),+) };
-
-    ($($key:expr => $value:expr),*) => {
-        [
-            $( ($key.into(), $crate::event::metric::TagValue::from($value)), )*
-        ].into_iter().collect::<$crate::event::MetricTags>()
-    };
-}
-
-#[macro_export]
 macro_rules! otel_tags {
     () => { $crate::event::OtelAttributes::default() };
 

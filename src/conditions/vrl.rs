@@ -160,7 +160,7 @@ impl Conditional for Vrl {
 
 #[cfg(test)]
 mod test {
-    use vector_lib::metric_tags;
+    use vector_lib::otel_tags;
 
     use super::*;
     use crate::{
@@ -217,7 +217,7 @@ mod test {
                 Event::Metric(
                     OtelMetric::new_counter("zork", MetricKind::Incremental, 1.0)
                         .with_namespace(Some("zerk"))
-                        .with_metric_tags(Some(metric_tags!("host" => "zoobub"))),
+                        .with_tags(Some(otel_tags!("host" => "zoobub"))),
                 ),
                 r#".name == "zork""#,
                 Ok(()),

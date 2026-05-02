@@ -11,7 +11,7 @@ use snafu::{ResultExt, Snafu};
 use tower::Service;
 use vector_lib::{
     configurable::configurable_component,
-    event::{KeyString, MetricTags},
+    event::{KeyString, OtelAttributes},
     sensitive_string::SensitiveString,
 };
 
@@ -233,7 +233,7 @@ fn healthcheck(
 pub(in crate::sinks) fn influx_line_protocol(
     protocol_version: ProtocolVersion,
     measurement: &str,
-    tags: Option<MetricTags>,
+    tags: Option<OtelAttributes>,
     fields: Option<HashMap<KeyString, Field>>,
     timestamp: i64,
     line_protocol: &mut BytesMut,
@@ -265,10 +265,14 @@ pub(in crate::sinks) fn influx_line_protocol(
     Ok(())
 }
 
-fn encode_tags(tags: MetricTags, output: &mut BytesMut) {
+fn encode_tags(tags: OtelAttributes, output: &mut BytesMut) {
     let original_len = output.len();
     // `tags` is already sorted
     for (key, value) in tags.iter_single() {
+        let value = match value {
+            Some(v) => v,
+            None => continue,
+        };
         if key.is_empty() || value.is_empty() {
             continue;
         }
@@ -382,7 +386,7 @@ pub mod test_util {
     use std::{fs::File, io::Read};
 
     use chrono::{DateTime, SecondsFormat, Timelike, Utc, offset::TimeZone};
-    use vector_lib::metric_tags;
+    use vector_lib::otel_tags;
 
     use super::*;
     use crate::tls;
@@ -402,8 +406,8 @@ pub mod test_util {
             .expect("invalid timestamp")
     }
 
-    pub(crate) fn tags() -> MetricTags {
-        metric_tags!(
+    pub(crate) fn tags() -> OtelAttributes {
+        otel_tags!(
             "normal_tag" => "value",
             "true_tag" => "true",
             "empty_tag" => "",

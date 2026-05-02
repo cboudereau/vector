@@ -1,4 +1,7 @@
 //! The `vector` source. See [VectorConfig].
+//!
+//! This source speaks both OTLP (for native OTel clients) and the legacy
+//! Vector protocol (for existing Vector instances using the `vector` sink).
 use std::net::SocketAddr;
 
 use futures::TryFutureExt;
@@ -27,6 +30,23 @@ use crate::{
     },
     tls::{MaybeTlsSettings, TlsEnableableConfig},
 };
+
+mod convert;
+mod service;
+
+// Include the generated protobuf modules.
+#[allow(warnings, clippy::pedantic, clippy::nursery)]
+pub(crate) mod proto {
+    pub mod event {
+        include!(concat!(env!("OUT_DIR"), "/event.rs"));
+    }
+    pub mod vector {
+        include!(concat!(env!("OUT_DIR"), "/vector.rs"));
+    }
+}
+
+use proto::vector::vector_server::VectorServer;
+use service::NativeVectorService;
 
 /// Marker type for version two of the configuration for the `vector` source.
 #[configurable_component]
@@ -95,21 +115,33 @@ impl SourceConfig for VectorConfig {
         let acknowledgements = cx.do_acknowledgements(self.acknowledgements);
         let events_received = register!(EventsReceived);
 
-        let service = Service {
+        // OTLP service (for native OTel clients).
+        let otlp_service = Service {
+            pipeline: cx.out.clone(),
+            acknowledgements,
+            events_received: events_received.clone(),
+        };
+
+        let log_service = LogsServiceServer::new(otlp_service.clone())
+            .accept_compressed(CompressionEncoding::Gzip)
+            .max_decoding_message_size(usize::MAX);
+
+        let metrics_service = MetricsServiceServer::new(otlp_service.clone())
+            .accept_compressed(CompressionEncoding::Gzip)
+            .max_decoding_message_size(usize::MAX);
+
+        let trace_service = TraceServiceServer::new(otlp_service)
+            .accept_compressed(CompressionEncoding::Gzip)
+            .max_decoding_message_size(usize::MAX);
+
+        // Native Vector protocol service (for legacy Vector sinks).
+        let native_service = NativeVectorService {
             pipeline: cx.out,
             acknowledgements,
             events_received,
         };
 
-        let log_service = LogsServiceServer::new(service.clone())
-            .accept_compressed(CompressionEncoding::Gzip)
-            .max_decoding_message_size(usize::MAX);
-
-        let metrics_service = MetricsServiceServer::new(service.clone())
-            .accept_compressed(CompressionEncoding::Gzip)
-            .max_decoding_message_size(usize::MAX);
-
-        let trace_service = TraceServiceServer::new(service)
+        let vector_service = VectorServer::new(native_service)
             .accept_compressed(CompressionEncoding::Gzip)
             .max_decoding_message_size(usize::MAX);
 
@@ -117,7 +149,8 @@ impl SourceConfig for VectorConfig {
         builder
             .add_service(log_service)
             .add_service(metrics_service)
-            .add_service(trace_service);
+            .add_service(trace_service)
+            .add_service(vector_service);
 
         let source = run_grpc_server_with_routes(
             self.address,
@@ -158,70 +191,5 @@ mod test {
     #[test]
     fn generate_config() {
         crate::test_util::test_generate_config::<super::VectorConfig>();
-    }
-}
-
-#[cfg(feature = "sinks-vector")]
-#[cfg(test)]
-mod tests {
-    use std::net::SocketAddr;
-
-    use futures::stream::into_event_stream;
-    use vector_lib::event::EventStatus;
-
-    use super::*;
-    use crate::{
-        SourceSender,
-        config::{SinkConfig as _, SinkContext},
-        sinks::vector::VectorConfig as SinkConfig,
-        test_util,
-    };
-
-    async fn run_test(vector_source_config_str: &str, addr: SocketAddr) {
-        let config = format!(r#"address = "{addr}""#);
-        let source: VectorConfig = toml::from_str(&config).unwrap();
-
-        let (mut tx, recv) = SourceSender::new_test_finalize(EventStatus::Delivered);
-        let logs_output = tx
-            .add_outputs(EventStatus::Delivered, LOGS.to_string())
-            .flat_map(into_event_stream);
-
-        let server = source
-            .build(SourceContext::new_test(tx, None))
-            .await
-            .unwrap();
-        tokio::spawn(server);
-        test_util::wait_for_tcp(addr).await;
-
-        let sink: SinkConfig = toml::from_str(vector_source_config_str).unwrap();
-        let cx = SinkContext::default();
-        let (sink, _) = sink.build(cx).await.unwrap();
-
-        let (events, stream) = test_util::random_events_with_stream(100, 100, None);
-        sink.run(stream).await.unwrap();
-
-        let output = test_util::collect_ready(logs_output).await;
-        // Drop unused default output receiver
-        drop(recv);
-        assert_eq!(events.len(), output.len());
-    }
-
-    #[tokio::test]
-    async fn receive_message() {
-        let (_guard, addr) = test_util::addr::next_addr();
-
-        let config = format!(r#"address = "{addr}""#);
-        run_test(&config, addr).await;
-    }
-
-    #[tokio::test]
-    async fn receive_compressed_message() {
-        let (_guard, addr) = test_util::addr::next_addr();
-
-        let config = format!(
-            r#"address = "{addr}"
-            compression=true"#
-        );
-        run_test(&config, addr).await;
     }
 }

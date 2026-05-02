@@ -53,8 +53,8 @@ impl HecMetricsEncoder {
         let metadata = processed_event.metadata;
         let metric = processed_event.event;
 
-        let metric_tags = metric.tags();
-        let fields = metric_tags
+        let otel_tags = metric.tags();
+        let fields = otel_tags
             .iter()
             .flat_map(|tags| tags.iter_single())
             // skip the metric tags used for templating

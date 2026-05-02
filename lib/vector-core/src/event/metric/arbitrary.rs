@@ -1,11 +1,11 @@
 use proptest::{
-    collection::{hash_map, hash_set},
+    collection::{hash_set},
     option,
     prelude::*,
 };
 
 use super::{
-    Bucket, MetricTags, Quantile, Sample, TagValue, TagValueSet,
+    Bucket, Quantile, Sample, TagValue, TagValueSet,
 };
 
 fn realistic_float() -> proptest::num::f64::Any {
@@ -63,17 +63,6 @@ impl Arbitrary for TagValueSet {
 
     fn arbitrary_with((): Self::Parameters) -> Self::Strategy {
         hash_set("[[:^cntrl:]]{0,16}", 1..16)
-            .prop_map(|values| values.into_iter().collect())
-            .boxed()
-    }
-}
-
-impl Arbitrary for MetricTags {
-    type Parameters = ();
-    type Strategy = BoxedStrategy<MetricTags>;
-
-    fn arbitrary_with((): Self::Parameters) -> Self::Strategy {
-        hash_map("[[:word:]]{1,32}", "[[:^cntrl:]]{1,32}", 0..16)
             .prop_map(|values| values.into_iter().collect())
             .boxed()
     }

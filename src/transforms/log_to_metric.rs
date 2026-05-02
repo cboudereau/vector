@@ -19,8 +19,8 @@ use crate::{
         TransformOutput, schema::Definition,
     },
     event::{
-        Event, Value,
-        metric::{MetricKind, MetricTags, TagValue},
+        AnyValue, Event, OtelAttributes, Value,
+        metric::MetricKind,
     },
     internal_events::{
         DROP_EVENT, LogToMetricFieldNullError, LogToMetricParseFloatError,
@@ -215,13 +215,13 @@ fn render_template(template: &Template, event: &Event) -> Result<String, Transfo
 fn render_tags(
     tags: &Option<IndexMap<Template, TagConfig>>,
     event: &Event,
-) -> Result<Option<MetricTags>, TransformError> {
+) -> Result<Option<OtelAttributes>, TransformError> {
     let mut static_tags: HashMap<String, String> = HashMap::new();
     let mut dynamic_tags: HashMap<String, String> = HashMap::new();
     Ok(match tags {
         None => None,
         Some(tags) => {
-            let mut result = MetricTags::default();
+            let mut result = OtelAttributes::default();
             for (name, config) in tags {
                 match config {
                     TagConfig::Plain(template) => {
@@ -266,7 +266,7 @@ fn render_tag_into(
     event: &Event,
     key_template: &Template,
     value_template: Option<&Template>,
-    result: &mut MetricTags,
+    result: &mut OtelAttributes,
     static_tags: &mut HashMap<String, String>,
     dynamic_tags: &mut HashMap<String, String>,
 ) -> Result<(), TransformError> {
@@ -284,13 +284,13 @@ fn render_tag_into(
     };
     match value_template {
         None => {
-            result.insert(key, TagValue::Bare);
+            result.insert(key, AnyValue { value: None });
         }
         Some(template) => match render_template(template, event) {
             Ok(value) => {
                 let expanded_pairs = pair_expansion(&key, &value, static_tags, dynamic_tags)
                     .map_err(|error| TransformError::PairExpansionError { key, value, error })?;
-                result.extend(expanded_pairs);
+                result.extend_strings(expanded_pairs);
             }
             Err(TransformError::TemplateRenderingError(value_error)) => {
                 emit!(crate::internal_events::TemplateRenderingError {
@@ -413,7 +413,7 @@ fn to_metric_with_config(config: &MetricConfig, event: &Event) -> Result<OtelMet
     Ok(metric
         .with_metadata(metadata)
         .with_namespace(namespace)
-        .with_metric_tags(tags)
+        .with_tags(tags)
         .with_timestamp(timestamp))
 }
 
@@ -487,7 +487,7 @@ mod tests {
     use vector_lib::{
         config::ComponentKey,
         event::ObjectMap,
-        metric_tags,
+        otel_tags,
     };
 
     use vector_lib::lookup::{OwnedTargetPath, owned_value_path};
@@ -643,7 +643,7 @@ mod tests {
             OtelMetric::new_counter("http_requests_total", MetricKind::Incremental, 1.0)
                 .with_metadata(metadata)
                 .with_namespace(Some("app"))
-                .with_metric_tags(Some(metric_tags!(
+                .with_tags(Some(otel_tags!(
                     "method" => "post",
                     "code" => "200",
                     "host" => "localhost",
@@ -688,7 +688,7 @@ mod tests {
             OtelMetric::new_counter("http_requests_total", MetricKind::Incremental, 1.0)
                 .with_metadata(metadata)
                 .with_namespace(Some("app"))
-                .with_metric_tags(Some(metric_tags!(
+                .with_tags(Some(otel_tags!(
                     "one" => "foo",
                     "two" => "baz",
                 )))

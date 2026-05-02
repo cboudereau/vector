@@ -3,7 +3,7 @@ use std::borrow::Borrow;
 use std::{
     borrow::Cow,
     cmp::Ordering,
-    collections::{BTreeMap, hash_map::DefaultHasher},
+    collections::hash_map::DefaultHasher,
     fmt::Display,
     hash::{Hash, Hasher},
     mem,
@@ -12,7 +12,7 @@ use std::{
 use indexmap::IndexSet;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, ser::SerializeSeq};
 use vector_common::byte_size_of::ByteSizeOf;
-use vector_config::{Configurable, configurable_component};
+use vector_config::Configurable;
 
 /// A single tag value, either a bare tag or a value.
 #[derive(Clone, Configurable, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
@@ -155,7 +155,7 @@ impl TagValueSet {
         }
     }
 
-    /// Reduce this tag set to either a simple single tag or an empty set.
+    #[cfg(test)]
     fn reduce_to_simple(&mut self) {
         match self {
             Self::Empty => (),
@@ -451,158 +451,6 @@ impl Serialize for TagValueSet {
     }
 }
 
-/// Tags for a metric series.
-#[configurable_component]
-#[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct MetricTags(pub(in crate::event) BTreeMap<String, TagValueSet>);
-
-impl MetricTags {
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    pub fn as_option(self) -> Option<Self> {
-        (!self.is_empty()).then_some(self)
-    }
-
-    /// Iterates over all the tag value sets
-    pub fn iter_sets(&self) -> impl Iterator<Item = (&str, &TagValueSet)> {
-        self.0.iter().map(|(key, value)| (key.as_str(), value))
-    }
-
-    /// Iterate over references to all values of each tag.
-    pub fn iter_all(&self) -> impl Iterator<Item = (&str, TagValueRef<'_>)> {
-        self.0
-            .iter()
-            .flat_map(|(name, tags)| tags.iter().map(|tag| (name.as_ref(), tag)))
-    }
-
-    /// Iterate over references to a single value of each tag.
-    pub fn iter_single(&self) -> impl Iterator<Item = (&str, &str)> {
-        self.0
-            .iter()
-            .filter_map(|(name, tags)| tags.as_single().map(|tag| (name.as_ref(), tag)))
-    }
-
-    /// Iterate over all values of each tag.
-    pub fn into_iter_all(self) -> impl Iterator<Item = (String, TagValue)> {
-        self.0
-            .into_iter()
-            .flat_map(|(name, tags)| tags.into_iter().map(move |tag| (name.clone(), tag)))
-    }
-
-    /// Iterate over a single value of each tag.
-    pub fn into_iter_single(self) -> impl Iterator<Item = (String, String)> {
-        self.0
-            .into_iter()
-            .filter_map(|(name, tags)| tags.into_single().map(|tag| (name, tag)))
-    }
-
-    pub fn contains_key(&self, name: &str) -> bool {
-        self.0.contains_key(name)
-    }
-
-    pub fn get(&self, name: &str) -> Option<&str> {
-        self.0.get(name).and_then(TagValueSet::as_single)
-    }
-
-    /// Add a value to a tag. This does not replace any existing tags unless the value is a
-    /// duplicate.
-    pub fn insert(&mut self, name: String, value: impl Into<TagValue>) {
-        self.0.entry(name).or_default().insert(value.into());
-    }
-
-    /// Replace all the values of a tag with a single value.
-    pub fn replace(&mut self, name: String, value: impl Into<TagValue>) -> Option<String> {
-        self.0
-            .insert(name, TagValueSet::from([value.into()]))
-            .and_then(TagValueSet::into_single)
-    }
-
-    pub fn set_multi_value(&mut self, name: String, values: impl IntoIterator<Item = TagValue>) {
-        let x = TagValueSet::from_iter(values);
-        self.0.insert(name, x);
-    }
-
-    pub fn remove(&mut self, name: &str) -> Option<String> {
-        self.0.remove(name).and_then(TagValueSet::into_single)
-    }
-
-    pub fn keys(&self) -> impl Iterator<Item = &str> {
-        self.0.keys().map(String::as_str)
-    }
-
-    pub fn extend(&mut self, tags: impl IntoIterator<Item = (String, String)>) {
-        for (key, value) in tags {
-            self.0
-                .entry(key)
-                .or_default()
-                .insert(TagValue::Value(value));
-        }
-    }
-
-    pub fn retain(&mut self, mut f: impl FnMut(&str, &mut TagValueSet) -> bool) {
-        self.0.retain(|key, tags| f(key.as_str(), tags));
-    }
-
-    /// Reduces all the tag values to their single value, discarding any for which that value would
-    /// be null.
-    pub fn reduce_to_single(&mut self) {
-        self.0
-            .iter_mut()
-            .for_each(|(_, values)| values.reduce_to_simple());
-        self.retain(|_, values| !values.is_empty());
-    }
-}
-
-impl From<BTreeMap<String, String>> for MetricTags {
-    fn from(tags: BTreeMap<String, String>) -> Self {
-        tags.into_iter().collect()
-    }
-}
-
-impl From<BTreeMap<String, TagValue>> for MetricTags {
-    fn from(tags: BTreeMap<String, TagValue>) -> Self {
-        tags.into_iter().collect()
-    }
-}
-
-impl<const N: usize> From<[(String, String); N]> for MetricTags {
-    fn from(tags: [(String, String); N]) -> Self {
-        tags.into_iter().collect()
-    }
-}
-
-impl FromIterator<(String, String)> for MetricTags {
-    fn from_iter<T: IntoIterator<Item = (String, String)>>(tags: T) -> Self {
-        let mut result = Self::default();
-        for (key, value) in tags {
-            result
-                .0
-                .entry(key)
-                .or_default()
-                .insert(TagValue::Value(value));
-        }
-        result
-    }
-}
-
-impl FromIterator<(String, TagValue)> for MetricTags {
-    fn from_iter<T: IntoIterator<Item = (String, TagValue)>>(tags: T) -> Self {
-        let mut result = Self::default();
-        for (key, value) in tags {
-            result.0.entry(key).or_default().insert(value);
-        }
-        result
-    }
-}
-
-impl ByteSizeOf for MetricTags {
-    fn allocated_bytes(&self) -> usize {
-        self.0.allocated_bytes()
-    }
-}
-
 #[cfg(test)]
 mod test_support {
     use std::collections::HashSet;
@@ -622,16 +470,6 @@ mod test_support {
             HashSet::<TagValue>::arbitrary(g).into_iter().collect()
         }
     }
-
-    impl Arbitrary for MetricTags {
-        fn arbitrary(g: &mut Gen) -> Self {
-            Self(BTreeMap::arbitrary(g))
-        }
-
-        fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
-            Box::new(self.0.shrink().map(Self))
-        }
-    }
 }
 
 #[cfg(test)]
@@ -645,14 +483,6 @@ mod tests {
         fn reduces_set_to_simple(mut values: TagValueSet) {
             values.reduce_to_simple();
             assert!(values.is_empty() || (values.len() == 1 && values.as_single().is_some()));
-        }
-
-        #[test]
-        fn reduces_tags_to_single(mut tags: MetricTags) {
-            tags.reduce_to_single();
-            for (_, values) in tags.iter_sets() {
-                assert!(values.is_empty() || (values.len() == 1 && values.as_single().is_some()));
-            }
         }
 
         #[test]

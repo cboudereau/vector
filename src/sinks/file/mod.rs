@@ -901,7 +901,7 @@ mod tests {
             events.into_iter().map(|s| {
                 // Build a trace event with the string as a named span
                 // attribute so it survives serialization (OtelSpan
-                // serializes via to_value_canonical which maps
+                // serializes via as_map which maps
                 // attributes to top-level fields).
                 let mut map = vrl::value::ObjectMap::new();
                 map.insert("message".into(), Value::from(s));

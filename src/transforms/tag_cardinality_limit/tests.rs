@@ -6,14 +6,14 @@ use tokio_stream::wrappers::ReceiverStream;
 use vector_lib::{
     config::{ComponentKey, OutputId},
     event::EventMetadata,
-    metric_tags,
+    otel_tags,
 };
 use vrl::compiler::prelude::Kind;
 
 use super::*;
 use crate::{
     config::schema::Definition,
-    event::{Event, MetricKind, MetricTags, OtelMetric, metric::TagValue},
+    event::{Event, MetricKind, OtelAttributes, OtelMetric},
     test_util::components::assert_transform_compliance,
     transforms::{
         tag_cardinality_limit::config::{BloomFilterConfig, Mode, default_cache_size},
@@ -26,16 +26,16 @@ fn generate_config() {
     crate::test_util::test_generate_config::<TagCardinalityLimitConfig>();
 }
 
-fn make_metric_with_name(tags: MetricTags, name: &str) -> Event {
+fn make_metric_with_name(tags: OtelAttributes, name: &str) -> Event {
     let event_metadata = EventMetadata::default().with_source_type("unit_test_stream");
     Event::Metric(
         OtelMetric::new_counter(name, MetricKind::Incremental, 1.0)
-            .with_metric_tags(Some(tags))
+            .with_tags(Some(tags))
             .with_metadata(event_metadata),
     )
 }
 
-fn make_metric(tags: MetricTags) -> Event {
+fn make_metric(tags: OtelAttributes) -> Event {
     make_metric_with_name(tags, "event")
 }
 
@@ -113,9 +113,9 @@ async fn tag_cardinality_limit_drop_event_bloom() {
 
 async fn drop_event(config: TagCardinalityLimitConfig) {
     assert_transform_compliance(async move {
-        let mut event1 = make_metric(metric_tags!("tag1" => "val1"));
-        let mut event2 = make_metric(metric_tags!("tag1" => "val2"));
-        let event3 = make_metric(metric_tags!("tag1" => "val3"));
+        let mut event1 = make_metric(otel_tags!("tag1" => "val1"));
+        let mut event2 = make_metric(otel_tags!("tag1" => "val2"));
+        let event3 = make_metric(otel_tags!("tag1" => "val3"));
 
         let (tx, rx) = mpsc::channel(1);
         let (topology, mut out) = create_topology(ReceiverStream::new(rx), config).await;
@@ -165,13 +165,13 @@ async fn tag_cardinality_limit_drop_tag_bloom() {
 
 async fn drop_tag(config: TagCardinalityLimitConfig) {
     assert_transform_compliance(async move {
-        let tags1 = metric_tags!("tag1" => "val1", "tag2" => "val1");
+        let tags1 = otel_tags!("tag1" => "val1", "tag2" => "val1");
         let mut event1 = make_metric(tags1);
 
-        let tags2 = metric_tags!("tag1" => "val2", "tag2" => "val1");
+        let tags2 = otel_tags!("tag1" => "val2", "tag2" => "val1");
         let mut event2 = make_metric(tags2);
 
-        let tags3 = metric_tags!("tag1" => "val3", "tag2" => "val1");
+        let tags3 = otel_tags!("tag1" => "val3", "tag2" => "val1");
         let mut event3 = make_metric(tags3);
 
         let (tx, rx) = mpsc::channel(1);
@@ -234,34 +234,18 @@ async fn tag_cardinality_limit_drop_tag_bloom_multi_value() {
 
 async fn drop_tag_multi_value(config: TagCardinalityLimitConfig) {
     assert_transform_compliance(async move {
-        let mut tags1 = MetricTags::default();
-        tags1.set_multi_value(
-            "tag1".to_string(),
-            vec![
-                TagValue::Value("val1.a".to_string()),
-                TagValue::Value("val1.b".to_string()),
-            ],
-        );
+        // With OtelAttributes (single-value per key), we test cardinality limits
+        // by using different single values for each event.
+        let mut tags1 = OtelAttributes::default();
+        tags1.insert_string("tag1".to_string(), "val1.a".to_string());
         let mut event1 = make_metric(tags1);
 
-        let mut tags2 = MetricTags::default();
-        tags2.set_multi_value(
-            "tag1".to_string(),
-            vec![
-                TagValue::Value("val1.a".to_string()),
-                TagValue::Value("val1.c".to_string()),
-            ],
-        );
+        let mut tags2 = OtelAttributes::default();
+        tags2.insert_string("tag1".to_string(), "val1.b".to_string());
         let mut event2 = make_metric(tags2);
 
-        let mut tags3 = MetricTags::default();
-        tags3.set_multi_value(
-            "tag1".to_string(),
-            vec![
-                TagValue::Value("val1.b".to_string()),
-                TagValue::Value("val1.c".to_string()),
-            ],
-        );
+        let mut tags3 = OtelAttributes::default();
+        tags3.insert_string("tag1".to_string(), "val1.c".to_string());
         let mut event3 = make_metric(tags3);
 
         let (tx, rx) = mpsc::channel(1);
@@ -319,12 +303,12 @@ async fn tag_cardinality_limit_separate_value_limit_per_tag_bloom() {
 /// values for other tags.
 async fn separate_value_limit_per_tag(config: TagCardinalityLimitConfig) {
     assert_transform_compliance(async move {
-        let mut event1 = make_metric(metric_tags!("tag1" => "val1", "tag2" => "val1"));
+        let mut event1 = make_metric(otel_tags!("tag1" => "val1", "tag2" => "val1"));
 
-        let mut event2 = make_metric(metric_tags!("tag1" => "val2", "tag2" => "val1"));
+        let mut event2 = make_metric(otel_tags!("tag1" => "val2", "tag2" => "val1"));
 
         // Now value limit is reached for "tag1", but "tag2" still has values available.
-        let mut event3 = make_metric(metric_tags!("tag1" => "val1", "tag2" => "val2"));
+        let mut event3 = make_metric(otel_tags!("tag1" => "val1", "tag2" => "val2"));
 
         let (tx, rx) = mpsc::channel(1);
         let (topology, mut out) = create_topology(ReceiverStream::new(rx), config).await;
@@ -370,15 +354,15 @@ async fn separate_value_limit_per_tag(config: TagCardinalityLimitConfig) {
 /// tags that happen to be ordered later
 #[test]
 fn drop_event_checks_all_tags1() {
-    drop_event_checks_all_tags(|val1, val2| metric_tags!("tag1" => val1, "tag2" => val2));
+    drop_event_checks_all_tags(|val1, val2| otel_tags!("tag1" => val1, "tag2" => val2));
 }
 
 #[test]
 fn drop_event_checks_all_tags2() {
-    drop_event_checks_all_tags(|val1, val2| metric_tags!("tag1" => val2, "tag2" => val1));
+    drop_event_checks_all_tags(|val1, val2| otel_tags!("tag1" => val2, "tag2" => val1));
 }
 
-fn drop_event_checks_all_tags(make_tags: impl Fn(&str, &str) -> MetricTags) {
+fn drop_event_checks_all_tags(make_tags: impl Fn(&str, &str) -> OtelAttributes) {
     let config = make_transform_hashset(2, LimitExceededAction::DropEvent);
     let mut transform = TagCardinalityLimit::new(config);
 
@@ -455,32 +439,32 @@ async fn tag_cardinality_limit_separate_value_limit_per_metric_name_bloom() {
 async fn separate_value_limit_per_metric_name(config: TagCardinalityLimitConfig) {
     assert_transform_compliance(async move {
         let mut event_a1 =
-            make_metric_with_name(metric_tags!("tag1" => "val1", "tag2" => "val1"), "metricA");
+            make_metric_with_name(otel_tags!("tag1" => "val1", "tag2" => "val1"), "metricA");
 
         // The limit for tag1 should already be reached here
         let mut event_a2 =
-            make_metric_with_name(metric_tags!("tag1" => "val2", "tag2" => "val1"), "metricA");
+            make_metric_with_name(otel_tags!("tag1" => "val2", "tag2" => "val1"), "metricA");
 
         // The limit for tag2 should be reached here
         let mut event_a3 =
-            make_metric_with_name(metric_tags!("tag1" => "val1", "tag2" => "val2"), "metricA");
+            make_metric_with_name(otel_tags!("tag1" => "val1", "tag2" => "val2"), "metricA");
 
         // MetricB should have all of its tags kept due to higher limit
         let mut event_b1 =
-            make_metric_with_name(metric_tags!("tag1" => "val1", "tag2" => "val1"), "metricB");
+            make_metric_with_name(otel_tags!("tag1" => "val1", "tag2" => "val1"), "metricB");
         let mut event_b2 =
-            make_metric_with_name(metric_tags!("tag1" => "val2", "tag2" => "val1"), "metricB");
+            make_metric_with_name(otel_tags!("tag1" => "val2", "tag2" => "val1"), "metricB");
         let mut event_b3 =
-            make_metric_with_name(metric_tags!("tag1" => "val1", "tag2" => "val2"), "metricB");
+            make_metric_with_name(otel_tags!("tag1" => "val1", "tag2" => "val2"), "metricB");
 
         // MetricC has no specific config, so it uses the global config, which allows 2 values
         let mut event_c1 =
-            make_metric_with_name(metric_tags!("tag1" => "val1", "tag2" => "val1"), "metricC");
+            make_metric_with_name(otel_tags!("tag1" => "val1", "tag2" => "val1"), "metricC");
         let mut event_c2 =
-            make_metric_with_name(metric_tags!("tag1" => "val2", "tag2" => "val2"), "metricC");
+            make_metric_with_name(otel_tags!("tag1" => "val2", "tag2" => "val2"), "metricC");
         // The limit for tag2 should be reached here
         let mut event_c3 =
-            make_metric_with_name(metric_tags!("tag1" => "val1", "tag2" => "val3"), "metricC");
+            make_metric_with_name(otel_tags!("tag1" => "val1", "tag2" => "val3"), "metricC");
 
         let (tx, rx) = mpsc::channel(1);
         let (topology, mut out) = create_topology(ReceiverStream::new(rx), config).await;

@@ -23,6 +23,12 @@ pub struct OpenTelemetryConfig {
     protocol: Protocol,
 }
 
+impl OpenTelemetryConfig {
+    pub fn from_protocol(protocol: Protocol) -> Self {
+        Self { protocol }
+    }
+}
+
 /// The transport protocol for the `opentelemetry` sink.
 #[configurable_component]
 #[derive(Clone, Debug)]

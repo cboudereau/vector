@@ -429,7 +429,7 @@ All `to_value_canonical()` call sites migrated to `as_map()`:
 
 ### Phase E — OTLP Fidelity Alignment (source/sink divergences)
 
-**Status: E1-E8 DONE. E9 deferred (requires all sources to stop producing Distribution metrics).**
+**Status: E1-E8 DONE + D51 DONE + sink ExponentialHistogram support DONE. E9 deferred (only `vector` source converter still produces Distribution, per D52 backward-compat decision).**
 
 All decisions locked. Execution order: sinks first (E1-E2), then sources (E3-E6), then sink enrichment (E7), then cleanup (E8-E9).
 
@@ -442,9 +442,11 @@ All decisions locked. Execution order: sinks first (E1-E2), then sources (E3-E6)
 - **E6** ✅ OTLP unit field population — counters="1", timers="s"/"ms", host_metrics inferred from name
 - **E7** ✅ resource_to_labels/resource_to_tags config on Prometheus, InfluxDB, StatsD sinks
 - **E8** ✅ Eliminate vector.* attributes — aggregated StatsD output has no vector.* attrs (E8b); direct opentelemetry_proto imports replaced with re-exports in 8 sources (E8a)
+- **D51** ✅ log_to_metric Histogram/Summary → ExponentialHistogram (with new_exponential_histogram_single constructor)
+- **Sink ExponentialHistogram support** ✅ Prometheus collector (explicit bucket conversion), InfluxDB (count/sum/min/max/avg), GreptimeDB (count/sum/min/max), CloudWatch (StatisticSet)
 
 **Deferred:**
-- **E9** — Delete MetricView::Distribution variant (requires all sources to stop using legacy Distribution constructors)
+- **E9** — Delete MetricView::Distribution variant (only `vector` source converter still produces Distribution per D52; ~25 test-only usages remain)
 
 Run `cargo test -p vector --all-features` after each commit.
 

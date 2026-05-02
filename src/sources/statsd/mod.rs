@@ -7,8 +7,7 @@ use std::{
 use bytes::Bytes;
 use futures::{StreamExt, TryFutureExt};
 use listenfd::ListenFd;
-use opentelemetry_proto::tonic::common::v1::InstrumentationScope;
-use opentelemetry_proto::tonic::resource::v1::Resource;
+use vector_lib::event::otel_metric::{InstrumentationScope, Resource};
 use serde_with::serde_as;
 use smallvec::{SmallVec, smallvec};
 use tokio_util::udp::UdpFramed;
@@ -41,6 +40,7 @@ use crate::{
     tls::{MaybeTlsSettings, TlsSourceConfig},
 };
 
+pub mod aggregator;
 pub mod parser;
 #[cfg(unix)]
 mod unix;
@@ -469,8 +469,7 @@ mod test {
         name: &str,
         tags: &[(&str, Option<&str>)],
     ) -> vector_lib::event::metric::MetricIdentity {
-        use opentelemetry_proto::tonic::common::v1::AnyValue;
-        use vector_lib::event::{OtelAttributes, string_value};
+        use vector_lib::event::{AnyValue, OtelAttributes, string_value};
 
         let mut attrs = OtelAttributes::new();
         for &(k, v) in tags {

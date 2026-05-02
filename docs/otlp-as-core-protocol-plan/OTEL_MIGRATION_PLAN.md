@@ -256,6 +256,67 @@ All decisions locked. Autopilot proceeds without stopping. Reference: OTLP spec 
 | D44 | Sink scope | **(b)** Tier 1 first: prometheus + influxdb + statsd. Tier 2 (cloudwatch + greptimedb) follows |
 | D45 | Summary production | **(b)** All distribution-like types → Histogram for new data. OTLP/Prometheus passthrough Summary preserved. Spec: "not recommended for new applications" |
 
+### otelcontribcol StatsD Receiver — Reference Implementation Analysis
+
+Research of `opentelemetry-collector-contrib/receiver/statsdreceiver/` and `lightstep/go-expohisto` library to ground E4 implementation.
+
+**Architecture:** Parser → single-threaded aggregation goroutine → flush on `time.Ticker` → `nextConsumer.ConsumeMetrics()`. State keyed by `(name, metricType, attributeSet)` per source address. On flush: build `pmetric.Metrics`, call `resetState(now)` (full reset, fresh empty map).
+
+**ExponentialHistogram engine** (go-expohisto `structure.Histogram[float64]`):
+- Starts at scale 20 (highest resolution), downscales on overflow
+- `MapToIndex(value)`: for scale > 0, `floor(log(value) * log2e * 2^scale)`; for scale ≤ 0, exponent bit extraction with right-shift
+- MaxSize=160 default. On overflow (bucket span ≥ MaxSize): compute `changeScale` by iteratively right-shifting high/low until they fit, then downscale all buckets by merging `2^change` adjacent buckets
+- Variable-width bucket counters: `[]uint8` → `[]uint16` → `[]uint32` → `[]uint64` (widens on overflow)
+- Circular buffer with `indexBase` for efficient bidirectional expansion
+- `UpdateByIncr(value, count)` — weight-based insertion (sample rate → count inflation)
+- `MergeFrom(other)` — finds minimum scale fitting both, downscales, merges bucket-by-bucket
+
+**Counter handling:**
+- Aggregated as Delta Sum. Sample rate: `value / sampleRate` (inflate count)
+- Counter type configurable: `int` (truncate to int64, default), `float` (preserve decimal), `stochastic_int` (probabilistic rounding where P(round up) = fractional part)
+- `is_monotonic` configurable (default depends on config)
+
+**Gauge handling:**
+- Absolute (`42|g`): last-value-wins, replaces previous
+- Delta (`+5|g`, `-3|g`): adds to current value in-place
+- No `start_time_unix_nano` on gauges
+- **Key difference from Sol plan:** otelcontribcol resets ALL state on flush (gauges rebuilt from scratch each interval). Sol's D38 says gauge state persists across flushes with TTL — this is a deliberate Sol advantage.
+
+**Set handling:** **Not supported.** otelcontribcol StatsD receiver ignores `"s"` type entirely (returns error). Sol has an advantage here.
+
+**Histogram/Timer types (`h`, `ms`, `d`):**
+- Default observer type is `disabled` (drops these metrics!)
+- When `observer_type = "histogram"`: uses ExponentialHistogram (go-expohisto) OR explicit-bucket Histogram (via regex pattern matching metric names)
+- When `observer_type = "summary"`: uses Summary with configurable percentiles
+- When `observer_type = "gauge"`: appends each observation as a separate ScopeMetrics entry (no aggregation)
+- Sample rate → `UpdateByIncr(value, 1/sampleRate)` (weight-based insertion)
+
+**Explicit bucket alternative:** otelcontribcol supports regex-based explicit bucket config per metric name as alternative to ExponentialHistogram. Config: `histogram.bucket_boundaries: [{regexp: "request.duration.*", boundaries: [0.01, 0.1, 1, 10]}]`. When a metric name matches, uses traditional `Histogram` instead of `ExponentialHistogram`.
+
+**Timestamps:**
+- Counters/Histograms: `start_time_unix_nano` = `lastIntervalTime`, `time_unix_nano` = now at flush
+- Gauges: `time_unix_nano` = time of last update, no `start_time_unix_nano`
+- DogStatsD v1.3 timestamp override: `T<unix_seconds>` suffix on counters/gauges only
+
+**DogStatsD extensions:**
+- Container ID: `c:<id>` → `container.id` attribute (OTel semantic convention `conventions.ContainerIDKey`)
+- Timestamp: `T<unix>` → overrides `time_unix_nano` (counters + gauges only)
+
+**Per-source-address aggregation:** State is keyed by `netAddr` (source IP/port). Each source address gets its own independent instruments map. On flush, each address produces a separate `BatchMetrics` with `client.Info` identifying the source.
+
+### Phase E Decisions — LOCKED (from otelcontribcol analysis)
+
+| ID | Decision | Options | Answer | Rationale |
+|----|----------|---------|------|-----------|
+| D46 | StatsD counter type | **(a)** Always f64 **(b)** Configurable int/float/stochastic_int **(c)** Always int | **(a)** | f64 is lossless for StatsD use cases (values are text-parsed floats anyway). Int truncation loses data, stochastic rounding adds complexity for negligible benefit. If a user sends `1.5|c`, they expect 1.5 not 1. otelcontribcol defaults to int for historical Go reasons, not correctness. |
+| D47 | Explicit-bucket Histogram option (regex → fixed bounds instead of ExponentialHistogram) | **(a)** ExponentialHistogram only, convert at sink **(b)** Regex-based explicit bucket config | **(a)** | ExponentialHistogram is strictly more capable — lossless at source, converted to explicit bounds at sink with user-configured boundaries. Regex config adds UX complexity for zero fidelity gain. Users who want specific boundaries already configure them on the sink side. |
+| D48 | DogStatsD v1.3 timestamp support (`T<unix>`) | **(a)** Yes **(b)** Skip | **(a)** | ~10 lines in parser. DogStatsD v1.3 is widely deployed (Datadog Agent 7.25+). Timestamps enable correct rate computation on counters. No downside. |
+| D49 | Per-source-address aggregation vs global | **(a)** Global **(b)** Per-source-address | **(a)** | StatsD is typically many app instances → one agent. Global aggregation = fewer series, matches how users think about metrics. Per-address would produce N copies of the same metric name for N pods. If users need source identity, they should add a tag (`host:X`). otelcontribcol's per-address design is an artifact of its multi-tenant collector model, not a StatsD best practice. **Document in source config:** "Metrics are aggregated globally across all senders. To distinguish sources, add a host or instance tag to your StatsD packets." |
+| D50 | `observer_type` config for timers | **(a)** Always ExponentialHistogram **(b)** Configurable (histogram/disabled, no summary) | **(a)** | D45 already locked: no Summary for new data. Disabled mode = silent data loss, the opposite of Sol's promise. Users who don't want timer data should filter in a transform. One fewer config knob = simpler UX. |
+| D51 | `log_to_metric` transform histogram type | **(a)** ExponentialHistogram (same engine as StatsD) **(b)** Explicit-bounds Histogram (one bound per sample, current behavior) | **(a)** | log_to_metric emits individual observations (1 sample per log line), then the `aggregate` transform merges them. ExponentialHistogram merge is lossless and bounded (MaxSize=160). Current explicit-bounds-per-sample approach has unbounded bucket growth — same problem as StatsD. Reusing the ExpHist engine is consistent and correct. |
+| D52 | `vector` source converter migration | **(a)** Keep `new_distribution_from_samples` (backward-compat adapter) **(b)** Migrate to proper Histogram/Summary | **(a)** | The vector source is a legacy adapter for old Vector instances. It must faithfully represent what the sender intended. Legacy Distributions with `statistic=summary` must remain Summary; `statistic=histogram` must remain Histogram. The constructors can be renamed/refactored in E8, but the conversion logic stays. This is the one place where `vector.statistic` remains meaningful until all upstream Vectors are retired. |
+| D53 | Set merge without `vector.set_values` | **(a)** Keep `vector.set_values` as exception **(b)** Dedicated `BTreeSet<String>` field on OtelMetric **(c)** Drop set merge, Gauge(cardinality) at source | **(b)** | `vector.set_values` leaks into OTLP output if exported via the opentelemetry sink — backends see a non-standard array attribute. A dedicated `set_values: Option<BTreeSet<String>>` field on OtelMetric (like `resource_attrs`) keeps merge capability without polluting attributes. `BTreeSet` deduplicates by construction — repeated values (`user123` hitting 1M times) cost O(1) per duplicate insert, no memory growth. The field is only read by the aggregate transform's merge logic and never serialized to OTLP proto. Gauge value = `set_values.len()` recomputed on read. |
+
 ### Phase E Implementation Details — LOCKED
 
 | Parameter | Value | Rationale |

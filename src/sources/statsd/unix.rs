@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 
-use opentelemetry_proto::tonic::common::v1::InstrumentationScope;
-use opentelemetry_proto::tonic::resource::v1::Resource;
+use vector_lib::event::otel_metric::{InstrumentationScope, Resource};
 use vector_lib::{
     codecs::{
         NewlineDelimitedDecoder,

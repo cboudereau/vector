@@ -1,12 +1,13 @@
-use opentelemetry_proto::tonic::common::v1::{
-    KeyValue, any_value::Value as OtelValueKind,
-};
+pub use opentelemetry_proto::tonic::common::v1::KeyValue;
+use opentelemetry_proto::tonic::common::v1::any_value::Value as OtelValueKind;
 use opentelemetry_proto::tonic::common::v1::AnyValue;
 pub use opentelemetry_proto::tonic::metrics::v1::summary_data_point::ValueAtQuantile;
 pub use opentelemetry_proto::tonic::metrics::v1::exponential_histogram_data_point::Buckets as ExpBuckets;
+pub use opentelemetry_proto::tonic::metrics::v1::metric::Data as MetricData;
+pub use opentelemetry_proto::tonic::metrics::v1::number_data_point::Value as NumberDataPointValue;
 use opentelemetry_proto::tonic::metrics::v1::Metric as OtelMetricProto;
-use opentelemetry_proto::tonic::common::v1::InstrumentationScope;
-use opentelemetry_proto::tonic::resource::v1::Resource;
+pub use opentelemetry_proto::tonic::common::v1::InstrumentationScope;
+pub use opentelemetry_proto::tonic::resource::v1::Resource;
 use prost::Message as _;
 use serde::Serialize;
 use vector_buffers::EventCount;
@@ -274,6 +275,42 @@ impl OtelMetric {
     /// is the cardinality (number of unique values).
     pub fn new_set(name: impl Into<String>, cardinality: usize) -> Self {
         Self::new_gauge(name, cardinality as f64)
+    }
+
+    pub fn new_exponential_histogram(
+        name: impl Into<String>,
+        scale: i32,
+        count: u64,
+        sum: f64,
+        zero_count: u64,
+        positive: opentelemetry_proto::tonic::metrics::v1::exponential_histogram_data_point::Buckets,
+        negative: opentelemetry_proto::tonic::metrics::v1::exponential_histogram_data_point::Buckets,
+        min: Option<f64>,
+        max: Option<f64>,
+    ) -> Self {
+        use opentelemetry_proto::tonic::metrics::v1::{
+            self as otel_metrics, metric::Data, ExponentialHistogram,
+            ExponentialHistogramDataPoint,
+        };
+        let proto = OtelMetricProto {
+            name: name.into(),
+            data: Some(Data::ExponentialHistogram(ExponentialHistogram {
+                data_points: vec![ExponentialHistogramDataPoint {
+                    count,
+                    sum: Some(sum),
+                    scale,
+                    zero_count,
+                    positive: Some(positive),
+                    negative: Some(negative),
+                    min: Some(min.unwrap_or(0.0)),
+                    max: Some(max.unwrap_or(0.0)),
+                    ..Default::default()
+                }],
+                aggregation_temporality: otel_metrics::AggregationTemporality::Delta as i32,
+            })),
+            ..Default::default()
+        };
+        Self::new(proto)
     }
 
     /// Convenience constructor for a distribution metric from samples.

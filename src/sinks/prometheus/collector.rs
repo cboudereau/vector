@@ -382,7 +382,7 @@ mod tests {
     use similar_asserts::assert_eq;
     use vector_lib::otel_tags;
 
-    use super::{super::default_summary_quantiles, *};
+    use super::*;
     use crate::{
         event::metric::MetricKind,
         event::OtelMetric,
@@ -551,15 +551,15 @@ mod tests {
     }
 
     #[test]
-    fn encodes_distribution_text() {
+    fn encodes_histogram_from_samples_text() {
         assert_eq!(
-            encode_distribution::<StringCollector>(),
+            encode_histogram_from_samples::<StringCollector>(),
             indoc! {r#"
                 # HELP vector_requests requests
                 # TYPE vector_requests histogram
-                vector_requests_bucket{le="0"} 0 1612325106789
-                vector_requests_bucket{le="2.5"} 6 1612325106789
-                vector_requests_bucket{le="5"} 8 1612325106789
+                vector_requests_bucket{le="1"} 3 1612325106789
+                vector_requests_bucket{le="2"} 6 1612325106789
+                vector_requests_bucket{le="3"} 8 1612325106789
                 vector_requests_bucket{le="+Inf"} 8 1612325106789
                 vector_requests_sum 15 1612325106789
                 vector_requests_count 8 1612325106789
@@ -568,14 +568,14 @@ mod tests {
     }
 
     #[test]
-    fn encodes_distribution_request() {
+    fn encodes_histogram_from_samples_request() {
         assert_eq!(
-            encode_distribution::<TimeSeries>(),
+            encode_histogram_from_samples::<TimeSeries>(),
             write_request!(
                 "vector_requests", "requests", Histogram [
-                        "_bucket" @ 1612325106789 = 0.0 ["le" => "0"],
-                        "_bucket" @ 1612325106789 = 6.0 ["le" => "2.5"],
-                        "_bucket" @ 1612325106789 = 8.0 ["le" => "5"],
+                        "_bucket" @ 1612325106789 = 3.0 ["le" => "1"],
+                        "_bucket" @ 1612325106789 = 6.0 ["le" => "2"],
+                        "_bucket" @ 1612325106789 = 8.0 ["le" => "3"],
                         "_bucket" @ 1612325106789 = 8.0 ["le" => "+Inf"],
                         "_sum" @ 1612325106789 = 15.0 [],
                         "_count" @ 1612325106789 = 8.0 []
@@ -584,11 +584,11 @@ mod tests {
         );
     }
 
-    fn encode_distribution<T: MetricCollector>() -> T::Output {
+    fn encode_histogram_from_samples<T: MetricCollector>() -> T::Output {
         let samples = vector_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2];
         let otel = OtelMetric::new_histogram_from_samples("requests", MetricKind::Absolute, &samples)
             .with_timestamp(Some(timestamp()));
-        encode_one::<T>(Some("vector"), &[0.0, 2.5, 5.0], &[], otel)
+        encode_one::<T>(Some("vector"), &[], &[], otel)
     }
 
     #[test]
@@ -721,53 +721,45 @@ mod tests {
     }
 
     #[test]
-    fn encodes_distribution_summary_text() {
+    fn encodes_histogram_from_samples_with_tags_text() {
+        let samples = vector_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2];
+        let otel = OtelMetric::new_histogram_from_samples("requests", MetricKind::Absolute, &samples)
+            .with_tags(Some(tags()))
+            .with_timestamp(Some(timestamp()));
         assert_eq!(
-            encode_distribution_summary::<StringCollector>(),
+            encode_one::<StringCollector>(Some("ns"), &[], &[], otel),
             indoc! {r#"
                 # HELP ns_requests requests
-                # TYPE ns_requests summary
-                ns_requests{code="200",quantile="0.5"} 2 1612325106789
-                ns_requests{code="200",quantile="0.75"} 2 1612325106789
-                ns_requests{code="200",quantile="0.9"} 3 1612325106789
-                ns_requests{code="200",quantile="0.95"} 3 1612325106789
-                ns_requests{code="200",quantile="0.99"} 3 1612325106789
+                # TYPE ns_requests histogram
+                ns_requests_bucket{code="200",le="1"} 3 1612325106789
+                ns_requests_bucket{code="200",le="2"} 6 1612325106789
+                ns_requests_bucket{code="200",le="3"} 8 1612325106789
+                ns_requests_bucket{code="200",le="+Inf"} 8 1612325106789
                 ns_requests_sum{code="200"} 15 1612325106789
                 ns_requests_count{code="200"} 8 1612325106789
-                ns_requests_min{code="200"} 1 1612325106789
-                ns_requests_max{code="200"} 3 1612325106789
-                ns_requests_avg{code="200"} 1.875 1612325106789
             "#}
         );
     }
 
     #[test]
-    fn encodes_distribution_summary_request() {
-        assert_eq!(
-            encode_distribution_summary::<TimeSeries>(),
-            write_request!(
-                "ns_requests", "requests", Summary [
-                    "" @ 1612325106789 = 2.0 ["code" => "200", "quantile" => "0.5"],
-                    "" @ 1612325106789 = 2.0 ["code" => "200", "quantile" => "0.75"],
-                    "" @ 1612325106789 = 3.0 ["code" => "200", "quantile" => "0.9"],
-                    "" @ 1612325106789 = 3.0 ["code" => "200", "quantile" => "0.95"],
-                    "" @ 1612325106789 = 3.0 ["code" => "200", "quantile" => "0.99"],
-                    "_sum" @ 1612325106789 = 15.0 ["code" => "200"],
-                    "_count" @ 1612325106789 = 8.0 ["code" => "200"],
-                    "_min" @ 1612325106789 = 1.0 ["code" => "200"],
-                    "_max" @ 1612325106789 = 3.0 ["code" => "200"],
-                    "_avg" @ 1612325106789 = 1.875 ["code" => "200"]
-                ]
-            )
-        );
-    }
-
-    fn encode_distribution_summary<T: MetricCollector>() -> T::Output {
+    fn encodes_histogram_from_samples_with_tags_request() {
         let samples = vector_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2];
         let otel = OtelMetric::new_histogram_from_samples("requests", MetricKind::Absolute, &samples)
             .with_tags(Some(tags()))
             .with_timestamp(Some(timestamp()));
-        encode_one::<T>(Some("ns"), &[], &default_summary_quantiles(), otel)
+        assert_eq!(
+            encode_one::<TimeSeries>(Some("ns"), &[], &[], otel),
+            write_request!(
+                "ns_requests", "requests", Histogram [
+                    "_bucket" @ 1612325106789 = 3.0 ["code" => "200", "le" => "1"],
+                    "_bucket" @ 1612325106789 = 6.0 ["code" => "200", "le" => "2"],
+                    "_bucket" @ 1612325106789 = 8.0 ["code" => "200", "le" => "3"],
+                    "_bucket" @ 1612325106789 = 8.0 ["code" => "200", "le" => "+Inf"],
+                    "_sum" @ 1612325106789 = 15.0 ["code" => "200"],
+                    "_count" @ 1612325106789 = 8.0 ["code" => "200"]
+                ]
+            )
+        );
     }
 
     #[test]

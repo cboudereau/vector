@@ -10,7 +10,7 @@ use aws_sdk_cloudwatch::{
     Client as CloudwatchClient,
     error::SdkError,
     operation::put_metric_data::PutMetricDataError,
-    types::{Dimension, MetricDatum},
+    types::{Dimension, MetricDatum, StatisticSet},
 };
 use aws_smithy_types::DateTime as AwsDateTime;
 use futures::{FutureExt, SinkExt, stream};
@@ -331,6 +331,26 @@ impl CloudWatchMetricsSvc {
                             .set_storage_resolution(resolution)
                             .build(),
                     ),
+                    MetricView::ExponentialHistogram { count, sum, min, max, .. } => {
+                        let mn = min.unwrap_or(0.0);
+                        let mx = max.unwrap_or(0.0);
+                        Some(
+                            MetricDatum::builder()
+                                .metric_name(metric_name)
+                                .statistic_values(
+                                    StatisticSet::builder()
+                                        .sample_count(count as f64)
+                                        .sum(sum)
+                                        .minimum(mn)
+                                        .maximum(mx)
+                                        .build()
+                                )
+                                .set_timestamp(timestamp)
+                                .set_dimensions(dimensions)
+                                .set_storage_resolution(resolution)
+                                .build(),
+                        )
+                    }
                     _ => None,
                 }
             })

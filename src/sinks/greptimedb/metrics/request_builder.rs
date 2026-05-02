@@ -114,7 +114,16 @@ pub fn metric_to_insert_request(
             encode_f64_value("count", count as f64, &mut schema, &mut columns);
             encode_f64_value("sum", sum, &mut schema, &mut columns);
         }
-        MetricView::ExponentialHistogram { .. } => {}
+        MetricView::ExponentialHistogram { count, sum, min, max, .. } => {
+            encode_f64_value("count", count as f64, &mut schema, &mut columns);
+            encode_f64_value("sum", sum, &mut schema, &mut columns);
+            if let Some(mn) = min {
+                encode_f64_value("min", mn, &mut schema, &mut columns);
+            }
+            if let Some(mx) = max {
+                encode_f64_value("max", mx, &mut schema, &mut columns);
+            }
+        }
     }
 
     RowInsertRequest {

@@ -177,7 +177,61 @@ pub(super) trait MetricCollector {
                     self.emit_value(timestamp, name, "_sum", *sum, tags, None);
                     self.emit_value(timestamp, name, "_count", *count as f64, tags, None);
                 }
-                MetricView::ExponentialHistogram { .. } => {}
+                MetricView::ExponentialHistogram {
+                    scale,
+                    count,
+                    sum,
+                    zero_count,
+                    positive,
+                    negative,
+                    ..
+                } => {
+                    let base = (2.0_f64).powf((2.0_f64).powi(-scale));
+                    let mut explicit: Vec<(f64, f64)> = Vec::new();
+
+                    if let Some(neg) = negative {
+                        for (i, &c) in neg.bucket_counts.iter().enumerate().rev() {
+                            let idx = neg.offset as i64 + i as i64;
+                            let upper = -base.powf(idx as f64);
+                            explicit.push((upper, c as f64));
+                        }
+                    }
+
+                    if *zero_count > 0 {
+                        explicit.push((0.0, *zero_count as f64));
+                    }
+
+                    if let Some(pos) = positive {
+                        for (i, &c) in pos.bucket_counts.iter().enumerate() {
+                            let idx = pos.offset as i64 + i as i64 + 1;
+                            let upper = base.powf(idx as f64);
+                            explicit.push((upper, c as f64));
+                        }
+                    }
+
+                    let mut cumulative = 0.0;
+                    for &(limit, cnt) in &explicit {
+                        cumulative += cnt;
+                        self.emit_value(
+                            timestamp,
+                            name,
+                            "_bucket",
+                            cumulative,
+                            tags,
+                            Some(("le", limit.to_string())),
+                        );
+                    }
+                    self.emit_value(
+                        timestamp,
+                        name,
+                        "_bucket",
+                        *count as f64,
+                        tags,
+                        Some(("le", "+Inf".to_string())),
+                    );
+                    self.emit_value(timestamp, name, "_sum", *sum, tags, None);
+                    self.emit_value(timestamp, name, "_count", *count as f64, tags, None);
+                }
             }
         }
     }

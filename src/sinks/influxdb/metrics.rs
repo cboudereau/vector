@@ -389,7 +389,21 @@ fn get_type_and_fields(
             let fields = encode_distribution(&samples, quantiles);
             ("distribution", fields)
         }
-        MetricView::ExponentialHistogram { .. } => ("histogram", None),
+        MetricView::ExponentialHistogram { count, sum, min, max, .. } => {
+            let mut fields: HashMap<KeyString, Field> = HashMap::new();
+            fields.insert("count".into(), Field::UnsignedInt(*count));
+            fields.insert("sum".into(), Field::Float(*sum));
+            if let Some(mn) = min {
+                fields.insert("min".into(), Field::Float(*mn));
+            }
+            if let Some(mx) = max {
+                fields.insert("max".into(), Field::Float(*mx));
+            }
+            if *count > 0 {
+                fields.insert("avg".into(), Field::Float(*sum / *count as f64));
+            }
+            ("histogram", Some(fields))
+        }
     }
 }
 

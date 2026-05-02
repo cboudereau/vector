@@ -429,7 +429,7 @@ All `to_value_canonical()` call sites migrated to `as_map()`:
 
 ### Phase E — OTLP Fidelity Alignment (source/sink divergences)
 
-**Status: IN PROGRESS — E1, E2, E3, E5, E7 DONE. E4, E6, E8, E9 deferred.**
+**Status: E1-E8 DONE. E9 deferred (requires all sources to stop producing Distribution metrics).**
 
 All decisions locked. Execution order: sinks first (E1-E2), then sources (E3-E6), then sink enrichment (E7), then cleanup (E8-E9).
 
@@ -437,14 +437,14 @@ All decisions locked. Execution order: sinks first (E1-E2), then sources (E3-E6)
 - **E1** ✅ ExponentialHistogram→Histogram conversion in MetricNormalizer + Prometheus exporter
 - **E2** ✅ Already implemented — kind()/set_kind() maps to OTLP temporality
 - **E3** ✅ Resource + Scope on all metric-producing sources (shared helper in source_otel.rs)
+- **E4** ✅ StatsD aggregation engine — ExponentialHistogram + flush-interval aggregator across UDP/TCP/Unix, DogStatsD extensions, D39 bare tags, 55 tests
 - **E5** ✅ Already implemented — all scraper sources set timestamps
+- **E6** ✅ OTLP unit field population — counters="1", timers="s"/"ms", host_metrics inferred from name
 - **E7** ✅ resource_to_labels/resource_to_tags config on Prometheus, InfluxDB, StatsD sinks
+- **E8** ✅ Eliminate vector.* attributes — aggregated StatsD output has no vector.* attrs (E8b); direct opentelemetry_proto imports replaced with re-exports in 8 sources (E8a)
 
-**Deferred (requires dedicated session):**
-- **E4** — StatsD aggregation engine + ExponentialHistogram production (largest step)
-- **E6** — OTLP unit field population (nice-to-have)
-- **E8** — Eliminate vector.* attributes (depends on E4)
-- **E9** — Delete MetricView::Distribution variant (depends on E4+E8)
+**Deferred:**
+- **E9** — Delete MetricView::Distribution variant (requires all sources to stop using legacy Distribution constructors)
 
 Run `cargo test -p vector --all-features` after each commit.
 

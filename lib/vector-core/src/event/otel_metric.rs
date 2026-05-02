@@ -313,6 +313,67 @@ impl OtelMetric {
         Self::new(proto)
     }
 
+    pub fn new_exponential_histogram_single(name: impl Into<String>, value: f64) -> Self {
+        use opentelemetry_proto::tonic::metrics::v1::{
+            self as otel_metrics, metric::Data, ExponentialHistogram,
+            ExponentialHistogramDataPoint,
+            exponential_histogram_data_point::Buckets,
+        };
+        let scale = 20i32;
+
+        fn frexp_local(x: f64) -> (f64, i32) {
+            if x == 0.0 || x.is_nan() || x.is_infinite() {
+                return (x, 0);
+            }
+            let bits = x.to_bits();
+            let exp_raw = ((bits >> 52) & 0x7FF) as i32;
+            let exp = exp_raw - 1022;
+            let frac = f64::from_bits((bits & 0x800F_FFFF_FFFF_FFFF) | 0x3FE0_0000_0000_0000);
+            (frac, exp)
+        }
+
+        let (zero_count, positive, negative) = if value == 0.0 {
+            (1u64, Buckets::default(), Buckets::default())
+        } else {
+            let abs_value = value.abs();
+            let (frac, exp) = frexp_local(abs_value);
+            let index = if frac == 0.5 {
+                ((exp - 1) << scale) - 1
+            } else {
+                let scale_factor = (1i64 << scale) as f64;
+                (exp << scale) + ((frac * 2.0).ln() / (2.0f64.ln() / scale_factor)).floor() as i32 - 1
+            };
+            let b = Buckets {
+                offset: index,
+                bucket_counts: vec![1],
+            };
+            if value > 0.0 {
+                (0u64, b, Buckets::default())
+            } else {
+                (0u64, Buckets::default(), b)
+            }
+        };
+        let proto = OtelMetricProto {
+            name: name.into(),
+            data: Some(Data::ExponentialHistogram(ExponentialHistogram {
+                data_points: vec![ExponentialHistogramDataPoint {
+                    count: 1,
+                    sum: Some(value),
+                    scale,
+                    zero_count,
+                    positive: Some(positive),
+                    negative: Some(negative),
+                    min: Some(value),
+                    max: Some(value),
+                    ..Default::default()
+                }],
+                aggregation_temporality: otel_metrics::AggregationTemporality::Delta as i32,
+            })),
+            ..Default::default()
+        };
+        Self::new(proto)
+    }
+
     /// Convenience constructor for a distribution metric from samples.
     /// Represented as an OTLP Histogram with vector.metric_type=distribution
     /// and vector.statistic attribute indicating histogram vs summary.

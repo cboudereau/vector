@@ -358,37 +358,15 @@ fn to_metric_with_config(config: &MetricConfig, event: &Event) -> Result<OtelMet
 
             OtelMetric::new_counter(&name, counter.kind, value)
         }
-        MetricTypeConfig::Histogram => {
+        MetricTypeConfig::Histogram | MetricTypeConfig::Summary => {
             let value: f64 = value.to_string_lossy().parse().map_err(|error| {
                 TransformError::ParseFloatError {
                     path: field.to_string(),
                     error,
                 }
             })?;
-            let samples = vector_lib::samples![value => 1];
 
-            OtelMetric::new_distribution_from_samples(
-                &name,
-                MetricKind::Incremental,
-                &samples,
-                "histogram",
-            )
-        }
-        MetricTypeConfig::Summary => {
-            let value: f64 = value.to_string_lossy().parse().map_err(|error| {
-                TransformError::ParseFloatError {
-                    path: field.to_string(),
-                    error,
-                }
-            })?;
-            let samples = vector_lib::samples![value => 1];
-
-            OtelMetric::new_distribution_from_samples(
-                &name,
-                MetricKind::Incremental,
-                &samples,
-                "summary",
-            )
+            OtelMetric::new_exponential_histogram_single(&name, value)
         }
         MetricTypeConfig::Gauge => {
             let value = value.to_string_lossy().parse().map_err(|error| {
@@ -1168,7 +1146,7 @@ mod tests {
 
         assert_eq!(
             metric.into_otel_metric(),
-            OtelMetric::new_distribution_from_samples("response_time", MetricKind::Incremental, &vector_lib::samples![2.5 => 1], "histogram")
+            OtelMetric::new_exponential_histogram_single("response_time", 2.5)
                 .with_metadata(metadata)
                 .with_timestamp(Some(ts()))
         );
@@ -1198,7 +1176,7 @@ mod tests {
 
         assert_eq!(
             metric.into_otel_metric(),
-            OtelMetric::new_distribution_from_samples("response_time", MetricKind::Incremental, &vector_lib::samples![2.5 => 1], "summary")
+            OtelMetric::new_exponential_histogram_single("response_time", 2.5)
                 .with_metadata(metadata)
                 .with_timestamp(Some(ts()))
         );

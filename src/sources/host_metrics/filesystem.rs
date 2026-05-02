@@ -181,7 +181,7 @@ mod tests {
     #[cfg(not(windows))]
     #[tokio::test]
     async fn generates_filesystem_metrics() {
-        let mut buffer = MetricsBuffer::new(None);
+        let mut buffer = MetricsBuffer::new(None, &Default::default());
         HostMetrics::new(HostMetricsConfig::default())
             .filesystem_metrics(&mut buffer)
             .await;
@@ -231,7 +231,7 @@ mod tests {
     #[cfg(windows)]
     #[tokio::test]
     async fn generates_filesystem_metrics() {
-        let mut buffer = MetricsBuffer::new(None);
+        let mut buffer = MetricsBuffer::new(None, &Default::default());
         HostMetrics::new(HostMetricsConfig::default())
             .filesystem_metrics(&mut buffer)
             .await;
@@ -262,7 +262,7 @@ mod tests {
     #[tokio::test]
     async fn filesystem_metrics_filters_on_device() {
         assert_filtered_metrics("device", |devices| async move {
-            let mut buffer = MetricsBuffer::new(None);
+            let mut buffer = MetricsBuffer::new(None, &Default::default());
             HostMetrics::new(HostMetricsConfig {
                 filesystem: FilesystemConfig {
                     devices,
@@ -280,7 +280,7 @@ mod tests {
     #[tokio::test]
     async fn filesystem_metrics_filters_on_filesystem() {
         assert_filtered_metrics("filesystem", |filesystems| async move {
-            let mut buffer = MetricsBuffer::new(None);
+            let mut buffer = MetricsBuffer::new(None, &Default::default());
             HostMetrics::new(HostMetricsConfig {
                 filesystem: FilesystemConfig {
                     filesystems,
@@ -298,7 +298,7 @@ mod tests {
     #[tokio::test]
     async fn filesystem_metrics_filters_on_mountpoint() {
         assert_filtered_metrics("mountpoint", |mountpoints| async move {
-            let mut buffer = MetricsBuffer::new(None);
+            let mut buffer = MetricsBuffer::new(None, &Default::default());
             HostMetrics::new(HostMetricsConfig {
                 filesystem: FilesystemConfig {
                     mountpoints,

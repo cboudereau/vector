@@ -51,6 +51,11 @@ pub struct StatsdSinkConfig {
     #[serde(default)]
     pub batch: BatchConfig<StatsdDefaultBatchSettings>,
 
+    /// Resource attribute keys to flatten into DogStatsD tags.
+    #[serde(default = "default_resource_to_tags")]
+    #[configurable(metadata(docs::advanced))]
+    pub resource_to_tags: Vec<String>,
+
     #[configurable(derived)]
     #[serde(
         default,
@@ -58,6 +63,10 @@ pub struct StatsdSinkConfig {
         skip_serializing_if = "crate::serde::is_default"
     )]
     pub acknowledgements: AcknowledgementsConfig,
+}
+
+fn default_resource_to_tags() -> Vec<String> {
+    vec!["service.name".into(), "host.name".into()]
 }
 
 /// Socket mode.
@@ -112,6 +121,7 @@ impl GenerateConfig for StatsdSinkConfig {
                 address.port(),
             )),
             batch: Default::default(),
+            resource_to_tags: default_resource_to_tags(),
             acknowledgements: Default::default(),
         })
         .unwrap()
@@ -138,6 +148,7 @@ impl SinkConfig for StatsdSinkConfig {
             batcher_settings,
             request_builder,
             protocol,
+            self.resource_to_tags.clone(),
         );
         Ok((VectorSink::from_event_streamsink(sink), healthcheck))
     }

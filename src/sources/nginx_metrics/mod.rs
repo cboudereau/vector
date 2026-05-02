@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     convert::TryFrom,
     time::{Duration, Instant},
 };
@@ -9,6 +10,8 @@ use futures::{StreamExt, TryFutureExt, future::join_all};
 use http::{Request, StatusCode};
 use http_body::Collected;
 use hyper::{Body, Uri};
+use opentelemetry_proto::tonic::common::v1::InstrumentationScope;
+use opentelemetry_proto::tonic::resource::v1::Resource;
 use serde_with::serde_as;
 use snafu::{ResultExt, Snafu};
 use tokio::time;
@@ -23,6 +26,7 @@ use crate::{
         CollectionCompleted, EndpointBytesReceived, NginxMetricsEventsReceived,
         NginxMetricsRequestError, NginxMetricsStubStatusParseError, StreamClosedError,
     },
+    sources::source_otel,
     tls::{TlsConfig, TlsSettings},
 };
 
@@ -73,6 +77,12 @@ pub struct NginxMetricsConfig {
 
     #[configurable(derived)]
     auth: Option<Auth>,
+
+    /// Custom resource attributes for OTel Resource on emitted metrics.
+    ///
+    /// Defaults: `service.name = sol/nginx_metrics`, `host.name` = auto-detected hostname.
+    #[serde(default)]
+    resource_attributes: BTreeMap<String, String>,
 }
 
 pub(super) const fn default_scrape_interval_secs() -> Duration {
@@ -93,6 +103,8 @@ impl SourceConfig for NginxMetricsConfig {
         let http_client = HttpClient::new(tls, &cx.proxy)?;
 
         let namespace = Some(self.namespace.clone()).filter(|namespace| !namespace.is_empty());
+        let resource = source_otel::build_source_resource("nginx_metrics", &self.resource_attributes);
+        let scope = source_otel::build_source_scope("nginx_metrics");
         let mut sources = Vec::with_capacity(self.endpoints.len());
         for endpoint in self.endpoints.iter() {
             sources.push(NginxMetrics::new(
@@ -100,6 +112,8 @@ impl SourceConfig for NginxMetricsConfig {
                 endpoint.clone(),
                 self.auth.clone(),
                 namespace.clone(),
+                resource.clone(),
+                scope.clone(),
             )?);
         }
 
@@ -145,6 +159,8 @@ struct NginxMetrics {
     auth: Option<Auth>,
     namespace: Option<String>,
     tags: OtelAttributes,
+    resource: Resource,
+    scope: InstrumentationScope,
 }
 
 impl NginxMetrics {
@@ -153,6 +169,8 @@ impl NginxMetrics {
         endpoint: String,
         auth: Option<Auth>,
         namespace: Option<String>,
+        resource: Resource,
+        scope: InstrumentationScope,
     ) -> crate::Result<Self> {
         let tags = otel_tags!(
             "endpoint" => endpoint.clone(),
@@ -165,6 +183,8 @@ impl NginxMetrics {
             auth,
             namespace,
             tags,
+            resource,
+            scope,
         })
     }
 
@@ -245,17 +265,23 @@ impl NginxMetrics {
     }
 
     fn create_counter(&self, name: &str, value: f64) -> OtelMetric {
-        OtelMetric::new_counter(name, MetricKind::Absolute, value)
+        let mut m = OtelMetric::new_counter(name, MetricKind::Absolute, value)
             .with_namespace(self.namespace.clone())
             .with_tags(Some(self.tags.clone()))
-            .with_timestamp(Some(Utc::now()))
+            .with_timestamp(Some(Utc::now()));
+        m.set_resource(self.resource.clone());
+        m.set_scope(self.scope.clone());
+        m
     }
 
     fn create_gauge(&self, name: &str, value: f64) -> OtelMetric {
-        OtelMetric::new_gauge(name, value)
+        let mut m = OtelMetric::new_gauge(name, value)
             .with_namespace(self.namespace.clone())
             .with_tags(Some(self.tags.clone()))
-            .with_timestamp(Some(Utc::now()))
+            .with_timestamp(Some(Utc::now()));
+        m.set_resource(self.resource.clone());
+        m.set_scope(self.scope.clone());
+        m
     }
 }
 
@@ -298,6 +324,7 @@ mod integration_tests {
             namespace: "vector_nginx".to_owned(),
             tls: None,
             auth,
+            resource_attributes: BTreeMap::new(),
         };
 
         let events = run_and_assert_source_compliance_advanced(

@@ -3,6 +3,7 @@ use opentelemetry_proto::tonic::common::v1::{
 };
 use opentelemetry_proto::tonic::common::v1::AnyValue;
 pub use opentelemetry_proto::tonic::metrics::v1::summary_data_point::ValueAtQuantile;
+pub use opentelemetry_proto::tonic::metrics::v1::exponential_histogram_data_point::Buckets as ExpBuckets;
 use opentelemetry_proto::tonic::metrics::v1::Metric as OtelMetricProto;
 use opentelemetry_proto::tonic::common::v1::InstrumentationScope;
 use opentelemetry_proto::tonic::resource::v1::Resource;
@@ -43,7 +44,16 @@ pub enum MetricView<'a> {
     Distribution { bounds: &'a [f64], counts: &'a [u64] },
     Histogram { bounds: &'a [f64], counts: &'a [u64], count: u64, sum: f64 },
     Summary { quantiles: &'a [ValueAtQuantile], count: u64, sum: f64 },
-    ExponentialHistogram { count: u64, sum: f64 },
+    ExponentialHistogram {
+        scale: i32,
+        count: u64,
+        sum: f64,
+        zero_count: u64,
+        positive: Option<&'a ExpBuckets>,
+        negative: Option<&'a ExpBuckets>,
+        min: Option<f64>,
+        max: Option<f64>,
+    },
 }
 
 impl MetricView<'_> {
@@ -73,8 +83,8 @@ impl std::fmt::Display for MetricView<'_> {
             Self::Summary { quantiles, count, sum } => {
                 write!(f, "summary: {} quantiles, count={count}, sum={sum}", quantiles.len())
             }
-            Self::ExponentialHistogram { count, sum } => {
-                write!(f, "exponential histogram: count={count}, sum={sum}")
+            Self::ExponentialHistogram { scale, count, sum, .. } => {
+                write!(f, "exponential histogram: scale={scale}, count={count}, sum={sum}")
             }
         }
     }
@@ -439,7 +449,11 @@ impl OtelMetric {
     }
 
     pub fn set_resource(&mut self, mut resource: Resource) {
-        self.resource_attrs = OtelAttributes::from_key_values(std::mem::take(&mut resource.attributes));
+        let mut new_attrs = OtelAttributes::from_key_values(std::mem::take(&mut resource.attributes));
+        for (k, v) in self.resource_attrs.iter() {
+            new_attrs.insert(k.clone(), v.clone());
+        }
+        self.resource_attrs = new_attrs;
         self.resource = Some(resource);
     }
 
@@ -480,6 +494,11 @@ impl OtelMetric {
         &self.metric.unit
     }
 
+    pub fn with_unit(mut self, unit: impl Into<String>) -> Self {
+        self.metric.unit = unit.into();
+        self
+    }
+
     pub fn first_dp_attrs(&self) -> Option<&OtelAttributes> {
         self.dp_attrs.first()
     }
@@ -487,6 +506,14 @@ impl OtelMetric {
     pub fn set_data_point_attribute(&mut self, key: String, value: AnyValue) {
         for attrs in &mut self.dp_attrs {
             attrs.insert(key.clone(), value.clone());
+        }
+    }
+
+    pub fn flatten_resource_to_tags(&mut self, keys: &[String]) {
+        for key in keys {
+            if let Some(value) = self.resource_attrs.get(key) {
+                self.set_data_point_attribute(key.clone(), value.clone());
+            }
         }
     }
 
@@ -713,7 +740,22 @@ impl OtelMetric {
     pub fn tags(&self) -> Option<OtelAttributes> {
         let mut attrs = OtelAttributes::new();
 
-        // Resource attributes (prefixed with "resource.")
+        // Data point attributes only — resource/scope are separate
+        if let Some(dp) = self.dp_attrs.first() {
+            for (key, val) in dp.iter() {
+                if key.starts_with(f::VECTOR_PREFIX) {
+                    continue;
+                }
+                attrs.insert(key.clone(), val.clone());
+            }
+        }
+
+        attrs.as_option()
+    }
+
+    pub fn all_tags_including_resource(&self) -> Option<OtelAttributes> {
+        let mut attrs = OtelAttributes::new();
+
         for (key, val) in self.resource_attrs.iter() {
             if key == f::METRIC_NAMESPACE {
                 continue;
@@ -723,7 +765,6 @@ impl OtelMetric {
             }
         }
 
-        // Scope attributes
         if let Some(ref scope) = self.scope {
             if !scope.name.is_empty() {
                 attrs.insert("scope.name".to_string(), string_value(&scope.name));
@@ -733,7 +774,6 @@ impl OtelMetric {
             }
         }
 
-        // Data point attributes
         if let Some(dp) = self.dp_attrs.first() {
             for (key, val) in dp.iter() {
                 if key.starts_with(f::VECTOR_PREFIX) {
@@ -1449,14 +1489,111 @@ impl OtelMetric {
                 }
             }
             Some(Data::ExponentialHistogram(exp)) => {
-                let dp = exp.data_points.first();
-                MetricView::ExponentialHistogram {
-                    count: dp.map(|p| p.count).unwrap_or(0),
-                    sum: dp.and_then(|p| p.sum).unwrap_or(0.0),
+                match exp.data_points.first() {
+                    Some(p) => MetricView::ExponentialHistogram {
+                        scale: p.scale,
+                        count: p.count,
+                        sum: p.sum.unwrap_or(0.0),
+                        zero_count: p.zero_count,
+                        positive: p.positive.as_ref(),
+                        negative: p.negative.as_ref(),
+                        min: p.min,
+                        max: p.max,
+                    },
+                    None => MetricView::ExponentialHistogram {
+                        scale: 0, count: 0, sum: 0.0, zero_count: 0,
+                        positive: None, negative: None, min: None, max: None,
+                    },
                 }
             }
             None => MetricView::Gauge { value: 0.0 },
         }
+    }
+
+    /// If this metric is an ExponentialHistogram, convert it in-place to an
+    /// explicit-bounds Histogram using the given target bucket boundaries.
+    /// Returns true if conversion happened, false if the metric was not an
+    /// ExponentialHistogram.
+    pub fn convert_exponential_to_histogram(&mut self, target_bounds: &[f64]) -> bool {
+        use opentelemetry_proto::tonic::metrics::v1::{
+            metric::Data, Histogram, HistogramDataPoint,
+        };
+
+        let (exp_hist_temporality, dp) = match self.metric.data.as_ref() {
+            Some(Data::ExponentialHistogram(exp)) => {
+                (exp.aggregation_temporality, exp.data_points.first())
+            }
+            _ => return false,
+        };
+
+        let dp = match dp {
+            Some(dp) => dp,
+            None => {
+                self.metric.data = Some(Data::Histogram(Histogram {
+                    data_points: vec![],
+                    aggregation_temporality: exp_hist_temporality,
+                }));
+                return true;
+            }
+        };
+
+        let scale = dp.scale;
+        let base: f64 = 2.0_f64.powf(2.0_f64.powi(-scale));
+
+        let n = target_bounds.len();
+        let mut bucket_counts = vec![0u64; n + 1];
+
+        let mut place_value = |value: f64, count: u64| {
+            let pos = target_bounds.partition_point(|&b| b < value);
+            bucket_counts[pos] += count;
+        };
+
+        if dp.zero_count > 0 {
+            place_value(0.0, dp.zero_count);
+        }
+
+        if let Some(ref pos) = dp.positive {
+            for (i, &c) in pos.bucket_counts.iter().enumerate() {
+                if c == 0 { continue; }
+                let idx = pos.offset + i as i32;
+                let lower = base.powf(idx as f64);
+                let upper = base.powf((idx + 1) as f64);
+                let midpoint = (lower + upper) / 2.0;
+                place_value(midpoint, c);
+            }
+        }
+
+        if let Some(ref neg) = dp.negative {
+            for (i, &c) in neg.bucket_counts.iter().enumerate() {
+                if c == 0 { continue; }
+                let idx = neg.offset + i as i32;
+                let lower = base.powf(idx as f64);
+                let upper = base.powf((idx + 1) as f64);
+                let midpoint = -((lower + upper) / 2.0);
+                place_value(midpoint, c);
+            }
+        }
+
+        let new_dp = HistogramDataPoint {
+            attributes: vec![],
+            start_time_unix_nano: dp.start_time_unix_nano,
+            time_unix_nano: dp.time_unix_nano,
+            count: dp.count,
+            sum: dp.sum,
+            bucket_counts,
+            explicit_bounds: target_bounds.to_vec(),
+            exemplars: dp.exemplars.clone(),
+            flags: dp.flags,
+            min: dp.min,
+            max: dp.max,
+        };
+
+        self.metric.data = Some(Data::Histogram(Histogram {
+            data_points: vec![new_dp],
+            aggregation_temporality: exp_hist_temporality,
+        }));
+
+        true
     }
 
     /// Convert this metric to an `AnyValue::KvlistValue` suitable for use as
@@ -1848,5 +1985,144 @@ impl std::fmt::Display for OtelMetric {
             super::MetricKind::Incremental => '+',
         };
         write!(fmt, " {kind_char} {}", self.view())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use opentelemetry_proto::tonic::metrics::v1::{
+        ExponentialHistogram, ExponentialHistogramDataPoint,
+        exponential_histogram_data_point::Buckets,
+        metric::Data,
+    };
+
+    fn make_exp_hist(
+        scale: i32,
+        positive_offset: i32,
+        positive_counts: Vec<u64>,
+        zero_count: u64,
+        count: u64,
+        sum: f64,
+    ) -> OtelMetric {
+        let proto = OtelMetricProto {
+            name: "test_exp_hist".into(),
+            description: String::new(),
+            unit: String::new(),
+            metadata: vec![],
+            data: Some(Data::ExponentialHistogram(ExponentialHistogram {
+                data_points: vec![ExponentialHistogramDataPoint {
+                    attributes: vec![],
+                    start_time_unix_nano: 100,
+                    time_unix_nano: 200,
+                    count,
+                    sum: Some(sum),
+                    scale,
+                    zero_count,
+                    positive: Some(Buckets {
+                        offset: positive_offset,
+                        bucket_counts: positive_counts,
+                    }),
+                    negative: None,
+                    flags: 0,
+                    exemplars: vec![],
+                    min: Some(0.001),
+                    max: Some(10.0),
+                    zero_threshold: 0.0,
+                }],
+                aggregation_temporality: 2, // CUMULATIVE
+            })),
+        };
+        OtelMetric::new(proto)
+    }
+
+    #[test]
+    fn convert_exp_hist_to_histogram_basic() {
+        let bounds = vec![0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0];
+        let mut metric = make_exp_hist(0, 0, vec![5, 3, 2], 1, 11, 7.5);
+
+        assert!(metric.convert_exponential_to_histogram(&bounds));
+
+        match metric.view() {
+            MetricView::Histogram { bounds: b, counts, count, sum } => {
+                assert_eq!(b.len(), bounds.len());
+                assert_eq!(counts.len(), bounds.len() + 1);
+                assert_eq!(count, 11);
+                assert!((sum - 7.5).abs() < f64::EPSILON);
+                let total: u64 = counts.iter().sum();
+                assert_eq!(total, 11);
+            }
+            other => panic!("Expected Histogram, got: {other}"),
+        }
+    }
+
+    #[test]
+    fn convert_exp_hist_preserves_timestamps() {
+        let bounds = vec![1.0, 10.0];
+        let mut metric = make_exp_hist(0, 0, vec![5], 0, 5, 5.0);
+
+        metric.convert_exponential_to_histogram(&bounds);
+
+        if let Some(Data::Histogram(h)) = metric.metric_proto().data.as_ref() {
+            let dp = &h.data_points[0];
+            assert_eq!(dp.start_time_unix_nano, 100);
+            assert_eq!(dp.time_unix_nano, 200);
+        } else {
+            panic!("Expected Histogram data after conversion");
+        }
+    }
+
+    #[test]
+    fn convert_exp_hist_preserves_temporality() {
+        let bounds = vec![1.0];
+        let mut metric = make_exp_hist(0, 0, vec![1], 0, 1, 1.0);
+
+        metric.convert_exponential_to_histogram(&bounds);
+
+        assert!(metric.is_cumulative());
+    }
+
+    #[test]
+    fn convert_noop_on_non_exp_hist() {
+        let mut metric = OtelMetric::new_gauge("test_gauge", 42.0);
+        assert!(!metric.convert_exponential_to_histogram(&[1.0, 10.0]));
+        match metric.view() {
+            MetricView::Gauge { .. } => {}
+            other => panic!("Expected Gauge, got: {other}"),
+        }
+    }
+
+    #[test]
+    fn convert_exp_hist_empty_data_points() {
+        let proto = OtelMetricProto {
+            name: "empty_exp".into(),
+            description: String::new(),
+            unit: String::new(),
+            metadata: vec![],
+            data: Some(Data::ExponentialHistogram(ExponentialHistogram {
+                data_points: vec![],
+                aggregation_temporality: 1, // DELTA
+            })),
+        };
+        let mut metric = OtelMetric::new(proto);
+
+        assert!(metric.convert_exponential_to_histogram(&[1.0, 10.0]));
+
+        assert!(metric.is_delta());
+    }
+
+    #[test]
+    fn convert_exp_hist_zero_count_placed_correctly() {
+        let bounds = vec![0.005, 0.01];
+        let mut metric = make_exp_hist(0, 5, vec![], 10, 10, 0.0);
+
+        metric.convert_exponential_to_histogram(&bounds);
+
+        match metric.view() {
+            MetricView::Histogram { counts, .. } => {
+                assert_eq!(counts[0], 10, "zero_count should land in first bucket (<=0.005)");
+            }
+            other => panic!("Expected Histogram, got: {other}"),
+        }
     }
 }

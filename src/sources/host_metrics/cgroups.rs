@@ -487,7 +487,7 @@ mod tests {
     #[tokio::test]
     async fn generates_cgroups_metrics() {
         let config: HostMetricsConfig = toml::from_str(r#"collectors = ["cgroups"]"#).unwrap();
-        let mut buffer = MetricsBuffer::new(None);
+        let mut buffer = MetricsBuffer::new(None, &Default::default());
         HostMetrics::new(config).cgroups_metrics(&mut buffer).await;
         let metrics = buffer.metrics;
 
@@ -606,7 +606,7 @@ mod tests {
                 "#
             ))
             .unwrap();
-            let mut buffer = MetricsBuffer::new(None);
+            let mut buffer = MetricsBuffer::new(None, &Default::default());
             HostMetrics::new(config).cgroups_metrics(&mut buffer).await;
             let metrics = buffer.metrics;
 

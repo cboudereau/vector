@@ -1,6 +1,8 @@
-use std::time::Duration;
+use std::{collections::BTreeMap, time::Duration};
 
 use futures::StreamExt;
+use opentelemetry_proto::tonic::common::v1::InstrumentationScope;
+use opentelemetry_proto::tonic::resource::v1::Resource;
 use serde_with::serde_as;
 use tokio::time;
 use tokio_stream::wrappers::IntervalStream;
@@ -18,6 +20,7 @@ use crate::{
     internal_events::{EventsReceived, StreamClosedError},
     metrics::Controller,
     shutdown::ShutdownSignal,
+    sources::source_otel,
 };
 
 /// Configuration for the `internal_metrics` source.
@@ -41,6 +44,12 @@ pub struct InternalMetricsConfig {
     /// Overrides the default namespace for the metrics emitted by the source.
     #[serde(default = "default_namespace")]
     pub namespace: String,
+
+    /// Custom resource attributes for OTel Resource on emitted metrics.
+    ///
+    /// Default `service.name` is `sol` (not `sol/internal_metrics`).
+    #[serde(default)]
+    pub resource_attributes: BTreeMap<String, String>,
 }
 
 impl Default for InternalMetricsConfig {
@@ -49,6 +58,7 @@ impl Default for InternalMetricsConfig {
             scrape_interval_secs: default_scrape_interval(),
             tags: TagsConfig::default(),
             namespace: default_namespace(),
+            resource_attributes: BTreeMap::new(),
         }
     }
 }
@@ -111,6 +121,13 @@ impl SourceConfig for InternalMetricsConfig {
             .as_deref()
             .and_then(|tag| (!tag.is_empty()).then(|| tag.to_owned()));
 
+        // For internal_metrics, default service.name is "sol" rather than "sol/internal_metrics".
+        let mut ra = self.resource_attributes.clone();
+        ra.entry("service.name".to_string())
+            .or_insert_with(|| "sol".to_string());
+        let resource = source_otel::build_source_resource("internal_metrics", &ra);
+        let scope = source_otel::build_source_scope("internal_metrics");
+
         Ok(Box::pin(
             InternalMetrics {
                 namespace,
@@ -120,6 +137,8 @@ impl SourceConfig for InternalMetricsConfig {
                 interval,
                 out: cx.out,
                 shutdown: cx.shutdown,
+                resource,
+                scope,
             }
             .run(),
         ))
@@ -142,6 +161,8 @@ struct InternalMetrics<'a> {
     interval: time::Duration,
     out: SourceSender,
     shutdown: ShutdownSignal,
+    resource: Resource,
+    scope: InstrumentationScope,
 }
 
 impl InternalMetrics<'_> {
@@ -175,6 +196,8 @@ impl InternalMetrics<'_> {
                 if let Some(pid_key) = &self.pid_key {
                     metric.replace_tag(pid_key.to_owned(), pid.clone());
                 }
+                metric.set_resource(self.resource.clone());
+                metric.set_scope(self.scope.clone());
                 metric
             });
 

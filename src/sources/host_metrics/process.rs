@@ -65,7 +65,7 @@ mod tests {
 
     #[tokio::test]
     async fn generates_process_metrics() {
-        let mut buffer = MetricsBuffer::new(None);
+        let mut buffer = MetricsBuffer::new(None, &Default::default());
         HostMetrics::new(HostMetricsConfig::default())
             .process_metrics(&mut buffer)
             .await;

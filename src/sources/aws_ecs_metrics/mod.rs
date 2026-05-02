@@ -1,8 +1,10 @@
-use std::{env, time::Duration};
+use std::{collections::BTreeMap, env, time::Duration};
 
 use futures::StreamExt;
 use http_body::Collected;
 use hyper::{Body, Request};
+use opentelemetry_proto::tonic::common::v1::InstrumentationScope;
+use opentelemetry_proto::tonic::resource::v1::Resource;
 use serde_with::serde_as;
 use tokio::time;
 use tokio_stream::wrappers::IntervalStream;
@@ -22,6 +24,7 @@ use crate::{
         HttpClientHttpResponseError, StreamClosedError,
     },
     shutdown::ShutdownSignal,
+    sources::source_otel,
 };
 
 mod parser;
@@ -100,6 +103,12 @@ pub struct AwsEcsMetricsSourceConfig {
     /// Disabled if empty.
     #[serde(default = "default_namespace")]
     namespace: String,
+
+    /// Custom resource attributes for OTel Resource on emitted metrics.
+    ///
+    /// Defaults: `service.name = sol/aws_ecs_metrics`, `host.name` = auto-detected hostname.
+    #[serde(default)]
+    resource_attributes: BTreeMap<String, String>,
 }
 
 const METADATA_URI_V4: &str = "ECS_CONTAINER_METADATA_URI";
@@ -145,6 +154,7 @@ impl GenerateConfig for AwsEcsMetricsSourceConfig {
             version: default_version(),
             scrape_interval_secs: default_scrape_interval_secs(),
             namespace: default_namespace(),
+            resource_attributes: BTreeMap::new(),
         })
         .unwrap()
     }
@@ -156,6 +166,8 @@ impl SourceConfig for AwsEcsMetricsSourceConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
         let namespace = Some(self.namespace.clone()).filter(|namespace| !namespace.is_empty());
         let http_client = HttpClient::new(None, &cx.proxy)?;
+        let resource = source_otel::build_source_resource("aws_ecs_metrics", &self.resource_attributes);
+        let scope = source_otel::build_source_scope("aws_ecs_metrics");
 
         Ok(Box::pin(aws_ecs_metrics(
             http_client,
@@ -164,6 +176,8 @@ impl SourceConfig for AwsEcsMetricsSourceConfig {
             namespace,
             cx.out,
             cx.shutdown,
+            resource,
+            scope,
         )))
     }
 
@@ -183,6 +197,8 @@ async fn aws_ecs_metrics(
     namespace: Option<String>,
     mut out: SourceSender,
     shutdown: ShutdownSignal,
+    resource: Resource,
+    scope: InstrumentationScope,
 ) -> Result<(), ()> {
     let mut interval = IntervalStream::new(time::interval(interval)).take_until(shutdown);
     let bytes_received = register!(BytesReceived::from(Protocol::HTTP));
@@ -202,7 +218,11 @@ async fn aws_ecs_metrics(
                         bytes_received.emit(ByteSize(body.len()));
 
                         match parser::parse(body.as_ref(), namespace.clone()) {
-                            Ok(metrics) => {
+                            Ok(mut metrics) => {
+                                for m in &mut metrics {
+                                    m.set_resource(resource.clone());
+                                    m.set_scope(scope.clone());
+                                }
                                 let count = metrics.len();
                                 emit!(AwsEcsMetricsEventsReceived {
                                     byte_size: metrics.estimated_json_encoded_size_of(),
@@ -585,6 +605,7 @@ mod test {
             version: Version::V4,
             scrape_interval_secs: Duration::from_secs(1),
             namespace: default_namespace(),
+            resource_attributes: BTreeMap::new(),
         };
 
         let events =
@@ -636,6 +657,7 @@ mod integration_tests {
             version,
             scrape_interval_secs: Duration::from_secs(1),
             namespace: default_namespace(),
+            resource_attributes: BTreeMap::new(),
         };
 
         let events =

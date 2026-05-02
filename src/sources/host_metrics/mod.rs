@@ -21,12 +21,16 @@ use vector_lib::{
     },
 };
 
+use opentelemetry_proto::tonic::common::v1::InstrumentationScope;
+use opentelemetry_proto::tonic::resource::v1::Resource;
+
 use crate::{
     SourceSender,
     config::{SourceConfig, SourceContext, SourceOutput},
     event::{Event, OtelAttributes, OtelMetric, metric::MetricKind, string_value},
     internal_events::{EventsReceived, HostMetricsScrapeDetailError, StreamClosedError},
     shutdown::ShutdownSignal,
+    sources::source_otel,
 };
 
 #[cfg(target_os = "linux")]
@@ -140,6 +144,13 @@ pub struct HostMetricsConfig {
     #[configurable(derived)]
     #[serde(default)]
     pub process: process::ProcessConfig,
+
+    /// Custom resource attributes for OTel Resource on emitted metrics.
+    ///
+    /// Defaults: `service.name = sol/host_metrics`, `host.name` = auto-detected hostname.
+    /// Set a key to empty string to suppress it.
+    #[serde(default)]
+    pub resource_attributes: std::collections::BTreeMap<String, String>,
 }
 
 /// Options for the cgroups (controller groups) metrics collector.
@@ -381,7 +392,7 @@ impl HostMetrics {
     }
 
     pub fn buffer(&self) -> MetricsBuffer {
-        MetricsBuffer::new(self.config.namespace.clone())
+        MetricsBuffer::new(self.config.namespace.clone(), &self.config.resource_attributes)
     }
 
     async fn capture_metrics(&mut self) -> Vec<OtelMetric> {
@@ -490,16 +501,23 @@ pub struct MetricsBuffer {
     host: Option<String>,
     timestamp: DateTime<Utc>,
     namespace: Option<String>,
+    resource: Option<Resource>,
+    scope: Option<InstrumentationScope>,
 }
 
 impl MetricsBuffer {
-    fn new(namespace: Option<String>) -> Self {
+    fn new(
+        namespace: Option<String>,
+        resource_attributes: &std::collections::BTreeMap<String, String>,
+    ) -> Self {
         Self {
             metrics: Vec::new(),
             name: "",
             host: crate::get_hostname().ok(),
             timestamp: Utc::now(),
             namespace,
+            resource: Some(source_otel::build_source_resource("host_metrics", resource_attributes)),
+            scope: Some(source_otel::build_source_scope("host_metrics")),
         }
     }
 
@@ -511,22 +529,31 @@ impl MetricsBuffer {
         tags
     }
 
+    fn apply_otel(&self, metric: &mut OtelMetric) {
+        if let Some(ref resource) = self.resource {
+            metric.set_resource(resource.clone());
+        }
+        if let Some(ref scope) = self.scope {
+            metric.set_scope(scope.clone());
+        }
+    }
+
     fn counter(&mut self, name: &str, value: f64, tags: OtelAttributes) {
-        self.metrics.push(
-            OtelMetric::new_counter(name, MetricKind::Absolute, value)
-                .with_namespace(self.namespace.clone())
-                .with_tags(Some(self.tags(tags)))
-                .with_timestamp(Some(self.timestamp)),
-        )
+        let mut metric = OtelMetric::new_counter(name, MetricKind::Absolute, value)
+            .with_namespace(self.namespace.clone())
+            .with_tags(Some(self.tags(tags)))
+            .with_timestamp(Some(self.timestamp));
+        self.apply_otel(&mut metric);
+        self.metrics.push(metric);
     }
 
     fn gauge(&mut self, name: &str, value: f64, tags: OtelAttributes) {
-        self.metrics.push(
-            OtelMetric::new_gauge(name, value)
-                .with_namespace(self.namespace.clone())
-                .with_tags(Some(self.tags(tags)))
-                .with_timestamp(Some(self.timestamp)),
-        )
+        let mut metric = OtelMetric::new_gauge(name, value)
+            .with_namespace(self.namespace.clone())
+            .with_tags(Some(self.tags(tags)))
+            .with_timestamp(Some(self.timestamp));
+        self.apply_otel(&mut metric);
+        self.metrics.push(metric);
     }
 }
 
@@ -827,7 +854,7 @@ mod tests {
     #[cfg(not(windows))]
     #[tokio::test]
     async fn generates_loadavg_metrics() {
-        let mut buffer = MetricsBuffer::new(None);
+        let mut buffer = MetricsBuffer::new(None, &Default::default());
         HostMetrics::new(HostMetricsConfig::default())
             .loadavg_metrics(&mut buffer)
             .await;
@@ -845,7 +872,7 @@ mod tests {
 
     #[tokio::test]
     async fn generates_host_metrics() {
-        let mut buffer = MetricsBuffer::new(None);
+        let mut buffer = MetricsBuffer::new(None, &Default::default());
         HostMetrics::new(HostMetricsConfig::default())
             .host_metrics(&mut buffer)
             .await;

@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{BTreeMap, HashSet},
     fmt::Write as _,
     iter,
     path::PathBuf,
@@ -15,6 +15,8 @@ use openssl::{
     error::ErrorStack,
     ssl::{SslConnector, SslMethod},
 };
+use opentelemetry_proto::tonic::common::v1::InstrumentationScope;
+use opentelemetry_proto::tonic::resource::v1::Resource;
 use postgres_openssl::MakeTlsConnector;
 use serde_with::serde_as;
 use snafu::{ResultExt, Snafu};
@@ -40,6 +42,7 @@ use crate::{
         CollectionCompleted, EndpointBytesReceived, EventsReceived, PostgresqlMetricsCollectError,
         StreamClosedError,
     },
+    sources::source_otel,
 };
 
 macro_rules! tags {
@@ -160,6 +163,12 @@ pub struct PostgresqlMetricsConfig {
 
     #[configurable(derived)]
     tls: Option<PostgresqlMetricsTlsConfig>,
+
+    /// Custom resource attributes for OTel Resource on emitted metrics.
+    ///
+    /// Defaults: `service.name = sol/postgresql_metrics`, `host.name` = auto-detected hostname.
+    #[serde(default)]
+    resource_attributes: BTreeMap<String, String>,
 }
 
 impl Default for PostgresqlMetricsConfig {
@@ -171,6 +180,7 @@ impl Default for PostgresqlMetricsConfig {
             scrape_interval_secs: Duration::from_secs(15),
             namespace: "postgresql".to_owned(),
             tls: None,
+            resource_attributes: BTreeMap::new(),
         }
     }
 }
@@ -194,6 +204,8 @@ impl SourceConfig for PostgresqlMetricsConfig {
             self.exclude_databases.clone().unwrap_or_default(),
         );
         let namespace = Some(self.namespace.clone()).filter(|namespace| !namespace.is_empty());
+        let resource = source_otel::build_source_resource("postgresql_metrics", &self.resource_attributes);
+        let scope = source_otel::build_source_scope("postgresql_metrics");
 
         let mut sources = try_join_all(self.endpoints.iter().map(|endpoint| {
             PostgresqlMetrics::new(
@@ -201,6 +213,8 @@ impl SourceConfig for PostgresqlMetricsConfig {
                 datname_filter.clone(),
                 namespace.clone(),
                 self.tls.clone(),
+                resource.clone(),
+                scope.clone(),
             )
         }))
         .await?;
@@ -485,6 +499,8 @@ struct PostgresqlMetrics {
     tags: OtelAttributes,
     datname_filter: DatnameFilter,
     events_received: Registered<EventsReceived>,
+    resource: Resource,
+    scope: InstrumentationScope,
 }
 
 impl PostgresqlMetrics {
@@ -493,6 +509,8 @@ impl PostgresqlMetrics {
         datname_filter: DatnameFilter,
         namespace: Option<String>,
         tls_config: Option<PostgresqlMetricsTlsConfig>,
+        resource: Resource,
+        scope: InstrumentationScope,
     ) -> Result<Self, BuildError> {
         // Takes the raw endpoint, parses it into a configuration, and then we set `endpoint` back to a sanitized
         // version of the original value, dropping things like username/password, etc.
@@ -526,6 +544,8 @@ impl PostgresqlMetrics {
             tags,
             datname_filter,
             events_received: register!(EventsReceived),
+            resource,
+            scope,
         })
     }
 
@@ -854,17 +874,23 @@ impl PostgresqlMetrics {
     }
 
     fn create_counter(&self, name: &str, value: f64, tags: OtelAttributes) -> OtelMetric {
-        OtelMetric::new_counter(name, MetricKind::Absolute, value)
+        let mut m = OtelMetric::new_counter(name, MetricKind::Absolute, value)
             .with_namespace(self.namespace.clone())
             .with_tags(Some(tags))
-            .with_timestamp(Some(Utc::now()))
+            .with_timestamp(Some(Utc::now()));
+        m.set_resource(self.resource.clone());
+        m.set_scope(self.scope.clone());
+        m
     }
 
     fn create_gauge(&self, name: &str, value: f64, tags: OtelAttributes) -> OtelMetric {
-        OtelMetric::new_gauge(name, value)
+        let mut m = OtelMetric::new_gauge(name, value)
             .with_namespace(self.namespace.clone())
             .with_tags(Some(tags))
-            .with_timestamp(Some(Utc::now()))
+            .with_timestamp(Some(Utc::now()));
+        m.set_resource(self.resource.clone());
+        m.set_scope(self.scope.clone());
+        m
     }
 }
 

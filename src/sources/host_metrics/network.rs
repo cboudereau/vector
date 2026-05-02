@@ -108,7 +108,7 @@ mod tests {
 
     #[tokio::test]
     async fn generates_network_metrics() {
-        let mut buffer = MetricsBuffer::new(None);
+        let mut buffer = MetricsBuffer::new(None, &Default::default());
         HostMetrics::new(HostMetricsConfig::default())
             .network_metrics(&mut buffer)
             .await;
@@ -130,7 +130,7 @@ mod tests {
     #[tokio::test]
     async fn network_metrics_filters_on_device() {
         assert_filtered_metrics("device", |devices| async move {
-            let mut buffer = MetricsBuffer::new(None);
+            let mut buffer = MetricsBuffer::new(None, &Default::default());
             HostMetrics::new(HostMetricsConfig {
                 network: NetworkConfig { devices },
                 ..Default::default()

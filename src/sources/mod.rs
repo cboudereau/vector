@@ -95,6 +95,7 @@ pub mod vector;
 #[cfg(feature = "sources-websocket")]
 pub mod websocket;
 
+pub mod source_otel;
 pub mod util;
 
 pub use vector_lib::source::Source;

@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use opentelemetry_proto::tonic::common::v1::InstrumentationScope;
+use opentelemetry_proto::tonic::resource::v1::Resource;
 use vector_lib::{
     codecs::{
         NewlineDelimitedDecoder,
@@ -39,12 +41,16 @@ pub fn statsd_unix(
     config: UnixConfig,
     shutdown: ShutdownSignal,
     out: SourceSender,
+    resource: Resource,
+    scope: InstrumentationScope,
 ) -> crate::Result<Source> {
     let decoder = Decoder::new(
         Framer::NewlineDelimited(NewlineDelimitedDecoder::new()),
-        Deserializer::Boxed(Box::new(StatsdDeserializer::unix(
+        Deserializer::Boxed(Box::new(StatsdDeserializer::unix_with_otel(
             config.sanitize,
             config.convert_to,
+            resource,
+            scope,
         ))),
     );
 

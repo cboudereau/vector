@@ -155,6 +155,7 @@ pub(super) struct RemoteWriteSink<S> {
     pub(super) buckets: Vec<f64>,
     pub(super) quantiles: Vec<f64>,
     pub(super) expire_metrics_secs: Option<f64>,
+    pub(super) resource_to_labels: Vec<String>,
     pub(super) service: S,
 }
 
@@ -179,12 +180,17 @@ where
         let tenant_id = self.tenant_id.clone();
         let service = self.service;
         let expire_metrics_secs = self.expire_metrics_secs;
+        let resource_to_labels = self.resource_to_labels.clone();
 
         input
             .filter_map(|event| {
                 future::ready(event.try_into_otel_metric())
             })
             .normalized_with_ttl::<PrometheusMetricNormalize>(expire_metrics_secs)
+            .map(move |mut otel| {
+                otel.flatten_resource_to_tags(&resource_to_labels);
+                otel
+            })
             .filter_map(move |otel| {
                 future::ready(make_remote_write_event(tenant_id.as_ref(), otel))
             })

@@ -95,6 +95,11 @@ pub struct InfluxDbConfig {
     #[serde(default = "default_summary_quantiles")]
     pub quantiles: Vec<f64>,
 
+    /// Resource attribute keys to promote to InfluxDB tags.
+    #[serde(default = "default_resource_to_tags")]
+    #[configurable(metadata(docs::advanced))]
+    pub resource_to_tags: Vec<String>,
+
     #[configurable(derived)]
     #[serde(
         default,
@@ -102,6 +107,10 @@ pub struct InfluxDbConfig {
         skip_serializing_if = "crate::serde::is_default"
     )]
     acknowledgements: AcknowledgementsConfig,
+}
+
+fn default_resource_to_tags() -> Vec<String> {
+    vec!["service.name".into(), "host.name".into()]
 }
 
 pub fn default_summary_quantiles() -> Vec<f64> {
@@ -164,6 +173,7 @@ impl InfluxDbSvc {
             inner: http_service,
         };
         let mut normalizer = MetricNormalizer::<InfluxMetricNormalize>::default();
+        let resource_to_tags = influxdb_http_service.config.resource_to_tags.clone();
 
         let sink = request
             .batch_sink(
@@ -180,7 +190,10 @@ impl InfluxDbSvc {
                     event
                         .try_into_otel_metric()
                         .and_then(|m| normalizer.normalize(m))
-                        .map(|metric| Ok(EncodedEvent::new(metric, byte_size, json_size)))
+                        .map(|mut metric| {
+                            metric.flatten_resource_to_tags(&resource_to_tags);
+                            Ok(EncodedEvent::new(metric, byte_size, json_size))
+                        })
                 })
             })
             .sink_map_err(|error| error!(message = "Fatal influxdb sink error.", %error, internal_log_rate_limit = false));

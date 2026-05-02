@@ -18,7 +18,7 @@ pub(crate) mod ddtrace_proto {
     include!(concat!(env!("OUT_DIR"), "/dd_trace.rs"));
 }
 
-use std::{convert::Infallible, fmt::Debug, io::Read, net::SocketAddr, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, convert::Infallible, fmt::Debug, io::Read, net::SocketAddr, sync::Arc, time::Duration};
 
 use bytes::{Buf, Bytes};
 use chrono::{DateTime, Utc, serde::ts_milliseconds};
@@ -61,7 +61,7 @@ use crate::{
     internal_events::{HttpBytesReceived, StreamClosedError},
     schema,
     serde::{bool_or_struct, default_decoding, default_framing_message_based},
-    sources::{self, util::http::emit_decompress_error},
+    sources::{self, source_otel, util::http::emit_decompress_error},
     tls::{MaybeTlsSettings, TlsEnableableConfig},
 };
 
@@ -159,6 +159,12 @@ pub struct DatadogAgentConfig {
     /// and increment the `component_timed_out_events_total` internal metric instead.
     #[serde_as(as = "Option<serde_with::DurationSecondsWithFrac<f64>>")]
     send_timeout_secs: Option<f64>,
+
+    /// Custom resource attributes added to each emitted metric's OTel Resource.
+    ///
+    /// These are merged into the per-metric resource (which already carries DD host/namespace).
+    #[serde(default)]
+    pub resource_attributes: BTreeMap<String, String>,
 }
 
 impl GenerateConfig for DatadogAgentConfig {
@@ -178,6 +184,7 @@ impl GenerateConfig for DatadogAgentConfig {
             split_metric_namespace: true,
             keepalive: KeepaliveConfig::default(),
             send_timeout_secs: None,
+            resource_attributes: BTreeMap::new(),
         })
         .unwrap()
     }
@@ -362,6 +369,7 @@ pub(crate) struct DatadogAgentSource {
     #[allow(dead_code)]
     parse_ddtags: bool,
     split_metric_namespace: bool,
+    pub(crate) scope: opentelemetry_proto::tonic::common::v1::InstrumentationScope,
 }
 
 #[derive(Clone)]
@@ -412,6 +420,7 @@ impl DatadogAgentSource {
             events_received: register!(EventsReceived),
             parse_ddtags,
             split_metric_namespace,
+            scope: source_otel::build_source_scope("datadog_agent"),
         }
     }
 

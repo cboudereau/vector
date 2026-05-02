@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{collections::BTreeMap, time::Duration};
 
 use futures::{FutureExt, StreamExt};
 use http::Uri;
@@ -21,6 +21,7 @@ use crate::{
         EventStoreDbMetricsHttpError, EventStoreDbStatsParsingError, EventsReceived,
         StreamClosedError,
     },
+    sources::source_otel,
     tls::TlsSettings,
 };
 
@@ -50,6 +51,12 @@ pub struct EventStoreDbConfig {
     /// By default, `eventstoredb` is used.
     #[configurable(metadata(docs::examples = "eventstoredb"))]
     default_namespace: Option<String>,
+
+    /// Custom resource attributes for OTel Resource on emitted metrics.
+    ///
+    /// Defaults: `service.name = sol/eventstoredb_metrics`, `host.name` = auto-detected hostname.
+    #[serde(default)]
+    resource_attributes: BTreeMap<String, String>,
 }
 
 const fn default_scrape_interval_secs() -> Duration {
@@ -66,11 +73,15 @@ impl_generate_config_from_default!(EventStoreDbConfig);
 #[typetag::serde(name = "eventstoredb_metrics")]
 impl SourceConfig for EventStoreDbConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
+        let resource = source_otel::build_source_resource("eventstoredb_metrics", &self.resource_attributes);
+        let scope = source_otel::build_source_scope("eventstoredb_metrics");
         eventstoredb(
             self.endpoint.clone(),
             self.scrape_interval_secs,
             self.default_namespace.clone(),
             cx,
+            resource,
+            scope,
         )
     }
 
@@ -88,6 +99,8 @@ fn eventstoredb(
     interval: Duration,
     namespace: Option<String>,
     mut cx: SourceContext,
+    resource: opentelemetry_proto::tonic::resource::v1::Resource,
+    scope: opentelemetry_proto::tonic::common::v1::InstrumentationScope,
 ) -> crate::Result<super::Source> {
     let mut ticks = IntervalStream::new(tokio::time::interval(interval)).take_until(cx.shutdown);
     let tls_settings = TlsSettings::from_options(None)?;
@@ -135,7 +148,14 @@ fn eventstoredb(
                             }
 
                             Ok(stats) => {
-                                let metrics = stats.metrics(namespace.clone());
+                                let metrics = stats.metrics(namespace.clone())
+                                    .into_iter()
+                                    .map(|mut m| {
+                                        m.set_resource(resource.clone());
+                                        m.set_scope(scope.clone());
+                                        m
+                                    })
+                                    .collect::<Vec<_>>();
                                 let count = metrics.len();
                                 let byte_size = metrics.estimated_json_encoded_size_of();
 
@@ -172,6 +192,7 @@ mod integration_tests {
             endpoint: EVENTSTOREDB_SCRAPE_ADDRESS.to_owned(),
             scrape_interval_secs: Duration::from_secs(1),
             default_namespace: None,
+            resource_attributes: BTreeMap::new(),
         };
 
         let events =

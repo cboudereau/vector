@@ -115,6 +115,9 @@ cargo fmt --all -- --check
 # Test vector
 cargo test -p vector --all-features
 
+# Test
+cargo test -p vector -p vector-core -p codecs -p vector-vrl-metrics
+
 # To log output:
 RUSTFLAGS="--cfg tokio_unstable" cargo test -p vector --all-features 2>&1 | tee tests.log
 ```

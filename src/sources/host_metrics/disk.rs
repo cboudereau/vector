@@ -83,7 +83,7 @@ mod tests {
 
     #[tokio::test]
     async fn generates_disk_metrics() {
-        let mut buffer = MetricsBuffer::new(None);
+        let mut buffer = MetricsBuffer::new(None, &Default::default());
         HostMetrics::new(HostMetricsConfig::default())
             .disk_metrics(&mut buffer)
             .await;
@@ -112,7 +112,7 @@ mod tests {
     #[tokio::test]
     async fn filters_disk_metrics_on_device() {
         assert_filtered_metrics("device", |devices| async move {
-            let mut buffer = MetricsBuffer::new(None);
+            let mut buffer = MetricsBuffer::new(None, &Default::default());
             HostMetrics::new(HostMetricsConfig {
                 disk: DiskConfig { devices },
                 ..Default::default()

@@ -1,9 +1,11 @@
-use std::{future::ready, time::Duration};
+use std::{collections::BTreeMap, future::ready, time::Duration};
 
 use chrono::Utc;
 use futures::{FutureExt, StreamExt, TryFutureExt, stream};
 use http::uri::Scheme;
 use hyper::{Body, Request};
+use opentelemetry_proto::tonic::common::v1::InstrumentationScope;
+use opentelemetry_proto::tonic::resource::v1::Resource;
 use serde_with::serde_as;
 use snafu::ResultExt;
 use tokio_stream::wrappers::IntervalStream;
@@ -19,6 +21,7 @@ use crate::{
         HttpClientHttpError, HttpClientHttpResponseError, StreamClosedError,
     },
     shutdown::ShutdownSignal,
+    sources::source_otel,
 };
 
 mod parser;
@@ -45,6 +48,12 @@ pub struct ApacheMetricsConfig {
     /// Disabled if empty.
     #[serde(default = "default_namespace")]
     namespace: String,
+
+    /// Custom resource attributes for OTel Resource on emitted metrics.
+    ///
+    /// Defaults: `service.name = sol/apache_metrics`, `host.name` = auto-detected hostname.
+    #[serde(default)]
+    resource_attributes: BTreeMap<String, String>,
 }
 
 pub const fn default_scrape_interval_secs() -> Duration {
@@ -61,6 +70,7 @@ impl GenerateConfig for ApacheMetricsConfig {
             endpoints: vec!["http://localhost:8080/server-status/?auto".to_owned()],
             scrape_interval_secs: default_scrape_interval_secs(),
             namespace: default_namespace(),
+            resource_attributes: BTreeMap::new(),
         })
         .unwrap()
     }
@@ -78,6 +88,8 @@ impl SourceConfig for ApacheMetricsConfig {
             .context(super::UriParseSnafu)?;
 
         let namespace = Some(self.namespace.clone()).filter(|namespace| !namespace.is_empty());
+        let resource = source_otel::build_source_resource("apache_metrics", &self.resource_attributes);
+        let scope = source_otel::build_source_scope("apache_metrics");
 
         Ok(apache_metrics(
             urls,
@@ -86,6 +98,8 @@ impl SourceConfig for ApacheMetricsConfig {
             cx.shutdown,
             cx.out,
             cx.proxy,
+            resource,
+            scope,
         ))
     }
 
@@ -147,6 +161,8 @@ fn apache_metrics(
     shutdown: ShutdownSignal,
     mut out: SourceSender,
     proxy: ProxyConfig,
+    resource: Resource,
+    scope: InstrumentationScope,
 ) -> super::Source {
     Box::pin(async move {
         let mut stream = IntervalStream::new(tokio::time::interval(interval))
@@ -256,7 +272,11 @@ fn apache_metrics(
                     .flatten()
             })
             .flatten()
-            .map(|m| Event::Metric(m))
+            .map(move |mut m| {
+                m.set_resource(resource.clone());
+                m.set_scope(scope.clone());
+                Event::Metric(m)
+            })
             .boxed();
 
         match out.send_event_stream(&mut stream).await {
@@ -361,6 +381,7 @@ Scoreboard: ____S_____I______R____I_______KK___D__C__G_L____________W___________
             endpoints: vec![format!("http://foo:bar@{}/metrics", in_addr)],
             scrape_interval_secs: Duration::from_secs(1),
             namespace: "custom".to_string(),
+            resource_attributes: BTreeMap::new(),
         };
 
         let events = run_and_assert_source_compliance(
@@ -421,6 +442,7 @@ Scoreboard: ____S_____I______R____I_______KK___D__C__G_L____________W___________
             endpoints: vec![format!("http://{}", in_addr)],
             scrape_interval_secs: Duration::from_secs(1),
             namespace: "apache".to_string(),
+            resource_attributes: BTreeMap::new(),
         }
         .build(SourceContext::new_test(tx, None))
         .await
@@ -455,6 +477,7 @@ Scoreboard: ____S_____I______R____I_______KK___D__C__G_L____________W___________
             endpoints: vec![format!("http://{}", in_addr)],
             scrape_interval_secs: Duration::from_secs(1),
             namespace: "custom".to_string(),
+            resource_attributes: BTreeMap::new(),
         }
         .build(SourceContext::new_test(tx, None))
         .await

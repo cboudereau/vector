@@ -152,10 +152,12 @@ impl IntoLua for LuaMetric {
                 aggregated_summary.raw_set("sum", sum)?;
                 tbl.raw_set("aggregated_summary", aggregated_summary)?;
             }
-            MetricView::ExponentialHistogram { count, sum } => {
+            MetricView::ExponentialHistogram { scale, count, sum, zero_count, .. } => {
                 let exp_hist = lua.create_table()?;
+                exp_hist.raw_set("scale", scale)?;
                 exp_hist.raw_set("count", count)?;
                 exp_hist.raw_set("sum", sum)?;
+                exp_hist.raw_set("zero_count", zero_count)?;
                 tbl.raw_set("exponential_histogram", exp_hist)?;
             }
         }

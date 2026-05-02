@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     time::Duration,
 };
@@ -6,6 +7,8 @@ use std::{
 use bytes::Bytes;
 use futures::{StreamExt, TryFutureExt};
 use listenfd::ListenFd;
+use opentelemetry_proto::tonic::common::v1::InstrumentationScope;
+use opentelemetry_proto::tonic::resource::v1::Resource;
 use serde_with::serde_as;
 use smallvec::{SmallVec, smallvec};
 use tokio_util::udp::UdpFramed;
@@ -25,7 +28,7 @@ use super::util::net::{SocketListenAddr, TcpNullAcker, TcpSource, try_bind_udp_s
 use crate::{
     SourceSender,
     codecs::Decoder,
-    config::{GenerateConfig, Resource, SourceConfig, SourceContext, SourceOutput},
+    config::{GenerateConfig, Resource as CfgResource, SourceConfig, SourceContext, SourceOutput},
     event::Event,
     internal_events::{
         EventsReceived, SocketBindError, SocketBytesReceived, SocketMode, SocketReceiveError,
@@ -33,6 +36,7 @@ use crate::{
     },
     net,
     shutdown::ShutdownSignal,
+    sources::source_otel,
     tcp::TcpKeepaliveConfig,
     tls::{MaybeTlsSettings, TlsSourceConfig},
 };
@@ -196,9 +200,13 @@ impl GenerateConfig for StatsdConfig {
 #[typetag::serde(name = "statsd")]
 impl SourceConfig for StatsdConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<super::Source> {
+        let empty_overrides = BTreeMap::new();
+        let resource = source_otel::build_source_resource("statsd", &empty_overrides);
+        let scope = source_otel::build_source_scope("statsd");
+
         match self {
             StatsdConfig::Udp(config) => {
-                Ok(Box::pin(statsd_udp(config.clone(), cx.shutdown, cx.out)))
+                Ok(Box::pin(statsd_udp(config.clone(), cx.shutdown, cx.out, resource, scope)))
             }
             StatsdConfig::Tcp(config) => {
                 let tls_config = config.tls.as_ref().map(|tls| tls.tls_config.clone());
@@ -211,6 +219,8 @@ impl SourceConfig for StatsdConfig {
                 let statsd_tcp_source = StatsdTcpSource {
                     sanitize: config.sanitize,
                     convert_to: config.convert_to,
+                    resource,
+                    scope,
                 };
 
                 statsd_tcp_source.run(
@@ -229,7 +239,7 @@ impl SourceConfig for StatsdConfig {
                 )
             }
             #[cfg(unix)]
-            StatsdConfig::Unix(config) => statsd_unix(config.clone(), cx.shutdown, cx.out),
+            StatsdConfig::Unix(config) => statsd_unix(config.clone(), cx.shutdown, cx.out, resource, scope),
         }
     }
 
@@ -237,7 +247,7 @@ impl SourceConfig for StatsdConfig {
         vec![SourceOutput::new_metrics()]
     }
 
-    fn resources(&self) -> Vec<Resource> {
+    fn resources(&self) -> Vec<CfgResource> {
         match self.clone() {
             Self::Tcp(tcp) => vec![tcp.address.as_tcp_resource()],
             Self::Udp(udp) => vec![udp.address.as_udp_resource()],
@@ -256,32 +266,40 @@ pub(crate) struct StatsdDeserializer {
     socket_mode: Option<SocketMode>,
     events_received: Option<Registered<EventsReceived>>,
     parser: Parser,
+    resource: Option<Resource>,
+    scope: Option<InstrumentationScope>,
 }
 
 impl StatsdDeserializer {
-    pub fn udp(sanitize: bool, convert_to: ConversionUnit) -> Self {
+    pub fn udp_with_otel(sanitize: bool, convert_to: ConversionUnit, resource: Resource, scope: InstrumentationScope) -> Self {
         Self {
             socket_mode: Some(SocketMode::Udp),
             // The other modes emit a different `EventsReceived`.
             events_received: Some(register!(EventsReceived)),
             parser: Parser::new(sanitize, convert_to),
+            resource: Some(resource),
+            scope: Some(scope),
         }
     }
 
-    pub const fn tcp(sanitize: bool, convert_to: ConversionUnit) -> Self {
+    pub fn tcp_with_otel(sanitize: bool, convert_to: ConversionUnit, resource: Resource, scope: InstrumentationScope) -> Self {
         Self {
             socket_mode: None,
             events_received: None,
             parser: Parser::new(sanitize, convert_to),
+            resource: Some(resource),
+            scope: Some(scope),
         }
     }
 
     #[cfg(unix)]
-    pub const fn unix(sanitize: bool, convert_to: ConversionUnit) -> Self {
+    pub fn unix_with_otel(sanitize: bool, convert_to: ConversionUnit, resource: Resource, scope: InstrumentationScope) -> Self {
         Self {
             socket_mode: Some(SocketMode::Unix),
             events_received: None,
             parser: Parser::new(sanitize, convert_to),
+            resource: Some(resource),
+            scope: Some(scope),
         }
     }
 }
@@ -304,7 +322,13 @@ impl decoding::format::Deserializer for StatsdDeserializer {
         match std::str::from_utf8(&bytes).map_err(ParseError::InvalidUtf8) {
             Err(error) => Err(Box::new(error)),
             Ok(s) => match self.parser.parse(s) {
-                Ok(metric) => {
+                Ok(mut metric) => {
+                    if let Some(ref resource) = self.resource {
+                        metric.set_resource(resource.clone());
+                    }
+                    if let Some(ref scope) = self.scope {
+                        metric.set_scope(scope.clone());
+                    }
                     let event = Event::Metric(metric);
                     if let Some(er) = &self.events_received {
                         let byte_size = event.estimated_json_encoded_size_of();
@@ -322,6 +346,8 @@ async fn statsd_udp(
     config: UdpConfig,
     shutdown: ShutdownSignal,
     mut out: SourceSender,
+    resource: Resource,
+    scope: InstrumentationScope,
 ) -> Result<(), ()> {
     let listenfd = ListenFd::from_env();
     let socket = try_bind_udp_socket(config.address, listenfd)
@@ -347,9 +373,11 @@ async fn statsd_udp(
 
     let codec = Decoder::new(
         Framer::NewlineDelimited(NewlineDelimitedDecoder::new()),
-        Deserializer::Boxed(Box::new(StatsdDeserializer::udp(
+        Deserializer::Boxed(Box::new(StatsdDeserializer::udp_with_otel(
             config.sanitize,
             config.convert_to,
+            resource,
+            scope,
         ))),
     );
     let mut stream = UdpFramed::new(socket, codec).take_until(shutdown);
@@ -377,6 +405,8 @@ async fn statsd_udp(
 struct StatsdTcpSource {
     sanitize: bool,
     convert_to: ConversionUnit,
+    resource: Resource,
+    scope: InstrumentationScope,
 }
 
 impl TcpSource for StatsdTcpSource {
@@ -388,9 +418,11 @@ impl TcpSource for StatsdTcpSource {
     fn decoder(&self) -> Self::Decoder {
         Decoder::new(
             Framer::NewlineDelimited(NewlineDelimitedDecoder::new()),
-            Deserializer::Boxed(Box::new(StatsdDeserializer::tcp(
+            Deserializer::Boxed(Box::new(StatsdDeserializer::tcp_with_otel(
                 self.sanitize,
                 self.convert_to,
+                self.resource.clone(),
+                self.scope.clone(),
             ))),
         )
     }

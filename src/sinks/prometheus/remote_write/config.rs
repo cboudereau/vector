@@ -110,6 +110,11 @@ pub struct RemoteWriteConfig {
     #[configurable(metadata(docs::advanced))]
     pub aws: Option<crate::aws::RegionOrEndpoint>,
 
+    /// Resource attribute keys to promote to metric labels.
+    #[serde(default = "default_resource_to_labels")]
+    #[configurable(metadata(docs::advanced))]
+    pub resource_to_labels: Vec<String>,
+
     #[configurable(derived)]
     #[serde(
         default,
@@ -123,6 +128,10 @@ pub struct RemoteWriteConfig {
     #[serde(default = "default_compression")]
     #[derivative(Default(value = "default_compression()"))]
     pub compression: Compression,
+}
+
+fn default_resource_to_labels() -> Vec<String> {
+    vec!["service.name".into(), "host.name".into()]
 }
 
 const fn default_compression() -> Compression {
@@ -214,6 +223,7 @@ impl SinkConfig for RemoteWriteConfig {
             quantiles,
             default_namespace,
             expire_metrics_secs: self.expire_metrics_secs,
+            resource_to_labels: self.resource_to_labels.clone(),
             service,
         };
 

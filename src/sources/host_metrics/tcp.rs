@@ -380,7 +380,7 @@ mod tests {
         let (_guard, next_addr) = next_addr();
         let _listener = TcpListener::bind(next_addr).await.unwrap();
 
-        let mut buffer = MetricsBuffer::new(None);
+        let mut buffer = MetricsBuffer::new(None, &Default::default());
         HostMetrics::new(HostMetricsConfig::default())
             .tcp_metrics(&mut buffer)
             .await;

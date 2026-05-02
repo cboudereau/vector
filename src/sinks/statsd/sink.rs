@@ -24,6 +24,7 @@ pub(crate) struct StatsdSink<S> {
     batch_settings: BatcherSettings,
     request_builder: StatsdRequestBuilder,
     protocol: Protocol,
+    pub(crate) resource_to_tags: Vec<String>,
 }
 
 impl<S> StatsdSink<S>
@@ -34,24 +35,26 @@ where
     S::Response: DriverResponse,
 {
     /// Creates a new `StatsdSink`.
-    pub const fn new(
+    pub fn new(
         service: S,
         batch_settings: BatcherSettings,
         request_builder: StatsdRequestBuilder,
         protocol: Protocol,
+        resource_to_tags: Vec<String>,
     ) -> Self {
         Self {
             service,
             batch_settings,
             request_builder,
             protocol,
+            resource_to_tags,
         }
     }
 
     async fn run_inner(self: Box<Self>, input: BoxStream<'_, Event>) -> Result<(), ()> {
         let mut normalizer = MetricNormalizer::<StatsdNormalizer>::default();
+        let resource_to_tags = self.resource_to_tags.clone();
         input
-            // Convert Event to OtelMetric, normalize, and produce OtelMetric stream.
             .filter_map(move |event| {
                 ready(match event {
                     Event::Metric(otel) => normalizer
@@ -59,6 +62,10 @@ where
                         .and_then(|e| e.try_into_otel_metric()),
                     _ => None,
                 })
+            })
+            .map(move |mut otel| {
+                otel.flatten_resource_to_tags(&resource_to_tags);
+                otel
             })
             .batched(self.batch_settings.as_item_size_config(StatsdBatchSizer))
             // We build our requests "incrementally", which means that for a single batch of

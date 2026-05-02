@@ -85,7 +85,7 @@ mod tests {
 
     #[tokio::test]
     async fn generates_cpu_metrics() {
-        let mut buffer = MetricsBuffer::new(None);
+        let mut buffer = MetricsBuffer::new(None, &Default::default());
         HostMetrics::new(HostMetricsConfig::default())
             .cpu_metrics(&mut buffer)
             .await;

@@ -1524,6 +1524,7 @@ fn test_config_outputs_with_disabled_data_types() {
             split_metric_namespace: true,
             keepalive: Default::default(),
             send_timeout_secs: None,
+            resource_attributes: Default::default(),
         };
 
         let outputs: Vec<DataType> = config
@@ -1838,6 +1839,7 @@ fn test_config_outputs() {
             split_metric_namespace: true,
             keepalive: Default::default(),
             send_timeout_secs: None,
+            resource_attributes: Default::default(),
         };
 
         let mut outputs = config
@@ -2210,8 +2212,11 @@ fn test_output_schema_definition_bytes_vector_namespace() {
     )
 }
 
-fn assert_tags(metric: &OtelMetric, tags: OtelAttributes) {
-    assert_eq!(metric.tags().expect("Missing tags"), tags);
+fn assert_tags(metric: &OtelMetric, expected: OtelAttributes) {
+    let all = metric.all_tags_including_resource().expect("Missing tags");
+    for (k, v) in expected.iter() {
+        assert_eq!(all.get(k), Some(v), "Tag {k} mismatch");
+    }
 }
 
 async fn test_series_v1_split_metric_namespace_impl(
@@ -2352,6 +2357,7 @@ impl ValidatableComponent for DatadogAgentConfig {
             split_metric_namespace: true,
             keepalive: Default::default(),
             send_timeout_secs: None,
+            resource_attributes: Default::default(),
         };
 
         // TODO set up separate test cases for metrics and traces endpoints

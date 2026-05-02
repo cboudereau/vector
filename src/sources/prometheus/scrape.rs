@@ -706,6 +706,7 @@ mod test {
                 flush_period_secs: Duration::from_secs(3),
                 suppress_timestamp: false,
                 acknowledgements: Default::default(),
+                resource_to_labels: vec![],
             },
         );
 

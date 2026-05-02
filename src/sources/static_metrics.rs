@@ -2,6 +2,8 @@ use std::{collections::BTreeMap, time::Duration};
 
 use chrono::Utc;
 use futures::StreamExt;
+use opentelemetry_proto::tonic::common::v1::InstrumentationScope;
+use opentelemetry_proto::tonic::resource::v1::Resource;
 use serde_with::serde_as;
 use tokio::time;
 use tokio_stream::wrappers::IntervalStream;
@@ -19,6 +21,7 @@ use crate::{
     },
     internal_events::{EventsReceived, StreamClosedError},
     shutdown::ShutdownSignal,
+    sources::source_otel,
 };
 
 /// Configuration for the `static_metrics` source.
@@ -43,6 +46,12 @@ pub struct StaticMetricsConfig {
     #[configurable(derived)]
     #[serde(default)]
     pub metrics: Vec<StaticMetricConfig>,
+
+    /// Custom resource attributes for OTel Resource on emitted metrics.
+    ///
+    /// Defaults: `service.name = sol/static_metrics`, `host.name` = auto-detected hostname.
+    #[serde(default)]
+    pub resource_attributes: BTreeMap<String, String>,
 }
 
 impl Default for StaticMetricsConfig {
@@ -51,6 +60,7 @@ impl Default for StaticMetricsConfig {
             interval_secs: default_interval(),
             metrics: Vec::default(),
             namespace: default_namespace(),
+            resource_attributes: BTreeMap::new(),
         }
     }
 }
@@ -117,6 +127,8 @@ impl SourceConfig for StaticMetricsConfig {
         let namespace = self.namespace.clone();
 
         let metrics = self.metrics.clone();
+        let resource = source_otel::build_source_resource("static_metrics", &self.resource_attributes);
+        let scope = source_otel::build_source_scope("static_metrics");
 
         Ok(Box::pin(
             StaticMetrics {
@@ -125,6 +137,8 @@ impl SourceConfig for StaticMetricsConfig {
                 interval,
                 out: cx.out,
                 shutdown: cx.shutdown,
+                resource,
+                scope,
             }
             .run(),
         ))
@@ -145,6 +159,8 @@ struct StaticMetrics {
     interval: time::Duration,
     out: SourceSender,
     shutdown: ShutdownSignal,
+    resource: Resource,
+    scope: InstrumentationScope,
 }
 
 impl StaticMetrics {
@@ -171,9 +187,12 @@ impl StaticMetrics {
                         }
                         MetricValueConfig::Gauge { value: v } => OtelMetric::new_gauge(&name, v),
                     };
-                    metric
+                    let mut m = metric
                         .with_namespace(Some(self.namespace.clone()))
-                        .with_tags(Some(tags.into()))
+                        .with_tags(Some(tags.into()));
+                    m.set_resource(self.resource.clone());
+                    m.set_scope(self.scope.clone());
+                    m
                 },
             )
             .collect();

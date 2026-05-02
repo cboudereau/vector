@@ -139,6 +139,15 @@ pub struct PrometheusExporterConfig {
     #[configurable(metadata(docs::advanced))]
     pub suppress_timestamp: bool,
 
+    /// Resource attribute keys to promote to metric labels.
+    ///
+    /// When set, the specified keys are extracted from the OTel Resource and
+    /// injected as metric-level tags/labels. This allows non-OTLP sinks to
+    /// propagate Resource information like `service.name` and `host.name`.
+    #[serde(default = "default_resource_to_labels")]
+    #[configurable(metadata(docs::advanced))]
+    pub resource_to_labels: Vec<String>,
+
     #[configurable(derived)]
     #[serde(
         default,
@@ -146,6 +155,10 @@ pub struct PrometheusExporterConfig {
         skip_serializing_if = "crate::serde::is_default"
     )]
     pub acknowledgements: AcknowledgementsConfig,
+}
+
+fn default_resource_to_labels() -> Vec<String> {
+    vec!["service.name".into(), "host.name".into()]
 }
 
 impl Default for PrometheusExporterConfig {
@@ -160,6 +173,7 @@ impl Default for PrometheusExporterConfig {
             distributions_as_summaries: default_distributions_as_summaries(),
             flush_period_secs: default_flush_period_secs(),
             suppress_timestamp: default_suppress_timestamp(),
+            resource_to_labels: default_resource_to_labels(),
             acknowledgements: Default::default(),
         }
     }
@@ -499,6 +513,9 @@ impl PrometheusExporter {
     }
 
     fn normalize(&mut self, mut otel: OtelMetric) -> Option<OtelMetric> {
+        otel.convert_exponential_to_histogram(&self.config.buckets);
+        otel.flatten_resource_to_tags(&self.config.resource_to_labels);
+
         if otel.is_distribution() {
             if let MetricView::Distribution { bounds, counts } = otel.view() {
                 use crate::event::metric::samples_to_buckets;

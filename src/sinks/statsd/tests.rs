@@ -47,6 +47,7 @@ async fn test_send_to_statsd() {
         )),
         batch: Default::default(),
         acknowledgements: Default::default(),
+        resource_to_tags: vec![],
     };
 
     let events = vec![

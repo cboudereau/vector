@@ -165,11 +165,17 @@ impl<N> MetricNormalizer<N> {
     }
 }
 
+pub const DEFAULT_HISTOGRAM_BOUNDS: &[f64] = &[
+    0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0,
+];
+
 impl<N: MetricNormalize> MetricNormalizer<N> {
     /// Normalizes the metric against the internal normalization state.
     ///
-    /// For more information about normalization, see the documentation for [`MetricNormalize::normalize`].
-    pub fn normalize(&mut self, metric: OtelMetric) -> Option<OtelMetric> {
+    /// ExponentialHistogram metrics are converted to explicit-bounds Histogram
+    /// before per-sink normalization, since most sinks don't support them natively.
+    pub fn normalize(&mut self, mut metric: OtelMetric) -> Option<OtelMetric> {
+        metric.convert_exponential_to_histogram(DEFAULT_HISTOGRAM_BOUNDS);
         self.normalizer.normalize(&mut self.state, metric)
     }
 

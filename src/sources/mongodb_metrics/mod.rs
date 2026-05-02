@@ -1,4 +1,7 @@
-use std::time::{Duration, Instant};
+use std::{
+    collections::BTreeMap,
+    time::{Duration, Instant},
+};
 
 use chrono::Utc;
 use futures::{
@@ -11,6 +14,8 @@ use mongodb::{
     error::Error as MongoError,
     options::ClientOptions,
 };
+use opentelemetry_proto::tonic::common::v1::InstrumentationScope;
+use opentelemetry_proto::tonic::resource::v1::Resource;
 use serde_with::serde_as;
 use snafu::{ResultExt, Snafu};
 use tokio::time;
@@ -26,6 +31,7 @@ use crate::{
         CollectionCompleted, EndpointBytesReceived, MongoDbMetricsBsonParseError,
         MongoDbMetricsEventsReceived, MongoDbMetricsRequestError, StreamClosedError,
     },
+    sources::source_otel,
 };
 
 mod types;
@@ -91,6 +97,12 @@ pub struct MongoDbMetricsConfig {
     /// By default, `mongodb` is used.
     #[serde(default = "default_namespace")]
     namespace: String,
+
+    /// Custom resource attributes for OTel Resource on emitted metrics.
+    ///
+    /// Defaults: `service.name = sol/mongodb_metrics`, `host.name` = auto-detected hostname.
+    #[serde(default)]
+    resource_attributes: BTreeMap<String, String>,
 }
 
 #[derive(Debug)]
@@ -99,6 +111,8 @@ struct MongoDbMetrics {
     endpoint: String,
     namespace: Option<String>,
     tags: OtelAttributes,
+    resource: Resource,
+    scope: InstrumentationScope,
 }
 
 pub const fn default_scrape_interval_secs() -> Duration {
@@ -116,11 +130,13 @@ impl_generate_config_from_default!(MongoDbMetricsConfig);
 impl SourceConfig for MongoDbMetricsConfig {
     async fn build(&self, mut cx: SourceContext) -> crate::Result<super::Source> {
         let namespace = Some(self.namespace.clone()).filter(|namespace| !namespace.is_empty());
+        let resource = source_otel::build_source_resource("mongodb_metrics", &self.resource_attributes);
+        let scope = source_otel::build_source_scope("mongodb_metrics");
 
         let sources = try_join_all(
             self.endpoints
                 .iter()
-                .map(|endpoint| MongoDbMetrics::new(endpoint, namespace.clone())),
+                .map(|endpoint| MongoDbMetrics::new(endpoint, namespace.clone(), resource.clone(), scope.clone())),
         )
         .await?;
 
@@ -162,7 +178,7 @@ impl SourceConfig for MongoDbMetricsConfig {
 impl MongoDbMetrics {
     /// Works only with Standalone connection-string. Collect metrics only from specified instance.
     /// <https://docs.mongodb.com/manual/reference/connection-string/#standard-connection-string-format>
-    async fn new(endpoint: &str, namespace: Option<String>) -> Result<MongoDbMetrics, BuildError> {
+    async fn new(endpoint: &str, namespace: Option<String>, resource: Resource, scope: InstrumentationScope) -> Result<MongoDbMetrics, BuildError> {
         let mut client_options = ClientOptions::parse(endpoint)
             .await
             .context(InvalidEndpointSnafu)?;
@@ -179,6 +195,8 @@ impl MongoDbMetrics {
             endpoint,
             namespace,
             tags,
+            resource,
+            scope,
         })
     }
 
@@ -227,17 +245,23 @@ impl MongoDbMetrics {
     }
 
     fn create_counter(&self, name: &str, value: f64, tags: OtelAttributes) -> OtelMetric {
-        OtelMetric::new_counter(name, MetricKind::Absolute, value)
+        let mut m = OtelMetric::new_counter(name, MetricKind::Absolute, value)
             .with_namespace(self.namespace.clone())
             .with_tags(Some(tags))
-            .with_timestamp(Some(Utc::now()))
+            .with_timestamp(Some(Utc::now()));
+        m.set_resource(self.resource.clone());
+        m.set_scope(self.scope.clone());
+        m
     }
 
     fn create_gauge(&self, name: &str, value: f64, tags: OtelAttributes) -> OtelMetric {
-        OtelMetric::new_gauge(name, value)
+        let mut m = OtelMetric::new_gauge(name, value)
             .with_namespace(self.namespace.clone())
             .with_tags(Some(tags))
-            .with_timestamp(Some(Utc::now()))
+            .with_timestamp(Some(Utc::now()));
+        m.set_resource(self.resource.clone());
+        m.set_scope(self.scope.clone());
+        m
     }
 
     async fn collect(&self) -> Vec<OtelMetric> {
@@ -1127,6 +1151,7 @@ mod integration_tests {
                     endpoints,
                     scrape_interval_secs: Duration::from_secs(15),
                     namespace: namespace.to_owned(),
+                    resource_attributes: BTreeMap::new(),
                 }
                 .build(SourceContext::new_test(sender, None))
                 .await

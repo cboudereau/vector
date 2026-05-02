@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use http::StatusCode;
 use opentelemetry_proto::tonic::{
-    common::v1::{AnyValue, KeyValue, any_value},
+    common::v1::{AnyValue, InstrumentationScope, KeyValue, any_value},
     metrics::v1::{
         self as otel_metrics, metric, number_data_point::Value as NDPValue, AggregationTemporality,
         Metric as OtelMetricProto,
@@ -69,6 +69,7 @@ fn sketches_service(
                   api_token: Option<String>,
                   query_params: ApiKeyQueryParams,
                   body: Bytes| {
+                let scope = source.scope.clone();
                 let events = source
                     .decode(&encoding_header, body, path.as_str())
                     .and_then(|body| {
@@ -81,6 +82,7 @@ fn sketches_service(
                             ),
                             source.split_metric_namespace,
                             &source.events_received,
+                            &scope,
                         )
                     });
                 handler.clone().handle_request(events, super::METRICS)
@@ -106,6 +108,7 @@ fn series_v1_service(
                   api_token: Option<String>,
                   query_params: ApiKeyQueryParams,
                   body: Bytes| {
+                let scope = source.scope.clone();
                 let events = source
                     .decode(&encoding_header, body, path.as_str())
                     .and_then(|body| {
@@ -118,6 +121,7 @@ fn series_v1_service(
                             ),
                             source.split_metric_namespace,
                             &source.events_received,
+                            &scope,
                         )
                     });
                 handler.clone().handle_request(events, super::METRICS)
@@ -143,6 +147,7 @@ fn series_v2_service(
                   api_token: Option<String>,
                   query_params: ApiKeyQueryParams,
                   body: Bytes| {
+                let scope = source.scope.clone();
                 let events = source
                     .decode(&encoding_header, body, path.as_str())
                     .and_then(|body| {
@@ -155,6 +160,7 @@ fn series_v2_service(
                             ),
                             source.split_metric_namespace,
                             &source.events_received,
+                            &scope,
                         )
                     });
                 handler.clone().handle_request(events, super::METRICS)
@@ -168,6 +174,7 @@ fn decode_datadog_sketches(
     api_key: Option<Arc<str>>,
     split_metric_namespace: bool,
     events_received: &Registered<EventsReceived>,
+    scope: &InstrumentationScope,
 ) -> Result<Vec<Event>, ErrorMessage> {
     if body.is_empty() {
         // The datadog agent may send an empty payload as a keep alive
@@ -175,7 +182,7 @@ fn decode_datadog_sketches(
         return Ok(Vec::new());
     }
 
-    let metrics = decode_ddsketch(body, &api_key, split_metric_namespace).map_err(|error| {
+    let metrics = decode_ddsketch(body, &api_key, split_metric_namespace, scope).map_err(|error| {
         ErrorMessage::new(
             StatusCode::UNPROCESSABLE_ENTITY,
             format!("Error decoding Datadog sketch: {error:?}"),
@@ -195,6 +202,7 @@ fn decode_datadog_series_v2(
     api_key: Option<Arc<str>>,
     split_metric_namespace: bool,
     events_received: &Registered<EventsReceived>,
+    scope: &InstrumentationScope,
 ) -> Result<Vec<Event>, ErrorMessage> {
     if body.is_empty() {
         // The datadog agent may send an empty payload as a keep alive
@@ -202,7 +210,7 @@ fn decode_datadog_series_v2(
         return Ok(Vec::new());
     }
 
-    let metrics = decode_ddseries_v2(body, &api_key, split_metric_namespace).map_err(|error| {
+    let metrics = decode_ddseries_v2(body, &api_key, split_metric_namespace, scope).map_err(|error| {
         ErrorMessage::new(
             StatusCode::UNPROCESSABLE_ENTITY,
             format!("Error decoding Datadog sketch: {error:?}"),
@@ -256,13 +264,15 @@ fn build_resource(host: Option<&str>, namespace: Option<&str>) -> Resource {
     }
 }
 
-/// Creates an OtelMetric event with resource and metadata.
+/// Creates an OtelMetric event with resource, scope, and metadata.
 fn build_otel_metric_event(
     metric: OtelMetricProto,
     resource: Resource,
     api_key: &Option<Arc<str>>,
+    scope: &InstrumentationScope,
 ) -> Event {
     let mut otel = OtelMetric::from_parts(metric, Some(resource), None, EventMetadata::default());
+    otel.set_scope(scope.clone());
     if let Some(k) = api_key {
         otel.metadata_mut()
             .secrets_mut()
@@ -284,6 +294,7 @@ pub(crate) fn decode_ddseries_v2(
     frame: Bytes,
     api_key: &Option<Arc<str>>,
     split_metric_namespace: bool,
+    scope: &InstrumentationScope,
 ) -> crate::Result<Vec<Event>> {
     let payload = MetricPayload::decode(frame)?;
     let decoded_metrics: Vec<Event> = payload
@@ -348,7 +359,7 @@ pub(crate) fn decode_ddseries_v2(
                                 is_monotonic: true,
                             })),
                         };
-                        build_otel_metric_event(metric, resource.clone(), api_key)
+                        build_otel_metric_event(metric, resource.clone(), api_key, scope)
                     })
                     .collect::<Vec<_>>(),
                 Ok(metric_payload::MetricType::Gauge) => serie
@@ -382,7 +393,7 @@ pub(crate) fn decode_ddseries_v2(
                                 }],
                             })),
                         };
-                        build_otel_metric_event(metric, resource.clone(), api_key)
+                        build_otel_metric_event(metric, resource.clone(), api_key, scope)
                     })
                     .collect::<Vec<_>>(),
                 Ok(metric_payload::MetricType::Rate) => serie
@@ -420,7 +431,7 @@ pub(crate) fn decode_ddseries_v2(
                                 is_monotonic: true,
                             })),
                         };
-                        build_otel_metric_event(metric, resource.clone(), api_key)
+                        build_otel_metric_event(metric, resource.clone(), api_key, scope)
                     })
                     .collect::<Vec<_>>(),
                 Ok(metric_payload::MetricType::Unspecified) | Err(_) => {
@@ -439,6 +450,7 @@ fn decode_datadog_series_v1(
     api_key: Option<Arc<str>>,
     split_metric_namespace: bool,
     events_received: &Registered<EventsReceived>,
+    scope: &InstrumentationScope,
 ) -> Result<Vec<Event>, ErrorMessage> {
     if body.is_empty() {
         // The datadog agent may send an empty payload as a keep alive
@@ -461,6 +473,7 @@ fn decode_datadog_series_v1(
                 m,
                 api_key.clone(),
                 split_metric_namespace,
+                scope,
             )
         })
         .collect();
@@ -477,6 +490,7 @@ fn into_otel_metric(
     dd_metric: DatadogSeriesMetric,
     api_key: Option<Arc<str>>,
     split_metric_namespace: bool,
+    scope: &InstrumentationScope,
 ) -> Vec<Event> {
     let mut attributes = dd_tags_to_attributes(dd_metric.tags.unwrap_or_default());
 
@@ -524,7 +538,7 @@ fn into_otel_metric(
                         is_monotonic: true,
                     })),
                 };
-                build_otel_metric_event(metric, resource.clone(), &api_key)
+                build_otel_metric_event(metric, resource.clone(), &api_key, scope)
             })
             .collect::<Vec<_>>(),
         DatadogMetricType::Gauge => dd_metric
@@ -547,7 +561,7 @@ fn into_otel_metric(
                         }],
                     })),
                 };
-                build_otel_metric_event(metric, resource.clone(), &api_key)
+                build_otel_metric_event(metric, resource.clone(), &api_key, scope)
             })
             .collect::<Vec<_>>(),
         // Agent sends rate only for dogstatsd counter
@@ -582,7 +596,7 @@ fn into_otel_metric(
                         is_monotonic: true,
                     })),
                 };
-                build_otel_metric_event(metric, resource.clone(), &api_key)
+                build_otel_metric_event(metric, resource.clone(), &api_key, scope)
             })
             .collect::<Vec<_>>(),
     }
@@ -602,6 +616,7 @@ pub(crate) fn decode_ddsketch(
     frame: Bytes,
     api_key: &Option<Arc<str>>,
     split_metric_namespace: bool,
+    scope: &InstrumentationScope,
 ) -> crate::Result<Vec<Event>> {
     let payload = SketchPayload::decode(frame)?;
     // payload.metadata is always empty for payload coming from dd agents
@@ -657,7 +672,7 @@ pub(crate) fn decode_ddsketch(
                         },
                     )),
                 };
-                build_otel_metric_event(metric, resource.clone(), api_key)
+                build_otel_metric_event(metric, resource.clone(), api_key, scope)
             })
         })
         .collect())

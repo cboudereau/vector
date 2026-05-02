@@ -119,18 +119,68 @@ This is rarely needed since Strategy 2 provides direct native protocol compatibi
 
 ## OTel Fidelity Review
 
-### Deviations from OTel Spec
+### Deviations from OTel Spec (core types)
 
 | Deviation | Where | Fidelity concern | Action |
 |-----------|-------|------------------|--------|
 | `vector.set_values` attribute | OtelMetric (Gauge) | Non-standard. Downstream sees valid Gauge. **Low risk.** | Keep — OTLP has no Set type |
 | `vector.metric_type` attribute | OtelMetric | Informational marker. Downstream ignores it. **Harmless.** | Keep |
-| `vector.metric_kind=incremental` on Gauge | OtelMetric | Semantically incorrect per OTel (Gauge has no temporality). **Medium risk.** | Keep — needed for statsd incremental Gauges |
+| `vector.metric_kind=incremental` on Gauge | OtelMetric | Semantically incorrect per OTel (Gauge has no temporality). **Medium risk.** | Phase E — replace with stateful gauge accumulation |
 | `vector.statistic` attribute | OtelMetric | Distinguishes histogram vs summary distributions. Sinks (prometheus, statsd, influxdb) actively read it. | Keep — functional, no OTel-native alternative |
 | `OtelAttributes` (BTreeMap) | All events | Lossless conversion at proto boundaries. **No fidelity loss.** | Keep |
 | `EventMetadata` sidecar | All events | Pipeline infrastructure, never in OTLP output. **Correct.** | Keep |
 
-**Verdict:** Acceptable. `vector.*` attributes only appear when non-OTel sources create metrics. OTLP passthrough paths never inject them.
+**Verdict (core types):** Acceptable. `vector.*` attributes only appear when non-OTel sources create metrics. OTLP passthrough paths never inject them.
+
+### Source-Side OTLP Gaps
+
+Audit of all metric-producing sources against otelcontribcol behavior. The `opentelemetry` source is a pass-through with zero divergence and is excluded.
+
+| Gap | Affected Sources | otelcontribcol Behavior | Sol Behavior | Impact |
+|-----|-----------------|------------------------|--------------|--------|
+| **No Resource attributes** | All except `datadog_agent` | Sets `service.name`, `host.name` (datadogreceiver); empty (statsdreceiver) | `resource` field is `None` | Backends can't group by service — everything lands under "unknown" |
+| **No InstrumentationScope** | All except `opentelemetry` | Sets `scope.name` = receiver package, `scope.version` = build version | `scope` field is `None` | Backends can't identify which pipeline/receiver produced the metric |
+| **No `unit` field** | All except `opentelemetry` | Configurable per metric type (e.g., `ms`, `s`, `By`) | `unit` is always `""` | Backends can't auto-label axes or detect unit conflicts |
+| **No timestamps (StatsD)** | `statsd` | Sets `time_unix_nano` + `start_time_unix_nano` on every data point | `time_unix_nano=0`, `start_time_unix_nano=0` | Delta temporality rate computation impossible without time window |
+| **No `start_time_unix_nano`** | All except `datadog_agent` | Sets start time for Delta metrics (flush interval start) | Not set | Backends guess the aggregation window |
+| **StatsD: Histogram as `explicit_bounds` per sample** | `statsd` | ExponentialHistogram (auto-scaling, ~160 buckets) with pre-aggregation | `Histogram` with one `explicit_bound` per sample value | Unbounded bucket explosion — 1000 samples/sec = 1000 boundaries. **Note**: spec says both Histogram and ExponentialHistogram are equally valid. Sol could use Histogram with pre-defined bounds (better Prometheus compatibility) — see D36. |
+| **StatsD: no flush-interval aggregation** | `statsd` | Aggregates within configurable flush interval (default 60s) | Emits one OTLP data point per UDP packet | Spec says per-observation emission is technically valid but "infeasible due to the sheer volume." Aggregation is practically required. |
+| **StatsD: `is_monotonic=true`** | `statsd` | `false` by default (StatsD counters can be negative) | `true` hardcoded | Violates OTLP spec if counter receives negative delta |
+| **StatsD: gauge delta via custom attribute** | `statsd` | Stateful accumulation: deltas added to running value, emits absolute Gauge | Emits Gauge with `vector.metric_kind=incremental` attribute | **Spec violation**: "A Gauge does not support different aggregation temporalities." Delta Gauge does not exist in OTLP. Correct alternatives: stateful accumulation → absolute Gauge, or non-monotonic Sum with Delta temporality — see D38. |
+| **StatsD: bare tag `AnyValue { value: None }`** | `statsd` | Empty string `""` when `enableSimpleTags=true` | `AnyValue { value: None }` | **Spec allows this**: "It is valid for all values to be unspecified." However, some backends may not handle it well — see D39. |
+| **StatsD: sample rate as bucket count** | `statsd` | Weight-based histogram insertion | `1/sample_rate` cast to `u32` as bucket count | Semantically different histogram structure |
+| **StatsD: metric name sanitization** | `statsd` | No sanitization — names pass through as-is | `/`→`-`, whitespace→`_`, strips non-alphanumeric | Different metric names for same StatsD input |
+| **StatsD: no DogStatsD container ID extraction** | `statsd` | `c:containerID` → `container.id` data point attribute | Parsed as regular tag `c=containerID` | Loses container identity semantic |
+
+### Sink-Side OTLP Gaps
+
+Audit of all metric-consuming sinks. The `opentelemetry` sink (gRPC + HTTP) has full OTLP fidelity and is excluded.
+
+| Gap | Affected Sinks | Impact |
+|-----|---------------|--------|
+| **ExponentialHistogram silently dropped** | prometheus (exporter + remote_write), influxdb, cloudwatch, greptimedb | Metrics lost with no error — silent data loss |
+| **ExponentialHistogram → error** | statsd, splunk_hec, sematext | At least surfaces the problem, but metrics still lost |
+| **No temporality awareness** | All non-OTLP sinks | Delta counter → Prometheus = double-counting; Cumulative → InfluxDB = overcounting |
+| **Resource/Scope ignored** | All non-OTLP sinks | `host.name`, `service.name` from Resource never become labels/tags/dimensions |
+| **`unit` field ignored** | All non-OTLP sinks | No axis labeling, no unit conversion |
+| **Limited metric type support** | splunk_hec (Sum+Gauge only), sematext (Sum+Gauge only) | Most metric types silently dropped |
+| **`vector.*` attributes fragile coupling** | prometheus, influxdb, statsd (read `vector.statistic`) | Invisible contract — rename breaks 3 sinks silently |
+
+### Sink Metric Type Support Matrix
+
+| Sink | Sum | Gauge | Histogram | ExponentialHist | Summary | Distribution | Set |
+|------|:---:|:-----:|:---------:|:---------------:|:-------:|:------------:|:---:|
+| **OTLP (gRPC+HTTP)** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Prometheus** | ✅ | ✅ | ✅ | ❌ drop | ✅ | ✅ | ✅ |
+| **InfluxDB** | ✅ | ✅ | ✅ | ❌ empty | ✅ | ✅ | ✅ |
+| **GreptimeDB** | ✅ | ✅ | ✅ | ❌ drop | ✅ | ✅ | ✅ |
+| **CloudWatch** | ✅ | ✅ | ❌ drop | ❌ drop | ❌ drop | ✅ | ✅ |
+| **StatsD** | ✅ | ✅ | ❌ error | ❌ error | ❌ error | ✅ | ✅ |
+| **Splunk HEC** | ✅ | ✅ | ❌ error | ❌ error | ❌ error | ❌ error | ❌ error |
+| **Sematext** | ✅ | ✅ | ❌ error | ❌ error | ❌ error | ❌ error | ❌ error |
+| **Humio** | ✅* | ✅* | ✅* | ✅* | ✅* | ✅* | ✅* |
+
+*Humio converts all metrics to logs via MetricToLog — technically supports all types but loses metric semantics.
 
 ---
 
@@ -184,6 +234,48 @@ All decisions locked. Autopilot proceeds without stopping.
 | D29 | A6 log conversion: `Log.value`→body, `Log.fields`→attributes, `message` key promoted to body if value absent | **Yes** |
 | D30 | A6 trace conversion: best-effort extraction of trace_id/span_id/name/start_time/end_time from fields, rest→span attributes | **Yes** |
 | D31 | A6 `interval_ms` → compute `startTimeUnixNano = timeUnixNano - interval_ms × 1_000_000` | **Yes** |
+
+### Phase E Decisions — LOCKED
+
+All decisions locked. Autopilot proceeds without stopping. Reference: OTLP spec is the authority, not otelcontribcol.
+
+| ID | Decision | Answer |
+|----|----------|--------|
+| D32 | ExponentialHistogram→Histogram conversion for non-OTLP sinks | **(b)** Centralized normalization layer — write conversion once, not 7 times |
+| D33 | Temporality normalization | **(a)** Per-sink normalizer — each sink knows its backend's requirements |
+| D34 | Resource attributes on scraper sources | **(c)** Configurable with defaults: `service.name=sol/<source_type>`, `host.name=hostname()`. Config: `resource_attributes = { "service.name" = "my-app" }`. `host.name` auto-detected, suppress with `""` |
+| D35 | InstrumentationScope naming | **(a)** `name=sol/<source_type>`, `version=<build_version>` |
+| D36 | StatsD histogram + aggregation | **(d)** ExponentialHistogram internally (MaxSize=160, starting scale=20, auto-adapt) + flush-interval aggregation (default 10s, configurable via `aggregation_interval_secs`). Convert to explicit-bounds Histogram at Prometheus/InfluxDB/StatsD sink boundary. Target boundaries: Prometheus defaults `[.005,.01,.025,.05,.1,.25,.5,1,2.5,5,10]` configurable per sink. **Sol advantage**: lossless merge across instances + zero-config at source + Prometheus compatibility at sink |
+| D37 | StatsD `is_monotonic` default | **(c)** Configurable, default `false` — spec-safe; users can opt into `true` for proper Prometheus rate calculation |
+| D38 | StatsD gauge delta handling | **(a')** Stateful accumulation persisting across flushes with TTL. Default TTL=5min, configurable. On expiry: stop emitting (no goodbye metric). **Sol advantage over otelcontribcol**: gauge state survives flush intervals |
+| D39 | StatsD bare tag representation | **(b)** `AnyValue { value: Some(StringValue("")) }` — Prometheus/Mimir/Datadog/ES all drop `None` values. Pragmatic choice for backend reach |
+| D40 | `vector.*` custom attributes | **(c)** Eliminate ALL — D36+D38+D45 make them dead code. `Distribution` variant eliminated, sinks branch on `MetricView::Histogram` vs `MetricView::Summary` proto types directly. Zero custom extensions = pure OTLP output |
+| D41 | OTLP `unit` field | **(a)** Yes, UCUM strings — `By` (bytes), `s` (seconds), `{connections}`, `1` (ratios) |
+| D42 | Sink Resource→labels propagation | **(b)** Configurable. Default: promote `service.name` + `host.name` to labels. Config: `resource_to_labels = ["service.name", "host.name"]` |
+| D43 | Ordering | **(a)** Sinks first (E1-E2), then sources (E3-E6), then cleanup (E7-E9) — prevents silent data loss |
+| D44 | Sink scope | **(b)** Tier 1 first: prometheus + influxdb + statsd. Tier 2 (cloudwatch + greptimedb) follows |
+| D45 | Summary production | **(b)** All distribution-like types → Histogram for new data. OTLP/Prometheus passthrough Summary preserved. Spec: "not recommended for new applications" |
+
+### Phase E Implementation Details — LOCKED
+
+| Parameter | Value | Rationale |
+|-----------|-------|-----------|
+| ExponentialHistogram MaxSize | 160 | OTel SDK default, ~1KB/series |
+| ExponentialHistogram starting scale | 20 | Highest resolution, ratchets down on data range |
+| Default flush interval | 10s | Lower latency than otelcontribcol (60s), still 100-1000x fewer points than per-packet |
+| Flush interval configurable | Yes — `aggregation_interval_secs` | |
+| Prometheus sink target boundaries | `[.005,.01,.025,.05,.1,.25,.5,1,2.5,5,10]` (configurable) | Prometheus defaults, widest compatibility |
+| ExpHist→Histogram conversion | Linear interpolation within exponential buckets | Standard approach (same as Prometheus native→classic) |
+| Gauge TTL default | 5min (configurable) | Matches typical StatsD agent expiry |
+| Gauge expiry behavior | Stop emitting, no goodbye metric | |
+| Resource config syntax | `resource_attributes = { "service.name" = "my-app" }` | TOML inline table |
+| `host.name` auto-detection | On by default, `host.name = ""` to suppress | |
+| Sink label promotion config | `resource_to_labels = ["service.name", "host.name"]` | |
+| Delete `MetricView::Distribution` | Yes — dead after E4 | Broken raw-samples path, replaced by proper aggregation |
+| Delete `new_distribution_from_samples()` | Yes — dead after E4 | |
+| Delete `distribution_statistic()` | Yes — no callers after D40(c) | |
+| StatsD metric name sanitization | Keep current (sanitize by default) | It's a feature, not a divergence |
+| DogStatsD container ID extraction | In scope for E4 | Small change, ~5 lines in parser |
 
 ---
 
@@ -262,7 +354,7 @@ All `to_value_canonical()` call sites migrated to `as_map()`:
 - Zero `to_value_canonical` references remain in `lib/` or `src/`
 - All 196 vector-core tests pass, full workspace compiles cleanly
 
-### Gate
+### Gate (Phases A-D)
 
 | Metric | Target | Verification |
 |--------|--------|--------------|
@@ -273,6 +365,179 @@ All `to_value_canonical()` call sites migrated to `as_map()`:
 | `metric_tags!` macro references | 0 | `grep -rn 'metric_tags!' lib/ src/` |
 | VRL remap regression | ≤ 5% | `cargo bench --features remap-benches --bench remap` |
 | VRL complex path regression | < 20% (was 100-200%) | Same bench, complex path scenarios |
+
+### Phase E — OTLP Fidelity Alignment (source/sink divergences)
+
+**Status: IN PROGRESS — E1, E2, E3, E5, E7 DONE. E4, E6, E8, E9 deferred.**
+
+All decisions locked. Execution order: sinks first (E1-E2), then sources (E3-E6), then sink enrichment (E7), then cleanup (E8-E9).
+
+**Completed:**
+- **E1** ✅ ExponentialHistogram→Histogram conversion in MetricNormalizer + Prometheus exporter
+- **E2** ✅ Already implemented — kind()/set_kind() maps to OTLP temporality
+- **E3** ✅ Resource + Scope on all metric-producing sources (shared helper in source_otel.rs)
+- **E5** ✅ Already implemented — all scraper sources set timestamps
+- **E7** ✅ resource_to_labels/resource_to_tags config on Prometheus, InfluxDB, StatsD sinks
+
+**Deferred (requires dedicated session):**
+- **E4** — StatsD aggregation engine + ExponentialHistogram production (largest step)
+- **E6** — OTLP unit field population (nice-to-have)
+- **E8** — Eliminate vector.* attributes (depends on E4)
+- **E9** — Delete MetricView::Distribution variant (depends on E4+E8)
+
+Run `cargo test -p vector --all-features` after each commit.
+
+#### E1. Centralized ExponentialHistogram → Histogram conversion (Tier 1 sinks)
+
+Add ExpHist→Histogram conversion in the normalization layer so non-OTLP sinks receive explicit-bounds Histograms instead of silently dropping data. Conversion uses linear interpolation within exponential buckets.
+
+- Create `fn exponential_to_explicit(exp_hist, target_bounds) -> HistogramDataPoint` in normalization layer
+- Default target boundaries: `[.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10]` (Prometheus defaults)
+- Configurable per sink via `histogram_bucket_boundaries` config key
+- **prometheus** (exporter + remote_write): Wire through normalizer. Currently `MetricView::ExponentialHistogram { .. } => {}` (silent drop) → convert to Histogram
+- **influxdb**: Wire through normalizer. Currently returns empty fields → convert to Histogram fields
+- **statsd**: Wire through normalizer. Currently emits error → convert to distribution samples
+- Preserve `count`, `sum`, `min`, `max` from ExponentialHistogram (lossless scalar fields)
+
+#### E2. Temporality-aware normalization (Tier 1 sinks)
+
+Extend existing `MetricNormalize` trait implementations to respect `aggregation_temporality`:
+
+- **Prometheus** expects Cumulative → if Delta Sum/Histogram, accumulate in-memory (stateful normalizer tracks running totals per metric series)
+- **InfluxDB** expects Delta → if Cumulative Sum, diff consecutive values
+- **StatsD** expects Delta → if Cumulative Sum, diff
+- Each normalizer reads `aggregation_temporality` from the proto and converts as needed
+- Add `is_delta()` / `is_cumulative()` helpers on OtelMetric if not present
+
+#### E3. Resource + Scope on all metric-producing sources
+
+Add configurable Resource and InstrumentationScope to all sources. Create shared helper:
+
+```rust
+fn build_source_resource(source_type: &str, config_overrides: &BTreeMap<String, String>) -> Resource
+fn build_source_scope(source_type: &str) -> InstrumentationScope
+```
+
+Defaults: `service.name = sol/<source_type>`, `host.name = hostname()` (auto-detected). User override via:
+
+```toml
+[sources.my_host_metrics]
+type = "host_metrics"
+resource_attributes.service.name = "my-infra"
+resource_attributes.host.name = ""  # suppress auto-detection
+```
+
+Per-source wiring:
+- **host_metrics**: `service.name=sol/host_metrics`, `host.name`; Scope `sol/host_metrics`
+- **apache_metrics**: `service.name=sol/apache_metrics`, `host.name`; Scope `sol/apache_metrics`
+- **nginx_metrics**: `service.name=sol/nginx_metrics`, `host.name`; Scope `sol/nginx_metrics`
+- **mongodb_metrics**: `service.name=sol/mongodb_metrics`, `host.name`; Scope `sol/mongodb_metrics`
+- **postgresql_metrics**: `service.name=sol/postgresql_metrics`, `host.name`; Scope `sol/postgresql_metrics`
+- **eventstoredb_metrics**: `service.name=sol/eventstoredb_metrics`, `host.name`; Scope `sol/eventstoredb_metrics`
+- **aws_ecs_metrics**: `service.name=sol/aws_ecs_metrics`, `host.name`; Scope `sol/aws_ecs_metrics`
+- **prometheus** (scrape + remote_write): `service.name=sol/prometheus`, `host.name`; Scope `sol/prometheus`
+- **internal_metrics**: `service.name=sol`, `host.name`; Scope `sol/internal_metrics`
+- **static_metrics**: configurable; Scope `sol/static_metrics`
+- **statsd**: `service.name=sol/statsd`, `host.name`; Scope `sol/statsd`
+- **datadog_agent**: Already has Resource — add Scope `sol/datadog_agent`
+
+#### E4. StatsD source: flush-interval aggregation + ExponentialHistogram
+
+Rewrite StatsD source to be OTLP-spec-compliant. This is the largest step.
+
+**New aggregation engine** (`src/sources/statsd/aggregator.rs`):
+- In-memory state per metric series (name + tags), flushed every `aggregation_interval_secs` (default 10s, configurable)
+- **Counters**: sum increments → single `Sum { is_monotonic: false (default, configurable), temporality: Delta }` data point per interval
+- **Gauges (absolute `42|g`)**: last-value wins → `Gauge` data point
+- **Gauges (delta `+5|g`, `-3|g`)**: stateful accumulation. Running value persists across flushes. TTL = 5min (configurable). On first delta without prior absolute, start from 0. Emit as absolute `Gauge`.
+- **Histograms/Timers/Distributions (`h`, `ms`, `d`)**: record into ExponentialHistogram (MaxSize=160, starting scale=20). Sample rate → weight-based insertion. All types emit as `ExponentialHistogram { temporality: Delta }`. No Summary production (D45).
+- **Sets**: accumulate unique values within interval → emit cardinality as `Gauge`
+
+**Timestamps**: `time_unix_nano` = flush time, `start_time_unix_nano` = previous flush time
+
+**Bare tags**: `AnyValue { value: Some(StringValue("")) }` (D39)
+
+**DogStatsD container ID**: parse `c:<id>` tag → `container.id` data point attribute
+
+**Delete**:
+- `new_distribution_from_samples()` constructor — replaced by ExpHist recording
+- `new_gauge_delta()` constructor — replaced by stateful accumulation emitting absolute Gauge
+- `new_set_from_values()` — replaced by simple `new_gauge()` with cardinality
+- `convert_to_statistic()` function — no summary/histogram distinction for new data
+- `MetricView::Distribution` match arms in prometheus/influxdb/statsd sinks — dead code
+
+#### E5. Timestamps on all scraper sources
+
+Ensure every metric data point has proper timestamps:
+- `time_unix_nano`: observation/scrape time (most sources already do this via `with_timestamp()`)
+- `start_time_unix_nano`: for Delta/Cumulative metrics, set to source start time or previous scrape time
+- Audit: `statsd` (was `0`, fixed by E4), `internal_metrics` (verify), all others (verify `with_timestamp` sets proto field)
+
+#### E6. OTLP `unit` field population
+
+Set `unit` field using UCUM c/s variant on metrics with known units:
+- `host_metrics`: `By` (bytes), `s` (seconds), `1` (CPU ratios/percentages)
+- `apache_metrics`: `s` (uptime), `By` (bytes), `{connection}`, `{request}`
+- `nginx_metrics`: `{connection}`, `{request}`
+- `statsd`: `s` or `ms` (timers, per ConversionUnit config)
+- `internal_metrics`: per-metric (`By`, `s`, `{event}`, etc.)
+- Other sources: best-effort from metric name suffix (`_bytes`→`By`, `_seconds`→`s`, `_total`→`{<name>}`)
+- Add `with_unit(unit: impl Into<String>)` method on OtelMetric
+
+#### E7. Resource/Scope → sink labels/tags (Tier 1 sinks)
+
+Enable non-OTLP sinks to propagate Resource attributes as metric labels:
+- **Prometheus**: `resource_to_labels = ["service.name", "host.name"]` (configurable, these defaults)
+- **InfluxDB**: `resource_to_tags = ["service.name", "host.name"]` (configurable, these defaults)
+- **StatsD**: flatten selected Resource attributes into DogStatsD tags (same config pattern)
+- Read Resource proto at sink boundary, extract configured keys, inject as data point attributes/tags before encoding
+
+#### E8. Eliminate ALL `vector.*` custom attributes
+
+D40(c): delete all `vector.*` attributes and their infrastructure.
+
+- Delete `vector.metric_type` attribute from `new_distribution_from_samples()` (already deleted in E4) and `new_set_from_values()` (already deleted in E4)
+- Delete `vector.metric_kind` attribute from `new_gauge_delta()` (already deleted in E4)
+- Delete `vector.set_values` attribute from `new_set_from_values()` (already deleted in E4)
+- Delete `vector.statistic` attribute — sinks now branch on `MetricView::Summary` vs `MetricView::Histogram` proto types directly
+- Delete `distribution_statistic()` method and `is_distribution_summary()` from OtelMetric
+- Delete `VECTOR_STATISTIC`, `VECTOR_METRIC_TYPE`, `VECTOR_METRIC_KIND`, `VECTOR_SET_VALUES` constants
+- Update statsd sink encoder: remove `distribution_statistic()` call, match on `MetricView::Histogram` directly
+- Update prometheus collector: remove `distribution_statistic()` call, `MetricView::Distribution` arm deleted
+- Update influxdb metrics: remove `distribution_statistic()` call, `MetricView::Distribution` arm deleted
+- Verify: `grep -rn 'vector\.\(statistic\|metric_type\|metric_kind\|set_values\)' lib/ src/` returns 0
+
+#### E9. Delete `MetricView::Distribution` variant
+
+The `Distribution` variant represented the broken raw-samples-as-explicit-bounds encoding. With E4 (proper aggregation) and E8 (no `vector.*` attributes), it has no producers and no consumers.
+
+- Delete `MetricView::Distribution` from the enum
+- Delete all match arms for `Distribution` in sinks, transforms, tests
+- Delete `Sample` struct if no longer used (verify — may still be used in Prometheus `samples_to_buckets`)
+- **Sol advantage over otelcontribcol**: otelcontribcol drops timers/histograms/distributions by default (`observer_type="disabled"`). Sol processes all of them with proper ExponentialHistogram aggregation.
+
+### Gate (Phase E)
+
+| Metric | Target | Verification |
+|--------|--------|--------------|
+| Tests passing | ≥ previous | `cargo test -p vector --all-features` |
+| ExponentialHistogram in prometheus sink | Converted to Histogram (not silently dropped) | Integration test |
+| StatsD → Prometheus roundtrip | ExpHist emitted by source, Histogram exposed by sink | End-to-end test |
+| StatsD flush aggregation | 1000 packets → 1 data point per metric per interval | Unit test |
+| StatsD gauge persistence | `100\|g` then (next flush) `+5\|g` → Gauge(105) | Unit test |
+| Resource attributes on host_metrics | `service.name=sol/host_metrics` + `host.name` present | Unit test |
+| InstrumentationScope on host_metrics | `name=sol/host_metrics` | Unit test |
+| Temporality: Delta counter → Prometheus | Accumulated to Cumulative | Unit test |
+| `time_unix_nano` on StatsD metrics | Non-zero, with `start_time_unix_nano` | Unit test |
+| `unit` field on host_metrics bytes | `"By"` | Unit test |
+| `vector.*` attribute references | 0 | `grep -rn 'vector\.\(statistic\|metric_type\|metric_kind\|set_values\)' lib/ src/` |
+| `distribution_statistic` references | 0 | `grep -rn distribution_statistic lib/ src/` |
+| `MetricView::Distribution` references | 0 | `grep -rn 'Distribution' lib/vector-core/src/event/otel_metric.rs` |
+| Summary production from StatsD | 0 | Unit test: `d` type → ExponentialHistogram not Summary |
+| Gauge delta (StatsD `+N\|g`) | Absolute Gauge (stateful accumulation) | Unit test |
+| Bare tags | `AnyValue { value: Some(StringValue("")) }` | Unit test |
+| `is_monotonic` default | `false` | Unit test |
+| DogStatsD container ID | `c:abc123` → `container.id=abc123` attribute | Unit test |
 
 ---
 

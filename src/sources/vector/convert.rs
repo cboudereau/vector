@@ -298,10 +298,6 @@ fn convert_sketch(name: &str, _kind: MetricKind, sketch: event::Sketch) -> OtelM
     match sketch.sketch {
         Some(event::sketch::Sketch::AgentDdSketch(dd)) => {
             let mut m = OtelMetric::new_gauge(name, dd.sum);
-            m.set_data_point_attribute(
-                f::VECTOR_METRIC_TYPE.to_string(),
-                string_value("sketch"),
-            );
             m.set_data_point_attribute("sketch.count".to_string(), AnyValue {
                 value: Some(OtelVal::IntValue(dd.count as i64)),
             });

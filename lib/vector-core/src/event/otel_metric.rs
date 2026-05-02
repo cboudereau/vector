@@ -374,59 +374,24 @@ impl OtelMetric {
         Self::new(proto)
     }
 
-    /// Convenience constructor for a distribution metric from samples.
-    /// Represented as an OTLP Histogram with vector.metric_type=distribution
-    /// and vector.statistic attribute indicating histogram vs summary.
-    ///
-    /// `statistic` should be `"histogram"` or `"summary"`.
+    /// Convenience constructor for a histogram from raw samples.
+    /// Each sample becomes one explicit bound with its rate as bucket count.
     pub fn new_distribution_from_samples(
         name: impl Into<String>,
         kind: super::MetricKind,
         samples: &[super::metric::Sample],
-        statistic: &str,
+        _statistic: &str,
     ) -> Self {
-        use opentelemetry_proto::tonic::metrics::v1::{
-            self as otel_metrics, metric::Data, Histogram, HistogramDataPoint,
-        };
-        let temporality = match kind {
-            super::MetricKind::Incremental => otel_metrics::AggregationTemporality::Delta as i32,
-            super::MetricKind::Absolute => otel_metrics::AggregationTemporality::Cumulative as i32,
-        };
         let count = samples.iter().map(|s| s.rate).sum::<u32>() as u64;
         let sum: f64 = samples.iter().map(|s| s.value * s.rate as f64).sum();
-        let explicit_bounds: Vec<f64> = samples.iter().map(|s| s.value).collect();
-        let bucket_counts: Vec<u64> = samples.iter().map(|s| s.rate as u64).collect();
-
-        let proto = OtelMetricProto {
-            name: name.into(),
-            data: Some(Data::Histogram(Histogram {
-                data_points: vec![HistogramDataPoint {
-                    count,
-                    sum: Some(sum),
-                    bucket_counts,
-                    explicit_bounds,
-                    ..Default::default()
-                }],
-                aggregation_temporality: temporality,
-            })),
-            ..Default::default()
-        };
-        let mut m = Self::new(proto);
-        m.set_data_point_attribute(
-            f::VECTOR_METRIC_TYPE.to_string(),
-            string_value(f::METRIC_TYPE_DISTRIBUTION),
-        );
-        m.set_data_point_attribute(
-            f::VECTOR_STATISTIC.to_string(),
-            string_value(statistic),
-        );
-        m
-    }
-
-    /// Convenience constructor for a distribution metric (empty, no samples).
-    /// Use `new_distribution_from_samples` when you have sample data.
-    pub fn new_distribution(name: impl Into<String>, kind: super::MetricKind) -> Self {
-        Self::new_distribution_from_samples(name, kind, &[], f::METRIC_TYPE_HISTOGRAM)
+        let buckets: Vec<super::metric::Bucket> = samples
+            .iter()
+            .map(|s| super::metric::Bucket {
+                upper_limit: s.value,
+                count: s.rate as u64,
+            })
+            .collect();
+        Self::new_histogram(name, kind, &buckets, count, sum)
     }
 
     /// Convenience constructor for a set metric with its values.

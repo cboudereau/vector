@@ -218,6 +218,34 @@ pub fn assert_distribution(
     }
 }
 
+pub fn assert_exponential_histogram(
+    metrics: &SplitMetrics,
+    series: MetricSeries,
+    expected_count: u64,
+    expected_sum: f64,
+) {
+    let otel = metrics
+        .get(&series)
+        .unwrap_or_else(|| panic!("exponential histogram '{series}' was not found"));
+    match otel.view() {
+        MetricView::ExponentialHistogram { count, sum, .. } => {
+            assert_eq!(
+                count, expected_count,
+                "expected count {expected_count} for '{series}', got {count}"
+            );
+            let diff = (sum - expected_sum).abs();
+            assert!(
+                diff < 1e-6,
+                "expected sum {expected_sum} for '{series}', got {sum}"
+            );
+        }
+        other => panic!(
+            "expected ExponentialHistogram for '{series}', got {}",
+            other.as_name()
+        ),
+    }
+}
+
 pub fn assert_set(metrics: &SplitMetrics, series: MetricSeries, expected_values: &[&str]) {
     let actual_values = read_set_values(metrics, series.clone());
     assert!(actual_values.is_some(), "set '{series}' was not found");

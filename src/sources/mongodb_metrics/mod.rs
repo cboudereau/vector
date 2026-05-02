@@ -14,8 +14,7 @@ use mongodb::{
     error::Error as MongoError,
     options::ClientOptions,
 };
-use opentelemetry_proto::tonic::common::v1::InstrumentationScope;
-use opentelemetry_proto::tonic::resource::v1::Resource;
+use vector_lib::event::otel_metric::{InstrumentationScope, Resource};
 use serde_with::serde_as;
 use snafu::{ResultExt, Snafu};
 use tokio::time;

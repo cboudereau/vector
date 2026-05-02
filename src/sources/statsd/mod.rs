@@ -4,29 +4,22 @@ use std::{
     time::Duration,
 };
 
-use bytes::Bytes;
-use futures::{StreamExt, TryFutureExt};
+use futures::TryFutureExt;
 use listenfd::ListenFd;
+use tokio::io::AsyncBufReadExt;
 use vector_lib::event::otel_metric::{InstrumentationScope, Resource};
 use serde_with::serde_as;
-use smallvec::{SmallVec, smallvec};
-use tokio_util::udp::UdpFramed;
 use vector_lib::{
     EstimatedJsonEncodedSizeOf,
-    codecs::{
-        NewlineDelimitedDecoder,
-        decoding::{self, Deserializer, Framer},
-    },
     configurable::configurable_component,
     internal_event::{CountByteSize, InternalEventHandle as _, Registered},
     ipallowlist::IpAllowlistConfig,
 };
 
-use self::parser::ParseError;
-use super::util::net::{SocketListenAddr, TcpNullAcker, TcpSource, try_bind_udp_socket};
+use self::aggregator::{Aggregator, AggregatorConfig};
+use super::util::net::{SocketListenAddr, try_bind_udp_socket};
 use crate::{
     SourceSender,
-    codecs::Decoder,
     config::{GenerateConfig, Resource as CfgResource, SourceConfig, SourceContext, SourceOutput},
     event::Event,
     internal_events::{
@@ -37,7 +30,7 @@ use crate::{
     shutdown::ShutdownSignal,
     sources::source_otel,
     tcp::TcpKeepaliveConfig,
-    tls::{MaybeTlsSettings, TlsSourceConfig},
+    tls::TlsSourceConfig,
 };
 
 pub mod aggregator;
@@ -47,7 +40,7 @@ mod unix;
 
 use parser::Parser;
 #[cfg(unix)]
-use unix::{UnixConfig, statsd_unix};
+use unix::{UnixConfig, statsd_unix_aggregated};
 
 /// Configuration for the `statsd` source.
 #[configurable_component(source("statsd", "Collect metrics emitted by the StatsD aggregator."))]
@@ -97,6 +90,18 @@ pub struct UdpConfig {
     #[serde(default = "default_convert_to")]
     #[configurable(derived)]
     convert_to: ConversionUnit,
+
+    /// The flush interval in seconds for aggregated metrics.
+    #[serde(default = "default_flush_interval_secs")]
+    flush_interval_secs: f64,
+
+    /// The time-to-live in seconds for gauge metrics that receive no updates.
+    #[serde(default = "default_gauge_ttl_secs")]
+    gauge_ttl_secs: f64,
+
+    /// Whether emitted Sum metrics should be marked as monotonic.
+    #[serde(default = "default_is_monotonic")]
+    is_monotonic: bool,
 }
 
 impl UdpConfig {
@@ -106,6 +111,9 @@ impl UdpConfig {
             receive_buffer_bytes: None,
             sanitize: default_sanitize(),
             convert_to: default_convert_to(),
+            flush_interval_secs: default_flush_interval_secs(),
+            gauge_ttl_secs: default_gauge_ttl_secs(),
+            is_monotonic: default_is_monotonic(),
         }
     }
 }
@@ -153,6 +161,18 @@ pub struct TcpConfig {
     #[serde(default = "default_convert_to")]
     #[configurable(derived)]
     convert_to: ConversionUnit,
+
+    /// The flush interval in seconds for aggregated metrics.
+    #[serde(default = "default_flush_interval_secs")]
+    flush_interval_secs: f64,
+
+    /// The time-to-live in seconds for gauge metrics that receive no updates.
+    #[serde(default = "default_gauge_ttl_secs")]
+    gauge_ttl_secs: f64,
+
+    /// Whether emitted Sum metrics should be marked as monotonic.
+    #[serde(default = "default_is_monotonic")]
+    is_monotonic: bool,
 }
 
 impl TcpConfig {
@@ -168,6 +188,9 @@ impl TcpConfig {
             connection_limit: None,
             sanitize: default_sanitize(),
             convert_to: default_convert_to(),
+            flush_interval_secs: default_flush_interval_secs(),
+            gauge_ttl_secs: default_gauge_ttl_secs(),
+            is_monotonic: default_is_monotonic(),
         }
     }
 }
@@ -182,6 +205,18 @@ const fn default_sanitize() -> bool {
 
 const fn default_convert_to() -> ConversionUnit {
     ConversionUnit::Seconds
+}
+
+const fn default_flush_interval_secs() -> f64 {
+    10.0
+}
+
+const fn default_gauge_ttl_secs() -> f64 {
+    300.0
+}
+
+const fn default_is_monotonic() -> bool {
+    true
 }
 
 impl GenerateConfig for StatsdConfig {
@@ -209,37 +244,12 @@ impl SourceConfig for StatsdConfig {
                 Ok(Box::pin(statsd_udp(config.clone(), cx.shutdown, cx.out, resource, scope)))
             }
             StatsdConfig::Tcp(config) => {
-                let tls_config = config.tls.as_ref().map(|tls| tls.tls_config.clone());
-                let tls_client_metadata_key = config
-                    .tls
-                    .as_ref()
-                    .and_then(|tls| tls.client_metadata_key.clone())
-                    .and_then(|k| k.path);
-                let tls = MaybeTlsSettings::from_config(tls_config.as_ref(), true)?;
-                let statsd_tcp_source = StatsdTcpSource {
-                    sanitize: config.sanitize,
-                    convert_to: config.convert_to,
-                    resource,
-                    scope,
-                };
-
-                statsd_tcp_source.run(
-                    config.address,
-                    config.keepalive,
-                    config.shutdown_timeout_secs,
-                    tls,
-                    tls_client_metadata_key,
-                    config.receive_buffer_bytes,
-                    None,
-                    cx,
-                    false.into(),
-                    config.connection_limit,
-                    config.permit_origin.clone().map(Into::into),
-                    StatsdConfig::NAME,
-                )
+                Ok(Box::pin(statsd_tcp(config.clone(), cx.shutdown, cx.out, resource, scope)))
             }
             #[cfg(unix)]
-            StatsdConfig::Unix(config) => statsd_unix(config.clone(), cx.shutdown, cx.out, resource, scope),
+            StatsdConfig::Unix(config) => {
+                Ok(Box::pin(statsd_unix_aggregated(config.clone(), cx.shutdown, cx.out, resource, scope)))
+            }
         }
     }
 
@@ -261,90 +271,10 @@ impl SourceConfig for StatsdConfig {
     }
 }
 
-#[derive(Clone)]
-pub(crate) struct StatsdDeserializer {
-    socket_mode: Option<SocketMode>,
-    events_received: Option<Registered<EventsReceived>>,
-    parser: Parser,
-    resource: Option<Resource>,
-    scope: Option<InstrumentationScope>,
-}
-
-impl StatsdDeserializer {
-    pub fn udp_with_otel(sanitize: bool, convert_to: ConversionUnit, resource: Resource, scope: InstrumentationScope) -> Self {
-        Self {
-            socket_mode: Some(SocketMode::Udp),
-            // The other modes emit a different `EventsReceived`.
-            events_received: Some(register!(EventsReceived)),
-            parser: Parser::new(sanitize, convert_to),
-            resource: Some(resource),
-            scope: Some(scope),
-        }
-    }
-
-    pub fn tcp_with_otel(sanitize: bool, convert_to: ConversionUnit, resource: Resource, scope: InstrumentationScope) -> Self {
-        Self {
-            socket_mode: None,
-            events_received: None,
-            parser: Parser::new(sanitize, convert_to),
-            resource: Some(resource),
-            scope: Some(scope),
-        }
-    }
-
-    #[cfg(unix)]
-    pub fn unix_with_otel(sanitize: bool, convert_to: ConversionUnit, resource: Resource, scope: InstrumentationScope) -> Self {
-        Self {
-            socket_mode: Some(SocketMode::Unix),
-            events_received: None,
-            parser: Parser::new(sanitize, convert_to),
-            resource: Some(resource),
-            scope: Some(scope),
-        }
-    }
-}
-
-impl decoding::format::Deserializer for StatsdDeserializer {
-    fn parse(
-        &self,
-        bytes: Bytes,
-    ) -> crate::Result<SmallVec<[Event; 1]>> {
-        // The other modes already emit BytesReceived
-        if let Some(mode) = self.socket_mode
-            && mode == SocketMode::Udp
-        {
-            emit!(SocketBytesReceived {
-                mode,
-                byte_size: bytes.len(),
-            });
-        }
-
-        match std::str::from_utf8(&bytes).map_err(ParseError::InvalidUtf8) {
-            Err(error) => Err(Box::new(error)),
-            Ok(s) => match self.parser.parse(s) {
-                Ok(mut metric) => {
-                    if let Some(ref resource) = self.resource {
-                        metric.set_resource(resource.clone());
-                    }
-                    if let Some(ref scope) = self.scope {
-                        metric.set_scope(scope.clone());
-                    }
-                    let event = Event::Metric(metric);
-                    if let Some(er) = &self.events_received {
-                        let byte_size = event.estimated_json_encoded_size_of();
-                        er.emit(CountByteSize(1, byte_size));
-                    }
-                    Ok(smallvec![event])
-                }
-                Err(error) => Err(Box::new(error)),
-            },
-        }
-    }
-}
 
 async fn statsd_udp(
     config: UdpConfig,
-    shutdown: ShutdownSignal,
+    mut shutdown: ShutdownSignal,
     mut out: SourceSender,
     resource: Resource,
     scope: InstrumentationScope,
@@ -371,29 +301,64 @@ async fn statsd_udp(
         r#type = "udp"
     );
 
-    let codec = Decoder::new(
-        Framer::NewlineDelimited(NewlineDelimitedDecoder::new()),
-        Deserializer::Boxed(Box::new(StatsdDeserializer::udp_with_otel(
-            config.sanitize,
-            config.convert_to,
-            resource,
-            scope,
-        ))),
-    );
-    let mut stream = UdpFramed::new(socket, codec).take_until(shutdown);
-    while let Some(frame) = stream.next().await {
-        match frame {
-            Ok(((events, _byte_size), _sock)) => {
-                let count = events.len();
-                if (out.send_batch(events).await).is_err() {
-                    emit!(StreamClosedError { count });
+    let parser = Parser::new(config.sanitize, config.convert_to);
+    let timer_unit = match config.convert_to {
+        ConversionUnit::Seconds => "s",
+        ConversionUnit::Milliseconds => "ms",
+    };
+    let agg_config = AggregatorConfig {
+        flush_interval: Duration::from_secs_f64(config.flush_interval_secs),
+        gauge_ttl: Duration::from_secs_f64(config.gauge_ttl_secs),
+        is_monotonic: config.is_monotonic,
+        timer_unit: timer_unit.to_string(),
+    };
+    let mut aggregator = Aggregator::new(agg_config.clone());
+    let mut flush_interval = tokio::time::interval(agg_config.flush_interval);
+    flush_interval.tick().await; // consume the immediate first tick
+    let events_received = register!(EventsReceived);
+
+    let mut buf = vec![0u8; 65535];
+
+    loop {
+        tokio::select! {
+            _ = &mut shutdown => {
+                flush_aggregator(&mut aggregator, &resource, &scope, &events_received, &mut out).await;
+                break;
+            }
+            _ = flush_interval.tick() => {
+                if !flush_aggregator(&mut aggregator, &resource, &scope, &events_received, &mut out).await {
+                    break;
                 }
             }
-            Err(error) => {
-                emit!(SocketReceiveError {
-                    mode: SocketMode::Udp,
-                    error
-                });
+            recv = socket.recv_from(&mut buf) => {
+                match recv {
+                    Ok((n, _addr)) => {
+                        emit!(SocketBytesReceived {
+                            mode: SocketMode::Udp,
+                            byte_size: n,
+                        });
+                        let data = &buf[..n];
+                        if let Ok(s) = std::str::from_utf8(data) {
+                            for line in s.lines() {
+                                if line.is_empty() {
+                                    continue;
+                                }
+                                match parser.parse_for_aggregation(line) {
+                                    Ok(parsed) => aggregator.record(parsed),
+                                    Err(error) => {
+                                        debug!(message = "Failed to parse statsd line.", %error);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(error) => {
+                        emit!(SocketReceiveError {
+                            mode: SocketMode::Udp,
+                            error
+                        });
+                    }
+                }
             }
         }
     }
@@ -401,40 +366,135 @@ async fn statsd_udp(
     Ok(())
 }
 
-#[derive(Clone)]
-struct StatsdTcpSource {
-    sanitize: bool,
-    convert_to: ConversionUnit,
-    resource: Resource,
-    scope: InstrumentationScope,
+async fn flush_aggregator(
+    aggregator: &mut Aggregator,
+    resource: &Resource,
+    scope: &InstrumentationScope,
+    events_received: &Registered<EventsReceived>,
+    out: &mut SourceSender,
+) -> bool {
+    let metrics = aggregator.flush(resource, scope);
+    if metrics.is_empty() {
+        return true;
+    }
+    let events: Vec<Event> = metrics.into_iter().map(Event::Metric).collect();
+    let count = events.len();
+    let byte_size = events.estimated_json_encoded_size_of();
+    events_received.emit(CountByteSize(count, byte_size));
+    if (out.send_batch(events).await).is_err() {
+        emit!(StreamClosedError { count });
+        return false;
+    }
+    true
 }
 
-impl TcpSource for StatsdTcpSource {
-    type Error = vector_lib::codecs::decoding::Error;
-    type Item = SmallVec<[Event; 1]>;
-    type Decoder = Decoder;
-    type Acker = TcpNullAcker;
+async fn statsd_tcp(
+    config: TcpConfig,
+    mut shutdown: ShutdownSignal,
+    mut out: SourceSender,
+    resource: Resource,
+    scope: InstrumentationScope,
+) -> Result<(), ()> {
+    let addr = match config.address {
+        SocketListenAddr::SocketAddr(addr) => addr,
+        SocketListenAddr::SystemdFd(_) => {
+            error!(message = "Aggregated TCP mode does not support systemd socket activation.");
+            return Err(());
+        }
+    };
+    let listener = tokio::net::TcpListener::bind(addr)
+        .await
+        .map_err(|error| {
+            emit!(SocketBindError {
+                mode: SocketMode::Tcp,
+                error,
+            });
+        })?;
 
-    fn decoder(&self) -> Self::Decoder {
-        Decoder::new(
-            Framer::NewlineDelimited(NewlineDelimitedDecoder::new()),
-            Deserializer::Boxed(Box::new(StatsdDeserializer::tcp_with_otel(
-                self.sanitize,
-                self.convert_to,
-                self.resource.clone(),
-                self.scope.clone(),
-            ))),
-        )
+    info!(
+        message = "Listening.",
+        addr = %config.address,
+        r#type = "tcp"
+    );
+
+    let parser = Parser::new(config.sanitize, config.convert_to);
+    let timer_unit = match config.convert_to {
+        ConversionUnit::Seconds => "s",
+        ConversionUnit::Milliseconds => "ms",
+    };
+    let agg_config = AggregatorConfig {
+        flush_interval: Duration::from_secs_f64(config.flush_interval_secs),
+        gauge_ttl: Duration::from_secs_f64(config.gauge_ttl_secs),
+        is_monotonic: config.is_monotonic,
+        timer_unit: timer_unit.to_string(),
+    };
+    let mut aggregator = Aggregator::new(agg_config.clone());
+    let mut flush_interval = tokio::time::interval(agg_config.flush_interval);
+    flush_interval.tick().await;
+    let events_received = register!(EventsReceived);
+
+    let (line_tx, mut line_rx) = tokio::sync::mpsc::channel::<String>(4096);
+
+    loop {
+        tokio::select! {
+            _ = &mut shutdown => {
+                flush_aggregator(&mut aggregator, &resource, &scope, &events_received, &mut out).await;
+                break;
+            }
+            _ = flush_interval.tick() => {
+                if !flush_aggregator(&mut aggregator, &resource, &scope, &events_received, &mut out).await {
+                    break;
+                }
+            }
+            accept = listener.accept() => {
+                match accept {
+                    Ok((stream, _addr)) => {
+                        let tx = line_tx.clone();
+                        tokio::spawn(async move {
+                            let reader = tokio::io::BufReader::new(stream);
+                            let mut lines = reader.lines();
+                            while let Ok(Some(line)) = lines.next_line().await {
+                                emit!(SocketBytesReceived {
+                                    mode: SocketMode::Tcp,
+                                    byte_size: line.len() + 1,
+                                });
+                                if tx.send(line).await.is_err() {
+                                    break;
+                                }
+                            }
+                        });
+                    }
+                    Err(error) => {
+                        emit!(SocketReceiveError {
+                            mode: SocketMode::Tcp,
+                            error,
+                        });
+                    }
+                }
+            }
+            Some(line) = line_rx.recv() => {
+                if !line.is_empty() {
+                    match parser.parse_for_aggregation(&line) {
+                        Ok(parsed) => aggregator.record(parsed),
+                        Err(error) => {
+                            emit!(SocketReceiveError {
+                                mode: SocketMode::Tcp,
+                                error: std::io::Error::new(std::io::ErrorKind::InvalidData, error.to_string()),
+                            });
+                        }
+                    }
+                }
+            }
+        }
     }
 
-    fn build_acker(&self, _: &[Self::Item]) -> Self::Acker {
-        TcpNullAcker
-    }
+    Ok(())
 }
 
 #[cfg(test)]
 mod test {
     use futures::channel::mpsc;
+    use futures::{StreamExt};
     use futures_util::SinkExt;
     use tokio::{
         io::AsyncWriteExt,
@@ -457,27 +517,20 @@ mod test {
                 assert_source_error,
             },
             metrics::{
-                AbsoluteMetricState, assert_counter, assert_distribution, assert_gauge, assert_set,
+                AbsoluteMetricState, assert_counter, assert_exponential_histogram, assert_gauge,
             },
         },
     };
 
-    /// Build a `MetricIdentity` for statsd tests that supports bare tags.
-    /// Bare tags (value `None`) are stored as `AnyValue { value: None }` in OTel,
-    /// matching how `with_metric_tags` converts `TagValue::Bare`.
     fn statsd_series(
         name: &str,
-        tags: &[(&str, Option<&str>)],
+        tags: &[(&str, &str)],
     ) -> vector_lib::event::metric::MetricIdentity {
-        use vector_lib::event::{AnyValue, OtelAttributes, string_value};
+        use vector_lib::event::{OtelAttributes, string_value};
 
         let mut attrs = OtelAttributes::new();
         for &(k, v) in tags {
-            let av = match v {
-                Some(s) => string_value(s),
-                None => AnyValue { value: None },
-            };
-            attrs.insert(k.to_string(), av);
+            attrs.insert(k.to_string(), string_value(v));
         }
         vector_lib::event::metric::MetricIdentity {
             name: name.into(),
@@ -561,6 +614,9 @@ mod test {
                 path: in_path.clone(),
                 sanitize: true,
                 convert_to: ConversionUnit::Seconds,
+                flush_interval_secs: default_flush_interval_secs(),
+                gauge_ttl_secs: default_gauge_ttl_secs(),
+                is_monotonic: default_is_monotonic(),
             });
             let (sender, mut receiver) = mpsc::channel(200);
             tokio::spawn(async move {
@@ -619,13 +675,7 @@ mod test {
             .flat_map(EventContainer::into_events)
             .collect::<AbsoluteMetricState>();
         let metrics = state.finish();
-        assert_distribution(
-            &metrics,
-            series!("timer"),
-            3200.0,
-            10,
-            &[(1.0, 0), (2.0, 0), (4.0, 0), (f64::INFINITY, 10)],
-        );
+        assert_exponential_histogram(&metrics, series!("timer"), 10, 3200.0);
     }
 
     async fn test_statsd(statsd_config: StatsdConfig, mut sender: mpsc::Sender<&'static [u8]>) {
@@ -683,32 +733,21 @@ mod test {
 
         assert_counter(
             &metrics,
-            statsd_series("foo", &[("a", None), ("b", Some("b"))]),
+            statsd_series("foo", &[("a", ""), ("b", "b")]),
             100.0,
         );
 
         assert_counter(
             &metrics,
-            statsd_series("foo", &[("a", None), ("b", Some("c"))]),
+            statsd_series("foo", &[("a", ""), ("b", "c")]),
             100.0,
         );
 
         assert_gauge(&metrics, series!("bar"), 42.0);
-        assert_distribution(
-            &metrics,
-            series!("glork"),
-            3000.0,
-            1000,
-            &[(1.0, 0), (2.0, 0), (4.0, 1000), (f64::INFINITY, 1000)],
-        );
-        assert_distribution(
-            &metrics,
-            series!("milliglork"),
-            1500.0,
-            500,
-            &[(1.0, 0), (2.0, 0), (4.0, 500), (f64::INFINITY, 500)],
-        );
-        assert_set(&metrics, series!("set"), &["0", "1"]);
+        assert_exponential_histogram(&metrics, series!("glork"), 1000, 3000.0);
+        assert_exponential_histogram(&metrics, series!("milliglork"), 500, 1500.0);
+        // Sets become gauge(cardinality)
+        assert_gauge(&metrics, series!("set"), 2.0);
     }
 
     async fn test_invalid_statsd(

@@ -13,6 +13,7 @@ pub struct AggregatorConfig {
     pub flush_interval: Duration,
     pub gauge_ttl: Duration,
     pub is_monotonic: bool,
+    pub timer_unit: String,
 }
 
 impl Default for AggregatorConfig {
@@ -20,7 +21,8 @@ impl Default for AggregatorConfig {
         Self {
             flush_interval: Duration::from_secs(10),
             gauge_ttl: Duration::from_secs(300),
-            is_monotonic: false,
+            is_monotonic: true,
+            timer_unit: "s".to_string(),
         }
     }
 }
@@ -178,10 +180,11 @@ impl Aggregator {
 
         let mut metrics = Vec::new();
 
-        // Counters → Sum(Delta, is_monotonic from config)
+        // Counters → Sum(Delta, is_monotonic from config), unit="1"
         for (key, counter) in self.counters.drain() {
             let mut m =
-                OtelMetric::new_counter(&key.name, crate::event::metric::MetricKind::Incremental, counter.value);
+                OtelMetric::new_counter(&key.name, crate::event::metric::MetricKind::Incremental, counter.value)
+                    .with_unit("1");
             if let Some(tags) = key.tags {
                 m = m.with_tags(Some(tags));
             }
@@ -207,9 +210,10 @@ impl Aggregator {
             metrics.push(m);
         }
 
-        // Sets → Gauge(cardinality)
+        // Sets → Gauge(cardinality), unit="1"
         for (key, set) in self.sets.drain() {
-            let mut m = OtelMetric::new_gauge(&key.name, set.values.len() as f64);
+            let mut m = OtelMetric::new_gauge(&key.name, set.values.len() as f64)
+                .with_unit("1");
             if let Some(tags) = key.tags {
                 m = m.with_tags(Some(tags));
             }
@@ -219,9 +223,10 @@ impl Aggregator {
             metrics.push(m);
         }
 
-        // Histograms → ExponentialHistogram(Delta)
+        // Histograms → ExponentialHistogram(Delta), unit from config
         for (key, hist) in self.histograms.drain() {
-            let mut m = hist.to_otel_metric(&key.name);
+            let mut m = hist.to_otel_metric(&key.name)
+                .with_unit(&self.config.timer_unit);
             if let Some(tags) = key.tags {
                 m = m.with_tags(Some(tags));
             }

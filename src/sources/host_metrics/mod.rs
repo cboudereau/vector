@@ -21,8 +21,7 @@ use vector_lib::{
     },
 };
 
-use opentelemetry_proto::tonic::common::v1::InstrumentationScope;
-use opentelemetry_proto::tonic::resource::v1::Resource;
+use vector_lib::event::otel_metric::{InstrumentationScope, Resource};
 
 use crate::{
     SourceSender,
@@ -542,7 +541,8 @@ impl MetricsBuffer {
         let mut metric = OtelMetric::new_counter(name, MetricKind::Absolute, value)
             .with_namespace(self.namespace.clone())
             .with_tags(Some(self.tags(tags)))
-            .with_timestamp(Some(self.timestamp));
+            .with_timestamp(Some(self.timestamp))
+            .with_unit(infer_unit(name));
         self.apply_otel(&mut metric);
         self.metrics.push(metric);
     }
@@ -551,9 +551,20 @@ impl MetricsBuffer {
         let mut metric = OtelMetric::new_gauge(name, value)
             .with_namespace(self.namespace.clone())
             .with_tags(Some(self.tags(tags)))
-            .with_timestamp(Some(self.timestamp));
+            .with_timestamp(Some(self.timestamp))
+            .with_unit(infer_unit(name));
         self.apply_otel(&mut metric);
         self.metrics.push(metric);
+    }
+}
+
+fn infer_unit(name: &str) -> &'static str {
+    if name.contains("bytes") {
+        "By"
+    } else if name.contains("seconds") {
+        "s"
+    } else {
+        "1"
     }
 }
 

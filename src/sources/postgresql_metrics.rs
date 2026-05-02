@@ -15,8 +15,7 @@ use openssl::{
     error::ErrorStack,
     ssl::{SslConnector, SslMethod},
 };
-use opentelemetry_proto::tonic::common::v1::InstrumentationScope;
-use opentelemetry_proto::tonic::resource::v1::Resource;
+use vector_lib::event::otel_metric::{InstrumentationScope, Resource};
 use postgres_openssl::MakeTlsConnector;
 use serde_with::serde_as;
 use snafu::{ResultExt, Snafu};

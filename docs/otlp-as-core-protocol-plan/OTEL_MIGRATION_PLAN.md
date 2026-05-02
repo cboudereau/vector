@@ -429,9 +429,9 @@ All `to_value_canonical()` call sites migrated to `as_map()`:
 
 ### Phase E — OTLP Fidelity Alignment (source/sink divergences)
 
-**Status: E1-E8 DONE + D51 DONE + sink ExponentialHistogram support DONE. E9 deferred (only `vector` source converter still produces Distribution, per D52 backward-compat decision).**
+**Status: E1-E8 DONE + D51 DONE + sink ExponentialHistogram support DONE. E9+F in progress — eliminating ALL `vector.*` attributes.**
 
-All decisions locked. Execution order: sinks first (E1-E2), then sources (E3-E6), then sink enrichment (E7), then cleanup (E8-E9).
+All decisions locked. Execution order: sinks first (E1-E2), then sources (E3-E6), then sink enrichment (E7), then cleanup (E8-E9), then structural field migration (F1-F3).
 
 **Completed:**
 - **E1** ✅ ExponentialHistogram→Histogram conversion in MetricNormalizer + Prometheus exporter
@@ -445,8 +445,21 @@ All decisions locked. Execution order: sinks first (E1-E2), then sources (E3-E6)
 - **D51** ✅ log_to_metric Histogram/Summary → ExponentialHistogram (with new_exponential_histogram_single constructor)
 - **Sink ExponentialHistogram support** ✅ Prometheus collector (explicit bucket conversion), InfluxDB (count/sum/min/max/avg), GreptimeDB (count/sum/min/max), CloudWatch (StatisticSet)
 
-**Deferred:**
-- **E9** — Delete MetricView::Distribution variant (only `vector` source converter still produces Distribution per D52; ~25 test-only usages remain)
+**In progress (E9 + Phase F — eliminate ALL `vector.*` attributes):**
+
+E9 Step 1: Strip `vector.*` attrs from `new_distribution_from_samples` (thin wrapper around `new_histogram`). Remove `vector.metric_type=sketch` from `convert_sketch()`.
+
+E9 Step 2: Remove `is_distribution()` gate from `view()` — `MetricView::Distribution` becomes unreachable.
+
+E9 Step 3: Delete `MetricView::Distribution` variant + all match arms across ~15 files. Delete `is_distribution()`, `distribution_statistic()`, `is_distribution_summary()`, `subtract_distribution()` methods. Delete `VECTOR_STATISTIC`, `METRIC_TYPE_DISTRIBUTION` constants. Move StatsD sample-reconstruction into Histogram arm.
+
+E9 Step 4: Rename `new_distribution_from_samples` → `new_histogram_from_samples` (drop `statistic` param), update ~30 callers.
+
+F1 (D53): Add `set_values: Option<BTreeSet<String>>` field to OtelMetric. Rewrite `new_set_from_values` to use struct field (no `vector.set_values` / `vector.metric_type=set` attrs). Rewrite `is_set()`, `merge_set_values()`, `subtract_set_values()`, `view()` Set arm. Delete `VECTOR_SET_VALUES` constant.
+
+F2: Add `kind_override: Option<MetricKind>` field to OtelMetric. Rewrite `new_gauge_delta` to use field (no `vector.metric_kind` attr). Rewrite `kind()`/`set_kind()` for Gauge/Summary. Delete `VECTOR_METRIC_KIND`, `VECTOR_METRIC_TYPE` constants.
+
+F3: Delete `VECTOR_PREFIX` constant and `vector.*` prefix filtering from `tags()`/`all_tags_including_resource()`. Final gate: all `VECTOR_*` constants = 0.
 
 Run `cargo test -p vector --all-features` after each commit.
 
@@ -579,7 +592,51 @@ The `Distribution` variant represented the broken raw-samples-as-explicit-bounds
 - Delete `Sample` struct if no longer used (verify — may still be used in Prometheus `samples_to_buckets`)
 - **Sol advantage over otelcontribcol**: otelcontribcol drops timers/histograms/distributions by default (`observer_type="disabled"`). Sol processes all of them with proper ExponentialHistogram aggregation.
 
-### Gate (Phase E)
+### Phase F — Structural Field Migration (eliminate remaining `vector.*` attributes)
+
+**Status: Planned. Executes immediately after E9.**
+
+Phase F replaces the remaining `vector.*` data-point attributes with dedicated struct fields on `OtelMetric`. After F3, zero `vector.*` attributes exist anywhere in the codebase.
+
+#### F1. D53 — `set_values: Option<BTreeSet<String>>` field (replace `vector.set_values` + `vector.metric_type=set`)
+
+Add a dedicated `set_values` field to `OtelMetric` for set merge semantics. `BTreeSet` deduplicates by construction. The Gauge numeric value = `set_values.len()`, recomputed on read. The field is never serialized to OTLP proto — it is pipeline-internal state.
+
+- Add `set_values: Option<BTreeSet<String>>` to `OtelMetric` struct
+- Rewrite `new_set_from_values()`: populate field, create `Gauge(cardinality)`, no `vector.*` attrs
+- Rewrite `is_set()`: check `self.set_values.is_some()`
+- Rewrite `view()` Set arm: read from `self.set_values` instead of dp_attrs
+- Rewrite `merge_set_values()`: BTreeSet union
+- Rewrite `subtract_set_values()`: BTreeSet difference
+- Update Arbitrary impl, Lua bridge, aggregate transform
+- Delete `VECTOR_SET_VALUES` constant
+
+#### F2. `kind_override: Option<MetricKind>` field (replace `vector.metric_kind`)
+
+Add a dedicated `kind_override` field to `OtelMetric` for Gauge/Summary types that lack `aggregation_temporality` in OTLP. Pipeline-internal state, not serialized to proto.
+
+- Add `kind_override: Option<MetricKind>` to `OtelMetric` struct
+- Rewrite `new_gauge_delta()`: set `kind_override = Some(Incremental)` instead of attr
+- Rewrite `kind()`: for Gauge/Summary, check `self.kind_override` instead of `VECTOR_METRIC_KIND` attr
+- Rewrite `set_kind()`: for Gauge/Summary, set `self.kind_override` instead of attr
+- Update `new_set_from_values` (from F1): set `kind_override` for incremental sets
+- Delete `VECTOR_METRIC_KIND`, `VECTOR_METRIC_TYPE` constants
+
+#### F3. Delete `VECTOR_PREFIX` and tag filtering
+
+- Delete `VECTOR_PREFIX` constant
+- Remove `vector.*` prefix filtering from `tags()` and `all_tags_including_resource()` — dead code, no `vector.*` attrs exist
+
+### Gate (Phase E+F)
+
+**Additional F gate metrics:**
+
+| Metric | Target | Verification |
+|--------|--------|--------------|
+| `VECTOR_*` constants in otel_fields.rs | 0 | `grep -rn 'VECTOR_' lib/vector-core/src/event/otel_fields.rs` |
+| `vector.*` prefix filtering in tags() | 0 | `grep -rn 'VECTOR_PREFIX' lib/vector-core/src/event/otel_metric.rs` |
+| `new_set_from_values` uses `vector.*` attrs | 0 | Set values stored in struct field, not dp_attrs |
+| `new_gauge_delta` uses `vector.*` attrs | 0 | Kind stored in struct field, not dp_attrs |
 
 | Metric | Target | Verification |
 |--------|--------|--------------|

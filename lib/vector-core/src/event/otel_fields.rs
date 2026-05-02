@@ -102,11 +102,6 @@ pub const SOURCE_TYPE: &str = "source_type";
 pub const SERVICE_NAME: &str = "service.name";
 pub const HOST_NAME: &str = "host.name";
 
-// Internal Vector attribute keys.
-pub const VECTOR_SET_VALUES: &str = "vector.set_values";
-pub const VECTOR_METRIC_KIND: &str = "vector.metric_kind";
-pub const VECTOR_METRIC_TYPE: &str = "vector.metric_type";
-pub const VECTOR_PREFIX: &str = "vector.";
 
 // Tracing metadata field names.
 pub const METADATA: &str = "metadata";

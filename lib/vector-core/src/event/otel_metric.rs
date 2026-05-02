@@ -10,6 +10,7 @@ pub use opentelemetry_proto::tonic::common::v1::InstrumentationScope;
 pub use opentelemetry_proto::tonic::resource::v1::Resource;
 use prost::Message as _;
 use serde::Serialize;
+use std::collections::BTreeSet;
 use vector_buffers::EventCount;
 use vector_common::{
     EventDataEq,
@@ -99,6 +100,8 @@ pub struct OtelMetric {
     pub(crate) scope: Option<InstrumentationScope>,
     pub(crate) scope_attrs: OtelAttributes,
     pub(crate) metadata: EventMetadata,
+    pub(crate) set_values: Option<BTreeSet<String>>,
+    pub(crate) kind_override: Option<super::MetricKind>,
 }
 
 fn extract_dp_attrs(metric: &mut OtelMetricProto) -> Vec<OtelAttributes> {
@@ -149,6 +152,8 @@ impl OtelMetric {
             scope: None,
             scope_attrs: OtelAttributes::new(),
             metadata: EventMetadata::default(),
+            set_values: None,
+            kind_override: None,
         }
     }
 
@@ -389,49 +394,25 @@ impl OtelMetric {
     }
 
     /// Convenience constructor for a set metric with its values.
-    /// Represented as an OTLP Gauge with vector.metric_type=set,
-    /// vector.set_values attribute, and cardinality as the numeric value.
+    /// Represented as an OTLP Gauge with cardinality as the numeric value.
+    /// Set values are stored in the `set_values` struct field, not in attributes.
     pub fn new_set_from_values(
         name: impl Into<String>,
         kind: super::MetricKind,
         values: impl IntoIterator<Item = impl Into<String>>,
     ) -> Self {
-        let mut values: Vec<String> = values.into_iter().map(Into::into).collect();
-        values.sort();
-        values.dedup();
-        let cardinality = values.len() as f64;
+        let set: BTreeSet<String> = values.into_iter().map(Into::into).collect();
+        let cardinality = set.len() as f64;
         let mut m = Self::new_gauge(name, cardinality);
-        m.set_data_point_attribute(
-            f::VECTOR_METRIC_TYPE.to_string(),
-            string_value(f::METRIC_TYPE_SET),
-        );
-        m.set_data_point_attribute(
-            f::VECTOR_METRIC_KIND.to_string(),
-            string_value(match kind {
-                super::MetricKind::Incremental => f::METRIC_KIND_INCREMENTAL,
-                super::MetricKind::Absolute => f::METRIC_KIND_ABSOLUTE,
-            }),
-        );
-        let set_values: Vec<AnyValue> = values.iter().map(|v| string_value(v)).collect();
-        m.set_data_point_attribute(
-            f::VECTOR_SET_VALUES.to_string(),
-            AnyValue {
-                value: Some(OtelValueKind::ArrayValue(
-                    opentelemetry_proto::tonic::common::v1::ArrayValue { values: set_values },
-                )),
-            },
-        );
+        m.set_values = Some(set);
+        m.kind_override = Some(kind);
         m
     }
 
     /// Convenience constructor for a delta/signed gauge (e.g. statsd +/-).
-    /// Represented as an OTLP Gauge with vector.metric_kind=incremental attribute.
     pub fn new_gauge_delta(name: impl Into<String>, value: f64) -> Self {
         let mut m = Self::new_gauge(name, value);
-        m.set_data_point_attribute(
-            f::VECTOR_METRIC_KIND.to_string(),
-            string_value(f::METRIC_KIND_INCREMENTAL),
-        );
+        m.kind_override = Some(super::MetricKind::Incremental);
         m
     }
 
@@ -456,6 +437,8 @@ impl OtelMetric {
             scope,
             scope_attrs,
             metadata,
+            set_values: None,
+            kind_override: None,
         }
     }
 
@@ -693,28 +676,7 @@ impl OtelMetric {
                 MetricData::Histogram(h) => h.aggregation_temporality = temp,
                 MetricData::ExponentialHistogram(e) => e.aggregation_temporality = temp,
                 MetricData::Gauge(_) | MetricData::Summary(_) => {
-                    if self.is_set() {
-                        let kind_str = match kind {
-                            super::MetricKind::Incremental => f::METRIC_KIND_INCREMENTAL,
-                            super::MetricKind::Absolute => f::METRIC_KIND_ABSOLUTE,
-                        };
-                        self.set_data_point_attribute(
-                            f::VECTOR_METRIC_KIND.to_string(),
-                            string_value(kind_str),
-                        );
-                    } else {
-                        match kind {
-                            super::MetricKind::Incremental => {
-                                self.set_data_point_attribute(
-                                    f::VECTOR_METRIC_KIND.to_string(),
-                                    string_value(f::METRIC_KIND_INCREMENTAL),
-                                );
-                            }
-                            super::MetricKind::Absolute => {
-                                self.remove_data_point_attribute(f::VECTOR_METRIC_KIND);
-                            }
-                        }
-                    }
+                    self.kind_override = Some(kind);
                 }
             }
         }
@@ -795,19 +757,7 @@ impl OtelMetric {
     /// Returns an owned `OtelAttributes` because the tags are assembled from
     /// multiple proto fields. Returns `None` if there are no tags at all.
     pub fn tags(&self) -> Option<OtelAttributes> {
-        let mut attrs = OtelAttributes::new();
-
-        // Data point attributes only — resource/scope are separate
-        if let Some(dp) = self.dp_attrs.first() {
-            for (key, val) in dp.iter() {
-                if key.starts_with(f::VECTOR_PREFIX) {
-                    continue;
-                }
-                attrs.insert(key.clone(), val.clone());
-            }
-        }
-
-        attrs.as_option()
+        self.dp_attrs.first().and_then(|dp| dp.clone().as_option())
     }
 
     pub fn all_tags_including_resource(&self) -> Option<OtelAttributes> {
@@ -833,9 +783,6 @@ impl OtelMetric {
 
         if let Some(dp) = self.dp_attrs.first() {
             for (key, val) in dp.iter() {
-                if key.starts_with(f::VECTOR_PREFIX) {
-                    continue;
-                }
                 attrs.insert(key.clone(), val.clone());
             }
         }
@@ -852,7 +799,7 @@ impl OtelMetric {
             })
     }
 
-    /// Get the metric kind directly from proto.
+    /// Get the metric kind directly from proto (or `kind_override` for Gauge/Summary).
     pub fn kind(&self) -> super::MetricKind {
         use opentelemetry_proto::tonic::metrics::v1::{metric, AggregationTemporality};
         match self.metric.data.as_ref() {
@@ -864,16 +811,7 @@ impl OtelMetric {
                 }
             }
             Some(metric::Data::Gauge(_)) => {
-                let is_incremental = self.dp_attrs.first()
-                    .and_then(|a| a.get(f::VECTOR_METRIC_KIND))
-                    .and_then(|av| av.value.as_ref())
-                    .map(|v| v == &OtelValueKind::StringValue(f::METRIC_KIND_INCREMENTAL.into()))
-                    .unwrap_or(false);
-                if is_incremental {
-                    super::MetricKind::Incremental
-                } else {
-                    super::MetricKind::Absolute
-                }
+                self.kind_override.unwrap_or(super::MetricKind::Absolute)
             }
             Some(metric::Data::Histogram(hist)) => {
                 if hist.aggregation_temporality == AggregationTemporality::Delta as i32 {
@@ -976,91 +914,37 @@ impl OtelMetric {
     }
 
     /// Merge set values from `other` into this set metric.
-    /// Combines the `vector.set_values` arrays (deduplicating) and updates
-    /// the numeric cardinality value.
+    /// Unions the `set_values` BTreeSets and updates the gauge cardinality.
     fn merge_set_values(&mut self, other: &Self) {
         use opentelemetry_proto::tonic::metrics::v1::number_data_point::Value as NDPValue;
-        use std::collections::BTreeSet;
 
-        let extract_set = |m: &Self| -> BTreeSet<String> {
-            m.dp_attrs.first()
-                .and_then(|a| a.get(f::VECTOR_SET_VALUES))
-                .and_then(|av| match &av.value {
-                    Some(OtelValueKind::ArrayValue(arr)) => {
-                        Some(arr.values.iter().filter_map(|v| match &v.value {
-                            Some(OtelValueKind::StringValue(s)) => Some(s.clone()),
-                            _ => None,
-                        }).collect())
-                    }
-                    _ => None,
-                })
-                .unwrap_or_default()
-        };
-
-        let mut merged = extract_set(self);
-        merged.extend(extract_set(other));
-
-        let cardinality = merged.len() as f64;
-        let set_values: Vec<AnyValue> = merged.iter().map(|v| string_value(v)).collect();
-        self.set_data_point_attribute(
-            f::VECTOR_SET_VALUES.to_string(),
-            AnyValue {
-                value: Some(OtelValueKind::ArrayValue(
-                    opentelemetry_proto::tonic::common::v1::ArrayValue { values: set_values },
-                )),
-            },
-        );
-
-        if let Some(opentelemetry_proto::tonic::metrics::v1::metric::Data::Gauge(g)) =
-            self.metric.data.as_mut()
-        {
-            if let Some(dp) = g.data_points.first_mut() {
-                dp.value = Some(NDPValue::AsDouble(cardinality));
+        if let (Some(self_set), Some(other_set)) = (&mut self.set_values, &other.set_values) {
+            self_set.extend(other_set.iter().cloned());
+            let cardinality = self_set.len() as f64;
+            if let Some(opentelemetry_proto::tonic::metrics::v1::metric::Data::Gauge(g)) =
+                self.metric.data.as_mut()
+            {
+                if let Some(dp) = g.data_points.first_mut() {
+                    dp.value = Some(NDPValue::AsDouble(cardinality));
+                }
             }
         }
     }
 
     fn subtract_set_values(&mut self, other: &Self) {
         use opentelemetry_proto::tonic::metrics::v1::number_data_point::Value as NDPValue;
-        use std::collections::BTreeSet;
 
-        let extract_set = |m: &Self| -> BTreeSet<String> {
-            m.dp_attrs.first()
-                .and_then(|a| a.get(f::VECTOR_SET_VALUES))
-                .and_then(|av| match &av.value {
-                    Some(OtelValueKind::ArrayValue(arr)) => {
-                        Some(arr.values.iter().filter_map(|v| match &v.value {
-                            Some(OtelValueKind::StringValue(s)) => Some(s.clone()),
-                            _ => None,
-                        }).collect())
-                    }
-                    _ => None,
-                })
-                .unwrap_or_default()
-        };
-
-        let mut self_set = extract_set(self);
-        let other_set = extract_set(other);
-        for item in &other_set {
-            self_set.remove(item);
-        }
-
-        let cardinality = self_set.len() as f64;
-        let set_values: Vec<AnyValue> = self_set.iter().map(|v| string_value(v)).collect();
-        self.set_data_point_attribute(
-            f::VECTOR_SET_VALUES.to_string(),
-            AnyValue {
-                value: Some(OtelValueKind::ArrayValue(
-                    opentelemetry_proto::tonic::common::v1::ArrayValue { values: set_values },
-                )),
-            },
-        );
-
-        if let Some(opentelemetry_proto::tonic::metrics::v1::metric::Data::Gauge(g)) =
-            self.metric.data.as_mut()
-        {
-            if let Some(dp) = g.data_points.first_mut() {
-                dp.value = Some(NDPValue::AsDouble(cardinality));
+        if let (Some(self_set), Some(other_set)) = (&mut self.set_values, &other.set_values) {
+            for item in other_set {
+                self_set.remove(item);
+            }
+            let cardinality = self_set.len() as f64;
+            if let Some(opentelemetry_proto::tonic::metrics::v1::metric::Data::Gauge(g)) =
+                self.metric.data.as_mut()
+            {
+                if let Some(dp) = g.data_points.first_mut() {
+                    dp.value = Some(NDPValue::AsDouble(cardinality));
+                }
             }
         }
     }
@@ -1356,12 +1240,9 @@ impl OtelMetric {
         matches!(self.metric.data.as_ref(), Some(opentelemetry_proto::tonic::metrics::v1::metric::Data::Sum(_)))
     }
 
-    /// Check if this metric is a Set (stored as Gauge with vector.metric_type=set attribute).
+    /// Check if this metric is a Set (stored as Gauge with `set_values` field populated).
     pub fn is_set(&self) -> bool {
-        self.dp_attrs.first()
-            .and_then(|attrs| attrs.get(f::VECTOR_METRIC_TYPE))
-            .and_then(|av| av.value.as_ref())
-            .is_some_and(|v| matches!(v, opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(s) if s == f::METRIC_TYPE_SET))
+        self.set_values.is_some()
     }
 
     /// Returns a zero-copy view of this metric's data, borrowing from the
@@ -1383,23 +1264,11 @@ impl OtelMetric {
                     MetricView::Gauge { value: val }
                 }
             }
-            Some(Data::Gauge(_gauge)) => {
-                if self.is_set() {
-                    let values = self.dp_attrs.first()
-                        .and_then(|a| a.get(f::VECTOR_SET_VALUES))
-                        .and_then(|av| match &av.value {
-                            Some(OtelValueKind::ArrayValue(arr)) => {
-                                Some(arr.values.iter().filter_map(|v| match &v.value {
-                                    Some(OtelValueKind::StringValue(s)) => Some(s.clone()),
-                                    _ => None,
-                                }).collect())
-                            }
-                            _ => None,
-                        })
-                        .unwrap_or_default();
-                    MetricView::Set { values }
+            Some(Data::Gauge(gauge)) => {
+                if let Some(ref sv) = self.set_values {
+                    MetricView::Set { values: sv.iter().cloned().collect() }
                 } else {
-                    let val = _gauge.data_points.first()
+                    let val = gauge.data_points.first()
                         .and_then(|p| p.value.as_ref())
                         .map(|v| match v { NDPValue::AsDouble(f) => *f, NDPValue::AsInt(i) => *i as f64 })
                         .unwrap_or(0.0);

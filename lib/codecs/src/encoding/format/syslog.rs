@@ -783,11 +783,10 @@ mod tests {
         )
         .unwrap();
 
-        let metric_event = Event::Metric(OtelMetric::new_distribution_from_samples(
+        let metric_event = Event::Metric(OtelMetric::new_histogram_from_samples(
             "metric1",
             MetricKind::Incremental,
             &vector_core::samples![10.0 => 1],
-            "histogram",
         ));
 
         let mut serializer = SyslogSerializer::new(&config);

@@ -331,7 +331,7 @@ where
             rate: 1,
         })
         .collect();
-    OtelMetric::new_distribution_from_samples("distribution", kind, &sample_vec, "histogram")
+    OtelMetric::new_histogram_from_samples("distribution", kind, &sample_vec)
 }
 
 pub fn get_aggregated_histogram<S, V>(samples: S, kind: MetricKind) -> OtelMetric

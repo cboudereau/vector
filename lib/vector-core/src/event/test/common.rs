@@ -145,8 +145,7 @@ impl Arbitrary for OtelMetric {
             }
             3 => {
                 let samples: Vec<Sample> = Vec::arbitrary(g);
-                let statistic = if bool::arbitrary(g) { "histogram" } else { "summary" };
-                OtelMetric::new_distribution_from_samples(String::from(name), kind, &samples, statistic)
+                OtelMetric::new_histogram_from_samples(String::from(name), kind, &samples)
             }
             4 => {
                 let buckets: Vec<Bucket> = Vec::arbitrary(g);

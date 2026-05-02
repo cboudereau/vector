@@ -586,7 +586,7 @@ mod tests {
 
     fn encode_distribution<T: MetricCollector>() -> T::Output {
         let samples = vector_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2];
-        let otel = OtelMetric::new_distribution_from_samples("requests", MetricKind::Absolute, &samples, "histogram")
+        let otel = OtelMetric::new_histogram_from_samples("requests", MetricKind::Absolute, &samples)
             .with_timestamp(Some(timestamp()));
         encode_one::<T>(Some("vector"), &[0.0, 2.5, 5.0], &[], otel)
     }
@@ -764,7 +764,7 @@ mod tests {
 
     fn encode_distribution_summary<T: MetricCollector>() -> T::Output {
         let samples = vector_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2];
-        let otel = OtelMetric::new_distribution_from_samples("requests", MetricKind::Absolute, &samples, "summary")
+        let otel = OtelMetric::new_histogram_from_samples("requests", MetricKind::Absolute, &samples)
             .with_tags(Some(tags()))
             .with_timestamp(Some(timestamp()));
         encode_one::<T>(Some("ns"), &[], &default_summary_quantiles(), otel)

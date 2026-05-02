@@ -57,11 +57,10 @@ async fn test_send_to_statsd() {
                 .with_tags(Some(tags())),
         ),
         Event::Metric(
-            OtelMetric::new_distribution_from_samples(
+            OtelMetric::new_histogram_from_samples(
                 "histogram",
                 MetricKind::Incremental,
                 &vector_lib::samples![2.0 => 100],
-                "histogram",
             )
             .with_namespace(Some("vector")),
         ),

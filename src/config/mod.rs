@@ -678,8 +678,8 @@ impl TestMetricInput {
             TestMetricValue::Set { values } => {
                 OtelMetric::new_set_from_values(name, kind, values.iter().cloned().collect::<Vec<_>>())
             }
-            TestMetricValue::Distribution { samples, statistic } => {
-                OtelMetric::new_distribution_from_samples(name, kind, samples, statistic.as_str())
+            TestMetricValue::Distribution { samples, statistic: _ } => {
+                OtelMetric::new_histogram_from_samples(name, kind, samples)
             }
             TestMetricValue::AggregatedHistogram { buckets, count, sum } => {
                 OtelMetric::new_histogram(name, kind, buckets, *count, *sum)

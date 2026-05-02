@@ -306,11 +306,10 @@ mod tests {
 
     #[test]
     fn test_distribution_as_histogram() {
-        let otel = OtelMetric::new_distribution_from_samples(
+        let otel = OtelMetric::new_histogram_from_samples(
             "cpu_seconds_total",
             MetricKind::Incremental,
             &vector_lib::samples![1.0 => 2, 2.0 => 4, 3.0 => 2],
-            "histogram",
         );
         let options = RequestBuilderOptions {
             use_new_naming: false,

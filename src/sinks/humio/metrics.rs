@@ -298,11 +298,10 @@ mod tests {
                     )),
             ),
             Event::Metric(
-                OtelMetric::new_distribution_from_samples(
+                OtelMetric::new_histogram_from_samples(
                     "metric2",
                     MetricKind::Absolute,
                     &vector_lib::samples![1.0 => 100, 2.0 => 200, 3.0 => 300],
-                    "histogram",
                 )
                 .with_tags(Some(otel_tags!("os.host" => "somehost")))
                 .with_timestamp(Some(

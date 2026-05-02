@@ -68,11 +68,10 @@ async fn cloudwatch_metrics_put_data() {
     let distribution_name = random_string(10);
     for i in 0..10 {
         let event = Event::Metric(
-            OtelMetric::new_distribution_from_samples(
+            OtelMetric::new_histogram_from_samples(
                 format!("distribution-{distribution_name}"),
                 MetricKind::Incremental,
                 &vector_lib::samples![i as f64 => 100],
-                "histogram",
             )
             .with_timestamp(Some(
                 Utc.with_ymd_and_hms(2018, 11, 14, 8, 9, 10)

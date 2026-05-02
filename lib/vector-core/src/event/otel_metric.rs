@@ -371,13 +371,10 @@ impl OtelMetric {
         Self::new(proto)
     }
 
-    /// Convenience constructor for a histogram from raw samples.
-    /// Each sample becomes one explicit bound with its rate as bucket count.
-    pub fn new_distribution_from_samples(
+    pub fn new_histogram_from_samples(
         name: impl Into<String>,
         kind: super::MetricKind,
         samples: &[super::metric::Sample],
-        _statistic: &str,
     ) -> Self {
         let count = samples.iter().map(|s| s.rate).sum::<u32>() as u64;
         let sum: f64 = samples.iter().map(|s| s.value * s.rate as f64).sum();

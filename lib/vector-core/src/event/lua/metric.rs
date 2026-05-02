@@ -197,8 +197,8 @@ impl FromLua for OtelMetric {
             let values: Vec<f64> = distribution.raw_get("values")?;
             let rates: Vec<u32> = distribution.raw_get("sample_rates")?;
             let samples = metric::zip_samples(values, rates);
-            let statistic: String = distribution.raw_get("statistic").unwrap_or_else(|_| "histogram".to_string());
-            OtelMetric::new_distribution_from_samples(&name, kind, &samples, &statistic)
+            let _statistic: String = distribution.raw_get("statistic").unwrap_or_else(|_| "histogram".to_string());
+            OtelMetric::new_histogram_from_samples(&name, kind, &samples)
         } else if let Some(aggregated_histogram) =
             table.raw_get::<Option<LuaTable>>("aggregated_histogram")?
         {
@@ -392,11 +392,10 @@ mod test {
 
     #[test]
     fn into_lua_distribution() {
-        let metric = OtelMetric::new_distribution_from_samples(
+        let metric = OtelMetric::new_histogram_from_samples(
             "example distribution",
             MetricKind::Incremental,
             &crate::samples![1.0 => 10, 1.0 => 20],
-            "histogram",
         );
         assert_metric(
             metric,
@@ -588,11 +587,10 @@ mod test {
                 statistic = "histogram"
             }
         }"#;
-        let expected = OtelMetric::new_distribution_from_samples(
+        let expected = OtelMetric::new_histogram_from_samples(
             "example distribution",
             MetricKind::Absolute,
             &crate::samples![1.0 => 10, 1.0 => 20],
-            "histogram",
         );
         assert_event_data_eq!(Lua::new().load(value).eval::<OtelMetric>().unwrap(), expected);
     }

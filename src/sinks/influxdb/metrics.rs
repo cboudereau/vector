@@ -625,11 +625,10 @@ mod tests {
     #[test]
     fn test_encode_distribution_as_histogram() {
         let events = vec![
-            OtelMetric::new_distribution_from_samples(
+            OtelMetric::new_histogram_from_samples(
                 "requests",
                 MetricKind::Incremental,
                 &vector_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2],
-                "histogram",
             )
                 .with_namespace(Some("ns"))
                 .with_tags(Some(tags()))

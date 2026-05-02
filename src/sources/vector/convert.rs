@@ -15,7 +15,7 @@ use opentelemetry_proto::tonic::metrics::v1::metric::Data as MetricData;
 use opentelemetry_proto::tonic::trace::v1::Span;
 use vector_lib::event::{
     Event, MetricKind, OtelLog, OtelSpan,
-    otel_fields as f, string_value,
+    string_value,
 };
 use vector_lib::event::otel_metric::OtelMetric;
 
@@ -163,17 +163,13 @@ fn convert_distribution1(
     kind: MetricKind,
     d: event::Distribution1,
 ) -> OtelMetric {
-    let statistic = match d.statistic() {
-        event::StatisticKind::Histogram => f::METRIC_TYPE_HISTOGRAM,
-        event::StatisticKind::Summary => f::METRIC_TYPE_SUMMARY,
-    };
     let samples: Vec<vector_lib::event::metric::Sample> = d
         .values
         .iter()
         .zip(d.sample_rates.iter())
         .map(|(&value, &rate)| vector_lib::event::metric::Sample { value, rate })
         .collect();
-    OtelMetric::new_distribution_from_samples(name, kind, &samples, statistic)
+    OtelMetric::new_histogram_from_samples(name, kind, &samples)
 }
 
 fn convert_distribution2(
@@ -181,10 +177,6 @@ fn convert_distribution2(
     kind: MetricKind,
     d: event::Distribution2,
 ) -> OtelMetric {
-    let statistic = match d.statistic() {
-        event::StatisticKind::Histogram => f::METRIC_TYPE_HISTOGRAM,
-        event::StatisticKind::Summary => f::METRIC_TYPE_SUMMARY,
-    };
     let samples: Vec<vector_lib::event::metric::Sample> = d
         .samples
         .iter()
@@ -193,7 +185,7 @@ fn convert_distribution2(
             rate: s.rate,
         })
         .collect();
-    OtelMetric::new_distribution_from_samples(name, kind, &samples, statistic)
+    OtelMetric::new_histogram_from_samples(name, kind, &samples)
 }
 
 fn convert_aggregated_histogram1(

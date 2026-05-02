@@ -247,11 +247,10 @@ mod tests {
     #[cfg(feature = "sources-statsd")]
     #[test]
     fn test_encode_histogram() {
-        let input = OtelMetric::new_distribution_from_samples(
+        let input = OtelMetric::new_histogram_from_samples(
             "histo",
             MetricKind::Incremental,
             &vector_lib::samples![1.5 => 1, 1.5 => 1],
-            "histogram",
         )
         .with_tags(Some(tags()));
 

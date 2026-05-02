@@ -105,11 +105,10 @@ async fn encode_events_absolute_gauge() {
 #[tokio::test]
 async fn encode_events_distribution() {
     let events: Vec<OtelMetric> = vec![
-        OtelMetric::new_distribution_from_samples(
+        OtelMetric::new_histogram_from_samples(
             "latency",
             MetricKind::Incremental,
             &vector_lib::samples![11.0 => 100, 12.0 => 50],
-            "histogram",
         ),
     ];
 

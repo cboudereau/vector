@@ -129,11 +129,10 @@ mod tests {
     }
 
     pub fn sample_distribution_histogram(num: u32, kind: MetricKind, rate: u32) -> OtelMetric {
-        OtelMetric::new_distribution_from_samples(
+        OtelMetric::new_histogram_from_samples(
             format!("dist-{num}"),
             kind,
             &vector_lib::samples![num as f64 => rate],
-            "histogram",
         )
     }
 

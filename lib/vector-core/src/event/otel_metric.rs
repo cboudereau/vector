@@ -1520,25 +1520,14 @@ impl OtelMetric {
                 }
             }
             Some(Data::Histogram(hist)) => {
-                let dp = hist.data_points.first();
-                if self.is_distribution() {
-                    match dp {
-                        Some(p) => MetricView::Distribution {
-                            bounds: &p.explicit_bounds,
-                            counts: &p.bucket_counts,
-                        },
-                        None => MetricView::Distribution { bounds: &[], counts: &[] },
-                    }
-                } else {
-                    match dp {
-                        Some(p) => MetricView::Histogram {
-                            bounds: &p.explicit_bounds,
-                            counts: &p.bucket_counts,
-                            count: p.count,
-                            sum: p.sum.unwrap_or(0.0),
-                        },
-                        None => MetricView::Histogram { bounds: &[], counts: &[], count: 0, sum: 0.0 },
-                    }
+                match hist.data_points.first() {
+                    Some(p) => MetricView::Histogram {
+                        bounds: &p.explicit_bounds,
+                        counts: &p.bucket_counts,
+                        count: p.count,
+                        sum: p.sum.unwrap_or(0.0),
+                    },
+                    None => MetricView::Histogram { bounds: &[], counts: &[], count: 0, sum: 0.0 },
                 }
             }
             Some(Data::Summary(summary)) => {

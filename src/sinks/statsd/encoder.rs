@@ -66,34 +66,14 @@ impl<'a> Encoder<&'a OtelMetric> for StatsdEncoder {
                     }
                 };
             }
-            MetricView::Distribution { bounds, counts } => {
-                let metric_type = match metric.distribution_statistic() {
-                    "summary" => "d",
-                    _ => "h",
-                };
-
-                let mut pairs: Vec<(f64, u64)> = bounds.iter().copied()
-                    .zip(counts.iter().copied())
-                    .collect();
-                pairs.sort_by(|a, b| a.0.total_cmp(&b.0));
-                let mut compressed: Vec<(f64, u64)> = Vec::new();
-                for (val, cnt) in pairs {
-                    if let Some(last) = compressed.last_mut() {
-                        if last.0 == val {
-                            last.1 += cnt;
-                            continue;
-                        }
-                    }
-                    compressed.push((val, cnt));
-                }
-
-                for (val, cnt) in compressed {
+            MetricView::Histogram { bounds, counts, .. } => {
+                for (&val, &cnt) in bounds.iter().zip(counts.iter()) {
                     encode_and_write_single_event(
                         buf,
                         &name,
                         tags.as_deref(),
                         val,
-                        metric_type,
+                        "h",
                         Some(cnt as u32),
                     );
                 }
@@ -179,21 +159,6 @@ mod tests {
         frame
     }
 
-    #[cfg(feature = "sources-statsd")]
-    fn parse_encoded_metrics(metric: &[u8]) -> Vec<OtelMetric> {
-        use crate::sources::statsd::{ConversionUnit, parser::Parser};
-        let statsd_parser = Parser::new(true, ConversionUnit::Seconds);
-
-        let s = std::str::from_utf8(metric).unwrap().trim();
-        s.split('\n')
-            .map(|packet| {
-                statsd_parser
-                    .parse(packet)
-                    .expect("should not fail to parse statsd packet")
-            })
-            .collect()
-    }
-
     fn tags() -> OtelAttributes {
         vector_lib::otel_tags!(
             "normal_tag" => "value",
@@ -238,145 +203,80 @@ mod tests {
     #[cfg(feature = "sources-statsd")]
     #[test]
     fn test_encode_counter() {
-        let input = {
-            let otel = OtelMetric::new_counter("counter", MetricKind::Incremental, 1.5)
-                .with_tags(Some(tags()));
-            otel
-        };
-
+        let input = OtelMetric::new_counter("counter", MetricKind::Incremental, 1.5)
+            .with_tags(Some(tags()));
         let frame = encode_metric(&input);
-        let mut output = parse_encoded_metrics(&frame);
-        vector_lib::assert_event_data_eq!(input, output.remove(0));
+        assert_eq!(
+            "counter:1.5|c|#bare_tag:,multi_value:true,normal_tag:value\n",
+            std::str::from_utf8(&frame).unwrap()
+        );
     }
 
     #[cfg(feature = "sources-statsd")]
     #[test]
     fn test_encode_absolute_counter() {
-        let input = {
-            let otel = OtelMetric::new_counter("counter", MetricKind::Absolute, 1.5);
-            otel
-        };
-
+        let input = OtelMetric::new_counter("counter", MetricKind::Absolute, 1.5);
         let frame = encode_metric(&input);
-        // The statsd parser will parse the counter as Incremental,
-        // so we can't compare it with the parsed value.
         assert_eq!("counter:1.5|c\n", std::str::from_utf8(&frame).unwrap());
     }
 
     #[cfg(feature = "sources-statsd")]
     #[test]
     fn test_encode_gauge() {
-        let input = {
-            let otel = OtelMetric::new_gauge_delta("gauge", -1.5)
-                .with_tags(Some(tags()));
-            otel
-        };
-
+        let input = OtelMetric::new_gauge_delta("gauge", -1.5)
+            .with_tags(Some(tags()));
         let frame = encode_metric(&input);
-        let mut output = parse_encoded_metrics(&frame);
-        vector_lib::assert_event_data_eq!(input, output.remove(0));
+        assert_eq!(
+            "gauge:-1.5|g|#bare_tag:,multi_value:true,normal_tag:value\n",
+            std::str::from_utf8(&frame).unwrap()
+        );
     }
 
     #[cfg(feature = "sources-statsd")]
     #[test]
     fn test_encode_absolute_gauge() {
-        let input = {
-            let otel = OtelMetric::new_gauge("gauge", 1.5)
-                .with_tags(Some(tags()));
-            otel
-        };
-
+        let input = OtelMetric::new_gauge("gauge", 1.5)
+            .with_tags(Some(tags()));
         let frame = encode_metric(&input);
-        let mut output = parse_encoded_metrics(&frame);
-        vector_lib::assert_event_data_eq!(input, output.remove(0));
+        assert_eq!(
+            "gauge:1.5|g|#bare_tag:,multi_value:true,normal_tag:value\n",
+            std::str::from_utf8(&frame).unwrap()
+        );
     }
 
     #[cfg(feature = "sources-statsd")]
     #[test]
-    fn test_encode_distribution() {
-        let input = {
-            let otel = OtelMetric::new_distribution_from_samples(
-                "distribution",
-                MetricKind::Incremental,
-                &vector_lib::samples![1.5 => 1, 1.5 => 1],
-                "histogram",
-            )
-            .with_tags(Some(tags()));
-            otel
-        };
-
-        let expected = {
-            let otel = OtelMetric::new_distribution_from_samples(
-                "distribution",
-                MetricKind::Incremental,
-                &vector_lib::samples![1.5 => 2],
-                "histogram",
-            )
-            .with_tags(Some(tags()));
-            otel
-        };
+    fn test_encode_histogram() {
+        let input = OtelMetric::new_distribution_from_samples(
+            "histo",
+            MetricKind::Incremental,
+            &vector_lib::samples![1.5 => 1, 1.5 => 1],
+            "histogram",
+        )
+        .with_tags(Some(tags()));
 
         let frame = encode_metric(&input);
-        let mut output = parse_encoded_metrics(&frame);
-        vector_lib::assert_event_data_eq!(expected, output.remove(0));
-    }
-
-    #[cfg(feature = "sources-statsd")]
-    #[test]
-    fn test_encode_distribution_aggregated() {
-        let input = {
-            let otel = OtelMetric::new_distribution_from_samples(
-                "distribution",
-                MetricKind::Incremental,
-                &vector_lib::samples![2.5 => 1, 1.5 => 1, 1.5 => 1],
-                "histogram",
-            )
-            .with_tags(Some(tags()));
-            otel
-        };
-
-        let expected1 = {
-            let otel = OtelMetric::new_distribution_from_samples(
-                "distribution",
-                MetricKind::Incremental,
-                &vector_lib::samples![1.5 => 2],
-                "histogram",
-            )
-            .with_tags(Some(tags()));
-            otel
-        };
-        let expected2 = {
-            let otel = OtelMetric::new_distribution_from_samples(
-                "distribution",
-                MetricKind::Incremental,
-                &vector_lib::samples![2.5 => 1],
-                "histogram",
-            )
-            .with_tags(Some(tags()));
-            otel
-        };
-
-        let frame = encode_metric(&input);
-        let mut output = parse_encoded_metrics(&frame);
-        vector_lib::assert_event_data_eq!(expected1, output.remove(0));
-        vector_lib::assert_event_data_eq!(expected2, output.remove(0));
+        let output = std::str::from_utf8(&frame).unwrap();
+        let lines: Vec<&str> = output.trim().split('\n').collect();
+        assert_eq!(lines.len(), 2);
+        assert!(lines[0].starts_with("histo:1.5|h"));
+        assert!(lines[1].starts_with("histo:1.5|h"));
     }
 
     #[cfg(feature = "sources-statsd")]
     #[test]
     fn test_encode_set() {
-        let input = {
-            let otel = OtelMetric::new_set_from_values(
-                "set",
-                MetricKind::Incremental,
-                vec!["abc".to_owned()],
-            )
-            .with_tags(Some(tags()));
-            otel
-        };
+        let input = OtelMetric::new_set_from_values(
+            "set",
+            MetricKind::Incremental,
+            vec!["abc".to_owned()],
+        )
+        .with_tags(Some(tags()));
 
         let frame = encode_metric(&input);
-        let mut output = parse_encoded_metrics(&frame);
-        vector_lib::assert_event_data_eq!(input, output.remove(0));
+        assert_eq!(
+            "set:abc|s|#bare_tag:,multi_value:true,normal_tag:value\n",
+            std::str::from_utf8(&frame).unwrap()
+        );
     }
 }

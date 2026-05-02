@@ -13,7 +13,6 @@ use crate::{
     config::{AcknowledgementsConfig, Input, SinkConfig, SinkContext},
     event::{
         Event, KeyString, OtelMetric,
-        metric::Sample,
     },
     http::HttpClient,
     internal_events::InfluxdbEncodingError,
@@ -28,7 +27,7 @@ use crate::{
             buffer::metrics::{MetricNormalize, MetricNormalizer, MetricSet, MetricsBuffer},
             encode_namespace,
             http::{HttpBatchService, HttpRetryLogic},
-            statistic::{DistributionStatistic, validate_quantiles},
+            statistic::validate_quantiles,
         },
     },
     tls::{TlsConfig, TlsSettings},
@@ -290,7 +289,7 @@ fn encode_events(
     events: Vec<OtelMetric>,
     default_namespace: Option<&str>,
     tags: Option<&HashMap<String, String>>,
-    quantiles: &[f64],
+    _quantiles: &[f64],
 ) -> BytesMut {
     let mut output = BytesMut::new();
     let count = events.len();
@@ -301,8 +300,7 @@ fn encode_events(
         let event_tags = otel.tags();
         let tags = merge_tags(event_tags, tags);
         let view = otel.view();
-        let statistic = otel.distribution_statistic();
-        let (metric_type, fields) = get_type_and_fields(&view, statistic, quantiles);
+        let (metric_type, fields) = get_type_and_fields(&view);
 
         let mut unwrapped_tags = tags.unwrap_or_default();
         unwrapped_tags.insert_string("metric_type".to_owned(), metric_type.to_owned());
@@ -331,8 +329,6 @@ fn encode_events(
 
 fn get_type_and_fields(
     view: &MetricView<'_>,
-    statistic: &str,
-    quantiles: &[f64],
 ) -> (&'static str, Option<HashMap<KeyString, Field>>) {
     match view {
         MetricView::Sum { value } => ("counter", Some(to_fields(*value))),
@@ -378,17 +374,6 @@ fn get_type_and_fields(
 
             ("summary", Some(fields))
         }
-        MetricView::Distribution { bounds, counts } => {
-            let samples: Vec<Sample> = bounds.iter().zip(counts.iter())
-                .map(|(&value, &rate)| Sample { value, rate: rate as u32 })
-                .collect();
-            let quantiles = match statistic {
-                "summary" => quantiles,
-                _ => &[0.95] as &[_],
-            };
-            let fields = encode_distribution(&samples, quantiles);
-            ("distribution", fields)
-        }
         MetricView::ExponentialHistogram { count, sum, min, max, .. } => {
             let mut fields: HashMap<KeyString, Field> = HashMap::new();
             fields.insert("count".into(), Field::UnsignedInt(*count));
@@ -407,29 +392,6 @@ fn get_type_and_fields(
     }
 }
 
-fn encode_distribution(samples: &[Sample], quantiles: &[f64]) -> Option<HashMap<KeyString, Field>> {
-    let statistic = DistributionStatistic::from_samples(samples, quantiles)?;
-
-    Some(
-        [
-            ("min".into(), Field::Float(statistic.min)),
-            ("max".into(), Field::Float(statistic.max)),
-            ("median".into(), Field::Float(statistic.median)),
-            ("avg".into(), Field::Float(statistic.avg)),
-            ("sum".into(), Field::Float(statistic.sum)),
-            ("count".into(), Field::Float(statistic.count as f64)),
-        ]
-        .into_iter()
-        .chain(
-            statistic
-                .quantiles
-                .iter()
-                .map(|&(p, val)| (format!("quantile_{p:.2}").into(), Field::Float(val))),
-        )
-        .collect(),
-    )
-}
-
 fn to_fields(value: f64) -> HashMap<KeyString, Field> {
     [("value".into(), Field::Float(value))]
         .into_iter()
@@ -443,9 +405,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        event::metric::{
-            MetricKind, Sample,
-        },
+        event::metric::MetricKind,
         event::OtelMetric,
         sinks::influxdb::test_util::{assert_fields, split_line_protocol, tags, ts},
     };
@@ -663,7 +623,7 @@ mod tests {
     }
 
     #[test]
-    fn test_encode_distribution() {
+    fn test_encode_distribution_as_histogram() {
         let events = vec![
             OtelMetric::new_distribution_from_samples(
                 "requests",
@@ -674,184 +634,32 @@ mod tests {
                 .with_namespace(Some("ns"))
                 .with_tags(Some(tags()))
                 .with_timestamp(Some(ts())),
-            OtelMetric::new_distribution_from_samples(
-                "dense_stats",
-                MetricKind::Incremental,
-                &(0..20)
-                    .map(|v| Sample {
-                        value: f64::from(v),
-                        rate: 1,
-                    })
-                    .collect::<Vec<_>>(),
-                "histogram",
-            )
-                .with_namespace(Some("ns"))
-                .with_timestamp(Some(ts())),
-            OtelMetric::new_distribution_from_samples(
-                "sparse_stats",
-                MetricKind::Incremental,
-                &(1..5)
-                    .map(|v| Sample {
-                        value: f64::from(v),
-                        rate: v,
-                    })
-                    .collect::<Vec<_>>(),
-                "histogram",
-            )
-                .with_namespace(Some("ns"))
-                .with_timestamp(Some(ts())),
         ];
 
         let line_protocols = encode_events(ProtocolVersion::V2, events, None, None, &[]);
-        let line_protocols =
-            String::from_utf8(line_protocols.freeze().as_ref().to_owned()).unwrap();
-        let line_protocols: Vec<&str> = line_protocols.split('\n').collect();
-        assert_eq!(line_protocols.len(), 3);
-
-        let line_protocol1 = split_line_protocol(line_protocols[0]);
-        assert_eq!("ns.requests", line_protocol1.0);
-        assert_eq!(
-            "metric_type=distribution,normal_tag=value,true_tag=true",
-            line_protocol1.1
-        );
-        assert_fields(
-            line_protocol1.2.to_string(),
-            [
-                "avg=1.875",
-                "count=8",
-                "max=3",
-                "median=2",
-                "min=1",
-                "quantile_0.95=3",
-                "sum=15",
-            ]
-            .to_vec(),
-        );
-        assert_eq!("1542182950000000011", line_protocol1.3);
-
-        let line_protocol2 = split_line_protocol(line_protocols[1]);
-        assert_eq!("ns.dense_stats", line_protocol2.0);
-        assert_eq!("metric_type=distribution", line_protocol2.1);
-        assert_fields(
-            line_protocol2.2.to_string(),
-            [
-                "avg=9.5",
-                "count=20",
-                "max=19",
-                "median=9",
-                "min=0",
-                "quantile_0.95=18",
-                "sum=190",
-            ]
-            .to_vec(),
-        );
-        assert_eq!("1542182950000000011", line_protocol2.3);
-
-        let line_protocol3 = split_line_protocol(line_protocols[2]);
-        assert_eq!("ns.sparse_stats", line_protocol3.0);
-        assert_eq!("metric_type=distribution", line_protocol3.1);
-        assert_fields(
-            line_protocol3.2.to_string(),
-            [
-                "avg=3",
-                "count=10",
-                "max=4",
-                "median=3",
-                "min=1",
-                "quantile_0.95=4",
-                "sum=30",
-            ]
-            .to_vec(),
-        );
-        assert_eq!("1542182950000000011", line_protocol3.3);
-    }
-
-    #[test]
-    fn test_encode_distribution_empty_stats() {
-        let events = vec![
-            OtelMetric::new_distribution_from_samples(
-                "requests",
-                MetricKind::Incremental,
-                &[],
-                "histogram",
-            )
-                .with_namespace(Some("ns"))
-                .with_tags(Some(tags()))
-                .with_timestamp(Some(ts())),
-        ];
-
-        let line_protocols = encode_events(ProtocolVersion::V2, events, None, None, &[]);
-        assert_eq!(line_protocols.len(), 0);
-    }
-
-    #[test]
-    fn test_encode_distribution_zero_counts_stats() {
-        let events = vec![
-            OtelMetric::new_distribution_from_samples(
-                "requests",
-                MetricKind::Incremental,
-                &vector_lib::samples![1.0 => 0, 2.0 => 0],
-                "histogram",
-            )
-                .with_namespace(Some("ns"))
-                .with_tags(Some(tags()))
-                .with_timestamp(Some(ts())),
-        ];
-
-        let line_protocols = encode_events(ProtocolVersion::V2, events, None, None, &[]);
-        assert_eq!(line_protocols.len(), 0);
-    }
-
-    #[test]
-    fn test_encode_distribution_summary() {
-        let events = vec![
-            OtelMetric::new_distribution_from_samples(
-                "requests",
-                MetricKind::Incremental,
-                &vector_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2],
-                "summary",
-            )
-                .with_namespace(Some("ns"))
-                .with_tags(Some(tags()))
-                .with_timestamp(Some(ts())),
-        ];
-
-        let line_protocols = encode_events(
-            ProtocolVersion::V2,
-            events,
-            None,
-            None,
-            &default_summary_quantiles(),
-        );
         let line_protocols =
             String::from_utf8(line_protocols.freeze().as_ref().to_owned()).unwrap();
         let line_protocols: Vec<&str> = line_protocols.split('\n').collect();
         assert_eq!(line_protocols.len(), 1);
 
-        let line_protocol = split_line_protocol(line_protocols[0]);
-        assert_eq!("ns.requests", line_protocol.0);
+        let line_protocol1 = split_line_protocol(line_protocols[0]);
+        assert_eq!("ns.requests", line_protocol1.0);
         assert_eq!(
-            "metric_type=distribution,normal_tag=value,true_tag=true",
-            line_protocol.1
+            "metric_type=histogram,normal_tag=value,true_tag=true",
+            line_protocol1.1
         );
         assert_fields(
-            line_protocol.2.to_string(),
+            line_protocol1.2.to_string(),
             [
-                "avg=1.875",
-                "count=8",
-                "max=3",
-                "median=2",
-                "min=1",
+                "bucket_1=3u",
+                "bucket_2=3u",
+                "bucket_3=2u",
+                "count=8u",
                 "sum=15",
-                "quantile_0.50=2",
-                "quantile_0.75=2",
-                "quantile_0.90=3",
-                "quantile_0.95=3",
-                "quantile_0.99=3",
             ]
             .to_vec(),
         );
-        assert_eq!("1542182950000000011", line_protocol.3);
+        assert_eq!("1542182950000000011", line_protocol1.3);
     }
 
     #[test]

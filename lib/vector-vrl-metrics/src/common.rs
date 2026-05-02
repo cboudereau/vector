@@ -147,7 +147,6 @@ pub(crate) fn metric_into_vrl(value: &OtelMetric) -> Value {
                 vector_core::event::MetricView::Sum { .. } => "counter",
                 vector_core::event::MetricView::Gauge { .. } => "gauge",
                 vector_core::event::MetricView::Set { .. } => "set",
-                vector_core::event::MetricView::Distribution { .. } => "distribution",
                 vector_core::event::MetricView::Histogram { .. } => "aggregated histogram",
                 vector_core::event::MetricView::Summary { .. } => "aggregated summary",
                 vector_core::event::MetricView::ExponentialHistogram { .. } => "exponential histogram",

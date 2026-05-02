@@ -114,15 +114,6 @@ impl IntoLua for LuaMetric {
                 set.raw_set("values", lua.create_sequence_from(values.into_iter())?)?;
                 tbl.raw_set("set", set)?;
             }
-            MetricView::Distribution { bounds, counts } => {
-                let distribution = lua.create_table()?;
-                let sample_rates: Vec<u32> = counts.iter().map(|&c| c as u32).collect();
-                let values: Vec<f64> = bounds.to_vec();
-                distribution.raw_set("values", values)?;
-                distribution.raw_set("sample_rates", sample_rates)?;
-                distribution.raw_set("statistic", "histogram")?;
-                tbl.raw_set("distribution", distribution)?;
-            }
             MetricView::Histogram {
                 bounds,
                 counts,

@@ -300,19 +300,6 @@ impl CloudWatchMetricsSvc {
                             .set_storage_resolution(resolution)
                             .build(),
                     ),
-                    MetricView::Distribution {
-                        bounds,
-                        counts,
-                    } => Some(
-                        MetricDatum::builder()
-                            .metric_name(metric_name)
-                            .set_values(Some(bounds.iter().copied().collect()))
-                            .set_counts(Some(counts.iter().map(|&c| c as f64).collect()))
-                            .set_timestamp(timestamp)
-                            .set_dimensions(dimensions)
-                            .set_storage_resolution(resolution)
-                            .build(),
-                    ),
                     MetricView::Set { values } => Some(
                         MetricDatum::builder()
                             .metric_name(metric_name)
@@ -326,6 +313,16 @@ impl CloudWatchMetricsSvc {
                         MetricDatum::builder()
                             .metric_name(metric_name)
                             .value(value)
+                            .set_timestamp(timestamp)
+                            .set_dimensions(dimensions)
+                            .set_storage_resolution(resolution)
+                            .build(),
+                    ),
+                    MetricView::Histogram { bounds, counts, .. } => Some(
+                        MetricDatum::builder()
+                            .metric_name(metric_name)
+                            .set_values(Some(bounds.iter().copied().collect()))
+                            .set_counts(Some(counts.iter().map(|&c| c as f64).collect()))
                             .set_timestamp(timestamp)
                             .set_dimensions(dimensions)
                             .set_storage_resolution(resolution)

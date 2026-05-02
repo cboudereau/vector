@@ -1,4 +1,4 @@
-use vector_lib::event::{OtelMetric, metric::Sample};
+use vector_lib::event::OtelMetric;
 
 use crate::sinks::util::{
     Merged, SinkBatchSettings,
@@ -16,8 +16,7 @@ pub use self::split::*;
 /// Batching mostly means that we will aggregate away timestamp information, and apply metric-specific compression to
 /// improve the performance of the pipeline. In particular, only the latest in a series of metrics are output, and
 /// incremental metrics are summed into the output buffer. Any conversion of metrics is handled by the normalization
-/// type `N: MetricNormalize`. Further, distribution metrics have their samples compressed with
-/// `compress_distribution` below.
+/// type `N: MetricNormalize`.
 ///
 /// Note: This has been deprecated, please do not use when creating new Sinks.
 pub struct MetricsBuffer {
@@ -75,16 +74,9 @@ impl Batch for MetricsBuffer {
     }
 
     fn finish(self) -> Self::Output {
-        let mut otel_metrics = self
-            .metrics
+        self.metrics
             .map(MetricSet::into_metrics)
-            .unwrap_or_default();
-        for metric in &mut otel_metrics {
-            if metric.is_distribution() {
-                metric.compress_distribution();
-            }
-        }
-        otel_metrics
+            .unwrap_or_default()
     }
 
     fn num_items(&self) -> usize {
@@ -95,35 +87,8 @@ impl Batch for MetricsBuffer {
     }
 }
 
-pub fn compress_distribution(samples: &mut Vec<Sample>) -> Vec<Sample> {
-    if samples.is_empty() {
-        return Vec::new();
-    }
-
-    samples.sort_by(|a, b| a.value.total_cmp(&b.value));
-
-    let mut acc = Sample {
-        value: samples[0].value,
-        rate: 0,
-    };
-    let mut result = Vec::new();
-
-    for sample in samples {
-        if acc.value == sample.value {
-            acc.rate += sample.rate;
-        } else {
-            result.push(acc);
-            acc = *sample;
-        }
-    }
-    result.push(acc);
-
-    result
-}
-
 #[cfg(test)]
 mod tests {
-    use itertools::Itertools;
     use similar_asserts::assert_eq;
     use vector_lib::{
         event::{
@@ -563,46 +528,6 @@ mod tests {
         );
 
         assert_eq!(buffer.len(), 1);
-    }
-
-    #[test]
-    fn compress_distributions() {
-        let mut samples = vector_lib::samples![
-            2.0 => 12,
-            2.0 => 12,
-            3.0 => 13,
-            1.0 => 11,
-            2.0 => 12,
-            2.0 => 12,
-            3.0 => 13
-        ];
-
-        assert_eq!(
-            compress_distribution(&mut samples),
-            vector_lib::samples![1.0 => 11, 2.0 => 48, 3.0 => 26]
-        );
-    }
-
-    #[test]
-    fn compress_distributions_doesnt_panic() {
-        let to_float = |v: i32| -> f64 { v as f64 };
-
-        let mut samples = (0..=15)
-            .map(to_float)
-            .chain(std::iter::once(f64::NAN))
-            .chain((16..=20).map(to_float))
-            .rev()
-            .map(|value| Sample { value, rate: 1 })
-            .collect_vec();
-
-        assert_eq!(
-            compress_distribution(&mut samples),
-            (0..=20)
-                .map(to_float)
-                .chain(std::iter::once(f64::NAN))
-                .map(|value| Sample { value, rate: 1 })
-                .collect_vec()
-        );
     }
 
     fn rebuffer_absolute_aggregated_histograms<State: MetricNormalize + Default>() -> Buffer {

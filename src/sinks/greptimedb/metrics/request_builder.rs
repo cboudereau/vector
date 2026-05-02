@@ -2,17 +2,12 @@ use chrono::Utc;
 use greptimedb_ingester::{api::v1::*, helpers::values::*};
 use vector_lib::event::{
     MetricView, OtelMetric, ValueAtQuantile,
-    metric::Sample,
 };
-
-use crate::sinks::util::statistic::DistributionStatistic;
 
 pub(super) struct RequestBuilderOptions {
     pub(super) use_new_naming: bool,
 }
 
-pub(super) const DISTRIBUTION_QUANTILES: [f64; 5] = [0.5, 0.75, 0.90, 0.95, 0.99];
-pub(super) const DISTRIBUTION_STAT_FIELD_COUNT: usize = 5;
 pub(super) const SUMMARY_STAT_FIELD_COUNT: usize = 2;
 pub(super) const LEGACY_TIME_INDEX_COLUMN_NAME: &str = "ts";
 pub(super) const TIME_INDEX_COLUMN_NAME: &str = "greptime_timestamp";
@@ -89,12 +84,6 @@ pub fn metric_to_insert_request(
                 &mut columns,
             );
         }
-        MetricView::Distribution { bounds, counts } => {
-            let samples: Vec<Sample> = bounds.iter().zip(counts.iter())
-                .map(|(&value, &rate)| Sample { value, rate: rate as u32 })
-                .collect();
-            encode_distribution(&samples, &mut schema, &mut columns);
-        }
         MetricView::Histogram {
             bounds,
             counts,
@@ -132,29 +121,6 @@ pub fn metric_to_insert_request(
             schema,
             rows: vec![Row { values: columns }],
         }),
-    }
-}
-
-fn encode_distribution(
-    samples: &[Sample],
-    schema: &mut Vec<ColumnSchema>,
-    columns: &mut Vec<Value>,
-) {
-    if let Some(stats) = DistributionStatistic::from_samples(samples, &DISTRIBUTION_QUANTILES) {
-        encode_f64_value("min", stats.min, schema, columns);
-        encode_f64_value("max", stats.max, schema, columns);
-        encode_f64_value("avg", stats.avg, schema, columns);
-        encode_f64_value("sum", stats.sum, schema, columns);
-        encode_f64_value("count", stats.count as f64, schema, columns);
-
-        for (quantile, value) in stats.quantiles {
-            encode_f64_value(
-                &format!("p{:02}", quantile * 100f64),
-                value,
-                schema,
-                columns,
-            );
-        }
     }
 }
 
@@ -339,7 +305,7 @@ mod tests {
     }
 
     #[test]
-    fn test_distribution() {
+    fn test_distribution_as_histogram() {
         let otel = OtelMetric::new_distribution_from_samples(
             "cpu_seconds_total",
             MetricKind::Incremental,
@@ -354,19 +320,14 @@ mod tests {
         let rows = insert.rows.expect("Empty insert request");
         assert_eq!(
             rows.rows[0].values.len(),
-            1 + DISTRIBUTION_STAT_FIELD_COUNT + DISTRIBUTION_QUANTILES.len()
+            1 + SUMMARY_STAT_FIELD_COUNT + 3
         );
 
-        assert_eq!(get_column(&rows, "max"), 3.0);
-        assert_eq!(get_column(&rows, "min"), 1.0);
-        assert_eq!(get_column(&rows, "avg"), 2.0);
-        assert_eq!(get_column(&rows, "sum"), 16.0);
+        assert_eq!(get_column(&rows, "b1"), 2.0);
+        assert_eq!(get_column(&rows, "b2"), 4.0);
+        assert_eq!(get_column(&rows, "b3"), 2.0);
         assert_eq!(get_column(&rows, "count"), 8.0);
-        assert_eq!(get_column(&rows, "p50"), 2.0);
-        assert_eq!(get_column(&rows, "p75"), 2.0);
-        assert_eq!(get_column(&rows, "p90"), 3.0);
-        assert_eq!(get_column(&rows, "p95"), 3.0);
-        assert_eq!(get_column(&rows, "p99"), 3.0);
+        assert_eq!(get_column(&rows, "sum"), 16.0);
     }
 
     #[test]

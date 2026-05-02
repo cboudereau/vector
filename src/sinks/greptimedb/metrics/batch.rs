@@ -3,9 +3,7 @@ use vector_lib::{
     stream::batcher::limiter::ItemBatchSize,
 };
 
-use super::request_builder::{
-    DISTRIBUTION_QUANTILES, DISTRIBUTION_STAT_FIELD_COUNT, SUMMARY_STAT_FIELD_COUNT,
-};
+use super::request_builder::SUMMARY_STAT_FIELD_COUNT;
 
 const F64_BYTE_SIZE: usize = 8;
 const I64_BYTE_SIZE: usize = 8;
@@ -34,7 +32,6 @@ impl GreptimeDBBatchSizer {
         // value size
             match item.view() {
                 MetricView::Sum { .. } | MetricView::Gauge { .. } | MetricView::Set { ..} => F64_BYTE_SIZE,
-                MetricView::Distribution { .. } => F64_BYTE_SIZE * (DISTRIBUTION_QUANTILES.len() + DISTRIBUTION_STAT_FIELD_COUNT),
                 MetricView::Histogram { bounds, .. }  => F64_BYTE_SIZE * (bounds.len() + SUMMARY_STAT_FIELD_COUNT),
                 MetricView::Summary { quantiles, .. } => F64_BYTE_SIZE * (quantiles.len() + SUMMARY_STAT_FIELD_COUNT),
                 MetricView::ExponentialHistogram { .. } => F64_BYTE_SIZE,

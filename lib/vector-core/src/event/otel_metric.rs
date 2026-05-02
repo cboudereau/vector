@@ -42,7 +42,6 @@ pub enum MetricView<'a> {
     Sum { value: f64 },
     Gauge { value: f64 },
     Set { values: Vec<String> },
-    Distribution { bounds: &'a [f64], counts: &'a [u64] },
     Histogram { bounds: &'a [f64], counts: &'a [u64], count: u64, sum: f64 },
     Summary { quantiles: &'a [ValueAtQuantile], count: u64, sum: f64 },
     ExponentialHistogram {
@@ -63,7 +62,6 @@ impl MetricView<'_> {
             Self::Sum { .. } => f::METRIC_TYPE_COUNTER,
             Self::Gauge { .. } => f::METRIC_TYPE_GAUGE,
             Self::Set { .. } => f::METRIC_TYPE_SET,
-            Self::Distribution { .. } => f::METRIC_TYPE_DISTRIBUTION,
             Self::Histogram { .. } => f::METRIC_TYPE_HISTOGRAM,
             Self::Summary { .. } => f::METRIC_TYPE_SUMMARY,
             Self::ExponentialHistogram { .. } => "exponential histogram",
@@ -77,7 +75,6 @@ impl std::fmt::Display for MetricView<'_> {
             Self::Sum { value } => write!(f, "counter: {value}"),
             Self::Gauge { value } => write!(f, "gauge: {value}"),
             Self::Set { values } => write!(f, "set: {} values", values.len()),
-            Self::Distribution { bounds, .. } => write!(f, "distribution: {} buckets", bounds.len()),
             Self::Histogram { bounds, count, sum, .. } => {
                 write!(f, "histogram: {} buckets, count={count}, sum={sum}", bounds.len())
             }
@@ -1026,50 +1023,6 @@ impl OtelMetric {
         }
     }
 
-    fn subtract_distribution(&mut self, other: &Self) -> bool {
-        use opentelemetry_proto::tonic::metrics::v1::metric::Data as MD;
-
-        let (Some(MD::Histogram(h)), Some(MD::Histogram(oh))) =
-            (self.metric.data.as_mut(), other.metric.data.as_ref())
-        else {
-            return false;
-        };
-
-        for (dp, odp) in h.data_points.iter_mut().zip(oh.data_points.iter()) {
-            let other_pairs: Vec<(f64, u64)> = odp
-                .explicit_bounds
-                .iter()
-                .copied()
-                .zip(odp.bucket_counts.iter().copied())
-                .collect();
-
-            let self_pairs: Vec<(f64, u64)> = dp
-                .explicit_bounds
-                .iter()
-                .copied()
-                .zip(dp.bucket_counts.iter().copied())
-                .collect();
-
-            let filtered: Vec<(f64, u64)> = self_pairs
-                .iter()
-                .copied()
-                .filter(|pair| other_pairs.iter().all(|op| *pair != *op))
-                .collect();
-
-            dp.explicit_bounds = filtered.iter().map(|(b, _)| *b).collect();
-            dp.bucket_counts = filtered.iter().map(|(_, c)| *c).collect();
-            dp.count = dp.bucket_counts.iter().sum();
-            dp.sum = Some(
-                dp.explicit_bounds
-                    .iter()
-                    .zip(dp.bucket_counts.iter())
-                    .map(|(b, c)| b * (*c as f64))
-                    .sum(),
-            );
-        }
-        true
-    }
-
     fn subtract_set_values(&mut self, other: &Self) {
         use opentelemetry_proto::tonic::metrics::v1::number_data_point::Value as NDPValue;
         use std::collections::BTreeSet;
@@ -1111,41 +1064,6 @@ impl OtelMetric {
         {
             if let Some(dp) = g.data_points.first_mut() {
                 dp.value = Some(NDPValue::AsDouble(cardinality));
-            }
-        }
-    }
-
-    /// Compress a distribution-type histogram in place by sorting bounds and
-    /// merging bucket counts for duplicate bound values.
-    pub fn compress_distribution(&mut self) {
-        use opentelemetry_proto::tonic::metrics::v1::metric::Data as MD;
-        if let Some(MD::Histogram(h)) = self.metric.data.as_mut() {
-            for dp in &mut h.data_points {
-                if dp.explicit_bounds.len() != dp.bucket_counts.len() {
-                    continue;
-                }
-                let mut pairs: Vec<(f64, u64)> = dp
-                    .explicit_bounds
-                    .iter()
-                    .copied()
-                    .zip(dp.bucket_counts.iter().copied())
-                    .collect();
-                pairs.sort_by(|a, b| a.0.total_cmp(&b.0));
-
-                let mut bounds = Vec::with_capacity(pairs.len());
-                let mut counts = Vec::with_capacity(pairs.len());
-                for (val, rate) in pairs {
-                    if let Some(last) = bounds.last()
-                        && *last == val
-                    {
-                        *counts.last_mut().unwrap() += rate;
-                    } else {
-                        bounds.push(val);
-                        counts.push(rate);
-                    }
-                }
-                dp.explicit_bounds = bounds;
-                dp.bucket_counts = counts;
             }
         }
     }
@@ -1253,10 +1171,6 @@ impl OtelMetric {
         }
         if self.is_set() || other.is_set() {
             return false;
-        }
-
-        if self.is_distribution() && other.is_distribution() {
-            return self.subtract_distribution(other);
         }
 
         match (self.metric.data.as_mut(), other.metric.data.as_ref()) {
@@ -1451,30 +1365,6 @@ impl OtelMetric {
             .and_then(|attrs| attrs.get(f::VECTOR_METRIC_TYPE))
             .and_then(|av| av.value.as_ref())
             .is_some_and(|v| matches!(v, opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(s) if s == f::METRIC_TYPE_SET))
-    }
-
-    /// Check if this metric is a Distribution (stored as Histogram with vector.metric_type=distribution attribute).
-    pub fn is_distribution(&self) -> bool {
-        self.dp_attrs.first()
-            .and_then(|attrs| attrs.get(f::VECTOR_METRIC_TYPE))
-            .and_then(|av| av.value.as_ref())
-            .is_some_and(|v| matches!(v, opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(s) if s == f::METRIC_TYPE_DISTRIBUTION))
-    }
-
-    /// Returns the distribution statistic type string ("histogram" or "summary").
-    /// Returns "histogram" by default (including for non-distribution metrics).
-    pub fn distribution_statistic(&self) -> &str {
-        self.dp_attrs.first()
-            .and_then(|attrs| attrs.get(f::VECTOR_STATISTIC))
-            .and_then(|av| match &av.value {
-                Some(OtelValueKind::StringValue(s)) => Some(s.as_str()),
-                _ => None,
-            })
-            .unwrap_or(f::METRIC_TYPE_HISTOGRAM)
-    }
-
-    pub fn is_distribution_summary(&self) -> bool {
-        self.distribution_statistic() == f::METRIC_TYPE_SUMMARY
     }
 
     /// Returns a zero-copy view of this metric's data, borrowing from the

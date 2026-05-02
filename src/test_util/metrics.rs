@@ -115,12 +115,12 @@ pub fn read_gauge_value(metrics: &SplitMetrics, series: MetricSeries) -> Option<
     })
 }
 
-pub fn read_distribution_samples(
+pub fn read_histogram_samples(
     metrics: &SplitMetrics,
     series: MetricSeries,
 ) -> Option<Vec<Sample>> {
     metrics.get(&series).and_then(|otel| match otel.view() {
-        MetricView::Distribution { bounds, counts } => {
+        MetricView::Histogram { bounds, counts, .. } => {
             Some(bounds.iter().zip(counts.iter()).map(|(&value, &rate)| Sample { value, rate: rate as u32 }).collect())
         }
         _ => None,
@@ -181,10 +181,10 @@ pub fn assert_distribution(
     expected_count: u32,
     expected_bounds: &[(f64, u32)],
 ) {
-    let samples = read_distribution_samples(metrics, series.clone());
-    assert!(samples.is_some(), "distribution '{series}' was not found");
+    let samples = read_histogram_samples(metrics, series.clone());
+    assert!(samples.is_some(), "histogram '{series}' was not found");
 
-    let samples = samples.expect("distribution must be valid");
+    let samples = samples.expect("histogram must be valid");
 
     let mut actual_sum = 0.0;
     let mut actual_count = 0;

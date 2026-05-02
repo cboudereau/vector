@@ -45,7 +45,6 @@ pub const METRIC_TYPE_SUMMARY: &str = "summary";
 pub const METRIC_TYPE_EXPONENTIAL_HISTOGRAM: &str = "exponential_histogram";
 pub const METRIC_TYPE_COUNTER: &str = "counter";
 pub const METRIC_TYPE_SET: &str = "set";
-pub const METRIC_TYPE_DISTRIBUTION: &str = "distribution";
 
 // Metric kind strings.
 pub const METRIC_KIND_INCREMENTAL: &str = "incremental";
@@ -107,7 +106,6 @@ pub const HOST_NAME: &str = "host.name";
 pub const VECTOR_SET_VALUES: &str = "vector.set_values";
 pub const VECTOR_METRIC_KIND: &str = "vector.metric_kind";
 pub const VECTOR_METRIC_TYPE: &str = "vector.metric_type";
-pub const VECTOR_STATISTIC: &str = "vector.statistic";
 pub const VECTOR_PREFIX: &str = "vector.";
 
 // Tracing metadata field names.

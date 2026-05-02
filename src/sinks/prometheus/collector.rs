@@ -3,16 +3,16 @@ use std::{collections::BTreeMap, fmt::Write as _};
 use chrono::Utc;
 use indexmap::map::IndexMap;
 use vector_lib::{
-    event::{OtelAttributes, metric::samples_to_buckets},
+    event::OtelAttributes,
     prometheus::parser::{METRIC_NAME_LABEL, proto},
 };
 
 use crate::{
     event::{
         MetricView, OtelMetric,
-        metric::{MetricKind, Sample},
+        metric::MetricKind,
     },
-    sinks::util::{encode_namespace, statistic::DistributionStatistic},
+    sinks::util::encode_namespace,
 };
 
 pub(super) trait MetricCollector {
@@ -37,8 +37,8 @@ pub(super) trait MetricCollector {
     fn encode_metric(
         &mut self,
         default_namespace: Option<&str>,
-        buckets: &[f64],
-        quantiles: &[f64],
+        _buckets: &[f64],
+        _quantiles: &[f64],
         metric: &OtelMetric,
     ) {
         let name = encode_namespace(metric.namespace().or(default_namespace), '_', metric.name());
@@ -60,71 +60,6 @@ pub(super) trait MetricCollector {
                 }
                 MetricView::Set { values } => {
                     self.emit_value(timestamp, name, "", values.len() as f64, tags, None);
-                }
-                MetricView::Distribution { bounds, counts } => {
-                    match metric.distribution_statistic() {
-                        "histogram" => {
-                            let samples: Vec<Sample> = bounds.iter().zip(counts.iter())
-                                .map(|(&value, &rate)| Sample { value, rate: rate as u32 })
-                                .collect();
-                            let (hist_buckets, count, sum) = samples_to_buckets(&samples, buckets);
-                            let mut bucket_count = 0.0;
-                            for bucket in hist_buckets {
-                                bucket_count += bucket.count as f64;
-                                self.emit_value(
-                                    timestamp,
-                                    name,
-                                    "_bucket",
-                                    bucket_count,
-                                    tags,
-                                    Some(("le", bucket.upper_limit.to_string())),
-                                );
-                            }
-                            self.emit_value(
-                                timestamp,
-                                name,
-                                "_bucket",
-                                count as f64,
-                                tags,
-                                Some(("le", "+Inf".to_string())),
-                            );
-                            self.emit_value(timestamp, name, "_sum", sum, tags, None);
-                            self.emit_value(timestamp, name, "_count", count as f64, tags, None);
-                        }
-                        _ => {
-                            let samples: Vec<Sample> = bounds.iter().zip(counts.iter())
-                                .map(|(&value, &rate)| Sample { value, rate: rate as u32 })
-                                .collect();
-                            if let Some(statistic) = DistributionStatistic::from_samples(&samples, quantiles)
-                            {
-                                for (q, v) in statistic.quantiles.iter() {
-                                    self.emit_value(
-                                        timestamp,
-                                        name,
-                                        "",
-                                        *v,
-                                        tags,
-                                        Some(("quantile", q.to_string())),
-                                    );
-                                }
-                                self.emit_value(timestamp, name, "_sum", statistic.sum, tags, None);
-                                self.emit_value(
-                                    timestamp,
-                                    name,
-                                    "_count",
-                                    statistic.count as f64,
-                                    tags,
-                                    None,
-                                );
-                                self.emit_value(timestamp, name, "_min", statistic.min, tags, None);
-                                self.emit_value(timestamp, name, "_max", statistic.max, tags, None);
-                                self.emit_value(timestamp, name, "_avg", statistic.avg, tags, None);
-                            } else {
-                                self.emit_value(timestamp, name, "_sum", 0.0, tags, None);
-                                self.emit_value(timestamp, name, "_count", 0.0, tags, None);
-                            }
-                        }
-                    }
                 }
                 MetricView::Histogram {
                     bounds,
@@ -430,17 +365,11 @@ impl MetricCollector for TimeSeries {
     }
 }
 
-fn prometheus_metric_type(view: &MetricView<'_>, metric: &OtelMetric) -> proto::MetricType {
+fn prometheus_metric_type(view: &MetricView<'_>, _metric: &OtelMetric) -> proto::MetricType {
     use proto::MetricType;
     match view {
         MetricView::Sum { .. } => MetricType::Counter,
         MetricView::Gauge { .. } | MetricView::Set { .. } => MetricType::Gauge,
-        MetricView::Distribution { .. } => {
-            match metric.distribution_statistic() {
-                "summary" => MetricType::Summary,
-                _ => MetricType::Histogram,
-            }
-        }
         MetricView::Histogram { .. } | MetricView::ExponentialHistogram { .. } => MetricType::Histogram,
         MetricView::Summary { .. } => MetricType::Summary,
     }

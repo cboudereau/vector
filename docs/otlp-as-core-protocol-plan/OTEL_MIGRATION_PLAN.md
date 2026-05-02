@@ -429,7 +429,7 @@ All `to_value_canonical()` call sites migrated to `as_map()`:
 
 ### Phase E — OTLP Fidelity Alignment (source/sink divergences)
 
-**Status: E1-E8 DONE + D51 DONE + sink ExponentialHistogram support DONE. E9+F in progress — eliminating ALL `vector.*` attributes.**
+**Status: E1-E9 DONE + D51 DONE + D53 DONE + sink ExponentialHistogram support DONE + Phase F DONE. ALL `vector.*` attributes eliminated.**
 
 All decisions locked. Execution order: sinks first (E1-E2), then sources (E3-E6), then sink enrichment (E7), then cleanup (E8-E9), then structural field migration (F1-F3).
 
@@ -442,26 +442,18 @@ All decisions locked. Execution order: sinks first (E1-E2), then sources (E3-E6)
 - **E6** ✅ OTLP unit field population — counters="1", timers="s"/"ms", host_metrics inferred from name
 - **E7** ✅ resource_to_labels/resource_to_tags config on Prometheus, InfluxDB, StatsD sinks
 - **E8** ✅ Eliminate vector.* attributes — aggregated StatsD output has no vector.* attrs (E8b); direct opentelemetry_proto imports replaced with re-exports in 8 sources (E8a)
+- **E9** ✅ Delete `MetricView::Distribution` variant — 4 steps: strip vector.* attrs from constructors, remove is_distribution() gate, delete variant + all match arms across ~15 files, rename `new_distribution_from_samples` → `new_histogram_from_samples`
 - **D51** ✅ log_to_metric Histogram/Summary → ExponentialHistogram (with new_exponential_histogram_single constructor)
+- **D53** ✅ Replace `vector.set_values` attribute with `set_values: Option<BTreeSet<String>>` struct field on OtelMetric. Replace `vector.metric_kind` attribute with `kind_override: Option<MetricKind>` struct field. Delete all `VECTOR_*` constants and `vector.*` prefix filtering from `tags()`/`all_tags_including_resource()`.
 - **Sink ExponentialHistogram support** ✅ Prometheus collector (explicit bucket conversion), InfluxDB (count/sum/min/max/avg), GreptimeDB (count/sum/min/max), CloudWatch (StatisticSet)
 
-**In progress (E9 + Phase F — eliminate ALL `vector.*` attributes):**
-
-E9 Step 1: Strip `vector.*` attrs from `new_distribution_from_samples` (thin wrapper around `new_histogram`). Remove `vector.metric_type=sketch` from `convert_sketch()`.
-
-E9 Step 2: Remove `is_distribution()` gate from `view()` — `MetricView::Distribution` becomes unreachable.
-
-E9 Step 3: Delete `MetricView::Distribution` variant + all match arms across ~15 files. Delete `is_distribution()`, `distribution_statistic()`, `is_distribution_summary()`, `subtract_distribution()` methods. Delete `VECTOR_STATISTIC`, `METRIC_TYPE_DISTRIBUTION` constants. Move StatsD sample-reconstruction into Histogram arm.
-
-E9 Step 4: Rename `new_distribution_from_samples` → `new_histogram_from_samples` (drop `statistic` param), update ~30 callers.
-
-F1 (D53): Add `set_values: Option<BTreeSet<String>>` field to OtelMetric. Rewrite `new_set_from_values` to use struct field (no `vector.set_values` / `vector.metric_type=set` attrs). Rewrite `is_set()`, `merge_set_values()`, `subtract_set_values()`, `view()` Set arm. Delete `VECTOR_SET_VALUES` constant.
-
-F2: Add `kind_override: Option<MetricKind>` field to OtelMetric. Rewrite `new_gauge_delta` to use field (no `vector.metric_kind` attr). Rewrite `kind()`/`set_kind()` for Gauge/Summary. Delete `VECTOR_METRIC_KIND`, `VECTOR_METRIC_TYPE` constants.
-
-F3: Delete `VECTOR_PREFIX` constant and `vector.*` prefix filtering from `tags()`/`all_tags_including_resource()`. Final gate: all `VECTOR_*` constants = 0.
-
-Run `cargo test -p vector --all-features` after each commit.
+**Gate check results (all zero):**
+```
+grep -rn 'vector\.(statistic|metric_type|metric_kind|set_values)' lib/ src/ → 0
+grep -rn 'distribution_statistic' lib/ src/ → 0
+grep -rn 'MetricView::Distribution' lib/ src/ → 0
+grep -rn 'VECTOR_' lib/vector-core/src/event/otel_fields.rs → 0
+```
 
 #### E1. Centralized ExponentialHistogram → Histogram conversion (Tier 1 sinks)
 
@@ -594,9 +586,9 @@ The `Distribution` variant represented the broken raw-samples-as-explicit-bounds
 
 ### Phase F — Structural Field Migration (eliminate remaining `vector.*` attributes)
 
-**Status: Planned. Executes immediately after E9.**
+**Status: DONE. All `vector.*` attributes eliminated. Completed in single commit (D53).**
 
-Phase F replaces the remaining `vector.*` data-point attributes with dedicated struct fields on `OtelMetric`. After F3, zero `vector.*` attributes exist anywhere in the codebase.
+Phase F replaced the remaining `vector.*` data-point attributes with dedicated struct fields on `OtelMetric`. Zero `vector.*` attributes exist anywhere in the codebase.
 
 #### F1. D53 — `set_values: Option<BTreeSet<String>>` field (replace `vector.set_values` + `vector.metric_type=set`)
 
@@ -627,16 +619,16 @@ Add a dedicated `kind_override` field to `OtelMetric` for Gauge/Summary types th
 - Delete `VECTOR_PREFIX` constant
 - Remove `vector.*` prefix filtering from `tags()` and `all_tags_including_resource()` — dead code, no `vector.*` attrs exist
 
-### Gate (Phase E+F)
+### Gate (Phase E+F) — ALL PASSED ✅
 
-**Additional F gate metrics:**
+**F gate metrics — all verified 2026-05-02:**
 
-| Metric | Target | Verification |
-|--------|--------|--------------|
-| `VECTOR_*` constants in otel_fields.rs | 0 | `grep -rn 'VECTOR_' lib/vector-core/src/event/otel_fields.rs` |
-| `vector.*` prefix filtering in tags() | 0 | `grep -rn 'VECTOR_PREFIX' lib/vector-core/src/event/otel_metric.rs` |
-| `new_set_from_values` uses `vector.*` attrs | 0 | Set values stored in struct field, not dp_attrs |
-| `new_gauge_delta` uses `vector.*` attrs | 0 | Kind stored in struct field, not dp_attrs |
+| Metric | Target | Result |
+|--------|--------|--------|
+| `VECTOR_*` constants in otel_fields.rs | 0 | ✅ 0 |
+| `vector.*` prefix filtering in tags() | 0 | ✅ 0 — filtering removed |
+| `new_set_from_values` uses `vector.*` attrs | 0 | ✅ 0 — uses `set_values: Option<BTreeSet<String>>` field |
+| `new_gauge_delta` uses `vector.*` attrs | 0 | ✅ 0 — uses `kind_override: Option<MetricKind>` field |
 
 | Metric | Target | Verification |
 |--------|--------|--------------|

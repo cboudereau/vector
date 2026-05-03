@@ -16,5 +16,26 @@ Migrate step by step in the following order:
    - Renamed `vector-forwarder` → `vector-gateway`
    - Apps now send OTLP directly to `vector-gateway:4317`
    - Vector routes: traces → traces-loadbalancer, logs → Loki, metrics → Mimir
-2. Load balancing
-3. Tail sampling
+2. ~~Load balancing~~ DONE
+   - Removed `otelcontribcol-traces-loadbalancer` from compose.yml
+   - Added dedicated `sol-loadbalancer` with `load_balancing` (consistent hash on traceID, DNS resolver)
+   - `sol-gateway` forwards traces to `sol-loadbalancer:4317`
+   - `sol-loadbalancer` routes to `sol-collector` replicas via gRPC
+3. ~~Tail sampling~~ DONE
+   - Removed `otelcontribcol-traces-collector` from compose.yml
+   - Added `sol-collector` (2 replicas) with `tail_sampling` transform
+   - Policies: latency >= 100ms, ERROR status, 10% probabilistic
+   - Added `span_metrics` transform for RED metrics → Mimir
+   - Sampled traces exported to Tempo via gRPC
+
+## Known limitations
+
+### AND policy composition
+The original OTel config kept ERROR traces while excluding 4xx HTTP errors via `and` sub-policy.
+Vector's `tail_sampling` uses first-match-wins with no AND/OR composition, so the current config
+keeps all ERROR traces including 4xx. For a demo this provides better visibility.
+
+### Service graph vs span_metrics
+OTel `servicegraph` connector generates inter-service edge metrics (client→server pairs).
+Vector `span_metrics` generates per-service RED metrics (rate, errors, duration histograms).
+They are complementary, not equivalent — the Grafana service graph panel requires the edge metrics.

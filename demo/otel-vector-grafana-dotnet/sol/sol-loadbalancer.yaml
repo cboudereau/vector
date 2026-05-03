@@ -1,0 +1,24 @@
+sources:
+  otlp:
+    type: opentelemetry
+    grpc:
+      address: "0.0.0.0:4317"
+    http:
+      address: "0.0.0.0:4318"
+
+sinks:
+  otlp_traces:
+    type: opentelemetry
+    inputs: ["otlp.traces"]
+    acknowledgements:
+      enabled: true
+    protocol:
+      type: grpc
+      load_balancing:
+        routing_key: traceID
+        resolver:
+          type: dns
+          hostname: sol-collector
+      batch:
+        max_events: 1000
+        timeout_secs: 1

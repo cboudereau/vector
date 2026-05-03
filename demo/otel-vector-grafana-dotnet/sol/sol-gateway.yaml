@@ -20,8 +20,6 @@ transforms:
       .attributes."host.name" = .resource.attributes."host.name"
 
 sinks:
-  # Traces go via gRPC to otelcontribcol for tail-based sampling and load balancing.
-  # Logs and metrics go directly to Grafana backends over HTTP/OTLP.
   otlp_traces:
     type: opentelemetry
     inputs: ["otlp.traces"]
@@ -29,7 +27,7 @@ sinks:
       enabled: true
     protocol:
       type: grpc
-      endpoint: "http://otelcontribcol-traces-loadbalancer:4317"
+      endpoint: "http://sol-loadbalancer:4317"
       batch:
         max_events: 1000
         timeout_secs: 1

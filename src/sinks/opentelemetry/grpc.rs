@@ -408,9 +408,12 @@ use super::load_balancing::{ConsistentHashRing, RoutingKey, extract_routing_key}
 
 /// Parse an endpoint string into a URI, prepending `http://` if no scheme is present.
 fn parse_endpoint_uri(ep: &str) -> Option<Uri> {
-    ep.parse::<Uri>().ok().or_else(|| {
-        format!("http://{ep}").parse::<Uri>().ok()
-    })
+    if let Ok(uri) = ep.parse::<Uri>() {
+        if uri.scheme().is_some() {
+            return Some(uri);
+        }
+    }
+    format!("http://{ep}").parse::<Uri>().ok()
 }
 
 /// A sink that routes events to multiple backends via consistent hashing.
@@ -838,5 +841,28 @@ mod tests {
             "promoted dp attr 'service.name' must be preserved, got: {:?}",
             dp_attrs
         );
+    }
+
+    #[test]
+    fn parse_endpoint_uri_with_scheme() {
+        let uri = parse_endpoint_uri("http://localhost:4317").unwrap();
+        assert_eq!(uri.scheme_str(), Some("http"));
+        assert_eq!(uri.host(), Some("localhost"));
+        assert_eq!(uri.port_u16(), Some(4317));
+    }
+
+    #[test]
+    fn parse_endpoint_uri_bare_ip_port() {
+        let uri = parse_endpoint_uri("10.0.0.7:4317").unwrap();
+        assert_eq!(uri.scheme_str(), Some("http"));
+        assert_eq!(uri.host(), Some("10.0.0.7"));
+        assert_eq!(uri.port_u16(), Some(4317));
+    }
+
+    #[test]
+    fn parse_endpoint_uri_hostname_port() {
+        let uri = parse_endpoint_uri("sol-collector:4317").unwrap();
+        assert_eq!(uri.scheme_str(), Some("http"));
+        assert_eq!(uri.port_u16(), Some(4317));
     }
 }

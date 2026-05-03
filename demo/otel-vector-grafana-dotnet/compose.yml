@@ -2,39 +2,42 @@
 version: '3.8'
 name: otel-lgtm-dotnet
 services:
-  vector-gateway:
+  sol-gateway:
     build:
       context: ../..
       dockerfile: demo/Dockerfile.vector
-    command: ["--config", "/etc/vector/vector.yaml"]
+    command: ["--config", "/etc/sol/sol-gateway.yaml"]
     volumes:
-      - ./vector/:/etc/vector/:ro
+      - ./sol/sol-gateway.yaml:/etc/sol/sol-gateway.yaml:ro
     networks:
       - bridge
     depends_on:
       - loki
       - mimir
-      - otelcontribcol-traces-loadbalancer
-  otelcontribcol-traces-loadbalancer:
-    image: otel/opentelemetry-collector-contrib:${OTEL_CONTRIB_COL}
-    command: "--config /etc/otelcol-contrib/exporters.yml --config /etc/otelcol-contrib/extensions.yml --config /etc/otelcol-contrib/pipeline.agent.yml --config /etc/otelcol-contrib/pipeline.traces.yml"
+      - sol-loadbalancer
+  sol-loadbalancer:
+    build:
+      context: ../..
+      dockerfile: demo/Dockerfile.vector
+    command: ["--config", "/etc/sol/sol-loadbalancer.yaml"]
     volumes:
-      - ./otelcontribcol/traces-loadbalancer/:/etc/otelcol-contrib/:ro
+      - ./sol/sol-loadbalancer.yaml:/etc/sol/sol-loadbalancer.yaml/:ro
     networks:
       - bridge
     depends_on:
-      - mimir
-      - otelcontribcol-traces-collector
-  otelcontribcol-traces-collector:
-    image: otel/opentelemetry-collector-contrib:${OTEL_CONTRIB_COL}
-    command: "--config /etc/otelcol-contrib/exporters.yml --config /etc/otelcol-contrib/extensions.yml --config /etc/otelcol-contrib/pipeline.agent.yml --config /etc/otelcol-contrib/pipeline.traces.yml"
+      - sol-collector
+  sol-collector:
+    build:
+      context: ../..
+      dockerfile: demo/Dockerfile.vector
+    command: ["--config", "/etc/sol/sol-collector.yaml"]
     volumes:
-      - ./otelcontribcol/traces-collector/:/etc/otelcol-contrib/:ro
+      - ./sol/sol-collector.yaml:/etc/sol/sol-collector.yaml:ro
     networks:
       - bridge
     depends_on:
-      - mimir
       - tempo
+      - mimir
     deploy:
       replicas: 2
 
@@ -78,14 +81,14 @@ services:
       # - OTEL_TRACES_SAMPLER_ARG=0.1 # demo parameter
       - OTEL_RESOURCE_ATTRIBUTES=service.namespace=demo,deployment.environment=dev
       - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://vector-gateway:4317
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://sol-gateway:4317
       - OTEL_EXPORTER_OTLP_INSECURE=true
       - OTEL_METRIC_EXPORT_INTERVAL=10000
     networks:
       - bridge
     depends_on:
       - service
-      - vector-gateway
+      - sol-gateway
     deploy:
       replicas: 1
       resources:
@@ -101,7 +104,7 @@ services:
       # - OTEL_TRACES_SAMPLER=parentbased_always_on
       - OTEL_RESOURCE_ATTRIBUTES=service.namespace=demo,deployment.environment=dev
       - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://vector-gateway:4317
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://sol-gateway:4317
       - OTEL_EXPORTER_OTLP_INSECURE=true
       - OTEL_METRIC_EXPORT_INTERVAL=10000
       - FAILURE_RATIO=0.1 # demo parameter
@@ -113,7 +116,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      vector-gateway:
+      sol-gateway:
         condition: service_started
 
     deploy:

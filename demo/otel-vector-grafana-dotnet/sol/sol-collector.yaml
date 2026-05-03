@@ -1,0 +1,58 @@
+sources:
+  otlp:
+    type: opentelemetry
+    grpc:
+      address: "0.0.0.0:4317"
+    http:
+      address: "0.0.0.0:4318"
+
+transforms:
+  tail_sampling:
+    type: tail_sampling
+    inputs: ["otlp.traces"]
+    decision_wait_secs: 10
+    num_traces: 50000
+    policies:
+      - type: latency
+        name: latency-policy
+        threshold_ms: 100
+      - type: status_code
+        name: error-policy
+        status_codes: ["ERROR"]
+      - type: probabilistic
+        name: probabilistic-policy
+        sampling_percentage: 10.0
+
+  span_metrics:
+    type: span_metrics
+    inputs: ["otlp.traces"]
+    namespace: "traces.span.metrics"
+    metrics_flush_interval_secs: 15
+    dimensions:
+      - name: db.system
+      - name: messaging.system
+
+sinks:
+  otlp_tempo:
+    type: opentelemetry
+    inputs: ["tail_sampling"]
+    acknowledgements:
+      enabled: true
+    protocol:
+      type: grpc
+      endpoint: "http://tempo:4317"
+      batch:
+        max_events: 1000
+        timeout_secs: 1
+
+  otlp_span_metrics:
+    type: opentelemetry
+    inputs: ["span_metrics"]
+    acknowledgements:
+      enabled: true
+    protocol:
+      type: http
+      endpoint: "http://mimir:9009/otlp"
+      batch:
+        max_events: 1000
+        timeout_secs: 1

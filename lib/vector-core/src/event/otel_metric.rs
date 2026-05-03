@@ -34,10 +34,10 @@ use super::otel_event::{
 
 /// Zero-copy view into an `OtelMetric`'s data. Variant names follow OTLP types
 /// (`Sum`, `Gauge`, `Histogram`, `Summary`, `ExponentialHistogram`) with
-/// Vector-specific extensions (`Set`, `Distribution`).
+/// one Vector-specific extension (`Set`).
 ///
 /// Scalars are copied (cheap). Histogram bounds/counts and summary quantiles
-/// are borrowed from the proto. Set values must allocate (stored in attributes).
+/// are borrowed from the proto. Set values are cloned from the struct field.
 #[derive(Debug)]
 pub enum MetricView<'a> {
     Sum { value: f64 },

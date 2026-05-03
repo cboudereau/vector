@@ -172,15 +172,19 @@ mod tests {
     fn absolute_aggregated_histogram() {
         let samples1 = generate_f64s(1, 100);
         let samples2 = generate_f64s(1, 125);
+        let expected_samples = generate_f64s(101, 125);
 
         let agg_histograms = vec![
             get_aggregated_histogram(samples1, MetricKind::Absolute),
             get_aggregated_histogram(samples2, MetricKind::Absolute),
         ];
 
-        let expected_agg_histograms = vec![];
+        let expected = vec![
+            None,
+            Some(get_aggregated_histogram(expected_samples, MetricKind::Incremental)),
+        ];
 
-        assert_normalize(StatsdNormalizer, agg_histograms, expected_agg_histograms);
+        assert_normalize(StatsdNormalizer, agg_histograms, expected);
     }
 
     #[test]
@@ -218,8 +222,17 @@ mod tests {
             get_aggregated_histogram(samples5, MetricKind::Incremental),
         ];
 
-        let expected_agg_histograms = vec![];
+        let expected = vec![
+            Some(agg_histograms[0].clone()),
+            None,
+            Some(get_aggregated_histogram(
+                generate_f64s(126, 187),
+                MetricKind::Incremental,
+            )),
+            Some(agg_histograms[3].clone()),
+            Some(agg_histograms[4].clone()),
+        ];
 
-        assert_normalize(StatsdNormalizer, agg_histograms, expected_agg_histograms);
+        assert_normalize(StatsdNormalizer, agg_histograms, expected);
     }
 }

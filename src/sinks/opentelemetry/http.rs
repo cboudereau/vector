@@ -404,7 +404,7 @@ fn collection_into_http_requests(
 
     if !log_resources.is_empty() {
         let request = ExportLogsServiceRequest { resource_logs: log_resources };
-        let body = encode_otlp(&request, encoding);
+        let body = encode_otlp(&request, encoding, OtlpSignal::Logs);
         let bytes_len = NonZeroUsize::new(body.len().max(1)).unwrap();
         requests.push(OtlpHttpRequest {
             body,
@@ -416,7 +416,7 @@ fn collection_into_http_requests(
 
     if !metric_resources.is_empty() {
         let request = ExportMetricsServiceRequest { resource_metrics: metric_resources };
-        let body = encode_otlp(&request, encoding);
+        let body = encode_otlp(&request, encoding, OtlpSignal::Metrics);
         let bytes_len = NonZeroUsize::new(body.len().max(1)).unwrap();
         requests.push(OtlpHttpRequest {
             body,
@@ -428,7 +428,7 @@ fn collection_into_http_requests(
 
     if !trace_resources.is_empty() {
         let request = ExportTraceServiceRequest { resource_spans: trace_resources };
-        let body = encode_otlp(&request, encoding);
+        let body = encode_otlp(&request, encoding, OtlpSignal::Traces);
         let bytes_len = NonZeroUsize::new(body.len().max(1)).unwrap();
         requests.push(OtlpHttpRequest {
             body,
@@ -441,14 +441,20 @@ fn collection_into_http_requests(
     requests
 }
 
-fn encode_otlp(msg: &(impl prost::Message + Default), encoding: OtlpHttpEncoding) -> Bytes {
+enum OtlpSignal {
+    Logs,
+    Metrics,
+    Traces,
+}
+
+fn encode_otlp(msg: &(impl prost::Message + Default), encoding: OtlpHttpEncoding, signal: OtlpSignal) -> Bytes {
     match encoding {
         OtlpHttpEncoding::Protobuf => Bytes::from(msg.encode_to_vec()),
-        OtlpHttpEncoding::Json => Bytes::from(proto_to_json(msg)),
+        OtlpHttpEncoding::Json => Bytes::from(proto_to_json(msg, signal)),
     }
 }
 
-fn proto_to_json<M: prost::Message + Default>(msg: &M) -> Vec<u8> {
+fn proto_to_json<M: prost::Message + Default>(msg: &M, signal: OtlpSignal) -> Vec<u8> {
     use opentelemetry_proto::tonic::collector::{
         logs::v1::ExportLogsServiceRequest as UpstreamLogsReq,
         metrics::v1::ExportMetricsServiceRequest as UpstreamMetricsReq,
@@ -458,17 +464,18 @@ fn proto_to_json<M: prost::Message + Default>(msg: &M) -> Vec<u8> {
 
     let proto_bytes = msg.encode_to_vec();
 
-    fn roundtrip_json<U: Message + Default + serde::Serialize>(bytes: &[u8]) -> Option<Vec<u8>> {
-        let upstream = U::decode(bytes).ok()?;
-        let mut value = serde_json::to_value(&upstream).ok()?;
+    fn roundtrip_json<U: Message + Default + serde::Serialize>(bytes: &[u8]) -> Vec<u8> {
+        let upstream = U::decode(bytes).expect("proto roundtrip decode");
+        let mut value = serde_json::to_value(&upstream).expect("JSON serialization");
         strip_nulls(&mut value);
-        Some(serde_json::to_vec(&value).expect("JSON re-serialization"))
+        serde_json::to_vec(&value).expect("JSON re-serialization")
     }
 
-    roundtrip_json::<UpstreamLogsReq>(&proto_bytes)
-        .or_else(|| roundtrip_json::<UpstreamMetricsReq>(&proto_bytes))
-        .or_else(|| roundtrip_json::<UpstreamTracesReq>(&proto_bytes))
-        .expect("proto_to_json: failed to decode as any OTLP export request")
+    match signal {
+        OtlpSignal::Logs => roundtrip_json::<UpstreamLogsReq>(&proto_bytes),
+        OtlpSignal::Metrics => roundtrip_json::<UpstreamMetricsReq>(&proto_bytes),
+        OtlpSignal::Traces => roundtrip_json::<UpstreamTracesReq>(&proto_bytes),
+    }
 }
 
 fn strip_nulls(value: &mut serde_json::Value) {

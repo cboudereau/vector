@@ -2492,7 +2492,7 @@ impl OtelSpan {
     /// restored, remainder becomes `span.attributes`. Also handles legacy
     /// "start_time"/"end_time" (Timestamp) for old disk buffer compat.
     fn apply_value_map(&mut self, value: Value) {
-        use opentelemetry_proto::tonic::trace::v1::Status;
+        use opentelemetry_proto::tonic::trace::v1::{Status, span};
 
         let mut map = match value {
             Value::Object(m) => m,
@@ -2572,6 +2572,62 @@ impl OtelSpan {
         self.scope = scope;
         self.scope_attrs = scope_attrs;
 
+        let trace_state = match map.remove("trace_state") {
+            Some(Value::Bytes(b)) => String::from_utf8(b.to_vec()).unwrap_or_default(),
+            Some(other) => { map.insert("trace_state".into(), other); String::new() }
+            None => String::new(),
+        };
+
+        let events = map
+            .remove(f::SPAN_EVENTS)
+            .and_then(|v| match v { Value::Array(a) => Some(a), _ => None })
+            .map(|arr| {
+                arr.into_iter()
+                    .filter_map(|v| {
+                        let em = match v { Value::Object(m) => m, _ => return None };
+                        Some(span::Event {
+                            time_unix_nano: em.get(f::TIME_UNIX_NANO).and_then(|v| v.as_integer()).unwrap_or(0) as u64,
+                            name: em.get(f::NAME).and_then(|v| v.as_bytes()).map(|b| String::from_utf8_lossy(b).into_owned()).unwrap_or_default(),
+                            attributes: em.get(f::ATTRIBUTES).and_then(|v| v.as_object()).map(object_map_to_kvlist).unwrap_or_default(),
+                            dropped_attributes_count: em.get(f::DROPPED_ATTRIBUTES_COUNT).and_then(|v| v.as_integer()).unwrap_or(0) as u32,
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let dropped_events_count = match map.remove("dropped_events_count") {
+            Some(Value::Integer(i)) => i as u32,
+            Some(other) => { map.insert("dropped_events_count".into(), other); 0 }
+            None => 0,
+        };
+
+        let links = map
+            .remove(f::SPAN_LINKS)
+            .and_then(|v| match v { Value::Array(a) => Some(a), _ => None })
+            .map(|arr| {
+                arr.into_iter()
+                    .filter_map(|v| {
+                        let lm = match v { Value::Object(m) => m, _ => return None };
+                        Some(span::Link {
+                            trace_id: lm.get(f::SPAN_TRACE_ID).and_then(|v| hex_decode(v)).unwrap_or_default(),
+                            span_id: lm.get(f::SPAN_SPAN_ID).and_then(|v| hex_decode(v)).unwrap_or_default(),
+                            trace_state: lm.get("trace_state").and_then(|v| v.as_bytes()).map(|b| String::from_utf8_lossy(b).into_owned()).unwrap_or_default(),
+                            attributes: lm.get(f::ATTRIBUTES).and_then(|v| v.as_object()).map(object_map_to_kvlist).unwrap_or_default(),
+                            dropped_attributes_count: lm.get(f::DROPPED_ATTRIBUTES_COUNT).and_then(|v| v.as_integer()).unwrap_or(0) as u32,
+                            flags: lm.get(f::SPAN_FLAGS).and_then(|v| v.as_integer()).unwrap_or(0) as u32,
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let dropped_links_count = match map.remove("dropped_links_count") {
+            Some(Value::Integer(i)) => i as u32,
+            Some(other) => { map.insert("dropped_links_count".into(), other); 0 }
+            None => 0,
+        };
+
         let mut span_attrs = OtelAttributes::new();
         for (k, v) in map {
             span_attrs.insert(k.to_string(), vrl_value_to_any_value(&v));
@@ -2589,11 +2645,11 @@ impl OtelSpan {
             dropped_attributes_count,
             status,
             attributes: Vec::new(),
-            trace_state: String::new(),
-            events: Vec::new(),
-            dropped_events_count: 0,
-            links: Vec::new(),
-            dropped_links_count: 0,
+            trace_state,
+            events,
+            dropped_events_count,
+            links,
+            dropped_links_count,
         };
         self.span_attrs = span_attrs;
     }
@@ -3272,6 +3328,43 @@ impl OtelSpan {
             status_map.insert(f::STATUS_CODE.into(), Value::Integer(status.code as i64));
             map.insert(f::SPAN_STATUS.into(), Value::Object(status_map));
         }
+        if !self.span.trace_state.is_empty() {
+            map.insert("trace_state".into(), Value::Bytes(self.span.trace_state.clone().into()));
+        }
+        if !self.span.events.is_empty() {
+            let events: Vec<Value> = self.span.events.iter().map(|e| {
+                let mut em = ObjectMap::new();
+                em.insert(f::TIME_UNIX_NANO.into(), Value::Integer(e.time_unix_nano as i64));
+                em.insert(f::NAME.into(), Value::Bytes(e.name.clone().into()));
+                em.insert(f::ATTRIBUTES.into(), Value::Object(kvlist_to_object_map(&e.attributes)));
+                em.insert(f::DROPPED_ATTRIBUTES_COUNT.into(), Value::Integer(e.dropped_attributes_count as i64));
+                Value::Object(em)
+            }).collect();
+            map.insert(f::SPAN_EVENTS.into(), Value::Array(events));
+        }
+        if self.span.dropped_events_count != 0 {
+            map.insert("dropped_events_count".into(), Value::Integer(self.span.dropped_events_count as i64));
+        }
+        if !self.span.links.is_empty() {
+            let links: Vec<Value> = self.span.links.iter().map(|l| {
+                let mut lm = ObjectMap::new();
+                lm.insert(f::SPAN_TRACE_ID.into(), hex_encode(&l.trace_id));
+                lm.insert(f::SPAN_SPAN_ID.into(), hex_encode(&l.span_id));
+                if !l.trace_state.is_empty() {
+                    lm.insert("trace_state".into(), Value::Bytes(l.trace_state.clone().into()));
+                }
+                lm.insert(f::ATTRIBUTES.into(), Value::Object(kvlist_to_object_map(&l.attributes)));
+                lm.insert(f::DROPPED_ATTRIBUTES_COUNT.into(), Value::Integer(l.dropped_attributes_count as i64));
+                if l.flags != 0 {
+                    lm.insert(f::SPAN_FLAGS.into(), Value::Integer(l.flags as i64));
+                }
+                Value::Object(lm)
+            }).collect();
+            map.insert(f::SPAN_LINKS.into(), Value::Array(links));
+        }
+        if self.span.dropped_links_count != 0 {
+            map.insert("dropped_links_count".into(), Value::Integer(self.span.dropped_links_count as i64));
+        }
         if !self.span_attrs.is_empty() {
             for (k, v) in self.span_attrs.iter() {
                 let key = KeyString::from(k.clone());
@@ -3558,6 +3651,25 @@ impl Serialize for OtelSpan {
         }
         if self.span.flags != 0 {
             map.serialize_entry(f::SPAN_FLAGS, &self.span.flags)?;
+        }
+        if !self.span.trace_state.is_empty() {
+            map.serialize_entry("traceState", &self.span.trace_state)?;
+        }
+        if !self.span.events.is_empty() {
+            let events: Vec<SerializableSpanEvent> =
+                self.span.events.iter().map(SerializableSpanEvent).collect();
+            map.serialize_entry("events", &events)?;
+        }
+        if self.span.dropped_events_count != 0 {
+            map.serialize_entry("droppedEventsCount", &self.span.dropped_events_count)?;
+        }
+        if !self.span.links.is_empty() {
+            let links: Vec<SerializableSpanLink> =
+                self.span.links.iter().map(SerializableSpanLink).collect();
+            map.serialize_entry("links", &links)?;
+        }
+        if self.span.dropped_links_count != 0 {
+            map.serialize_entry("droppedLinksCount", &self.span.dropped_links_count)?;
         }
         if let Some(res) = self.resource_proto() {
             map.serialize_entry(f::RESOURCE, &SerializableResource(&res))?;
@@ -5003,5 +5115,96 @@ mod tests {
             }
             other => panic!("expected Histogram, got {other}"),
         }
+    }
+
+    #[test]
+    fn otel_span_events_links_roundtrip_through_as_map() {
+        use opentelemetry_proto::tonic::trace::v1::{Span, span};
+        use opentelemetry_proto::tonic::common::v1::KeyValue;
+
+        let span_proto = Span {
+            name: "test-span".into(),
+            trace_id: vec![1; 16],
+            span_id: vec![2; 8],
+            trace_state: "rojo=00f067aa0ba902b7".into(),
+            events: vec![span::Event {
+                time_unix_nano: 1234567890,
+                name: "exception".into(),
+                attributes: vec![KeyValue {
+                    key: "exception.type".into(),
+                    value: Some(opentelemetry_proto::tonic::common::v1::AnyValue {
+                        value: Some(opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue("RuntimeError".into())),
+                    }),
+                }],
+                dropped_attributes_count: 1,
+            }],
+            dropped_events_count: 3,
+            links: vec![span::Link {
+                trace_id: vec![3; 16],
+                span_id: vec![4; 8],
+                trace_state: "congo=t61rcWkgMzE".into(),
+                attributes: vec![],
+                dropped_attributes_count: 0,
+                flags: 5,
+            }],
+            dropped_links_count: 7,
+            ..Default::default()
+        };
+
+        let original = OtelSpan::new(span_proto);
+        let map = original.as_map().expect("as_map should produce Some");
+        let roundtripped = OtelSpan::from_value_map(Value::Object(map), EventMetadata::default());
+
+        assert_eq!(roundtripped.span.trace_state, "rojo=00f067aa0ba902b7");
+        assert_eq!(roundtripped.span.events.len(), 1);
+        assert_eq!(roundtripped.span.events[0].name, "exception");
+        assert_eq!(roundtripped.span.events[0].time_unix_nano, 1234567890);
+        assert_eq!(roundtripped.span.events[0].attributes.len(), 1);
+        assert_eq!(roundtripped.span.events[0].dropped_attributes_count, 1);
+        assert_eq!(roundtripped.span.dropped_events_count, 3);
+        assert_eq!(roundtripped.span.links.len(), 1);
+        assert_eq!(roundtripped.span.links[0].trace_state, "congo=t61rcWkgMzE");
+        assert_eq!(roundtripped.span.links[0].flags, 5);
+        assert_eq!(roundtripped.span.dropped_links_count, 7);
+    }
+
+    #[test]
+    fn otel_span_json_includes_events_links_trace_state() {
+        use opentelemetry_proto::tonic::trace::v1::{Span, span};
+
+        let span_proto = Span {
+            name: "json-span".into(),
+            trace_id: vec![0xab; 16],
+            span_id: vec![0xcd; 8],
+            trace_state: "vendor=opaque".into(),
+            events: vec![span::Event {
+                time_unix_nano: 999,
+                name: "log".into(),
+                attributes: vec![],
+                dropped_attributes_count: 0,
+            }],
+            dropped_events_count: 2,
+            links: vec![span::Link {
+                trace_id: vec![0xef; 16],
+                span_id: vec![0x01; 8],
+                trace_state: String::new(),
+                attributes: vec![],
+                dropped_attributes_count: 0,
+                flags: 0,
+            }],
+            dropped_links_count: 4,
+            ..Default::default()
+        };
+
+        let otel_span = OtelSpan::new(span_proto);
+        let json = serde_json::to_value(&otel_span).expect("serialize");
+        assert_eq!(json["traceState"], "vendor=opaque");
+        assert!(json["events"].is_array());
+        assert_eq!(json["events"][0]["name"], "log");
+        assert_eq!(json["events"][0]["timeUnixNano"], "999");
+        assert_eq!(json["droppedEventsCount"], 2);
+        assert!(json["links"].is_array());
+        assert_eq!(json["links"][0]["traceId"], "efefefefefefefefefefefefefefefef");
+        assert_eq!(json["droppedLinksCount"], 4);
     }
 }

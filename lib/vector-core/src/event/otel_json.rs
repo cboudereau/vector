@@ -263,6 +263,62 @@ impl Serialize for SerializableSummary<'_> {
     }
 }
 
+/// Serialize an OTel Span Event as OTLP JSON.
+pub(crate) struct SerializableSpanEvent<'a>(
+    pub &'a opentelemetry_proto::tonic::trace::v1::span::Event,
+);
+
+impl Serialize for SerializableSpanEvent<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if self.0.time_unix_nano != 0 {
+            map.serialize_entry("timeUnixNano", &self.0.time_unix_nano.to_string())?;
+        }
+        if !self.0.name.is_empty() {
+            map.serialize_entry("name", &self.0.name)?;
+        }
+        if !self.0.attributes.is_empty() {
+            map.serialize_entry("attributes", &SerializableAttributes(&self.0.attributes))?;
+        }
+        if self.0.dropped_attributes_count != 0 {
+            map.serialize_entry("droppedAttributesCount", &self.0.dropped_attributes_count)?;
+        }
+        map.end()
+    }
+}
+
+/// Serialize an OTel Span Link as OTLP JSON.
+pub(crate) struct SerializableSpanLink<'a>(
+    pub &'a opentelemetry_proto::tonic::trace::v1::span::Link,
+);
+
+impl Serialize for SerializableSpanLink<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if !self.0.trace_id.is_empty() {
+            map.serialize_entry("traceId", &super::otel_event::hex_encode_bytes(&self.0.trace_id))?;
+        }
+        if !self.0.span_id.is_empty() {
+            map.serialize_entry("spanId", &super::otel_event::hex_encode_bytes(&self.0.span_id))?;
+        }
+        if !self.0.trace_state.is_empty() {
+            map.serialize_entry("traceState", &self.0.trace_state)?;
+        }
+        if !self.0.attributes.is_empty() {
+            map.serialize_entry("attributes", &SerializableAttributes(&self.0.attributes))?;
+        }
+        if self.0.dropped_attributes_count != 0 {
+            map.serialize_entry("droppedAttributesCount", &self.0.dropped_attributes_count)?;
+        }
+        if self.0.flags != 0 {
+            map.serialize_entry("flags", &self.0.flags)?;
+        }
+        map.end()
+    }
+}
+
 /// Serialize OTel ExponentialHistogram as OTLP JSON.
 pub(crate) struct SerializableExpHistogram<'a>(
     pub &'a opentelemetry_proto::tonic::metrics::v1::ExponentialHistogram,

@@ -1,9 +1,9 @@
 ---
-status: draft
+status: accepted
 ---
 # SOL-native dashboards vs reusing OTel Collector dashboards
 
-Addresses: [FR2](../DESIGN.md#fr2), [NFR1](../DESIGN.md#nfr1)
+Addresses: [FR2](../designs/sol-telemetry-monitoring.md#fr2), [NFR1](../designs/sol-telemetry-monitoring.md#nfr1)
 
 ## Problem
 
@@ -19,7 +19,7 @@ The existing Grafana dashboards are built for OTel Collector Contrib's `otelcol_
 
 ## Decision
 
-Option A — build SOL-native dashboards. SOL is a distinct product, not an OTel Collector drop-in. SOL's `sol_*` metric names (see [ADR: metrics namespace renaming](./metrics-namespace-renaming.md)) are well-defined and the dashboard can show SOL-specific metrics (tail sampling policy decisions, span_metrics) that have no OTel Collector equivalent. The `component_id`/`component_kind`/`component_type` label system is actually richer than OTel's receiver/processor/exporter split.
+Option A — build SOL-native dashboards. SOL is a distinct product, not an OTel Collector drop-in. SOL's `sol_*` metric names (see [ADR: metrics namespace renaming](./0010-metrics-namespace-renaming.md)) are well-defined and the dashboard can show SOL-specific metrics (tail sampling policy decisions, span_metrics) that have no OTel Collector equivalent. The `component_id`/`component_kind`/`component_type` label system is actually richer than OTel's receiver/processor/exporter split.
 
 ## Consequences
 

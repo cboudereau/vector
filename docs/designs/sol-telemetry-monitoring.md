@@ -67,7 +67,7 @@ Resource attributes on self-monitoring metrics must follow OTel semantic convent
 - `service.namespace` = component role (e.g., `gateway`, `loadbalancer`, `collector`)
 - `host.name` = hostname of the container
 
-Metric names use the `sol` namespace prefix (`sol_component_*`, `sol_tail_sampling_*`) — see [ADR: metrics namespace renaming](./adrs/metrics-namespace-renaming.md).
+Metric names use the `sol` namespace prefix (`sol_component_*`, `sol_tail_sampling_*`) — see [ADR: metrics namespace renaming](../adrs/0010-metrics-namespace-renaming.md).
 
 ### <a id="nfr2"></a>NFR2 — Minimal overhead
 
@@ -75,7 +75,7 @@ The self-monitoring pipeline must not significantly impact the data pipeline's t
 
 ### <a id="nfr3"></a>NFR3 — Rename metrics namespace from `vector` to `sol`
 
-Change the default metrics namespace from `"vector"` to `"sol"` so all internal metrics are emitted as `sol_*` (e.g., `sol_component_received_events_total`, `sol_tail_sampling_traces_sampled`). This requires a small code change — see [ADR: metrics namespace renaming](./adrs/metrics-namespace-renaming.md).
+Change the default metrics namespace from `"vector"` to `"sol"` so all internal metrics are emitted as `sol_*` (e.g., `sol_component_received_events_total`, `sol_tail_sampling_traces_sampled`). This requires a small code change — see [ADR: metrics namespace renaming](../adrs/0010-metrics-namespace-renaming.md).
 
 Custom metrics registered via `counter!()` must NOT include a namespace prefix in their name — the registry adds it. Existing custom metrics like `vector_tail_sampling_*` must be renamed to `tail_sampling_*`.
 
@@ -115,8 +115,6 @@ Each SOL instance adds an `internal_metrics` source and an `opentelemetry` sink 
 
 ### Vector internal metrics → OTel Collector metrics mapping
 
-| OTel Collector Metric | Vector Equivalent | Notes |
-|---|---|---|
 | OTel Collector Metric | SOL Equivalent | Notes |
 |---|---|---|
 | `otelcol_receiver_accepted_spans_total` | `sol_component_received_events_total{component_kind="source"}` | Filtered by component_id for trace sources |
@@ -178,8 +176,8 @@ Trace-specific tail sampling metrics:
 **Variables**: `$datasource` (Prometheus datasource), `$instance` (service.name label to filter by SOL instance)
 
 Decisions:
-- [Dashboard scope](./adrs/dashboard-scope.md)
-- [Metrics namespace renaming](./adrs/metrics-namespace-renaming.md)
+- [Dashboard scope](../adrs/0011-dashboard-scope.md)
+- [Metrics namespace renaming](../adrs/0010-metrics-namespace-renaming.md)
 
 ## Cross-cutting Concerns
 

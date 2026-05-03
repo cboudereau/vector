@@ -106,10 +106,10 @@ pub const HOST_METRICS: &[&str] = &[
 ];
 
 pub const SOURCE_COMPLIANCE_METRICS: &[&str] = &[
-    "vector_component_received_events_total",
-    "vector_component_received_event_bytes_total",
-    "vector_component_sent_events_total",
-    "vector_component_sent_event_bytes_total",
+    "sol_component_received_events_total",
+    "sol_component_received_event_bytes_total",
+    "sol_component_sent_events_total",
+    "sol_component_sent_event_bytes_total",
 ];
 
 /// This helper function performs an HTTP request to the specified URL and
@@ -165,7 +165,7 @@ mod tests {
             (
                 vec![
                     r#"component_sent_events_total 1"#,
-                    r#"vector_component_sent_events_total 3"#,
+                    r#"sol_component_sent_events_total 3"#,
                 ],
                 1 + 3,
             ),
@@ -173,7 +173,7 @@ mod tests {
             (
                 vec![
                     r#"component_sent_events_total 1 1607985729161"#,
-                    r#"vector_component_sent_events_total 3 1607985729161"#,
+                    r#"sol_component_sent_events_total 3 1607985729161"#,
                 ],
                 1 + 3,
             ),

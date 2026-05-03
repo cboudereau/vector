@@ -143,7 +143,7 @@ impl TailSampling {
             // No need to clean insertion_order/deadlines — they're cleaned lazily
             // when the trace_id is not found in self.traces during eviction/tick.
             self.dropped_cache.insert(trace_id);
-            counter!("vector_tail_sampling_trace_dropped_too_early").increment(1);
+            counter!("tail_sampling_trace_dropped_too_early").increment(1);
             return vec![];
         }
 
@@ -152,7 +152,7 @@ impl TailSampling {
             if let Some(oldest_id) = self.insertion_order.pop_front() {
                 if self.traces.remove(&oldest_id).is_some() {
                     self.dropped_cache.insert(oldest_id);
-                    counter!("vector_tail_sampling_trace_dropped_too_early").increment(1);
+                    counter!("tail_sampling_trace_dropped_too_early").increment(1);
                 }
                 // else: already removed (e.g. by size limit) — skip
             } else {
@@ -194,7 +194,7 @@ impl TailSampling {
                 match decision {
                     Decision::Sample => {
                         counter!(
-                            "vector_tail_sampling_traces_sampled",
+                            "tail_sampling_traces_sampled",
                             "policy" => matched_policy.to_string(),
                             "sampled" => "true",
                         )
@@ -206,14 +206,14 @@ impl TailSampling {
                     Decision::Drop | Decision::Pending => {
                         if decision == Decision::Drop {
                             counter!(
-                                "vector_tail_sampling_traces_sampled",
+                                "tail_sampling_traces_sampled",
                                 "policy" => matched_policy.to_string(),
                                 "sampled" => "false",
                             )
                             .increment(1);
                         } else {
                             counter!(
-                                "vector_tail_sampling_traces_sampled",
+                                "tail_sampling_traces_sampled",
                                 "policy" => "none",
                                 "sampled" => "false",
                             )

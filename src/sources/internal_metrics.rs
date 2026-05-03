@@ -89,7 +89,7 @@ fn default_scrape_interval() -> Duration {
 }
 
 fn default_namespace() -> String {
-    "vector".to_owned()
+    "sol".to_owned()
 }
 
 impl_generate_config_from_default!(InternalMetricsConfig);
@@ -105,7 +105,7 @@ impl SourceConfig for InternalMetricsConfig {
         }
         let interval = self.scrape_interval_secs;
 
-        // namespace for created metrics is already "vector" by default.
+        // namespace for created metrics is already "sol" by default.
         let namespace = self.namespace.clone();
 
         let host_key = self
@@ -183,7 +183,10 @@ impl InternalMetrics<'_> {
             events_received.emit(CountByteSize(count, json_size));
 
             let batch = metrics.into_iter().map(|mut metric| {
-                if self.namespace != "vector" {
+                if self.namespace != "sol" {
+                    if let Some(stripped) = metric.name().strip_prefix("sol_") {
+                        metric.metric_mut().name = format!("{}_{}", self.namespace, stripped);
+                    }
                     metric = metric.with_namespace(Some(self.namespace.clone()));
                 }
 
@@ -261,10 +264,10 @@ mod tests {
             .map(|metric| (metric.name().to_string(), metric))
             .collect::<BTreeMap<String, OtelMetric>>();
 
-        assert!(matches!(output["foo"].view(), MetricView::Gauge { value: 2.0 }));
-        assert!(matches!(output["bar"].view(), MetricView::Sum { value: 7.0 }));
+        assert!(matches!(output["sol_foo"].view(), MetricView::Gauge { value: 2.0 }));
+        assert!(matches!(output["sol_bar"].view(), MetricView::Sum { value: 7.0 }));
 
-        match output["baz"].view() {
+        match output["sol_baz"].view() {
             MetricView::Histogram {
                 counts,
                 count,
@@ -282,7 +285,7 @@ mod tests {
             _ => panic!("wrong type"),
         }
 
-        match output["quux"].view() {
+        match output["sol_quux"].view() {
             MetricView::Histogram {
                 counts,
                 count,
@@ -302,7 +305,7 @@ mod tests {
         }
 
         let labels = otel_tags!("host" => "foo");
-        assert_eq!(Some(labels), output["quux"].tags());
+        assert_eq!(Some(labels), output["sol_quux"].tags());
     }
 
     async fn event_from_config(config: InternalMetricsConfig) -> Event {
@@ -321,7 +324,7 @@ mod tests {
     async fn default_namespace() {
         let event = event_from_config(InternalMetricsConfig::default()).await;
 
-        assert_eq!(event.as_metric().namespace(), Some("vector"));
+        assert_eq!(event.as_metric().namespace(), Some("sol"));
     }
 
     #[tokio::test]

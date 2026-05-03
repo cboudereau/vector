@@ -85,13 +85,13 @@ struct BufferMetricRequirement {
 }
 
 const SOURCE_BUFFER_METRIC_REQUIREMENT: BufferMetricRequirement = BufferMetricRequirement {
-    prefix: "source_buffer_",
+    prefix: "sol_source_buffer_",
     suffixes: &BUFFER_METRIC_SUFFIXES,
     required_tags: &["output"],
 };
 
 const TRANSFORM_BUFFER_METRIC_REQUIREMENT: BufferMetricRequirement = BufferMetricRequirement {
-    prefix: "transform_buffer_",
+    prefix: "sol_transform_buffer_",
     suffixes: &BUFFER_METRIC_SUFFIXES,
     required_tags: &[],
 };
@@ -111,12 +111,12 @@ pub struct ComponentTests<'a, 'b, 'c> {
 /// The component test specification for all sources.
 pub static SOURCE_TESTS: LazyLock<ComponentTests> = LazyLock::new(|| ComponentTests {
     events: &["BytesReceived", "EventsReceived", "EventsSent"],
-    tagged_counters: &["component_received_bytes_total"],
+    tagged_counters: &["sol_component_received_bytes_total"],
     untagged_counters: &[
-        "component_received_events_total",
-        "component_received_event_bytes_total",
-        "component_sent_events_total",
-        "component_sent_event_bytes_total",
+        "sol_component_received_events_total",
+        "sol_component_received_event_bytes_total",
+        "sol_component_sent_events_total",
+        "sol_component_sent_event_bytes_total",
     ],
     buffer_metrics: Some(SOURCE_BUFFER_METRIC_REQUIREMENT),
 });
@@ -124,7 +124,7 @@ pub static SOURCE_TESTS: LazyLock<ComponentTests> = LazyLock::new(|| ComponentTe
 /// The component error test specification (sources and sinks).
 pub static COMPONENT_TESTS_ERROR: LazyLock<ComponentTests> = LazyLock::new(|| ComponentTests {
     events: &["Error"],
-    tagged_counters: &["component_errors_total"],
+    tagged_counters: &["sol_component_errors_total"],
     untagged_counters: &[],
     buffer_metrics: None,
 });
@@ -134,10 +134,10 @@ pub static TRANSFORM_TESTS: LazyLock<ComponentTests> = LazyLock::new(|| Componen
     events: &["EventsReceived", "EventsSent"],
     tagged_counters: &[],
     untagged_counters: &[
-        "component_received_events_total",
-        "component_received_event_bytes_total",
-        "component_sent_events_total",
-        "component_sent_event_bytes_total",
+        "sol_component_received_events_total",
+        "sol_component_received_event_bytes_total",
+        "sol_component_sent_events_total",
+        "sol_component_sent_event_bytes_total",
     ],
     buffer_metrics: Some(TRANSFORM_BUFFER_METRIC_REQUIREMENT),
 });
@@ -146,10 +146,10 @@ pub static TRANSFORM_TESTS: LazyLock<ComponentTests> = LazyLock::new(|| Componen
 pub static SINK_TESTS: LazyLock<ComponentTests> = LazyLock::new(|| {
     ComponentTests {
         events: &["BytesSent", "EventsSent"], // EventsReceived is emitted in the topology
-        tagged_counters: &["component_sent_bytes_total"],
+        tagged_counters: &["sol_component_sent_bytes_total"],
         untagged_counters: &[
-            "component_sent_events_total",
-            "component_sent_event_bytes_total",
+            "sol_component_sent_events_total",
+            "sol_component_sent_event_bytes_total",
         ],
         buffer_metrics: None,
     }
@@ -160,8 +160,8 @@ pub static DATA_VOLUME_SINK_TESTS: LazyLock<ComponentTests> = LazyLock::new(|| {
     ComponentTests {
         events: &["BytesSent", "EventsSent"], // EventsReceived is emitted in the topology
         tagged_counters: &[
-            "component_sent_events_total",
-            "component_sent_event_bytes_total",
+            "sol_component_sent_events_total",
+            "sol_component_sent_event_bytes_total",
         ],
         untagged_counters: &[],
         buffer_metrics: None,
@@ -172,8 +172,8 @@ pub static DATA_VOLUME_SINK_TESTS: LazyLock<ComponentTests> = LazyLock::new(|| {
 pub static NONSENDING_SINK_TESTS: LazyLock<ComponentTests> = LazyLock::new(|| ComponentTests {
     events: &["EventsSent"],
     tagged_counters: &[
-        "component_sent_events_total",
-        "component_sent_event_bytes_total",
+        "sol_component_sent_events_total",
+        "sol_component_sent_event_bytes_total",
     ],
     untagged_counters: &[],
     buffer_metrics: None,
@@ -184,8 +184,8 @@ pub static COMPONENT_MULTIPLE_OUTPUTS_TESTS: LazyLock<ComponentTests> =
     LazyLock::new(|| ComponentTests {
         events: &["EventsSent"],
         tagged_counters: &[
-            "component_sent_events_total",
-            "component_sent_event_bytes_total",
+            "sol_component_sent_events_total",
+            "sol_component_sent_event_bytes_total",
         ],
         untagged_counters: &[],
         buffer_metrics: None,
@@ -646,7 +646,7 @@ pub async fn assert_sink_error_with_events<T>(
 ) -> T {
     let component_tests = ComponentTests {
         events,
-        tagged_counters: &["component_errors_total"],
+        tagged_counters: &["sol_component_errors_total"],
         untagged_counters: &[],
         buffer_metrics: None,
     };

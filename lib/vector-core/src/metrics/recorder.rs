@@ -82,9 +82,10 @@ impl Registry {
             {
                 #[allow(clippy::cast_precision_loss)]
                 let value = counter.get_inner().load(Ordering::Relaxed) as f64;
+                let name = format!("sol_{}", key.name());
                 metrics.push(
-                    OtelMetric::new_counter(key.name(), MetricKind::Absolute, value)
-                        .with_namespace(Some("vector".to_string()))
+                    OtelMetric::new_counter(&name, MetricKind::Absolute, value)
+                        .with_namespace(Some("sol".to_string()))
                         .with_tags(tags_from_key(&key))
                         .with_timestamp(Some(timestamp)),
                 );
@@ -95,9 +96,10 @@ impl Registry {
                 .is_none_or(|recency| recency.should_store_gauge(&key, &gauge, &self.registry))
             {
                 let value = gauge.get_inner().load(Ordering::Relaxed);
+                let name = format!("sol_{}", key.name());
                 metrics.push(
-                    OtelMetric::new_gauge(key.name(), value)
-                        .with_namespace(Some("vector".to_string()))
+                    OtelMetric::new_gauge(&name, value)
+                        .with_namespace(Some("sol".to_string()))
                         .with_tags(tags_from_key(&key))
                         .with_timestamp(Some(timestamp)),
                 );
@@ -108,9 +110,10 @@ impl Registry {
                 recency.should_store_histogram(&key, &histogram, &self.registry)
             }) {
                 let inner = histogram.get_inner();
+                let name = format!("sol_{}", key.name());
                 metrics.push(
-                    OtelMetric::new_histogram(key.name(), MetricKind::Absolute, &inner.buckets(), inner.count(), inner.sum())
-                        .with_namespace(Some("vector".to_string()))
+                    OtelMetric::new_histogram(&name, MetricKind::Absolute, &inner.buckets(), inner.count(), inner.sum())
+                        .with_namespace(Some("sol".to_string()))
                         .with_tags(tags_from_key(&key))
                         .with_timestamp(Some(timestamp)),
                 );

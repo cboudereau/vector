@@ -175,14 +175,16 @@ impl Controller {
 
         #[allow(clippy::cast_precision_loss)]
         let value = (metrics.len() + 2) as f64;
+        let cardinality_name = format!("sol_{CARDINALITY_KEY_NAME}");
+        let cardinality_counter_name = format!("sol_{CARDINALITY_COUNTER_KEY_NAME}");
         metrics.push(
-            OtelMetric::new_gauge(CARDINALITY_KEY_NAME, value)
-                .with_namespace(Some("vector".to_string()))
+            OtelMetric::new_gauge(&cardinality_name, value)
+                .with_namespace(Some("sol".to_string()))
                 .with_timestamp(Some(timestamp)),
         );
         metrics.push(
-            OtelMetric::new_counter(CARDINALITY_COUNTER_KEY_NAME, MetricKind::Absolute, value)
-                .with_namespace(Some("vector".to_string()))
+            OtelMetric::new_counter(&cardinality_counter_name, MetricKind::Absolute, value)
+                .with_namespace(Some("sol".to_string()))
                 .with_timestamp(Some(timestamp)),
         );
 
@@ -267,13 +269,15 @@ mod tests {
 
             #[allow(clippy::cast_precision_loss)]
             let value = metrics.len() as f64;
+            let sol_cardinality = format!("sol_{CARDINALITY_KEY_NAME}");
+            let sol_cardinality_counter = format!("sol_{CARDINALITY_COUNTER_KEY_NAME}");
             for metric in metrics {
                 match metric.name() {
-                    CARDINALITY_KEY_NAME => {
+                    n if n == sol_cardinality => {
                         assert!(matches!(metric.view(), MetricView::Gauge { value: v } if v == value));
                         assert_eq!(metric.kind(), MetricKind::Absolute);
                     }
-                    CARDINALITY_COUNTER_KEY_NAME => {
+                    n if n == sol_cardinality_counter => {
                         assert!(matches!(metric.view(), MetricView::Sum { value: v } if v == value));
                         assert_eq!(metric.kind(), MetricKind::Absolute);
                     }
@@ -350,7 +354,7 @@ mod tests {
         assert_eq!(metrics.len(), 3);
         let metric = metrics
             .into_iter()
-            .find(|metric| metric.name() == "test5")
+            .find(|metric| metric.name() == "sol_test5")
             .expect("Test metric is not present");
         match metric.view() {
             MetricView::Sum { value } => assert_eq!(value, 2.0),

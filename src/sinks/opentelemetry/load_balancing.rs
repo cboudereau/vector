@@ -150,7 +150,7 @@ pub fn start_resolver(
                     }
                 }
                 Err(error) => {
-                    metrics::counter!("vector_lb_num_resolutions", "outcome" => "error").increment(1);
+                    metrics::counter!("lb_num_resolutions", "outcome" => "error").increment(1);
                     warn!(message = "Load balancer resolver failed.", %error);
                 }
             }

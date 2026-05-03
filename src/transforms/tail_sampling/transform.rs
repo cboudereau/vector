@@ -281,8 +281,9 @@ mod tests {
     use opentelemetry_proto::tonic::trace::v1::{Span, Status, status::StatusCode as OtelStatusCode};
     use super::super::policies::{
         PolicyConfig, AlwaysSampleConfig, StatusCodeConfig, LatencyConfig,
-        SpanCountConfig,
+        SpanCountConfig, AndConfig, StringAttributeConfig,
     };
+    use opentelemetry_proto::tonic::common::v1::{AnyValue, KeyValue, any_value::Value as OtelValueKind};
 
     fn make_span(trace_id: &[u8; 16], name: &str, start_ns: u64, duration_ns: u64) -> Event {
         let span = Span {
@@ -502,5 +503,240 @@ mod tests {
         // Late span should be emitted immediately.
         let late = ts.on_span(make_span(&id, "late", 0, 100));
         assert_eq!(late.len(), 1);
+    }
+
+    // -- AND policy tests --
+
+    fn make_error_span_with_latency(trace_id: &[u8; 16], start_ns: u64, duration_ns: u64) -> Event {
+        let span = Span {
+            trace_id: trace_id.to_vec(),
+            span_id: vec![0, 0, 0, 0, 0, 0, 0, 1],
+            parent_span_id: vec![],
+            name: "error-slow".to_string(),
+            kind: 0,
+            start_time_unix_nano: start_ns,
+            end_time_unix_nano: start_ns + duration_ns,
+            attributes: vec![],
+            status: Some(Status {
+                message: "error".to_string(),
+                code: OtelStatusCode::Error as i32,
+            }),
+            trace_state: String::new(),
+            dropped_attributes_count: 0,
+            events: vec![],
+            dropped_events_count: 0,
+            links: vec![],
+            dropped_links_count: 0,
+            flags: 0,
+        };
+        Event::Trace(OtelSpan::new(span))
+    }
+
+    #[test]
+    fn and_policy_all_match() {
+        let policy = PolicyConfig::And(AndConfig {
+            name: "error-and-slow".into(),
+            sub_policies: vec![
+                PolicyConfig::StatusCode(StatusCodeConfig {
+                    name: "errors".into(),
+                    status_codes: vec!["ERROR".into()],
+                }),
+                PolicyConfig::Latency(LatencyConfig {
+                    name: "slow".into(),
+                    threshold_ms: 100,
+                    upper_threshold_ms: None,
+                }),
+            ],
+        }).build();
+        let id = [20u8; 16];
+        let trace = BufferedTrace {
+            trace_id: id,
+            spans: vec![make_error_span_with_latency(&id, 0, 200_000_000)], // ERROR + 200ms
+            first_seen: Instant::now(),
+            total_bytes: 0,
+        };
+        assert_eq!(policy.evaluate(&trace), Decision::Sample);
+    }
+
+    #[test]
+    fn and_policy_partial_match() {
+        let policy = PolicyConfig::And(AndConfig {
+            name: "error-and-slow".into(),
+            sub_policies: vec![
+                PolicyConfig::StatusCode(StatusCodeConfig {
+                    name: "errors".into(),
+                    status_codes: vec!["ERROR".into()],
+                }),
+                PolicyConfig::Latency(LatencyConfig {
+                    name: "slow".into(),
+                    threshold_ms: 100,
+                    upper_threshold_ms: None,
+                }),
+            ],
+        }).build();
+        let id = [21u8; 16];
+        let trace = BufferedTrace {
+            trace_id: id,
+            spans: vec![make_error_span_with_latency(&id, 0, 50_000_000)], // ERROR but only 50ms
+            first_seen: Instant::now(),
+            total_bytes: 0,
+        };
+        assert_eq!(policy.evaluate(&trace), Decision::Pending);
+    }
+
+    #[test]
+    fn and_policy_empty() {
+        let policy = PolicyConfig::And(AndConfig {
+            name: "empty".into(),
+            sub_policies: vec![],
+        }).build();
+        let id = [22u8; 16];
+        let trace = BufferedTrace {
+            trace_id: id,
+            spans: vec![make_span(&id, "test", 0, 100)],
+            first_seen: Instant::now(),
+            total_bytes: 0,
+        };
+        assert_eq!(policy.evaluate(&trace), Decision::Pending);
+    }
+
+    #[test]
+    fn and_policy_single() {
+        let policy = PolicyConfig::And(AndConfig {
+            name: "single".into(),
+            sub_policies: vec![
+                PolicyConfig::StatusCode(StatusCodeConfig {
+                    name: "errors".into(),
+                    status_codes: vec!["ERROR".into()],
+                }),
+            ],
+        }).build();
+        let id = [23u8; 16];
+        let trace = BufferedTrace {
+            trace_id: id,
+            spans: vec![make_error_span(&id)],
+            first_seen: Instant::now(),
+            total_bytes: 0,
+        };
+        assert_eq!(policy.evaluate(&trace), Decision::Sample);
+    }
+
+    // -- StringAttribute extended tests --
+
+    fn make_span_with_attr(trace_id: &[u8; 16], key: &str, value: &str) -> Event {
+        let span = Span {
+            trace_id: trace_id.to_vec(),
+            span_id: vec![0, 0, 0, 0, 0, 0, 0, 1],
+            parent_span_id: vec![],
+            name: "with-attr".to_string(),
+            kind: 0,
+            start_time_unix_nano: 0,
+            end_time_unix_nano: 100_000_000,
+            attributes: vec![KeyValue {
+                key: key.to_string(),
+                value: Some(AnyValue {
+                    value: Some(OtelValueKind::StringValue(value.to_string())),
+                }),
+            }],
+            status: Some(Status {
+                message: String::new(),
+                code: OtelStatusCode::Ok as i32,
+            }),
+            trace_state: String::new(),
+            dropped_attributes_count: 0,
+            events: vec![],
+            dropped_events_count: 0,
+            links: vec![],
+            dropped_links_count: 0,
+            flags: 0,
+        };
+        Event::Trace(OtelSpan::new(span))
+    }
+
+    #[test]
+    fn string_attribute_exact_match() {
+        let policy = PolicyConfig::StringAttribute(StringAttributeConfig {
+            name: "exact".into(),
+            key: "error.type".into(),
+            values: vec!["404".into()],
+            enabled_regex_matching: false,
+            invert_match: false,
+        }).build();
+        let id = [30u8; 16];
+        let trace = BufferedTrace {
+            trace_id: id,
+            spans: vec![make_span_with_attr(&id, "error.type", "404")],
+            first_seen: Instant::now(),
+            total_bytes: 0,
+        };
+        assert_eq!(policy.evaluate(&trace), Decision::Sample);
+    }
+
+    #[test]
+    fn string_attribute_regex_match() {
+        let policy = PolicyConfig::StringAttribute(StringAttributeConfig {
+            name: "regex".into(),
+            key: "error.type".into(),
+            values: vec!["4..".into()],
+            enabled_regex_matching: true,
+            invert_match: false,
+        }).build();
+        let id = [31u8; 16];
+        let trace = BufferedTrace {
+            trace_id: id,
+            spans: vec![make_span_with_attr(&id, "error.type", "404")],
+            first_seen: Instant::now(),
+            total_bytes: 0,
+        };
+        assert_eq!(policy.evaluate(&trace), Decision::Sample);
+    }
+
+    #[test]
+    fn string_attribute_invert_match() {
+        let policy = PolicyConfig::StringAttribute(StringAttributeConfig {
+            name: "invert".into(),
+            key: "error.type".into(),
+            values: vec!["404".into()],
+            enabled_regex_matching: false,
+            invert_match: true,
+        }).build();
+        let id = [32u8; 16];
+        let trace = BufferedTrace {
+            trace_id: id,
+            spans: vec![make_span_with_attr(&id, "error.type", "404")],
+            first_seen: Instant::now(),
+            total_bytes: 0,
+        };
+        assert_eq!(policy.evaluate(&trace), Decision::Pending);
+    }
+
+    #[test]
+    fn string_attribute_regex_invert() {
+        let policy = PolicyConfig::StringAttribute(StringAttributeConfig {
+            name: "regex-invert".into(),
+            key: "error.type".into(),
+            values: vec!["4..".into()],
+            enabled_regex_matching: true,
+            invert_match: true,
+        }).build();
+        let id = [33u8; 16];
+
+        // 404 matches regex "4.." → inverted → Pending
+        let trace_4xx = BufferedTrace {
+            trace_id: id,
+            spans: vec![make_span_with_attr(&id, "error.type", "404")],
+            first_seen: Instant::now(),
+            total_bytes: 0,
+        };
+        assert_eq!(policy.evaluate(&trace_4xx), Decision::Pending);
+
+        // 500 does not match regex "4.." → inverted → Sample
+        let trace_5xx = BufferedTrace {
+            trace_id: id,
+            spans: vec![make_span_with_attr(&id, "error.type", "500")],
+            first_seen: Instant::now(),
+            total_bytes: 0,
+        };
+        assert_eq!(policy.evaluate(&trace_5xx), Decision::Sample);
     }
 }

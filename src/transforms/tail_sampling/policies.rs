@@ -40,6 +40,8 @@ pub enum PolicyConfig {
     StringAttribute(StringAttributeConfig),
     /// Sample by numeric attribute range.
     NumericAttribute(NumericAttributeConfig),
+    /// Composite AND: all sub-policies must return Sample.
+    And(AndConfig),
 }
 
 impl PolicyConfig {
@@ -73,16 +75,29 @@ impl PolicyConfig {
                 min_spans: c.min_spans,
                 max_spans: c.max_spans,
             }),
-            PolicyConfig::StringAttribute(c) => Box::new(StringAttribute {
-                name: c.name.clone(),
-                key: c.key.clone(),
-                values: c.values.clone(),
-            }),
+            PolicyConfig::StringAttribute(c) => {
+                let compiled_regexes = if c.enabled_regex_matching {
+                    Some(c.values.iter().map(|v| regex::Regex::new(v).expect("invalid regex in string_attribute policy")).collect())
+                } else {
+                    None
+                };
+                Box::new(StringAttribute {
+                    name: c.name.clone(),
+                    key: c.key.clone(),
+                    values: c.values.clone(),
+                    compiled_regexes,
+                    invert_match: c.invert_match,
+                })
+            },
             PolicyConfig::NumericAttribute(c) => Box::new(NumericAttribute {
                 name: c.name.clone(),
                 key: c.key.clone(),
                 min_value: c.min_value,
                 max_value: c.max_value,
+            }),
+            PolicyConfig::And(c) => Box::new(And {
+                name: c.name.clone(),
+                sub_policies: c.sub_policies.iter().map(|p| p.build()).collect(),
             }),
         }
     }
@@ -165,8 +180,24 @@ pub struct StringAttributeConfig {
     pub name: String,
     /// Attribute key to match.
     pub key: String,
-    /// Values to match against.
+    /// Values to match against (exact strings or regex patterns).
     pub values: Vec<String>,
+    /// Treat values as regex patterns.
+    #[serde(default)]
+    pub enabled_regex_matching: bool,
+    /// Invert the match result (Sample becomes Pending and vice versa).
+    #[serde(default)]
+    pub invert_match: bool,
+}
+
+/// AND composite policy config.
+#[configurable_component]
+#[derive(Clone, Debug)]
+pub struct AndConfig {
+    /// Policy name for metrics.
+    pub name: String,
+    /// Sub-policies: all must return Sample for the AND to Sample.
+    pub sub_policies: Vec<PolicyConfig>,
 }
 
 /// Numeric attribute policy config.
@@ -340,22 +371,41 @@ struct StringAttribute {
     name: String,
     key: String,
     values: Vec<String>,
+    compiled_regexes: Option<Vec<regex::Regex>>,
+    invert_match: bool,
 }
 
 impl SamplingPolicy for StringAttribute {
     fn evaluate(&self, trace: &BufferedTrace) -> Decision {
-        for span_event in &trace.spans {
-            if let crate::event::Event::Trace(otel_span) = span_event {
-                if let Some(v) = otel_span.attribute(&self.key) {
-                    if let Some(opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(s)) = &v.value {
-                        if self.values.iter().any(|val| val == s) {
-                            return Decision::Sample;
+        let matched = 'outer: {
+            for span_event in &trace.spans {
+                if let crate::event::Event::Trace(otel_span) = span_event {
+                    if let Some(v) = otel_span.attribute(&self.key) {
+                        if let Some(opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(s)) = &v.value {
+                            let hit = if let Some(regexes) = &self.compiled_regexes {
+                                regexes.iter().any(|re| re.is_match(s))
+                            } else {
+                                self.values.iter().any(|val| val == s)
+                            };
+                            if hit {
+                                break 'outer true;
+                            }
                         }
                     }
                 }
             }
+            false
+        };
+        let decision = if matched { Decision::Sample } else { Decision::Pending };
+        if self.invert_match {
+            match decision {
+                Decision::Sample => Decision::Pending,
+                Decision::Pending => Decision::Sample,
+                other => other,
+            }
+        } else {
+            decision
         }
-        Decision::Pending
     }
     fn name(&self) -> &str { &self.name }
 }
@@ -387,6 +437,29 @@ impl SamplingPolicy for NumericAttribute {
             }
         }
         Decision::Pending
+    }
+    fn name(&self) -> &str { &self.name }
+}
+
+/// Composite AND: all sub-policies must return Sample.
+struct And {
+    name: String,
+    sub_policies: Vec<Box<dyn SamplingPolicy>>,
+}
+
+impl SamplingPolicy for And {
+    fn evaluate(&self, trace: &BufferedTrace) -> Decision {
+        if self.sub_policies.is_empty() {
+            return Decision::Pending;
+        }
+        for policy in &self.sub_policies {
+            match policy.evaluate(trace) {
+                Decision::Sample => continue,
+                Decision::Drop => return Decision::Drop,
+                Decision::Pending => return Decision::Pending,
+            }
+        }
+        Decision::Sample
     }
     fn name(&self) -> &str { &self.name }
 }

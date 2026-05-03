@@ -16,9 +16,18 @@ transforms:
       - type: latency
         name: latency-policy
         threshold_ms: 100
-      - type: status_code
+      - type: and
         name: error-policy
-        status_codes: ["ERROR"]
+        sub_policies:
+          - type: status_code
+            name: status-code-error-policy
+            status_codes: ["ERROR"]
+          - type: string_attribute
+            name: http-status-code-error-policy
+            key: error.type
+            values: ["4.."]
+            enabled_regex_matching: true
+            invert_match: true
       - type: probabilistic
         name: probabilistic-policy
         sampling_percentage: 10.0

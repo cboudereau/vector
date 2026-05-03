@@ -218,10 +218,17 @@ impl OtelMetric {
         };
         let n = buckets.len();
         let mut explicit_bounds = Vec::with_capacity(n);
-        let mut bucket_counts = Vec::with_capacity(n);
+        let mut bucket_counts = Vec::with_capacity(n + 1);
         for b in buckets.iter() {
-            bucket_counts.push(b.count);
-            explicit_bounds.push(b.upper_limit);
+            if b.upper_limit == f64::INFINITY {
+                bucket_counts.push(b.count);
+            } else {
+                explicit_bounds.push(b.upper_limit);
+                bucket_counts.push(b.count);
+            }
+        }
+        if buckets.last().map_or(true, |b| b.upper_limit != f64::INFINITY) {
+            bucket_counts.push(0);
         }
         let proto = OtelMetricProto {
             name: name.into(),
@@ -304,8 +311,8 @@ impl OtelMetric {
                     zero_count,
                     positive: Some(positive),
                     negative: Some(negative),
-                    min: Some(min.unwrap_or(0.0)),
-                    max: Some(max.unwrap_or(0.0)),
+                    min,
+                    max,
                     ..Default::default()
                 }],
                 aggregation_temporality: otel_metrics::AggregationTemporality::Delta as i32,
@@ -342,8 +349,8 @@ impl OtelMetric {
             let index = if frac == 0.5 {
                 ((exp - 1) << scale) - 1
             } else {
-                let scale_factor = (1i64 << scale) as f64;
-                (exp << scale) + ((frac * 2.0).ln() / (2.0f64.ln() / scale_factor)).floor() as i32 - 1
+                let scale_factor = std::f64::consts::LOG2_E * (1u64 << scale as u64) as f64;
+                (abs_value.ln() * scale_factor).floor() as i32
             };
             let b = Buckets {
                 offset: index,
@@ -833,7 +840,10 @@ impl OtelMetric {
                     super::MetricKind::Absolute
                 }
             }
-            Some(metric::Data::Summary(_)) | None => super::MetricKind::Absolute,
+            Some(metric::Data::Summary(_)) => {
+                self.kind_override.unwrap_or(super::MetricKind::Absolute)
+            }
+            None => super::MetricKind::Absolute,
         }
     }
 
@@ -1101,6 +1111,36 @@ impl OtelMetric {
                     }
                     dp.count -= odp.count;
                     dp.sum = Some(dp.sum.unwrap_or(0.0) - odp.sum.unwrap_or(0.0));
+                }
+                true
+            }
+            (Some(MD::ExponentialHistogram(eh)), Some(MD::ExponentialHistogram(oeh))) => {
+                for (dp, odp) in eh.data_points.iter_mut().zip(oeh.data_points.iter()) {
+                    if dp.scale != odp.scale || dp.count < odp.count {
+                        return false;
+                    }
+                    dp.count -= odp.count;
+                    dp.sum = Some(dp.sum.unwrap_or(0.0) - odp.sum.unwrap_or(0.0));
+                    if dp.zero_count < odp.zero_count { return false; }
+                    dp.zero_count -= odp.zero_count;
+                    if let (Some(pos), Some(opos)) = (&mut dp.positive, &odp.positive) {
+                        if pos.offset != opos.offset || pos.bucket_counts.len() != opos.bucket_counts.len() {
+                            return false;
+                        }
+                        for (bc, obc) in pos.bucket_counts.iter_mut().zip(opos.bucket_counts.iter()) {
+                            if *bc < *obc { return false; }
+                            *bc -= obc;
+                        }
+                    }
+                    if let (Some(neg), Some(oneg)) = (&mut dp.negative, &odp.negative) {
+                        if neg.offset != oneg.offset || neg.bucket_counts.len() != oneg.bucket_counts.len() {
+                            return false;
+                        }
+                        for (bc, obc) in neg.bucket_counts.iter_mut().zip(oneg.bucket_counts.iter()) {
+                            if *bc < *obc { return false; }
+                            *bc -= obc;
+                        }
+                    }
                 }
                 true
             }
@@ -1937,6 +1977,171 @@ mod tests {
                 assert_eq!(counts[0], 10, "zero_count should land in first bucket (<=0.005)");
             }
             other => panic!("Expected Histogram, got: {other}"),
+        }
+    }
+
+    #[test]
+    fn new_histogram_bucket_counts_has_overflow() {
+        let buckets = vec![
+            super::super::metric::Bucket { upper_limit: 1.0, count: 5 },
+            super::super::metric::Bucket { upper_limit: 5.0, count: 3 },
+            super::super::metric::Bucket { upper_limit: 10.0, count: 2 },
+        ];
+        let metric = OtelMetric::new_histogram("test", super::super::MetricKind::Incremental, &buckets, 10, 25.0);
+        match metric.view() {
+            MetricView::Histogram { bounds, counts, count, sum } => {
+                assert_eq!(bounds, &[1.0, 5.0, 10.0]);
+                assert_eq!(counts.len(), bounds.len() + 1, "OTLP requires overflow bucket");
+                assert_eq!(counts, &[5, 3, 2, 0], "overflow bucket should be 0 when no infinity");
+                assert_eq!(count, 10);
+                assert!((sum - 25.0).abs() < f64::EPSILON);
+            }
+            other => panic!("Expected Histogram, got: {other}"),
+        }
+    }
+
+    #[test]
+    fn new_histogram_strips_infinity_bound() {
+        let buckets = vec![
+            super::super::metric::Bucket { upper_limit: 1.0, count: 5 },
+            super::super::metric::Bucket { upper_limit: 5.0, count: 3 },
+            super::super::metric::Bucket { upper_limit: f64::INFINITY, count: 2 },
+        ];
+        let metric = OtelMetric::new_histogram("test", super::super::MetricKind::Absolute, &buckets, 10, 15.0);
+        match metric.view() {
+            MetricView::Histogram { bounds, counts, .. } => {
+                assert_eq!(bounds, &[1.0, 5.0], "infinity should be stripped from bounds");
+                assert_eq!(counts.len(), bounds.len() + 1);
+                assert_eq!(counts, &[5, 3, 2], "infinity bucket count becomes overflow");
+            }
+            other => panic!("Expected Histogram, got: {other}"),
+        }
+    }
+
+    #[test]
+    fn new_histogram_from_samples_has_overflow() {
+        let metric = OtelMetric::new_histogram_from_samples(
+            "test_samples",
+            super::super::MetricKind::Incremental,
+            &crate::samples![1.0 => 3, 2.0 => 7],
+        );
+        match metric.view() {
+            MetricView::Histogram { bounds, counts, count, .. } => {
+                assert_eq!(counts.len(), bounds.len() + 1, "samples histogram must have overflow bucket");
+                assert_eq!(count, 10);
+            }
+            other => panic!("Expected Histogram, got: {other}"),
+        }
+    }
+
+    #[test]
+    fn subtract_exponential_histogram() {
+        let mut a = make_exp_hist(0, 0, vec![10, 6, 4], 2, 22, 15.0);
+        let b = make_exp_hist(0, 0, vec![3, 2, 1], 1, 7, 5.0);
+
+        assert!(a.subtract(&b), "subtract matching ExpHists should succeed");
+
+        if let Some(Data::ExponentialHistogram(eh)) = a.metric().data.as_ref() {
+            let dp = &eh.data_points[0];
+            assert_eq!(dp.count, 15);
+            assert!((dp.sum.unwrap() - 10.0).abs() < f64::EPSILON);
+            assert_eq!(dp.zero_count, 1);
+            let pos = dp.positive.as_ref().unwrap();
+            assert_eq!(pos.bucket_counts, vec![7, 4, 3]);
+        } else {
+            panic!("expected ExponentialHistogram");
+        }
+    }
+
+    #[test]
+    fn subtract_exponential_histogram_mismatched_scale() {
+        let mut a = make_exp_hist(0, 0, vec![5], 0, 5, 5.0);
+        let b = make_exp_hist(1, 0, vec![5], 0, 5, 5.0);
+
+        assert!(!a.subtract(&b), "mismatched scale should fail");
+    }
+
+    #[test]
+    fn subtract_exponential_histogram_underflow() {
+        let mut a = make_exp_hist(0, 0, vec![2], 0, 2, 2.0);
+        let b = make_exp_hist(0, 0, vec![5], 0, 5, 5.0);
+
+        assert!(!a.subtract(&b), "underflow should fail");
+    }
+
+    #[test]
+    fn exp_hist_single_index_matches_statsd() {
+        fn map_to_index_reference(value: f64, scale: i32) -> i32 {
+            fn frexp_ref(x: f64) -> (f64, i32) {
+                if x == 0.0 { return (0.0, 0); }
+                let bits = x.to_bits();
+                let exp_raw = ((bits >> 52) & 0x7FF) as i32;
+                let exp = exp_raw - 1022;
+                let frac = f64::from_bits((bits & 0x800F_FFFF_FFFF_FFFF) | 0x3FE0_0000_0000_0000);
+                (frac, exp)
+            }
+            let (frac, exp) = frexp_ref(value);
+            if frac == 0.5 {
+                ((exp - 1) << scale) - 1
+            } else {
+                let scale_factor = std::f64::consts::LOG2_E * (1u64 << scale as u64) as f64;
+                (value.ln() * scale_factor).floor() as i32
+            }
+        }
+
+        let test_values = [0.001, 0.5, 1.0, 2.0, 2.5, 3.14, 10.0, 100.0, 1000.0];
+        for &val in &test_values {
+            let metric = OtelMetric::new_exponential_histogram_single("test", val);
+            if let Some(Data::ExponentialHistogram(eh)) = metric.metric().data.as_ref() {
+                let dp = &eh.data_points[0];
+                let actual_index = dp.positive.as_ref().unwrap().offset;
+                let expected = map_to_index_reference(val, 20);
+                assert_eq!(actual_index, expected, "index mismatch for value {val}");
+            }
+        }
+    }
+
+    #[test]
+    fn summary_kind_reads_kind_override() {
+        use opentelemetry_proto::tonic::metrics::v1::{Summary, SummaryDataPoint};
+        let proto = OtelMetricProto {
+            name: "test_summary".into(),
+            data: Some(Data::Summary(Summary {
+                data_points: vec![SummaryDataPoint {
+                    count: 10,
+                    sum: 50.0,
+                    ..Default::default()
+                }],
+            })),
+            ..Default::default()
+        };
+        let mut metric = OtelMetric::new(proto);
+        assert_eq!(metric.kind(), super::super::MetricKind::Absolute);
+
+        metric.set_kind(super::super::MetricKind::Incremental);
+        assert_eq!(metric.kind(), super::super::MetricKind::Incremental,
+            "Summary should read kind_override");
+    }
+
+    #[test]
+    fn exp_hist_min_max_none_preserved() {
+        let metric = OtelMetric::new_exponential_histogram(
+            "test",
+            20, 10, 50.0, 0,
+            opentelemetry_proto::tonic::metrics::v1::exponential_histogram_data_point::Buckets {
+                offset: 0,
+                bucket_counts: vec![10],
+            },
+            opentelemetry_proto::tonic::metrics::v1::exponential_histogram_data_point::Buckets::default(),
+            None,
+            None,
+        );
+        if let Some(Data::ExponentialHistogram(eh)) = metric.metric().data.as_ref() {
+            let dp = &eh.data_points[0];
+            assert!(dp.min.is_none(), "min should be None, not Some(0.0)");
+            assert!(dp.max.is_none(), "max should be None, not Some(0.0)");
+        } else {
+            panic!("expected ExponentialHistogram");
         }
     }
 }

@@ -322,7 +322,9 @@ impl CloudWatchMetricsSvc {
                         MetricDatum::builder()
                             .metric_name(metric_name)
                             .set_values(Some(bounds.iter().copied().collect()))
-                            .set_counts(Some(counts.iter().map(|&c| c as f64).collect()))
+                            .set_counts(Some(
+                                bounds.iter().zip(counts.iter()).map(|(_, &c)| c as f64).collect()
+                            ))
                             .set_timestamp(timestamp)
                             .set_dimensions(dimensions)
                             .set_storage_resolution(resolution)

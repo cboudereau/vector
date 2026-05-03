@@ -15,7 +15,7 @@ use vrl::{
     value::{KeyString, ObjectMap, Value},
 };
 
-use super::{Event, EventMetadata, OtelLog, OtelMetric, OtelSpan};
+use super::{Event, EventMetadata, OtelAttributes, OtelLog, OtelMetric, OtelSpan};
 use super::otel_fields as f;
 use crate::schema::Definition;
 #[cfg(test)]
@@ -822,14 +822,24 @@ fn value_to_otel_metric_event(value: Value, metadata: EventMetadata) -> OtelMetr
         otel_metric.set_namespace(ns.clone());
     }
 
-    // Reconstruct shorthand .attributes into data point attributes
+    // Apply only the DIFF from .attributes shorthand to data point attributes.
+    // .attributes is projected from the first DP's attrs. If VRL modified it,
+    // only apply changes (adds/updates/deletes), not pre-existing per-DP values.
     if let Some(attrs_val) = map.get("attributes") {
         if let Some(attrs_map) = attrs_val.as_object() {
-            for (key, val) in attrs_map.iter() {
-                otel_metric.set_data_point_attribute(
-                    key.to_string(),
-                    super::vrl_value_to_any_value(val),
-                );
+            let shorthand = OtelAttributes::from_object_map(attrs_map);
+            let first_dp = otel_metric.first_dp_attrs().cloned().unwrap_or_default();
+
+            for (key, val) in shorthand.iter() {
+                if first_dp.get(key) != Some(val) {
+                    otel_metric.set_data_point_attribute(key.clone(), val.clone());
+                }
+            }
+
+            for (key, _) in first_dp.iter() {
+                if shorthand.get(key).is_none() {
+                    otel_metric.remove_data_point_attribute(key);
+                }
             }
         }
     }
@@ -1773,5 +1783,194 @@ mod test {
         let resource = restored.resource_proto().expect("resource should still exist");
         let svc_resource_attr = resource.attributes.iter().find(|kv| kv.key == "service.name");
         assert!(svc_resource_attr.is_some(), "resource should still have service.name");
+    }
+
+    #[test]
+    fn multi_dp_attributes_preserved_when_vrl_adds_attribute() {
+        use opentelemetry_proto::tonic::common::v1::{AnyValue, KeyValue, any_value::Value as V};
+        use opentelemetry_proto::tonic::metrics::v1::{
+            Sum, NumberDataPoint, Metric as OtelMetricProto,
+            metric::Data as MetricData, number_data_point,
+        };
+
+        let dp1 = NumberDataPoint {
+            attributes: vec![
+                KeyValue { key: "method".into(), value: Some(AnyValue { value: Some(V::StringValue("GET".into())) }) },
+                KeyValue { key: "status_code".into(), value: Some(AnyValue { value: Some(V::StringValue("200".into())) }) },
+            ],
+            value: Some(number_data_point::Value::AsDouble(10.0)),
+            time_unix_nano: 1000,
+            ..Default::default()
+        };
+        let dp2 = NumberDataPoint {
+            attributes: vec![
+                KeyValue { key: "method".into(), value: Some(AnyValue { value: Some(V::StringValue("POST".into())) }) },
+                KeyValue { key: "status_code".into(), value: Some(AnyValue { value: Some(V::StringValue("404".into())) }) },
+            ],
+            value: Some(number_data_point::Value::AsDouble(5.0)),
+            time_unix_nano: 2000,
+            ..Default::default()
+        };
+
+        let metric_proto = OtelMetricProto {
+            name: "http_requests".into(),
+            data: Some(MetricData::Sum(Sum {
+                data_points: vec![dp1, dp2],
+                aggregation_temporality: 2,
+                is_monotonic: true,
+            })),
+            ..Default::default()
+        };
+
+        let otel_metric = OtelMetric::from_parts(metric_proto, None, None, EventMetadata::default());
+        let mut value = otel_metric_event_to_value(&otel_metric);
+
+        // Simulate VRL: .attributes."service.name" = "myapp"
+        if let Value::Object(ref mut map) = value {
+            if let Some(Value::Object(attrs)) = map.get_mut("attributes") {
+                attrs.insert("service.name".into(), Value::Bytes("myapp".into()));
+            }
+        }
+
+        let restored = value_to_otel_metric_event(value, EventMetadata::default());
+
+        assert_eq!(restored.dp_attrs.len(), 2, "should still have 2 data points");
+
+        let dp1_attrs = &restored.dp_attrs[0];
+        let dp2_attrs = &restored.dp_attrs[1];
+
+        fn str_val(attrs: &super::OtelAttributes, key: &str) -> String {
+            match attrs.get(key).and_then(|v| v.value.as_ref()) {
+                Some(V::StringValue(s)) => s.clone(),
+                other => panic!("expected string for {key}, got {other:?}"),
+            }
+        }
+
+        // Both DPs should have the new attribute
+        assert_eq!(str_val(dp1_attrs, "service.name"), "myapp");
+        assert_eq!(str_val(dp2_attrs, "service.name"), "myapp");
+
+        // Each DP should preserve its own unique attributes
+        assert_eq!(str_val(dp1_attrs, "method"), "GET");
+        assert_eq!(str_val(dp1_attrs, "status_code"), "200");
+        assert_eq!(str_val(dp2_attrs, "method"), "POST");
+        assert_eq!(str_val(dp2_attrs, "status_code"), "404");
+    }
+
+    #[test]
+    fn multi_dp_vrl_delete_attribute_removes_from_all_dps() {
+        use opentelemetry_proto::tonic::common::v1::{AnyValue, KeyValue, any_value::Value as V};
+        use opentelemetry_proto::tonic::metrics::v1::{
+            Sum, NumberDataPoint, Metric as OtelMetricProto,
+            metric::Data as MetricData, number_data_point,
+        };
+
+        let dp1 = NumberDataPoint {
+            attributes: vec![
+                KeyValue { key: "method".into(), value: Some(AnyValue { value: Some(V::StringValue("GET".into())) }) },
+                KeyValue { key: "env".into(), value: Some(AnyValue { value: Some(V::StringValue("prod".into())) }) },
+            ],
+            value: Some(number_data_point::Value::AsDouble(10.0)),
+            ..Default::default()
+        };
+        let dp2 = NumberDataPoint {
+            attributes: vec![
+                KeyValue { key: "method".into(), value: Some(AnyValue { value: Some(V::StringValue("POST".into())) }) },
+                KeyValue { key: "env".into(), value: Some(AnyValue { value: Some(V::StringValue("prod".into())) }) },
+            ],
+            value: Some(number_data_point::Value::AsDouble(5.0)),
+            ..Default::default()
+        };
+
+        let metric_proto = OtelMetricProto {
+            name: "http_requests".into(),
+            data: Some(MetricData::Sum(Sum {
+                data_points: vec![dp1, dp2],
+                aggregation_temporality: 2,
+                is_monotonic: true,
+            })),
+            ..Default::default()
+        };
+
+        let otel_metric = OtelMetric::from_parts(metric_proto, None, None, EventMetadata::default());
+        let mut value = otel_metric_event_to_value(&otel_metric);
+
+        // Simulate VRL: del(.attributes.env)
+        if let Value::Object(ref mut map) = value {
+            if let Some(Value::Object(attrs)) = map.get_mut("attributes") {
+                attrs.remove("env");
+            }
+        }
+
+        let restored = value_to_otel_metric_event(value, EventMetadata::default());
+
+        let dp1_attrs = &restored.dp_attrs[0];
+        let dp2_attrs = &restored.dp_attrs[1];
+
+        assert!(dp1_attrs.get("env").is_none(), "env should be removed from dp1");
+        assert!(dp2_attrs.get("env").is_none(), "env should be removed from dp2");
+
+        fn str_val(attrs: &super::OtelAttributes, key: &str) -> String {
+            match attrs.get(key).and_then(|v| v.value.as_ref()) {
+                Some(V::StringValue(s)) => s.clone(),
+                other => panic!("expected string for {key}, got {other:?}"),
+            }
+        }
+        assert_eq!(str_val(dp1_attrs, "method"), "GET");
+        assert_eq!(str_val(dp2_attrs, "method"), "POST");
+    }
+
+    #[test]
+    fn multi_dp_vrl_no_change_preserves_all_attrs() {
+        use opentelemetry_proto::tonic::common::v1::{AnyValue, KeyValue, any_value::Value as V};
+        use opentelemetry_proto::tonic::metrics::v1::{
+            Sum, NumberDataPoint, Metric as OtelMetricProto,
+            metric::Data as MetricData, number_data_point,
+        };
+
+        let dp1 = NumberDataPoint {
+            attributes: vec![
+                KeyValue { key: "method".into(), value: Some(AnyValue { value: Some(V::StringValue("GET".into())) }) },
+                KeyValue { key: "status_code".into(), value: Some(AnyValue { value: Some(V::StringValue("200".into())) }) },
+            ],
+            value: Some(number_data_point::Value::AsDouble(10.0)),
+            ..Default::default()
+        };
+        let dp2 = NumberDataPoint {
+            attributes: vec![
+                KeyValue { key: "method".into(), value: Some(AnyValue { value: Some(V::StringValue("POST".into())) }) },
+                KeyValue { key: "status_code".into(), value: Some(AnyValue { value: Some(V::StringValue("404".into())) }) },
+            ],
+            value: Some(number_data_point::Value::AsDouble(5.0)),
+            ..Default::default()
+        };
+
+        let metric_proto = OtelMetricProto {
+            name: "http_requests".into(),
+            data: Some(MetricData::Sum(Sum {
+                data_points: vec![dp1, dp2],
+                aggregation_temporality: 2,
+                is_monotonic: true,
+            })),
+            ..Default::default()
+        };
+
+        let otel_metric = OtelMetric::from_parts(metric_proto, None, None, EventMetadata::default());
+        // No VRL modification — just round-trip
+        let value = otel_metric_event_to_value(&otel_metric);
+        let restored = value_to_otel_metric_event(value, EventMetadata::default());
+
+        fn str_val(attrs: &super::OtelAttributes, key: &str) -> String {
+            match attrs.get(key).and_then(|v| v.value.as_ref()) {
+                Some(V::StringValue(s)) => s.clone(),
+                other => panic!("expected string for {key}, got {other:?}"),
+            }
+        }
+
+        assert_eq!(restored.dp_attrs.len(), 2);
+        assert_eq!(str_val(&restored.dp_attrs[0], "method"), "GET");
+        assert_eq!(str_val(&restored.dp_attrs[0], "status_code"), "200");
+        assert_eq!(str_val(&restored.dp_attrs[1], "method"), "POST");
+        assert_eq!(str_val(&restored.dp_attrs[1], "status_code"), "404");
     }
 }

@@ -76,7 +76,7 @@ var FAILURE_RATIO = double.Parse(Environment.GetEnvironmentVariable("FAILURE_RAT
 
 var REGISTERED_ACTIVITY = new ActivitySource(SERVICE_NAME);
 
-var isEnabled = (int counter, double ratio) => counter % (1 / ratio) == 0;
+var isEnabled = (int counter, double ratio) => ratio != 0 && counter % (1 / ratio) == 0;
 var callSlowDependency = async (int counter, int delay) =>
 {
     using var activity = REGISTERED_ACTIVITY.StartActivity("callSlowDependency");

@@ -41,9 +41,7 @@ sinks:
       enabled: true
     protocol:
       type: http
-      uri: "http://loki:3100/otlp/v1/logs"
-      encoding:
-        codec: otlp
+      endpoint: "http://loki:3100/otlp"
       batch:
         max_events: 1000
         timeout_secs: 1
@@ -55,9 +53,7 @@ sinks:
       enabled: true
     protocol:
       type: http
-      uri: "http://mimir:9009/otlp/v1/metrics"
-      encoding:
-        codec: otlp
+      endpoint: "http://mimir:9009/otlp"
       batch:
         max_events: 1000
         timeout_secs: 1

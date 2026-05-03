@@ -1319,7 +1319,7 @@ mod tests {
                     "sum must be exact: {sum} vs {actual_sum}"
                 );
                 assert_eq!(counts.len(), 4, "3 bounds + 1 overflow = 4 buckets");
-                assert_eq!(bounds.len(), 4);
+                assert_eq!(bounds.len(), 3, "3 explicit bounds (overflow is implicit)");
                 let total_in_buckets: u64 = counts.iter().sum();
                 assert_eq!(
                     total_in_buckets, 100,

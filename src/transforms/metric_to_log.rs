@@ -433,6 +433,7 @@ mod tests {
                 (KeyString::from("body.histogram.aggregationTemporality"), Value::Integer(2)),
                 (KeyString::from("body.histogram.dataPoints[0].bucketCounts[0]"), Value::from("10")),
                 (KeyString::from("body.histogram.dataPoints[0].bucketCounts[1]"), Value::from("20")),
+                (KeyString::from("body.histogram.dataPoints[0].bucketCounts[2]"), Value::from("0")),
                 (KeyString::from("body.histogram.dataPoints[0].count"), Value::from("30")),
                 (KeyString::from("body.histogram.dataPoints[0].explicitBounds[0]"), Value::from(1.0)),
                 (KeyString::from("body.histogram.dataPoints[0].explicitBounds[1]"), Value::from(2.0)),

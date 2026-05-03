@@ -74,7 +74,7 @@ impl<'a> Encoder<&'a OtelMetric> for StatsdEncoder {
                         tags.as_deref(),
                         val,
                         "h",
-                        Some(cnt as u32),
+                        Some(cnt.min(u32::MAX as u64) as u32),
                     );
                 }
             }

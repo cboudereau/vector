@@ -350,7 +350,10 @@ impl CloudWatchMetricsSvc {
                                 .build(),
                         )
                     }
-                    _ => None,
+                    MetricView::Summary { .. } => {
+                        warn!(message = "CloudWatch Metrics does not support Summary; dropping metric.", metric_name = %metric_name, internal_log_rate_limit = true);
+                        None
+                    }
                 }
             })
             .collect()

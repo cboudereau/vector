@@ -52,10 +52,9 @@ impl Serialize for SerializableAnyValue<'_> {
                 OtelValueKind::DoubleValue(d) => map.serialize_entry("doubleValue", d)?,
                 OtelValueKind::BoolValue(b) => map.serialize_entry("boolValue", b)?,
                 OtelValueKind::BytesValue(b) => {
-                    // Hex-encode bytes (OTLP spec uses base64 but we avoid
-                    // adding base64 as a non-dev dependency to vector-core)
-                    let hex: String = b.iter().map(|byte| format!("{byte:02x}")).collect();
-                    map.serialize_entry("bytesValue", &hex)?;
+                    use base64::Engine;
+                    let encoded = base64::engine::general_purpose::STANDARD.encode(b);
+                    map.serialize_entry("bytesValue", &encoded)?;
                 }
                 OtelValueKind::ArrayValue(arr) => {
                     let values: Vec<SerializableAnyValue> =
@@ -95,8 +94,13 @@ pub(crate) struct SerializableResource<'a>(
 impl Serialize for SerializableResource<'_> {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeMap;
-        let mut map = serializer.serialize_map(Some(1))?;
-        map.serialize_entry("attributes", &SerializableAttributes(&self.0.attributes))?;
+        let mut map = serializer.serialize_map(None)?;
+        if !self.0.attributes.is_empty() {
+            map.serialize_entry("attributes", &SerializableAttributes(&self.0.attributes))?;
+        }
+        if self.0.dropped_attributes_count != 0 {
+            map.serialize_entry("droppedAttributesCount", &self.0.dropped_attributes_count)?;
+        }
         map.end()
     }
 }
@@ -109,19 +113,18 @@ pub(crate) struct SerializableScope<'a>(
 impl Serialize for SerializableScope<'_> {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeMap;
-        let mut len = 0;
-        if !self.0.name.is_empty() {
-            len += 1;
-        }
-        if !self.0.version.is_empty() {
-            len += 1;
-        }
-        let mut map = serializer.serialize_map(Some(len))?;
+        let mut map = serializer.serialize_map(None)?;
         if !self.0.name.is_empty() {
             map.serialize_entry("name", &self.0.name)?;
         }
         if !self.0.version.is_empty() {
             map.serialize_entry("version", &self.0.version)?;
+        }
+        if !self.0.attributes.is_empty() {
+            map.serialize_entry("attributes", &SerializableAttributes(&self.0.attributes))?;
+        }
+        if self.0.dropped_attributes_count != 0 {
+            map.serialize_entry("droppedAttributesCount", &self.0.dropped_attributes_count)?;
         }
         map.end()
     }

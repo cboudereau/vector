@@ -401,13 +401,9 @@ mod test {
             metric,
             false,
             vec![
-                "type(metric.distribution) == 'table'",
-                "#metric.distribution.values == 2",
-                "metric.distribution.values[1] == 1",
-                "metric.distribution.values[2] == 1",
-                "#metric.distribution.sample_rates == 2",
-                "metric.distribution.sample_rates[1] == 10",
-                "metric.distribution.sample_rates[2] == 20",
+                "type(metric.aggregated_histogram) == 'table'",
+                "metric.aggregated_histogram.count == 30",
+                "metric.aggregated_histogram.sum == 30",
             ],
         );
     }
@@ -430,9 +426,10 @@ mod test {
                 "#metric.aggregated_histogram.buckets == 4",
                 "metric.aggregated_histogram.buckets[1] == 1",
                 "metric.aggregated_histogram.buckets[4] == 8",
-                "#metric.aggregated_histogram.counts == 4",
+                "#metric.aggregated_histogram.counts == 5",
                 "metric.aggregated_histogram.counts[1] == 20",
                 "metric.aggregated_histogram.counts[4] == 12",
+                "metric.aggregated_histogram.counts[5] == 0",
                 "metric.aggregated_histogram.count == 87",
                 "metric.aggregated_histogram.sum == 975.2",
             ],

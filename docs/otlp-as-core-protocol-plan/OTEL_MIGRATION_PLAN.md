@@ -18,6 +18,77 @@ All legacy core types (`LogEvent`, `Metric`, `TraceEvent`, `MetricValue`, `Metri
 
 ---
 
+## Architecture
+
+Sol is a true fork of Vector, rebuilt with OpenTelemetry as its native protocol. The original Vector's proprietary types are gone from core — but Sol retains the original Vector wire protocol as a source adapter, so existing Vector fleets can send data to Sol without any changes.
+
+```
+Sources (adapters)              Core (OTel-native)                    Sinks (adapters)
+──────────────────────────────  ────────────────────────────────────  ───────────────────────
+opentelemetry (gRPC + HTTP)     OtelLog  (LogRecord)                  opentelemetry (gRPC+HTTP)
+datadog_agent ──────────────►   OtelMetric (Sum/Gauge/Histogram/  ──► prometheus, influxdb
+vector (native gRPC) ─────►     ExponentialHistogram/Summary†)  ──► kafka, loki, ES, …
+kafka, syslog, … ──────────►   OtelSpan (Span)
+                                OtelAttributes (BTreeMap wrapper)
+                                Disk buffer: otlp_buffer.proto
+
+† Summary is legacy OTLP — passthrough only, never produced by Sol sources.
+```
+
+### What Sol changes from the original Vector
+
+| Aspect | Original Vector | Sol |
+|--------|----------------|-----|
+| **Core event model** | Proprietary types (`LogEvent`, `Metric`, `TraceEvent`) | OTel-native (`OtelLog`, `OtelMetric`, `OtelSpan`) |
+| **Wire protocol** | Custom `event.proto` / `vector.proto` | OTLP (proto + JSON) — the standard |
+| **OTLP support** | Partial (source + sink, but not core) | Native — OTLP IS the core |
+| **Vendor types in core** | DD sketches, `MetricValue`, `StatisticKind` | None — vendor logic in adapters only |
+| **`vector` sink** | Custom proto → another Vector | Deleted — use `opentelemetry` sink |
+| **`vector` source** | Custom proto only | Dual-protocol: OTLP + original native gRPC on same port |
+| **`opentelemetry` source** | Exists in original | OTLP gRPC + HTTP ingestion (separate from `vector` source) |
+
+### Vector Source: Original Native Protocol
+
+The `vector` source speaks **both OTLP and the original Vector native gRPC protocol** on the same port:
+
+- **OTLP**: LogsService, MetricsService, TraceService (for OTel Collector / Sol / any OTLP client)
+- **Native Vector**: `service Vector { rpc PushEvents(...) }` (for legacy Vector instances)
+- Native proto events are converted at the source boundary: `event.Log` → `OtelLog`, `event.Metric` → `OtelMetric`, `event.Trace` → `OtelSpan`
+- The proto definitions live in `proto/vector/event.proto` and `proto/vector/vector.proto` — not in core
+
+The `opentelemetry` source also handles OTLP (gRPC + HTTP) as a dedicated ingestion path.
+
+```
+Original Vector ── vector sink (native proto) ──► vector source ──────► Core (OtelLog,
+                                                                              OtelMetric,
+OTel Collector  ── otlp exporter ──────────────► opentelemetry source ─► OtelSpan)
+
+Sol / any OTLP  ── opentelemetry sink ─────────► opentelemetry source ─►
+```
+
+There is **no `vector` sink** — it was a redundant wrapper around `opentelemetry`. To send data to another Sol instance (or any OTLP-compatible receiver), use `type = "opentelemetry"` directly.
+
+### Why keep the original protocol?
+
+The original Vector has **partial** OTLP support — not all versions ship an `opentelemetry` sink, and the OTLP support that exists may not cover all signal types. Supporting the native protocol at the source means:
+- **Zero-config migration**: existing Vector fleets can point their `vector` sink at this fork without changing anything
+- **No bridge needed**: no OTel Collector middlebox, no sink reconfiguration on the sender side
+- **Adapter-scoped complexity**: the `event.proto` / `vector.proto` definitions and conversion logic live entirely within `src/sources/vector/` — core remains pure OTLP
+
+---
+
+## Principles
+
+1. **OTLP/OTel is the only core protocol.** No vendor types in core.
+2. **Two-format rule.** OTLP/proto or OTLP/JSON only. No flat canonical format.
+3. **Vendor logic in adapters only.** Core never depends on adapters.
+4. **Zero `vector.*` attributes.** Pipeline-internal state (set values, gauge delta kind) lives in dedicated struct fields on `OtelMetric`, never in OTLP attributes. OTLP output is pure — no custom extensions.
+5. **Summary is legacy passthrough.** The OTLP spec says "not recommended for new applications." Sol never produces Summary — all new histogram-like data uses Histogram or ExponentialHistogram. Summary data received from Prometheus clients or legacy Vector sources passes through unchanged.
+6. **Features preserved.** Tail sampling, load balancing, span_metrics, aggregate — all OTel-native.
+7. **Original Vector protocol supported at source boundary.** The `vector` source speaks only the original native gRPC protocol (`event.proto`/`vector.proto`) for backward compatibility. OTLP ingestion is handled by the `opentelemetry` source. The native proto definitions live in the source scope — adapter code, not core types.
+
+---
+
 ## Migration Guide for Users
 
 ### Strategy 1 — VRL Migration Tool (recommended for most users)
@@ -655,73 +726,3 @@ Add a dedicated `kind_override` field to `OtelMetric` for Gauge/Summary types th
 | `is_monotonic` default | `false` | Unit test |
 | DogStatsD container ID | `c:abc123` → `container.id=abc123` attribute | Unit test |
 
----
-
-## Principles
-
-1. **OTLP/OTel is the only core protocol.** No vendor types in core.
-2. **Two-format rule.** OTLP/proto or OTLP/JSON only. No flat canonical format.
-3. **Vendor logic in adapters only.** Core never depends on adapters.
-4. **Zero `vector.*` attributes.** Pipeline-internal state (set values, gauge delta kind) lives in dedicated struct fields on `OtelMetric`, never in OTLP attributes. OTLP output is pure — no custom extensions.
-5. **Summary is legacy passthrough.** The OTLP spec says "not recommended for new applications." Sol never produces Summary — all new histogram-like data uses Histogram or ExponentialHistogram. Summary data received from Prometheus clients or legacy Vector sources passes through unchanged.
-6. **Features preserved.** Tail sampling, load balancing, span_metrics, aggregate — all OTel-native.
-7. **Original Vector protocol supported at source boundary.** The `vector` source speaks only the original native gRPC protocol (`event.proto`/`vector.proto`) for backward compatibility. OTLP ingestion is handled by the `opentelemetry` source. The native proto definitions live in the source scope — adapter code, not core types.
-
----
-
-## Architecture
-
-Sol is a true fork of Vector, rebuilt with OpenTelemetry as its native protocol. The original Vector's proprietary types are gone from core — but Sol retains the original Vector wire protocol as a source adapter, so existing Vector fleets can send data to Sol without any changes.
-
-```
-Sources (adapters)              Core (OTel-native)                    Sinks (adapters)
-──────────────────────────────  ────────────────────────────────────  ───────────────────────
-opentelemetry (gRPC + HTTP)     OtelLog  (LogRecord)                  opentelemetry (gRPC+HTTP)
-datadog_agent ──────────────►   OtelMetric (Sum/Gauge/Histogram/  ──► prometheus, influxdb
-vector (native gRPC) ─────►     ExponentialHistogram/Summary†)  ──► kafka, loki, ES, …
-kafka, syslog, … ──────────►   OtelSpan (Span)
-                                OtelAttributes (BTreeMap wrapper)
-                                Disk buffer: otlp_buffer.proto
-
-† Summary is legacy OTLP — passthrough only, never produced by Sol sources.
-```
-
-### What Sol changes from the original Vector
-
-| Aspect | Original Vector | Sol |
-|--------|----------------|-----|
-| **Core event model** | Proprietary types (`LogEvent`, `Metric`, `TraceEvent`) | OTel-native (`OtelLog`, `OtelMetric`, `OtelSpan`) |
-| **Wire protocol** | Custom `event.proto` / `vector.proto` | OTLP (proto + JSON) — the standard |
-| **OTLP support** | Partial (source + sink, but not core) | Native — OTLP IS the core |
-| **Vendor types in core** | DD sketches, `MetricValue`, `StatisticKind` | None — vendor logic in adapters only |
-| **`vector` sink** | Custom proto → another Vector | Deleted — use `opentelemetry` sink |
-| **`vector` source** | Custom proto only | Dual-protocol: OTLP + original native gRPC on same port |
-| **`opentelemetry` source** | Exists in original | OTLP gRPC + HTTP ingestion (separate from `vector` source) |
-
-### Vector Source: Original Native Protocol
-
-The `vector` source speaks **both OTLP and the original Vector native gRPC protocol** on the same port:
-
-- **OTLP**: LogsService, MetricsService, TraceService (for OTel Collector / Sol / any OTLP client)
-- **Native Vector**: `service Vector { rpc PushEvents(...) }` (for legacy Vector instances)
-- Native proto events are converted at the source boundary: `event.Log` → `OtelLog`, `event.Metric` → `OtelMetric`, `event.Trace` → `OtelSpan`
-- The proto definitions live in `proto/vector/event.proto` and `proto/vector/vector.proto` — not in core
-
-The `opentelemetry` source also handles OTLP (gRPC + HTTP) as a dedicated ingestion path.
-
-```
-Original Vector ── vector sink (native proto) ──► vector source ──────► Core (OtelLog,
-                                                                              OtelMetric,
-OTel Collector  ── otlp exporter ──────────────► opentelemetry source ─► OtelSpan)
-
-Sol / any OTLP  ── opentelemetry sink ─────────► opentelemetry source ─►
-```
-
-There is **no `vector` sink** — it was a redundant wrapper around `opentelemetry`. To send data to another Sol instance (or any OTLP-compatible receiver), use `type = "opentelemetry"` directly.
-
-### Why keep the original protocol?
-
-The original Vector has **partial** OTLP support — not all versions ship an `opentelemetry` sink, and the OTLP support that exists may not cover all signal types. Supporting the native protocol at the source means:
-- **Zero-config migration**: existing Vector fleets can point their `vector` sink at this fork without changing anything
-- **No bridge needed**: no OTel Collector middlebox, no sink reconfiguration on the sender side
-- **Adapter-scoped complexity**: the `event.proto` / `vector.proto` definitions and conversion logic live entirely within `src/sources/vector/` — core remains pure OTLP

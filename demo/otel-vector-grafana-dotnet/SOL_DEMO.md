@@ -1,6 +1,6 @@
-# Full vector demo
+# Full Sol demo
 
-A previous demo has been made to test new vector as an OTLP forwarder to be sure that all signals from receivers to sinks work correctly.
+A previous demo has been made to test Sol as an OTLP forwarder to be sure that all signals from receivers to sinks work correctly.
 
 The goal of this demo is to test loadbalancer and tail sampling combined.
 

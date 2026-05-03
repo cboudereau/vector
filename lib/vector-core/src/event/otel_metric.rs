@@ -1291,6 +1291,22 @@ impl OtelMetric {
         self.set_values.is_some()
     }
 
+    pub fn set_values(&self) -> Option<&std::collections::BTreeSet<String>> {
+        self.set_values.as_ref()
+    }
+
+    pub fn set_set_values(&mut self, values: std::collections::BTreeSet<String>) {
+        self.set_values = Some(values);
+    }
+
+    pub fn kind_override(&self) -> Option<super::MetricKind> {
+        self.kind_override
+    }
+
+    pub fn set_kind_override(&mut self, kind: Option<super::MetricKind>) {
+        self.kind_override = kind;
+    }
+
     /// Returns a zero-copy view of this metric's data, borrowing from the
     /// underlying proto where possible.
     pub fn view(&self) -> MetricView<'_> {

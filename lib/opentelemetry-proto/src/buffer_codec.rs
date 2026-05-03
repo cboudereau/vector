@@ -42,6 +42,19 @@ struct OtlpBufferBatch {
     metrics: Option<ExportMetricsServiceRequest>,
     #[prost(message, optional, tag = "3")]
     traces: Option<ExportTraceServiceRequest>,
+    #[prost(message, repeated, tag = "4")]
+    metric_extensions: Vec<MetricExtension>,
+}
+
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, prost::Message)]
+struct MetricExtension {
+    #[prost(uint32, tag = "1")]
+    metric_index: u32,
+    #[prost(string, repeated, tag = "2")]
+    set_values: Vec<String>,
+    #[prost(uint32, tag = "3")]
+    kind_override: u32,
 }
 
 /// Register the OTLP buffer codec with `vector-core`.
@@ -79,10 +92,14 @@ fn event_array_to_batch(array: &EventArray) -> OtlpBufferBatch {
             logs: Some(otel_logs_to_export(logs)),
             ..Default::default()
         },
-        EventArray::Metrics(metrics) => OtlpBufferBatch {
-            metrics: Some(otel_metrics_to_export(metrics)),
-            ..Default::default()
-        },
+        EventArray::Metrics(metrics) => {
+            let extensions = collect_metric_extensions(metrics);
+            OtlpBufferBatch {
+                metrics: Some(otel_metrics_to_export(metrics)),
+                metric_extensions: extensions,
+                ..Default::default()
+            }
+        }
         EventArray::Traces(traces) => OtlpBufferBatch {
             traces: Some(otel_spans_to_export(traces)),
             ..Default::default()
@@ -151,6 +168,54 @@ fn otel_metrics_to_export(otel_metrics: &OtelMetricArray) -> ExportMetricsServic
     }
 }
 
+fn collect_metric_extensions(otel_metrics: &OtelMetricArray) -> Vec<MetricExtension> {
+    use vector_core::event::MetricKind;
+
+    otel_metrics
+        .iter()
+        .enumerate()
+        .filter_map(|(i, otel)| {
+            let has_set = otel.set_values().is_some();
+            let has_kind = otel.kind_override().is_some();
+            if !has_set && !has_kind {
+                return None;
+            }
+            Some(MetricExtension {
+                metric_index: i as u32,
+                set_values: otel
+                    .set_values()
+                    .map(|s| s.iter().cloned().collect())
+                    .unwrap_or_default(),
+                kind_override: match otel.kind_override() {
+                    Some(MetricKind::Incremental) => 1,
+                    Some(MetricKind::Absolute) => 2,
+                    None => 0,
+                },
+            })
+        })
+        .collect()
+}
+
+fn apply_metric_extensions(metrics: &mut MetricArray, extensions: Vec<MetricExtension>) {
+    use std::collections::BTreeSet;
+    use vector_core::event::MetricKind;
+
+    for ext in extensions {
+        let idx = ext.metric_index as usize;
+        if idx >= metrics.len() {
+            continue;
+        }
+        if !ext.set_values.is_empty() {
+            metrics[idx].set_set_values(ext.set_values.into_iter().collect::<BTreeSet<_>>());
+        }
+        match ext.kind_override {
+            1 => metrics[idx].set_kind_override(Some(MetricKind::Incremental)),
+            2 => metrics[idx].set_kind_override(Some(MetricKind::Absolute)),
+            _ => {}
+        }
+    }
+}
+
 // --- OTel-native spans ------------------------------------------------------
 
 fn otel_spans_to_export(otel_spans: &OtelSpanArray) -> ExportTraceServiceRequest {
@@ -191,7 +256,7 @@ fn batch_to_event_array(batch: OtlpBufferBatch) -> EventArray {
             .collect();
         EventArray::Logs(logs)
     } else if let Some(req) = batch.metrics {
-        let metrics: MetricArray = req
+        let mut metrics: MetricArray = req
             .resource_metrics
             .into_iter()
             .flat_map(|rm| {
@@ -199,6 +264,9 @@ fn batch_to_event_array(batch: OtlpBufferBatch) -> EventArray {
                     .filter_map(|e| e.try_into_otel_metric())
             })
             .collect();
+        if !batch.metric_extensions.is_empty() {
+            apply_metric_extensions(&mut metrics, batch.metric_extensions);
+        }
         EventArray::Metrics(metrics)
     } else if let Some(req) = batch.traces {
         let traces: TraceArray = req
@@ -338,6 +406,62 @@ mod tests {
             EventArray::Metrics(metrics) => {
                 assert_eq!(metrics.len(), 1);
                 assert_eq!(metrics[0].name(), "requests_total");
+            }
+            other => panic!("expected Metrics, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn round_trip_set_metric_preserves_set_values() {
+        setup();
+        let metric = OtelMetric::new_set_from_values("unique_users", MetricKind::Incremental, ["alice", "bob", "charlie"]);
+        assert!(metric.is_set());
+        assert_eq!(metric.set_values().unwrap().len(), 3);
+
+        let array = EventArray::from(metric);
+        let codec = VectorOtlpCodec;
+        let mut buf = Vec::new();
+        codec.encode(&array, &mut buf).expect("encode failed");
+
+        let decoded = codec.decode(bytes::Bytes::from(buf)).expect("decode failed");
+        match decoded {
+            EventArray::Metrics(metrics) => {
+                assert_eq!(metrics.len(), 1);
+                assert_eq!(metrics[0].name(), "unique_users");
+                assert!(metrics[0].is_set(), "set_values should survive buffer round-trip");
+                let vals = metrics[0].set_values().expect("set_values should be Some");
+                assert_eq!(vals.len(), 3);
+                assert!(vals.contains("alice"));
+                assert!(vals.contains("bob"));
+                assert!(vals.contains("charlie"));
+            }
+            other => panic!("expected Metrics, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn round_trip_delta_gauge_preserves_kind_override() {
+        setup();
+        let mut metric = OtelMetric::new_gauge("temperature", 22.5);
+        metric.set_kind_override(Some(MetricKind::Incremental));
+        assert_eq!(metric.kind(), MetricKind::Incremental);
+
+        let array = EventArray::from(metric);
+        let codec = VectorOtlpCodec;
+        let mut buf = Vec::new();
+        codec.encode(&array, &mut buf).expect("encode failed");
+
+        let decoded = codec.decode(bytes::Bytes::from(buf)).expect("decode failed");
+        match decoded {
+            EventArray::Metrics(metrics) => {
+                assert_eq!(metrics.len(), 1);
+                assert_eq!(metrics[0].name(), "temperature");
+                assert_eq!(
+                    metrics[0].kind_override(),
+                    Some(MetricKind::Incremental),
+                    "kind_override should survive buffer round-trip"
+                );
+                assert_eq!(metrics[0].kind(), MetricKind::Incremental);
             }
             other => panic!("expected Metrics, got {other:?}"),
         }

@@ -405,7 +405,10 @@ impl OtelMetric {
         let cardinality = set.len() as f64;
         let mut m = Self::new_gauge(name, cardinality);
         m.set_values = Some(set);
-        m.kind_override = Some(kind);
+        m.kind_override = match kind {
+            super::MetricKind::Incremental => Some(super::MetricKind::Incremental),
+            super::MetricKind::Absolute => None,
+        };
         m
     }
 
@@ -676,7 +679,10 @@ impl OtelMetric {
                 MetricData::Histogram(h) => h.aggregation_temporality = temp,
                 MetricData::ExponentialHistogram(e) => e.aggregation_temporality = temp,
                 MetricData::Gauge(_) | MetricData::Summary(_) => {
-                    self.kind_override = Some(kind);
+                    self.kind_override = match kind {
+                        super::MetricKind::Incremental => Some(super::MetricKind::Incremental),
+                        super::MetricKind::Absolute => None,
+                    };
                 }
             }
         }

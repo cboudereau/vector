@@ -110,17 +110,17 @@ mod tests {
         let samples2 = generate_f64s(1, 125);
         let expected_samples = generate_f64s(101, 125);
 
-        let distributions = vec![
-            get_distribution(samples1, MetricKind::Absolute),
-            get_distribution(samples2, MetricKind::Absolute),
+        let histograms = vec![
+            get_aggregated_histogram(samples1, MetricKind::Absolute),
+            get_aggregated_histogram(samples2, MetricKind::Absolute),
         ];
 
-        let expected_distributions = vec![
+        let expected = vec![
             None,
-            Some(get_distribution(expected_samples, MetricKind::Incremental)),
+            Some(get_aggregated_histogram(expected_samples, MetricKind::Incremental)),
         ];
 
-        assert_normalize(StatsdNormalizer, distributions, expected_distributions);
+        assert_normalize(StatsdNormalizer, histograms, expected);
     }
 
     #[test]
@@ -146,26 +146,26 @@ mod tests {
         let samples4 = generate_f64s(22, 45);
         let samples5 = generate_f64s(1, 100);
 
-        let distributions = vec![
-            get_distribution(samples1, MetricKind::Incremental),
-            get_distribution(samples2, MetricKind::Absolute),
-            get_distribution(samples3, MetricKind::Absolute),
-            get_distribution(samples4, MetricKind::Incremental),
-            get_distribution(samples5, MetricKind::Incremental),
+        let histograms = vec![
+            get_aggregated_histogram(samples1, MetricKind::Incremental),
+            get_aggregated_histogram(samples2, MetricKind::Absolute),
+            get_aggregated_histogram(samples3, MetricKind::Absolute),
+            get_aggregated_histogram(samples4, MetricKind::Incremental),
+            get_aggregated_histogram(samples5, MetricKind::Incremental),
         ];
 
-        let expected_distributions = vec![
-            Some(distributions[0].clone()),
+        let expected = vec![
+            Some(histograms[0].clone()),
             None,
-            Some(get_distribution(
+            Some(get_aggregated_histogram(
                 generate_f64s(126, 187),
                 MetricKind::Incremental,
             )),
-            Some(distributions[3].clone()),
-            Some(distributions[4].clone()),
+            Some(histograms[3].clone()),
+            Some(histograms[4].clone()),
         ];
 
-        assert_normalize(StatsdNormalizer, distributions, expected_distributions);
+        assert_normalize(StatsdNormalizer, histograms, expected);
     }
 
     #[test]

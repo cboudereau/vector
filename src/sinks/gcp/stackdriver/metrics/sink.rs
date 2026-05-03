@@ -22,6 +22,11 @@ impl MetricNormalize for StackdriverMetricsNormalize {
             Some(metric)
         }
     }
+
+    fn exp_hist_bounds(&self) -> Option<&[f64]> {
+        use crate::sinks::util::buffer::metrics::DEFAULT_HISTOGRAM_BOUNDS;
+        Some(DEFAULT_HISTOGRAM_BOUNDS)
+    }
 }
 
 pub(super) struct StackdriverMetricsSink<S> {

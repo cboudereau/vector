@@ -131,6 +131,13 @@ pub trait MetricNormalize {
     /// However, a metric may simply not be supported by a normalization implementation, and so `None` may or may not be
     /// a common return value. This behavior is, thus, implementation defined.
     fn normalize(&mut self, state: &mut MetricSet, metric: OtelMetric) -> Option<OtelMetric>;
+
+    /// If `Some`, ExponentialHistograms are converted to explicit-bounds Histograms
+    /// using the given bounds before normalization. Sinks with native ExponentialHistogram
+    /// support return `None` (the default) to pass them through unchanged.
+    fn exp_hist_bounds(&self) -> Option<&[f64]> {
+        None
+    }
 }
 
 /// A self-contained metric normalizer.
@@ -173,9 +180,12 @@ impl<N: MetricNormalize> MetricNormalizer<N> {
     /// Normalizes the metric against the internal normalization state.
     ///
     /// ExponentialHistogram metrics are converted to explicit-bounds Histogram
-    /// before per-sink normalization, since most sinks don't support them natively.
+    /// before per-sink normalization when the sink's normalizer returns
+    /// `Some(bounds)` from `exp_hist_bounds()`.
     pub fn normalize(&mut self, mut metric: OtelMetric) -> Option<OtelMetric> {
-        metric.convert_exponential_to_histogram(DEFAULT_HISTOGRAM_BOUNDS);
+        if let Some(bounds) = self.normalizer.exp_hist_bounds() {
+            metric.convert_exponential_to_histogram(bounds);
+        }
         self.normalizer.normalize(&mut self.state, metric)
     }
 

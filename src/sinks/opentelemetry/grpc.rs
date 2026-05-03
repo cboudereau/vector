@@ -591,7 +591,7 @@ pub(crate) fn otel_metric_event_to_resource_metrics(
         resource::v1::Resource as SinkResource,
     };
 
-    let metric_bytes = metric_event.metric().encode_to_vec();
+    let metric_bytes = metric_event.metric_proto().encode_to_vec();
     let sink_metric = SinkMetric::decode(bytes::Bytes::from(metric_bytes))
         .expect("Metric proto roundtrip");
 
@@ -759,5 +759,84 @@ fn collection_into_request(col: EventCollection) -> OtlpRequest {
         finalizers: col.finalizers,
         metadata: builder.with_request_size(bytes_len),
         encoded_bytes,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn metric_event_to_resource_metrics_preserves_dp_attrs() {
+        use opentelemetry_proto::tonic::common::v1::{
+            AnyValue, KeyValue, any_value::Value as OtelValueKind,
+        };
+        use opentelemetry_proto::tonic::metrics::v1::{
+            Metric as OtelMetricProto, Sum, NumberDataPoint,
+            number_data_point::Value as NDPValue,
+        };
+        use opentelemetry_proto::tonic::resource::v1::Resource;
+        use vector_lib::event::OtelMetric;
+
+        let mut event = OtelMetric::new(OtelMetricProto {
+            name: "http.requests".to_string(),
+            data: Some(opentelemetry_proto::tonic::metrics::v1::metric::Data::Sum(Sum {
+                data_points: vec![NumberDataPoint {
+                    value: Some(NDPValue::AsInt(42)),
+                    attributes: vec![KeyValue {
+                        key: "http.method".to_string(),
+                        value: Some(AnyValue {
+                            value: Some(OtelValueKind::StringValue("GET".to_string())),
+                        }),
+                    }],
+                    ..Default::default()
+                }],
+                aggregation_temporality: 2,
+                is_monotonic: true,
+            })),
+            ..Default::default()
+        });
+        event.set_resource(Resource {
+            attributes: vec![KeyValue {
+                key: "service.name".to_string(),
+                value: Some(AnyValue {
+                    value: Some(OtelValueKind::StringValue("my-svc".to_string())),
+                }),
+            }],
+            dropped_attributes_count: 0,
+        });
+
+        // Simulate what promote_resource_attrs does
+        event.set_data_point_attribute(
+            "service.name".to_string(),
+            AnyValue {
+                value: Some(OtelValueKind::StringValue("my-svc".to_string())),
+            },
+        );
+
+        let rm = otel_metric_event_to_resource_metrics(&event);
+
+        // Verify resource is preserved
+        let resource = rm.resource.expect("resource must exist");
+        assert!(resource.attributes.iter().any(|kv| kv.key == "service.name"));
+
+        // Verify data point attributes are preserved (this was the bug)
+        let metric = &rm.scope_metrics[0].metrics[0];
+        let dp_attrs = match &metric.data {
+            Some(vector_lib::opentelemetry::proto::metrics::v1::metric::Data::Sum(s)) => {
+                &s.data_points[0].attributes
+            }
+            _ => panic!("expected Sum metric"),
+        };
+        assert!(
+            dp_attrs.iter().any(|kv| kv.key == "http.method"),
+            "original dp attr 'http.method' must be preserved, got: {:?}",
+            dp_attrs
+        );
+        assert!(
+            dp_attrs.iter().any(|kv| kv.key == "service.name"),
+            "promoted dp attr 'service.name' must be preserved, got: {:?}",
+            dp_attrs
+        );
     }
 }

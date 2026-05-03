@@ -1690,4 +1690,88 @@ mod test {
         let decoded = hex_decode_value(&encoded);
         assert_eq!(decoded, original);
     }
+
+    #[test]
+    fn otel_metric_promote_resource_attrs_to_dp_attrs() {
+        use opentelemetry_proto::tonic::metrics::v1::{
+            Metric as OtelMetricProto, Sum, NumberDataPoint,
+            number_data_point::Value as NDPValue,
+        };
+        use opentelemetry_proto::tonic::resource::v1::Resource as OtelResource;
+
+        let mut event = OtelMetric::new(OtelMetricProto {
+            name: "http.requests".to_string(),
+            data: Some(opentelemetry_proto::tonic::metrics::v1::metric::Data::Sum(Sum {
+                data_points: vec![NumberDataPoint {
+                    value: Some(NDPValue::AsInt(42)),
+                    ..Default::default()
+                }],
+                aggregation_temporality: 2,
+                is_monotonic: true,
+            })),
+            ..Default::default()
+        });
+        event.set_resource(OtelResource {
+            attributes: vec![
+                OtelKeyValue {
+                    key: "service.name".to_string(),
+                    value: Some(OtelAnyValue {
+                        value: Some(OtelValueKind::StringValue("my-dotnet-app".to_string())),
+                    }),
+                },
+                OtelKeyValue {
+                    key: "host.name".to_string(),
+                    value: Some(OtelAnyValue {
+                        value: Some(OtelValueKind::StringValue("server-1".to_string())),
+                    }),
+                },
+            ],
+            dropped_attributes_count: 0,
+        });
+
+        let info = make_empty_info();
+        let mut target = VrlTarget::new(Event::Metric(event), &info, false);
+
+        // Read .resource.attributes."service.name"
+        let read_path = OwnedTargetPath::event(owned_value_path!("resource", "attributes", "service.name"));
+        let svc_name = Target::target_get(&target, &read_path).unwrap().cloned();
+        assert_eq!(svc_name, Some(Value::Bytes("my-dotnet-app".into())),
+            "should read resource attribute service.name");
+
+        // Write .attributes."service.name" = .resource.attributes."service.name"
+        let write_path = OwnedTargetPath::event(owned_value_path!("attributes", "service.name"));
+        Target::target_insert(&mut target, &write_path, svc_name.unwrap()).unwrap();
+
+        // Read .resource.attributes."host.name"
+        let read_path2 = OwnedTargetPath::event(owned_value_path!("resource", "attributes", "host.name"));
+        let host_name = Target::target_get(&target, &read_path2).unwrap().cloned();
+        assert_eq!(host_name, Some(Value::Bytes("server-1".into())));
+
+        // Write .attributes."host.name" = .resource.attributes."host.name"
+        let write_path2 = OwnedTargetPath::event(owned_value_path!("attributes", "host.name"));
+        Target::target_insert(&mut target, &write_path2, host_name.unwrap()).unwrap();
+
+        // Convert back to event
+        let events: Vec<Event> = match target.into_events() {
+            TargetEvents::One(e) => vec![e],
+            _ => panic!("expected one event"),
+        };
+
+        let restored = match &events[0] {
+            Event::Metric(e) => e,
+            _ => panic!("expected OtelMetric"),
+        };
+
+        // Verify data point attributes contain the promoted resource attributes
+        let dp_attrs = restored.first_dp_attrs().expect("should have dp attrs");
+        let svc_attr = dp_attrs.get("service.name");
+        assert!(svc_attr.is_some(), "data point should have service.name attribute, got: {:?}", dp_attrs);
+        let host_attr = dp_attrs.get("host.name");
+        assert!(host_attr.is_some(), "data point should have host.name attribute, got: {:?}", dp_attrs);
+
+        // Verify resource attributes are still present
+        let resource = restored.resource_proto().expect("resource should still exist");
+        let svc_resource_attr = resource.attributes.iter().find(|kv| kv.key == "service.name");
+        assert!(svc_resource_attr.is_some(), "resource should still have service.name");
+    }
 }

@@ -35,9 +35,9 @@ impl OpenTelemetryConfig {
 #[serde(rename_all = "snake_case", tag = "type")]
 #[configurable(metadata(docs::enum_tag_description = "The communication protocol."))]
 pub enum Protocol {
-    /// Send OTLP data over HTTP with `application/json` Content-Type.
-    /// Events are serialized as OTLP/JSON and POSTed to per-signal
-    /// endpoints (`/v1/logs`, `/v1/metrics`, `/v1/traces`).
+    /// Send OTLP data over HTTP. Supports both protobuf (default) and JSON
+    /// encoding. POSTed to per-signal endpoints (`/v1/logs`, `/v1/metrics`,
+    /// `/v1/traces`).
     Http(OtlpHttpConfig),
     /// Send data over gRPC (OTLP/gRPC).
     Grpc(GrpcConfig),

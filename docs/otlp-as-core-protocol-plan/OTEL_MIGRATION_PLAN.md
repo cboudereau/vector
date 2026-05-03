@@ -726,3 +726,114 @@ Add a dedicated `kind_override` field to `OtelMetric` for Gauge/Summary types th
 | `is_monotonic` default | `false` | Unit test |
 | DogStatsD container ID | `c:abc123` → `container.id=abc123` attribute | Unit test |
 
+### Phase G — OTLP Fidelity Review Fixes
+
+**Status: TODO. Full-codebase review (2026-05-03) against OTLP proto spec, 581 commits since `before_migration`.**
+
+Execution order: P0 (data correctness) → P1 (data loss) → P2 (spec compliance) → P3 (track/document).
+
+#### G-P0: Data Correctness (fix now)
+
+**G1. Fix Histogram `bucket_counts` length (SPEC VIOLATION)**
+- `lib/vector-core/src/event/otel_metric.rs` — `new_histogram()` and `new_histogram_from_samples()`
+- OTLP requires `bucket_counts.len() == explicit_bounds.len() + 1` (N bounds → N+1 buckets, last is `(bounds[N-1], +inf)` overflow)
+- Current code creates `bucket_counts` with same length as `explicit_bounds` — missing overflow bucket
+- Affects all Histogram constructors and all legacy Vector conversions via `src/sources/vector/convert.rs`
+- Also strip `f64::INFINITY` from `explicit_bounds` (it's implicit in OTLP) and move its count to the overflow position
+- Test: verify `bucket_counts.len() == explicit_bounds.len() + 1` in all histogram tests
+
+**G2. Add `subtract()` support for ExponentialHistogram (BUG)**
+- `lib/vector-core/src/event/otel_metric.rs:1107` — `_ => false` catch-all silently fails for ExpHist pairs
+- Implement `subtract` for ExponentialHistogram: subtract bucket counts, count, sum. Require matching scale/offset/len (same constraint as `add()`)
+- Without this, absolute-to-incremental normalization silently drops ExpHist metrics
+
+**G3. Fix `new_exponential_histogram_single` index formula (BUG)**
+- `lib/vector-core/src/event/otel_metric.rs:318-377`
+- Index computation for non-power-of-2 values is off by `2^scale - 1`
+- Used by `log_to_metric` transform — every ExpHist from log_to_metric has wrong bucket placement
+- Fix: align formula with OTLP spec `floor(log(value) * log2e * 2^scale)` (same as StatsD aggregator's `map_to_index`)
+
+#### G-P1: Data Loss / Semantic Incorrectness (fix soon)
+
+**G4. Fix `kind()` for Summary to read `kind_override` (BUG)**
+- `lib/vector-core/src/event/otel_metric.rs:836` — always returns `Absolute`, ignoring `kind_override`
+- `set_kind()` writes to `kind_override` for Summary — read/write path inconsistent
+- Fix: read `self.kind_override` for Summary (same pattern as Gauge)
+
+**G5. Fix OtelSpan `apply_value_map` to extract events, links, trace_state (BUG)**
+- `lib/vector-core/src/event/otel_event.rs:2576` — these fields are demoted to span attributes instead of proto fields
+- The VRL path (`value_to_otel_span_event`) correctly handles them — `apply_value_map` should match
+- Affects reconstruction from value maps (legacy disk buffers, `from_value_map`)
+
+**G6. Preserve `set_values` and `kind_override` through disk buffer (RISK)**
+- Encode path uses `metric_proto()` which strips both fields; decode reconstructs with `None`
+- Options: (a) add fields to `otlp_buffer.proto` as Sol extensions, (b) re-derive on decode from metric shape
+- Set metrics and delta-Gauges lose pipeline-internal state if buffered to disk
+
+**G7. Per-sink ExponentialHistogram conversion instead of global (RISK)**
+- `src/sinks/util/buffer/metrics/normalize.rs:178` — `convert_exponential_to_histogram(DEFAULT_HISTOGRAM_BOUNDS)` runs on ALL metrics before per-sink normalization
+- InfluxDB and GreptimeDB handle ExpHist natively — their match arms are dead code, receiving lossy pre-bucketed histograms
+- Fix: move conversion into per-sink normalizer, only for sinks that need explicit bounds (Prometheus, StatsD)
+
+#### G-P2: Spec Compliance Gaps (fix)
+
+**G8. Fix `bytesValue` encoding: hex → base64 (SPEC VIOLATION)**
+- `lib/vector-core/src/event/otel_json.rs:54-58` — proto3 JSON mapping requires base64
+- Add base64 dependency to vector-core (or use a lightweight implementation)
+
+**G9. Fix `SerializableScope` to include `attributes` and `dropped_attributes_count` (SPEC VIOLATION)**
+- `lib/vector-core/src/event/otel_json.rs:109-128` — only emits `name` and `version`
+
+**G10. Fix `SerializableResource` to include `dropped_attributes_count` (SPEC VIOLATION)**
+- `lib/vector-core/src/event/otel_json.rs:95-102`
+
+**G11. Fix OtelSpan JSON `Serialize` to include `events` and `links` (SPEC VIOLATION)**
+- `lib/vector-core/src/event/otel_event.rs:3522-3569` — protobuf path preserves them, JSON drops them
+
+**G12. Add warning for CloudWatch Summary drop (BUG)**
+- `src/sinks/aws_cloudwatch_metrics/mod.rs:352` — `_ => None` silently drops Summary
+- Emit a warning log or increment a dropped-metric counter
+
+**G13. Fix StatsD encoder u64 → u32 bucket count truncation (BUG)**
+- `src/sinks/statsd/encoder.rs:78` — `cnt as u32` silently truncates counts > 4.2B
+- Use saturating cast or emit multiple `|h` packets
+
+**G14. Fix Lua `into_lua_distribution` test (BUG)**
+- `lib/vector-core/src/event/lua/metric.rs:394-410` — test expects `metric.distribution.*` but IntoLua emits `aggregated_histogram`
+- Delete or rewrite test to match post-migration behavior
+
+**G15. Fix `new_exponential_histogram()` min/max None handling (RISK)**
+- `lib/vector-core/src/event/otel_metric.rs:307-308` — `None` → `Some(0.0)` misrepresents "not recorded" as "observed 0.0"
+- Use `min.map(|v| v)` to preserve `None` as proto absence
+
+#### G-P3: Track / Document (no code change required)
+
+| ID | Issue | Notes |
+|----|-------|-------|
+| G16 | Non-monotonic Sum mapped to `MetricView::Gauge` | Intentional design — `kind()` still reads temporality correctly. Document that `as_name()` returns "gauge" for non-monotonic Sums |
+| G17 | ExponentialHistogram `add()` overly strict merge (requires identical scale/offset/len) | Real-world fix needs rescale-before-merge. Track for Phase H |
+| G18 | ExponentialHistogram `add()` doesn't update min/max | `min(a.min, b.min)` / `max(a.max, b.max)` needed. Track for Phase H |
+| G19 | `EventDataEq` ignores `set_values` and `kind_override` | Acceptable for current test usage. Document |
+| G20 | `container.id` as data-point attribute (OTel convention: Resource) | otelcontribcol uses Resource. Consider promoting in Phase H |
+| G21 | DogStatsD timestamp parsed but unused | Flush-time timestamp is correct for aggregation. Document |
+| G22 | `distributions_as_summaries` config field vestigial | Delete dead config field |
+| G23 | `log_to_metric` Summary type → ExponentialHistogram | Intentional (D45/D51). Document in config reference |
+| G24 | Disk buffer rejects legacy Vector format | Intentional for fork. Document upgrade path: drain buffers before upgrade |
+| G25 | Logfmt attribute key collision (`body`, `severity_text`) | `as_map()` skips duplicate keys. Document reserved key names |
+| G26 | Tail sampling `insertion_order` unbounded growth on high churn | Add periodic cleanup or bounded deque. Track for Phase H |
+| G27 | Span metrics `start_time_unix_nano` = 0 for cumulative | Set to collection window start. Track for Phase H |
+| G28 | Span metrics drops non-string dimension values | Extract numeric/bool as string. Track for Phase H |
+
+### Gate (Phase G)
+
+| Metric | Target | Verification |
+|--------|--------|--------------|
+| Histogram `bucket_counts.len()` | `explicit_bounds.len() + 1` everywhere | Unit test + `grep -rn 'bucket_counts' lib/ src/` audit |
+| `subtract()` handles ExponentialHistogram | `true` for matching pairs | Unit test |
+| `new_exponential_histogram_single` index | Matches `map_to_index` for same value/scale | Unit test: compare both functions |
+| `kind()` reads `kind_override` for Summary | Correct | Unit test |
+| OtelSpan JSON includes events/links | Present in JSON output | Unit test |
+| `bytesValue` base64 in OTLP/JSON | Correct | Unit test |
+| Scope attributes preserved in JSON | Present | Unit test |
+| Tests passing | ≥ previous | `cargo test -p vector -p vector-core -p codecs` |
+

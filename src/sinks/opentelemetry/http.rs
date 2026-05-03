@@ -43,7 +43,21 @@ pub enum OtlpHttpError {
     HttpRequest { message: String },
 }
 
-/// Configuration for the `opentelemetry` sink's OTLP/HTTP JSON transport.
+/// The encoding format for the OTLP/HTTP transport.
+#[configurable_component]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum OtlpHttpEncoding {
+    /// Protobuf binary encoding (`application/x-protobuf`).
+    /// Most compatible and efficient. Default.
+    #[default]
+    Protobuf,
+    /// JSON encoding (`application/json`).
+    /// Useful for debugging and backends that prefer JSON.
+    Json,
+}
+
+/// Configuration for the `opentelemetry` sink's OTLP/HTTP transport.
 #[configurable_component]
 #[derive(Clone, Debug)]
 pub struct OtlpHttpConfig {
@@ -54,6 +68,11 @@ pub struct OtlpHttpConfig {
     #[configurable(metadata(docs::examples = "http://localhost:4318"))]
     #[serde(default = "default_endpoint")]
     pub endpoint: String,
+
+    /// The encoding format for OTLP data.
+    #[configurable(derived)]
+    #[serde(default)]
+    pub encoding: OtlpHttpEncoding,
 
     #[configurable(derived)]
     #[serde(default)]
@@ -80,6 +99,7 @@ impl Default for OtlpHttpConfig {
     fn default() -> Self {
         Self {
             endpoint: default_endpoint(),
+            encoding: Default::default(),
             batch: Default::default(),
             request: Default::default(),
             tls: Default::default(),
@@ -106,6 +126,7 @@ impl OtlpHttpConfig {
         let service = OtlpHttpService {
             client: client.clone(),
             endpoint: self.endpoint.trim_end_matches('/').to_string(),
+            encoding: self.encoding,
         };
 
         let batch = self
@@ -117,9 +138,11 @@ impl OtlpHttpConfig {
             .settings(self.request.into_settings(), OtlpHttpRetryLogic)
             .service(service);
 
+        let encoding = self.encoding;
         let sink = OtlpHttpSink {
             batch_settings: batch,
             service: tower_svc,
+            encoding,
         };
 
         let healthcheck: Healthcheck = Box::pin(async { Ok(()) });
@@ -185,6 +208,7 @@ impl DriverResponse for OtlpHttpResponse {
 pub struct OtlpHttpService {
     client: HttpClient,
     endpoint: String,
+    encoding: OtlpHttpEncoding,
 }
 
 impl Service<OtlpHttpRequest> for OtlpHttpService {
@@ -203,12 +227,16 @@ impl Service<OtlpHttpRequest> for OtlpHttpService {
         let events_byte_size = metadata.into_events_estimated_json_encoded_byte_size();
         let byte_size = req.body.len();
         let endpoint = self.endpoint.clone();
+        let content_type = match self.encoding {
+            OtlpHttpEncoding::Protobuf => "application/x-protobuf",
+            OtlpHttpEncoding::Json => "application/json",
+        };
 
         Box::pin(async move {
             let http_req = Request::builder()
                 .method(Method::POST)
                 .uri(&uri)
-                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::CONTENT_TYPE, content_type)
                 .body(Body::from(req.body))
                 .map_err(|e| OtlpHttpError::HttpRequest {
                     message: e.to_string(),
@@ -262,6 +290,7 @@ impl RetryLogic for OtlpHttpRetryLogic {
 struct OtlpHttpSink<S> {
     batch_settings: BatcherSettings,
     service: S,
+    encoding: OtlpHttpEncoding,
 }
 
 #[derive(Clone)]
@@ -310,7 +339,10 @@ where
                     },
                 ),
             ))
-            .flat_map(|col| futures::stream::iter(collection_into_http_requests(col)))
+            .flat_map({
+                let encoding = self.encoding;
+                move |col| futures::stream::iter(collection_into_http_requests(col, encoding))
+            })
             .into_driver(self.service)
             .run()
             .await
@@ -333,19 +365,16 @@ where
 // Event → OtlpHttpRequest conversion
 // ---------------------------------------------------------------------------
 
-/// Proto-encode a local type, decode as upstream type (which has serde).
-fn proto_roundtrip<L: prost::Message, U: prost::Message + Default>(local: &L) -> U {
-    let bytes = local.encode_to_vec();
-    U::decode(::bytes::Bytes::from(bytes)).expect("proto roundtrip decode")
-}
-
-fn collection_into_http_requests(col: EventCollection) -> Vec<OtlpHttpRequest> {
-    use opentelemetry_proto::tonic::collector::{
-        logs::v1::ExportLogsServiceRequest as UpstreamLogsReq,
-        metrics::v1::ExportMetricsServiceRequest as UpstreamMetricsReq,
-        trace::v1::ExportTraceServiceRequest as UpstreamTracesReq,
-    };
+fn collection_into_http_requests(
+    col: EventCollection,
+    encoding: OtlpHttpEncoding,
+) -> Vec<OtlpHttpRequest> {
     use vector_lib::opentelemetry::proto::{
+        collector::{
+            logs::v1::ExportLogsServiceRequest,
+            metrics::v1::ExportMetricsServiceRequest,
+            trace::v1::ExportTraceServiceRequest,
+        },
         logs::v1::ResourceLogs,
         metrics::v1::ResourceMetrics,
         trace::v1::ResourceSpans,
@@ -374,10 +403,8 @@ fn collection_into_http_requests(col: EventCollection) -> Vec<OtlpHttpRequest> {
     let builder = RequestMetadataBuilder::new(n, col.byte_size, col.json_byte_size);
 
     if !log_resources.is_empty() {
-        let upstream: UpstreamLogsReq = UpstreamLogsReq {
-            resource_logs: log_resources.iter().map(|r| proto_roundtrip(r)).collect(),
-        };
-        let body = Bytes::from(serde_json::to_vec(&upstream).expect("OTLP JSON serialization"));
+        let request = ExportLogsServiceRequest { resource_logs: log_resources };
+        let body = encode_otlp(&request, encoding);
         let bytes_len = NonZeroUsize::new(body.len().max(1)).unwrap();
         requests.push(OtlpHttpRequest {
             body,
@@ -388,10 +415,8 @@ fn collection_into_http_requests(col: EventCollection) -> Vec<OtlpHttpRequest> {
     }
 
     if !metric_resources.is_empty() {
-        let upstream: UpstreamMetricsReq = UpstreamMetricsReq {
-            resource_metrics: metric_resources.iter().map(|r| proto_roundtrip(r)).collect(),
-        };
-        let body = Bytes::from(serde_json::to_vec(&upstream).expect("OTLP JSON serialization"));
+        let request = ExportMetricsServiceRequest { resource_metrics: metric_resources };
+        let body = encode_otlp(&request, encoding);
         let bytes_len = NonZeroUsize::new(body.len().max(1)).unwrap();
         requests.push(OtlpHttpRequest {
             body,
@@ -402,10 +427,8 @@ fn collection_into_http_requests(col: EventCollection) -> Vec<OtlpHttpRequest> {
     }
 
     if !trace_resources.is_empty() {
-        let upstream: UpstreamTracesReq = UpstreamTracesReq {
-            resource_spans: trace_resources.iter().map(|r| proto_roundtrip(r)).collect(),
-        };
-        let body = Bytes::from(serde_json::to_vec(&upstream).expect("OTLP JSON serialization"));
+        let request = ExportTraceServiceRequest { resource_spans: trace_resources };
+        let body = encode_otlp(&request, encoding);
         let bytes_len = NonZeroUsize::new(body.len().max(1)).unwrap();
         requests.push(OtlpHttpRequest {
             body,
@@ -416,4 +439,51 @@ fn collection_into_http_requests(col: EventCollection) -> Vec<OtlpHttpRequest> {
     }
 
     requests
+}
+
+fn encode_otlp(msg: &(impl prost::Message + Default), encoding: OtlpHttpEncoding) -> Bytes {
+    match encoding {
+        OtlpHttpEncoding::Protobuf => Bytes::from(msg.encode_to_vec()),
+        OtlpHttpEncoding::Json => Bytes::from(proto_to_json(msg)),
+    }
+}
+
+fn proto_to_json<M: prost::Message + Default>(msg: &M) -> Vec<u8> {
+    use opentelemetry_proto::tonic::collector::{
+        logs::v1::ExportLogsServiceRequest as UpstreamLogsReq,
+        metrics::v1::ExportMetricsServiceRequest as UpstreamMetricsReq,
+        trace::v1::ExportTraceServiceRequest as UpstreamTracesReq,
+    };
+    use prost::Message;
+
+    let proto_bytes = msg.encode_to_vec();
+
+    fn roundtrip_json<U: Message + Default + serde::Serialize>(bytes: &[u8]) -> Option<Vec<u8>> {
+        let upstream = U::decode(bytes).ok()?;
+        let mut value = serde_json::to_value(&upstream).ok()?;
+        strip_nulls(&mut value);
+        Some(serde_json::to_vec(&value).expect("JSON re-serialization"))
+    }
+
+    roundtrip_json::<UpstreamLogsReq>(&proto_bytes)
+        .or_else(|| roundtrip_json::<UpstreamMetricsReq>(&proto_bytes))
+        .or_else(|| roundtrip_json::<UpstreamTracesReq>(&proto_bytes))
+        .expect("proto_to_json: failed to decode as any OTLP export request")
+}
+
+fn strip_nulls(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Object(map) => {
+            map.retain(|_, v| !v.is_null());
+            for v in map.values_mut() {
+                strip_nulls(v);
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for v in arr.iter_mut() {
+                strip_nulls(v);
+            }
+        }
+        _ => {}
+    }
 }

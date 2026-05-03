@@ -1,4 +1,4 @@
-ARG RUST_VERSION=1.88
+ARG RUST_VERSION=1.92
 ARG DEBIAN_RELEASE=trixie
 ARG FEATURES=api,sources-opentelemetry,sinks-console,sinks-opentelemetry,transforms-remap
 
@@ -8,6 +8,7 @@ RUN apt-get update && apt-get -y --no-install-recommends install \
     libsasl2-dev libssl-dev libxxhash-dev zlib1g-dev zlib1g
 
 WORKDIR /vector
+
 COPY . .
 ARG FEATURES
 RUN scripts/environment/install-protoc.sh

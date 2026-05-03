@@ -28,6 +28,9 @@ transforms:
             values: ["4.."]
             enabled_regex_matching: true
             invert_match: true
+          - type: probabilistic
+            name: error-probabilistic-policy
+            sampling_percentage: 10.0
       - type: probabilistic
         name: probabilistic-policy
         sampling_percentage: 10.0

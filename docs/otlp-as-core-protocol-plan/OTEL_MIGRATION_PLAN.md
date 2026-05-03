@@ -7,9 +7,11 @@ Sol's internal event model uses OpenTelemetry (OTLP) as its sole core protocol.
 ```rust
 pub enum Event {
     Log(OtelLog),       // OpenTelemetry LogRecord
-    Metric(OtelMetric), // OpenTelemetry Metric (Sum, Gauge, Histogram, ExponentialHistogram, Summary)
+    Metric(OtelMetric), // OpenTelemetry Metric (Sum, Gauge, Histogram, ExponentialHistogram, Summary†)
     Trace(OtelSpan),    // OpenTelemetry Span
 }
+// † Summary is a legacy OTLP type — passthrough only, never produced by Sol sources.
+//   New data uses Histogram or ExponentialHistogram. See D45.
 ```
 
 All legacy core types (`LogEvent`, `Metric`, `TraceEvent`, `MetricValue`, `MetricData`, `NativeSerializer`, DD sinks) are deleted from core. The original `event.proto`/`vector.proto` is retained as a source-scoped adapter for backward compatibility with the original Vector. 2,170 tests pass.
@@ -36,7 +38,7 @@ vector vrl-migrate --config /etc/vector/vector.toml
 - `.source_type` → `%vector.source_type`
 - `.host` → `%<source_name>.hostname`
 - `.tags."key"` → `.attributes."key"` (metric VRL)
-- `.kind` → `.attributes."vector.metric_kind"`
+- `.kind` → read-only, derived from OTLP proto (`aggregation_temporality` for Sum/Histogram, `kind_override` struct field for Gauge/Set)
 - Log namespace-aware paths for all sources
 
 **What needs manual review (~9%):**
@@ -121,65 +123,67 @@ This is rarely needed since Strategy 2 provides direct native protocol compatibi
 
 ### Deviations from OTel Spec (core types)
 
-| Deviation | Where | Fidelity concern | Action |
+| Deviation | Where | Fidelity concern | Status |
 |-----------|-------|------------------|--------|
-| `vector.set_values` attribute | OtelMetric (Gauge) | Non-standard. Downstream sees valid Gauge. **Low risk.** | Keep — OTLP has no Set type |
-| `vector.metric_type` attribute | OtelMetric | Informational marker. Downstream ignores it. **Harmless.** | Keep |
-| `vector.metric_kind=incremental` on Gauge | OtelMetric | Semantically incorrect per OTel (Gauge has no temporality). **Medium risk.** | Phase E — replace with stateful gauge accumulation |
-| `vector.statistic` attribute | OtelMetric | Distinguishes histogram vs summary distributions. Sinks (prometheus, statsd, influxdb) actively read it. | Keep — functional, no OTel-native alternative |
 | `OtelAttributes` (BTreeMap) | All events | Lossless conversion at proto boundaries. **No fidelity loss.** | Keep |
 | `EventMetadata` sidecar | All events | Pipeline infrastructure, never in OTLP output. **Correct.** | Keep |
+| `set_values: Option<BTreeSet<String>>` field | OtelMetric | Pipeline-internal state for set merge. Never serialized to OTLP proto. Downstream sees clean Gauge(cardinality). | Keep |
+| `kind_override: Option<MetricKind>` field | OtelMetric | Pipeline-internal state for Gauge delta. Never serialized to OTLP proto. | Keep |
+| Summary passthrough | OtelMetric | Legacy OTLP type. Received from Prometheus clients and legacy Vector sources; never produced by Sol. | Passthrough only (D45) |
 
-**Verdict (core types):** Acceptable. `vector.*` attributes only appear when non-OTel sources create metrics. OTLP passthrough paths never inject them.
+**Verdict (core types):** Pure OTLP. Zero `vector.*` attributes exist in the codebase. The two struct fields (`set_values`, `kind_override`) are pipeline-internal and never appear in OTLP output.
 
 ### Source-Side OTLP Gaps
 
 Audit of all metric-producing sources against otelcontribcol behavior. The `opentelemetry` source is a pass-through with zero divergence and is excluded.
 
-| Gap | Affected Sources | otelcontribcol Behavior | Sol Behavior | Impact |
-|-----|-----------------|------------------------|--------------|--------|
-| **No Resource attributes** | All except `datadog_agent` | Sets `service.name`, `host.name` (datadogreceiver); empty (statsdreceiver) | `resource` field is `None` | Backends can't group by service — everything lands under "unknown" |
-| **No InstrumentationScope** | All except `opentelemetry` | Sets `scope.name` = receiver package, `scope.version` = build version | `scope` field is `None` | Backends can't identify which pipeline/receiver produced the metric |
-| **No `unit` field** | All except `opentelemetry` | Configurable per metric type (e.g., `ms`, `s`, `By`) | `unit` is always `""` | Backends can't auto-label axes or detect unit conflicts |
-| **No timestamps (StatsD)** | `statsd` | Sets `time_unix_nano` + `start_time_unix_nano` on every data point | `time_unix_nano=0`, `start_time_unix_nano=0` | Delta temporality rate computation impossible without time window |
-| **No `start_time_unix_nano`** | All except `datadog_agent` | Sets start time for Delta metrics (flush interval start) | Not set | Backends guess the aggregation window |
-| **StatsD: Histogram as `explicit_bounds` per sample** | `statsd` | ExponentialHistogram (auto-scaling, ~160 buckets) with pre-aggregation | `Histogram` with one `explicit_bound` per sample value | Unbounded bucket explosion — 1000 samples/sec = 1000 boundaries. **Note**: spec says both Histogram and ExponentialHistogram are equally valid. Sol could use Histogram with pre-defined bounds (better Prometheus compatibility) — see D36. |
-| **StatsD: no flush-interval aggregation** | `statsd` | Aggregates within configurable flush interval (default 60s) | Emits one OTLP data point per UDP packet | Spec says per-observation emission is technically valid but "infeasible due to the sheer volume." Aggregation is practically required. |
-| **StatsD: `is_monotonic=true`** | `statsd` | `false` by default (StatsD counters can be negative) | `true` hardcoded | Violates OTLP spec if counter receives negative delta |
-| **StatsD: gauge delta via custom attribute** | `statsd` | Stateful accumulation: deltas added to running value, emits absolute Gauge | Emits Gauge with `vector.metric_kind=incremental` attribute | **Spec violation**: "A Gauge does not support different aggregation temporalities." Delta Gauge does not exist in OTLP. Correct alternatives: stateful accumulation → absolute Gauge, or non-monotonic Sum with Delta temporality — see D38. |
-| **StatsD: bare tag `AnyValue { value: None }`** | `statsd` | Empty string `""` when `enableSimpleTags=true` | `AnyValue { value: None }` | **Spec allows this**: "It is valid for all values to be unspecified." However, some backends may not handle it well — see D39. |
-| **StatsD: sample rate as bucket count** | `statsd` | Weight-based histogram insertion | `1/sample_rate` cast to `u32` as bucket count | Semantically different histogram structure |
-| **StatsD: metric name sanitization** | `statsd` | No sanitization — names pass through as-is | `/`→`-`, whitespace→`_`, strips non-alphanumeric | Different metric names for same StatsD input |
-| **StatsD: no DogStatsD container ID extraction** | `statsd` | `c:containerID` → `container.id` data point attribute | Parsed as regular tag `c=containerID` | Loses container identity semantic |
+| Gap | Affected Sources | Status |
+|-----|-----------------|--------|
+| **No Resource attributes** | — | ✅ Fixed (E3) — `service.name=sol/<source_type>`, `host.name` auto-detected, configurable |
+| **No InstrumentationScope** | — | ✅ Fixed (E3) — `name=sol/<source_type>` |
+| **No `unit` field** | — | ✅ Fixed (E6) — UCUM strings: `By`, `s`, `1`, etc. |
+| **No timestamps (StatsD)** | — | ✅ Fixed (E4) — `time_unix_nano` + `start_time_unix_nano` set on every data point |
+| **StatsD: Histogram per sample** | — | ✅ Fixed (E4) — ExponentialHistogram with flush-interval aggregation |
+| **StatsD: no flush-interval aggregation** | — | ✅ Fixed (E4) — configurable `aggregation_interval_secs` (default 10s) |
+| **StatsD: `is_monotonic=true`** | — | ✅ Fixed (D37) — configurable, default `false` |
+| **StatsD: gauge delta via attribute** | — | ✅ Fixed (D38+D53) — stateful accumulation, emits absolute Gauge. `kind_override` struct field (not attribute) |
+| **StatsD: bare tag `AnyValue { value: None }`** | — | ✅ Fixed (D39) — `AnyValue { value: Some(StringValue("")) }` |
+| **StatsD: DogStatsD container ID** | — | ✅ Fixed (E4) — `c:abc123` → `container.id` attribute |
+| **StatsD: metric name sanitization** | `statsd` | Kept as-is — sanitization is a feature, not a divergence |
+| **StatsD: sample rate as bucket count** | `statsd` | Minor — ExponentialHistogram uses weight-based insertion |
 
 ### Sink-Side OTLP Gaps
 
 Audit of all metric-consuming sinks. The `opentelemetry` sink (gRPC + HTTP) has full OTLP fidelity and is excluded.
 
-| Gap | Affected Sinks | Impact |
+| Gap | Affected Sinks | Status |
 |-----|---------------|--------|
-| **ExponentialHistogram silently dropped** | prometheus (exporter + remote_write), influxdb, cloudwatch, greptimedb | Metrics lost with no error — silent data loss |
-| **ExponentialHistogram → error** | statsd, splunk_hec, sematext | At least surfaces the problem, but metrics still lost |
-| **No temporality awareness** | All non-OTLP sinks | Delta counter → Prometheus = double-counting; Cumulative → InfluxDB = overcounting |
-| **Resource/Scope ignored** | All non-OTLP sinks | `host.name`, `service.name` from Resource never become labels/tags/dimensions |
-| **`unit` field ignored** | All non-OTLP sinks | No axis labeling, no unit conversion |
-| **Limited metric type support** | splunk_hec (Sum+Gauge only), sematext (Sum+Gauge only) | Most metric types silently dropped |
-| **`vector.*` attributes fragile coupling** | prometheus, influxdb, statsd (read `vector.statistic`) | Invisible contract — rename breaks 3 sinks silently |
+| **ExponentialHistogram silently dropped** | — | ✅ Fixed — Prometheus (explicit bucket conversion), InfluxDB (count/sum/min/max/avg), GreptimeDB (count/sum/min/max), CloudWatch (StatisticSet) |
+| **No temporality awareness** | — | ✅ Fixed (E2) — per-sink normalizers respect `aggregation_temporality` |
+| **Resource/Scope ignored** | — | ✅ Fixed (E7) — `resource_to_labels`/`resource_to_tags` config on Prometheus, InfluxDB, StatsD |
+| **`vector.*` attributes fragile coupling** | — | ✅ Fixed (E8+E9+D53) — zero `vector.*` attributes in codebase |
+| **`unit` field ignored** | All non-OTLP sinks | Remaining — non-OTLP sinks don't propagate `unit`. Low priority (unit is informational). |
+| **Limited metric type support** | splunk_hec (Sum+Gauge only), sematext (Sum+Gauge only) | Remaining — these sinks error on Histogram, Summary, ExponentialHistogram, Set |
 
 ### Sink Metric Type Support Matrix
 
-| Sink | Sum | Gauge | Histogram | ExponentialHist | Summary | Distribution | Set |
-|------|:---:|:-----:|:---------:|:---------------:|:-------:|:------------:|:---:|
-| **OTLP (gRPC+HTTP)** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Prometheus** | ✅ | ✅ | ✅ | ❌ drop | ✅ | ✅ | ✅ |
-| **InfluxDB** | ✅ | ✅ | ✅ | ❌ empty | ✅ | ✅ | ✅ |
-| **GreptimeDB** | ✅ | ✅ | ✅ | ❌ drop | ✅ | ✅ | ✅ |
-| **CloudWatch** | ✅ | ✅ | ❌ drop | ❌ drop | ❌ drop | ✅ | ✅ |
-| **StatsD** | ✅ | ✅ | ❌ error | ❌ error | ❌ error | ✅ | ✅ |
-| **Splunk HEC** | ✅ | ✅ | ❌ error | ❌ error | ❌ error | ❌ error | ❌ error |
-| **Sematext** | ✅ | ✅ | ❌ error | ❌ error | ❌ error | ❌ error | ❌ error |
-| **Humio** | ✅* | ✅* | ✅* | ✅* | ✅* | ✅* | ✅* |
+Summary is a **legacy OTLP type** — the spec says "not recommended for new applications." Sol never produces Summary; it only passes through Summary data received from Prometheus client libraries or legacy Vector sources. Sinks that support Summary do so for this passthrough case only.
 
+Distribution is **deleted** — `MetricView::Distribution` no longer exists. All former Distribution data is now Histogram or ExponentialHistogram.
+
+| Sink | Sum | Gauge | Histogram | ExpHist | Summary† | Set |
+|------|:---:|:-----:|:---------:|:-------:|:--------:|:---:|
+| **OTLP (gRPC+HTTP)** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Prometheus** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **InfluxDB** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **GreptimeDB** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **CloudWatch** | ✅ | ✅ | ✅ | ✅ | ❌ drop | ✅ |
+| **StatsD** | ✅ | ✅ | ✅ | ❌ error | ❌ error | ✅ |
+| **Splunk HEC** | ✅ | ✅ | ❌ error | ❌ error | ❌ error | ❌ error |
+| **Sematext** | ✅ | ✅ | ❌ error | ❌ error | ❌ error | ❌ error |
+| **Humio** | ✅* | ✅* | ✅* | ✅* | ✅* | ✅* |
+
+† Summary is legacy OTLP — passthrough only, never produced by Sol.
 *Humio converts all metrics to logs via MetricToLog — technically supports all types but loses metric semantics.
 
 ---
@@ -230,7 +234,7 @@ All decisions locked. Autopilot proceeds without stopping.
 | D25 | Transformer `only_fields`/`except_fields` paths become OTLP-aware | **Yes** — `body`, `attributes.X`, `resource.X`. Breaking change, documented |
 | D26 | `vrl-migrate` tool | **Already built** — `src/vrl_migrate/`, 3-pass rewriter. No new phase needed |
 | D27 | Performance gate verified via `cargo bench` | **Yes** — `cargo bench --features remap-benches --bench remap` (VRL), `--features statistic-benches --bench distribution_statistic`. Run before/after Phase B |
-| D28 | A6 metric conversion: Counter→Sum, Gauge→Gauge, Set→Gauge+attr, Distribution(H)→Histogram, Distribution(S)→Summary, AggHistogram→Histogram, AggSummary→Summary, Sketch→ExponentialHistogram. Incremental→DELTA, Absolute→CUMULATIVE | **Yes** |
+| D28 | A6 metric conversion: Counter→Sum, Gauge→Gauge, Set→Gauge+set_values field, Distribution→Histogram (via `new_histogram_from_samples`), AggHistogram→Histogram, AggSummary→Summary†, Sketch→ExponentialHistogram. Incremental→DELTA, Absolute→CUMULATIVE. †Summary is legacy OTLP passthrough. | **Yes** |
 | D29 | A6 log conversion: `Log.value`→body, `Log.fields`→attributes, `message` key promoted to body if value absent | **Yes** |
 | D30 | A6 trace conversion: best-effort extraction of trace_id/span_id/name/start_time/end_time from fields, rest→span attributes | **Yes** |
 | D31 | A6 `interval_ms` → compute `startTimeUnixNano = timeUnixNano - interval_ms × 1_000_000` | **Yes** |
@@ -249,12 +253,12 @@ All decisions locked. Autopilot proceeds without stopping. Reference: OTLP spec 
 | D37 | StatsD `is_monotonic` default | **(c)** Configurable, default `false` — spec-safe; users can opt into `true` for proper Prometheus rate calculation |
 | D38 | StatsD gauge delta handling | **(a')** Stateful accumulation persisting across flushes with TTL. Default TTL=5min, configurable. On expiry: stop emitting (no goodbye metric). **Sol advantage over otelcontribcol**: gauge state survives flush intervals |
 | D39 | StatsD bare tag representation | **(b)** `AnyValue { value: Some(StringValue("")) }` — Prometheus/Mimir/Datadog/ES all drop `None` values. Pragmatic choice for backend reach |
-| D40 | `vector.*` custom attributes | **(c)** Eliminate ALL — D36+D38+D45 make them dead code. `Distribution` variant eliminated, sinks branch on `MetricView::Histogram` vs `MetricView::Summary` proto types directly. Zero custom extensions = pure OTLP output |
+| D40 | `vector.*` custom attributes | **(c) — DONE** Eliminate ALL. `Distribution` variant deleted, `vector.*` attributes replaced by struct fields (`set_values`, `kind_override`). Sinks branch on `MetricView` proto types directly. Zero custom extensions = pure OTLP output |
 | D41 | OTLP `unit` field | **(a)** Yes, UCUM strings — `By` (bytes), `s` (seconds), `{connections}`, `1` (ratios) |
 | D42 | Sink Resource→labels propagation | **(b)** Configurable. Default: promote `service.name` + `host.name` to labels. Config: `resource_to_labels = ["service.name", "host.name"]` |
 | D43 | Ordering | **(a)** Sinks first (E1-E2), then sources (E3-E6), then cleanup (E7-E9) — prevents silent data loss |
 | D44 | Sink scope | **(b)** Tier 1 first: prometheus + influxdb + statsd. Tier 2 (cloudwatch + greptimedb) follows |
-| D45 | Summary production | **(b)** All distribution-like types → Histogram for new data. OTLP/Prometheus passthrough Summary preserved. Spec: "not recommended for new applications" |
+| D45 | Summary production | **(b)** All distribution-like types → Histogram/ExponentialHistogram for new data. OTLP/Prometheus passthrough Summary preserved. Summary is **legacy OTLP** — spec: "not recommended for new applications." Sol never produces Summary. |
 
 ### otelcontribcol StatsD Receiver — Reference Implementation Analysis
 
@@ -314,7 +318,7 @@ Research of `opentelemetry-collector-contrib/receiver/statsdreceiver/` and `ligh
 | D49 | Per-source-address aggregation vs global | **(a)** Global **(b)** Per-source-address | **(a)** | StatsD is typically many app instances → one agent. Global aggregation = fewer series, matches how users think about metrics. Per-address would produce N copies of the same metric name for N pods. If users need source identity, they should add a tag (`host:X`). otelcontribcol's per-address design is an artifact of its multi-tenant collector model, not a StatsD best practice. **Document in source config:** "Metrics are aggregated globally across all senders. To distinguish sources, add a host or instance tag to your StatsD packets." |
 | D50 | `observer_type` config for timers | **(a)** Always ExponentialHistogram **(b)** Configurable (histogram/disabled, no summary) | **(a)** | D45 already locked: no Summary for new data. Disabled mode = silent data loss, the opposite of Sol's promise. Users who don't want timer data should filter in a transform. One fewer config knob = simpler UX. |
 | D51 | `log_to_metric` transform histogram type | **(a)** ExponentialHistogram (same engine as StatsD) **(b)** Explicit-bounds Histogram (one bound per sample, current behavior) | **(a)** | log_to_metric emits individual observations (1 sample per log line), then the `aggregate` transform merges them. ExponentialHistogram merge is lossless and bounded (MaxSize=160). Current explicit-bounds-per-sample approach has unbounded bucket growth — same problem as StatsD. Reusing the ExpHist engine is consistent and correct. |
-| D52 | `vector` source converter migration | **(a)** Keep `new_distribution_from_samples` (backward-compat adapter) **(b)** Migrate to proper Histogram/Summary | **(a)** | The vector source is a legacy adapter for old Vector instances. It must faithfully represent what the sender intended. Legacy Distributions with `statistic=summary` must remain Summary; `statistic=histogram` must remain Histogram. The constructors can be renamed/refactored in E8, but the conversion logic stays. This is the one place where `vector.statistic` remains meaningful until all upstream Vectors are retired. |
+| D52 | `vector` source converter migration | **(a)** Keep `new_distribution_from_samples` (backward-compat adapter) **(b)** Migrate to proper Histogram/Summary | **(b) — implemented** | Legacy Distributions now become Histogram via `new_histogram_from_samples()` (E9-4). Legacy AggregatedSummary passthrough → `new_summary()`. No `vector.statistic` or `vector.*` attributes anywhere. |
 | D53 | Set merge without `vector.set_values` | **(a)** Keep `vector.set_values` as exception **(b)** Dedicated `BTreeSet<String>` field on OtelMetric **(c)** Drop set merge, Gauge(cardinality) at source | **(b)** | `vector.set_values` leaks into OTLP output if exported via the opentelemetry sink — backends see a non-standard array attribute. A dedicated `set_values: Option<BTreeSet<String>>` field on OtelMetric (like `resource_attrs`) keeps merge capability without polluting attributes. `BTreeSet` deduplicates by construction — repeated values (`user123` hitting 1M times) cost O(1) per duplicate insert, no memory growth. The field is only read by the aggregate transform's merge logic and never serialized to OTLP proto. Gauge value = `set_values.len()` recomputed on read. |
 
 ### Phase E Implementation Details — LOCKED
@@ -358,10 +362,10 @@ Run `cargo test -p vector -p vector-core -p codecs -p vector-vrl-metrics` after 
 - Delete `MetricTags` re-export from `event/mod.rs`
 - Delete `MetricTags` Arbitrary impl from `event/metric/arbitrary.rs`
 
-**A2. Keep `vector.statistic` attribute** ✅ DONE
-- `vector.statistic` is functional (not residual): sinks (prometheus, statsd, influxdb) actively read it via `distribution_statistic()` to distinguish histogram vs summary
-- No OTel-native alternative exists — both map to `Histogram` in the proto
-- Decision table updated: attribute is kept alongside `vector.metric_type`
+**A2. ~~Keep `vector.statistic` attribute~~** → ELIMINATED (E8+E9)
+- Originally kept because sinks read `distribution_statistic()` to distinguish histogram vs summary
+- E8-E9 eliminated `MetricView::Distribution` entirely — sinks now branch on `MetricView::Histogram` vs `MetricView::Summary` proto types directly
+- `vector.statistic`, `VECTOR_STATISTIC` constant, and `distribution_statistic()` method are all deleted
 
 **A3. Split `otel_event.rs` (7,213 lines)** ✅ DONE
 - Extracted `OtelAttributes` → `otel_attributes.rs` (422 lines)
@@ -422,7 +426,7 @@ All `to_value_canonical()` call sites migrated to `as_map()`:
 | Tests passing | ≥ 2,170 | `cargo test -p vector -p vector-core -p codecs -p vector-vrl-metrics` |
 | `to_value_canonical()` call sites | 0 | `grep -rn to_value_canonical lib/ src/` |
 | `MetricTags` references | 0 | `grep -rn MetricTags lib/ src/` |
-| `vector.statistic` attribute | kept | Functional — used by prometheus/statsd/influxdb sinks |
+| `vector.statistic` attribute | 0 | ✅ Eliminated (E8+E9) — sinks branch on `MetricView` proto types |
 | `metric_tags!` macro references | 0 | `grep -rn 'metric_tags!' lib/ src/` |
 | VRL remap regression | ≤ 5% | `cargo bench --features remap-benches --bench remap` |
 | VRL complex path regression | < 20% (was 100-200%) | Same bench, complex path scenarios |
@@ -658,9 +662,10 @@ Add a dedicated `kind_override` field to `OtelMetric` for Gauge/Summary types th
 1. **OTLP/OTel is the only core protocol.** No vendor types in core.
 2. **Two-format rule.** OTLP/proto or OTLP/JSON only. No flat canonical format.
 3. **Vendor logic in adapters only.** Core never depends on adapters.
-4. **`vector.*` attributes are acceptable.** They encode Vector concepts OTLP lacks. Never injected on passthrough paths.
-5. **Features preserved.** Tail sampling, load balancing, span_metrics, aggregate — all OTel-native.
-6. **Original Vector protocol supported at source boundary.** The `vector` source speaks only the original native gRPC protocol (`event.proto`/`vector.proto`) for backward compatibility. OTLP ingestion is handled by the `opentelemetry` source. The native proto definitions live in the source scope — adapter code, not core types.
+4. **Zero `vector.*` attributes.** Pipeline-internal state (set values, gauge delta kind) lives in dedicated struct fields on `OtelMetric`, never in OTLP attributes. OTLP output is pure — no custom extensions.
+5. **Summary is legacy passthrough.** The OTLP spec says "not recommended for new applications." Sol never produces Summary — all new histogram-like data uses Histogram or ExponentialHistogram. Summary data received from Prometheus clients or legacy Vector sources passes through unchanged.
+6. **Features preserved.** Tail sampling, load balancing, span_metrics, aggregate — all OTel-native.
+7. **Original Vector protocol supported at source boundary.** The `vector` source speaks only the original native gRPC protocol (`event.proto`/`vector.proto`) for backward compatibility. OTLP ingestion is handled by the `opentelemetry` source. The native proto definitions live in the source scope — adapter code, not core types.
 
 ---
 
@@ -673,10 +678,12 @@ Sources (adapters)              Core (OTel-native)                    Sinks (ada
 ──────────────────────────────  ────────────────────────────────────  ───────────────────────
 opentelemetry (gRPC + HTTP)     OtelLog  (LogRecord)                  opentelemetry (gRPC+HTTP)
 datadog_agent ──────────────►   OtelMetric (Sum/Gauge/Histogram/  ──► prometheus, influxdb
-vector (native gRPC) ─────►     ExponentialHistogram/Summary)   ──► kafka, loki, ES, …
+vector (native gRPC) ─────►     ExponentialHistogram/Summary†)  ──► kafka, loki, ES, …
 kafka, syslog, … ──────────►   OtelSpan (Span)
                                 OtelAttributes (BTreeMap wrapper)
                                 Disk buffer: otlp_buffer.proto
+
+† Summary is legacy OTLP — passthrough only, never produced by Sol sources.
 ```
 
 ### What Sol changes from the original Vector

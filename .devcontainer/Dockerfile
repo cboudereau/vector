@@ -1,6 +1,6 @@
 FROM rust:1.92-bookworm
 
-# System dependencies for Vector (from docs/DEV_ENVIRONMENT.md)
+# System dependencies for Sol (from docs/DEV_ENVIRONMENT.md)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     autoconf \
     automake \

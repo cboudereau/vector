@@ -112,6 +112,17 @@ Per MPL-2.0 best practices, add a clear attribution line:
 
 Keep the existing LICENSE file (MPL-2.0) and all copyright headers intact.
 
+### <a id="fr13"></a>FR13 — Update project documentation and metadata
+
+All top-level project documents must reflect the Sol identity:
+- **Cargo.toml**: authors, homepage, description (remove Datadog signing keys dep)
+- **README.md**: replace Vector marketing copy with Sol project description, keep upstream attribution
+- **NOTICE**: add Sol copyright, preserve original Datadog/Vector copyright
+- **SECURITY.md**: replace Datadog-specific security policy (email, issue URLs) with Sol's own
+- **PRIVACY.md**: replace Vector privacy policy with Sol's data handling stance (no sensitive data: GDPR, PCI-DSS, etc.)
+- **CONTRIBUTING.md**: replace Vector team workflow with Sol contributing guide
+- **RELEASES.md / VERSIONING.md**: simplify, remove Vector-specific content
+
 ## Non-Functional Requirements
 
 ### <a id="nfr1"></a>NFR1 — Build must pass after rename

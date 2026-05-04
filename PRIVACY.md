@@ -1,56 +1,29 @@
 # Privacy Policy
 
-It should go without saying, but Vector takes the privacy of your data,
-including how you use Vector, very seriously. Vector collects and routes some
-of your most sensitive data, and therefore, Vector strives to be as transparent
-as possible with our privacy efforts. This document clarifies how the Vector
-project thinks about privacy now and in the future.
+Sol is a data pipeline that processes observability data (logs, metrics, traces)
+on infrastructure you control. Sol does not phone home, collect telemetry, or
+communicate with any external service that you have not explicitly configured.
 
-- [Vector Itself](#vector-itself)
-  - [Downloads](#downloads)
-  - [Phoning Home](#phoning-home)
-- [Vector Website & Docs](#vector-website--docs)
-- [Vector Community](#vector-community)
-  - [Vector Repository](#vector-repository)
-  - [Vector Chat](#vector-chat)
+## Sensitive data
 
-## Vector Itself
+Sol is designed to transport **observability data only**. You must ensure that
+the data flowing through Sol does not contain sensitive or regulated information,
+including but not limited to:
 
-### Downloads
+- **Personal data** protected under GDPR, CCPA, or equivalent regulations
+  (names, email addresses, IP addresses of end users, etc.)
+- **Payment card data** (PAN, CVV, expiration dates) as defined by PCI-DSS
+- **Authentication secrets** (passwords, tokens, API keys, private keys)
+- **Health records** or other data covered by HIPAA or similar frameworks
 
-Vector uses AWS S3, GitHub assets, and Docker Hub to host release artifacts.
-Vector does track download counts in aggregate. For GitHub, and Docker this data
-is anonymous, but for AWS S3 IP addresses are logged. There is no way to disable
-IP address tracking within the AWS S3 logs. If you are concerned about sharing
-your IP address we recommend using a proxy, or downloading Vector from
-a different channel.
+If sensitive data may be present in your telemetry streams, you are responsible
+for redacting or masking it before it reaches Sol, or by using Sol's built-in
+transforms (e.g. `remap` with VRL) to strip it in-flight.
 
-### Phoning Home
+Sol provides no encryption-at-rest for its disk buffers. Protect the host
+accordingly if buffered data could contain anything sensitive.
 
-Vector will not "phone home" or communicate with an external service that you
-did not explicitly configure. This includes grey-area tactics such as version
-checks, capturing diagnostic information, and sharing crash reports.
+## Downloads
 
-## Vector Website & Docs
-
-The Vector website does collect various analytics. Aggregated analytics data is
-derived from backend server logs which are anonymized.
-
-## Vector Community
-
-### Vector Repository
-
-The Vector repository is hosted on GitHub. You can review their privacy policy
-[here][github_pp]. Additionally, Vector will not attempt to mine information
-about users that interact with Vector on GitHub. Vector team members will
-occasionally reach out to active users offer help debugging or learn about
-ways Vector can improve.
-
-### Vector Chat
-
-The Vector chat uses Discord; you can review their
-privacy policy [here][discord_pp].
-
-[github_pp]: https://help.github.com/en/github/site-policy/github-privacy-statement
-[discord_pp]: https://discord.com/privacy/
-[vero_pp]: https://www.getvero.com/privacy/
+Sol release artifacts are hosted on GitHub. Download counts are tracked in
+aggregate by GitHub; Sol itself does not collect any additional data.

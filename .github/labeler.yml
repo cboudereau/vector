@@ -21,7 +21,7 @@
 
 "domain: core":
   - changed-files:
-    - any-glob-to-any-file: ["lib/vector-core/**/*"]
+    - any-glob-to-any-file: ["lib/sol-core/**/*"]
 
 "domain: vrl":
   - changed-files:

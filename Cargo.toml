@@ -1,10 +1,10 @@
 [package]
 name = "sol"
 version = "0.54.0"
-authors = ["Vector Contributors <vector@datadoghq.com>"]
+authors = ["Clément Boudereau"]
 edition = "2024"
-description = "A lightweight and ultra-fast tool for building observability pipelines"
-homepage = "https://vector.dev"
+description = "Sol — Single Observability Layer. A high-performance observability data pipeline."
+homepage = "https://github.com/cboudereau/sol"
 license = "MPL-2.0"
 readme = "README.md"
 publish = false
@@ -70,7 +70,6 @@ assets = [
 ]
 license-file = ["target/debian-license.txt"]
 extended-description-file = "target/debian-extended-description.txt"
-recommends = "datadog-signing-keys (>= 1:1.4.0)"
 
 [package.metadata.deb.systemd-units]
 unit-scripts = "distribution/systemd/"

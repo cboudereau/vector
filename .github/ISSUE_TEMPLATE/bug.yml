@@ -33,7 +33,7 @@ body:
   attributes:
     label: Configuration
     description: |
-      Paste the relevant parts of your Vector configuration file.
+      Paste the relevant parts of your Sol configuration file.
 
       !! If your config files contain sensitive information please remove it !!
     render: text
@@ -43,9 +43,9 @@ body:
   attributes:
     label: Version
     description: |
-      Please paste the output of running `vector --version`.
+      Please paste the output of running `sol --version`.
 
-      If you are not running the latest version of Vector, please try upgrading
+      If you are not running the latest version of Sol, please try upgrading
       because your issue may have already been fixed.
   validations:
     required: true
@@ -55,10 +55,10 @@ body:
   attributes:
     label: Debug Output
     description: |
-      Full debug output can be obtained by running Vector with the following:
+      Full debug output can be obtained by running Sol with the following:
 
       ```
-      RUST_BACKTRACE=full vector -vvv <rest of commands>
+      RUST_BACKTRACE=full sol -vvv <rest of commands>
       ```
 
       If the debug output is long, please create a GitHub Gist containing the debug output and paste the link here.
@@ -83,7 +83,7 @@ body:
     label: Additional Context
     description: |
       Is there anything atypical about your situation that we should know? For
-      example: is Vector running in Kubernetes? Are you passing any unusual command
+      example: is Sol running in Kubernetes? Are you passing any unusual command
       line options or environment variables to opt-in to non-default behavior?
 
 - type: textarea

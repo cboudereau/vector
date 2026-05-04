@@ -15,8 +15,8 @@ body:
   - type: textarea
     id: config
     attributes:
-      label: Vector Config
-      description: Your Vector configuration (please redact sensitive data)
+      label: Sol Config
+      description: Your Sol configuration (please redact sensitive data)
       placeholder: |
         ```yaml
         # your config
@@ -25,9 +25,9 @@ body:
   - type: textarea
     id: logs
     attributes:
-      label: Vector Logs
-      description: Paste any relevant Vector logs or error messages.
+      label: Sol Logs
+      description: Paste any relevant Sol logs or error messages.
       placeholder: |
         ```sh
-        Jul 10 14:32:02 vector[1234]: ERROR ...
+        Jul 10 14:32:02 sol[1234]: ERROR ...
         ```

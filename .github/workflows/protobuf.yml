@@ -7,7 +7,7 @@ on:
   pull_request:
     paths:
         - "proto/**"
-        - "lib/vector-core/proto/**"
+        - "lib/sol-core/proto/**"
   merge_group:
     types: [checks_requested]
 

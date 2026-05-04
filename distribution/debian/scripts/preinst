@@ -1,15 +1,15 @@
 #!/bin/sh
 set -e
 
-# Add vector:vector user & group
-id --user vector >/dev/null 2>&1 || \
-  useradd --system --shell /sbin/nologin --home-dir /var/lib/vector --user-group \
-    --comment "Vector observability data router" vector
+# Add sol:sol user & group
+id --user sol >/dev/null 2>&1 || \
+  useradd --system --shell /sbin/nologin --home-dir /var/lib/sol --user-group \
+    --comment "Sol observability data router" sol
 
-# Create default Vector data directory
-mkdir -p /var/lib/vector
+# Create default Sol data directory
+mkdir -p /var/lib/sol
 
-# Make vector:vector the owner of the Vector data directory
-chown -R vector:vector /var/lib/vector
+# Make sol:sol the owner of the Sol data directory
+chown -R sol:sol /var/lib/sol
 
 #DEBHELPER#

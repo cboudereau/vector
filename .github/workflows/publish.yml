@@ -32,11 +32,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
-      vector_version: ${{ steps.generate-publish-metadata.outputs.vector_version }}
-      vector_build_desc: ${{ steps.generate-publish-metadata.outputs.vector_build_desc }}
-      vector_release_channel: ${{ steps.generate-publish-metadata.outputs.vector_release_channel }}
+      sol_version: ${{ steps.generate-publish-metadata.outputs.sol_version }}
+      sol_build_desc: ${{ steps.generate-publish-metadata.outputs.sol_build_desc }}
+      sol_release_channel: ${{ steps.generate-publish-metadata.outputs.sol_release_channel }}
     steps:
-      - name: Checkout Vector
+      - name: Checkout Sol
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ inputs.git_ref }}
@@ -45,16 +45,16 @@ jobs:
         run: make ci-generate-publish-metadata
 
   build-x86_64-unknown-linux-musl-packages:
-    name: Build Vector for x86_64-unknown-linux-musl (.tar.gz)
+    name: Build Sol for x86_64-unknown-linux-musl (.tar.gz)
     runs-on: release-builder-linux
     timeout-minutes: 60
     needs: generate-publish-metadata
     env:
-      VECTOR_VERSION: ${{ needs.generate-publish-metadata.outputs.vector_version }}
-      VECTOR_BUILD_DESC: ${{ needs.generate-publish-metadata.outputs.vector_build_desc }}
-      CHANNEL: ${{ needs.generate-publish-metadata.outputs.vector_release_channel }}
+      SOL_VERSION: ${{ needs.generate-publish-metadata.outputs.sol_version }}
+      SOL_BUILD_DESC: ${{ needs.generate-publish-metadata.outputs.sol_build_desc }}
+      CHANNEL: ${{ needs.generate-publish-metadata.outputs.sol_release_channel }}
     steps:
-      - name: Checkout Vector
+      - name: Checkout Sol
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ inputs.git_ref }}
@@ -62,25 +62,25 @@ jobs:
         run: sudo -E bash scripts/environment/bootstrap-ubuntu-24.04.sh
       - name: Bootstrap runner environment (generic)
         run: bash scripts/environment/prepare.sh --modules=rustup,cross
-      - name: Build Vector
+      - name: Build Sol
         run: make package-x86_64-unknown-linux-musl-all
       - name: Stage package artifacts for publish
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-x86_64-unknown-linux-musl
-          path: target/artifacts/vector*
+          name: sol-${{ env.SOL_VERSION }}-x86_64-unknown-linux-musl
+          path: target/artifacts/sol*
 
   build-x86_64-unknown-linux-gnu-packages:
-    name: Build Vector for x86_64-unknown-linux-gnu (.tar.gz, DEB, RPM)
+    name: Build Sol for x86_64-unknown-linux-gnu (.tar.gz, DEB, RPM)
     runs-on: release-builder-linux
     timeout-minutes: 60
     needs: generate-publish-metadata
     env:
-      VECTOR_VERSION: ${{ needs.generate-publish-metadata.outputs.vector_version }}
-      VECTOR_BUILD_DESC: ${{ needs.generate-publish-metadata.outputs.vector_build_desc }}
-      CHANNEL: ${{ needs.generate-publish-metadata.outputs.vector_release_channel }}
+      SOL_VERSION: ${{ needs.generate-publish-metadata.outputs.sol_version }}
+      SOL_BUILD_DESC: ${{ needs.generate-publish-metadata.outputs.sol_build_desc }}
+      CHANNEL: ${{ needs.generate-publish-metadata.outputs.sol_release_channel }}
     steps:
-      - name: Checkout Vector
+      - name: Checkout Sol
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ inputs.git_ref }}
@@ -88,25 +88,25 @@ jobs:
         run: sudo -E bash scripts/environment/bootstrap-ubuntu-24.04.sh
       - name: Bootstrap runner environment (generic)
         run: bash scripts/environment/prepare.sh --modules=rustup,cross
-      - name: Build Vector
+      - name: Build Sol
         run: make package-x86_64-unknown-linux-gnu-all
       - name: Stage package artifacts for publish
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-x86_64-unknown-linux-gnu
-          path: target/artifacts/vector*
+          name: sol-${{ env.SOL_VERSION }}-x86_64-unknown-linux-gnu
+          path: target/artifacts/sol*
 
   build-aarch64-unknown-linux-musl-packages:
-    name: Build Vector for aarch64-unknown-linux-musl (.tar.gz)
+    name: Build Sol for aarch64-unknown-linux-musl (.tar.gz)
     runs-on: release-builder-linux
     timeout-minutes: 60
     needs: generate-publish-metadata
     env:
-      VECTOR_VERSION: ${{ needs.generate-publish-metadata.outputs.vector_version }}
-      VECTOR_BUILD_DESC: ${{ needs.generate-publish-metadata.outputs.vector_build_desc }}
-      CHANNEL: ${{ needs.generate-publish-metadata.outputs.vector_release_channel }}
+      SOL_VERSION: ${{ needs.generate-publish-metadata.outputs.sol_version }}
+      SOL_BUILD_DESC: ${{ needs.generate-publish-metadata.outputs.sol_build_desc }}
+      CHANNEL: ${{ needs.generate-publish-metadata.outputs.sol_release_channel }}
     steps:
-      - name: Checkout Vector
+      - name: Checkout Sol
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ inputs.git_ref }}
@@ -114,27 +114,27 @@ jobs:
         run: sudo -E bash scripts/environment/bootstrap-ubuntu-24.04.sh
       - name: Bootstrap runner environment (generic)
         run: bash scripts/environment/prepare.sh --modules=rustup,cross
-      - name: Build Vector
+      - name: Build Sol
         env:
           DOCKER_PRIVILEGED: "true"
         run: make package-aarch64-unknown-linux-musl-all
       - name: Stage package artifacts for publish
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-aarch64-unknown-linux-musl
-          path: target/artifacts/vector*
+          name: sol-${{ env.SOL_VERSION }}-aarch64-unknown-linux-musl
+          path: target/artifacts/sol*
 
   build-aarch64-unknown-linux-gnu-packages:
-    name: Build Vector for aarch64-unknown-linux-gnu (.tar.gz)
+    name: Build Sol for aarch64-unknown-linux-gnu (.tar.gz)
     runs-on: release-builder-linux
     timeout-minutes: 60
     needs: generate-publish-metadata
     env:
-      VECTOR_VERSION: ${{ needs.generate-publish-metadata.outputs.vector_version }}
-      VECTOR_BUILD_DESC: ${{ needs.generate-publish-metadata.outputs.vector_build_desc }}
-      CHANNEL: ${{ needs.generate-publish-metadata.outputs.vector_release_channel }}
+      SOL_VERSION: ${{ needs.generate-publish-metadata.outputs.sol_version }}
+      SOL_BUILD_DESC: ${{ needs.generate-publish-metadata.outputs.sol_build_desc }}
+      CHANNEL: ${{ needs.generate-publish-metadata.outputs.sol_release_channel }}
     steps:
-      - name: Checkout Vector
+      - name: Checkout Sol
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ inputs.git_ref }}
@@ -142,27 +142,27 @@ jobs:
         run: sudo -E bash scripts/environment/bootstrap-ubuntu-24.04.sh
       - name: Bootstrap runner environment (generic)
         run: bash scripts/environment/prepare.sh --modules=rustup,cross
-      - name: Build Vector
+      - name: Build Sol
         env:
           DOCKER_PRIVILEGED: "true"
         run: make package-aarch64-unknown-linux-gnu-all
       - name: Stage package artifacts for publish
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-aarch64-unknown-linux-gnu
-          path: target/artifacts/vector*
+          name: sol-${{ env.SOL_VERSION }}-aarch64-unknown-linux-gnu
+          path: target/artifacts/sol*
 
   build-armv7-unknown-linux-gnueabihf-packages:
-    name: Build Vector for armv7-unknown-linux-gnueabihf (.tar.gz)
+    name: Build Sol for armv7-unknown-linux-gnueabihf (.tar.gz)
     runs-on: release-builder-linux
     timeout-minutes: 60
     needs: generate-publish-metadata
     env:
-      VECTOR_VERSION: ${{ needs.generate-publish-metadata.outputs.vector_version }}
-      VECTOR_BUILD_DESC: ${{ needs.generate-publish-metadata.outputs.vector_build_desc }}
-      CHANNEL: ${{ needs.generate-publish-metadata.outputs.vector_release_channel }}
+      SOL_VERSION: ${{ needs.generate-publish-metadata.outputs.sol_version }}
+      SOL_BUILD_DESC: ${{ needs.generate-publish-metadata.outputs.sol_build_desc }}
+      CHANNEL: ${{ needs.generate-publish-metadata.outputs.sol_release_channel }}
     steps:
-      - name: Checkout Vector
+      - name: Checkout Sol
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ inputs.git_ref }}
@@ -170,27 +170,27 @@ jobs:
         run: sudo -E bash scripts/environment/bootstrap-ubuntu-24.04.sh
       - name: Bootstrap runner environment (generic)
         run: bash scripts/environment/prepare.sh --modules=rustup,cross
-      - name: Build Vector
+      - name: Build Sol
         env:
           DOCKER_PRIVILEGED: "true"
         run: make package-armv7-unknown-linux-gnueabihf-all
       - name: Stage package artifacts for publish
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-armv7-unknown-linux-gnueabihf
-          path: target/artifacts/vector*
+          name: sol-${{ env.SOL_VERSION }}-armv7-unknown-linux-gnueabihf
+          path: target/artifacts/sol*
 
   build-armv7-unknown-linux-musleabihf-packages:
-    name: Build Vector for armv7-unknown-linux-musleabihf (.tar.gz)
+    name: Build Sol for armv7-unknown-linux-musleabihf (.tar.gz)
     runs-on: release-builder-linux
     timeout-minutes: 60
     needs: generate-publish-metadata
     env:
-      VECTOR_VERSION: ${{ needs.generate-publish-metadata.outputs.vector_version }}
-      VECTOR_BUILD_DESC: ${{ needs.generate-publish-metadata.outputs.vector_build_desc }}
-      CHANNEL: ${{ needs.generate-publish-metadata.outputs.vector_release_channel }}
+      SOL_VERSION: ${{ needs.generate-publish-metadata.outputs.sol_version }}
+      SOL_BUILD_DESC: ${{ needs.generate-publish-metadata.outputs.sol_build_desc }}
+      CHANNEL: ${{ needs.generate-publish-metadata.outputs.sol_release_channel }}
     steps:
-      - name: Checkout Vector
+      - name: Checkout Sol
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ inputs.git_ref }}
@@ -198,27 +198,27 @@ jobs:
         run: sudo -E bash scripts/environment/bootstrap-ubuntu-24.04.sh
       - name: Bootstrap runner environment (generic)
         run: bash scripts/environment/prepare.sh --modules=rustup,cross
-      - name: Build Vector
+      - name: Build Sol
         env:
           DOCKER_PRIVILEGED: "true"
         run: make package-armv7-unknown-linux-musleabihf
       - name: Stage package artifacts for publish
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-armv7-unknown-linux-musleabihf
-          path: target/artifacts/vector*
+          name: sol-${{ env.SOL_VERSION }}-armv7-unknown-linux-musleabihf
+          path: target/artifacts/sol*
 
   build-arm-unknown-linux-gnueabi-packages:
-    name: Build Vector for arm-unknown-linux-gnueabi (.tar.gz)
+    name: Build Sol for arm-unknown-linux-gnueabi (.tar.gz)
     runs-on: release-builder-linux
     timeout-minutes: 60
     needs: generate-publish-metadata
     env:
-      VECTOR_VERSION: ${{ needs.generate-publish-metadata.outputs.vector_version }}
-      VECTOR_BUILD_DESC: ${{ needs.generate-publish-metadata.outputs.vector_build_desc }}
-      CHANNEL: ${{ needs.generate-publish-metadata.outputs.vector_release_channel }}
+      SOL_VERSION: ${{ needs.generate-publish-metadata.outputs.sol_version }}
+      SOL_BUILD_DESC: ${{ needs.generate-publish-metadata.outputs.sol_build_desc }}
+      CHANNEL: ${{ needs.generate-publish-metadata.outputs.sol_release_channel }}
     steps:
-      - name: Checkout Vector
+      - name: Checkout Sol
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ inputs.git_ref }}
@@ -226,27 +226,27 @@ jobs:
         run: sudo -E bash scripts/environment/bootstrap-ubuntu-24.04.sh
       - name: Bootstrap runner environment (generic)
         run: bash scripts/environment/prepare.sh --modules=rustup,cross
-      - name: Build Vector
+      - name: Build Sol
         env:
           DOCKER_PRIVILEGED: "true"
         run: make package-arm-unknown-linux-gnueabi-all
       - name: Stage package artifacts for publish
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-arm-unknown-linux-gnueabi
-          path: target/artifacts/vector*
+          name: sol-${{ env.SOL_VERSION }}-arm-unknown-linux-gnueabi
+          path: target/artifacts/sol*
 
   build-arm-unknown-linux-musleabi-packages:
-    name: Build Vector for arm-unknown-linux-musleabi (.tar.gz)
+    name: Build Sol for arm-unknown-linux-musleabi (.tar.gz)
     runs-on: release-builder-linux
     timeout-minutes: 60
     needs: generate-publish-metadata
     env:
-      VECTOR_VERSION: ${{ needs.generate-publish-metadata.outputs.vector_version }}
-      VECTOR_BUILD_DESC: ${{ needs.generate-publish-metadata.outputs.vector_build_desc }}
-      CHANNEL: ${{ needs.generate-publish-metadata.outputs.vector_release_channel }}
+      SOL_VERSION: ${{ needs.generate-publish-metadata.outputs.sol_version }}
+      SOL_BUILD_DESC: ${{ needs.generate-publish-metadata.outputs.sol_build_desc }}
+      CHANNEL: ${{ needs.generate-publish-metadata.outputs.sol_release_channel }}
     steps:
-      - name: Checkout Vector
+      - name: Checkout Sol
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ inputs.git_ref }}
@@ -254,25 +254,25 @@ jobs:
         run: sudo -E bash scripts/environment/bootstrap-ubuntu-24.04.sh
       - name: Bootstrap runner environment (generic)
         run: bash scripts/environment/prepare.sh --modules=rustup,cross
-      - name: Build Vector
+      - name: Build Sol
         env:
           DOCKER_PRIVILEGED: "true"
         run: make package-arm-unknown-linux-musleabi
       - name: Stage package artifacts for publish
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-arm-unknown-linux-musleabi
-          path: target/artifacts/vector*
+          name: sol-${{ env.SOL_VERSION }}-arm-unknown-linux-musleabi
+          path: target/artifacts/sol*
 
   build-apple-darwin-packages:
-    name: Build Vector for ${{ matrix.architecture }}-apple-darwin (.tar.gz)
+    name: Build Sol for ${{ matrix.architecture }}-apple-darwin (.tar.gz)
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     needs: generate-publish-metadata
     env:
-      VECTOR_VERSION: ${{ needs.generate-publish-metadata.outputs.vector_version }}
-      VECTOR_BUILD_DESC: ${{ needs.generate-publish-metadata.outputs.vector_build_desc }}
-      CHANNEL: ${{ needs.generate-publish-metadata.outputs.vector_release_channel }}
+      SOL_VERSION: ${{ needs.generate-publish-metadata.outputs.sol_version }}
+      SOL_BUILD_DESC: ${{ needs.generate-publish-metadata.outputs.sol_build_desc }}
+      CHANNEL: ${{ needs.generate-publish-metadata.outputs.sol_release_channel }}
     strategy:
       matrix:
         include:
@@ -289,7 +289,7 @@ jobs:
             echo "Error: Expected ${{ matrix.architecture }} architecture, but got $ARCH!"
             exit 1
           fi
-      - name: Checkout Vector
+      - name: Checkout Sol
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ inputs.git_ref }}
@@ -297,7 +297,7 @@ jobs:
         run: |
           bash scripts/environment/bootstrap-macos.sh
           bash scripts/environment/prepare.sh --modules=rustup
-      - name: Build Vector
+      - name: Build Sol
         env:
           TARGET: "${{ matrix.architecture }}-apple-darwin"
           NATIVE_BUILD: true
@@ -307,23 +307,23 @@ jobs:
       - name: Stage package artifacts for publish
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-${{ matrix.architecture }}-apple-darwin
-          path: target/artifacts/vector*
+          name: sol-${{ env.SOL_VERSION }}-${{ matrix.architecture }}-apple-darwin
+          path: target/artifacts/sol*
 
 
   build-x86_64-pc-windows-msvc-packages:
-    name: Build Vector for x86_64-pc-windows-msvc (.zip)
+    name: Build Sol for x86_64-pc-windows-msvc (.zip)
     runs-on: windows-2025-8core
     timeout-minutes: 90
     needs: generate-publish-metadata
     env:
-      VECTOR_VERSION: ${{ needs.generate-publish-metadata.outputs.vector_version }}
-      VECTOR_BUILD_DESC: ${{ needs.generate-publish-metadata.outputs.vector_build_desc }}
-      CHANNEL: ${{ needs.generate-publish-metadata.outputs.vector_release_channel }}
+      SOL_VERSION: ${{ needs.generate-publish-metadata.outputs.sol_version }}
+      SOL_BUILD_DESC: ${{ needs.generate-publish-metadata.outputs.sol_build_desc }}
+      CHANNEL: ${{ needs.generate-publish-metadata.outputs.sol_release_channel }}
       RUSTFLAGS: "-D warnings -Ctarget-feature=+crt-static"
       RELEASE_BUILDER: "true"
     steps:
-      - name: Checkout Vector
+      - name: Checkout Sol
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ inputs.git_ref }}
@@ -337,7 +337,7 @@ jobs:
           curl -sSfL https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip > wix-binaries.zip
           unzip -o wix-binaries.zip
           rm wix-binaries.zip
-      - name: Build Vector
+      - name: Build Sol
         shell: bash
         run: |
           export FEATURES="default-msvc"
@@ -355,8 +355,8 @@ jobs:
       - name: Stage package artifacts for publish
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-x86_64-pc-windows-msvc
-          path: target/artifacts/vector*
+          name: sol-${{ env.SOL_VERSION }}-x86_64-pc-windows-msvc
+          path: target/artifacts/sol*
 
   deb-verify:
     name: Verify DEB Packages
@@ -366,7 +366,7 @@ jobs:
       - generate-publish-metadata
       - build-x86_64-unknown-linux-gnu-packages
     env:
-      VECTOR_VERSION: ${{ needs.generate-publish-metadata.outputs.vector_version }}
+      SOL_VERSION: ${{ needs.generate-publish-metadata.outputs.sol_version }}
       DD_PKG_VERSION: "latest"
     strategy:
       matrix:
@@ -393,18 +393,18 @@ jobs:
           curl -sSL "https://dd-package-tools.s3.amazonaws.com/dd-pkg/${DD_PKG_VERSION}/dd-pkg_Linux_x86_64.tar.gz" | tar -xz -C /usr/local/bin dd-pkg
       - name: Fix Git safe directories issue when in containers (actions/checkout#760)
         run: git config --global --add safe.directory /__w/vector/vector
-      - name: Checkout Vector
+      - name: Checkout Sol
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ inputs.git_ref }}
       - name: Download staged package artifacts (x86_64-unknown-linux-gnu)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-x86_64-unknown-linux-gnu
+          name: sol-${{ env.SOL_VERSION }}-x86_64-unknown-linux-gnu
           path: target/artifacts
       - name: Verify install of DEB package.
         run: |
-          ./scripts/verify-install.sh target/artifacts/vector_${{ env.VECTOR_VERSION }}-1_amd64.deb
+          ./scripts/verify-install.sh target/artifacts/sol_${{ env.SOL_VERSION }}-1_amd64.deb
 
   rpm-verify:
     name: Verify RPM Packages
@@ -414,7 +414,7 @@ jobs:
       - generate-publish-metadata
       - build-x86_64-unknown-linux-gnu-packages
     env:
-      VECTOR_VERSION: ${{ needs.generate-publish-metadata.outputs.vector_version }}
+      SOL_VERSION: ${{ needs.generate-publish-metadata.outputs.sol_version }}
       DD_PKG_VERSION: "latest"
     strategy:
       matrix:
@@ -444,18 +444,18 @@ jobs:
           curl -sSL "https://dd-package-tools.s3.amazonaws.com/dd-pkg/${DD_PKG_VERSION}/dd-pkg_Linux_x86_64.tar.gz" | tar -xz -C /usr/local/bin dd-pkg
       - name: Fix Git safe directories issue when in containers (actions/checkout#760)
         run: git config --global --add safe.directory /__w/vector/vector
-      - name: Checkout Vector
+      - name: Checkout Sol
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ inputs.git_ref }}
       - name: Download staged package artifacts (x86_64-unknown-linux-gnu)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-x86_64-unknown-linux-gnu
+          name: sol-${{ env.SOL_VERSION }}-x86_64-unknown-linux-gnu
           path: target/artifacts
       - name: Verify install of RPM package.
         run: |
-          ./scripts/verify-install.sh target/artifacts/vector-${{ env.VECTOR_VERSION }}-1.x86_64.rpm
+          ./scripts/verify-install.sh target/artifacts/sol-${{ env.SOL_VERSION }}-1.x86_64.rpm
 
   macos-verify:
     name: Verify macOS Package
@@ -465,7 +465,7 @@ jobs:
       - generate-publish-metadata
       - build-apple-darwin-packages
     env:
-      VECTOR_VERSION: ${{ needs.generate-publish-metadata.outputs.vector_version }}
+      SOL_VERSION: ${{ needs.generate-publish-metadata.outputs.sol_version }}
     strategy:
       matrix:
         include:
@@ -473,19 +473,19 @@ jobs:
           - target: arm64-apple-darwin
             runner: macos-14
     steps:
-      - name: Checkout Vector
+      - name: Checkout Sol
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ inputs.git_ref }}
       - name: Download staged package artifacts (${{ matrix.target }})
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-${{ matrix.target }}
+          name: sol-${{ env.SOL_VERSION }}-${{ matrix.target }}
           path: target/artifacts
       - name: Verify macOS package
         run: |
-          tar -xvf target/artifacts/vector-${{ env.VECTOR_VERSION }}-${{ matrix.target }}.tar.gz \
-            && vector-${{ matrix.target }}/bin/vector --version
+          tar -xvf target/artifacts/sol-${{ env.SOL_VERSION }}-${{ matrix.target }}.tar.gz \
+            && sol-${{ matrix.target }}/bin/sol --version
 
   publish-docker:
     name: Publish to Docker
@@ -503,11 +503,11 @@ jobs:
       - build-arm-unknown-linux-musleabi-packages
       - deb-verify
     env:
-      VECTOR_VERSION: ${{ needs.generate-publish-metadata.outputs.vector_version }}
-      VECTOR_BUILD_DESC: ${{ needs.generate-publish-metadata.outputs.vector_build_desc }}
-      CHANNEL: ${{ needs.generate-publish-metadata.outputs.vector_release_channel }}
+      SOL_VERSION: ${{ needs.generate-publish-metadata.outputs.sol_version }}
+      SOL_BUILD_DESC: ${{ needs.generate-publish-metadata.outputs.sol_build_desc }}
+      CHANNEL: ${{ needs.generate-publish-metadata.outputs.sol_release_channel }}
     steps:
-      - name: Checkout Vector
+      - name: Checkout Sol
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ inputs.git_ref }}
@@ -535,42 +535,42 @@ jobs:
       - name: Download staged package artifacts (aarch64-unknown-linux-gnu)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-aarch64-unknown-linux-gnu
+          name: sol-${{ env.SOL_VERSION }}-aarch64-unknown-linux-gnu
           path: target/artifacts
       - name: Download staged package artifacts (aarch64-unknown-linux-musl)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-aarch64-unknown-linux-musl
+          name: sol-${{ env.SOL_VERSION }}-aarch64-unknown-linux-musl
           path: target/artifacts
       - name: Download staged package artifacts (x86_64-unknown-linux-gnu)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-x86_64-unknown-linux-gnu
+          name: sol-${{ env.SOL_VERSION }}-x86_64-unknown-linux-gnu
           path: target/artifacts
       - name: Download staged package artifacts (x86_64-unknown-linux-musl)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-x86_64-unknown-linux-musl
+          name: sol-${{ env.SOL_VERSION }}-x86_64-unknown-linux-musl
           path: target/artifacts
       - name: Download staged package artifacts (armv7-unknown-linux-gnueabihf)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-armv7-unknown-linux-gnueabihf
+          name: sol-${{ env.SOL_VERSION }}-armv7-unknown-linux-gnueabihf
           path: target/artifacts
       - name: Download staged package artifacts (armv7-unknown-linux-musleabihf)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-armv7-unknown-linux-musleabihf
+          name: sol-${{ env.SOL_VERSION }}-armv7-unknown-linux-musleabihf
           path: target/artifacts
       - name: Download staged package artifacts (arm-unknown-linux-gnueabi)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-arm-unknown-linux-gnueabi
+          name: sol-${{ env.SOL_VERSION }}-arm-unknown-linux-gnueabi
           path: target/artifacts
       - name: Download staged package artifacts (arm-unknown-linux-musleabi)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-arm-unknown-linux-musleabi
+          name: sol-${{ env.SOL_VERSION }}-arm-unknown-linux-musleabi
           path: target/artifacts
       - name: Build and publish Docker images
         env:
@@ -603,62 +603,62 @@ jobs:
       - rpm-verify
       - macos-verify
     env:
-      VECTOR_VERSION: ${{ needs.generate-publish-metadata.outputs.vector_version }}
-      CHANNEL: ${{ needs.generate-publish-metadata.outputs.vector_release_channel }}
+      SOL_VERSION: ${{ needs.generate-publish-metadata.outputs.sol_version }}
+      CHANNEL: ${{ needs.generate-publish-metadata.outputs.sol_release_channel }}
     steps:
-      - name: Checkout Vector
+      - name: Checkout Sol
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ inputs.git_ref }}
       - name: Download staged package artifacts (aarch64-unknown-linux-gnu)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-aarch64-unknown-linux-gnu
+          name: sol-${{ env.SOL_VERSION }}-aarch64-unknown-linux-gnu
           path: target/artifacts
       - name: Download staged package artifacts (aarch64-unknown-linux-musl)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-aarch64-unknown-linux-musl
+          name: sol-${{ env.SOL_VERSION }}-aarch64-unknown-linux-musl
           path: target/artifacts
       - name: Download staged package artifacts (x86_64-unknown-linux-gnu)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-x86_64-unknown-linux-gnu
+          name: sol-${{ env.SOL_VERSION }}-x86_64-unknown-linux-gnu
           path: target/artifacts
       - name: Download staged package artifacts (x86_64-unknown-linux-musl)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-x86_64-unknown-linux-musl
+          name: sol-${{ env.SOL_VERSION }}-x86_64-unknown-linux-musl
           path: target/artifacts
       - name: Download staged package artifacts (arm64-apple-darwin)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-arm64-apple-darwin
+          name: sol-${{ env.SOL_VERSION }}-arm64-apple-darwin
           path: target/artifacts
       - name: Download staged package artifacts (x86_64-pc-windows-msvc)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-x86_64-pc-windows-msvc
+          name: sol-${{ env.SOL_VERSION }}-x86_64-pc-windows-msvc
           path: target/artifacts
       - name: Download staged package artifacts (armv7-unknown-linux-gnueabihf)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-armv7-unknown-linux-gnueabihf
+          name: sol-${{ env.SOL_VERSION }}-armv7-unknown-linux-gnueabihf
           path: target/artifacts
       - name: Download staged package artifacts (armv7-unknown-linux-musleabihf)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-armv7-unknown-linux-musleabihf
+          name: sol-${{ env.SOL_VERSION }}-armv7-unknown-linux-musleabihf
           path: target/artifacts
       - name: Download staged package artifacts (arm-unknown-linux-gnueabi)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-arm-unknown-linux-gnueabi
+          name: sol-${{ env.SOL_VERSION }}-arm-unknown-linux-gnueabi
           path: target/artifacts
       - name: Download staged package artifacts (arm-unknown-linux-musleabi)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-arm-unknown-linux-musleabi
+          name: sol-${{ env.SOL_VERSION }}-arm-unknown-linux-musleabi
           path: target/artifacts
       - name: Publish artifacts to S3
         env:
@@ -689,66 +689,66 @@ jobs:
       - macos-verify
       - generate-sha256sum
     env:
-      VECTOR_VERSION: ${{ needs.generate-publish-metadata.outputs.vector_version }}
+      SOL_VERSION: ${{ needs.generate-publish-metadata.outputs.sol_version }}
     steps:
-      - name: Checkout Vector
+      - name: Checkout Sol
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ inputs.git_ref }}
       - name: Download staged package artifacts (aarch64-unknown-linux-gnu)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-aarch64-unknown-linux-gnu
+          name: sol-${{ env.SOL_VERSION }}-aarch64-unknown-linux-gnu
           path: target/artifacts
       - name: Download staged package artifacts (aarch64-unknown-linux-musl)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-aarch64-unknown-linux-musl
+          name: sol-${{ env.SOL_VERSION }}-aarch64-unknown-linux-musl
           path: target/artifacts
       - name: Download staged package artifacts (x86_64-unknown-linux-gnu)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-x86_64-unknown-linux-gnu
+          name: sol-${{ env.SOL_VERSION }}-x86_64-unknown-linux-gnu
           path: target/artifacts
       - name: Download staged package artifacts (x86_64-unknown-linux-musl)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-x86_64-unknown-linux-musl
+          name: sol-${{ env.SOL_VERSION }}-x86_64-unknown-linux-musl
           path: target/artifacts
       - name: Download staged package artifacts (arm64-apple-darwin)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-arm64-apple-darwin
+          name: sol-${{ env.SOL_VERSION }}-arm64-apple-darwin
           path: target/artifacts
       - name: Download staged package artifacts (x86_64-pc-windows-msvc)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-x86_64-pc-windows-msvc
+          name: sol-${{ env.SOL_VERSION }}-x86_64-pc-windows-msvc
           path: target/artifacts
       - name: Download staged package artifacts (armv7-unknown-linux-gnueabihf)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-armv7-unknown-linux-gnueabihf
+          name: sol-${{ env.SOL_VERSION }}-armv7-unknown-linux-gnueabihf
           path: target/artifacts
       - name: Download staged package artifacts (armv7-unknown-linux-musleabihf)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-armv7-unknown-linux-musleabihf
+          name: sol-${{ env.SOL_VERSION }}-armv7-unknown-linux-musleabihf
           path: target/artifacts
       - name: Download artifact checksums
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-SHA256SUMS
+          name: sol-${{ env.SOL_VERSION }}-SHA256SUMS
           path: target/artifacts
       - name: Download staged package artifacts (arm-unknown-linux-gnueabi)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-arm-unknown-linux-gnueabi
+          name: sol-${{ env.SOL_VERSION }}-arm-unknown-linux-gnueabi
           path: target/artifacts
       - name: Download staged package artifacts (arm-unknown-linux-musleabi)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-arm-unknown-linux-musleabi
+          name: sol-${{ env.SOL_VERSION }}-arm-unknown-linux-musleabi
           path: target/artifacts
       - name: Publish release to GitHub
         env:
@@ -772,66 +772,66 @@ jobs:
       - build-arm-unknown-linux-gnueabi-packages
       - build-arm-unknown-linux-musleabi-packages
     env:
-      VECTOR_VERSION: ${{ needs.generate-publish-metadata.outputs.vector_version }}
+      SOL_VERSION: ${{ needs.generate-publish-metadata.outputs.sol_version }}
     steps:
-      - name: Checkout Vector
+      - name: Checkout Sol
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ inputs.git_ref }}
       - name: Download staged package artifacts (aarch64-unknown-linux-gnu)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-aarch64-unknown-linux-gnu
+          name: sol-${{ env.SOL_VERSION }}-aarch64-unknown-linux-gnu
           path: target/artifacts
       - name: Download staged package artifacts (aarch64-unknown-linux-musl)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-aarch64-unknown-linux-musl
+          name: sol-${{ env.SOL_VERSION }}-aarch64-unknown-linux-musl
           path: target/artifacts
       - name: Download staged package artifacts (x86_64-unknown-linux-gnu)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-x86_64-unknown-linux-gnu
+          name: sol-${{ env.SOL_VERSION }}-x86_64-unknown-linux-gnu
           path: target/artifacts
       - name: Download staged package artifacts (x86_64-unknown-linux-musl)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-x86_64-unknown-linux-musl
+          name: sol-${{ env.SOL_VERSION }}-x86_64-unknown-linux-musl
           path: target/artifacts
       - name: Download staged package artifacts (arm64-apple-darwin)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-arm64-apple-darwin
+          name: sol-${{ env.SOL_VERSION }}-arm64-apple-darwin
           path: target/artifacts
       - name: Download staged package artifacts (x86_64-pc-windows-msvc)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-x86_64-pc-windows-msvc
+          name: sol-${{ env.SOL_VERSION }}-x86_64-pc-windows-msvc
           path: target/artifacts
       - name: Download staged package artifacts (armv7-unknown-linux-gnueabihf)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-armv7-unknown-linux-gnueabihf
+          name: sol-${{ env.SOL_VERSION }}-armv7-unknown-linux-gnueabihf
           path: target/artifacts
       - name: Download staged package artifacts (armv7-unknown-linux-musleabihf)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-armv7-unknown-linux-musleabihf
+          name: sol-${{ env.SOL_VERSION }}-armv7-unknown-linux-musleabihf
           path: target/artifacts
       - name: Download staged package artifacts (arm-unknown-linux-gnueabi)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-arm-unknown-linux-gnueabi
+          name: sol-${{ env.SOL_VERSION }}-arm-unknown-linux-gnueabi
           path: target/artifacts
       - name: Download staged package artifacts (arm-unknown-linux-musleabi)
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-arm-unknown-linux-musleabi
+          name: sol-${{ env.SOL_VERSION }}-arm-unknown-linux-musleabi
           path: target/artifacts
       - name: Generate SHA256 checksums for artifacts
         run: make sha256sum
       - name: Stage checksum for publish
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: vector-${{ env.VECTOR_VERSION }}-SHA256SUMS
-          path: target/artifacts/vector-${{ env.VECTOR_VERSION }}-SHA256SUMS
+          name: sol-${{ env.SOL_VERSION }}-SHA256SUMS
+          path: target/artifacts/sol-${{ env.SOL_VERSION }}-SHA256SUMS

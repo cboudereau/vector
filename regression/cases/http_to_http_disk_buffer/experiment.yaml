@@ -1,11 +1,11 @@
 optimization_goal: ingress_throughput
 
 target:
-  name: vector
-  command: /usr/bin/vector
+  name: sol
+  command: /usr/bin/sol
   cpu_allotment: 6
   memory_allotment: 8GiB
 
   environment:
-    VECTOR_THREADS: 4
+    SOL_THREADS: 4
 

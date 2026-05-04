@@ -23,16 +23,16 @@ jobs:
       packages: write
       contents: read
     steps:
-      - name: Delete untagged vector images
+      - name: Delete untagged sol images
         uses: actions/delete-package-versions@e5bc658cc4c965c472efe991f8beea3981499c55 # v5.0.0
         with:
-          package-name: vector
+          package-name: sol
           package-type: container
           min-versions-to-keep: 0
           delete-only-untagged-versions: true
         continue-on-error: true
 
-      - name: Delete old vector-test-runner images
+      - name: Delete old sol-test-runner images
         uses: actions/delete-package-versions@e5bc658cc4c965c472efe991f8beea3981499c55 # v5.0.0
         with:
           package-name: test-runner

@@ -1,4 +1,4 @@
-name: Deploy Vector Preview Sites
+name: Deploy Sol Preview Sites
 
 on:
   workflow_run:
@@ -13,7 +13,7 @@ permissions:
   statuses: write
 
 jobs:
-  deploy_vector_preview_site:
+  deploy_sol_preview_site:
     if: ${{ github.event.workflow_run.conclusion == 'success' && contains(github.event.workflow_run.head_branch, 'website') }}
     uses: ./.github/workflows/create_preview_sites.yml
     with:

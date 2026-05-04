@@ -1,7 +1,7 @@
-# Experimental service configuration for a hardened Vector
+# Experimental service configuration for a hardened Sol
 #
-# This has not been widely tested on all OSes and with all Vector
-# configurations, but can be used as a basis for limiting the Vector service
+# This has not been widely tested on all OSes and with all Sol
+# configurations, but can be used as a basis for limiting the Sol service
 # capabilities
 
 [Unit]
@@ -32,7 +32,7 @@ ProtectKernelModules=yes
 ProtectKernelLogs=yes
 ProtectSystem=strict
 ProtectHome=yes
-StateDirectory=vector
+StateDirectory=sol
 ProtectControlGroups=yes
 PrivateTmp=yes
 PrivateDevices=yes

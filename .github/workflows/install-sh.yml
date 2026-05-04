@@ -29,4 +29,4 @@ jobs:
 
       - run: sudo apt-get install --yes bc
       - run: bash distribution/install.sh -- -y
-      - run: ~/.vector/bin/vector --version
+      - run: ~/.sol/bin/sol --version

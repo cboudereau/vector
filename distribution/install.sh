@@ -13,20 +13,15 @@ set -u
 # If PACKAGE_ROOT is unset or empty, default it.
 PACKAGE_ROOT="${PACKAGE_ROOT:-"https://packages.timber.io/vector"}"
 # If VECTOR_VERSION is unset or empty, default it.
-VECTOR_VERSION="${VECTOR_VERSION:-"0.53.0"}"
+SOL_VERSION="${SOL_VERSION:-"0.53.0"}"
 _divider="--------------------------------------------------------------------------------"
 _prompt=">>>"
 _indent="   "
 
 header() {
     cat 1>&2 <<EOF
-                                   __   __  __
-                                   \ \ / / / /
-                                    \ V / / /
-                                     \_/  \/
-
-                                   V E C T O R
-                                    Installer
+                                   S O L
+                                  Installer
 
 
 $_divider
@@ -40,15 +35,15 @@ EOF
 
 usage() {
     cat 1>&2 <<EOF
-vector-install
-The installer for Vector (https://vector.dev)
+sol-install
+The installer for Sol (https://vector.dev)
 
 USAGE:
-    vector-install [FLAGS] [OPTIONS]
+    sol-install [FLAGS] [OPTIONS]
 
 FLAGS:
     -y                      Disable confirmation prompt.
-        --prefix            The directory where the files should be placed, default: "$HOME/.vector"
+        --prefix            The directory where the files should be placed, default: "$HOME/.sol"
                             Note: This option automatically assumes the \`--no-modify-path\` flag
         --no-modify-path    Don't configure the PATH environment variable
     -h, --help              Prints help information
@@ -61,7 +56,7 @@ main() {
 
     local prompt=yes
     local modify_path=yes
-    local prefix="$HOME/.vector"
+    local prefix="$HOME/.sol"
     local use_new_directory_structure=no
     for arg in "$@"; do
         case "$arg" in
@@ -88,10 +83,10 @@ main() {
         esac
     done
 
-    # Confirm with the user before proceeding to install Vector through a
+    # Confirm with the user before proceeding to install Sol through a
     # package manager. Otherwise, we install from an archive.
     if [ "$prompt" = "yes" ]; then
-        echo "$_prompt We'll be installing Vector via a pre-built archive at https://packages.timber.io/vector/${VECTOR_VERSION}/"
+        echo "$_prompt We'll be installing Sol via a pre-built archive at https://packages.timber.io/vector/${SOL_VERSION}/"
         echo "$_prompt Ready to proceed? (y/n)"
         echo ""
 
@@ -110,7 +105,7 @@ main() {
             esac
         done
 
-        # Print a divider to separate the Vector installer output and the
+        # Print a divider to separate the Sol installer output and the
         # package manager installer output.
         echo ""
         echo "$_divider"
@@ -167,16 +162,16 @@ install_from_archive() {
             ;;
     esac
 
-    local _url="${PACKAGE_ROOT}/${VECTOR_VERSION}/vector-${VECTOR_VERSION}-${_archive_arch}.tar.gz"
+    local _url="${PACKAGE_ROOT}/${SOL_VERSION}/sol-${SOL_VERSION}-${_archive_arch}.tar.gz"
 
     local _dir
-    _dir="$(mktemp -d 2>/dev/null || ensure mktemp -d -t vector-install)"
+    _dir="$(mktemp -d 2>/dev/null || ensure mktemp -d -t sol-install)"
 
-    local _file="${_dir}/vector-${VECTOR_VERSION}-${_archive_arch}.tar.gz"
+    local _file="${_dir}/sol-${SOL_VERSION}-${_archive_arch}.tar.gz"
 
     ensure mkdir -p "$_dir"
 
-    printf "%s Downloading Vector via %s" "$_prompt" "$_url"
+    printf "%s Downloading Sol via %s" "$_prompt" "$_url"
     ensure downloader "$_url" "$_file" "$_arch"
     printf " ✓\n"
 
@@ -191,17 +186,17 @@ install_from_archive() {
         # their corresponding locations according to the new directory structure.
         printf "%s Using new directory structure since --prefix was specified...\n" "$_prompt"
         local _unpack_dir
-        _unpack_dir="$(mktemp -d 2>/dev/null || ensure mktemp -d -t vector-install)"
+        _unpack_dir="$(mktemp -d 2>/dev/null || ensure mktemp -d -t sol-install)"
         ensure tar -xzf "$_file" --directory="$_unpack_dir" --strip-components=2
         # copy all files (including hidden), ref: https://askubuntu.com/a/86891
         ensure cp -r "$_unpack_dir/bin/." "$prefix/bin"
         if [ -d "$_unpack_dir/etc/." ]; then
           ensure cp -r "$_unpack_dir/etc/." "$prefix/etc"
         fi
-        ensure mkdir -p "$prefix/share/vector/config"
-        ensure cp -r "$_unpack_dir/config/." "$prefix/share/vector/config"
-        ensure cp "$_unpack_dir"/README.md "$prefix/share/vector/"
-        ensure cp "$_unpack_dir"/LICENSE "$prefix/share/vector/"
+        ensure mkdir -p "$prefix/share/sol/config"
+        ensure cp -r "$_unpack_dir/config/." "$prefix/share/sol/config"
+        ensure cp "$_unpack_dir"/README.md "$prefix/share/sol/"
+        ensure cp "$_unpack_dir"/LICENSE "$prefix/share/sol/"
         # all files have been moved, we can safely remove the unpack directory
         ignore rm -rf "$_unpack_dir"
     fi
@@ -215,9 +210,9 @@ install_from_archive() {
     fi
 
     printf "%s Install succeeded! 🚀\n" "$_prompt"
-    printf "%s To start Vector:\n" "$_prompt"
+    printf "%s To start Sol:\n" "$_prompt"
     printf "\n"
-    printf "%s vector --config $prefix/config/vector.yaml\n" "$_indent"
+    printf "%s sol --config $prefix/config/sol.yaml\n" "$_indent"
     printf "\n"
     printf "%s More information at https://vector.dev/docs/\n" "$_prompt"
 
@@ -233,7 +228,7 @@ add_to_path() {
   local file="$1"
   local new_path="$2"
 
-  printf "%s Adding Vector path to ${file}" "$_prompt"
+  printf "%s Adding Sol path to ${file}" "$_prompt"
 
   if [ ! -f "$file" ]; then
     echo "${new_path}" >> "${file}"
@@ -520,7 +515,7 @@ get_architecture() {
 }
 
 say() {
-    printf 'vector: %s\n' "$1"
+    printf 'sol: %s\n' "$1"
 }
 
 err() {

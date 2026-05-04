@@ -89,7 +89,7 @@ jobs:
           cross: true
           mold: false
 
-      - run: VECTOR_VERSION="$(vdev version)" make package-deb-x86_64-unknown-linux-gnu
+      - run: SOL_VERSION="$(vdev version)" make package-deb-x86_64-unknown-linux-gnu
 
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:

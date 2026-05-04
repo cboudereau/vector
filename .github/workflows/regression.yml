@@ -14,7 +14,7 @@
 # evaluations of the baseline SHA and comparison SHA. The exact SHAs are determined
 # by how the workflow is triggered.
 #
-# The goal is to provide quick feedback on Vector's performance across a variety
+# The goal is to provide quick feedback on Sol's performance across a variety
 # of configurations, checking if throughput performance has degraded or become
 # more variable in the comparison SHA relative to the baseline SHA.
 #
@@ -183,7 +183,7 @@ jobs:
   ##
 
   build-baseline:
-    name: Build baseline Vector container
+    name: Build baseline Sol container
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     needs:
@@ -197,23 +197,23 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ needs.resolve-inputs.outputs.baseline-sha }}
-          path: baseline-vector
+          path: baseline-sol
 
       - name: Set up Docker Buildx
         id: buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
-      - name: Build 'vector' target image
+      - name: Build 'sol' target image
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
         with:
-          context: baseline-vector/
+          context: baseline-sol/
           cache-from: type=gha
           cache-to: type=gha,mode=max
           file: regression/Dockerfile
           builder: ${{ steps.buildx.outputs.name }}
           outputs: type=docker,dest=${{ runner.temp }}/baseline-image.tar
           tags: |
-            vector:${{ needs.resolve-inputs.outputs.baseline-tag }}
+            sol:${{ needs.resolve-inputs.outputs.baseline-tag }}
 
       - name: Upload image as artifact
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
@@ -222,7 +222,7 @@ jobs:
           path: "${{ runner.temp }}/baseline-image.tar"
 
   build-comparison:
-    name: Build comparison Vector container
+    name: Build comparison Sol container
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     needs:
@@ -236,23 +236,23 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ needs.resolve-inputs.outputs.comparison-sha }}
-          path: comparison-vector
+          path: comparison-sol
 
       - name: Set up Docker Buildx
         id: buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
-      - name: Build 'vector' target image
+      - name: Build 'sol' target image
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
         with:
-          context: comparison-vector/
+          context: comparison-sol/
           cache-from: type=gha
           cache-to: type=gha,mode=max
           file: regression/Dockerfile
           builder: ${{ steps.buildx.outputs.name }}
           outputs: type=docker,dest=${{ runner.temp }}/comparison-image.tar
           tags: |
-            vector:${{ needs.resolve-inputs.outputs.comparison-tag }}
+            sol:${{ needs.resolve-inputs.outputs.comparison-tag }}
 
       - name: Upload image as artifact
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
@@ -320,8 +320,8 @@ jobs:
 
       - name: Tag & push baseline image
         run: |
-          docker tag vector:${{ needs.resolve-inputs.outputs.baseline-tag }} ${{ steps.login-ecr.outputs.registry }}/${{ secrets.SINGLE_MACHINE_PERFORMANCE_TEAM_ID }}-vector:${{ needs.resolve-inputs.outputs.baseline-tag }}
-          docker push ${{ steps.login-ecr.outputs.registry }}/${{ secrets.SINGLE_MACHINE_PERFORMANCE_TEAM_ID }}-vector:${{ needs.resolve-inputs.outputs.baseline-tag }}
+          docker tag sol:${{ needs.resolve-inputs.outputs.baseline-tag }} ${{ steps.login-ecr.outputs.registry }}/${{ secrets.SINGLE_MACHINE_PERFORMANCE_TEAM_ID }}-sol:${{ needs.resolve-inputs.outputs.baseline-tag }}
+          docker push ${{ steps.login-ecr.outputs.registry }}/${{ secrets.SINGLE_MACHINE_PERFORMANCE_TEAM_ID }}-sol:${{ needs.resolve-inputs.outputs.baseline-tag }}
 
   upload-comparison-image-to-ecr:
     name: Upload comparison images to ECR
@@ -360,8 +360,8 @@ jobs:
 
       - name: Tag & push comparison image
         run: |
-          docker tag vector:${{ needs.resolve-inputs.outputs.comparison-tag }} ${{ steps.login-ecr.outputs.registry }}/${{ secrets.SINGLE_MACHINE_PERFORMANCE_TEAM_ID }}-vector:${{ needs.resolve-inputs.outputs.comparison-tag }}
-          docker push ${{ steps.login-ecr.outputs.registry }}/${{ secrets.SINGLE_MACHINE_PERFORMANCE_TEAM_ID }}-vector:${{ needs.resolve-inputs.outputs.comparison-tag }}
+          docker tag sol:${{ needs.resolve-inputs.outputs.comparison-tag }} ${{ steps.login-ecr.outputs.registry }}/${{ secrets.SINGLE_MACHINE_PERFORMANCE_TEAM_ID }}-sol:${{ needs.resolve-inputs.outputs.comparison-tag }}
+          docker push ${{ steps.login-ecr.outputs.registry }}/${{ secrets.SINGLE_MACHINE_PERFORMANCE_TEAM_ID }}-sol:${{ needs.resolve-inputs.outputs.comparison-tag }}
 
   submit-job:
     name: Submit regression job
@@ -399,8 +399,8 @@ jobs:
           chmod +x ${{ runner.temp }}/bin/smp
 
           ${{ runner.temp }}/bin/smp --team-id ${{ secrets.SINGLE_MACHINE_PERFORMANCE_TEAM_ID }} job submit \
-            --baseline-image ${{ steps.login-ecr.outputs.registry }}/${{ secrets.SINGLE_MACHINE_PERFORMANCE_TEAM_ID }}-vector:${{ needs.resolve-inputs.outputs.baseline-tag }} \
-            --comparison-image ${{ steps.login-ecr.outputs.registry }}/${{ secrets.SINGLE_MACHINE_PERFORMANCE_TEAM_ID }}-vector:${{ needs.resolve-inputs.outputs.comparison-tag }} \
+            --baseline-image ${{ steps.login-ecr.outputs.registry }}/${{ secrets.SINGLE_MACHINE_PERFORMANCE_TEAM_ID }}-sol:${{ needs.resolve-inputs.outputs.baseline-tag }} \
+            --comparison-image ${{ steps.login-ecr.outputs.registry }}/${{ secrets.SINGLE_MACHINE_PERFORMANCE_TEAM_ID }}-sol:${{ needs.resolve-inputs.outputs.comparison-tag }} \
             --baseline-sha ${{ needs.resolve-inputs.outputs.baseline-sha }} \
             --comparison-sha ${{ needs.resolve-inputs.outputs.comparison-sha }} \
             --target-config-dir ${{ github.workspace }}/regression/ \
@@ -410,7 +410,7 @@ jobs:
 
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: vector-submission-metadata
+          name: sol-submission-metadata
           path: ${{ runner.temp }}/submission-metadata
 
       - name: Await job
@@ -464,7 +464,7 @@ jobs:
       - name: Download submission metadata
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-submission-metadata
+          name: sol-submission-metadata
           path: ${{ runner.temp }}/
 
       - name: Determine SMP job result
@@ -503,7 +503,7 @@ jobs:
       - name: Download submission metadata
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: vector-submission-metadata
+          name: sol-submission-metadata
           path: ${{ runner.temp }}/
 
       - name: Sync regression report to local system

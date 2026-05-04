@@ -21,7 +21,7 @@ This is a mechanical refactoring: find-and-replace across the codebase, update C
 | Lines with "vector" in .rs files | ~2,097 | **DONE** | Crate refs, strings, env vars all renamed in [d1b942da](../../../) |
 | Workspace members total | 28 | **DONE** | All paths updated in [d1b942da](../../../) |
 | K8s e2e metric names (`vector_started`, function names) | ~20 | **DONE** | Renamed in [d1b942da](../../../) |
-| Demo configs | 3 | **DONE** | `demo/otel-vector-grafana-dotnet/sol/` already uses `sol-*` naming |
+| Demo configs | 3 | **DONE** | `demo/otel-sol-grafana-dotnet/sol/` already uses `sol-*` naming |
 | Project docs and metadata | 20 files | **DONE** | README, NOTICE, SECURITY, PRIVACY, CONTRIBUTING, templates in [56ea5f85](../../../) |
 
 ## Functional Requirements

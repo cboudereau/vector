@@ -59,9 +59,9 @@ jobs:
             latest=true
           tags: type=sha, format=long
           labels: |
-            org.opencontainers.image.description=Image for Vector's Docker development environment
+            org.opencontainers.image.description=Image for Sol's Docker development environment
             org.opencontainers.image.source=https://github.com/vectordotdev/vector/tree/master/scripts/environment/Dockerfile
-            org.opencontainers.image.title=Vector development environment
+            org.opencontainers.image.title=Sol development environment
             org.opencontainers.image.url=https://github.com/vectordotdev/vector
 
       - name: Free disk space
@@ -85,7 +85,7 @@ jobs:
             -v "${GITHUB_WORKSPACE}:/src" \
             -w /src \
             "${IMAGE_TAG}" \
-            cargo run --bin vector -- --version
+            cargo run --bin sol -- --version
 
       - name: Push image
         if: env.SHOULD_PUBLISH == 'true'

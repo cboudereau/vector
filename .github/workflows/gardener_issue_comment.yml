@@ -29,7 +29,7 @@ jobs:
         uses: tspascoal/get-user-teams-membership@57e9f42acd78f4d0f496b3be4368fc5f62696662 # v3.0.0
         with:
           username: ${{ github.actor }}
-          team: 'Vector'
+          team: 'Sol'
           GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
 
       - name: Move issue back to Triage if status is Blocked/Waiting

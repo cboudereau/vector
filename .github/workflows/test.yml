@@ -199,7 +199,7 @@ jobs:
           rust: true
           wasm-pack: true
       - run: |
-          cd lib/vector-vrl/web-playground/
+          cd lib/sol-vrl/web-playground/
           rustup target add wasm32-unknown-unknown
           wasm-pack build --target web --out-dir public/pkg
 

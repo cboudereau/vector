@@ -29,7 +29,7 @@ Sol is a fork of [Datadog Vector](https://github.com/vectordotdev/vector). The t
 | **Systemd unit** | `vector.service` | `sol.service` |
 | **Crate names** | `vector-core`, `vector-lib`, … | `sol-core`, `sol-lib`, … |
 | **Core protocol** | Vendor-neutral | OTLP-first (OpenTelemetry) |
-| **Self-monitoring** | Internal metrics | OTLP pipeline → Parquet → SQL |
+| **Self-monitoring** | Internal metrics | OTLP pipeline |
 | **Goal** | General-purpose pipeline | Single Observability Layer for self-hosted SaaS |
 
 All Vector sources, transforms, and sinks remain fully compatible.

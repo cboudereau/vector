@@ -20,27 +20,30 @@ transforms:
     decision_wait_secs: 10
     num_traces: 50000
     policies:
-      - type: latency
-        name: latency-policy
-        threshold_ms: 100
       - type: and
-        name: error-policy
+        name: sampled-latency-policy
+        sub_policies:
+          - type: latency
+            name: latency-policy
+            threshold_ms: 100
+          - type: probabilistic
+            name: probabilistic-policy
+            sampling_percentage: 10.0
+      - type: latency
+        name: high-latency-policy
+        threshold_ms: 500
+      - type: and
+        name: sampled-error-policy
         sub_policies:
           - type: status_code
             name: status-code-error-policy
             status_codes: ["ERROR"]
           - type: string_attribute
             name: http-status-code-error-policy
-            key: error.type
-            values: ["4.."]
+            key: http.response.status_code
+            values: [4..]
             enabled_regex_matching: true
             invert_match: true
-          - type: probabilistic
-            name: error-probabilistic-policy
-            sampling_percentage: 10.0
-      - type: probabilistic
-        name: probabilistic-policy
-        sampling_percentage: 10.0
 
   span_metrics:
     type: span_metrics

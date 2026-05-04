@@ -17,7 +17,7 @@ use hyper::header::AUTHORIZATION;
 use smpl_jwt::Jwt;
 use snafu::{ResultExt, Snafu};
 use tokio::sync::watch;
-use vector_lib::{configurable::configurable_component, sensitive_string::SensitiveString};
+use sol_lib::{configurable::configurable_component, sensitive_string::SensitiveString};
 
 use crate::{
     config::ProxyConfig,

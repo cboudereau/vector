@@ -1,7 +1,7 @@
 use futures::stream;
 use rand::Rng;
 use redis::AsyncCommands;
-use vector_lib::{
+use sol_lib::{
     codecs::JsonSerializerConfig,
     config::{Tags, Telemetry, init_telemetry},
     event::OtelLog,

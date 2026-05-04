@@ -170,7 +170,7 @@ mod test {
     use bytes::{Buf, BytesMut};
     use futures::{SinkExt, StreamExt, future, stream};
     use tokio::time::Duration;
-    use vector_lib::json_size::JsonSize;
+    use sol_lib::json_size::JsonSize;
 
     use super::{Buffer, Compression};
     use crate::sinks::util::{BatchSettings, BatchSink, EncodedEvent};

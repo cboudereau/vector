@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use dyn_clone::DynClone;
 use serde::Serialize;
 use serde_with::serde_as;
-use vector_lib::{
+use sol_lib::{
     buffers::{BufferConfig, BufferType},
     config::{AcknowledgementsConfig, GlobalOptions, Input},
     configurable::{
@@ -16,7 +16,7 @@ use vector_lib::{
     id::Inputs,
     sink::VectorSink,
 };
-use vector_vrl_metrics::MetricsStorage;
+use sol_vrl_metrics::MetricsStorage;
 
 use super::{ComponentKey, ProxyConfig, Resource, dot_graph::GraphConfig, schema};
 use crate::{
@@ -42,7 +42,7 @@ impl Configurable for BoxedSink {
     fn generate_schema(
         generator: &RefCell<SchemaGenerator>,
     ) -> Result<SchemaObject, GenerateError> {
-        vector_lib::configurable::component::SinkDescription::generate_schemas(generator)
+        sol_lib::configurable::component::SinkDescription::generate_schemas(generator)
     }
 }
 
@@ -61,7 +61,7 @@ where
     T: Configurable + Serialize + 'static,
 {
     #[configurable(derived)]
-    #[serde(default, skip_serializing_if = "vector_lib::serde::is_default")]
+    #[serde(default, skip_serializing_if = "sol_lib::serde::is_default")]
     pub graph: GraphConfig,
 
     #[configurable(derived)]
@@ -79,11 +79,11 @@ where
     pub healthcheck: SinkHealthcheckOptions,
 
     #[configurable(derived)]
-    #[serde(default, skip_serializing_if = "vector_lib::serde::is_default")]
+    #[serde(default, skip_serializing_if = "sol_lib::serde::is_default")]
     pub buffer: BufferConfig,
 
     #[configurable(derived)]
-    #[serde(default, skip_serializing_if = "vector_lib::serde::is_default")]
+    #[serde(default, skip_serializing_if = "sol_lib::serde::is_default")]
     pub proxy: ProxyConfig,
 
     #[serde(flatten)]
@@ -276,7 +276,7 @@ dyn_clone::clone_trait_object!(SinkConfig);
 pub struct SinkContext {
     pub healthcheck: SinkHealthcheckOptions,
     pub globals: GlobalOptions,
-    pub enrichment_tables: vector_lib::enrichment::TableRegistry,
+    pub enrichment_tables: sol_lib::enrichment::TableRegistry,
     pub metrics_storage: MetricsStorage,
     pub proxy: ProxyConfig,
     pub schema: schema::Options,

@@ -15,7 +15,7 @@ const DEFAULT_NAMES: &[&str] = &["body", "time_unix_nano", "host", "source_type"
 const STRUCTURAL_DEFAULTS: &[&str] = &["message", "timestamp", "host", "source_type"];
 
 /// Minimal log_schema representation for the VRL migration tool.
-/// This replaces the dependency on `vector_lib::config::LogSchema`.
+/// This replaces the dependency on `sol_lib::config::LogSchema`.
 #[derive(Deserialize, Default, Clone, Debug)]
 #[serde(default)]
 pub struct MigrateLogSchema {

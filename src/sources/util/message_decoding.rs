@@ -3,14 +3,14 @@ use std::iter;
 use bytes::BytesMut;
 use chrono::{DateTime, Utc};
 use tokio_util::codec::Decoder as _;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     codecs::StreamDecodingError,
     internal_event::{CountByteSize, EventsReceived, InternalEventHandle as _, Registered},
 };
 
 use crate::event::{BatchNotifier, Event};
-use vector_lib::codecs::Decoder;
+use sol_lib::codecs::Decoder;
 
 pub fn decode_message<'a>(
     mut decoder: Decoder,
@@ -34,7 +34,7 @@ pub fn decode_message<'a>(
                             otel_log.record_mut().time_unix_nano =
                                 timestamp.timestamp_nanos_opt().unwrap_or(0) as u64;
                                 otel_log.metadata_mut().value_mut().insert(
-                                    vector_lib::lookup::path!(source_type, "timestamp"),
+                                    sol_lib::lookup::path!(source_type, "timestamp"),
                                     vrl::value::Value::Timestamp(timestamp),
                                 );
                         }

@@ -5,9 +5,9 @@ use chrono::Local;
 use futures_util::future::join_all;
 use regex::Regex;
 use tokio::sync::{mpsc, oneshot};
-use vector_lib::api_client::{Client, connect_subscription_client};
+use sol_lib::api_client::{Client, connect_subscription_client};
 
-use vector_lib::top::{
+use sol_lib::top::{
     dashboard::{init_dashboard, is_tty},
     metrics,
     state::{self, ConnectionStatus, EventType, State},
@@ -48,7 +48,7 @@ pub async fn cmd(opts: &super::Opts) -> exitcode::ExitCode {
         return exitcode::UNAVAILABLE;
     }
 
-    top(opts, client, "Vector").await
+    top(opts, client, "Sol").await
 }
 
 /// General monitoring

@@ -1,7 +1,7 @@
 use std::{fmt::Debug, io};
 
 use bytes::Bytes;
-use vector_lib::{
+use sol_lib::{
     codecs::{CharacterDelimitedEncoder, JsonSerializerConfig, encoding::Framer},
     lookup::{OwnedValuePath, PathPrefix},
 };

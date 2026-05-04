@@ -1,8 +1,8 @@
 use bytes::{BufMut, BytesMut};
 use serde::{Deserialize, Serialize};
 use tokio_util::codec::Encoder;
-use vector_config::configurable_component;
-use vector_core::{config::DataType, event::Event, schema};
+use sol_config::configurable_component;
+use sol_core::{config::DataType, event::Event, schema};
 
 use crate::encoding::BuildError;
 
@@ -66,7 +66,7 @@ impl AvroSerializer {
 }
 
 impl Encoder<Event> for AvroSerializer {
-    type Error = vector_common::Error;
+    type Error = sol_common::Error;
 
     fn encode(&mut self, event: Event, buffer: &mut BytesMut) -> Result<(), Self::Error> {
         let log = event.into_log();
@@ -83,7 +83,7 @@ impl Encoder<Event> for AvroSerializer {
 mod tests {
     use bytes::BytesMut;
     use indoc::indoc;
-    use vector_core::event::{OtelLog, Value};
+    use sol_core::event::{OtelLog, Value};
     use vrl::btreemap;
     use vrl::value::ObjectMap;
 

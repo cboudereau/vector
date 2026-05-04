@@ -13,7 +13,7 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc, oneshot};
 use tokio_util::sync::PollSemaphore;
 use tower::Service;
 use uuid::Uuid;
-use vector_lib::{event::EventStatus, request_metadata::MetaDescriptive};
+use sol_lib::{event::EventStatus, request_metadata::MetaDescriptive};
 
 use super::{
     EndpointTarget,
@@ -282,7 +282,7 @@ mod tests {
     use bytes::Bytes;
     use futures_util::{StreamExt, poll, stream::FuturesUnordered};
     use tower::{Service, ServiceExt, util::BoxService};
-    use vector_lib::{
+    use sol_lib::{
         config::proxy::ProxyConfig,
         event::{EventFinalizers, EventStatus},
         internal_event::CountByteSize,

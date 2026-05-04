@@ -2,7 +2,7 @@ use futures::StreamExt;
 #[cfg(target_os = "linux")]
 use heim::cpu::os::linux::CpuTimeExt;
 use heim::units::time::second;
-use vector_lib::{event::OtelAttributes, otel_tags};
+use sol_lib::{event::OtelAttributes, otel_tags};
 
 use super::{HostMetrics, filter_result};
 use crate::internal_events::{HostMetricsScrapeDetailError, HostMetricsScrapeError};

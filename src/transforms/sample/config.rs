@@ -1,5 +1,5 @@
 use snafu::Snafu;
-use vector_lib::{
+use sol_lib::{
     configurable::configurable_component,
     lookup::{lookup_v2::OptionalValuePath, owned_value_path},
 };

@@ -1,11 +1,11 @@
 use std::{collections::BTreeMap, time::Duration};
 
 use futures::StreamExt;
-use vector_lib::event::otel_metric::{InstrumentationScope, Resource};
+use sol_lib::event::otel_metric::{InstrumentationScope, Resource};
 use serde_with::serde_as;
 use tokio::time;
 use tokio_stream::wrappers::IntervalStream;
-use vector_lib::{
+use sol_lib::{
     ByteSizeOf, EstimatedJsonEncodedSizeOf,
     configurable::configurable_component,
     internal_event::{ByteSize, BytesReceived, CountByteSize, InternalEventHandle as _, Protocol},
@@ -219,7 +219,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     use metrics::{counter, gauge, histogram};
-    use vector_lib::{otel_tags, metrics::Controller};
+    use sol_lib::{otel_tags, metrics::Controller};
 
     use super::*;
     use crate::{

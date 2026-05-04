@@ -9,7 +9,7 @@ use futures::future::BoxFuture;
 use md5::Digest;
 use tower::Service;
 use tracing::Instrument;
-use vector_lib::{
+use sol_lib::{
     event::{EventFinalizers, EventStatus, Finalizable},
     request_metadata::{GroupedCountByteSize, MetaDescriptive, RequestMetadata},
     stream::DriverResponse,

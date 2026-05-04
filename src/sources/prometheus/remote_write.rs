@@ -2,7 +2,7 @@ use std::{collections::HashMap, net::SocketAddr};
 
 use bytes::Bytes;
 use prost::Message;
-use vector_lib::{
+use sol_lib::{
     configurable::configurable_component, prometheus::parser::proto,
 };
 use warp::http::{HeaderMap, StatusCode};
@@ -204,7 +204,7 @@ impl HttpSource for RemoteWriteSource {
 #[cfg(test)]
 mod test {
     use chrono::{SubsecRound as _, Utc};
-    use vector_lib::{
+    use sol_lib::{
         event::{EventStatus, MetricKind, MetricView, OtelMetric},
         otel_tags,
     };
@@ -282,7 +282,7 @@ mod test {
         // put them back into order before comparing.
         output.sort_unstable_by_key(|event| event.as_metric().name().to_owned());
 
-        vector_lib::assert_event_data_eq!(events, output);
+        sol_lib::assert_event_data_eq!(events, output);
     }
 
     fn make_events() -> Vec<Event> {
@@ -296,12 +296,12 @@ mod test {
                 OtelMetric::new_gauge("gauge_2", 41.0).with_timestamp(Some(timestamp())),
             ),
             Event::Metric({
-                let buckets = vector_lib::buckets![ 2.3 => 11, 4.2 => 85 ];
+                let buckets = sol_lib::buckets![ 2.3 => 11, 4.2 => 85 ];
                 OtelMetric::new_histogram("histogram_3", MetricKind::Absolute, &buckets, 96, 156.2)
                     .with_timestamp(Some(timestamp()))
             }),
             Event::Metric({
-                let quantiles = vector_lib::quantiles![ 0.1 => 1.2, 0.5 => 3.6, 0.9 => 5.2 ];
+                let quantiles = sol_lib::quantiles![ 0.1 => 1.2, 0.5 => 3.6, 0.9 => 5.2 ];
                 OtelMetric::new_summary("summary_4", &quantiles, 23, 8.6)
                     .with_timestamp(Some(timestamp()))
             }),
@@ -330,7 +330,7 @@ mod test {
 
     fn create_default_request_body() -> Vec<u8> {
         use prost::Message;
-        use vector_lib::prometheus::parser::proto;
+        use sol_lib::prometheus::parser::proto;
 
         let request = proto::WriteRequest {
             metadata: vec![proto::MetricMetadata {
@@ -360,7 +360,7 @@ mod test {
 
     fn create_conflicting_metadata_request_body() -> Vec<u8> {
         use prost::Message;
-        use vector_lib::prometheus::parser::proto;
+        use sol_lib::prometheus::parser::proto;
 
         let request = proto::WriteRequest {
             metadata: vec![
@@ -475,7 +475,7 @@ mod test {
         )
         .await;
 
-        vector_lib::assert_event_data_eq!(expected, output);
+        sol_lib::assert_event_data_eq!(expected, output);
     }
 
     #[tokio::test]
@@ -503,7 +503,7 @@ mod test {
         // Create a request with NaN values
         let request_body = {
             use prost::Message;
-            use vector_lib::prometheus::parser::proto;
+            use sol_lib::prometheus::parser::proto;
 
             let request = proto::WriteRequest {
                 metadata: vec![],
@@ -574,7 +574,7 @@ mod test {
         // Create a request with NaN values
         let request_body = {
             use prost::Message;
-            use vector_lib::prometheus::parser::proto;
+            use sol_lib::prometheus::parser::proto;
 
             let request = proto::WriteRequest {
                 metadata: vec![],
@@ -680,7 +680,7 @@ mod test {
         // put them back into order before comparing.
         output.sort_unstable_by_key(|event| event.as_metric().name().to_owned());
 
-        vector_lib::assert_event_data_eq!(events, output);
+        sol_lib::assert_event_data_eq!(events, output);
     }
 
     #[tokio::test]

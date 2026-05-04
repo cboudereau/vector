@@ -5,7 +5,7 @@ use futures::{
     future::{Either, select},
     pin_mut,
 };
-use vector_lib::{
+use sol_lib::{
     file_source::{
         file_server::{FileServer, Line, Shutdown as FileServerShutdown},
         paths_provider::PathsProvider,

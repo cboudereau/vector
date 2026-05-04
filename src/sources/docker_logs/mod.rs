@@ -23,7 +23,7 @@ use futures::{Stream, StreamExt};
 use serde_with::serde_as;
 use tokio::sync::mpsc;
 use tracing_futures::Instrument;
-use vector_lib::{
+use sol_lib::{
     codecs::{BytesDeserializer, BytesDeserializerConfig},
     config::insert_source_metadata,
     configurable::configurable_component,

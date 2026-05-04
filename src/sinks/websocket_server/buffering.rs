@@ -5,8 +5,8 @@ use derivative::Derivative;
 use tokio_tungstenite::tungstenite::{Message, handshake::server::Request};
 use url::Url;
 use uuid::Uuid;
-use vector_config::configurable_component;
-use vector_lib::{
+use sol_config::configurable_component;
+use sol_lib::{
     codecs::decoding::{DeserializerConfig, format::Deserializer as _},
     event::{Event, MaybeAsLogMut},
     lookup::{PathPrefix, lookup_v2::ConfigValuePath},

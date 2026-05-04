@@ -8,7 +8,7 @@ use chrono::{DateTime, TimeZone, Utc};
 use futures::{FutureExt, StreamExt};
 use tokio::{pin, select};
 use tracing_futures::Instrument;
-use vector_lib::{
+use sol_lib::{
     finalizer::UnorderedFinalizer,
     internal_event::{EventsReceived, Registered},
 };
@@ -145,7 +145,7 @@ impl SqsSource {
                         receipts_to_ack.push(receipt_handle);
                     }
                     let timestamp = get_timestamp(&message.attributes);
-                    // Error is logged by `vector_lib::codecs::Decoder`, no further handling
+                    // Error is logged by `sol_lib::codecs::Decoder`, no further handling
                     // is needed here.
                     let decoded = util::decode_message(
                         self.decoder.clone(),
@@ -220,7 +220,7 @@ async fn delete_messages(client: SqsClient, receipts: Vec<String>, queue_url: St
 #[cfg(test)]
 mod tests {
     use chrono::SecondsFormat;
-    use vector_lib::lookup::path;
+    use sol_lib::lookup::path;
 
     use super::*;
     use crate::{
@@ -279,22 +279,22 @@ mod tests {
         let def = definitions
             .unwrap()
             .with_event_field(
-                &vector_lib::lookup::owned_value_path!("observed_time_unix_nano"),
+                &sol_lib::lookup::owned_value_path!("observed_time_unix_nano"),
                 vrl::value::Kind::integer().or_undefined(),
                 None,
             )
             .with_event_field(
-                &vector_lib::lookup::owned_value_path!("time_unix_nano"),
+                &sol_lib::lookup::owned_value_path!("time_unix_nano"),
                 vrl::value::Kind::integer().or_undefined(),
                 None,
             )
             .with_event_field(
-                &vector_lib::lookup::owned_value_path!("source_type"),
+                &sol_lib::lookup::owned_value_path!("source_type"),
                 vrl::value::Kind::bytes().or_undefined(),
                 None,
             )
             .with_event_field(
-                &vector_lib::lookup::owned_value_path!("resource"),
+                &sol_lib::lookup::owned_value_path!("resource"),
                 vrl::value::Kind::object(vrl::value::kind::Collection::empty().with_unknown(vrl::value::Kind::bytes())).or_undefined(),
                 None,
             );
@@ -348,23 +348,23 @@ mod tests {
         );
         let def = definitions.unwrap()
             .with_event_field(
-                &vector_lib::lookup::owned_value_path!("observed_time_unix_nano"),
+                &sol_lib::lookup::owned_value_path!("observed_time_unix_nano"),
                 vrl::value::Kind::integer().or_undefined(),
                 None,
             )
             .with_event_field(
-                &vector_lib::lookup::owned_value_path!("time_unix_nano"),
+                &sol_lib::lookup::owned_value_path!("time_unix_nano"),
                 vrl::value::Kind::integer().or_undefined(),
                 None,
             )
             // source_type is now stored as a resource attribute, not a record attribute
             .with_event_field(
-                &vector_lib::lookup::owned_value_path!("source_type"),
+                &sol_lib::lookup::owned_value_path!("source_type"),
                 vrl::value::Kind::bytes().or_undefined(),
                 None,
             )
             .with_event_field(
-                &vector_lib::lookup::owned_value_path!("resource"),
+                &sol_lib::lookup::owned_value_path!("resource"),
                 vrl::value::Kind::object(vrl::value::kind::Collection::empty().with_unknown(vrl::value::Kind::bytes())).or_undefined(),
                 None,
             );

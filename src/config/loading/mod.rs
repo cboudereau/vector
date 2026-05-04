@@ -17,7 +17,7 @@ use loader::process::Process;
 pub use loader::*;
 pub use secret::*;
 pub use source::*;
-use vector_lib::configurable::NamedComponent;
+use sol_lib::configurable::NamedComponent;
 
 use super::{
     Config, ConfigPath, Format, FormatHint, ProviderConfig, builder::ConfigBuilder, format,
@@ -346,14 +346,14 @@ where
 
 #[cfg(not(windows))]
 fn default_path() -> PathBuf {
-    "/etc/vector/vector.yaml".into()
+    "/etc/sol/sol.yaml".into()
 }
 
 #[cfg(windows)]
 fn default_path() -> PathBuf {
     let program_files =
         std::env::var("ProgramFiles").expect("%ProgramFiles% environment variable must be defined");
-    format!("{}\\Vector\\config\\vector.yaml", program_files).into()
+    format!("{}\\Sol\\config\\sol.yaml", program_files).into()
 }
 
 fn default_config_paths() -> Vec<ConfigPath> {

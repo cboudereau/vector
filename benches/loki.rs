@@ -1,7 +1,7 @@
 use std::convert::TryFrom;
 
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
-use vector::{sinks::loki::valid_label_name, template::Template};
+use sol::{sinks::loki::valid_label_name, template::Template};
 
 const VALID: [&str; 4] = ["name", " name ", "bee_bop", "a09b"];
 const INVALID: [&str; 4] = ["0ab", "*", "", " "];

@@ -1,7 +1,7 @@
 use std::{convert::TryFrom, iter::zip};
 
-use vector_common::sensitive_string::SensitiveString;
-use vector_lib::lookup::{PathPrefix, owned_value_path};
+use sol_common::sensitive_string::SensitiveString;
+use sol_lib::lookup::{PathPrefix, owned_value_path};
 
 use crate::{
     codecs::Transformer,

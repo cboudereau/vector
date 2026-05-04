@@ -1,4 +1,4 @@
-use vector_lib::{
+use sol_lib::{
     config::clone_input_definitions,
     configurable::configurable_component,
     internal_event::{Count, InternalEventHandle as _, Registered},
@@ -102,7 +102,7 @@ mod test {
 
     use tokio::sync::mpsc;
     use tokio_stream::wrappers::ReceiverStream;
-    use vector_lib::{
+    use sol_lib::{
         config::ComponentKey,
         event::{MetricKind, OtelMetric},
     };

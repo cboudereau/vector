@@ -1,7 +1,7 @@
 pub mod logs;
 pub mod metrics;
 
-use vector_lib::configurable::configurable_component;
+use sol_lib::configurable::configurable_component;
 
 pub use self::{logs::SematextLogsConfig, metrics::SematextMetricsConfig};
 

@@ -2,8 +2,8 @@ use std::fmt::Debug;
 
 use metrics::counter;
 use rumqttc::ConnectionError;
-use vector_lib::NamedInternalEvent;
-use vector_lib::internal_event::{InternalEvent, error_stage, error_type};
+use sol_lib::NamedInternalEvent;
+use sol_lib::internal_event::{InternalEvent, error_stage, error_type};
 
 #[derive(Debug, NamedInternalEvent)]
 pub struct MqttConnectionError {

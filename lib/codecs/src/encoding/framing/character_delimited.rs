@@ -1,6 +1,6 @@
 use bytes::{BufMut, BytesMut};
 use tokio_util::codec::Encoder;
-use vector_config::configurable_component;
+use sol_config::configurable_component;
 
 use super::BoxedFramingError;
 
@@ -32,7 +32,7 @@ impl CharacterDelimitedEncoderConfig {
 pub struct CharacterDelimitedEncoderOptions {
     /// The ASCII (7-bit) character that delimits byte sequences.
     #[configurable(metadata(docs::type_override = "ascii_char"))]
-    #[serde(with = "vector_core::serde::ascii_char")]
+    #[serde(with = "sol_core::serde::ascii_char")]
     pub delimiter: u8,
 }
 

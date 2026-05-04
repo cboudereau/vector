@@ -10,7 +10,7 @@ use http::{Uri, response::Parts};
 use serde_with::serde_as;
 use snafu::ResultExt;
 use tokio_util::codec::Decoder as _;
-use vector_lib::{
+use sol_lib::{
     TimeZone,
     codecs::{
         StreamDecodingError,
@@ -260,7 +260,7 @@ pub struct Query {
 
 impl Query {
     pub fn new(params: &HashMap<String, QueryParameterValue>) -> Result<Self, sources::BuildError> {
-        let functions = vector_vrl_functions::all();
+        let functions = sol_vrl_functions::all();
 
         let mut compiled: HashMap<String, CompiledQueryParameterValue> = HashMap::new();
 
@@ -316,7 +316,7 @@ impl Query {
 impl SourceConfig for HttpClientConfig {
     async fn build(&self, cx: SourceContext) -> crate::Result<sources::Source> {
         let query = Query::new(&self.query)?;
-        let functions = vector_vrl_functions::all();
+        let functions = sol_vrl_functions::all();
 
         // Compile body if present
         let body = self
@@ -423,7 +423,7 @@ impl HttpClientContext {
                 }
                 Ok(None) => break,
                 Err(error) => {
-                    // Error is logged by `vector_lib::codecs::Decoder`, no further
+                    // Error is logged by `sol_lib::codecs::Decoder`, no further
                     // handling is needed here.
                     if !error.can_continue() {
                         break;

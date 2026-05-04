@@ -2,7 +2,7 @@ use std::{collections::HashMap, io};
 
 use bytes::Bytes;
 use serde::{Serialize, ser::SerializeSeq};
-use vector_lib::config::telemetry;
+use sol_lib::config::telemetry;
 
 use crate::sinks::{prelude::*, util::encoding::Encoder};
 

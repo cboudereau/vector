@@ -69,12 +69,12 @@ pub struct RootOpts {
     /// Read configuration from one or more files. Wildcard paths are supported.
     /// File format is detected from the file name.
     /// If zero files are specified, the deprecated default config path
-    /// `/etc/vector/vector.yaml` is targeted.
+    /// `/etc/sol/sol.yaml` is targeted.
     #[arg(
         id = "config",
         short,
         long,
-        env = "VECTOR_CONFIG",
+        env = "SOL_CONFIG",
         value_delimiter(',')
     )]
     pub config_paths: Vec<PathBuf>,
@@ -87,7 +87,7 @@ pub struct RootOpts {
         id = "config-dir",
         short = 'C',
         long,
-        env = "VECTOR_CONFIG_DIR",
+        env = "SOL_CONFIG_DIR",
         value_delimiter(',')
     )]
     pub config_dirs: Vec<PathBuf>,
@@ -97,7 +97,7 @@ pub struct RootOpts {
     #[arg(
         id = "config-toml",
         long,
-        env = "VECTOR_CONFIG_TOML",
+        env = "SOL_CONFIG_TOML",
         value_delimiter(',')
     )]
     pub config_paths_toml: Vec<PathBuf>,
@@ -107,7 +107,7 @@ pub struct RootOpts {
     #[arg(
         id = "config-json",
         long,
-        env = "VECTOR_CONFIG_JSON",
+        env = "SOL_CONFIG_JSON",
         value_delimiter(',')
     )]
     pub config_paths_json: Vec<PathBuf>,
@@ -117,17 +117,17 @@ pub struct RootOpts {
     #[arg(
         id = "config-yaml",
         long,
-        env = "VECTOR_CONFIG_YAML",
+        env = "SOL_CONFIG_YAML",
         value_delimiter(',')
     )]
     pub config_paths_yaml: Vec<PathBuf>,
 
     /// Exit on startup if any sinks fail healthchecks
-    #[arg(short, long, env = "VECTOR_REQUIRE_HEALTHY")]
+    #[arg(short, long, env = "SOL_REQUIRE_HEALTHY")]
     pub require_healthy: Option<bool>,
 
     /// Number of threads to use for processing (default is number of available cores)
-    #[arg(short, long, env = "VECTOR_THREADS")]
+    #[arg(short, long, env = "SOL_THREADS")]
     pub threads: Option<usize>,
 
     /// Enable more detailed internal logging. Repeat to increase level. Overridden by `--quiet`.
@@ -141,13 +141,13 @@ pub struct RootOpts {
     /// Disable interpolation of environment variables in configuration files.
     #[arg(
         long,
-        env = "VECTOR_DISABLE_ENV_VAR_INTERPOLATION",
+        env = "SOL_DISABLE_ENV_VAR_INTERPOLATION",
         default_value = "false"
     )]
     pub disable_env_var_interpolation: bool,
 
     /// Set the logging format
-    #[arg(long, default_value = "text", env = "VECTOR_LOG_FORMAT")]
+    #[arg(long, default_value = "text", env = "SOL_LOG_FORMAT")]
     pub log_format: LogFormat,
 
     /// Control when ANSI terminal formatting is used.
@@ -157,11 +157,11 @@ pub struct RootOpts {
     /// the `--color always` option will always enable ANSI terminal formatting. `--color never`
     /// will disable all ANSI terminal formatting. `--color auto` will attempt
     /// to detect it automatically.
-    #[arg(long, default_value = "auto", env = "VECTOR_COLOR")]
+    #[arg(long, default_value = "auto", env = "SOL_COLOR")]
     pub color: Color,
 
     /// Watch for changes in configuration file, and reload accordingly.
-    #[arg(short, long, env = "VECTOR_WATCH_CONFIG")]
+    #[arg(short, long, env = "SOL_WATCH_CONFIG")]
     pub watch_config: bool,
 
     /// Method for configuration watching.
@@ -175,7 +175,7 @@ pub struct RootOpts {
     #[arg(
         long,
         default_value = "recommended",
-        env = "VECTOR_WATCH_CONFIG_METHOD"
+        env = "SOL_WATCH_CONFIG_METHOD"
     )]
     pub watch_config_method: WatchConfigMethod,
 
@@ -184,7 +184,7 @@ pub struct RootOpts {
     /// This setting is only applicable if `Poll` is set in `--watch-config-method`.
     #[arg(
         long,
-        env = "VECTOR_WATCH_CONFIG_POLL_INTERVAL_SECONDS",
+        env = "SOL_WATCH_CONFIG_POLL_INTERVAL_SECONDS",
         default_value = "30"
     )]
     pub watch_config_poll_interval_seconds: NonZeroU64,
@@ -206,7 +206,7 @@ pub struct RootOpts {
     #[arg(
         short,
         long,
-        env = "VECTOR_INTERNAL_LOG_RATE_LIMIT",
+        env = "SOL_INTERNAL_LOG_RATE_LIMIT",
         default_value = "10"
     )]
     pub internal_log_rate_limit: u64,
@@ -217,7 +217,7 @@ pub struct RootOpts {
     #[arg(
         long,
         default_value = "60",
-        env = "VECTOR_GRACEFUL_SHUTDOWN_LIMIT_SECS",
+        env = "SOL_GRACEFUL_SHUTDOWN_LIMIT_SECS",
         group = "graceful-shutdown-limit"
     )]
     pub graceful_shutdown_limit_secs: NonZeroU64,
@@ -228,7 +228,7 @@ pub struct RootOpts {
     #[arg(
         long,
         default_value = "false",
-        env = "VECTOR_NO_GRACEFUL_SHUTDOWN_LIMIT",
+        env = "SOL_NO_GRACEFUL_SHUTDOWN_LIMIT",
         group = "graceful-shutdown-limit"
     )]
     pub no_graceful_shutdown_limit: bool,
@@ -252,14 +252,14 @@ pub struct RootOpts {
     /// The probe functionality manipulates the `SSL_CERT_FILE` and `SSL_CERT_DIR` environment variables
     /// in the Vector process. This behavior can be problematic for users of the `exec` source, which by
     /// default inherits the environment of the Vector process.
-    #[arg(long, env = "VECTOR_OPENSSL_NO_PROBE", default_value = "false")]
+    #[arg(long, env = "SOL_OPENSSL_NO_PROBE", default_value = "false")]
     pub openssl_no_probe: bool,
 
     /// Allow the configuration to run without any components. This is useful for loading in an
     /// empty stub config that will later be replaced with actual components. Note that this is
     /// likely not useful without also watching for config file changes as described in
     /// `--watch-config`.
-    #[arg(long, env = "VECTOR_ALLOW_EMPTY_CONFIG", default_value = "false")]
+    #[arg(long, env = "SOL_ALLOW_EMPTY_CONFIG", default_value = "false")]
     pub allow_empty_config: bool,
 }
 
@@ -378,7 +378,7 @@ impl SubCommand {
             #[cfg(feature = "top")]
             Self::Top(t) => top::cmd(t).await,
             Self::Validate(v) => validate::validate(v, color).await,
-            Self::Vrl(s) => vrl::cli::cmd::cmd(s, vector_vrl_functions::all()),
+            Self::Vrl(s) => vrl::cli::cmd::cmd(s, sol_vrl_functions::all()),
             Self::VrlMigrate(s) => vrl_migrate::cmd::cmd(s),
         }
     }

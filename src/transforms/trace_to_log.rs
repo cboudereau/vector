@@ -1,5 +1,5 @@
-use vector_lib::config::clone_input_definitions;
-use vector_lib::configurable::configurable_component;
+use sol_lib::config::clone_input_definitions;
+use sol_lib::configurable::configurable_component;
 
 use crate::config::OutputId;
 use crate::{
@@ -62,7 +62,7 @@ impl FunctionTransform for TraceToLog {
                 // Convert span to log: span fields become log attributes,
                 // resource and scope are preserved.
                 let map = span.as_map().unwrap_or_default();
-                let log = vector_lib::event::OtelLog::from_value_map(
+                let log = sol_lib::event::OtelLog::from_value_map(
                     vrl::value::Value::Object(map),
                     span.metadata().clone(),
                 );
@@ -80,7 +80,7 @@ mod tests {
     use crate::transforms::test::create_topology;
     use tokio::sync::mpsc;
     use tokio_stream::wrappers::ReceiverStream;
-    use vector_lib::event::{EventMetadata, OtelLog, OtelSpan};
+    use sol_lib::event::{EventMetadata, OtelLog, OtelSpan};
     use vrl::value::Value;
 
     #[test]

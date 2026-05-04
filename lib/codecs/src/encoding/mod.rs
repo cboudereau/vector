@@ -48,9 +48,9 @@ pub enum Error {
     /// The error occurred while encoding the byte frame boundaries.
     FramingError(BoxedFramingError),
     /// The error occurred while serializing a structured event into bytes.
-    SerializingError(vector_common::Error),
+    SerializingError(sol_common::Error),
     /// A schema constraint was violated during encoding (e.g., null value for non-nullable field).
-    SchemaConstraintViolation(vector_common::Error),
+    SchemaConstraintViolation(sol_common::Error),
 }
 
 impl std::fmt::Display for Error {

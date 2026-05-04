@@ -1,6 +1,6 @@
 use bytes::BytesMut;
 use tokio_util::codec::Encoder as _;
-use vector_lib::config::telemetry;
+use sol_lib::config::telemetry;
 
 use super::{RedisEvent, RedisKvEntry, RedisRequest};
 use crate::sinks::{prelude::*, util::EncodedLength};

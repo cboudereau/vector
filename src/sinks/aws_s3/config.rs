@@ -1,6 +1,6 @@
 use aws_sdk_s3::Client as S3Client;
 use tower::ServiceBuilder;
-use vector_lib::{
+use sol_lib::{
     TimeZone,
     codecs::{
         TextSerializerConfig,
@@ -153,7 +153,7 @@ pub struct S3SinkConfig {
     /// By default, the sink only retries attempts it deems possible to retry.
     /// These settings extend the default behavior.
     #[configurable(derived)]
-    #[serde(default, skip_serializing_if = "vector_lib::serde::is_default")]
+    #[serde(default, skip_serializing_if = "sol_lib::serde::is_default")]
     pub retry_strategy: RetryStrategy,
 }
 

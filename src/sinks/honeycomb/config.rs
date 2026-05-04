@@ -3,7 +3,7 @@
 use bytes::Bytes;
 use futures::FutureExt;
 use http::{Request, StatusCode, Uri};
-use vector_lib::{configurable::configurable_component, sensitive_string::SensitiveString};
+use sol_lib::{configurable::configurable_component, sensitive_string::SensitiveString};
 use vrl::value::Kind;
 
 use super::{

@@ -5,7 +5,7 @@ use futures::StreamExt;
 use tokio::net::UnixDatagram;
 use tokio_util::codec::FramedRead;
 use tracing::field;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     codecs::StreamDecodingError,
     internal_event::{ByteSize, BytesReceived, InternalEventHandle as _, Protocol},
@@ -75,7 +75,7 @@ async fn listen(
         tokio::select! {
             recv = socket.recv_from(&mut buf) => {
                 let (byte_size, address) = recv.map_err(|error| {
-                    let error = vector_lib::codecs::decoding::Error::FramingError(error.into());
+                    let error = sol_lib::codecs::decoding::Error::FramingError(error.into());
                     emit!(SocketReceiveError {
                         mode: SocketMode::Unix,
                         error: &error

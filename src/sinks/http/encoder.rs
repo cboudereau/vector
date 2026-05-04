@@ -4,7 +4,7 @@ use std::io;
 
 use bytes::{BufMut, BytesMut};
 use tokio_util::codec::Encoder as _;
-use vector_lib::codecs::{
+use sol_lib::codecs::{
     CharacterDelimitedEncoder,
     encoding::{
         Framer,

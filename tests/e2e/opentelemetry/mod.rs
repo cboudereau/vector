@@ -5,7 +5,7 @@ use std::{io, path::Path, process::Command};
 
 use prost::Message as ProstMessage;
 use prost_reflect::{DescriptorPool, prost::Message as ProstReflectMessage};
-use vector_lib::opentelemetry::proto::{
+use sol_lib::opentelemetry::proto::{
     DESCRIPTOR_BYTES, common::v1::any_value::Value as AnyValueEnum, resource::v1::Resource,
 };
 use vrl::value::Value as VrlValue;

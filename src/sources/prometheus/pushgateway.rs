@@ -16,7 +16,7 @@ use std::{collections::HashMap, net::SocketAddr};
 use base64::{Engine, prelude::BASE64_URL_SAFE};
 use bytes::Bytes;
 use itertools::Itertools;
-use vector_lib::{configurable::configurable_component};
+use sol_lib::{configurable::configurable_component};
 use warp::http::HeaderMap;
 
 use super::parser;
@@ -248,7 +248,7 @@ fn decode_label_pair(k: &str, v: &str) -> Result<(String, String), ErrorMessage>
 #[cfg(test)]
 mod test {
     use chrono::{TimeZone, Timelike, Utc};
-    use vector_lib::{
+    use sol_lib::{
         event::{EventStatus, MetricKind, OtelMetric},
         tls::MaybeTlsSettings,
     };
@@ -434,7 +434,7 @@ mod test {
                     .with_timestamp(Some(timestamp)),
                 {
                     let buckets =
-                        vector_lib::buckets![1.0 => 0, 2.5 => 0, 5.0 => 0, 10.0 => 1];
+                        sol_lib::buckets![1.0 => 0, 2.5 => 0, 5.0 => 0, 10.0 => 1];
                     OtelMetric::new_histogram(
                         "jobs_distribution",
                         MetricKind::Incremental,
@@ -448,7 +448,7 @@ mod test {
                     .with_timestamp(Some(timestamp))
                 },
                 {
-                    let quantiles = vector_lib::quantiles![];
+                    let quantiles = sol_lib::quantiles![];
                     OtelMetric::new_summary("jobs_summary", &quantiles, 1, 8.0)
                         .with_tags(Some(
                             otel_tags! { "job" => "async_worker", "type" => "a" },
@@ -470,7 +470,7 @@ mod test {
             )
             .await;
 
-            vector_lib::assert_event_data_eq!(expected, events_to_metrics(output));
+            sol_lib::assert_event_data_eq!(expected, events_to_metrics(output));
         })
         .await;
     }

@@ -11,7 +11,7 @@ use aws_smithy_runtime_api::{
 };
 use futures::FutureExt;
 use snafu::Snafu;
-use vector_lib::configurable::configurable_component;
+use sol_lib::configurable::configurable_component;
 
 use super::service::{S3Request, S3Response, S3Service};
 use crate::{

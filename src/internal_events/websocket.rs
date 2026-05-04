@@ -7,12 +7,12 @@ use std::{
 
 use metrics::{counter, histogram};
 use tokio_tungstenite::tungstenite::error::Error as TungsteniteError;
-use vector_common::{
+use sol_common::{
     internal_event::{error_stage, error_type},
     json_size::JsonSize,
 };
-use vector_lib::NamedInternalEvent;
-use vector_lib::internal_event::InternalEvent;
+use sol_lib::NamedInternalEvent;
+use sol_lib::internal_event::InternalEvent;
 
 pub const PROTOCOL: &str = "websocket";
 

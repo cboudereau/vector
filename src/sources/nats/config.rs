@@ -3,7 +3,7 @@ use async_nats::jetstream::{
     context::GetStreamError,
 };
 use snafu::{ResultExt, Snafu};
-use vector_lib::{
+use sol_lib::{
     codecs::decoding::{DeserializerConfig, FramingConfig},
     configurable::configurable_component,
     lookup::{lookup_v2::OptionalValuePath, owned_value_path},
@@ -313,7 +313,7 @@ impl TryFrom<&NatsSourceConfig> for async_nats::ConnectOptions {
 mod tests {
     #![allow(clippy::print_stdout)]
 
-    use vector_lib::{
+    use sol_lib::{
         lookup::owned_value_path,
         schema::Definition,
     };

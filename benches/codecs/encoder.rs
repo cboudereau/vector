@@ -6,8 +6,8 @@ use criterion::{
     measurement::WallTime,
 };
 use tokio_util::codec::Encoder;
-use vector::event::{Event, OtelLog};
-use vector_lib::{
+use sol::event::{Event, OtelLog};
+use sol_lib::{
     btreemap,
     byte_size_of::ByteSizeOf,
     codecs::{JsonSerializerConfig, NewlineDelimitedEncoder, encoding::Framer},
@@ -17,7 +17,7 @@ use vector_lib::{
 pub struct JsonLogSerializer;
 
 impl Encoder<Event> for JsonLogSerializer {
-    type Error = vector_lib::Error;
+    type Error = sol_lib::Error;
 
     fn encode(&mut self, event: Event, buffer: &mut BytesMut) -> Result<(), Self::Error> {
         let writer = buffer.writer();
@@ -31,7 +31,7 @@ impl Encoder<Event> for JsonLogSerializer {
 pub struct JsonLogVecSerializer;
 
 impl Encoder<Event> for JsonLogVecSerializer {
-    type Error = vector_lib::Error;
+    type Error = sol_lib::Error;
 
     fn encode(&mut self, event: Event, buffer: &mut BytesMut) -> Result<(), Self::Error> {
         let log = event.as_log();

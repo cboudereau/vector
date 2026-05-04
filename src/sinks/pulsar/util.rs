@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use bytes::Bytes;
-use vector_lib::{event::Event, lookup::lookup_v2::OptionalTargetPath};
+use sol_lib::{event::Event, lookup::lookup_v2::OptionalTargetPath};
 use vrl::value::{KeyString, Value};
 
 use crate::{

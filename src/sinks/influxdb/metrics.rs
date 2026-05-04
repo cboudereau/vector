@@ -3,7 +3,7 @@ use std::{collections::HashMap, future::ready, task::Poll};
 use bytes::{Bytes, BytesMut};
 use futures::{SinkExt, future::BoxFuture, stream};
 use tower::Service;
-use vector_lib::{
+use sol_lib::{
     ByteSizeOf, EstimatedJsonEncodedSizeOf,
     configurable::configurable_component,
     event::{MetricView, OtelAttributes},
@@ -480,7 +480,7 @@ mod tests {
 
     #[test]
     fn test_encode_histogram_v1() {
-        let buckets = vector_lib::buckets![1.0 => 1, 2.1 => 2, 3.0 => 3];
+        let buckets = sol_lib::buckets![1.0 => 1, 2.1 => 2, 3.0 => 3];
         let events = vec![
             OtelMetric::new_histogram("requests", MetricKind::Absolute, &buckets, 6, 12.5)
                 .with_namespace(Some("ns"))
@@ -516,7 +516,7 @@ mod tests {
 
     #[test]
     fn test_encode_histogram() {
-        let buckets = vector_lib::buckets![1.0 => 1, 2.1 => 2, 3.0 => 3];
+        let buckets = sol_lib::buckets![1.0 => 1, 2.1 => 2, 3.0 => 3];
         let events = vec![
             OtelMetric::new_histogram("requests", MetricKind::Absolute, &buckets, 6, 12.5)
                 .with_namespace(Some("ns"))
@@ -552,7 +552,7 @@ mod tests {
 
     #[test]
     fn test_encode_summary_v1() {
-        let quantiles = vector_lib::quantiles![0.01 => 1.5, 0.5 => 2.0, 0.99 => 3.0];
+        let quantiles = sol_lib::quantiles![0.01 => 1.5, 0.5 => 2.0, 0.99 => 3.0];
         let events = vec![
             OtelMetric::new_summary("requests_sum", &quantiles, 6, 12.0)
                 .with_namespace(Some("ns"))
@@ -588,7 +588,7 @@ mod tests {
 
     #[test]
     fn test_encode_summary() {
-        let quantiles = vector_lib::quantiles![0.01 => 1.5, 0.5 => 2.0, 0.99 => 3.0];
+        let quantiles = sol_lib::quantiles![0.01 => 1.5, 0.5 => 2.0, 0.99 => 3.0];
         let events = vec![
             OtelMetric::new_summary("requests_sum", &quantiles, 6, 12.0)
                 .with_namespace(Some("ns"))
@@ -628,7 +628,7 @@ mod tests {
             OtelMetric::new_histogram_from_samples(
                 "requests",
                 MetricKind::Incremental,
-                &vector_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2],
+                &sol_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2],
             )
                 .with_namespace(Some("ns"))
                 .with_tags(Some(tags()))
@@ -707,7 +707,7 @@ mod integration_tests {
     use chrono::{SecondsFormat, Utc};
     use futures::stream;
     use similar_asserts::assert_eq;
-    use vector_lib::otel_tags;
+    use sol_lib::otel_tags;
 
     use crate::{
         config::{SinkConfig, SinkContext},
@@ -804,7 +804,7 @@ mod integration_tests {
             let metric = event.into_otel_metric();
             let name = format!("{}.{}", metric.namespace().unwrap(), metric.name());
             let value = match metric.view() {
-                vector_lib::event::MetricView::Sum { value } => value,
+                sol_lib::event::MetricView::Sum { value } => value,
                 _ => unreachable!(),
             };
             let timestamp = format_timestamp(metric.timestamp().unwrap(), SecondsFormat::Nanos);

@@ -26,7 +26,7 @@ use tracing_subscriber::{
     util::SubscriberInitExt,
 };
 pub use tracing_tower::{InstrumentableService, InstrumentedService};
-use vector_lib::lookup::event_path;
+use sol_lib::lookup::event_path;
 use vrl::value::Value;
 
 use crate::event::OtelLog;

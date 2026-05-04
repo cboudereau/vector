@@ -8,7 +8,7 @@ use futures::{
 use http::{Request, StatusCode, Uri, header::AUTHORIZATION};
 use hyper::Body;
 use tower::{Service, ServiceExt};
-use vector_lib::{
+use sol_lib::{
     finalization::EventStatus,
     request_metadata::{GroupedCountByteSize, MetaDescriptive},
     sensitive_string::SensitiveString,

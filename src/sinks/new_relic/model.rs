@@ -7,7 +7,7 @@ use std::{
 use chrono::Utc;
 use ordered_float::NotNan;
 use serde::Serialize;
-use vector_lib::{
+use sol_lib::{
     event::ObjectMap,
     internal_event::{ComponentEventsDropped, INTENTIONAL, UNINTENTIONAL},
 };

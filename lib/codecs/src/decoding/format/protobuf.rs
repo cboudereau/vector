@@ -5,9 +5,9 @@ use chrono::Utc;
 use derivative::Derivative;
 use prost_reflect::{DynamicMessage, MessageDescriptor};
 use smallvec::{SmallVec, smallvec};
-use vector_config::configurable_component;
+use sol_config::configurable_component;
 use lookup::owned_value_path;
-use vector_core::{
+use sol_core::{
     config::DataType,
     event::{Event, EventMetadata, OtelLog},
     schema,
@@ -27,13 +27,13 @@ use super::Deserializer;
 #[derive(Debug, Clone, Default)]
 pub struct ProtobufDeserializerConfig {
     /// Protobuf-specific decoding options.
-    #[serde(default, skip_serializing_if = "vector_core::serde::is_default")]
+    #[serde(default, skip_serializing_if = "sol_core::serde::is_default")]
     pub protobuf: ProtobufDeserializerOptions,
 }
 
 impl ProtobufDeserializerConfig {
     /// Build the `ProtobufDeserializer` from this configuration.
-    pub fn build(&self) -> vector_common::Result<ProtobufDeserializer> {
+    pub fn build(&self) -> sol_common::Result<ProtobufDeserializer> {
         ProtobufDeserializer::try_from(self)
     }
 
@@ -82,7 +82,7 @@ pub struct ProtobufDeserializerOptions {
     ///
     /// This is useful when working with data that needs to be converted to JSON or
     /// when interfacing with systems that use JSON naming conventions.
-    #[serde(default, skip_serializing_if = "vector_core::serde::is_default")]
+    #[serde(default, skip_serializing_if = "sol_core::serde::is_default")]
     pub use_json_names: bool,
 }
 
@@ -107,7 +107,7 @@ impl ProtobufDeserializer {
         desc_bytes: &[u8],
         message_type: &str,
         options: Options,
-    ) -> vector_common::Result<Self> {
+    ) -> sol_common::Result<Self> {
         let message_descriptor = get_message_descriptor_from_bytes(desc_bytes, message_type)?;
         Ok(Self {
             message_descriptor,
@@ -120,7 +120,7 @@ fn extract_vrl_value(
     bytes: Bytes,
     message_descriptor: &MessageDescriptor,
     options: &Options,
-) -> vector_common::Result<Value> {
+) -> sol_common::Result<Value> {
     let dynamic_message = DynamicMessage::decode(message_descriptor.clone(), bytes)
         .map_err(|error| format!("Error parsing protobuf: {error:?}"))?;
 
@@ -135,7 +135,7 @@ impl Deserializer for ProtobufDeserializer {
     fn parse(
         &self,
         bytes: Bytes,
-    ) -> vector_common::Result<SmallVec<[Event; 1]>> {
+    ) -> sol_common::Result<SmallVec<[Event; 1]>> {
         let vrl_value = extract_vrl_value(bytes, &self.message_descriptor, &self.options)?;
         let mut log = OtelLog::from_value_map(vrl_value, EventMetadata::default());
         log.try_set_timestamp(Utc::now());
@@ -145,8 +145,8 @@ impl Deserializer for ProtobufDeserializer {
 }
 
 impl TryFrom<&ProtobufDeserializerConfig> for ProtobufDeserializer {
-    type Error = vector_common::Error;
-    fn try_from(config: &ProtobufDeserializerConfig) -> vector_common::Result<Self> {
+    type Error = sol_common::Error;
+    fn try_from(config: &ProtobufDeserializerConfig) -> sol_common::Result<Self> {
         let message_descriptor =
             get_message_descriptor(&config.protobuf.desc_file, &config.protobuf.message_type)?;
         Ok(Self {
@@ -165,7 +165,7 @@ mod tests {
     use std::{env, fs, path::PathBuf};
 
     use lookup::{OwnedTargetPath, owned_value_path};
-    use vector_core::event::OtelLog;
+    use sol_core::event::OtelLog;
 
     use super::*;
 

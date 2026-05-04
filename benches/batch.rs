@@ -3,7 +3,7 @@ use std::{convert::Infallible, time::Duration};
 use bytes::{BufMut, Bytes, BytesMut};
 use criterion::{Criterion, SamplingMode, Throughput, criterion_group};
 use futures::{SinkExt, StreamExt, future, stream};
-use vector::{
+use sol::{
     sinks::util::{
         BatchSink, Buffer, Compression, EncodedEvent, Merged, Partition, PartitionBatchSink,
         SinkBatchSettings,
@@ -11,7 +11,7 @@ use vector::{
     },
     test_util::{random_lines, runtime},
 };
-use vector_lib::json_size::JsonSize;
+use sol_lib::json_size::JsonSize;
 
 fn benchmark_batch(c: &mut Criterion) {
     let event_len: usize = 100;

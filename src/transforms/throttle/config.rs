@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use governor::clock;
 use serde_with::serde_as;
-use vector_lib::{config::clone_input_definitions, configurable::configurable_component};
+use sol_lib::{config::clone_input_definitions, configurable::configurable_component};
 
 use super::transform::Throttle;
 use crate::{

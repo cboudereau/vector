@@ -1,4 +1,4 @@
-use vector_lib::{config::clone_input_definitions, configurable::configurable_component};
+use sol_lib::{config::clone_input_definitions, configurable::configurable_component};
 
 use super::transform::Window;
 use crate::{

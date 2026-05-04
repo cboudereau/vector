@@ -1,5 +1,5 @@
 use prost::Message;
-use vector_core::event::{Event, EventMetadata, OtelLog};
+use sol_core::event::{Event, EventMetadata, OtelLog};
 
 use crate::proto::{
     common::v1::InstrumentationScope,

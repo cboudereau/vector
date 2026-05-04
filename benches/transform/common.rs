@@ -7,7 +7,7 @@ use std::{
 };
 
 use futures::{Stream, task::noop_waker};
-use vector::event::{Event, OtelLog};
+use sol::event::{Event, OtelLog};
 
 // == Streams ==
 

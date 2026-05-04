@@ -4,8 +4,8 @@ use crate::encoding::BuildError;
 use bytes::BytesMut;
 use prost_reflect::{MessageDescriptor, prost::Message as _};
 use tokio_util::codec::Encoder;
-use vector_config_macros::configurable_component;
-use vector_core::{
+use sol_config_macros::configurable_component;
+use sol_core::{
     config::DataType,
     event::{Event, Value},
     schema,
@@ -58,7 +58,7 @@ pub struct ProtobufSerializerOptions {
     /// This file is the output of `protoc -I <include path> -o <desc output path> <proto>`
     ///
     /// You can read more [here](https://buf.build/docs/reference/images/#how-buf-images-work).
-    #[configurable(metadata(docs::examples = "/etc/vector/protobuf_descriptor_set.desc"))]
+    #[configurable(metadata(docs::examples = "/etc/sol/protobuf_descriptor_set.desc"))]
     pub desc_file: PathBuf,
 
     /// The name of the message type to use for serializing.
@@ -72,7 +72,7 @@ pub struct ProtobufSerializerOptions {
     ///
     /// This is useful when working with data that has already been converted from JSON or
     /// when interfacing with systems that use JSON naming conventions.
-    #[serde(default, skip_serializing_if = "vector_core::serde::is_default")]
+    #[serde(default, skip_serializing_if = "sol_core::serde::is_default")]
     pub use_json_names: bool,
 }
 
@@ -98,7 +98,7 @@ impl ProtobufSerializer {
         desc_bytes: &[u8],
         message_type: &str,
         options: &Options,
-    ) -> vector_common::Result<Self> {
+    ) -> sol_common::Result<Self> {
         let message_descriptor = get_message_descriptor_from_bytes(desc_bytes, message_type)?;
         Ok(Self {
             message_descriptor,
@@ -113,7 +113,7 @@ impl ProtobufSerializer {
 }
 
 impl Encoder<Event> for ProtobufSerializer {
-    type Error = vector_common::Error;
+    type Error = sol_common::Error;
 
     fn encode(&mut self, event: Event, buffer: &mut BytesMut) -> Result<(), Self::Error> {
         let message = match event {

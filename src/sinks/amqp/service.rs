@@ -94,13 +94,13 @@ pub enum AmqpError {
     Nack,
 
     #[snafu(display("Failed to open AMQP channel: {}", error))]
-    ConnectFailed { error: vector_common::Error },
+    ConnectFailed { error: sol_common::Error },
 
     #[snafu(display("Channel is not writeable: {:?}", state))]
     ChannelClosed { state: lapin::ChannelState },
 
     #[snafu(display("Channel pool error: {}", error))]
-    PoolError { error: vector_common::Error },
+    PoolError { error: sol_common::Error },
 }
 
 impl Service<AmqpRequest> for AmqpService {

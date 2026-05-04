@@ -1,5 +1,5 @@
 use async_graphql::{Object, Union};
-use vector_lib::tap::{controller::TapPayload, notification::Notification};
+use sol_lib::tap::{controller::TapPayload, notification::Notification};
 
 use crate::api::schema::events::{log::Log, metric::Metric, trace::Trace};
 

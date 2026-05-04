@@ -6,7 +6,7 @@ mod udp;
 use std::{fmt, net::SocketAddr};
 
 use snafu::Snafu;
-use vector_lib::configurable::configurable_component;
+use sol_lib::configurable::configurable_component;
 
 #[cfg(feature = "sources-utils-net-tcp")]
 pub use self::tcp::{

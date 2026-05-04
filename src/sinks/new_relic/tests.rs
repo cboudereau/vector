@@ -4,7 +4,7 @@ use chrono::Utc;
 use futures::{future::ready, stream};
 use serde::Deserialize;
 use serde_json::{json, to_value};
-use vector_lib::config::{Tags, Telemetry, init_telemetry};
+use sol_lib::config::{Tags, Telemetry, init_telemetry};
 use vrl::value;
 
 use super::*;

@@ -30,7 +30,7 @@ use tower_http::{
     trace::TraceLayer,
 };
 use tracing::{Instrument, Span};
-use vector_lib::{configurable::configurable_component, sensitive_string::SensitiveString};
+use sol_lib::{configurable::configurable_component, sensitive_string::SensitiveString};
 
 #[cfg(feature = "aws-core")]
 use crate::aws::AwsAuthentication;

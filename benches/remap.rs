@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
-use vector::{
+use sol::{
     config::{DataType, TransformOutput},
     event::{Event, OtelLog, Value},
     transforms::{

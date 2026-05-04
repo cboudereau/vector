@@ -12,7 +12,7 @@ use hyper::Body;
 use openssl::{base64, hash, pkey, sign};
 use regex::Regex;
 use tracing::Instrument;
-use vector_lib::lookup::lookup_v2::OwnedValuePath;
+use sol_lib::lookup::lookup_v2::OwnedValuePath;
 
 use crate::{http::HttpClient, sinks::prelude::*};
 

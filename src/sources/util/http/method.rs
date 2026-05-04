@@ -1,5 +1,5 @@
 use http::Method;
-use vector_lib::configurable::configurable_component;
+use sol_lib::configurable::configurable_component;
 
 /// HTTP method.
 #[configurable_component]

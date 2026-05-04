@@ -17,7 +17,7 @@ use futures::{FutureExt, SinkExt, stream};
 use futures_util::{future, future::BoxFuture};
 use indexmap::IndexMap;
 use tower::Service;
-use vector_lib::{
+use sol_lib::{
     ByteSizeOf, EstimatedJsonEncodedSizeOf, configurable::configurable_component, sink::VectorSink,
     event::OtelAttributes,
 };

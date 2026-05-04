@@ -1,8 +1,8 @@
 use bytes::Bytes;
 use derivative::Derivative;
 use smallvec::{SmallVec, smallvec};
-use vector_config_macros::configurable_component;
-use vector_core::{
+use sol_config_macros::configurable_component;
+use sol_core::{
     compile_vrl,
     config::DataType,
     event::{Event, TargetEvents, VrlTarget},
@@ -51,7 +51,7 @@ pub struct VrlDeserializerOptions {
 
 impl VrlDeserializerConfig {
     /// Build the `VrlDeserializer` from this configuration.
-    pub fn build(&self) -> vector_common::Result<VrlDeserializer> {
+    pub fn build(&self) -> sol_common::Result<VrlDeserializer> {
         let state = TypeState {
             local: Default::default(),
             external: ExternalEnv::default(),
@@ -59,7 +59,7 @@ impl VrlDeserializerConfig {
 
         match compile_vrl(
             &self.vrl.source,
-            &vector_vrl_functions::all(),
+            &sol_vrl_functions::all(),
             &state,
             CompileConfig::default(),
         ) {
@@ -92,7 +92,7 @@ pub struct VrlDeserializer {
 }
 
 fn parse_bytes(bytes: Bytes) -> Event {
-    use vector_core::event::{EventMetadata, OtelLog};
+    use sol_core::event::{EventMetadata, OtelLog};
     let value = vrl::value::Value::from(bytes);
     let log = OtelLog::from_value_map(value, EventMetadata::default());
     Event::Log(log)
@@ -102,7 +102,7 @@ impl Deserializer for VrlDeserializer {
     fn parse(
         &self,
         bytes: Bytes,
-    ) -> vector_common::Result<SmallVec<[Event; 1]>> {
+    ) -> sol_common::Result<SmallVec<[Event; 1]>> {
         let event = parse_bytes(bytes);
         match self.run_vrl(event) {
             Ok(events) => Ok(events),
@@ -115,7 +115,7 @@ impl VrlDeserializer {
     fn run_vrl(
         &self,
         event: Event,
-    ) -> vector_common::Result<SmallVec<[Event; 1]>> {
+    ) -> sol_common::Result<SmallVec<[Event; 1]>> {
         let mut runtime = Runtime::default();
         let mut target = VrlTarget::new(event, self.program.info(), true);
         match runtime.resolve(&mut target, &self.program, &self.timezone) {

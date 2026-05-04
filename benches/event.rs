@@ -1,6 +1,6 @@
 use bytes::Bytes;
 use criterion::{BatchSize, Criterion, criterion_group};
-use vector::event::OtelLog;
+use sol::event::OtelLog;
 use vrl::event_path;
 
 fn benchmark_event_iterate(c: &mut Criterion) {

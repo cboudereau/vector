@@ -19,7 +19,7 @@ use tokio::{
     time::sleep,
 };
 use tower::Service;
-use vector_lib::{
+use sol_lib::{
     configurable::configurable_component,
     tls::{MaybeTlsStream, TlsError},
 };

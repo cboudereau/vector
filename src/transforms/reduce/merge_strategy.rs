@@ -4,7 +4,7 @@ use bytes::{Bytes, BytesMut};
 use chrono::{DateTime, Utc};
 use dyn_clone::DynClone;
 use ordered_float::NotNan;
-use vector_lib::configurable::configurable_component;
+use sol_lib::configurable::configurable_component;
 use vrl::path::OwnedTargetPath;
 
 use crate::event::{OtelLog, Value};

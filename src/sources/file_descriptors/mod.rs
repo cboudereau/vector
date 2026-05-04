@@ -5,7 +5,7 @@ use bytes::Bytes;
 use chrono::Utc;
 use futures::{SinkExt, StreamExt, channel::mpsc, executor};
 use tokio_util::{codec::FramedRead, io::StreamReader};
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     codecs::{
         StreamDecodingError,
@@ -147,7 +147,7 @@ async fn process_stream(
                     }
                 }
                 Err(error) => {
-                    // Error is logged by `vector_lib::codecs::Decoder`, no
+                    // Error is logged by `sol_lib::codecs::Decoder`, no
                     // further handling is needed here.
                     if !error.can_continue() {
                         break;
@@ -171,7 +171,7 @@ async fn process_stream(
     }
 }
 
-/// Builds the `vector_lib::config::Outputs` for stdin and
+/// Builds the `sol_lib::config::Outputs` for stdin and
 /// file_descriptor sources.
 fn outputs(
     decoding: &DeserializerConfig,

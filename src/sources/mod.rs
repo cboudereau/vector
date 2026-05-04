@@ -98,7 +98,7 @@ pub mod websocket;
 pub mod source_otel;
 pub mod util;
 
-pub use vector_lib::source::Source;
+pub use sol_lib::source::Source;
 
 #[allow(dead_code)] // Easier than listing out all the features that use this
 /// Common build errors

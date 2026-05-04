@@ -1,4 +1,4 @@
-use vector_lib::event::OtelMetric;
+use sol_lib::event::OtelMetric;
 
 use crate::sinks::util::buffer::metrics::{MetricNormalize, MetricSet};
 

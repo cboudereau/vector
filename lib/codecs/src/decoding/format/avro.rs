@@ -3,8 +3,8 @@ use chrono::Utc;
 use lookup::owned_value_path;
 use serde::{Deserialize, Serialize};
 use smallvec::{SmallVec, smallvec};
-use vector_config::configurable_component;
-use vector_core::{
+use sol_config::configurable_component;
+use sol_core::{
     config::DataType,
     event::{Event, EventMetadata, OtelLog},
     schema,
@@ -39,7 +39,7 @@ impl AvroDeserializerConfig {
     }
 
     /// Build the `AvroDeserializer` from this configuration.
-    pub fn build(&self) -> vector_common::Result<AvroDeserializer> {
+    pub fn build(&self) -> sol_common::Result<AvroDeserializer> {
         let schema = apache_avro::Schema::parse_str(&self.avro_options.schema)
             .map_err(|error| format!("Failed building Avro serializer: {error}"))?;
 
@@ -122,7 +122,7 @@ impl Deserializer for AvroDeserializer {
     fn parse(
         &self,
         bytes: Bytes,
-    ) -> vector_common::Result<SmallVec<[Event; 1]>> {
+    ) -> sol_common::Result<SmallVec<[Event; 1]>> {
         // Avro has a `null` type which indicates no value.
         if bytes.is_empty() {
             return Ok(smallvec![]);
@@ -132,7 +132,7 @@ impl Deserializer for AvroDeserializer {
             if bytes.len() >= CONFLUENT_SCHEMA_PREFIX_LEN && bytes[0] == CONFLUENT_MAGIC_BYTE {
                 bytes.slice(CONFLUENT_SCHEMA_PREFIX_LEN..)
             } else {
-                return Err(vector_common::Error::from(
+                return Err(sol_common::Error::from(
                     "Expected avro datum to be prefixed with schema id",
                 ));
             }
@@ -143,7 +143,7 @@ impl Deserializer for AvroDeserializer {
         let value = apache_avro::from_avro_datum(&self.schema, &mut bytes.reader(), None)?;
 
         let apache_avro::types::Value::Record(fields) = value else {
-            return Err(vector_common::Error::from("Expected an avro Record"));
+            return Err(sol_common::Error::from("Expected an avro Record"));
         };
 
         let mut map = vrl::value::ObjectMap::new();
@@ -158,7 +158,7 @@ impl Deserializer for AvroDeserializer {
 }
 
 // Can't use std::convert::TryFrom because of orphan rules
-pub fn try_from(value: AvroValue) -> vector_common::Result<VrlValue> {
+pub fn try_from(value: AvroValue) -> sol_common::Result<VrlValue> {
     // Very similar to avro to json see `impl std::convert::TryFrom<AvroValue> for serde_json::Value`
     // OtelLog has native support for bytes, so it is used for Bytes and Fixed
     match value {
@@ -171,18 +171,18 @@ pub fn try_from(value: AvroValue) -> vector_common::Result<VrlValue> {
         }
         AvroValue::Boolean(boolean) => Ok(VrlValue::from(boolean)),
         AvroValue::Bytes(bytes) => Ok(VrlValue::from(bytes)),
-        AvroValue::Date(_) => Err(vector_common::Error::from(
+        AvroValue::Date(_) => Err(sol_common::Error::from(
             "AvroValue::Date is not supported",
         )),
-        AvroValue::Decimal(_) => Err(vector_common::Error::from(
+        AvroValue::Decimal(_) => Err(sol_common::Error::from(
             "AvroValue::Decimal is not supported",
         )),
         AvroValue::Double(double) => Ok(VrlValue::from_f64_or_zero(double)),
-        AvroValue::Duration(_) => Err(vector_common::Error::from(
+        AvroValue::Duration(_) => Err(sol_common::Error::from(
             "AvroValue::Duration is not supported",
         )),
         AvroValue::Enum(_, string) => Ok(VrlValue::from(string)),
-        AvroValue::Fixed(_, _) => Err(vector_common::Error::from(
+        AvroValue::Fixed(_, _) => Err(sol_common::Error::from(
             "AvroValue::Fixed is not supported",
         )),
         AvroValue::Float(float) => Ok(VrlValue::from_f64_or_zero(float as f64)),
@@ -201,7 +201,7 @@ pub fn try_from(value: AvroValue) -> vector_common::Result<VrlValue> {
             .map(|v| VrlValue::Object(v.into_iter().collect())),
         AvroValue::String(string) => Ok(VrlValue::from(string)),
         AvroValue::TimeMicros(time_micros) => Ok(VrlValue::from(time_micros)),
-        AvroValue::TimeMillis(_) => Err(vector_common::Error::from(
+        AvroValue::TimeMillis(_) => Err(sol_common::Error::from(
             "AvroValue::TimeMillis is not supported",
         )),
         AvroValue::TimestampMicros(ts_micros) => Ok(VrlValue::from(ts_micros)),
@@ -210,13 +210,13 @@ pub fn try_from(value: AvroValue) -> vector_common::Result<VrlValue> {
         AvroValue::Uuid(uuid) => Ok(VrlValue::from(uuid.as_hyphenated().to_string())),
         AvroValue::LocalTimestampMillis(ts_millis) => Ok(VrlValue::from(ts_millis)),
         AvroValue::LocalTimestampMicros(ts_micros) => Ok(VrlValue::from(ts_micros)),
-        AvroValue::BigDecimal(_) => Err(vector_common::Error::from(
+        AvroValue::BigDecimal(_) => Err(sol_common::Error::from(
             "AvroValue::BigDecimal is not supported",
         )),
-        AvroValue::TimestampNanos(_) => Err(vector_common::Error::from(
+        AvroValue::TimestampNanos(_) => Err(sol_common::Error::from(
             "AvroValue::TimestampNanos is not supported",
         )),
-        AvroValue::LocalTimestampNanos(_) => Err(vector_common::Error::from(
+        AvroValue::LocalTimestampNanos(_) => Err(sol_common::Error::from(
             "AvroValue::LocalTimestampNanos is not supported",
         )),
     }

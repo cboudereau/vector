@@ -3,7 +3,7 @@ use std::future::ready;
 use async_trait::async_trait;
 use futures::StreamExt;
 use futures_util::stream::BoxStream;
-use vector_lib::event::OtelMetric;
+use sol_lib::event::OtelMetric;
 
 use crate::sinks::{
     greptimedb::metrics::{

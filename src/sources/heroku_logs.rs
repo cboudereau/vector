@@ -9,7 +9,7 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 use chrono::{DateTime, Utc};
 use smallvec::SmallVec;
 use tokio_util::codec::Decoder as _;
-use vector_lib::{
+use sol_lib::{
     codecs::{
         StreamDecodingError,
         decoding::{DeserializerConfig, FramingConfig},
@@ -394,7 +394,7 @@ mod tests {
     use chrono::{DateTime, Utc};
     use futures::Stream;
     use similar_asserts::assert_eq;
-    use vector_lib::{
+    use sol_lib::{
         event::{Event, EventStatus, Value},
         lookup::owned_value_path,
         schema::Definition,

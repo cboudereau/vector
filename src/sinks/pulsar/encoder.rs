@@ -3,7 +3,7 @@ use std::io;
 
 use bytes::BytesMut;
 use tokio_util::codec::Encoder as _;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf, config::telemetry, request_metadata::GroupedCountByteSize,
 };
 
@@ -14,8 +14,8 @@ use crate::{
 
 #[derive(Clone, Debug)]
 pub(super) struct PulsarEncoder {
-    pub(super) encoder: vector_lib::codecs::Encoder<()>,
-    pub(super) transformer: vector_lib::codecs::Transformer,
+    pub(super) encoder: sol_lib::codecs::Encoder<()>,
+    pub(super) transformer: sol_lib::codecs::Transformer,
 }
 
 impl Encoder<Event> for PulsarEncoder {

@@ -8,7 +8,7 @@ use std::{
 use futures::StreamExt;
 use tokio::time::sleep;
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use vector_lib::{
+use sol_lib::{
     buffers::{BufferConfig, BufferType, WhenFull},
     config::ComponentKey,
 };
@@ -178,7 +178,7 @@ async fn topology_disk_buffer_conflict() {
     // replace `internal_metrics` and `prometheus_exporter` here. We additionally need to ensure the metrics subsystem
     // is enabled to use `internal_metrics`, otherwise it throws an error when trying to build the component.
     test_util::trace_init();
-    vector_lib::opentelemetry::buffer_codec::init();
+    sol_lib::opentelemetry::buffer_codec::init();
 
     let (_guard_0, address_0) = next_addr();
     let (_guard_1, address_1) = next_addr();

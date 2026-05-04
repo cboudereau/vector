@@ -8,7 +8,7 @@ use ordered_float::OrderedFloat;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error};
 use serde_with::{DeserializeAs, SerializeAs, serde_as};
 use snafu::Snafu;
-use vector_lib::{ByteSizeOf, configurable::configurable_component};
+use sol_lib::{ByteSizeOf, configurable::configurable_component};
 use crate::event::metric::Bucket;
 
 fn float_eq(l: f64, r: f64) -> bool {

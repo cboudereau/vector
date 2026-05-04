@@ -1,12 +1,12 @@
 use std::{io, num::NonZeroUsize};
 
 use bytes::Bytes;
-use vector_lib::request_metadata::{GroupedCountByteSize, RequestMetadata};
+use sol_lib::request_metadata::{GroupedCountByteSize, RequestMetadata};
 
 use super::{Compression, Compressor, encoding::Encoder, metadata::RequestMetadataBuilder};
 
 pub fn default_request_builder_concurrency_limit() -> NonZeroUsize {
-    if let Some(limit) = std::env::var("VECTOR_EXPERIMENTAL_REQUEST_BUILDER_CONCURRENCY")
+    if let Some(limit) = std::env::var("SOL_EXPERIMENTAL_REQUEST_BUILDER_CONCURRENCY")
         .map(|value| value.parse::<NonZeroUsize>().ok())
         .ok()
         .flatten()

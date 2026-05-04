@@ -1,5 +1,5 @@
 use indexmap::{IndexMap, IndexSet};
-use vector_lib::id::Inputs;
+use sol_lib::id::Inputs;
 
 use super::{
     Config, OutputId, builder::ConfigBuilder, graph::Graph, transform::get_transform_output_ids,
@@ -222,7 +222,7 @@ fn expand_globs_inner(inputs: &mut Inputs<String>, id: &str, candidates: &IndexS
 
 #[cfg(test)]
 mod test {
-    use vector_lib::config::ComponentKey;
+    use sol_lib::config::ComponentKey;
 
     use super::*;
     use crate::test_util::mock::{basic_sink, basic_source, basic_transform};

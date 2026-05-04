@@ -12,7 +12,7 @@ use aws_smithy_async::time::SystemTimeSource;
 use aws_smithy_runtime_api::client::identity::SharedIdentityCache;
 use aws_types::{SdkConfig, region::Region};
 use serde_with::serde_as;
-use vector_lib::{
+use sol_lib::{
     config::proxy::ProxyConfig, configurable::configurable_component,
     sensitive_string::SensitiveString, tls::TlsConfig,
 };

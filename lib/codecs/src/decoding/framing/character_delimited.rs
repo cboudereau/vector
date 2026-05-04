@@ -2,7 +2,7 @@ use bytes::{Buf, Bytes, BytesMut};
 use memchr::memchr;
 use tokio_util::codec::Decoder;
 use tracing::{trace, warn};
-use vector_config::configurable_component;
+use sol_config::configurable_component;
 
 use super::BoxedFramingError;
 
@@ -40,7 +40,7 @@ impl CharacterDelimitedDecoderConfig {
 pub struct CharacterDelimitedDecoderOptions {
     /// The character that delimits byte sequences.
     #[configurable(metadata(docs::type_override = "ascii_char"))]
-    #[serde(with = "vector_core::serde::ascii_char")]
+    #[serde(with = "sol_core::serde::ascii_char")]
     pub delimiter: u8,
 
     /// The maximum length of the byte buffer.
@@ -54,7 +54,7 @@ pub struct CharacterDelimitedDecoderOptions {
     /// If there is a risk of processing malformed data, such as logs with user-controlled input,
     /// consider setting the maximum length to a reasonably large value as a safety net. This
     /// ensures that processing is not actually unbounded.
-    #[serde(skip_serializing_if = "vector_core::serde::is_default")]
+    #[serde(skip_serializing_if = "sol_core::serde::is_default")]
     pub max_length: Option<usize>,
 }
 

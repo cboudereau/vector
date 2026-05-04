@@ -13,7 +13,7 @@ use hyper::{Server as HyperServer, server::conn::AddrIncoming, service::make_ser
 use tokio::{runtime::Handle, sync::oneshot};
 use tower::ServiceBuilder;
 use tracing::Span;
-use vector_lib::tap::topology;
+use sol_lib::tap::topology;
 use warp::{Filter, Reply, filters::BoxedFilter, http::Response, ws::Ws};
 
 use super::{handler, schema};

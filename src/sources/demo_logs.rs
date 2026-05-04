@@ -8,7 +8,7 @@ use serde_with::serde_as;
 use snafu::Snafu;
 use tokio::time::{self, Duration};
 use tokio_util::codec::FramedRead;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     codecs::{
         StreamDecodingError,
@@ -257,7 +257,7 @@ async fn demo_logs_source(
                     })?;
                 }
                 Err(error) => {
-                    // Error is logged by `vector_lib::codecs::Decoder`, no further
+                    // Error is logged by `sol_lib::codecs::Decoder`, no further
                     // handling is needed here.
                     if !error.can_continue() {
                         break;

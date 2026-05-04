@@ -1,6 +1,6 @@
 use std::num::NonZeroUsize;
 
-use vector_lib::{
+use sol_lib::{
     codecs::decoding::{DeserializerConfig, FramingConfig},
     configurable::configurable_component,
     lookup::owned_value_path,

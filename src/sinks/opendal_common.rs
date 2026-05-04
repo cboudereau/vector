@@ -14,7 +14,7 @@ use bytes::Bytes;
 use opendal::Operator;
 use snafu::Snafu;
 use tracing::Instrument;
-use vector_lib::codecs::encoding::Framer;
+use sol_lib::codecs::encoding::Framer;
 
 use crate::sinks::{prelude::*, util::partitioner::KeyPartitioner};
 

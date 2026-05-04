@@ -5,7 +5,7 @@ use chrono::Utc;
 use http::StatusCode;
 use http_serde;
 use tokio_util::codec::Decoder as _;
-use vector_lib::{
+use sol_lib::{
     codecs::{
         BytesDecoderConfig, BytesDeserializerConfig, JsonDeserializerConfig,
         NewlineDelimitedDecoderConfig,
@@ -51,7 +51,7 @@ impl GenerateConfig for HttpConfig {
 #[async_trait::async_trait]
 #[typetag::serde(name = "http")]
 impl SourceConfig for HttpConfig {
-    async fn build(&self, cx: SourceContext) -> vector_lib::Result<super::Source> {
+    async fn build(&self, cx: SourceContext) -> sol_lib::Result<super::Source> {
         self.0.build(cx).await
     }
 
@@ -473,7 +473,7 @@ impl HttpSource for SimpleHttpSource {
                 }
                 Ok(None) => break,
                 Err(error) => {
-                    // Error is logged / emitted by `vector_lib::codecs::Decoder`, no further
+                    // Error is logged / emitted by `sol_lib::codecs::Decoder`, no further
                     // handling is needed here
                     return Err(ErrorMessage::new(
                         StatusCode::BAD_REQUEST,
@@ -503,7 +503,7 @@ mod tests {
     use headers::{Authorization, authorization::Credentials};
     use http::{HeaderMap, Method, StatusCode, Uri, header::AUTHORIZATION};
     use similar_asserts::assert_eq;
-    use vector_lib::{
+    use sol_lib::{
         codecs::{
             BytesDecoderConfig, JsonDeserializerConfig,
             decoding::{DeserializerConfig, FramingConfig},

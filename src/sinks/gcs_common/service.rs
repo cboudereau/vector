@@ -8,7 +8,7 @@ use http::{
 };
 use hyper::Body;
 use tower::Service;
-use vector_lib::{
+use sol_lib::{
     request_metadata::{GroupedCountByteSize, MetaDescriptive, RequestMetadata},
     stream::DriverResponse,
 };

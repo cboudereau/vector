@@ -6,8 +6,8 @@ use criterion::{
     measurement::WallTime,
 };
 use indexmap::IndexMap;
-use vector::transforms::reduce::{config::ReduceConfig, transform::Reduce};
-use vector_lib::transform::Transform;
+use sol::transforms::reduce::{config::ReduceConfig, transform::Reduce};
+use sol_lib::transform::Transform;
 
 use crate::common::{FixedLogStream, consume};
 

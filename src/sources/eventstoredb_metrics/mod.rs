@@ -6,7 +6,7 @@ use http_body::Collected;
 use hyper::{Body, Request};
 use serde_with::serde_as;
 use tokio_stream::wrappers::IntervalStream;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     configurable::configurable_component,
     internal_event::{ByteSize, BytesReceived, CountByteSize, InternalEventHandle as _, Protocol},

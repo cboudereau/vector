@@ -16,7 +16,7 @@ use serde_with::serde_as;
 use snafu::ResultExt as _;
 use tokio::time::{Duration, Instant, sleep};
 use tracing::Instrument;
-use vector_lib::{
+use sol_lib::{
     configurable::configurable_component,
     lookup::{
         OwnedTargetPath,
@@ -26,7 +26,7 @@ use vector_lib::{
 };
 use vrl::value::{Kind, kind::Collection};
 
-use vector_lib::event::string_value;
+use sol_lib::event::string_value;
 
 use crate::{
     config::{
@@ -726,7 +726,7 @@ enum Ec2MetadataError {
 
 #[cfg(test)]
 mod test {
-    use vector_lib::lookup::OwnedTargetPath;
+    use sol_lib::lookup::OwnedTargetPath;
     use vrl::{owned_value_path, value::Kind};
 
     use crate::{
@@ -760,7 +760,7 @@ mod test {
 mod integration_tests {
     use tokio::sync::mpsc;
     use tokio_stream::wrappers::ReceiverStream;
-    use vector_lib::{
+    use sol_lib::{
         assert_event_data_eq,
         lookup::{
             PathPrefix, event_path,

@@ -3,7 +3,7 @@ use std::time::Duration;
 use rand::Rng;
 use rumqttc::{MqttOptions, TlsConfiguration, Transport};
 use snafu::ResultExt;
-use vector_lib::{
+use sol_lib::{
     codecs::decoding::{DeserializerConfig, FramingConfig},
     configurable::configurable_component,
     lookup::{lookup_v2::OptionalValuePath, owned_value_path},

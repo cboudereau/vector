@@ -5,7 +5,7 @@ use azure_core::http::StatusCode;
 use bytes::{Buf, BytesMut};
 use flate2::read::GzDecoder;
 use futures::{Stream, StreamExt, stream};
-use vector_lib::{
+use sol_lib::{
     ByteSizeOf,
     codecs::{
         JsonSerializerConfig, NewlineDelimitedEncoderConfig, TextSerializerConfig,

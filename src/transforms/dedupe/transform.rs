@@ -3,7 +3,7 @@ use std::{future::ready, num::NonZeroUsize, pin::Pin};
 use bytes::Bytes;
 use futures::{Stream, StreamExt};
 use lru::LruCache;
-use vector_lib::lookup::lookup_v2::ConfigTargetPath;
+use sol_lib::lookup::lookup_v2::ConfigTargetPath;
 use vrl::path::OwnedTargetPath;
 
 use super::common::FieldMatchConfig;

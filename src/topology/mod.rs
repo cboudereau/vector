@@ -7,7 +7,7 @@
 //! part contains config related items including config traits for
 //! each type of component.
 
-pub(super) use vector_lib::fanout;
+pub(super) use sol_lib::fanout;
 pub mod schema;
 
 pub mod builder;
@@ -26,7 +26,7 @@ use std::{
 
 use futures::{Future, FutureExt};
 use tokio::sync::mpsc;
-use vector_lib::buffers::topology::channel::{BufferReceiverStream, BufferSender};
+use sol_lib::buffers::topology::channel::{BufferReceiverStream, BufferSender};
 
 use self::task::{Task, TaskError, TaskResult};
 pub use self::{

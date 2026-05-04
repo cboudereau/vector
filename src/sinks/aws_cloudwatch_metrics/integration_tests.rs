@@ -1,6 +1,6 @@
 use chrono::{Timelike, Utc, offset::TimeZone};
 use rand::seq::SliceRandom;
-use vector_lib::otel_tags;
+use sol_lib::otel_tags;
 
 use super::*;
 use crate::{
@@ -71,7 +71,7 @@ async fn cloudwatch_metrics_put_data() {
             OtelMetric::new_histogram_from_samples(
                 format!("distribution-{distribution_name}"),
                 MetricKind::Incremental,
-                &vector_lib::samples![i as f64 => 100],
+                &sol_lib::samples![i as f64 => 100],
             )
             .with_timestamp(Some(
                 Utc.with_ymd_and_hms(2018, 11, 14, 8, 9, 10)

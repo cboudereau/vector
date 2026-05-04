@@ -15,7 +15,7 @@ use codecs::{
 use rstest::*;
 use similar_asserts::assert_eq;
 use tokio_util::codec::Encoder;
-use vector_core::event::Event;
+use sol_core::event::Event;
 
 #[rstest]
 #[case(true)]

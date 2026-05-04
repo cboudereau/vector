@@ -6,7 +6,7 @@ use assert_cmd::prelude::*;
 use crate::{create_directory, create_file, overwrite_file};
 
 const FAILING_HEALTHCHECK: &str = r#"
-data_dir = "${VECTOR_DATA_DIR}"
+data_dir = "${SOL_DATA_DIR}"
 
 [sources.in]
     type = "demo_logs"
@@ -23,7 +23,7 @@ data_dir = "${VECTOR_DATA_DIR}"
 
 /// Returns `stdout` of `vector arguments`
 fn run_command(arguments: Vec<&str>) -> Vec<u8> {
-    let mut cmd = Command::cargo_bin("vector").unwrap();
+    let mut cmd = Command::cargo_bin("sol").unwrap();
     for arg in arguments {
         cmd.arg(arg);
     }
@@ -47,7 +47,7 @@ fn assert_no_log_lines(output: Vec<u8>) {
 fn source_config(source: &str) -> String {
     format!(
         r#"
-data_dir = "${{VECTOR_DATA_DIR}}"
+data_dir = "${{SOL_DATA_DIR}}"
 
 [sources.in]
 {source}
@@ -89,10 +89,10 @@ fn validate_cleanup() {
     );
 
     // Run vector
-    let mut cmd = Command::cargo_bin("vector").unwrap();
+    let mut cmd = Command::cargo_bin("sol").unwrap();
     cmd.arg("validate")
         .arg(config)
-        .env("VECTOR_DATA_DIR", dir.clone());
+        .env("SOL_DATA_DIR", dir.clone());
 
     let output = cmd.output().expect("Failed to execute process");
     println!(
@@ -138,8 +138,8 @@ fn validate(config: &str) -> i32 {
     let config = create_file(config);
 
     // Run vector
-    let mut cmd = Command::cargo_bin("vector").unwrap();
-    cmd.arg("validate").arg(config).env("VECTOR_DATA_DIR", dir);
+    let mut cmd = Command::cargo_bin("sol").unwrap();
+    cmd.arg("validate").arg(config).env("SOL_DATA_DIR", dir);
 
     let output = cmd.output().unwrap();
     println!(

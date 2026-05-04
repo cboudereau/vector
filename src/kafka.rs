@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use rdkafka::{ClientConfig, ClientContext, Statistics, consumer::ConsumerContext};
 use snafu::Snafu;
 use tracing::Span;
-use vector_lib::{configurable::configurable_component, sensitive_string::SensitiveString};
+use sol_lib::{configurable::configurable_component, sensitive_string::SensitiveString};
 
 use crate::{
     internal_events::KafkaStatisticsReceived,

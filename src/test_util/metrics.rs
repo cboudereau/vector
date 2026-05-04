@@ -3,7 +3,7 @@ use std::{
     fmt::Display,
 };
 
-use vector_lib::event::{
+use sol_lib::event::{
     Event, MetricView, OtelMetric,
     metric::{Bucket, MetricSeries, Sample},
 };
@@ -137,17 +137,17 @@ pub fn read_set_values(metrics: &SplitMetrics, series: MetricSeries) -> Option<H
 #[macro_export]
 macro_rules! series {
 	($name:expr_2021) => {
-		vector_lib::event::metric::MetricIdentity {
+		sol_lib::event::metric::MetricIdentity {
 			name: $name.into(),
 			namespace: None,
 			tags: None,
 		}
 	};
 	($name:expr_2021, $($tk:expr_2021 => $tv:expr_2021),*) => {
-		vector_lib::event::metric::MetricIdentity {
+		sol_lib::event::metric::MetricIdentity {
 			name: $name.into(),
 			namespace: None,
-			tags: Some(vector_lib::otel_tags!( $( $tk => $tv, )* )),
+			tags: Some(sol_lib::otel_tags!( $( $tk => $tv, )* )),
 		}
 	};
 }

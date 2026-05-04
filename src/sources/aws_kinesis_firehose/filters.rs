@@ -4,7 +4,7 @@ use bytes::{Buf, Bytes};
 use chrono::Utc;
 use flate2::read::MultiGzDecoder;
 use snafu::ResultExt;
-use vector_lib::internal_event::{BytesReceived, Protocol};
+use sol_lib::internal_event::{BytesReceived, Protocol};
 use warp::{Filter, http::StatusCode};
 
 use super::{

@@ -15,7 +15,7 @@ use tokio::{
     time::sleep,
 };
 use tokio_util::codec::Encoder;
-use vector_lib::{
+use sol_lib::{
     ByteSizeOf, EstimatedJsonEncodedSizeOf, configurable::configurable_component,
     json_size::JsonSize,
 };
@@ -105,7 +105,7 @@ impl TcpSinkConfig {
     pub fn build(
         &self,
         transformer: Transformer,
-        encoder: impl Encoder<Event, Error = vector_lib::codecs::encoding::Error>
+        encoder: impl Encoder<Event, Error = sol_lib::codecs::encoding::Error>
         + Clone
         + Send
         + Sync
@@ -216,7 +216,7 @@ impl TcpConnector {
 
 struct TcpSink<E>
 where
-    E: Encoder<Event, Error = vector_lib::codecs::encoding::Error> + Clone + Send + Sync,
+    E: Encoder<Event, Error = sol_lib::codecs::encoding::Error> + Clone + Send + Sync,
 {
     connector: TcpConnector,
     transformer: Transformer,
@@ -225,7 +225,7 @@ where
 
 impl<E> TcpSink<E>
 where
-    E: Encoder<Event, Error = vector_lib::codecs::encoding::Error> + Clone + Send + Sync + 'static,
+    E: Encoder<Event, Error = sol_lib::codecs::encoding::Error> + Clone + Send + Sync + 'static,
 {
     const fn new(connector: TcpConnector, transformer: Transformer, encoder: E) -> Self {
         Self {
@@ -268,7 +268,7 @@ where
 #[async_trait]
 impl<E> StreamSink<Event> for TcpSink<E>
 where
-    E: Encoder<Event, Error = vector_lib::codecs::encoding::Error>
+    E: Encoder<Event, Error = sol_lib::codecs::encoding::Error>
         + Clone
         + Send
         + Sync

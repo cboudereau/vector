@@ -6,7 +6,7 @@ use hyper::{Server, service::make_service_fn};
 use tokio::net::TcpStream;
 use tower::ServiceBuilder;
 use tracing::Span;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     config::SourceAcknowledgementsConfig,
     event::{BatchNotifier, BatchStatus, BatchStatusReceiver, Event},

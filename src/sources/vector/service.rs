@@ -5,7 +5,7 @@
 
 use futures::TryFutureExt;
 use tonic::{Request, Response, Status};
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     event::{BatchNotifier, BatchStatus, BatchStatusReceiver, Event},
     internal_event::{CountByteSize, InternalEventHandle as _, Registered},

@@ -3,7 +3,7 @@ use aws_sdk_firehose::types::ElasticsearchDestinationConfiguration;
 use futures::{StreamExt, TryFutureExt};
 use serde_json::{Value, json};
 use tokio::time::{Duration, sleep};
-use vector_lib::{codecs::JsonSerializerConfig, lookup::lookup_v2::ConfigValuePath};
+use sol_lib::{codecs::JsonSerializerConfig, lookup::lookup_v2::ConfigValuePath};
 
 use super::{config::KinesisFirehoseClientBuilder, *};
 use crate::{

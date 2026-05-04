@@ -3,7 +3,7 @@ use std::{collections::HashMap, fs, hash::Hasher, path::PathBuf, time::SystemTim
 
 use bytes::Bytes;
 use tracing::trace;
-use vector_lib::{
+use sol_lib::{
     TimeZone,
     configurable::configurable_component,
     conversion::Conversion,
@@ -259,7 +259,7 @@ pub struct FileData {
     pub modified: SystemTime,
 }
 
-/// A struct that implements [vector_lib::enrichment::Table] to handle loading enrichment data from a CSV file.
+/// A struct that implements [sol_lib::enrichment::Table] to handle loading enrichment data from a CSV file.
 #[derive(Clone)]
 pub struct File {
     config: FileConfig,

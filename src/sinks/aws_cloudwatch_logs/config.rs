@@ -4,7 +4,7 @@ use aws_sdk_cloudwatchlogs::Client as CloudwatchLogsClient;
 use futures::FutureExt;
 use serde::{Deserialize, Deserializer, de};
 use tower::ServiceBuilder;
-use vector_lib::{codecs::JsonSerializerConfig, configurable::configurable_component, schema};
+use sol_lib::{codecs::JsonSerializerConfig, configurable::configurable_component, schema};
 use vrl::value::Kind;
 
 use crate::{

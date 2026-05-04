@@ -1,7 +1,7 @@
 #![allow(dead_code)] // TODO requires optional feature compilation
 
 use metrics::{counter, gauge};
-use vector_lib::{
+use sol_lib::{
     NamedInternalEvent,
     internal_event::{InternalEvent, error_stage, error_type},
     json_size::JsonSize,

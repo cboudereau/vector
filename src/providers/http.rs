@@ -6,7 +6,7 @@ use hyper::Body;
 use indexmap::IndexMap;
 use tokio::time;
 use url::Url;
-use vector_lib::configurable::configurable_component;
+use sol_lib::configurable::configurable_component;
 
 use super::BuildResult;
 use crate::{

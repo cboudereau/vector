@@ -1,4 +1,4 @@
-use vector_lib::event::{MetricView, OtelMetric};
+use sol_lib::event::{MetricView, OtelMetric};
 
 use super::request_builder::StackdriverMetricsRequestBuilder;
 use crate::sinks::{

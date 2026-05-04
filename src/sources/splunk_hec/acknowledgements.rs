@@ -12,7 +12,7 @@ use futures::StreamExt;
 use roaring::RoaringTreemap;
 use serde::{Deserialize, Serialize};
 use tokio::time::interval;
-use vector_lib::{
+use sol_lib::{
     configurable::configurable_component, finalization::BatchStatusReceiver,
     finalizer::UnorderedFinalizer,
 };
@@ -285,7 +285,7 @@ mod tests {
     use std::num::NonZeroU64;
 
     use tokio::{time, time::sleep};
-    use vector_lib::event::{BatchNotifier, EventFinalizer, EventStatus};
+    use sol_lib::event::{BatchNotifier, EventFinalizer, EventStatus};
 
     use super::{Channel, HecAcknowledgementsConfig, IndexerAcknowledgement};
     use crate::shutdown::ShutdownSignal;

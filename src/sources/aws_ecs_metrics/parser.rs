@@ -567,7 +567,7 @@ pub(super) fn parse(
 #[cfg(test)]
 mod test {
     use chrono::{DateTime, Timelike, Utc, offset::TimeZone};
-    use vector_lib::{assert_event_data_eq, otel_tags};
+    use sol_lib::{assert_event_data_eq, otel_tags};
 
     use super::parse;
     use crate::event::OtelMetric;

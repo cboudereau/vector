@@ -1,5 +1,5 @@
 [package]
-name = "vector"
+name = "sol"
 version = "0.54.0"
 authors = ["Vector Contributors <vector@datadoghq.com>"]
 edition = "2024"
@@ -8,14 +8,14 @@ homepage = "https://vector.dev"
 license = "MPL-2.0"
 readme = "README.md"
 publish = false
-default-run = "vector"
+default-run = "sol"
 autobenches = false # our benchmarks are not runnable on their own either way
 # Minimum supported rust version
 # See docs/DEVELOPING.md for policy
 rust-version = "1.88"
 
 [[bin]]
-name = "vector"
+name = "sol"
 test = false
 bench = false
 
@@ -54,19 +54,19 @@ debug = true
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }
 
 [package.metadata.deb]
-name = "vector"
+name = "sol"
 section = "admin"
 maintainer-scripts = "distribution/debian/scripts/"
-conf-files = ["/etc/vector/vector.yaml", "/etc/default/vector"]
+conf-files = ["/etc/sol/sol.yaml", "/etc/default/sol"]
 assets = [
-  ["target/release/vector", "/usr/bin/", "755"],
-  ["config/vector.yaml", "/etc/vector/vector.yaml", "644"],
-  ["config/examples/*", "/etc/vector/examples/", "644"],
-  ["distribution/systemd/vector.service", "/lib/systemd/system/vector.service", "644"],
-  ["distribution/systemd/vector.default", "/etc/default/vector", "600"],
-  ["licenses/*", "/usr/share/vector/licenses/", "644"],
-  ["NOTICE", "/usr/share/vector/NOTICE", "644"],
-  ["LICENSE-3rdparty.csv", "/usr/share/vector/LICENSE-3rdparty.csv", "644"],
+  ["target/release/sol", "/usr/bin/", "755"],
+  ["config/sol.yaml", "/etc/sol/sol.yaml", "644"],
+  ["config/examples/*", "/etc/sol/examples/", "644"],
+  ["distribution/systemd/sol.service", "/lib/systemd/system/sol.service", "644"],
+  ["distribution/systemd/sol.default", "/etc/default/sol", "600"],
+  ["licenses/*", "/usr/share/sol/licenses/", "644"],
+  ["NOTICE", "/usr/share/sol/NOTICE", "644"],
+  ["LICENSE-3rdparty.csv", "/usr/share/sol/LICENSE-3rdparty.csv", "644"],
 ]
 license-file = ["target/debian-license.txt"]
 extended-description-file = "target/debian-extended-description.txt"
@@ -116,25 +116,25 @@ members = [
   "lib/otel-proto-types",
   "lib/opentelemetry-proto",
   "lib/tracing-limit",
-  "lib/vector-api-client",
-  "lib/vector-buffers",
-  "lib/vector-common",
-  "lib/vector-common-macros",
-  "lib/vector-config",
-  "lib/vector-config-common",
-  "lib/vector-config-macros",
-  "lib/vector-core",
-  "lib/vector-lib",
-  "lib/vector-lookup",
-  "lib/vector-stream",
-  "lib/vector-tap",
-  "lib/vector-top",
-  "lib/vector-vrl/category",
-  "lib/vector-vrl/cli",
-  "lib/vector-vrl/functions",
-  "lib/vector-vrl/tests",
-  "lib/vector-vrl/web-playground",
-  "lib/vector-vrl-metrics",
+  "lib/sol-api-client",
+  "lib/sol-buffers",
+  "lib/sol-common",
+  "lib/sol-common-macros",
+  "lib/sol-config",
+  "lib/sol-config-common",
+  "lib/sol-config-macros",
+  "lib/sol-core",
+  "lib/sol-lib",
+  "lib/sol-lookup",
+  "lib/sol-stream",
+  "lib/sol-tap",
+  "lib/sol-top",
+  "lib/sol-vrl/category",
+  "lib/sol-vrl/cli",
+  "lib/sol-vrl/functions",
+  "lib/sol-vrl/tests",
+  "lib/sol-vrl/web-playground",
+  "lib/sol-vrl-metrics",
   "vdev",
 ]
 
@@ -206,13 +206,13 @@ tracing = { version = "0.1.44", default-features = false }
 tracing-subscriber = { version = "0.3.22", default-features = false, features = ["fmt"]  }
 url = { version = "2.5.4", default-features = false, features = ["serde"] }
 uuid = { version = "1.18.1", features = ["v4", "v7", "serde", "fast-rng"] }
-vector-config = { path = "lib/vector-config" }
-vector-config-common = { path = "lib/vector-config-common" }
-vector-config-macros = { path = "lib/vector-config-macros" }
-vector-common-macros = { path = "lib/vector-common-macros" }
-vector-lib = { path = "lib/vector-lib", default-features = false, features = ["vrl"] }
-vector-vrl-category = { path = "lib/vector-vrl/category" }
-vector-vrl-functions = { path = "lib/vector-vrl/functions" }
+sol-config = { path = "lib/sol-config" }
+sol-config-common = { path = "lib/sol-config-common" }
+sol-config-macros = { path = "lib/sol-config-macros" }
+sol-common-macros = { path = "lib/sol-common-macros" }
+sol-lib = { path = "lib/sol-lib", default-features = false, features = ["vrl"] }
+sol-vrl-category = { path = "lib/sol-vrl/category" }
+sol-vrl-functions = { path = "lib/sol-vrl/functions" }
 vrl = { git = "https://github.com/vectordotdev/vrl.git", branch = "main", features = ["arbitrary", "cli", "test", "test_framework"] }
 mock_instant = { version = "0.6" }
 serial_test = { version = "3.2" }
@@ -238,13 +238,13 @@ dnsmsg-parser = { path = "lib/dnsmsg-parser", optional = true }
 dnstap-parser = { path = "lib/dnstap-parser", optional = true }
 fakedata = { path = "lib/fakedata", optional = true }
 tracing-limit = { path = "lib/tracing-limit" }
-vector-common = { path = "lib/vector-common", default-features = false }
-vector-lib.workspace = true
-vector-config.workspace = true
-vector-config-common.workspace = true
-vector-config-macros.workspace = true
-vector-vrl-functions = { workspace = true, features = ["vrl-metrics"] }
-vector-vrl-metrics = { path = "lib/vector-vrl-metrics" }
+sol-common = { path = "lib/sol-common", default-features = false }
+sol-lib.workspace = true
+sol-config.workspace = true
+sol-config-common.workspace = true
+sol-config-macros.workspace = true
+sol-vrl-functions = { workspace = true, features = ["vrl-metrics"] }
+sol-vrl-metrics = { path = "lib/sol-vrl-metrics" }
 loki-logproto = { path = "lib/loki-logproto", optional = true }
 
 # Hashing
@@ -492,7 +492,7 @@ test-generator = "0.3.1"
 tokio = { workspace = true, features = ["test-util"] }
 tokio-test.workspace = true
 tower-test = "0.4.0"
-vector-lib = { workspace = true, features = ["test"] }
+sol-lib = { workspace = true, features = ["test"] }
 vrl.workspace = true
 
 otel-proto-types = { path = "lib/otel-proto-types" }
@@ -541,7 +541,7 @@ target-x86_64-unknown-linux-musl = ["api", "api-client", "rdkafka?/cmake_build",
 
 # Enables features that work only on systems providing `cfg(unix)`
 unix = ["tikv-jemallocator", "allocation-tracing"]
-allocation-tracing = ["vector-lib/allocation-tracing"]
+allocation-tracing = ["sol-lib/allocation-tracing"]
 
 # Enables kubernetes dependencies and shared code. Kubernetes-related sources,
 # transforms and sinks should depend on this feature.
@@ -554,7 +554,7 @@ api = [
   "dep:async-graphql",
   "dep:async-graphql-warp",
   "dep:base64",
-  "vector-lib/api",
+  "sol-lib/api",
 ]
 
 # API client
@@ -564,11 +564,11 @@ api-client = [
 ]
 
 api-client-minimal = [
-  "vector-lib/api",
-  "vector-lib/api-client",
+  "sol-lib/api",
+  "sol-lib/api-client",
 ]
 
-top = ["vector-lib/vector-top", "vector-lib/api-client"]
+top = ["sol-lib/sol-top", "sol-lib/api-client"]
 
 aws-core = [
   "aws-runtime",
@@ -596,9 +596,9 @@ enrichment-tables-mmdb = ["dep:maxminddb"]
 enrichment-tables-memory = ["dep:evmap", "dep:evmap-derive", "dep:thread_local"]
 
 # Codecs
-codecs-arrow = ["dep:arrow", "dep:arrow-schema", "vector-lib/arrow"]
-codecs-opentelemetry = ["vector-lib/opentelemetry"]
-codecs-syslog = ["vector-lib/syslog"]
+codecs-arrow = ["dep:arrow", "dep:arrow-schema", "sol-lib/arrow"]
+codecs-opentelemetry = ["sol-lib/opentelemetry"]
+codecs-syslog = ["sol-lib/syslog"]
 
 # Secrets
 secrets = ["secrets-aws-secrets-manager"]
@@ -666,11 +666,11 @@ sources-aws_s3 = ["aws-core", "dep:aws-sdk-sqs", "dep:aws-sdk-s3", "dep:async-co
 sources-aws_sqs = ["aws-core", "dep:aws-sdk-sqs"]
 sources-datadog_agent = ["sources-utils-http-encoding", "protobuf-build", "dep:prost"]
 sources-demo_logs = ["dep:fakedata"]
-sources-dnstap = ["sources-utils-net-tcp", "dep:base64", "dep:hickory-proto", "dep:dnsmsg-parser", "dep:dnstap-parser", "protobuf-build", "dep:prost", "vector-vrl-functions/dnstap"]
+sources-dnstap = ["sources-utils-net-tcp", "dep:base64", "dep:hickory-proto", "dep:dnsmsg-parser", "dep:dnstap-parser", "protobuf-build", "dep:prost", "sol-vrl-functions/dnstap"]
 sources-docker_logs = ["docker"]
 sources-eventstoredb_metrics = []
 sources-exec = []
-sources-file = ["vector-lib/file-source"]
+sources-file = ["sol-lib/file-source"]
 sources-file_descriptor = ["tokio-util/io"]
 sources-fluent = ["dep:base64", "sources-utils-net-tcp", "sources-utils-net-unix", "tokio-util/net", "dep:rmpv", "dep:rmp-serde", "dep:serde_bytes"]
 sources-gcp_pubsub = ["gcp", "dep:h2", "dep:prost", "dep:prost-types", "protobuf-build", "dep:tonic"]
@@ -683,7 +683,7 @@ sources-internal_metrics = []
 sources-static_metrics = []
 sources-journald = []
 sources-kafka = ["dep:rdkafka"]
-sources-kubernetes_logs = ["vector-lib/file-source", "kubernetes", "transforms-reduce"]
+sources-kubernetes_logs = ["sol-lib/file-source", "kubernetes", "transforms-reduce"]
 sources-logstash = ["sources-utils-net-tcp", "tokio-util/net"]
 sources-mongodb_metrics = ["dep:mongodb"]
 sources-mqtt = ["dep:rumqttc"]
@@ -694,7 +694,7 @@ sources-opentelemetry = [
   "dep:hex",
   "dep:opentelemetry-proto",
   "codecs-opentelemetry",
-  "vector-lib/opentelemetry",
+  "sol-lib/opentelemetry",
   "dep:prost",
   "dep:prost-types",
   "dep:tonic",
@@ -705,9 +705,9 @@ sources-opentelemetry = [
 ]
 sources-postgresql_metrics = ["dep:postgres-openssl", "dep:tokio-postgres"]
 sources-prometheus = ["sources-prometheus-scrape", "sources-prometheus-remote-write", "sources-prometheus-pushgateway"]
-sources-prometheus-scrape = ["sinks-prometheus", "sources-utils-http-client", "vector-lib/prometheus"]
-sources-prometheus-remote-write = ["sinks-prometheus", "sources-utils-http", "vector-lib/prometheus"]
-sources-prometheus-pushgateway = ["sinks-prometheus", "sources-utils-http", "vector-lib/prometheus"]
+sources-prometheus-scrape = ["sinks-prometheus", "sources-utils-http-client", "sol-lib/prometheus"]
+sources-prometheus-remote-write = ["sinks-prometheus", "sources-utils-http", "sol-lib/prometheus"]
+sources-prometheus-pushgateway = ["sinks-prometheus", "sources-utils-http", "sol-lib/prometheus"]
 sources-pulsar = ["dep:apache-avro", "dep:pulsar"]
 sources-redis = ["dep:redis"]
 sources-socket = ["sources-utils-net", "tokio-util/net"]
@@ -729,7 +729,7 @@ sources-utils-net-udp = ["listenfd"]
 sources-utils-net-unix = []
 sources-websocket = ["dep:tokio-tungstenite"]
 
-sources-vector = ["dep:tonic", "vector-lib/opentelemetry", "protobuf-build", "dep:prost"]
+sources-vector = ["dep:tonic", "sol-lib/opentelemetry", "protobuf-build", "dep:prost"]
 
 # Transforms
 transforms = ["transforms-logs", "transforms-metrics"]
@@ -768,7 +768,7 @@ transforms-filter = []
 transforms-incremental_to_absolute = []
 transforms-window = []
 transforms-log_to_metric = []
-transforms-lua = ["dep:mlua", "vector-lib/lua"]
+transforms-lua = ["dep:mlua", "sol-lib/lua"]
 transforms-metric_to_log = []
 transforms-reduce = ["transforms-impl-reduce"]
 transforms-remap = []
@@ -885,9 +885,9 @@ sinks-mqtt = ["dep:rumqttc"]
 sinks-nats = ["dep:async-nats", "dep:nkeys"]
 sinks-new_relic_logs = ["sinks-http"]
 sinks-new_relic = []
-sinks-opentelemetry = ["sinks-http", "codecs-opentelemetry", "vector-lib/opentelemetry"]
+sinks-opentelemetry = ["sinks-http", "codecs-opentelemetry", "sol-lib/opentelemetry"]
 sinks-papertrail = ["dep:syslog"]
-sinks-prometheus = ["dep:base64", "dep:prost", "vector-lib/prometheus"]
+sinks-prometheus = ["dep:base64", "dep:prost", "sol-lib/prometheus"]
 sinks-postgres = ["dep:sqlx"]
 sinks-pulsar = ["dep:apache-avro", "dep:pulsar"]
 sinks-redis = ["dep:redis"]
@@ -1009,7 +1009,7 @@ webhdfs-integration-tests = ["sinks-webhdfs"]
 disable-resolv-conf = []
 shutdown-tests = ["api", "sinks-blackhole", "sinks-console", "sinks-prometheus", "sources", "transforms-lua", "transforms-remap", "unix"]
 cli-tests = ["sinks-blackhole", "sinks-socket", "sources-demo_logs", "sources-file"]
-test-utils = ["vector-lib/test"]
+test-utils = ["sol-lib/test"]
 
 # End-to-End testing-related features
 all-e2e-tests = [
@@ -1032,13 +1032,13 @@ e2e-tests-opentelemetry = [
   "dep:prost-reflect"
 ]
 
-vector-api-tests = [
+sol-api-tests = [
   "sources-demo_logs",
   "transforms-log_to_metric",
   "transforms-remap",
   "sinks-blackhole"
 ]
-vector-unit-test-tests = [
+sol-unit-test-tests = [
   "sources-demo_logs",
   "transforms-remap",
   "transforms-route",

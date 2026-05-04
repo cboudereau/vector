@@ -18,7 +18,7 @@ use futures_util::{FutureExt, StreamExt, TryFutureExt, stream};
 use http::{Uri, response::Parts};
 use hyper::{Body, Request};
 use tokio_stream::wrappers::IntervalStream;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf, config::proxy::ProxyConfig, event::Event, json_size::JsonSize,
     shutdown::ShutdownSignal,
 };

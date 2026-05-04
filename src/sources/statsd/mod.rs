@@ -7,9 +7,9 @@ use std::{
 use futures::TryFutureExt;
 use listenfd::ListenFd;
 use tokio::io::AsyncBufReadExt;
-use vector_lib::event::otel_metric::{InstrumentationScope, Resource};
+use sol_lib::event::otel_metric::{InstrumentationScope, Resource};
 use serde_with::serde_as;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     configurable::configurable_component,
     internal_event::{CountByteSize, InternalEventHandle as _, Registered},
@@ -501,7 +501,7 @@ mod test {
         net::UdpSocket,
         time::{Duration, Instant, sleep},
     };
-    use vector_lib::{
+    use sol_lib::{
         config::ComponentKey,
         event::EventContainer,
     };
@@ -525,14 +525,14 @@ mod test {
     fn statsd_series(
         name: &str,
         tags: &[(&str, &str)],
-    ) -> vector_lib::event::metric::MetricIdentity {
-        use vector_lib::event::{OtelAttributes, string_value};
+    ) -> sol_lib::event::metric::MetricIdentity {
+        use sol_lib::event::{OtelAttributes, string_value};
 
         let mut attrs = OtelAttributes::new();
         for &(k, v) in tags {
             attrs.insert(k.to_string(), string_value(v));
         }
-        vector_lib::event::metric::MetricIdentity {
+        sol_lib::event::metric::MetricIdentity {
             name: name.into(),
             namespace: None,
             tags: Some(attrs),

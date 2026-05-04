@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 
 use snafu::ResultExt;
 use tokio::net::TcpStream;
-use vector_lib::{
+use sol_lib::{
     configurable::configurable_component,
     tcp::TcpKeepaliveConfig,
     tls::{MaybeTlsSettings, MaybeTlsStream, TlsEnableableConfig},

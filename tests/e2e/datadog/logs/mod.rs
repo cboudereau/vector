@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use serde_json::Value;
 use tracing::info;
-use vector::test_util::trace_init;
+use sol::test_util::trace_init;
 
 use super::*;
 

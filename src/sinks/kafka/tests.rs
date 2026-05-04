@@ -12,7 +12,7 @@ mod integration_test {
         consumer::{BaseConsumer, Consumer},
         message::Headers,
     };
-    use vector_lib::{
+    use sol_lib::{
         codecs::TextSerializerConfig,
         config::{Tags, Telemetry, init_telemetry},
         event::{BatchNotifier, BatchStatus},

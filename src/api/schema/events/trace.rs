@@ -1,5 +1,5 @@
 use async_graphql::Object;
-use vector_lib::{encode_logfmt, event::OtelSpan, tap::topology::TapOutput};
+use sol_lib::{encode_logfmt, event::OtelSpan, tap::topology::TapOutput};
 use vrl::event_path;
 
 use super::EventEncodingType;

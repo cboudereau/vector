@@ -5,7 +5,7 @@ use std::sync::{
 
 use async_trait::async_trait;
 use futures_util::FutureExt;
-use vector_lib::{
+use sol_lib::{
     config::{DataType, SourceOutput},
     configurable::configurable_component,
     event::{Event, OtelLog},

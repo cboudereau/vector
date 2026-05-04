@@ -22,7 +22,7 @@ use snafu::Snafu;
 use tokio::net::TcpStream;
 use tower::ServiceBuilder;
 use tracing::Span;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     config::{insert_source_metadata, insert_standard_vector_source_metadata},
     configurable::configurable_component,
@@ -204,7 +204,7 @@ impl SourceConfig for SplunkConfig {
 
     fn outputs(&self) -> Vec<SourceOutput> {
         let schema_definition = {
-            let definition = vector_lib::schema::Definition::empty_definition()
+            let definition = sol_lib::schema::Definition::empty_definition()
                 .with_event_field(
                     &owned_value_path!("line"),
                     Kind::object(Collection::empty())
@@ -1184,7 +1184,7 @@ mod tests {
     use http::Uri;
     use reqwest::{RequestBuilder, Response};
     use serde::Deserialize;
-    use vector_lib::{
+    use sol_lib::{
         codecs::{
             BytesDecoderConfig, JsonSerializerConfig, TextSerializerConfig,
             decoding::DeserializerConfig,

@@ -1,6 +1,6 @@
 #![cfg(test)]
 
-use vector_lib::codecs::JsonSerializerConfig;
+use sol_lib::codecs::JsonSerializerConfig;
 
 use super::*;
 use crate::{

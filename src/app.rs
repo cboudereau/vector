@@ -26,7 +26,7 @@ use crate::{
     config::{self, ComponentConfig, ComponentType, Config, ConfigPath},
     extra_context::ExtraContext,
     heartbeat,
-    internal_events::{VectorConfigLoadError, VectorQuit, VectorStarted, VectorStopped},
+    internal_events::{SolConfigLoadError, SolQuit, SolStarted, SolStopped},
     signal::{SignalHandler, SignalPair, SignalRx, SignalTo},
     topology::{
         ReloadOutcome, RunningTopology, SharedTopologyController, ShutdownErrorReceiver,
@@ -247,7 +247,7 @@ impl Application {
         // early buffer by this point and set up a subscriber.
         crate::trace::stop_early_buffering();
 
-        emit!(VectorStarted);
+        emit!(SolStarted);
         handle.spawn(heartbeat::heartbeat());
 
         let Self {
@@ -439,7 +439,7 @@ async fn reload_config_from_result(
         },
         Err(errors) => {
             handle_config_errors(errors);
-            emit!(VectorConfigLoadError);
+            emit!(SolConfigLoadError);
             None
         }
     }
@@ -482,7 +482,7 @@ impl FinishedApplication {
     }
 
     async fn stop(topology_controller: TopologyController, mut signal_rx: SignalRx) -> ExitStatus {
-        emit!(VectorStopped);
+        emit!(SolStopped);
         tokio::select! {
             _ = topology_controller.stop() => ExitStatus::from_raw({
                 #[cfg(windows)]
@@ -498,7 +498,7 @@ impl FinishedApplication {
 
     fn quit() -> ExitStatus {
         // It is highly unlikely that this event will exit from topology.
-        emit!(VectorQuit);
+        emit!(SolQuit);
         ExitStatus::from_raw({
             #[cfg(windows)]
             {
@@ -511,12 +511,12 @@ impl FinishedApplication {
 }
 
 fn get_log_levels(default: &str) -> String {
-    std::env::var("VECTOR_LOG")
+    std::env::var("SOL_LOG")
         .or_else(|_| {
             std::env::var("LOG").inspect(|_log| {
                 warn!(
                     message =
-                        "DEPRECATED: Use of $LOG is deprecated. Please use $VECTOR_LOG instead."
+                        "DEPRECATED: Use of $LOG is deprecated. Please use $SOL_LOG instead."
                 );
             })
         })
@@ -631,7 +631,7 @@ pub async fn load_configs(
     config::init_telemetry(config.global.telemetry.clone(), true);
 
     #[cfg(feature = "sources-opentelemetry")]
-    vector_lib::opentelemetry::buffer_codec::init();
+    sol_lib::opentelemetry::buffer_codec::init();
 
     if !config.healthchecks.enabled {
         info!("Health checks are disabled.");

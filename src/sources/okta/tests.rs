@@ -4,7 +4,7 @@ use std::sync::{
 };
 
 use tokio::time::Duration;
-use vector_lib::event::Event;
+use sol_lib::event::Event;
 use warp::Filter;
 
 use crate::{

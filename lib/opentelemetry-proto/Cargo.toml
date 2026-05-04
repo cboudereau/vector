@@ -1,5 +1,5 @@
 [package]
-name = "vector-opentelemetry-proto"
+name = "sol-opentelemetry-proto"
 version = "0.1.0"
 authors = ["Vector Contributors <vector@datadoghq.com>"]
 edition = "2024"
@@ -14,13 +14,13 @@ glob.workspace = true
 bytes.workspace = true
 chrono.workspace = true
 hex = { version = "0.4.3", default-features = false, features = ["std"] }
-lookup = { package = "vector-lookup", path = "../vector-lookup", default-features = false }
+lookup = { package = "sol-lookup", path = "../sol-lookup", default-features = false }
 ordered-float.workspace = true
 upstream-opentelemetry-proto = { package = "opentelemetry-proto", version = "0.27", default-features = false, features = ["full", "with-serde"] }
 prost.workspace = true
 tonic.workspace = true
 vrl.workspace = true
-vector-core = { path = "../vector-core", default-features = false }
+sol-core = { path = "../sol-core", default-features = false }
 
 [dev-dependencies]
-vector-buffers = { path = "../vector-buffers", default-features = false }
+sol-buffers = { path = "../sol-buffers", default-features = false }

@@ -4,7 +4,7 @@ use std::{
     path::PathBuf,
 };
 
-use vector::test_util::{temp_dir, temp_file};
+use sol::test_util::{temp_dir, temp_file};
 
 #[cfg(feature = "cli-tests")]
 mod cli;

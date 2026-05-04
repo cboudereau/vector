@@ -3,7 +3,7 @@
 use super::sink::DorisPartitionKey;
 use crate::sinks::{prelude::*, util::http::HttpRequest};
 use bytes::Bytes;
-use vector_lib::codecs::encoding::Framer;
+use sol_lib::codecs::encoding::Framer;
 
 #[derive(Debug, Clone)]
 pub struct DorisRequestBuilder {

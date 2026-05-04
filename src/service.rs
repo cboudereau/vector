@@ -50,7 +50,7 @@ struct InstallOpts {
         id = "config-dir",
         short = 'C',
         long,
-        env = "VECTOR_CONFIG_DIR",
+        env = "SOL_CONFIG_DIR",
         value_delimiter(',')
     )]
     config_dirs: Vec<PathBuf>,
@@ -58,7 +58,7 @@ struct InstallOpts {
     /// Disable interpolation of environment variables in configuration files.
     #[arg(
         long,
-        env = "VECTOR_DISABLE_ENV_VAR_INTERPOLATION",
+        env = "SOL_DISABLE_ENV_VAR_INTERPOLATION",
         default_value = "false"
     )]
     pub disable_env_var_interpolation: bool,
@@ -67,7 +67,7 @@ struct InstallOpts {
 impl InstallOpts {
     fn service_info(&self) -> ServiceInfo {
         let service_name = self.name.as_deref().unwrap_or(DEFAULT_SERVICE_NAME);
-        let display_name = self.display_name.as_deref().unwrap_or("Vector Service");
+        let display_name = self.display_name.as_deref().unwrap_or("Sol Service");
         let description = crate::built_info::PKG_DESCRIPTION;
 
         let current_exe = ::std::env::current_exe().unwrap();
@@ -171,7 +171,7 @@ impl Default for ServiceInfo {
 
         ServiceInfo {
             name: OsString::from(DEFAULT_SERVICE_NAME),
-            display_name: OsString::from("Vector Service"),
+            display_name: OsString::from("Sol Service"),
             description: OsString::from(crate::built_info::PKG_DESCRIPTION),
             executable_path: current_exe,
             launch_arguments: vec![],

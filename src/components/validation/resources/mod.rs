@@ -4,7 +4,7 @@ mod http;
 use std::sync::Arc;
 
 use tokio::sync::{Mutex, mpsc};
-use vector_lib::{
+use sol_lib::{
     codecs::{
         BytesEncoder, Decoder, DecodingConfig, Encoder, EncodingConfig, EncodingConfigWithFraming,
         decoding::{self, DeserializerConfig},
@@ -105,7 +105,7 @@ impl ResourceCodec {
     ///
     /// The decoder is generated as an inverse to the input codec: if an encoding configuration was
     /// given, we generate a decoder that satisfies that encoding configuration, and vice versa.
-    pub fn into_decoder(&self) -> vector_lib::Result<Decoder> {
+    pub fn into_decoder(&self) -> sol_lib::Result<Decoder> {
         let (framer, deserializer) = match self {
             Self::Decoding(config) => return config.build(),
             Self::Encoding(config) => (
@@ -152,8 +152,8 @@ fn deserializer_config_to_serializer(config: &DeserializerConfig) -> encoding::S
         DeserializerConfig::Bytes => SerializerConfig::Text(TextSerializerConfig::default()),
         DeserializerConfig::Json { .. } => SerializerConfig::Json(JsonSerializerConfig::default()),
         DeserializerConfig::Protobuf(config) => {
-            SerializerConfig::Protobuf(vector_lib::codecs::encoding::ProtobufSerializerConfig {
-                protobuf: vector_lib::codecs::encoding::ProtobufSerializerOptions {
+            SerializerConfig::Protobuf(sol_lib::codecs::encoding::ProtobufSerializerConfig {
+                protobuf: sol_lib::codecs::encoding::ProtobufSerializerOptions {
                     desc_file: config.protobuf.desc_file.clone(),
                     message_type: config.protobuf.message_type.clone(),
                     use_json_names: config.protobuf.use_json_names,
@@ -214,7 +214,7 @@ fn decoder_framing_to_encoding_framer(framing: &decoding::FramingConfig) -> enco
 
 fn serializer_config_to_deserializer(
     config: &SerializerConfig,
-) -> vector_lib::Result<decoding::Deserializer> {
+) -> sol_lib::Result<decoding::Deserializer> {
     let deserializer_config = match config {
         SerializerConfig::Avro { .. } => todo!(),
         SerializerConfig::Cef { .. } => todo!(),
@@ -223,8 +223,8 @@ fn serializer_config_to_deserializer(
         SerializerConfig::Json(_) => DeserializerConfig::Json(Default::default()),
         SerializerConfig::Logfmt => todo!(),
         SerializerConfig::Protobuf(config) => {
-            DeserializerConfig::Protobuf(vector_lib::codecs::decoding::ProtobufDeserializerConfig {
-                protobuf: vector_lib::codecs::decoding::ProtobufDeserializerOptions {
+            DeserializerConfig::Protobuf(sol_lib::codecs::decoding::ProtobufDeserializerConfig {
+                protobuf: sol_lib::codecs::decoding::ProtobufDeserializerOptions {
                     desc_file: config.protobuf.desc_file.clone(),
                     message_type: config.protobuf.message_type.clone(),
                     use_json_names: config.protobuf.use_json_names,
@@ -260,7 +260,7 @@ fn encoder_framing_to_decoding_framer(framing: encoding::FramingConfig) -> decod
         encoding::FramingConfig::NewlineDelimited => {
             decoding::FramingConfig::NewlineDelimited(Default::default())
         }
-        vector_lib::codecs::encoding::FramingConfig::VarintLengthDelimited(config) => {
+        sol_lib::codecs::encoding::FramingConfig::VarintLengthDelimited(config) => {
             decoding::FramingConfig::VarintLengthDelimited(
                 decoding::VarintLengthDelimitedDecoderConfig {
                     max_frame_length: config.max_frame_length,
@@ -377,7 +377,7 @@ impl ExternalResource {
         task_coordinator: &TaskCoordinator<Configuring>,
         input_events: Vec<TestEvent>,
         runner_metrics: &Arc<Mutex<RunnerMetrics>>,
-    ) -> vector_lib::Result<()> {
+    ) -> sol_lib::Result<()> {
         match self.definition {
             ResourceDefinition::Http(http_config) => {
                 http_config.spawn_as_output(HttpResourceOutputContext {

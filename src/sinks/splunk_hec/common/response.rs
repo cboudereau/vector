@@ -1,4 +1,4 @@
-use vector_lib::{
+use sol_lib::{
     event::EventStatus, request_metadata::GroupedCountByteSize, stream::DriverResponse,
 };
 

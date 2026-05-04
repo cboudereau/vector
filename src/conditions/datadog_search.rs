@@ -1,11 +1,11 @@
 use std::{borrow::Cow, str::FromStr};
 
 use bytes::Bytes;
-use vector_lib::{
+use sol_lib::{
     configurable::configurable_component,
     event::{Event, EventRef, OtelLog, Value},
 };
-use vector_vrl_metrics::MetricsStorage;
+use sol_vrl_metrics::MetricsStorage;
 use vrl::{
     datadog_filter::{
         Filter, Matcher, Resolver, Run, build_matcher,
@@ -86,7 +86,7 @@ impl Conditional for DatadogSearchRunner {
 impl ConditionalConfig for DatadogSearchConfig {
     fn build(
         &self,
-        _enrichment_tables: &vector_lib::enrichment::TableRegistry,
+        _enrichment_tables: &sol_lib::enrichment::TableRegistry,
         _: &MetricsStorage,
     ) -> crate::Result<Condition> {
         Ok(Condition::DatadogSearch(self.try_into()?))

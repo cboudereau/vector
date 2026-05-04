@@ -5,7 +5,7 @@ use serde::{
     de::{self, Unexpected, Visitor},
 };
 use serde_json::Value;
-use vector_lib::configurable::{
+use sol_lib::configurable::{
     Configurable, GenerateError, Metadata, ToValue,
     attributes::CustomAttribute,
     schema::{

@@ -1,4 +1,4 @@
-use vector_core::schema;
+use sol_core::schema;
 use vrl::value::Kind;
 
 /// Inspect the global log schema and create a schema requirement.

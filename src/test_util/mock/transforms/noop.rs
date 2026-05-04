@@ -2,7 +2,7 @@ use std::{pin::Pin, time::Duration};
 
 use async_trait::async_trait;
 use futures_util::{Stream, StreamExt as _};
-use vector_lib::{
+use sol_lib::{
     config::{DataType, Input, TransformOutput},
     configurable::configurable_component,
     event::{Event, EventContainer},

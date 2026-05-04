@@ -1,4 +1,4 @@
-use vector_lib::{event::Event, partition::Partitioner};
+use sol_lib::{event::Event, partition::Partitioner};
 
 use crate::{internal_events::TemplateRenderingError, template::Template};
 

@@ -3,7 +3,7 @@ use std::{collections::HashMap, time::Duration};
 use futures::FutureExt;
 use rdkafka::ClientConfig;
 use serde_with::serde_as;
-use vector_lib::{
+use sol_lib::{
     codecs::JsonSerializerConfig, configurable::configurable_component,
     lookup::lookup_v2::ConfigTargetPath,
 };

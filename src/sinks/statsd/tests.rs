@@ -4,7 +4,7 @@ use futures_util::stream;
 use tokio::{net::UdpSocket, sync::mpsc};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::{codec::BytesCodec, udp::UdpFramed};
-use vector_lib::{
+use sol_lib::{
     event::{
         AnyValue, Event, MetricKind, OtelAttributes, OtelMetric,
     },
@@ -60,7 +60,7 @@ async fn test_send_to_statsd() {
             OtelMetric::new_histogram_from_samples(
                 "histogram",
                 MetricKind::Incremental,
-                &vector_lib::samples![2.0 => 100],
+                &sol_lib::samples![2.0 => 100],
             )
             .with_namespace(Some("vector")),
         ),

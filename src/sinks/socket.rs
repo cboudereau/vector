@@ -1,4 +1,4 @@
-use vector_lib::{
+use sol_lib::{
     codecs::{
         TextSerializerConfig,
         encoding::{Framer, FramingConfig},
@@ -222,7 +222,7 @@ mod test {
     };
     use tokio_stream::wrappers::TcpListenerStream;
     use tokio_util::codec::{FramedRead, LinesCodec};
-    use vector_lib::codecs::JsonSerializerConfig;
+    use sol_lib::codecs::JsonSerializerConfig;
 
     use super::*;
     cfg_if! { if #[cfg(unix)] {

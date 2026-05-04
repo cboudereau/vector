@@ -3,10 +3,10 @@ use std::convert::TryFrom;
 use chrono::Utc;
 use criterion::{BatchSize, Criterion, criterion_group};
 use lookup::{OwnedTargetPath, owned_value_path};
-use vector::event::{Event, OtelLog};
+use sol::event::{Event, OtelLog};
 
 fn bench_elasticsearch_index(c: &mut Criterion) {
-    use vector::template::Template;
+    use sol::template::Template;
 
     let mut group = c.benchmark_group("template");
 

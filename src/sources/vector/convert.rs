@@ -13,11 +13,11 @@ use opentelemetry_proto::tonic::common::v1::{
 use opentelemetry_proto::tonic::logs::v1::LogRecord;
 use opentelemetry_proto::tonic::metrics::v1::metric::Data as MetricData;
 use opentelemetry_proto::tonic::trace::v1::Span;
-use vector_lib::event::{
+use sol_lib::event::{
     Event, MetricKind, OtelLog, OtelSpan,
     string_value,
 };
-use vector_lib::event::otel_metric::OtelMetric;
+use sol_lib::event::otel_metric::OtelMetric;
 
 use super::proto::event;
 
@@ -163,11 +163,11 @@ fn convert_distribution1(
     kind: MetricKind,
     d: event::Distribution1,
 ) -> OtelMetric {
-    let samples: Vec<vector_lib::event::metric::Sample> = d
+    let samples: Vec<sol_lib::event::metric::Sample> = d
         .values
         .iter()
         .zip(d.sample_rates.iter())
-        .map(|(&value, &rate)| vector_lib::event::metric::Sample { value, rate })
+        .map(|(&value, &rate)| sol_lib::event::metric::Sample { value, rate })
         .collect();
     OtelMetric::new_histogram_from_samples(name, kind, &samples)
 }
@@ -177,10 +177,10 @@ fn convert_distribution2(
     kind: MetricKind,
     d: event::Distribution2,
 ) -> OtelMetric {
-    let samples: Vec<vector_lib::event::metric::Sample> = d
+    let samples: Vec<sol_lib::event::metric::Sample> = d
         .samples
         .iter()
-        .map(|s| vector_lib::event::metric::Sample {
+        .map(|s| sol_lib::event::metric::Sample {
             value: s.value,
             rate: s.rate,
         })
@@ -193,11 +193,11 @@ fn convert_aggregated_histogram1(
     kind: MetricKind,
     h: event::AggregatedHistogram1,
 ) -> OtelMetric {
-    let buckets: Vec<vector_lib::event::metric::Bucket> = h
+    let buckets: Vec<sol_lib::event::metric::Bucket> = h
         .buckets
         .iter()
         .zip(h.counts.iter())
-        .map(|(&upper_limit, &count)| vector_lib::event::metric::Bucket {
+        .map(|(&upper_limit, &count)| sol_lib::event::metric::Bucket {
             upper_limit,
             count: count as u64,
         })
@@ -210,10 +210,10 @@ fn convert_aggregated_histogram2(
     kind: MetricKind,
     h: event::AggregatedHistogram2,
 ) -> OtelMetric {
-    let buckets: Vec<vector_lib::event::metric::Bucket> = h
+    let buckets: Vec<sol_lib::event::metric::Bucket> = h
         .buckets
         .iter()
-        .map(|b| vector_lib::event::metric::Bucket {
+        .map(|b| sol_lib::event::metric::Bucket {
             upper_limit: b.upper_limit,
             count: b.count as u64,
         })
@@ -226,10 +226,10 @@ fn convert_aggregated_histogram3(
     kind: MetricKind,
     h: event::AggregatedHistogram3,
 ) -> OtelMetric {
-    let buckets: Vec<vector_lib::event::metric::Bucket> = h
+    let buckets: Vec<sol_lib::event::metric::Bucket> = h
         .buckets
         .iter()
-        .map(|b| vector_lib::event::metric::Bucket {
+        .map(|b| sol_lib::event::metric::Bucket {
             upper_limit: b.upper_limit,
             count: b.count,
         })
@@ -242,11 +242,11 @@ fn convert_aggregated_summary1(
     _kind: MetricKind,
     s: event::AggregatedSummary1,
 ) -> OtelMetric {
-    let quantiles: Vec<vector_lib::event::metric::Quantile> = s
+    let quantiles: Vec<sol_lib::event::metric::Quantile> = s
         .quantiles
         .iter()
         .zip(s.values.iter())
-        .map(|(&quantile, &value)| vector_lib::event::metric::Quantile { quantile, value })
+        .map(|(&quantile, &value)| sol_lib::event::metric::Quantile { quantile, value })
         .collect();
     OtelMetric::new_summary(name, &quantiles, s.count as u64, s.sum)
 }
@@ -256,10 +256,10 @@ fn convert_aggregated_summary2(
     _kind: MetricKind,
     s: event::AggregatedSummary2,
 ) -> OtelMetric {
-    let quantiles: Vec<vector_lib::event::metric::Quantile> = s
+    let quantiles: Vec<sol_lib::event::metric::Quantile> = s
         .quantiles
         .iter()
-        .map(|q| vector_lib::event::metric::Quantile {
+        .map(|q| sol_lib::event::metric::Quantile {
             quantile: q.quantile,
             value: q.value,
         })
@@ -272,10 +272,10 @@ fn convert_aggregated_summary3(
     _kind: MetricKind,
     s: event::AggregatedSummary3,
 ) -> OtelMetric {
-    let quantiles: Vec<vector_lib::event::metric::Quantile> = s
+    let quantiles: Vec<sol_lib::event::metric::Quantile> = s
         .quantiles
         .iter()
-        .map(|q| vector_lib::event::metric::Quantile {
+        .map(|q| sol_lib::event::metric::Quantile {
             quantile: q.quantile,
             value: q.value,
         })

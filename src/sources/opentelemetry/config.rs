@@ -20,7 +20,7 @@ use crate::{
 use futures::FutureExt;
 use futures_util::{TryFutureExt, future::join};
 use tonic::{codec::CompressionEncoding, service::RoutesBuilder};
-use vector_lib::{
+use sol_lib::{
     configurable::configurable_component,
     internal_event::{BytesReceived, EventsReceived, Protocol},
     lookup::{OwnedTargetPath, owned_value_path},

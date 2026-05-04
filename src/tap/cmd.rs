@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use vector_lib::{
+use sol_lib::{
     api_client::Client,
     tap::{EventFormatter, OutputChannel, TapRunner},
 };

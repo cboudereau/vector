@@ -15,7 +15,7 @@ use tokio::{pin, select};
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Status, body::BoxBody, metadata::AsciiMetadataValue};
 use tower::{Layer, Service};
-use vector_lib::internal_event::{
+use sol_lib::internal_event::{
     ByteSize, BytesReceived, InternalEventHandle as _, Protocol, Registered,
 };
 

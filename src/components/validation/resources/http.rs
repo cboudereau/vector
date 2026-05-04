@@ -20,7 +20,7 @@ use tokio::{
     sync::{Mutex, Notify, mpsc, oneshot},
 };
 use tokio_util::codec::Decoder;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     codecs::{
         CharacterDelimitedEncoder,
@@ -77,7 +77,7 @@ impl HttpResourceConfig {
         }
     }
 
-    pub fn spawn_as_output(self, ctx: HttpResourceOutputContext) -> vector_lib::Result<()> {
+    pub fn spawn_as_output(self, ctx: HttpResourceOutputContext) -> sol_lib::Result<()> {
         match ctx.direction {
             // We'll pull data from the sink.
             ResourceDirection::Pull => Ok(ctx.spawn_output_http_client(self)),
@@ -297,7 +297,7 @@ pub struct HttpResourceOutputContext<'a> {
 impl HttpResourceOutputContext<'_> {
     /// Spawns an HTTP server that accepts events sent by a sink.
     #[allow(clippy::missing_const_for_fn)]
-    fn spawn_output_http_server(&self, config: HttpResourceConfig) -> vector_lib::Result<()> {
+    fn spawn_output_http_server(&self, config: HttpResourceConfig) -> sol_lib::Result<()> {
         // This HTTP server will wait for events to be sent by a sink, and collect them and send them on
         // via an output sender. We accept/collect events until we're told to shutdown.
 

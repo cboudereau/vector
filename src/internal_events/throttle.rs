@@ -1,6 +1,6 @@
 use metrics::counter;
-use vector_lib::NamedInternalEvent;
-use vector_lib::internal_event::{ComponentEventsDropped, INTENTIONAL, InternalEvent};
+use sol_lib::NamedInternalEvent;
+use sol_lib::internal_event::{ComponentEventsDropped, INTENTIONAL, InternalEvent};
 
 #[derive(Debug, NamedInternalEvent)]
 pub(crate) struct ThrottleEventDiscarded {

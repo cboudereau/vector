@@ -7,7 +7,7 @@ use std::{
 };
 
 use snafu::{ResultExt, Snafu};
-use vector_lib::{
+use sol_lib::{
     TimeZone,
     codecs::MetricTagValues,
     compile_vrl,
@@ -16,8 +16,8 @@ use vector_lib::{
     lookup::owned_value_path,
     schema::Definition,
 };
-use vector_vrl_functions::set_semantic_meaning::MeaningList;
-use vector_vrl_metrics::MetricsStorage;
+use sol_vrl_functions::set_semantic_meaning::MeaningList;
+use sol_vrl_metrics::MetricsStorage;
 use vrl::{
     compiler::{
         CompileConfig, ExpressionError, Program, TypeState, VrlRuntime,
@@ -222,7 +222,7 @@ impl RemapConfig {
         config.set_custom(metrics_storage);
         config.set_custom(MeaningList::default());
 
-        let res = compile_vrl(&source, &vector_vrl_functions::all(), &state, config)
+        let res = compile_vrl(&source, &sol_vrl_functions::all(), &state, config)
             .map_err(|diagnostics| format_vrl_diagnostics(&source, diagnostics))
             .map(|result| {
                 (
@@ -657,7 +657,7 @@ mod tests {
     use indoc::{formatdoc, indoc};
     use tokio::sync::mpsc;
     use tokio_stream::wrappers::ReceiverStream;
-    use vector_lib::{config::{GlobalOptions}, event::EventMetadata, otel_tags};
+    use sol_lib::{config::{GlobalOptions}, event::EventMetadata, otel_tags};
     use vrl::{btreemap, event_path, value::kind::Collection};
 
     use super::*;
@@ -1897,7 +1897,7 @@ mod tests {
     }
 
     fn assert_no_metrics(source: String) {
-        vector_lib::metrics::init_test();
+        sol_lib::metrics::init_test();
 
         let config = RemapConfig {
             source: Some(source),

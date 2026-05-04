@@ -7,7 +7,7 @@ use hyper::{
     service::{make_service_fn, service_fn},
 };
 use tokio::runtime::Runtime;
-use vector::{
+use sol::{
     Error, config,
     sinks::{
         self,
@@ -17,7 +17,7 @@ use vector::{
     template::Template,
     test_util::{addr::next_addr, random_lines, runtime, send_lines, start_topology, wait_for_tcp},
 };
-use vector_lib::codecs::{TextSerializerConfig, encoding::FramingConfig};
+use sol_lib::codecs::{TextSerializerConfig, encoding::FramingConfig};
 
 fn benchmark_http(c: &mut Criterion) {
     let num_lines: usize = 1_000;

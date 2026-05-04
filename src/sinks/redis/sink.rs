@@ -253,8 +253,8 @@ impl RedisConnection {
 
 pub(super) struct RedisSink {
     request: TowerRequestConfig<RedisTowerRequestConfigDefaults>,
-    encoder: vector_lib::codecs::Encoder<()>,
-    transformer: vector_lib::codecs::Transformer,
+    encoder: sol_lib::codecs::Encoder<()>,
+    transformer: sol_lib::codecs::Transformer,
     conn: RedisConnection,
     data_type: super::DataType,
     key: Template,

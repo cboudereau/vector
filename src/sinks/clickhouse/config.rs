@@ -4,8 +4,8 @@ use std::fmt;
 
 use http::{Request, StatusCode, Uri};
 use hyper::Body;
-use vector_lib::codecs::encoding::format::SchemaProvider;
-use vector_lib::codecs::encoding::{ArrowStreamSerializerConfig, BatchSerializerConfig};
+use sol_lib::codecs::encoding::format::SchemaProvider;
+use sol_lib::codecs::encoding::{ArrowStreamSerializerConfig, BatchSerializerConfig};
 
 use super::{
     request_builder::ClickhouseRequestBuilder,
@@ -273,14 +273,14 @@ impl ClickhouseConfig {
         endpoint: &Uri,
         database: &Template,
         auth: Option<&Auth>,
-    ) -> crate::Result<(Format, vector_lib::codecs::EncoderKind)> {
-        use vector_lib::codecs::EncoderKind;
-        use vector_lib::codecs::{
+    ) -> crate::Result<(Format, sol_lib::codecs::EncoderKind)> {
+        use sol_lib::codecs::EncoderKind;
+        use sol_lib::codecs::{
             JsonSerializerConfig, NewlineDelimitedEncoderConfig, encoding::Framer,
         };
 
         if let Some(batch_encoding) = &self.batch_encoding {
-            use vector_lib::codecs::{BatchEncoder, BatchSerializer};
+            use sol_lib::codecs::{BatchEncoder, BatchSerializer};
 
             // Validate that batch_encoding is only compatible with ArrowStream format
             if self.format != Format::ArrowStream {
@@ -403,7 +403,7 @@ async fn healthcheck(client: HttpClient, endpoint: Uri, auth: Option<Auth>) -> c
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vector_lib::codecs::encoding::ArrowStreamSerializerConfig;
+    use sol_lib::codecs::encoding::ArrowStreamSerializerConfig;
 
     #[test]
     fn generate_config() {

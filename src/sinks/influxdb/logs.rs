@@ -4,7 +4,7 @@ use bytes::{Bytes, BytesMut};
 use futures::SinkExt;
 use http::{Request, Uri};
 use indoc::indoc;
-use vector_lib::{
+use sol_lib::{
     configurable::configurable_component,
     lookup::{PathPrefix, lookup_v2::OptionalValuePath, owned_value_path},
     schema,
@@ -376,7 +376,7 @@ mod tests {
     use futures::{StreamExt, channel::mpsc, stream};
     use http::{StatusCode, request::Parts};
     use indoc::indoc;
-    use vector_lib::{
+    use sol_lib::{
         event::{BatchNotifier, BatchStatus, Event, OtelLog},
         lookup::owned_value_path,
     };
@@ -852,7 +852,7 @@ mod integration_tests {
 
     use chrono::Utc;
     use futures::stream;
-    use vector_lib::{
+    use sol_lib::{
         codecs::BytesDeserializerConfig,
         config::{insert_source_metadata, insert_standard_vector_source_metadata},
         event::{BatchNotifier, BatchStatus, Event, OtelLog},

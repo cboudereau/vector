@@ -4,7 +4,7 @@ mod schema;
 mod server;
 #[cfg(all(
     test,
-    feature = "vector-api-tests",
+    feature = "sol-api-tests",
     feature = "sinks-blackhole",
     feature = "sources-demo_logs",
     feature = "transforms-log_to_metric",

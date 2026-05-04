@@ -3,7 +3,7 @@ use std::{ffi::OsStr, io::Cursor};
 use bytes::Bytes;
 #[cfg(unix)]
 use futures::task::Poll;
-use vector_lib::event::EventMetadata;
+use sol_lib::event::EventMetadata;
 use vrl::value;
 
 use vrl::path;
@@ -300,7 +300,7 @@ async fn test_spawn_reader_thread() {
 
     let buf = Cursor::new("hello world\nhello rocket 🚀");
     let reader = BufReader::new(buf);
-    let decoder = vector_lib::codecs::Decoder::default();
+    let decoder = sol_lib::codecs::Decoder::default();
     let (sender, mut receiver) = channel(1024);
 
     spawn_reader_thread(reader, decoder, STDOUT, sender);

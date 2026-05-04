@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use bytes::Bytes;
-use vector_lib::{
+use sol_lib::{
     event::{EventFinalizers, Finalizable},
     request_metadata::RequestMetadata,
 };

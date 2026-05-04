@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use futures::stream::{BoxStream, StreamExt};
 use indoc::indoc;
-use vector_lib::{configurable::configurable_component, sensitive_string::SensitiveString};
+use sol_lib::{configurable::configurable_component, sensitive_string::SensitiveString};
 use vrl::event_path;
 
 use super::Region;

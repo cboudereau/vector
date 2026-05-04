@@ -12,8 +12,8 @@ pub(super) struct MqttMetadata {
 }
 
 pub(super) struct MqttEncoder {
-    pub(super) encoder: vector_lib::codecs::Encoder<()>,
-    pub(super) transformer: vector_lib::codecs::Transformer,
+    pub(super) encoder: sol_lib::codecs::Encoder<()>,
+    pub(super) transformer: sol_lib::codecs::Transformer,
 }
 
 impl encoding::Encoder<Event> for MqttEncoder {

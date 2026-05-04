@@ -7,7 +7,7 @@ use tokio::net::UdpSocket;
 #[cfg(unix)]
 use tokio::net::UnixDatagram;
 use tokio_util::codec::Encoder;
-use vector_lib::{
+use sol_lib::{
     codecs::encoding::{Chunker, Chunking},
     internal_event::{ByteSize, BytesSent, InternalEventHandle, RegisterInternalEvent},
 };
@@ -28,7 +28,7 @@ pub enum DatagramSocket {
     Unix(UnixDatagram, PathBuf),
 }
 
-pub async fn send_datagrams<E: Encoder<Event, Error = vector_lib::codecs::encoding::Error>>(
+pub async fn send_datagrams<E: Encoder<Event, Error = sol_lib::codecs::encoding::Error>>(
     input: &mut Peekable<BoxStream<'_, Event>>,
     mut socket: DatagramSocket,
     transformer: &Transformer,

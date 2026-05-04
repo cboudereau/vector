@@ -12,7 +12,7 @@ use opentelemetry_proto::tonic::{
 };
 use prost::Message;
 use serde::{Deserialize, Serialize};
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     event::EventMetadata,
     internal_event::{CountByteSize, InternalEventHandle as _, Registered},

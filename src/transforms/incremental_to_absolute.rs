@@ -1,7 +1,7 @@
 use std::{collections::HashMap, future::ready, pin::Pin, time::Duration};
 
 use futures::{Stream, StreamExt};
-use vector_lib::configurable::configurable_component;
+use sol_lib::configurable::configurable_component;
 
 use crate::{
     config::{DataType, Input, OutputId, TransformConfig, TransformContext, TransformOutput},
@@ -102,7 +102,7 @@ mod tests {
 
     use futures_util::SinkExt;
     use similar_asserts::assert_eq;
-    use vector_lib::config::ComponentKey;
+    use sol_lib::config::ComponentKey;
 
     use super::*;
     use crate::event::{

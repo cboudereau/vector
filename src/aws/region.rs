@@ -1,6 +1,6 @@
 //! Handles the region settings for AWS components.
 use aws_types::region::Region;
-use vector_lib::configurable::configurable_component;
+use sol_lib::configurable::configurable_component;
 
 /// Configuration of the region/endpoint to use when interacting with an AWS service.
 #[configurable_component]

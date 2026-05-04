@@ -2,8 +2,8 @@ use bytes::Bytes;
 use derivative::Derivative;
 use lookup::owned_value_path;
 use smallvec::{SmallVec, smallvec};
-use vector_config::configurable_component;
-use vector_core::{
+use sol_config::configurable_component;
+use sol_core::{
     config::DataType,
     event::{Event, OtelLog},
     schema,
@@ -17,7 +17,7 @@ use super::{Deserializer, default_lossy};
 #[derive(Debug, Clone, Default)]
 pub struct JsonDeserializerConfig {
     /// JSON-specific decoding options.
-    #[serde(default, skip_serializing_if = "vector_core::serde::is_default")]
+    #[serde(default, skip_serializing_if = "sol_core::serde::is_default")]
     pub json: JsonDeserializerOptions,
 }
 
@@ -66,7 +66,7 @@ pub struct JsonDeserializerOptions {
     /// [U+FFFD]: https://en.wikipedia.org/wiki/Specials_(Unicode_block)#Replacement_character
     #[serde(
         default = "default_lossy",
-        skip_serializing_if = "vector_core::serde::is_default"
+        skip_serializing_if = "sol_core::serde::is_default"
     )]
     #[derivative(Default(value = "default_lossy()"))]
     pub lossy: bool,
@@ -91,7 +91,7 @@ impl Deserializer for JsonDeserializer {
     fn parse(
         &self,
         bytes: Bytes,
-    ) -> vector_common::Result<SmallVec<[Event; 1]>> {
+    ) -> sol_common::Result<SmallVec<[Event; 1]>> {
         if bytes.is_empty() {
             return Ok(smallvec![]);
         }
@@ -124,7 +124,7 @@ impl From<&JsonDeserializerConfig> for JsonDeserializer {
 
 #[cfg(test)]
 mod tests {
-    use vector_core::event::Value;
+    use sol_core::event::Value;
 
     use super::*;
 

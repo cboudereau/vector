@@ -15,7 +15,7 @@ use serde_json;
 use snafu::Snafu;
 use std::task::{Context, Poll};
 use tracing::{info, warn};
-use vector_common::{
+use sol_common::{
     finalization::EventStatus,
     request_metadata::{GroupedCountByteSize, MetaDescriptive, RequestMetadata},
 };

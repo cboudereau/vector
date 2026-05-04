@@ -1,4 +1,4 @@
-use vector_core::event::{
+use sol_core::event::{
     Event, EventMetadata,
     OtelMetric,
 };

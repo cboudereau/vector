@@ -23,7 +23,7 @@ use tonic::{
     metadata::MetadataValue,
     transport::{Certificate, ClientTlsConfig, Endpoint, Identity},
 };
-use vector_lib::{
+use sol_lib::{
     byte_size_of::ByteSizeOf,
     codecs::decoding::{DeserializerConfig, FramingConfig},
     configurable::configurable_component,
@@ -74,7 +74,7 @@ type Finalizer = UnorderedFinalizer<Vec<String>>;
 mod proto {
     include!(concat!(env!("OUT_DIR"), "/google.pubsub.v1.rs"));
 
-    use vector_lib::ByteSizeOf;
+    use sol_lib::ByteSizeOf;
 
     impl ByteSizeOf for StreamingPullResponse {
         fn allocated_bytes(&self) -> usize {
@@ -727,7 +727,7 @@ impl Future for Task {
 
 #[cfg(test)]
 mod tests {
-    use vector_lib::schema::Definition;
+    use sol_lib::schema::Definition;
 
     use super::*;
 

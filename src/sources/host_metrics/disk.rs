@@ -1,6 +1,6 @@
 use futures::StreamExt;
 use heim::units::information::byte;
-use vector_lib::{configurable::configurable_component, otel_tags};
+use sol_lib::{configurable::configurable_component, otel_tags};
 
 use super::{FilterList, HostMetrics, default_all_devices, example_devices, filter_result};
 use crate::internal_events::HostMetricsScrapeDetailError;

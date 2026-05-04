@@ -7,7 +7,7 @@ use indoc::indoc;
 use serde_json::{Value, json};
 use snafu::{ResultExt, Snafu};
 use tokio_util::codec::Encoder as _;
-use vector_lib::configurable::configurable_component;
+use sol_lib::configurable::configurable_component;
 
 use crate::{
     codecs::{Encoder, EncodingConfig, Transformer},
@@ -270,7 +270,7 @@ mod integration_tests {
     use reqwest::{Client, Method, Response};
     use serde::{Deserialize, Serialize};
     use serde_json::{Value, json};
-    use vector_lib::{
+    use sol_lib::{
         codecs::JsonSerializerConfig,
         event::{BatchNotifier, BatchStatus},
     };

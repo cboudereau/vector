@@ -1,9 +1,9 @@
 use std::{num::NonZeroUsize, time::Duration};
 
 use serde_with::serde_as;
-use vector_lib::{configurable::configurable_component, lookup::lookup_v2::ConfigTargetPath};
+use sol_lib::{configurable::configurable_component, lookup::lookup_v2::ConfigTargetPath};
 
-use vector_lib::lookup::{OwnedTargetPath, owned_value_path};
+use sol_lib::lookup::{OwnedTargetPath, owned_value_path};
 
 /// Caching configuration for deduplication.
 #[configurable_component]

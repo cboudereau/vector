@@ -4,9 +4,9 @@ use lookup::event_path;
 use ordered_float::NotNan;
 use snafu::Snafu;
 use tokio_util::codec::Encoder;
-use vector_config_macros::configurable_component;
+use sol_config_macros::configurable_component;
 use lookup::{OwnedTargetPath, owned_value_path};
-use vector_core::{
+use sol_core::{
     config::DataType,
     event::{Event, KeyString, OtelLog, Value},
     schema,
@@ -115,7 +115,7 @@ impl GelfSerializer {
     }
 
     /// Encode event and represent it as JSON value.
-    pub fn to_json_value(&self, event: Event) -> Result<serde_json::Value, vector_common::Error> {
+    pub fn to_json_value(&self, event: Event) -> Result<serde_json::Value, sol_common::Error> {
         let mut log = event.into_log();
         to_gelf_event(&mut log)?;
         serde_json::to_value(log.as_map().unwrap_or_default()).map_err(|e| e.to_string().into())
@@ -130,7 +130,7 @@ impl GelfSerializer {
 }
 
 impl Encoder<Event> for GelfSerializer {
-    type Error = vector_common::Error;
+    type Error = sol_common::Error;
 
     fn encode(&mut self, event: Event, buffer: &mut BytesMut) -> Result<(), Self::Error> {
         let mut log = event.into_log();
@@ -147,7 +147,7 @@ fn err_invalid_type(
     field: &str,
     expected_type: &str,
     actual_type: &str,
-) -> vector_common::Result<()> {
+) -> sol_common::Result<()> {
     InvalidValueTypeSnafu {
         field,
         actual_type,
@@ -158,8 +158,8 @@ fn err_invalid_type(
 }
 
 /// Validate and coerce an OtelLog into valid GELF format.
-fn to_gelf_event(log: &mut OtelLog) -> vector_common::Result<()> {
-    fn err_missing_field(field: &str) -> vector_common::Result<()> {
+fn to_gelf_event(log: &mut OtelLog) -> sol_common::Result<()> {
+    fn err_missing_field(field: &str) -> sol_common::Result<()> {
         MissingFieldSnafu { field }
             .fail()
             .map_err(|e| e.to_string().into())
@@ -268,7 +268,7 @@ fn to_gelf_event(log: &mut OtelLog) -> vector_common::Result<()> {
 #[cfg(test)]
 mod tests {
     use chrono::NaiveDateTime;
-    use vector_core::event::{Event, EventMetadata, OtelLog};
+    use sol_core::event::{Event, EventMetadata, OtelLog};
     use vrl::{
         btreemap,
         value::{ObjectMap, Value},

@@ -17,8 +17,8 @@ use nix::{
     unistd::Pid,
 };
 use tokio::time::sleep;
-use vector::test_util::{temp_dir, temp_file};
-use vector_lib::api_client::{Client, gql::ComponentsQueryExt};
+use sol::test_util::{temp_dir, temp_file};
+use sol_lib::api_client::{Client, gql::ComponentsQueryExt};
 
 // Constants
 pub const STARTUP_TIMEOUT: Duration = Duration::from_secs(2);
@@ -95,7 +95,7 @@ impl TestHarness {
         let data_dir = create_data_directory();
 
         let mut cmd =
-            Command::cargo_bin("vector").map_err(|e| format!("Failed to get cargo bin: {e}"))?;
+            Command::cargo_bin("sol").map_err(|e| format!("Failed to get cargo bin: {e}"))?;
 
         cmd.arg("-c").arg(&config_path);
 
@@ -103,7 +103,7 @@ impl TestHarness {
             cmd.arg("-w");
         }
 
-        cmd.env("VECTOR_DATA_DIR", &data_dir);
+        cmd.env("SOL_DATA_DIR", &data_dir);
 
         let mut vector = cmd
             .stdin(std::process::Stdio::null())
@@ -133,7 +133,7 @@ impl TestHarness {
     /// Queries all components from the GraphQL API
     pub async fn query_components(
         &self,
-    ) -> Result<vector_lib::api_client::gql::components_query::ResponseData, String> {
+    ) -> Result<sol_lib::api_client::gql::components_query::ResponseData, String> {
         self.client
             .components_query(100)
             .await

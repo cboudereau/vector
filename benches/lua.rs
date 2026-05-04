@@ -4,7 +4,7 @@ use criterion::{BatchSize, Criterion, Throughput, criterion_group};
 use futures::{SinkExt, Stream, StreamExt, stream};
 use indoc::indoc;
 use transforms::lua::v2::LuaConfig;
-use vector::{
+use sol::{
     event::{Event, OtelLog},
     test_util::collect_ready,
     transforms::{self, OutputBuffer, Transform},

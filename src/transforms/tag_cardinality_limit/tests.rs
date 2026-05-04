@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use config::PerMetricConfig;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
-use vector_lib::{
+use sol_lib::{
     config::{ComponentKey, OutputId},
     event::EventMetadata,
     otel_tags,

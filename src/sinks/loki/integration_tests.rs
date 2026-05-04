@@ -3,7 +3,7 @@ use std::{convert::TryFrom, sync::Arc};
 use bytes::Bytes;
 use chrono::{DateTime, Duration, Utc};
 use futures::stream;
-use vector_lib::{
+use sol_lib::{
     config::{Tags, Telemetry, init_telemetry, insert_standard_vector_source_metadata},
     encode_logfmt,
     event::{BatchNotifier, BatchStatus, Event, OtelLog},

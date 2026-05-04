@@ -1,8 +1,8 @@
 use std::{error::Error, fmt::Debug};
 
 use metrics::{counter, gauge};
-use vector_lib::NamedInternalEvent;
-use vector_lib::internal_event::{InternalEvent, error_stage, error_type};
+use sol_lib::NamedInternalEvent;
+use sol_lib::internal_event::{InternalEvent, error_stage, error_type};
 
 #[derive(Debug, NamedInternalEvent)]
 pub struct WebSocketListenerConnectionEstablished {

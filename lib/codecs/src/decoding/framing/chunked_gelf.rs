@@ -13,8 +13,8 @@ use snafu::{ResultExt, Snafu, ensure};
 use tokio::{self, task::JoinHandle};
 use tokio_util::codec::Decoder;
 use tracing::{debug, trace, warn};
-use vector_common::constants::{GZIP_MAGIC, ZLIB_MAGIC};
-use vector_config::configurable_component;
+use sol_common::constants::{GZIP_MAGIC, ZLIB_MAGIC};
+use sol_config::configurable_component;
 
 use super::{BoxedFramingError, FramingError};
 use crate::{BytesDecoder, StreamDecodingError};
@@ -63,7 +63,7 @@ pub struct ChunkedGelfDecoderOptions {
     /// dropping chunks of new messages, ensuring the memory usage of the decoder's state is bounded.
     /// If this option is not set, the decoder does not limit the number of pending messages and the memory usage
     /// of its messages buffer can grow unbounded. This matches Graylog Server's behavior.
-    #[serde(default, skip_serializing_if = "vector_core::serde::is_default")]
+    #[serde(default, skip_serializing_if = "sol_core::serde::is_default")]
     pub pending_messages_limit: Option<usize>,
 
     /// The maximum length of a single GELF message, in bytes. Messages longer than this length will
@@ -75,11 +75,11 @@ pub struct ChunkedGelfDecoderOptions {
     ///
     /// This limit takes only into account the message's payload and the GELF header bytes are excluded from the calculation.
     /// The message's payload is the concatenation of all the chunks' payloads.
-    #[serde(default, skip_serializing_if = "vector_core::serde::is_default")]
+    #[serde(default, skip_serializing_if = "sol_core::serde::is_default")]
     pub max_length: Option<usize>,
 
     /// Decompression configuration for GELF messages.
-    #[serde(default, skip_serializing_if = "vector_core::serde::is_default")]
+    #[serde(default, skip_serializing_if = "sol_core::serde::is_default")]
     pub decompression: ChunkedGelfDecompressionConfig,
 }
 

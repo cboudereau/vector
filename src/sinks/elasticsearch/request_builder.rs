@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf, json_size::JsonSize, request_metadata::RequestMetadata,
 };
 

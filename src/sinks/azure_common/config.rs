@@ -11,7 +11,7 @@ use azure_core::http::StatusCode;
 use bytes::Bytes;
 use futures::FutureExt;
 use snafu::Snafu;
-use vector_lib::{
+use sol_lib::{
     json_size::JsonSize,
     request_metadata::{GroupedCountByteSize, MetaDescriptive, RequestMetadata},
     stream::DriverResponse,

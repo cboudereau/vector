@@ -5,7 +5,7 @@ use std::{
 
 use bytes::{BufMut, BytesMut};
 use tokio_util::codec::Encoder;
-use vector_lib::event::{MetricKind, MetricView, OtelAttributes, OtelMetric};
+use sol_lib::event::{MetricKind, MetricView, OtelAttributes, OtelMetric};
 
 use crate::{
     internal_events::StatsdInvalidMetricError,
@@ -140,10 +140,10 @@ fn encode_and_write_single_event<V: Display>(
 #[cfg(test)]
 mod tests {
     #[cfg(feature = "sources-statsd")]
-    use vector_lib::event::{
+    use sol_lib::event::{
         MetricKind, OtelMetric,
     };
-    use vector_lib::event::OtelAttributes;
+    use sol_lib::event::OtelAttributes;
 
     use super::encode_tags;
 
@@ -160,7 +160,7 @@ mod tests {
     }
 
     fn tags() -> OtelAttributes {
-        vector_lib::otel_tags!(
+        sol_lib::otel_tags!(
             "normal_tag" => "value",
             "multi_value" => "true",
             "bare_tag" => "",
@@ -250,7 +250,7 @@ mod tests {
         let input = OtelMetric::new_histogram_from_samples(
             "histo",
             MetricKind::Incremental,
-            &vector_lib::samples![1.5 => 1, 1.5 => 1],
+            &sol_lib::samples![1.5 => 1, 1.5 => 1],
         )
         .with_tags(Some(tags()));
 

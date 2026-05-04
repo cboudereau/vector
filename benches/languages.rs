@@ -1,6 +1,6 @@
 use criterion::{BatchSize, Criterion, SamplingMode, Throughput, criterion_group, criterion_main};
 use indoc::indoc;
-use vector::{
+use sol::{
     config,
     test_util::{
         CountReceiver, addr::next_addr, runtime, send_lines, start_topology, wait_for_tcp,

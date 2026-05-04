@@ -1,12 +1,12 @@
 use std::collections::BTreeMap;
 
-use vector_lib::event::string_value;
+use sol_lib::event::string_value;
 
 pub fn build_source_resource(
     source_type: &str,
     config_overrides: &BTreeMap<String, String>,
-) -> vector_lib::event::otel_metric::Resource {
-    use vector_lib::event::otel_metric::KeyValue;
+) -> sol_lib::event::otel_metric::Resource {
+    use sol_lib::event::otel_metric::KeyValue;
 
     let mut attrs = Vec::new();
 
@@ -40,14 +40,14 @@ pub fn build_source_resource(
         });
     }
 
-    vector_lib::event::otel_metric::Resource {
+    sol_lib::event::otel_metric::Resource {
         attributes: attrs,
         dropped_attributes_count: 0,
     }
 }
 
-pub fn build_source_scope(source_type: &str) -> vector_lib::event::otel_metric::InstrumentationScope {
-    vector_lib::event::otel_metric::InstrumentationScope {
+pub fn build_source_scope(source_type: &str) -> sol_lib::event::otel_metric::InstrumentationScope {
+    sol_lib::event::otel_metric::InstrumentationScope {
         name: format!("sol/{source_type}"),
         version: crate::built_info::PKG_VERSION.to_string(),
         attributes: vec![],

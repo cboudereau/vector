@@ -4,8 +4,8 @@ use metrics::counter;
 #[cfg(feature = "sources-aws_s3")]
 pub use s3::*;
 #[cfg(any(feature = "sources-aws_s3", feature = "sources-aws_sqs"))]
-use vector_lib::internal_event::{error_stage, error_type};
-use vector_lib::{NamedInternalEvent, internal_event::InternalEvent};
+use sol_lib::internal_event::{error_stage, error_type};
+use sol_lib::{NamedInternalEvent, internal_event::InternalEvent};
 
 #[cfg(feature = "sources-aws_s3")]
 mod s3 {

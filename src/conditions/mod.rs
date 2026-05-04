@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
-use vector_lib::configurable::configurable_component;
-use vector_vrl_metrics::MetricsStorage;
+use sol_lib::configurable::configurable_component;
+use sol_vrl_metrics::MetricsStorage;
 
 use crate::event::Event;
 
@@ -120,7 +120,7 @@ pub enum ConditionConfig {
 impl ConditionConfig {
     pub fn build(
         &self,
-        enrichment_tables: &vector_lib::enrichment::TableRegistry,
+        enrichment_tables: &sol_lib::enrichment::TableRegistry,
         metrics_storage: &MetricsStorage,
     ) -> crate::Result<Condition> {
         match self {
@@ -156,7 +156,7 @@ pub trait Conditional: std::fmt::Debug {
 pub trait ConditionalConfig: std::fmt::Debug + Send + Sync + dyn_clone::DynClone {
     fn build(
         &self,
-        enrichment_tables: &vector_lib::enrichment::TableRegistry,
+        enrichment_tables: &sol_lib::enrichment::TableRegistry,
         metrics_storage: &MetricsStorage,
     ) -> crate::Result<Condition>;
 }
@@ -196,7 +196,7 @@ pub enum AnyCondition {
 impl AnyCondition {
     pub fn build(
         &self,
-        enrichment_tables: &vector_lib::enrichment::TableRegistry,
+        enrichment_tables: &sol_lib::enrichment::TableRegistry,
         metrics_storage: &MetricsStorage,
     ) -> crate::Result<Condition> {
         match self {

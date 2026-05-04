@@ -6,7 +6,7 @@ use std::{
 
 use async_stream::stream;
 use futures::{Stream, StreamExt};
-use vector_lib::{
+use sol_lib::{
     configurable::configurable_component,
     event::metric::MetricSeries,
 };
@@ -329,7 +329,7 @@ mod tests {
     use futures::stream;
     use tokio::sync::mpsc;
     use tokio_stream::wrappers::ReceiverStream;
-    use vector_lib::config::ComponentKey;
+    use sol_lib::config::ComponentKey;
     use vrl::value::Kind;
 
     use super::*;

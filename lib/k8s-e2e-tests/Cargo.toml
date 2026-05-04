@@ -24,17 +24,17 @@ rand.workspace = true
 e2e-tests = []
 
 [[test]]
-name = "vector-agent"
+name = "sol-agent"
 required-features = ["e2e-tests"]
 
 [[test]]
-name = "vector-aggregator"
+name = "sol-aggregator"
 required-features = ["e2e-tests"]
 
 [[test]]
-name = "vector-dd-agent-aggregator"
+name = "sol-dd-agent-aggregator"
 required-features = ["e2e-tests"]
 
 [[test]]
-name = "vector"
+name = "sol"
 required-features = ["e2e-tests"]

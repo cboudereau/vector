@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use chrono::{Duration, Utc};
 use futures::{StreamExt, future, stream::BoxStream};
 use tower::Service;
-use vector_lib::{
+use sol_lib::{
     partition::Partitioner,
     request_metadata::{MetaDescriptive, RequestMetadata},
     sink::StreamSink,

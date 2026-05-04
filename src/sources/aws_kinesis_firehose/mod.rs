@@ -5,7 +5,7 @@ use hyper::{Server, service::make_service_fn};
 use tokio::net::TcpStream;
 use tower::ServiceBuilder;
 use tracing::Span;
-use vector_lib::{
+use sol_lib::{
     codecs::decoding::{DeserializerConfig, FramingConfig},
     configurable::configurable_component,
     lookup::owned_value_path,
@@ -272,7 +272,7 @@ mod tests {
     use futures::Stream;
     use similar_asserts::assert_eq;
     use tokio::time::{Duration, sleep};
-    use vector_lib::lookup::path;
+    use sol_lib::lookup::path;
     use vrl::value;
 
     use super::*;

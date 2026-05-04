@@ -1,5 +1,5 @@
 use opentelemetry_proto::tonic::common::v1::AnyValue;
-use vector_lib::event::Event;
+use sol_lib::event::Event;
 use warp::http::{HeaderMap, HeaderValue};
 
 use crate::{

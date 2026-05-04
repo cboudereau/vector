@@ -11,7 +11,7 @@ use futures::stream;
 use headers::{Authorization, HeaderMapExt};
 use hyper::{Body, Method, Response, StatusCode};
 use serde::de;
-use vector_lib::{
+use sol_lib::{
     codecs::{
         JsonSerializerConfig, NewlineDelimitedEncoderConfig, TextSerializerConfig,
         encoding::{Framer, FramingConfig},

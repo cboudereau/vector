@@ -1,7 +1,7 @@
 use rumqttc::{AsyncClient, EventLoop, MqttOptions};
 use snafu::Snafu;
-use vector_config_macros::configurable_component;
-use vector_lib::tls::{TlsEnableableConfig, TlsError};
+use sol_config_macros::configurable_component;
+use sol_lib::tls::{TlsEnableableConfig, TlsError};
 
 use crate::template::TemplateParseError;
 

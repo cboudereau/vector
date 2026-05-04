@@ -5,7 +5,7 @@
 use std::{fmt, path::Path, str::FromStr};
 
 use serde::{Deserialize, Serialize, de};
-use vector_config_macros::Configurable;
+use sol_config_macros::Configurable;
 
 /// A type alias to better capture the semantics.
 pub type FormatHint = Option<Format>;

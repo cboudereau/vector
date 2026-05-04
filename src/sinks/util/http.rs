@@ -55,7 +55,7 @@ use pin_project::pin_project;
 use snafu::{ResultExt, Snafu};
 use tower::{Service, ServiceBuilder};
 use tower_http::decompression::DecompressionLayer;
-use vector_lib::{
+use sol_lib::{
     ByteSizeOf, EstimatedJsonEncodedSizeOf, configurable::configurable_component,
     stream::batcher::limiter::ItemBatchSize,
 };

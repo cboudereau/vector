@@ -1,10 +1,10 @@
-use vector_lib::sensitive_string::SensitiveString;
+use sol_lib::sensitive_string::SensitiveString;
 
 mod collector;
 pub mod exporter;
 pub mod remote_write;
 
-use vector_lib::configurable::configurable_component;
+use sol_lib::configurable::configurable_component;
 
 /// Authentication strategies.
 #[configurable_component]

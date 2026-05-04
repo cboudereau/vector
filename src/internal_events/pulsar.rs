@@ -3,15 +3,15 @@
 #[cfg(feature = "sources-pulsar")]
 use metrics::Counter;
 use metrics::counter;
-use vector_lib::NamedInternalEvent;
-use vector_lib::internal_event::{
+use sol_lib::NamedInternalEvent;
+use sol_lib::internal_event::{
     ComponentEventsDropped, InternalEvent, UNINTENTIONAL, error_stage, error_type,
 };
 
 #[derive(Debug, NamedInternalEvent)]
 pub struct PulsarSendingError {
     pub count: usize,
-    pub error: vector_lib::Error,
+    pub error: sol_lib::Error,
 }
 
 impl InternalEvent for PulsarSendingError {

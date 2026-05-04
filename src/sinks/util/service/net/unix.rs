@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use snafu::ResultExt;
 use tokio::net::{UnixDatagram, UnixStream};
-use vector_lib::configurable::configurable_component;
+use sol_lib::configurable::configurable_component;
 
 use super::{ConnectorType, NetError, NetworkConnector, net_error::*};
 use crate::{net, sinks::util::unix::UnixEither};

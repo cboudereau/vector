@@ -6,7 +6,7 @@ use std::{
 
 use futures_util::{Stream, StreamExt, stream::Fuse};
 use pin_project::pin_project;
-use vector_lib::event::OtelMetric;
+use sol_lib::event::OtelMetric;
 
 use crate::sinks::util::buffer::metrics::{
     DefaultNormalizerSettings, MetricNormalize, MetricNormalizer, NormalizerConfig,

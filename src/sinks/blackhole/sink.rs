@@ -13,7 +13,7 @@ use tokio::{
     sync::watch,
     time::{interval, sleep_until},
 };
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     internal_event::{
         ByteSize, BytesSent, CountByteSize, EventsSent, InternalEventHandle as _, Output, Protocol,

@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use futures_util::{FutureExt, StreamExt, stream::BoxStream};
 use snafu::Snafu;
 use tokio::sync::oneshot;
-use vector_lib::{
+use sol_lib::{
     config::{AcknowledgementsConfig, Input},
     configurable::configurable_component,
     event::Event,

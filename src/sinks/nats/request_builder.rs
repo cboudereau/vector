@@ -3,7 +3,7 @@ use std::io;
 use async_nats::HeaderMap;
 use bytes::{Bytes, BytesMut};
 use tokio_util::codec::Encoder as _;
-use vector_lib::config::telemetry;
+use sol_lib::config::telemetry;
 
 use super::{config::NatsHeaderConfig, sink::NatsEvent};
 use crate::sinks::prelude::*;

@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use bytes::Bytes;
 use chrono::Utc;
-use vector_lib::{
+use sol_lib::{
     codecs::decoding::{DeserializerConfig, FramingConfig},
     configurable::configurable_component,
     lookup::{self, lookup_v2::OptionalValuePath},

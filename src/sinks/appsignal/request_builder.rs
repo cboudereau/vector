@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use vector_lib::{
+use sol_lib::{
     byte_size_of::ByteSizeOf,
     event::Event,
     finalization::{EventFinalizers, Finalizable},

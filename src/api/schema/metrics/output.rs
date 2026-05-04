@@ -1,5 +1,5 @@
 use async_graphql::Object;
-use vector_lib::config::ComponentKey;
+use sol_lib::config::ComponentKey;
 
 use super::{SentEventsTotal, by_component_key, sum_metrics};
 use crate::event::OtelMetric;
@@ -65,7 +65,7 @@ impl OutputThroughput {
 pub fn outputs_by_component_key(component_key: &ComponentKey, outputs: &[String]) -> Vec<Output> {
     let metrics = by_component_key(component_key)
         .into_iter()
-        .filter(|m| m.name() == "component_sent_events_total")
+        .filter(|m| m.name() == "sol_component_sent_events_total")
         .collect::<Vec<_>>();
 
     outputs

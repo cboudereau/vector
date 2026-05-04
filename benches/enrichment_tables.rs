@@ -2,13 +2,13 @@ use std::time::SystemTime;
 
 use chrono::prelude::*;
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
-use vector::enrichment_tables::{
+use sol::enrichment_tables::{
     Condition, Table,
     file::{File, FileData},
     geoip::{Geoip, GeoipConfig},
     mmdb::{Mmdb, MmdbConfig},
 };
-use vector_lib::enrichment::Case;
+use sol_lib::enrichment::Case;
 use vrl::value::{ObjectMap, Value};
 
 criterion_group!(

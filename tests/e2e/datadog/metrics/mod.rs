@@ -7,8 +7,8 @@ use flate2::read::ZlibDecoder;
 use serde_json::Value;
 use tokio::io::{AsyncReadExt, BufReader};
 use tracing::{debug, warn};
-use vector::test_util::{compression::is_zstd, trace_init};
-use vector_common::Result;
+use sol::test_util::{compression::is_zstd, trace_init};
+use sol_common::Result;
 
 mod series;
 mod sketches;

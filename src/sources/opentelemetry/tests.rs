@@ -9,7 +9,7 @@ use opentelemetry_proto::tonic::metrics::v1::metric::Data as OtelMetricData;
 use prost::Message;
 use similar_asserts::assert_eq;
 use tonic::Request;
-use vector_lib::opentelemetry::proto::{
+use sol_lib::opentelemetry::proto::{
     collector::{
         logs::v1::{ExportLogsServiceRequest, logs_service_client::LogsServiceClient},
         metrics::v1::{
@@ -242,7 +242,7 @@ async fn receive_sum_metric() {
                                 time_unix_nano: event_time_nanos,
                                 exemplars: vec![],
                                 flags: 0,
-                                value: Some(vector_lib::opentelemetry::proto::metrics::v1::number_data_point::Value::AsDouble(42.0)),
+                                value: Some(sol_lib::opentelemetry::proto::metrics::v1::number_data_point::Value::AsDouble(42.0)),
                             }],
                             aggregation_temporality: AggregationTemporality::Cumulative as i32,
                             // monotonic =  incremental
@@ -340,7 +340,7 @@ async fn receive_sum_non_monotonic_metric() {
                                 time_unix_nano: event_time_nanos,
                                 exemplars: vec![],
                                 flags: 0,
-                                value: Some(vector_lib::opentelemetry::proto::metrics::v1::number_data_point::Value::AsDouble(42.0)),
+                                value: Some(sol_lib::opentelemetry::proto::metrics::v1::number_data_point::Value::AsDouble(42.0)),
                             }],
                             aggregation_temporality: AggregationTemporality::Cumulative as i32,
                             // monotonic =  incremental
@@ -431,7 +431,7 @@ async fn receive_gauge_metric() {
                                 time_unix_nano: event_time_nanos,
                                 exemplars: vec![],
                                 flags: 0,
-                                value: Some(vector_lib::opentelemetry::proto::metrics::v1::number_data_point::Value::AsDouble(42.0)),
+                                value: Some(sol_lib::opentelemetry::proto::metrics::v1::number_data_point::Value::AsDouble(42.0)),
                             }],
                         })),
                     }],

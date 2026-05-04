@@ -29,7 +29,7 @@ use snafu::{ResultExt, Snafu};
 use tokio::{pin, select};
 use tokio_util::codec::FramedRead;
 use tracing::Instrument;
-use vector_lib::{
+use sol_lib::{
     codecs::decoding::FramingError,
     config::insert_source_metadata,
     configurable::configurable_component,
@@ -232,7 +232,7 @@ pub enum ProcessingError {
     },
     #[snafu(display("Failed to flush all of s3://{}/{}: {}", bucket, key, source))]
     PipelineSend {
-        source: vector_lib::source_sender::SendError,
+        source: sol_lib::source_sender::SendError,
         bucket: String,
         key: String,
     },

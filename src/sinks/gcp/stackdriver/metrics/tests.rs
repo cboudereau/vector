@@ -1,7 +1,7 @@
 use chrono::Utc;
 use futures::{future::ready, stream};
 use serde::Deserialize;
-use vector_lib::event::OtelMetric;
+use sol_lib::event::OtelMetric;
 
 use super::config::StackdriverConfig;
 use crate::{

@@ -31,7 +31,7 @@ use tower::{
     retry::Retry,
     timeout::Timeout,
 };
-use vector_lib::{
+use sol_lib::{
     finalization::EventStatus,
     request_metadata::{GroupedCountByteSize, MetaDescriptive},
     stream::DriverResponse,

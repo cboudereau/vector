@@ -3,7 +3,7 @@ use bytes::BytesMut;
 use futures::{StreamExt, stream::BoxStream};
 use tokio::{io, io::AsyncWriteExt};
 use tokio_util::codec::Encoder as _;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     codecs::encoding::Framer,
     internal_event::{
@@ -67,7 +67,7 @@ where
 mod test {
     use futures::future::ready;
     use futures_util::stream;
-    use vector_lib::{
+    use sol_lib::{
         codecs::{JsonSerializerConfig, NewlineDelimitedEncoder},
         sink::VectorSink,
     };

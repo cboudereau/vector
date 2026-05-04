@@ -1,5 +1,5 @@
 use openssl::{base64, pkey};
-use vector_lib::{
+use sol_lib::{
     configurable::configurable_component,
     lookup::{OwnedValuePath, lookup_v2::OptionalValuePath, owned_value_path},
     schema,

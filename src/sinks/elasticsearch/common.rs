@@ -4,7 +4,7 @@ use http_body::Body as _;
 use hyper::Body;
 use serde::Deserialize;
 use snafu::ResultExt;
-use vector_lib::config::proxy::ProxyConfig;
+use sol_lib::config::proxy::ProxyConfig;
 
 use super::{
     ElasticsearchApiVersion, ElasticsearchEncoder, InvalidHostSnafu, Request, VersionType,

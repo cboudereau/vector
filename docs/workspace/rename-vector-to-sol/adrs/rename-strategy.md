@@ -22,8 +22,10 @@ Renaming 21 crates, their directory paths, and all cross-references can be done 
 **Option C — Layered sessions**. Group the work into logical layers:
 
 1. **Session 1**: Directory renames (`git mv`) + all Cargo.toml updates (package names, workspace paths, dependency references) + all Rust import path updates → must compile
-2. **Session 2**: Environment variables, metrics prefix, product name strings, config paths → must compile + tests pass
+2. **Session 2**: Environment variables, product name strings, config paths → must compile + tests pass
 3. **Session 3**: Systemd, Docker, CI workflows, attribution → must compile
+
+**Note** (updated 2026-05-04): Metrics prefix rename (originally planned for Session 2) is already done — commit 22198c3e changed the registry default namespace from `vector` to `sol` and stripped `vector_` prefix from custom metrics. See [ADR: metrics-namespace-renaming](../../sol-telemetry-monitoring/adrs/metrics-namespace-renaming.md).
 
 Each session produces a commit that compiles. This avoids the "big bang" risk of Option A while avoiding the broken-intermediate-state problem of Option B.
 

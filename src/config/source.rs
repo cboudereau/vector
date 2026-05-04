@@ -2,20 +2,20 @@ use std::{cell::RefCell, collections::HashMap, time::Duration};
 
 use async_trait::async_trait;
 use dyn_clone::DynClone;
-use vector_config::{Configurable, GenerateError, Metadata, NamedComponent};
-use vector_config_common::{
+use sol_config::{Configurable, GenerateError, Metadata, NamedComponent};
+use sol_config_common::{
     attributes::CustomAttribute,
     schema::{SchemaGenerator, SchemaObject},
 };
-use vector_config_macros::configurable_component;
-use vector_lib::{
+use sol_config_macros::configurable_component;
+use sol_lib::{
     config::{
         AcknowledgementsConfig, GlobalOptions, SourceAcknowledgementsConfig,
         SourceOutput,
     },
     source::Source,
 };
-use vector_vrl_metrics::MetricsStorage;
+use sol_vrl_metrics::MetricsStorage;
 
 use super::{ComponentKey, ProxyConfig, Resource, dot_graph::GraphConfig, schema};
 use crate::{SourceSender, extra_context::ExtraContext, shutdown::ShutdownSignal};
@@ -38,7 +38,7 @@ impl Configurable for BoxedSource {
     fn generate_schema(
         generator: &RefCell<SchemaGenerator>,
     ) -> Result<SchemaObject, GenerateError> {
-        vector_lib::configurable::component::SourceDescription::generate_schemas(generator)
+        sol_lib::configurable::component::SourceDescription::generate_schemas(generator)
     }
 }
 
@@ -54,11 +54,11 @@ impl<T: SourceConfig + 'static> From<T> for BoxedSource {
 #[derive(Clone, Debug)]
 pub struct SourceOuter {
     #[configurable(derived)]
-    #[serde(default, skip_serializing_if = "vector_lib::serde::is_default")]
+    #[serde(default, skip_serializing_if = "sol_lib::serde::is_default")]
     pub proxy: ProxyConfig,
 
     #[configurable(derived)]
-    #[serde(default, skip_serializing_if = "vector_lib::serde::is_default")]
+    #[serde(default, skip_serializing_if = "sol_lib::serde::is_default")]
     pub graph: GraphConfig,
 
     #[serde(default, skip)]
@@ -134,7 +134,7 @@ dyn_clone::clone_trait_object!(SourceConfig);
 pub struct SourceContext {
     pub key: ComponentKey,
     pub globals: GlobalOptions,
-    pub enrichment_tables: vector_lib::enrichment::TableRegistry,
+    pub enrichment_tables: sol_lib::enrichment::TableRegistry,
     pub metrics_storage: MetricsStorage,
     pub shutdown: ShutdownSignal,
     pub out: SourceSender,

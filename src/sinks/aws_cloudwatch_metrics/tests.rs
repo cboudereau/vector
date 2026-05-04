@@ -1,7 +1,7 @@
 use aws_smithy_types::DateTime;
 use chrono::{Timelike, Utc, offset::TimeZone};
 use similar_asserts::assert_eq;
-use vector_lib::otel_tags;
+use sol_lib::otel_tags;
 
 use super::*;
 use crate::event::metric::MetricKind;
@@ -108,7 +108,7 @@ async fn encode_events_distribution() {
         OtelMetric::new_histogram_from_samples(
             "latency",
             MetricKind::Incremental,
-            &vector_lib::samples![11.0 => 100, 12.0 => 50],
+            &sol_lib::samples![11.0 => 100, 12.0 => 50],
         ),
     ];
 

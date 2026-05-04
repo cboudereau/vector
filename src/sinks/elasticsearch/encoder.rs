@@ -2,7 +2,7 @@ use std::{io, io::Write};
 
 use serde::Serialize;
 use serde_json::json;
-use vector_lib::{
+use sol_lib::{
     ByteSizeOf, EstimatedJsonEncodedSizeOf,
     buffers::EventCount,
     config::telemetry,

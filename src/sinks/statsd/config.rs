@@ -1,7 +1,7 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use async_trait::async_trait;
-use vector_lib::{
+use sol_lib::{
     config::{AcknowledgementsConfig, Input},
     configurable::{component::GenerateConfig, configurable_component},
     internal_event::Protocol,

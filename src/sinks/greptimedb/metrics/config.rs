@@ -1,4 +1,4 @@
-use vector_lib::{configurable::configurable_component, sensitive_string::SensitiveString};
+use sol_lib::{configurable::configurable_component, sensitive_string::SensitiveString};
 
 use crate::sinks::{
     greptimedb::{

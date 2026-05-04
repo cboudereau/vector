@@ -1,0 +1,38 @@
+[package]
+name = "sol-lib"
+version = "0.1.0"
+authors = ["Vector Contributors <vector@datadoghq.com>"]
+edition = "2024"
+publish = false
+
+[dependencies]
+codecs = { path = "../codecs", default-features = false }
+enrichment = { path = "../enrichment" }
+file-source = { path = "../file-source", optional = true }
+file-source-common = { path = "../file-source-common", optional = true }
+sol-opentelemetry-proto = { path = "../opentelemetry-proto", optional = true }
+prometheus-parser = { path = "../prometheus-parser", optional = true }
+sol-api-client = { path = "../sol-api-client", optional = true }
+sol-buffers = { path = "../sol-buffers", default-features = false }
+sol-common = { path = "../sol-common" }
+sol-config = { path = "../sol-config" }
+sol-core = { path = "../sol-core", default-features = false }
+sol-lookup = { path = "../sol-lookup", features = ["test"] }
+sol-stream = { path = "../sol-stream" }
+sol-tap = { path = "../sol-tap" }
+sol-top = { path = "../sol-top", optional = true }
+vrl = { workspace = true, optional = true }
+
+[features]
+allocation-tracing = ["sol-top?/allocation-tracing"]
+api-client = ["dep:sol-api-client"]
+arrow = ["codecs/arrow"]
+api = ["sol-tap/api"]
+file-source = ["dep:file-source", "dep:file-source-common"]
+lua = ["sol-core/lua"]
+opentelemetry = ["dep:sol-opentelemetry-proto", "codecs/opentelemetry"]
+prometheus = ["dep:prometheus-parser"]
+proptest = ["sol-lookup/proptest", "vrl/proptest"]
+syslog = ["codecs/syslog"]
+test = ["codecs/test", "sol-core/test"]
+vrl = ["sol-core/vrl", "dep:vrl"]

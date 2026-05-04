@@ -18,7 +18,7 @@ use tokio_tungstenite::{
         stream::Mode as UriMode,
     },
 };
-use vector_config_macros::configurable_component;
+use sol_config_macros::configurable_component;
 
 use crate::{
     common::backoff::ExponentialBackoff,

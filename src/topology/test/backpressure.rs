@@ -4,7 +4,7 @@ use std::sync::{
 };
 
 use tokio::time::Duration;
-use vector_lib::{
+use sol_lib::{
     buffers::{BufferConfig, BufferType, MemoryBufferSize, WhenFull},
     config::MEMORY_BUFFER_DEFAULT_MAX_EVENTS,
 };

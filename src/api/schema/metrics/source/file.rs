@@ -210,8 +210,8 @@ mod tests {
         fn new(name: &'static str, events_processed: f64, bytes_processed: f64) -> Self {
             Self {
                 name,
-                events_metric: metric("component_sent_events_total", events_processed),
-                bytes_metric: metric("component_received_bytes_total", bytes_processed),
+                events_metric: metric("sol_component_sent_events_total", events_processed),
+                bytes_metric: metric("sol_component_received_bytes_total", bytes_processed),
             }
         }
 

@@ -33,8 +33,8 @@ pub use framing::{
     OctetCountingDecoderOptions, VarintLengthDelimitedDecoder, VarintLengthDelimitedDecoderConfig,
 };
 use smallvec::SmallVec;
-use vector_config::configurable_component;
-use vector_core::{
+use sol_config::configurable_component;
+use sol_core::{
     config::DataType,
     event::Event,
     schema,
@@ -51,7 +51,7 @@ pub enum Error {
     /// byte messages.
     FramingError(BoxedFramingError),
     /// The error occurred while parsing structured events from a byte frame.
-    ParsingError(vector_common::Error),
+    ParsingError(sol_common::Error),
 }
 
 impl std::fmt::Display for Error {
@@ -337,7 +337,7 @@ impl From<InfluxdbDeserializerConfig> for DeserializerConfig {
 
 impl DeserializerConfig {
     /// Build the `Deserializer` from this configuration.
-    pub fn build(&self) -> vector_common::Result<Deserializer> {
+    pub fn build(&self) -> sol_common::Result<Deserializer> {
         match self {
             DeserializerConfig::Avro { avro } => Ok(Deserializer::Avro(
                 AvroDeserializerConfig {
@@ -497,7 +497,7 @@ impl format::Deserializer for Deserializer {
     fn parse(
         &self,
         bytes: Bytes,
-    ) -> vector_common::Result<SmallVec<[Event; 1]>> {
+    ) -> sol_common::Result<SmallVec<[Event; 1]>> {
         match self {
             Deserializer::Avro(deserializer) => deserializer.parse(bytes),
             Deserializer::Bytes(deserializer) => deserializer.parse(bytes),

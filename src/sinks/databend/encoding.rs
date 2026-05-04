@@ -1,4 +1,4 @@
-use vector_lib::{
+use sol_lib::{
     codecs::{
         CsvSerializerConfig, EncodingConfig, JsonSerializerConfig, Transformer,
         encoding::SerializerConfig,

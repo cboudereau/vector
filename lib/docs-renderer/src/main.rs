@@ -4,8 +4,8 @@ use std::collections::HashMap;
 
 use anyhow::{Context, Result};
 use tracing::debug;
-use vector_config::schema::parser::{component::ComponentSchema, query::SchemaQuerier};
-use vector_config_common::constants::{self, ComponentType};
+use sol_config::schema::parser::{component::ComponentSchema, query::SchemaQuerier};
+use sol_config_common::constants::{self, ComponentType};
 
 use crate::renderer::SchemaRenderer;
 

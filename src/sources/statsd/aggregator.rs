@@ -1,7 +1,7 @@
 use std::collections::{BTreeSet, HashMap};
 use std::time::{Duration, Instant};
 
-use vector_lib::event::otel_metric::{
+use sol_lib::event::otel_metric::{
     ExpBuckets as ProtoBuckets, InstrumentationScope, MetricData, Resource,
 };
 
@@ -579,7 +579,7 @@ fn frexp(value: f64) -> (f64, i32) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vector_lib::event::otel_metric::NumberDataPointValue;
+    use sol_lib::event::otel_metric::NumberDataPointValue;
 
     // --- ExpoHistogram unit tests ---
 

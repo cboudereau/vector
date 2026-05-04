@@ -1,6 +1,6 @@
 use itertools::Itertools;
 use rumqttc::{Event as MqttEvent, Incoming, Publish, QoS, SubscribeFilter};
-use vector_lib::{
+use sol_lib::{
     codecs::Decoder,
     internal_event::EventsReceived,
 };
@@ -93,7 +93,7 @@ impl MqttSource {
         let events_received = register!(EventsReceived);
 
         let (batch, _batch_receiver) = BatchNotifier::maybe_new_with_receiver(false);
-        // Error is logged by `vector_lib::codecs::Decoder`, no further handling
+        // Error is logged by `sol_lib::codecs::Decoder`, no further handling
         // is needed here.
         let decoded = util::decode_message(
             self.decoder.clone(),

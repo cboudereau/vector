@@ -1,5 +1,5 @@
-use vector_lib::{TimeZone, compile_vrl, configurable::configurable_component, emit};
-use vector_vrl_metrics::MetricsStorage;
+use sol_lib::{TimeZone, compile_vrl, configurable::configurable_component, emit};
+use sol_vrl_metrics::MetricsStorage;
 use vrl::{
     compiler::{
         CompilationResult, CompileConfig, Program, TypeState, VrlRuntime,
@@ -32,7 +32,7 @@ impl_generate_config_from_default!(VrlConfig);
 impl ConditionalConfig for VrlConfig {
     fn build(
         &self,
-        enrichment_tables: &vector_lib::enrichment::TableRegistry,
+        enrichment_tables: &sol_lib::enrichment::TableRegistry,
         metrics_storage: &MetricsStorage,
     ) -> crate::Result<Condition> {
         // TODO(jean): re-add this to VRL
@@ -45,7 +45,7 @@ impl ConditionalConfig for VrlConfig {
         //     },
         // };
 
-        let functions = vector_vrl_functions::all();
+        let functions = sol_vrl_functions::all();
 
         let state = TypeState::default();
 
@@ -160,7 +160,7 @@ impl Conditional for Vrl {
 
 #[cfg(test)]
 mod test {
-    use vector_lib::otel_tags;
+    use sol_lib::otel_tags;
 
     use super::*;
     use crate::{

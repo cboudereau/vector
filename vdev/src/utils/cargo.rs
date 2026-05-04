@@ -33,6 +33,6 @@ pub fn read_version() -> Result<String> {
 /// Use the version provided by env vars or default to reading from `Cargo.toml`.
 pub fn get_version() -> Result<String> {
     std::env::var("VERSION")
-        .or_else(|_| std::env::var("VECTOR_VERSION"))
+        .or_else(|_| std::env::var("SOL_VERSION"))
         .or_else(|_| read_version())
 }

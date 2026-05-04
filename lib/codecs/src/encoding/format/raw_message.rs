@@ -1,7 +1,7 @@
 use bytes::{BufMut, BytesMut};
 use serde::{Deserialize, Serialize};
 use tokio_util::codec::Encoder;
-use vector_core::{config::DataType, event::Event, schema};
+use sol_core::{config::DataType, event::Event, schema};
 
 use crate::encoding::format::common::get_serializer_schema_requirement;
 
@@ -36,7 +36,7 @@ impl RawMessageSerializerConfig {
 pub struct RawMessageSerializer;
 
 impl Encoder<Event> for RawMessageSerializer {
-    type Error = vector_common::Error;
+    type Error = sol_common::Error;
 
     fn encode(&mut self, event: Event, buffer: &mut BytesMut) -> Result<(), Self::Error> {
         match &event {
@@ -55,7 +55,7 @@ impl Encoder<Event> for RawMessageSerializer {
 #[cfg(test)]
 mod tests {
     use bytes::{Bytes, BytesMut};
-    use vector_core::event::OtelLog;
+    use sol_core::event::OtelLog;
 
     use super::*;
 
@@ -73,7 +73,7 @@ mod tests {
     #[test]
     fn serialize_otel_log() {
         use opentelemetry_proto::tonic::common::v1::AnyValue;
-        use vector_core::event::OtelLog;
+        use sol_core::event::OtelLog;
 
         let event = Event::Log(OtelLog::new(
             opentelemetry_proto::tonic::logs::v1::LogRecord {

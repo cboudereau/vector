@@ -4,7 +4,7 @@ use aws_config::Region;
 use aws_sdk_sns::Client as SnsClient;
 use aws_sdk_sqs::{Client as SqsClient, types::QueueAttributeName};
 use tokio::time::{Duration, sleep};
-use vector_lib::codecs::TextSerializerConfig;
+use sol_lib::codecs::TextSerializerConfig;
 
 use super::{
     BaseSSSinkConfig,

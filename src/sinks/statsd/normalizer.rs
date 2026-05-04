@@ -1,4 +1,4 @@
-use vector_lib::event::{MetricView, OtelMetric};
+use sol_lib::event::{MetricView, OtelMetric};
 
 use crate::sinks::util::buffer::metrics::{MetricNormalize, MetricSet};
 
@@ -23,7 +23,7 @@ impl MetricNormalize for StatsdNormalizer {
 
 #[cfg(test)]
 mod tests {
-    use vector_lib::event::MetricKind;
+    use sol_lib::event::MetricKind;
 
     use super::StatsdNormalizer;
     use crate::test_util::metrics::{

@@ -36,7 +36,7 @@ pub struct Opts {
     #[arg(
         id = "config-toml",
         long,
-        env = "VECTOR_CONFIG_TOML",
+        env = "SOL_CONFIG_TOML",
         value_delimiter(',')
     )]
     pub paths_toml: Vec<PathBuf>,
@@ -45,7 +45,7 @@ pub struct Opts {
     #[arg(
         id = "config-json",
         long,
-        env = "VECTOR_CONFIG_JSON",
+        env = "SOL_CONFIG_JSON",
         value_delimiter(',')
     )]
     pub paths_json: Vec<PathBuf>,
@@ -54,16 +54,16 @@ pub struct Opts {
     #[arg(
         id = "config-yaml",
         long,
-        env = "VECTOR_CONFIG_YAML",
+        env = "SOL_CONFIG_YAML",
         value_delimiter(',')
     )]
     pub paths_yaml: Vec<PathBuf>,
 
     /// Any number of Vector config files to validate.
     /// Format is detected from the file name.
-    /// If none are specified, the default config path `/etc/vector/vector.yaml`
+    /// If none are specified, the default config path `/etc/sol/sol.yaml`
     /// is targeted.
-    #[arg(env = "VECTOR_CONFIG", value_delimiter(','))]
+    #[arg(env = "SOL_CONFIG", value_delimiter(','))]
     pub paths: Vec<PathBuf>,
 
     /// Read configuration from files in one or more directories.
@@ -74,7 +74,7 @@ pub struct Opts {
         id = "config-dir",
         short = 'C',
         long,
-        env = "VECTOR_CONFIG_DIR",
+        env = "SOL_CONFIG_DIR",
         value_delimiter(',')
     )]
     pub config_dirs: Vec<PathBuf>,
@@ -82,7 +82,7 @@ pub struct Opts {
     /// Disable interpolation of environment variables in configuration files.
     #[arg(
         long,
-        env = "VECTOR_DISABLE_ENV_VAR_INTERPOLATION",
+        env = "SOL_DISABLE_ENV_VAR_INTERPOLATION",
         default_value = "false"
     )]
     pub disable_env_var_interpolation: bool,

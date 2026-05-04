@@ -1,6 +1,6 @@
 use bytes::Bytes;
 use chrono::Utc;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     codecs::{
         NewlineDelimitedEncoder, TextSerializerConfig,

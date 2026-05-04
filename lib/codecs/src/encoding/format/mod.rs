@@ -39,20 +39,20 @@ pub use raw_message::{RawMessageSerializer, RawMessageSerializerConfig};
 #[cfg(feature = "syslog")]
 pub use syslog::{SyslogSerializer, SyslogSerializerConfig};
 pub use text::{TextSerializer, TextSerializerConfig};
-use vector_core::event::Event;
+use sol_core::event::Event;
 
 pub use self::csv::{CsvSerializer, CsvSerializerConfig};
 
 /// Serialize a structured event into a byte frame.
 pub trait Serializer:
-    tokio_util::codec::Encoder<Event, Error = vector_common::Error> + DynClone + Debug + Send + Sync
+    tokio_util::codec::Encoder<Event, Error = sol_common::Error> + DynClone + Debug + Send + Sync
 {
 }
 
 /// Default implementation for `Serializer`s that implement
 /// `tokio_util::codec::Encoder`.
 impl<Encoder> Serializer for Encoder where
-    Encoder: tokio_util::codec::Encoder<Event, Error = vector_common::Error>
+    Encoder: tokio_util::codec::Encoder<Event, Error = sol_common::Error>
         + Clone
         + Debug
         + Send

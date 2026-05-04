@@ -4,7 +4,7 @@ use async_nats::jetstream::stream::StorageType;
 use futures_util::StreamExt;
 use serde::Deserialize;
 use snafu::ResultExt;
-use vector_lib::{
+use sol_lib::{
     codecs::{JsonSerializerConfig, TextSerializerConfig},
     event::{EventArray, OtelLog},
 };

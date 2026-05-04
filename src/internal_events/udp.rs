@@ -1,6 +1,6 @@
 use metrics::counter;
-use vector_lib::NamedInternalEvent;
-use vector_lib::internal_event::{
+use sol_lib::NamedInternalEvent;
+use sol_lib::internal_event::{
     ComponentEventsDropped, InternalEvent, UNINTENTIONAL, error_stage, error_type,
 };
 
@@ -65,7 +65,7 @@ impl InternalEvent for UdpSendIncompleteError {
 
 #[derive(Debug, NamedInternalEvent)]
 pub struct UdpChunkingError {
-    pub error: vector_common::Error,
+    pub error: sol_common::Error,
     pub data_size: usize,
 }
 

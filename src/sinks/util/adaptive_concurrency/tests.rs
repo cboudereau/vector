@@ -27,7 +27,7 @@ use serde::Deserialize;
 use snafu::Snafu;
 use tokio::time::{self, Duration, Instant, sleep};
 use tower::Service;
-use vector_lib::{configurable::configurable_component, json_size::JsonSize};
+use sol_lib::{configurable::configurable_component, json_size::JsonSize};
 
 use super::{AdaptiveConcurrencySettings, controller::ControllerStatistics};
 use crate::{
@@ -474,27 +474,27 @@ async fn run_test(params: TestParams) -> TestResults {
     // Ensure basic statistics are captured, don't actually examine them
     assert!(matches!(
         metrics
-            .get("adaptive_concurrency_observed_rtt")
+            .get("sol_adaptive_concurrency_observed_rtt")
             .unwrap()
             .view(),
         MetricView::Histogram { .. }
     ));
     assert!(matches!(
         metrics
-            .get("adaptive_concurrency_averaged_rtt")
+            .get("sol_adaptive_concurrency_averaged_rtt")
             .unwrap()
             .view(),
         MetricView::Histogram { .. }
     ));
     if params.concurrency == Concurrency::Adaptive {
         assert!(matches!(
-            metrics.get("adaptive_concurrency_limit").unwrap().view(),
+            metrics.get("sol_adaptive_concurrency_limit").unwrap().view(),
             MetricView::Histogram { .. }
         ));
     }
     assert!(matches!(
         metrics
-            .get("adaptive_concurrency_in_flight")
+            .get("sol_adaptive_concurrency_in_flight")
             .unwrap()
             .view(),
         MetricView::Histogram { .. }

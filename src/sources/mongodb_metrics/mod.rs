@@ -14,12 +14,12 @@ use mongodb::{
     error::Error as MongoError,
     options::ClientOptions,
 };
-use vector_lib::event::otel_metric::{InstrumentationScope, Resource};
+use sol_lib::event::otel_metric::{InstrumentationScope, Resource};
 use serde_with::serde_as;
 use snafu::{ResultExt, Snafu};
 use tokio::time;
 use tokio_stream::wrappers::IntervalStream;
-use vector_lib::{
+use sol_lib::{
     ByteSizeOf, EstimatedJsonEncodedSizeOf, configurable::configurable_component, otel_tags,
 };
 

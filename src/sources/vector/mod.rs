@@ -6,7 +6,7 @@ use std::net::SocketAddr;
 
 use futures::TryFutureExt;
 use tonic::{codec::CompressionEncoding, service::RoutesBuilder};
-use vector_lib::{
+use sol_lib::{
     codecs::BytesDeserializerConfig,
     configurable::configurable_component,
     opentelemetry::proto::collector::{

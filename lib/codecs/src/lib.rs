@@ -33,7 +33,7 @@ pub use encoding::{
 };
 pub use gelf::{VALID_FIELD_REGEX, gelf_fields};
 pub use ready_frames::ReadyFrames;
-use vector_config_macros::configurable_component;
+use sol_config_macros::configurable_component;
 
 /// The user configuration to choose the metric tag strategy.
 #[configurable_component]

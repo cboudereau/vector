@@ -11,7 +11,7 @@ use tokio::{
     fs::{self, File},
     io::AsyncReadExt,
 };
-use vector_lib::{event::OtelAttributes, otel_tags};
+use sol_lib::{event::OtelAttributes, otel_tags};
 
 use super::{CGroupsConfig, HostMetrics, MetricsBuffer, filter_result_sync};
 

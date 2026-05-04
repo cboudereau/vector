@@ -2,7 +2,7 @@ use async_nats::{HeaderMap, header};
 use bytes::Bytes;
 use futures_util::TryFutureExt;
 use snafu::ResultExt;
-use vector_lib::{codecs::JsonSerializerConfig, tls::TlsEnableableConfig};
+use sol_lib::{codecs::JsonSerializerConfig, tls::TlsEnableableConfig};
 
 use super::{ConfigSnafu, ConnectSnafu, NatsError, sink::NatsSink};
 use crate::{

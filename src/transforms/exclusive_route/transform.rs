@@ -1,4 +1,4 @@
-use vector_lib::transform::SyncTransform;
+use sol_lib::transform::SyncTransform;
 
 use crate::{
     conditions::Condition,

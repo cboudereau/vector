@@ -1,4 +1,4 @@
-use vector_lib::ByteSizeOf;
+use sol_lib::ByteSizeOf;
 
 use super::super::{
     ElementCount,

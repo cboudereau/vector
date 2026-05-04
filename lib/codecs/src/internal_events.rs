@@ -2,10 +2,10 @@
 
 use metrics::counter;
 use tracing::error;
-use vector_common::internal_event::{
+use sol_common::internal_event::{
     ComponentEventsDropped, InternalEvent, UNINTENTIONAL, emit, error_stage, error_type,
 };
-use vector_common_macros::NamedInternalEvent;
+use sol_common_macros::NamedInternalEvent;
 
 #[derive(Debug, NamedInternalEvent)]
 /// Emitted when a decoder framing error occurs.
@@ -37,7 +37,7 @@ impl<E: std::fmt::Display> InternalEvent for DecoderFramingError<E> {
 /// Emitted when a decoder fails to deserialize a frame.
 pub struct DecoderDeserializeError<'a> {
     /// The deserialize error that occurred.
-    pub error: &'a vector_common::Error,
+    pub error: &'a sol_common::Error,
 }
 
 impl InternalEvent for DecoderDeserializeError<'_> {
@@ -91,7 +91,7 @@ impl InternalEvent for EncoderFramingError<'_> {
 /// Emitted when an encoder fails to serialize a frame.
 pub struct EncoderSerializeError<'a> {
     /// The serialization error that occurred.
-    pub error: &'a vector_common::Error,
+    pub error: &'a sol_common::Error,
 }
 
 impl InternalEvent for EncoderSerializeError<'_> {
@@ -156,7 +156,7 @@ impl<E: std::fmt::Display> InternalEvent for EncoderWriteError<'_, E> {
 /// Emitted when encoding violates a schema constraint.
 pub struct EncoderNullConstraintError<'a> {
     /// The schema constraint error that occurred.
-    pub error: &'a vector_common::Error,
+    pub error: &'a sol_common::Error,
 }
 
 #[cfg(feature = "arrow")]

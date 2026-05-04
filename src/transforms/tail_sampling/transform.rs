@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use futures::{Stream, StreamExt};
 use metrics::counter;
-use vector_lib::{ByteSizeOf, transform::TaskTransform};
+use sol_lib::{ByteSizeOf, transform::TaskTransform};
 
 use crate::event::Event;
 

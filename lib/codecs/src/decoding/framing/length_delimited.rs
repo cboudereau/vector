@@ -1,7 +1,7 @@
 use bytes::{Bytes, BytesMut};
 use derivative::Derivative;
 use tokio_util::codec::Decoder;
-use vector_config::configurable_component;
+use sol_config::configurable_component;
 
 use super::BoxedFramingError;
 use crate::common::length_delimited::LengthDelimitedCoderOptions;
@@ -12,7 +12,7 @@ use crate::common::length_delimited::LengthDelimitedCoderOptions;
 #[derivative(Default)]
 pub struct LengthDelimitedDecoderConfig {
     /// Options for the length delimited decoder.
-    #[serde(skip_serializing_if = "vector_core::serde::is_default")]
+    #[serde(skip_serializing_if = "sol_core::serde::is_default")]
     pub length_delimited: LengthDelimitedCoderOptions,
 }
 

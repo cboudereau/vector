@@ -1,4 +1,4 @@
-use vector_lib::{event::OtelMetric, stream::batcher::limiter::ItemBatchSize};
+use sol_lib::{event::OtelMetric, stream::batcher::limiter::ItemBatchSize};
 
 // This accounts for the separators, the metric type string, the length of the value itself. It can
 // never be too small, as the above values will always take at least 4 bytes.

@@ -224,7 +224,7 @@ impl fmt::Display for ParseError {
     }
 }
 
-vector_lib::impl_event_data_eq!(ParseError);
+sol_lib::impl_event_data_eq!(ParseError);
 
 impl error::Error for ParseError {}
 

@@ -10,7 +10,7 @@ use indoc::indoc;
 use snafu::{ResultExt, Snafu};
 use tower::ServiceBuilder;
 use uuid::Uuid;
-use vector_lib::{
+use sol_lib::{
     TimeZone,
     codecs::encoding::Framer,
     configurable::configurable_component,
@@ -465,7 +465,7 @@ fn make_header((name, value): (&String, &String)) -> crate::Result<(HeaderName, 
 #[cfg(test)]
 mod tests {
     use futures_util::{future::ready, stream};
-    use vector_lib::{
+    use sol_lib::{
         EstimatedJsonEncodedSizeOf,
         codecs::{
             JsonSerializerConfig, NewlineDelimitedEncoderConfig, TextSerializerConfig,

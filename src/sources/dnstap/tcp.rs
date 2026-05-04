@@ -3,7 +3,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use ipnet::IpNet;
 use serde_with::serde_as;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     configurable::configurable_component,
     ipallowlist::IpAllowlistConfig,

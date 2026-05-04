@@ -8,12 +8,12 @@ use chrono::{
 };
 use regex::Regex;
 use snafu::Snafu;
-use vector_lib::{
+use sol_lib::{
     configurable::{ConfigurableNumber, ConfigurableString, NumberClass, configurable_component},
     lookup::lookup_v2::parse_target_path,
 };
 
-use vector_lib::lookup::{OwnedTargetPath, owned_value_path};
+use sol_lib::lookup::{OwnedTargetPath, owned_value_path};
 
 use crate::event::{EventRef, OtelMetric};
 
@@ -611,7 +611,7 @@ fn render_timestamp(
 mod tests {
     use chrono::{Offset, TimeZone, Utc};
     use chrono_tz::Tz;
-    use vector_lib::{
+    use sol_lib::{
         lookup::metadata_path,
         otel_tags,
     };

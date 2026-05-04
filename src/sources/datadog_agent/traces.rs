@@ -9,7 +9,7 @@ use opentelemetry_proto::tonic::{
     trace::v1::{Span, Status, status::StatusCode as OtelStatusCode},
 };
 use prost::Message;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     internal_event::{CountByteSize, InternalEventHandle as _},
 };

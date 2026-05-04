@@ -11,7 +11,7 @@ use tokio::{
     task::yield_now,
     time::{Duration, sleep},
 };
-use vector_lib::{
+use sol_lib::{
     buffers::{BufferConfig, BufferType, WhenFull},
     config::{ComponentKey, OutputId},
     source_sender::SourceSenderItem,
@@ -70,7 +70,7 @@ fn basic_config_with_sink_failing_healthcheck() -> Config {
 }
 
 fn into_message(event: Event) -> String {
-    let message_key = vector_lib::lookup::OwnedTargetPath::event(vector_lib::lookup::owned_value_path!("body"));
+    let message_key = sol_lib::lookup::OwnedTargetPath::event(sol_lib::lookup::owned_value_path!("body"));
     event
         .as_log()
         .get(&message_key)
@@ -816,7 +816,7 @@ async fn topology_healthcheck_run_for_changes_on_reload() {
 #[tokio::test]
 async fn topology_disk_buffer_flushes_on_idle() {
     trace_init();
-    vector_lib::opentelemetry::buffer_codec::init();
+    sol_lib::opentelemetry::buffer_codec::init();
 
     let tmpdir = tempfile::tempdir().expect("no tmpdir");
     let event = Event::Log(OtelLog::from("foo"));

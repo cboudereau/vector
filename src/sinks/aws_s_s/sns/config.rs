@@ -1,5 +1,5 @@
 use aws_sdk_sns::Client as SnsClient;
-use vector_lib::configurable::configurable_component;
+use sol_lib::configurable::configurable_component;
 
 use super::{
     BaseSSSinkConfig, SSRequestBuilder, SSSink, client::SnsMessagePublisher,

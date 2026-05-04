@@ -6,7 +6,7 @@ use http_1::Uri;
 use prost::Message as _;
 use tonic::{IntoRequest, transport::Channel};
 use tower::{Service, ServiceBuilder};
-use vector_lib::{
+use sol_lib::{
     ByteSizeOf, EstimatedJsonEncodedSizeOf,
     config::telemetry,
     configurable::configurable_component,
@@ -37,7 +37,7 @@ pub enum OtlpGrpcError {
     GrpcRequest { source: tonic::Status },
 }
 
-use vector_lib::opentelemetry::proto::collector::{
+use sol_lib::opentelemetry::proto::collector::{
     logs::v1::{ExportLogsServiceRequest, logs_service_client::LogsServiceClient},
     metrics::v1::{ExportMetricsServiceRequest, metrics_service_client::MetricsServiceClient},
     trace::v1::{ExportTraceServiceRequest, trace_service_client::TraceServiceClient},
@@ -585,10 +585,10 @@ impl StreamSink<Event> for LoadBalancedOtlpGrpcSink {
 /// Reconstruct a `ResourceMetrics` (opentelemetry-proto types) from an
 /// `OtelMetric` (otel-proto-types) via protobuf encode→decode.
 pub(crate) fn otel_metric_event_to_resource_metrics(
-    metric_event: &vector_lib::event::OtelMetric,
-) -> vector_lib::opentelemetry::proto::metrics::v1::ResourceMetrics {
+    metric_event: &sol_lib::event::OtelMetric,
+) -> sol_lib::opentelemetry::proto::metrics::v1::ResourceMetrics {
     use prost::Message;
-    use vector_lib::opentelemetry::proto::{
+    use sol_lib::opentelemetry::proto::{
         common::v1::InstrumentationScope as SinkScope,
         metrics::v1::{Metric as SinkMetric, ResourceMetrics, ScopeMetrics},
         resource::v1::Resource as SinkResource,
@@ -622,10 +622,10 @@ pub(crate) fn otel_metric_event_to_resource_metrics(
 /// Reconstruct a `ResourceLogs` (opentelemetry-proto types) from an
 /// `OtelLog` (otel-proto-types) via protobuf encode→decode.
 pub(crate) fn otel_log_event_to_resource_logs(
-    log_event: &vector_lib::event::OtelLog,
-) -> vector_lib::opentelemetry::proto::logs::v1::ResourceLogs {
+    log_event: &sol_lib::event::OtelLog,
+) -> sol_lib::opentelemetry::proto::logs::v1::ResourceLogs {
     use prost::Message;
-    use vector_lib::opentelemetry::proto::{
+    use sol_lib::opentelemetry::proto::{
         common::v1::InstrumentationScope as SinkScope,
         logs::v1::{LogRecord as SinkLogRecord, ResourceLogs, ScopeLogs},
         resource::v1::Resource as SinkResource,
@@ -660,10 +660,10 @@ pub(crate) fn otel_log_event_to_resource_logs(
 /// Reconstruct a `ResourceSpans` (opentelemetry-proto types) from an
 /// `OtelSpan` (otel-proto-types) via protobuf encode→decode.
 pub(crate) fn otel_span_event_to_resource_spans(
-    span_event: &vector_lib::event::OtelSpan,
-) -> vector_lib::opentelemetry::proto::trace::v1::ResourceSpans {
+    span_event: &sol_lib::event::OtelSpan,
+) -> sol_lib::opentelemetry::proto::trace::v1::ResourceSpans {
     use prost::Message;
-    use vector_lib::opentelemetry::proto::{
+    use sol_lib::opentelemetry::proto::{
         common::v1::InstrumentationScope as SinkScope,
         resource::v1::Resource as SinkResource,
         trace::v1::{ResourceSpans, ScopeSpans, Span as SinkSpan},
@@ -695,7 +695,7 @@ pub(crate) fn otel_span_event_to_resource_spans(
 }
 
 fn collection_into_request(col: EventCollection) -> OtlpRequest {
-    use vector_lib::opentelemetry::proto::{
+    use sol_lib::opentelemetry::proto::{
         collector::{
             logs::v1::ExportLogsServiceRequest,
             metrics::v1::ExportMetricsServiceRequest,
@@ -705,7 +705,7 @@ fn collection_into_request(col: EventCollection) -> OtlpRequest {
         trace::v1::ResourceSpans,
     };
 
-    use vector_lib::opentelemetry::proto::metrics::v1::ResourceMetrics;
+    use sol_lib::opentelemetry::proto::metrics::v1::ResourceMetrics;
 
     let n = col.events.len();
     let mut log_resources: Vec<ResourceLogs> = vec![];
@@ -779,7 +779,7 @@ mod tests {
             number_data_point::Value as NDPValue,
         };
         use opentelemetry_proto::tonic::resource::v1::Resource;
-        use vector_lib::event::OtelMetric;
+        use sol_lib::event::OtelMetric;
 
         let mut event = OtelMetric::new(OtelMetricProto {
             name: "http.requests".to_string(),
@@ -826,7 +826,7 @@ mod tests {
         // Verify data point attributes are preserved (this was the bug)
         let metric = &rm.scope_metrics[0].metrics[0];
         let dp_attrs = match &metric.data {
-            Some(vector_lib::opentelemetry::proto::metrics::v1::metric::Data::Sum(s)) => {
+            Some(sol_lib::opentelemetry::proto::metrics::v1::metric::Data::Sum(s)) => {
                 &s.data_points[0].attributes
             }
             _ => panic!("expected Sum metric"),

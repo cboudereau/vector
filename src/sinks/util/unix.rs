@@ -15,7 +15,7 @@ use tokio::{
     time::sleep,
 };
 use tokio_util::codec::Encoder;
-use vector_lib::{
+use sol_lib::{
     ByteSizeOf, EstimatedJsonEncodedSizeOf,
     configurable::configurable_component,
     internal_event::{BytesSent, Protocol},
@@ -73,7 +73,7 @@ impl UnixSinkConfig {
     pub fn build(
         &self,
         transformer: Transformer,
-        encoder: impl Encoder<Event, Error = vector_lib::codecs::encoding::Error>
+        encoder: impl Encoder<Event, Error = sol_lib::codecs::encoding::Error>
         + Clone
         + Send
         + Sync
@@ -174,7 +174,7 @@ impl UnixConnector {
 
 struct UnixSink<E>
 where
-    E: Encoder<Event, Error = vector_lib::codecs::encoding::Error> + Clone + Send + Sync,
+    E: Encoder<Event, Error = sol_lib::codecs::encoding::Error> + Clone + Send + Sync,
 {
     connector: UnixConnector,
     transformer: Transformer,
@@ -183,7 +183,7 @@ where
 
 impl<E> UnixSink<E>
 where
-    E: Encoder<Event, Error = vector_lib::codecs::encoding::Error> + Clone + Send + Sync,
+    E: Encoder<Event, Error = sol_lib::codecs::encoding::Error> + Clone + Send + Sync,
 {
     pub const fn new(connector: UnixConnector, transformer: Transformer, encoder: E) -> Self {
         Self {
@@ -288,7 +288,7 @@ where
 #[async_trait]
 impl<E> StreamSink<Event> for UnixSink<E>
 where
-    E: Encoder<Event, Error = vector_lib::codecs::encoding::Error> + Clone + Send + Sync,
+    E: Encoder<Event, Error = sol_lib::codecs::encoding::Error> + Clone + Send + Sync,
 {
     async fn run(mut self: Box<Self>, input: BoxStream<'_, Event>) -> Result<(), ()> {
         self.run_internal(input).await
@@ -298,7 +298,7 @@ where
 #[cfg(test)]
 mod tests {
     use tokio::net::UnixListener;
-    use vector_lib::codecs::{
+    use sol_lib::codecs::{
         BytesEncoder, NewlineDelimitedEncoder, TextSerializerConfig, encoding::Framer,
     };
 

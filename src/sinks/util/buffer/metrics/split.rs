@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use vector_lib::event::{MetricKind, MetricView, OtelMetric};
+use sol_lib::event::{MetricKind, MetricView, OtelMetric};
 
 #[allow(clippy::large_enum_variant)]
 enum SplitState {
@@ -135,7 +135,7 @@ impl MetricSplit for AggregatedSummarySplitter {
 
 #[cfg(test)]
 mod tests {
-    use vector_lib::event::{MetricKind, OtelMetric, metric::Quantile};
+    use sol_lib::event::{MetricKind, OtelMetric, metric::Quantile};
 
     use super::*;
 

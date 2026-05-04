@@ -4,8 +4,8 @@ use chrono::{DateTime, Utc};
 use lookup::{PathPrefix, lookup_v2::ConfigValuePath};
 use ordered_float::NotNan;
 use serde::{Deserialize, Deserializer};
-use vector_config::configurable_component;
-use vector_core::{
+use sol_config::configurable_component;
+use sol_core::{
     event::{Event, OtelLog},
     schema::meaning,
     serde::is_default,
@@ -68,7 +68,7 @@ impl Transformer {
         only_fields: Option<Vec<ConfigValuePath>>,
         except_fields: Option<Vec<ConfigValuePath>>,
         timestamp_format: Option<TimestampFormat>,
-    ) -> vector_common::Result<Self> {
+    ) -> sol_common::Result<Self> {
         Self::validate_fields(only_fields.as_ref(), except_fields.as_ref())?;
 
         Ok(Self {
@@ -100,7 +100,7 @@ impl Transformer {
     fn validate_fields(
         only_fields: Option<&Vec<ConfigValuePath>>,
         except_fields: Option<&Vec<ConfigValuePath>>,
-    ) -> vector_common::Result<()> {
+    ) -> sol_common::Result<()> {
         if let (Some(only_fields), Some(except_fields)) = (only_fields, except_fields)
             && except_fields
                 .iter()
@@ -231,7 +231,7 @@ impl Transformer {
     pub fn set_except_fields(
         &mut self,
         except_fields: Option<Vec<ConfigValuePath>>,
-    ) -> vector_common::Result<()> {
+    ) -> sol_common::Result<()> {
         Self::validate_fields(self.only_fields.as_ref(), except_fields.as_ref())?;
         self.except_fields = except_fields;
         Ok(())
@@ -268,7 +268,7 @@ mod tests {
 
     use indoc::indoc;
     use lookup::path::parse_target_path;
-    use vector_core::{
+    use sol_core::{
         event::OtelLog,
         schema,
     };

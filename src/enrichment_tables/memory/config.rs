@@ -3,7 +3,7 @@ use std::{num::NonZeroU64, sync::Arc};
 use async_trait::async_trait;
 use futures::{FutureExt, future};
 use tokio::sync::Mutex;
-use vector_lib::{
+use sol_lib::{
     config::{AcknowledgementsConfig, DataType, Input},
     configurable::configurable_component,
     enrichment::Table,
@@ -44,13 +44,13 @@ pub struct MemoryConfig {
     /// if it is shorter than the `scan_interval`.
     ///
     /// By default, all writes are made visible immediately.
-    #[serde(skip_serializing_if = "vector_lib::serde::is_default")]
+    #[serde(skip_serializing_if = "sol_lib::serde::is_default")]
     pub flush_interval: Option<u64>,
     /// Maximum size of the table in bytes. All insertions that make
     /// this table bigger than the maximum size are rejected.
     ///
     /// By default, there is no size limit.
-    #[serde(skip_serializing_if = "vector_lib::serde::is_default")]
+    #[serde(skip_serializing_if = "sol_lib::serde::is_default")]
     pub max_byte_size: Option<u64>,
     /// Configuration of internal metrics
     #[configurable(derived)]
@@ -58,7 +58,7 @@ pub struct MemoryConfig {
     pub internal_metrics: InternalMetricsConfig,
     /// Configuration for source functionality.
     #[configurable(derived)]
-    #[serde(skip_serializing_if = "vector_lib::serde::is_default")]
+    #[serde(skip_serializing_if = "sol_lib::serde::is_default")]
     pub source_config: Option<MemorySourceConfig>,
     /// Field in the incoming value used as the TTL override.
     #[configurable(derived)]
@@ -75,13 +75,13 @@ pub struct MemoryConfig {
 #[serde(deny_unknown_fields)]
 pub struct MemorySourceConfig {
     /// Interval for exporting all data from the table when used as a source.
-    #[serde(skip_serializing_if = "vector_lib::serde::is_default")]
+    #[serde(skip_serializing_if = "sol_lib::serde::is_default")]
     pub export_interval: Option<NonZeroU64>,
     /// Batch size for data exporting. Used to prevent exporting entire table at
     /// once and blocking the system.
     ///
     /// By default, batches are not used and entire table is exported.
-    #[serde(skip_serializing_if = "vector_lib::serde::is_default")]
+    #[serde(skip_serializing_if = "sol_lib::serde::is_default")]
     pub export_batch_size: Option<u64>,
     /// If set to true, all data will be removed from cache after exporting.
     /// Only valid if used as a source and export_interval > 0

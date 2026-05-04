@@ -8,7 +8,7 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use vector_lib::{schema::meaning, sensitive_string::SensitiveString};
+use sol_lib::{schema::meaning, sensitive_string::SensitiveString};
 
 pub(crate) const DD_US_SITE: &str = "datadoghq.com";
 pub(crate) const DD_EU_SITE: &str = "datadoghq.eu";

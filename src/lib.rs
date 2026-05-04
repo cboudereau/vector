@@ -29,11 +29,11 @@ extern crate derivative;
 #[macro_use]
 extern crate tracing;
 #[macro_use]
-extern crate vector_lib;
+extern crate sol_lib;
 
 pub use indoc::indoc;
 // re-export codecs for convenience
-pub use vector_lib::codecs;
+pub use sol_lib::codecs;
 
 #[cfg(all(feature = "tikv-jemallocator", not(feature = "allocation-tracing")))]
 #[global_allocator]
@@ -129,7 +129,7 @@ pub mod validate;
 #[cfg(windows)]
 pub mod vector_windows;
 
-pub use vector_lib::{
+pub use sol_lib::{
     Error, Result, event, metrics, schema, shutdown, source_sender::SourceSender, tcp, tls,
 };
 
@@ -141,7 +141,7 @@ static USE_COLOR: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
 /// This can be set at compile-time through the VECTOR_APP_NAME env variable.
 /// Defaults to "Vector".
 pub fn get_app_name() -> &'static str {
-    option_env!("VECTOR_APP_NAME").unwrap_or("Vector")
+    option_env!("SOL_APP_NAME").unwrap_or("Sol")
 }
 
 /// Returns a slugified version of the name used to identify this Vector application.
@@ -205,7 +205,7 @@ pub fn vector_version() -> impl std::fmt::Display {
 /// Returns a string containing full version information of the current build.
 pub fn get_version() -> String {
     let pkg_version = vector_version();
-    let build_desc = built_info::VECTOR_BUILD_DESC;
+    let build_desc = built_info::SOL_BUILD_DESC;
     let build_string = match build_desc {
         Some(desc) => format!("{} {}", built_info::TARGET, desc),
         None => built_info::TARGET.into(),
@@ -232,7 +232,7 @@ pub mod built_info {
 /// Returns the host name of the current system.
 /// The hostname can be overridden by setting the VECTOR_HOSTNAME environment variable.
 pub fn get_hostname() -> std::io::Result<String> {
-    Ok(if let Ok(hostname) = std::env::var("VECTOR_HOSTNAME") {
+    Ok(if let Ok(hostname) = std::env::var("SOL_HOSTNAME") {
         hostname.to_string()
     } else {
         hostname::get()?.to_string_lossy().into_owned()

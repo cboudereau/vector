@@ -33,7 +33,7 @@ use snafu::Snafu;
 use tokio::net::TcpStream;
 use tower::ServiceBuilder;
 use tracing::Span;
-use vector_lib::{
+use sol_lib::{
     codecs::decoding::{DeserializerConfig, FramingConfig},
     configurable::configurable_component,
     event::{BatchNotifier, BatchStatus},

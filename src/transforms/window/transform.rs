@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use vector_lib::internal_event::{Count, InternalEventHandle as _, Registered};
+use sol_lib::internal_event::{Count, InternalEventHandle as _, Registered};
 
 use crate::{
     conditions::Condition,

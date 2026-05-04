@@ -1,6 +1,6 @@
 //! Configuration functionality for the `AMQP` sink.
 use lapin::{BasicProperties, types::ShortString};
-use vector_lib::{
+use sol_lib::{
     codecs::TextSerializerConfig,
     internal_event::{error_stage, error_type},
 };
@@ -163,7 +163,7 @@ pub(super) async fn healthcheck(channels: AmqpSinkChannels) -> crate::Result<()>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vector_lib::event::OtelLog;
+    use sol_lib::event::OtelLog;
     use crate::config::format::{Format, deserialize};
 
     #[test]

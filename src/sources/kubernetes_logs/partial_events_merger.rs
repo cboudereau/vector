@@ -7,7 +7,7 @@ use std::{
 
 use bytes::BytesMut;
 use futures::{Stream, StreamExt};
-use vector_lib::stream::expiration_map::{Emitter, map_with_expiration};
+use sol_lib::stream::expiration_map::{Emitter, map_with_expiration};
 
 use crate::{
     event,
@@ -176,7 +176,7 @@ fn merge_partial_events_with_custom_expiration(
 
 #[cfg(test)]
 mod test {
-    use vector_lib::event::OtelLog;
+    use sol_lib::event::OtelLog;
     use vrl::value;
 
     use super::*;

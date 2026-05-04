@@ -4,7 +4,7 @@ use std::{
     os::fd::{FromRawFd as _, IntoRawFd as _, RawFd},
 };
 
-use vector_lib::{
+use sol_lib::{
     codecs::decoding::{DeserializerConfig, FramingConfig},
     configurable::configurable_component,
     lookup::lookup_v2::OptionalValuePath,
@@ -113,7 +113,7 @@ impl SourceConfig for FileDescriptorSourceConfig {
 mod tests {
     use futures::StreamExt;
     use nix::unistd::{close, pipe, write};
-    use vector_lib::lookup::path;
+    use sol_lib::lookup::path;
     use vrl::value;
 
     use super::*;

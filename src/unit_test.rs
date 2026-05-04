@@ -31,7 +31,7 @@ pub struct Opts {
     paths_yaml: Vec<PathBuf>,
 
     /// Any number of Vector config files to test. If none are specified the
-    /// default config path `/etc/vector/vector.yaml` will be targeted.
+    /// default config path `/etc/sol/sol.yaml` will be targeted.
     #[arg(value_delimiter(','))]
     paths: Vec<PathBuf>,
 
@@ -43,7 +43,7 @@ pub struct Opts {
         id = "config-dir",
         short = 'C',
         long,
-        env = "VECTOR_CONFIG_DIR",
+        env = "SOL_CONFIG_DIR",
         value_delimiter(',')
     )]
     pub config_dirs: Vec<PathBuf>,
@@ -81,7 +81,7 @@ pub struct JUnitReporter<'a> {
 impl<'a> JUnitReporter<'a> {
     fn new(paths: Option<&'a Vec<PathBuf>>) -> Self {
         Self {
-            report: Report::new("Vector Unit Tests"),
+            report: Report::new("Sol Unit Tests"),
             test_suite: TestSuite::new("Test Suite"),
             output_paths: paths,
         }

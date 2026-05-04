@@ -1,6 +1,6 @@
 use crate::encoding::ProtobufSerializer;
 use bytes::BytesMut;
-use vector_opentelemetry_proto::{
+use sol_opentelemetry_proto::{
     proto::{
         DESCRIPTOR_BYTES, LOGS_REQUEST_MESSAGE_TYPE, METRICS_REQUEST_MESSAGE_TYPE,
         TRACES_REQUEST_MESSAGE_TYPE,
@@ -18,8 +18,8 @@ use vector_opentelemetry_proto::{
 };
 use prost::Message;
 use tokio_util::codec::Encoder;
-use vector_config_macros::configurable_component;
-use vector_core::{
+use sol_config_macros::configurable_component;
+use sol_core::{
     config::DataType,
     event::{Event, OtelLog, OtelMetric, OtelSpan},
     schema,
@@ -77,7 +77,7 @@ pub struct OtlpSerializer {
 
 impl OtlpSerializer {
     /// Creates a new OTLP serializer with the appropriate message descriptors.
-    pub fn new() -> vector_common::Result<Self> {
+    pub fn new() -> sol_common::Result<Self> {
         let options = Options {
             use_json_names: true,
         };
@@ -110,7 +110,7 @@ impl OtlpSerializer {
 }
 
 impl Encoder<Event> for OtlpSerializer {
-    type Error = vector_common::Error;
+    type Error = sol_common::Error;
 
     fn encode(&mut self, event: Event, buffer: &mut BytesMut) -> Result<(), Self::Error> {
         match &event {
@@ -198,7 +198,7 @@ mod tests {
     use bytes::BytesMut;
     use prost::Message;
     use tokio_util::codec::Encoder as _;
-    use vector_core::event::{
+    use sol_core::event::{
         Event, EventMetadata, OtelLog, OtelMetric,
         OtelSpan, metric::Bucket,
     };
@@ -211,7 +211,7 @@ mod tests {
 
     #[test]
     fn encodes_counter_without_error() {
-        use vector_core::event::MetricKind;
+        use sol_core::event::MetricKind;
         let mut ser = make_serializer();
         let metric = OtelMetric::new_counter("http_requests_total", MetricKind::Incremental, 100.0);
         let mut buf = BytesMut::new();
@@ -232,7 +232,7 @@ mod tests {
 
     #[test]
     fn encodes_histogram_without_error() {
-        use vector_core::event::MetricKind;
+        use sol_core::event::MetricKind;
         let mut ser = make_serializer();
         let buckets = vec![
             Bucket { upper_limit: 0.1, count: 10 },
@@ -290,7 +290,7 @@ mod tests {
             .expect("OtelLog encode must succeed");
         assert!(!buf.is_empty());
 
-        let decoded = vector_opentelemetry_proto::proto::collector::logs::v1::ExportLogsServiceRequest::decode(
+        let decoded = sol_opentelemetry_proto::proto::collector::logs::v1::ExportLogsServiceRequest::decode(
             bytes::Bytes::from(buf.to_vec()),
         )
         .expect("must decode as ExportLogsServiceRequest");
@@ -337,7 +337,7 @@ mod tests {
         assert!(!buf.is_empty());
 
         let decoded =
-            vector_opentelemetry_proto::proto::collector::metrics::v1::ExportMetricsServiceRequest::decode(
+            sol_opentelemetry_proto::proto::collector::metrics::v1::ExportMetricsServiceRequest::decode(
                 bytes::Bytes::from(buf.to_vec()),
             )
             .expect("must decode as ExportMetricsServiceRequest");
@@ -374,7 +374,7 @@ mod tests {
         assert!(!buf.is_empty());
 
         let decoded =
-            vector_opentelemetry_proto::proto::collector::trace::v1::ExportTraceServiceRequest::decode(
+            sol_opentelemetry_proto::proto::collector::trace::v1::ExportTraceServiceRequest::decode(
                 bytes::Bytes::from(buf.to_vec()),
             )
             .expect("must decode as ExportTraceServiceRequest");

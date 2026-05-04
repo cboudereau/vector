@@ -1,6 +1,6 @@
-use vector_lib::internal_event::{ComponentEventsDropped, Count, INTENTIONAL, Registered};
+use sol_lib::internal_event::{ComponentEventsDropped, Count, INTENTIONAL, Registered};
 
-vector_lib::registered_event! (
+sol_lib::registered_event! (
     FilterEventsDropped => {
         events_dropped: Registered<ComponentEventsDropped<'static, INTENTIONAL>>
             = register!(ComponentEventsDropped::<INTENTIONAL>::from(

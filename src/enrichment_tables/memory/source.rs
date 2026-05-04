@@ -4,7 +4,7 @@ use chrono::Utc;
 use futures::StreamExt;
 use tokio::time::interval;
 use tokio_stream::wrappers::IntervalStream;
-use vector_lib::{
+use sol_lib::{
     ByteSizeOf, EstimatedJsonEncodedSizeOf,
     event::{Event, EventMetadata, OtelLog},
     internal_event::{

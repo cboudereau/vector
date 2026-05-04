@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use aws_sdk_secretsmanager::{Client, config};
-use vector_lib::configurable::{component::GenerateConfig, configurable_component};
+use sol_lib::configurable::{component::GenerateConfig, configurable_component};
 
 use crate::{
     aws::{AwsAuthentication, ClientBuilder, RegionOrEndpoint, create_client},

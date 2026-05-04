@@ -3,8 +3,8 @@ pub(crate) mod http;
 pub mod load_balancing;
 
 use indoc::indoc;
-use vector_config::component::GenerateConfig;
-use vector_lib::configurable::configurable_component;
+use sol_config::component::GenerateConfig;
+use sol_lib::configurable::configurable_component;
 
 use crate::{
     config::{AcknowledgementsConfig, Input, SinkConfig, SinkContext},

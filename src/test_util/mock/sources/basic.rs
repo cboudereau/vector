@@ -7,7 +7,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use vector_lib::{
+use sol_lib::{
     buffers::{
         config::MemoryBufferSize,
         topology::channel::{LimitedReceiver, limited},

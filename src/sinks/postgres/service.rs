@@ -7,7 +7,7 @@ use futures::future::BoxFuture;
 use snafu::{ResultExt, Snafu};
 use sqlx::{Pool, Postgres, types::Json};
 use tower::Service;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     codecs::JsonSerializerConfig,
     event::{Event, EventFinalizers, EventStatus, Finalizable},
@@ -126,7 +126,7 @@ pub enum PostgresServiceError {
     Postgres { source: sqlx::Error },
 
     #[snafu(display("Serialization error: {source}"))]
-    VectorCommon { source: vector_common::Error },
+    VectorCommon { source: sol_common::Error },
 }
 
 impl Service<PostgresRequest> for PostgresService {

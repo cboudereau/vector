@@ -8,13 +8,13 @@ use serde::{
     Deserialize,
     de::{Error, MapAccess, Visitor},
 };
-use vector_config::configurable_component;
-use vector_lib::{
+use sol_config::configurable_component;
+use sol_lib::{
     TimeZone, compile_vrl,
     event::{Event, OtelLog, VrlTarget},
     sensitive_string::SensitiveString,
 };
-use vector_vrl_metrics::MetricsStorage;
+use sol_vrl_metrics::MetricsStorage;
 use vrl::{
     compiler::{CompilationResult, CompileConfig, Program, runtime::Runtime},
     core::Value,
@@ -135,7 +135,7 @@ impl HttpServerAuthConfig {
     /// actual component for usage.
     pub fn build(
         &self,
-        enrichment_tables: &vector_lib::enrichment::TableRegistry,
+        enrichment_tables: &sol_lib::enrichment::TableRegistry,
         metrics_storage: &MetricsStorage,
     ) -> crate::Result<HttpServerAuthMatcher> {
         match self {
@@ -157,7 +157,7 @@ impl HttpServerAuthConfig {
                     program,
                     warnings,
                     config: _,
-                } = compile_vrl(source, &vector_vrl_functions::all(), &state, config)
+                } = compile_vrl(source, &sol_vrl_functions::all(), &state, config)
                     .map_err(|diagnostics| format_vrl_diagnostics(source, diagnostics))?;
 
                 if !program.final_type_info().result.is_boolean() {

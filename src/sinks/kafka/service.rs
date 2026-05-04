@@ -14,7 +14,7 @@ use rdkafka::{
     producer::{FutureProducer, FutureRecord},
     types::RDKafkaErrorCode,
 };
-use vector_lib::config;
+use sol_lib::config;
 
 use crate::{kafka::KafkaStatisticsContext, sinks::prelude::*};
 

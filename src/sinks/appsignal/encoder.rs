@@ -1,5 +1,5 @@
 use serde_json::{Value, json};
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf, config::telemetry, event::Event,
     request_metadata::GroupedCountByteSize,
 };

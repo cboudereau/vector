@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 
 use tokio::time::{Duration, Instant};
-use vector_lib::codecs::decoding::DeserializerConfig;
+use sol_lib::codecs::decoding::DeserializerConfig;
 
 use super::{
     HttpClientConfig,

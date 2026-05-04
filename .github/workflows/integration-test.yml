@@ -21,7 +21,7 @@ env:
   DD_ENV: "ci"
   DD_API_KEY: ${{ secrets.DD_API_KEY }}
   RUST_BACKTRACE: full
-  VECTOR_LOG: vector=debug
+  SOL_LOG: sol=debug
   VERBOSE: true
   CI: true
   PROFILE: debug

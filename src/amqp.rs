@@ -1,6 +1,6 @@
 //! Functionality supporting both the `[crate::sources::amqp]` source and `[crate::sinks::amqp]` sink.
 use lapin::tcp::{OwnedIdentity, OwnedTLSConfig};
-use vector_lib::configurable::configurable_component;
+use sol_lib::configurable::configurable_component;
 
 /// AMQP connection options.
 #[configurable_component]

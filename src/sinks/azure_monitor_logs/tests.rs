@@ -4,7 +4,7 @@ use futures::{future::ready, stream};
 use http::Response;
 use openssl::{base64, hash, pkey, sign};
 use tokio::time::timeout;
-use vector_lib::lookup::{OwnedTargetPath, owned_value_path};
+use sol_lib::lookup::{OwnedTargetPath, owned_value_path};
 
 use super::{
     config::{AzureMonitorLogsConfig, default_host},

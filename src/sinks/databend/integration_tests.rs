@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use databend_client::{APIClient as DatabendAPIClient, Page};
 use futures::{future::ready, stream};
-use vector_lib::event::{BatchNotifier, BatchStatus, BatchStatusReceiver, Event, OtelLog};
+use sol_lib::event::{BatchNotifier, BatchStatus, BatchStatusReceiver, Event, OtelLog};
 
 use super::config::DatabendConfig;
 use crate::{

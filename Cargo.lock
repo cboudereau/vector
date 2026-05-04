@@ -2521,6 +2521,14 @@ dependencies = [
  "similar-asserts",
  "smallvec",
  "snafu 0.8.9",
+ "sol-common",
+ "sol-common-macros",
+ "sol-config",
+ "sol-config-macros",
+ "sol-core",
+ "sol-lookup",
+ "sol-opentelemetry-proto",
+ "sol-vrl-functions",
  "strum 0.26.3",
  "syslog_loose 0.23.0",
  "tokio",
@@ -2529,14 +2537,6 @@ dependencies = [
  "tracing 0.1.44",
  "tracing-test",
  "uuid",
- "vector-common",
- "vector-common-macros",
- "vector-config",
- "vector-config-macros",
- "vector-core",
- "vector-lookup",
- "vector-opentelemetry-proto",
- "vector-vrl-functions",
  "vrl",
 ]
 
@@ -3517,11 +3517,11 @@ dependencies = [
  "prost 0.13.5",
  "prost-build 0.13.5",
  "snafu 0.8.9",
+ "sol-common",
+ "sol-config",
+ "sol-core",
+ "sol-lookup",
  "tracing 0.1.44",
- "vector-common",
- "vector-config",
- "vector-core",
- "vector-lookup",
  "vrl",
 ]
 
@@ -3539,9 +3539,9 @@ dependencies = [
  "serde",
  "serde_json",
  "snafu 0.8.9",
+ "sol-config",
+ "sol-config-common",
  "tracing 0.1.44",
- "vector-config",
- "vector-config-common",
 ]
 
 [[package]]
@@ -3733,7 +3733,7 @@ dependencies = [
  "const-str",
  "dyn-clone",
  "indoc",
- "vector-vrl-category",
+ "sol-vrl-category",
  "vrl",
 ]
 
@@ -4029,10 +4029,10 @@ dependencies = [
  "indexmap 2.12.0",
  "libc",
  "quickcheck",
+ "sol-common",
  "tempfile",
  "tokio",
  "tracing 0.1.44",
- "vector-common",
  "winapi",
 ]
 
@@ -4052,11 +4052,11 @@ dependencies = [
  "serde",
  "serde_json",
  "similar-asserts",
+ "sol-common",
+ "sol-config",
  "tempfile",
  "tokio",
  "tracing 0.1.44",
- "vector-common",
- "vector-config",
  "winapi",
 ]
 
@@ -8381,7 +8381,7 @@ dependencies = [
  "prost-build 0.13.5",
  "prost-types 0.13.5",
  "snafu 0.8.9",
- "vector-common",
+ "sol-common",
 ]
 
 [[package]]
@@ -10561,6 +10561,646 @@ dependencies = [
 ]
 
 [[package]]
+name = "sol"
+version = "0.54.0"
+dependencies = [
+ "apache-avro 0.16.0",
+ "approx",
+ "arc-swap",
+ "arr_macro",
+ "arrow",
+ "arrow-schema",
+ "assert_cmd",
+ "async-compression",
+ "async-graphql",
+ "async-graphql-warp",
+ "async-nats",
+ "async-stream",
+ "async-trait",
+ "aws-config",
+ "aws-credential-types",
+ "aws-runtime",
+ "aws-sdk-cloudwatch",
+ "aws-sdk-cloudwatchlogs",
+ "aws-sdk-elasticsearch",
+ "aws-sdk-firehose",
+ "aws-sdk-kinesis",
+ "aws-sdk-kms",
+ "aws-sdk-s3",
+ "aws-sdk-secretsmanager",
+ "aws-sdk-sns",
+ "aws-sdk-sqs",
+ "aws-sdk-sts",
+ "aws-sigv4",
+ "aws-smithy-async",
+ "aws-smithy-http",
+ "aws-smithy-runtime",
+ "aws-smithy-runtime-api",
+ "aws-smithy-types",
+ "aws-types",
+ "axum 0.6.20",
+ "azure_core",
+ "azure_storage_blob",
+ "base64 0.22.1",
+ "bloomy",
+ "bollard",
+ "byteorder",
+ "bytes 1.11.1",
+ "bytesize",
+ "cfg-if",
+ "chrono",
+ "chrono-tz",
+ "clap",
+ "clap_complete",
+ "colored",
+ "console-subscriber",
+ "crc32fast",
+ "criterion",
+ "csv",
+ "databend-client",
+ "deadpool",
+ "derivative",
+ "dirs-next",
+ "dnsmsg-parser",
+ "dnstap-parser",
+ "dyn-clone",
+ "encoding_rs",
+ "enum_dispatch",
+ "evmap",
+ "evmap-derive",
+ "exitcode",
+ "fakedata",
+ "flate2",
+ "futures 0.3.31",
+ "futures-util",
+ "glob",
+ "goauth",
+ "governor",
+ "greptimedb-ingester",
+ "h2 0.4.13",
+ "hash_hasher",
+ "hashbrown 0.14.5",
+ "headers",
+ "heim",
+ "hex",
+ "hickory-proto 0.25.2",
+ "hostname 0.4.2",
+ "http 0.2.9",
+ "http 1.3.1",
+ "http-body 0.4.6",
+ "http-body 1.0.0",
+ "http-body-util",
+ "http-serde",
+ "humantime",
+ "hyper 0.14.32",
+ "hyper-openssl 0.9.2",
+ "hyper-proxy",
+ "indexmap 2.12.0",
+ "indoc",
+ "inventory",
+ "ipnet",
+ "itertools 0.14.0",
+ "k8s-openapi 0.22.0",
+ "kube",
+ "lapin",
+ "libc",
+ "listenfd",
+ "loki-logproto",
+ "lru 0.16.3",
+ "maxminddb",
+ "md-5",
+ "metrics",
+ "metrics-tracing-context",
+ "mlua",
+ "mock_instant",
+ "mongodb",
+ "netlink-packet-core",
+ "netlink-packet-sock-diag",
+ "netlink-packet-utils",
+ "netlink-sys",
+ "nix 0.26.2",
+ "nkeys",
+ "nom 8.0.0",
+ "notify",
+ "opendal",
+ "openssl",
+ "openssl-probe",
+ "openssl-src",
+ "opentelemetry-proto",
+ "ordered-float 4.6.0",
+ "otel-proto-types",
+ "paste",
+ "percent-encoding",
+ "pin-project",
+ "postgres-openssl",
+ "proptest",
+ "proptest-derive",
+ "prost 0.13.5",
+ "prost-build 0.13.5",
+ "prost-reflect",
+ "prost-types 0.13.5",
+ "pulsar",
+ "quick-junit",
+ "quickcheck",
+ "rand 0.9.2",
+ "rand_distr",
+ "rdkafka",
+ "redis",
+ "regex",
+ "reqwest 0.11.26",
+ "reqwest 0.12.28",
+ "rmp-serde",
+ "rmpv",
+ "roaring",
+ "rstest",
+ "rumqttc",
+ "rust_decimal",
+ "seahash",
+ "semver",
+ "serde",
+ "serde-toml-merge",
+ "serde_bytes",
+ "serde_json",
+ "serde_with",
+ "serde_yaml",
+ "serial_test",
+ "similar-asserts",
+ "smallvec",
+ "smpl_jwt",
+ "snafu 0.8.9",
+ "snap",
+ "socket2 0.5.10",
+ "sol-common",
+ "sol-config",
+ "sol-config-common",
+ "sol-config-macros",
+ "sol-lib",
+ "sol-vrl-functions",
+ "sol-vrl-metrics",
+ "sqlx",
+ "stream-cancel",
+ "strip-ansi-escapes",
+ "sysinfo",
+ "syslog",
+ "tempfile",
+ "test-generator",
+ "thread_local",
+ "tikv-jemallocator",
+ "tokio",
+ "tokio-openssl",
+ "tokio-postgres",
+ "tokio-stream",
+ "tokio-test",
+ "tokio-tungstenite 0.20.1",
+ "tokio-util",
+ "toml 0.9.8",
+ "tonic 0.12.3",
+ "tonic-build 0.12.3",
+ "tower 0.5.2",
+ "tower-http 0.4.4",
+ "tower-test",
+ "tracing 0.1.44",
+ "tracing-core 0.1.36",
+ "tracing-futures 0.2.5",
+ "tracing-limit",
+ "tracing-subscriber",
+ "tracing-tower",
+ "typetag",
+ "url",
+ "uuid",
+ "vrl",
+ "warp",
+ "windows-service",
+ "wiremock",
+ "zstd 0.13.2",
+]
+
+[[package]]
+name = "sol-api-client"
+version = "0.1.2"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "futures 0.3.31",
+ "graphql_client",
+ "reqwest 0.11.26",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-stream",
+ "tokio-tungstenite 0.20.1",
+ "url",
+ "uuid",
+]
+
+[[package]]
+name = "sol-buffers"
+version = "0.1.0"
+dependencies = [
+ "async-recursion",
+ "async-stream",
+ "async-trait",
+ "bytecheck",
+ "bytes 1.11.1",
+ "clap",
+ "crc32fast",
+ "criterion",
+ "crossbeam-queue",
+ "crossbeam-utils",
+ "dashmap",
+ "derivative",
+ "fslock",
+ "futures 0.3.31",
+ "hdrhistogram",
+ "memmap2",
+ "metrics",
+ "metrics-tracing-context",
+ "metrics-util",
+ "num-traits",
+ "ordered-float 4.6.0",
+ "paste",
+ "proptest",
+ "quickcheck",
+ "rand 0.9.2",
+ "rkyv",
+ "serde",
+ "serde_yaml",
+ "snafu 0.8.9",
+ "sol-common",
+ "sol-config",
+ "temp-dir",
+ "tokio",
+ "tokio-test",
+ "tokio-util",
+ "tracing 0.1.44",
+ "tracing-fluent-assertions",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "sol-common"
+version = "0.1.0"
+dependencies = [
+ "async-stream",
+ "bytes 1.11.1",
+ "chrono",
+ "crossbeam-utils",
+ "derivative",
+ "futures 0.3.31",
+ "indexmap 2.12.0",
+ "itertools 0.14.0",
+ "metrics",
+ "paste",
+ "pin-project",
+ "serde",
+ "serde_json",
+ "smallvec",
+ "sol-common-macros",
+ "sol-config",
+ "stream-cancel",
+ "tokio",
+ "tracing 0.1.44",
+ "vrl",
+]
+
+[[package]]
+name = "sol-common-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2 1.0.106",
+ "quote 1.0.44",
+ "syn 2.0.115",
+]
+
+[[package]]
+name = "sol-config"
+version = "0.1.0"
+dependencies = [
+ "assert-json-diff",
+ "chrono",
+ "chrono-tz",
+ "encoding_rs",
+ "http 0.2.9",
+ "indexmap 2.12.0",
+ "inventory",
+ "no-proxy",
+ "num-traits",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "snafu 0.8.9",
+ "sol-config-common",
+ "sol-config-macros",
+ "toml 0.9.8",
+ "tracing 0.1.44",
+ "url",
+ "vrl",
+]
+
+[[package]]
+name = "sol-config-common"
+version = "0.1.0"
+dependencies = [
+ "convert_case 0.8.0",
+ "darling 0.20.11",
+ "proc-macro2 1.0.106",
+ "quote 1.0.44",
+ "serde",
+ "serde_json",
+ "syn 2.0.115",
+ "tracing 0.1.44",
+]
+
+[[package]]
+name = "sol-config-macros"
+version = "0.1.0"
+dependencies = [
+ "darling 0.20.11",
+ "proc-macro2 1.0.106",
+ "quote 1.0.44",
+ "serde",
+ "serde_derive_internals",
+ "sol-config",
+ "sol-config-common",
+ "syn 2.0.115",
+]
+
+[[package]]
+name = "sol-core"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "bitmask-enum",
+ "bytes 1.11.1",
+ "cfg-if",
+ "chrono",
+ "chrono-tz",
+ "criterion",
+ "crossbeam-utils",
+ "derivative",
+ "dyn-clone",
+ "enumflags2",
+ "env-test-util",
+ "float_eq",
+ "futures 0.3.31",
+ "futures-util",
+ "headers",
+ "http 0.2.9",
+ "hyper-proxy",
+ "indexmap 2.12.0",
+ "inventory",
+ "ipnet",
+ "metrics",
+ "metrics-tracing-context",
+ "metrics-util",
+ "mlua",
+ "ndarray",
+ "ndarray-stats",
+ "no-proxy",
+ "noisy_float",
+ "openssl",
+ "opentelemetry-proto",
+ "ordered-float 4.6.0",
+ "parking_lot 0.12.5",
+ "pin-project",
+ "proptest",
+ "prost 0.13.5",
+ "prost-build 0.13.5",
+ "prost-types 0.13.5",
+ "quanta",
+ "quickcheck",
+ "quickcheck_macros",
+ "rand 0.9.2",
+ "rand_distr",
+ "regex",
+ "ryu",
+ "schannel",
+ "security-framework 3.5.1",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "serde_yaml",
+ "similar-asserts",
+ "smallvec",
+ "snafu 0.8.9",
+ "socket2 0.5.10",
+ "sol-buffers",
+ "sol-common",
+ "sol-config",
+ "sol-config-common",
+ "sol-lookup",
+ "tokio",
+ "tokio-openssl",
+ "tokio-stream",
+ "tokio-test",
+ "tokio-util",
+ "toml 0.9.8",
+ "tonic 0.12.3",
+ "tracing 0.1.44",
+ "tracing-subscriber",
+ "url",
+ "urlencoding",
+ "uuid",
+ "vrl",
+]
+
+[[package]]
+name = "sol-lib"
+version = "0.1.0"
+dependencies = [
+ "codecs",
+ "enrichment",
+ "file-source",
+ "file-source-common",
+ "prometheus-parser",
+ "sol-api-client",
+ "sol-buffers",
+ "sol-common",
+ "sol-config",
+ "sol-core",
+ "sol-lookup",
+ "sol-opentelemetry-proto",
+ "sol-stream",
+ "sol-tap",
+ "sol-top",
+ "vrl",
+]
+
+[[package]]
+name = "sol-lookup"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "proptest-derive",
+ "serde",
+ "sol-config",
+ "sol-config-macros",
+ "vrl",
+]
+
+[[package]]
+name = "sol-opentelemetry-proto"
+version = "0.1.0"
+dependencies = [
+ "bytes 1.11.1",
+ "chrono",
+ "glob",
+ "hex",
+ "opentelemetry-proto",
+ "ordered-float 4.6.0",
+ "prost 0.13.5",
+ "prost-build 0.13.5",
+ "sol-buffers",
+ "sol-core",
+ "sol-lookup",
+ "tonic 0.12.3",
+ "tonic-build 0.12.3",
+ "vrl",
+]
+
+[[package]]
+name = "sol-stream"
+version = "0.1.0"
+dependencies = [
+ "async-stream",
+ "futures 0.3.31",
+ "futures-util",
+ "pin-project",
+ "proptest",
+ "rand 0.9.2",
+ "rand_distr",
+ "sol-common",
+ "sol-core",
+ "tokio",
+ "tokio-util",
+ "tower 0.5.2",
+ "tracing 0.1.44",
+ "twox-hash",
+]
+
+[[package]]
+name = "sol-tap"
+version = "0.1.0"
+dependencies = [
+ "async-graphql",
+ "colored",
+ "futures 0.3.31",
+ "glob",
+ "serde_yaml",
+ "sol-api-client",
+ "sol-buffers",
+ "sol-common",
+ "sol-core",
+ "tokio",
+ "tokio-stream",
+ "tokio-tungstenite 0.20.1",
+ "tracing 0.1.44",
+ "url",
+ "uuid",
+]
+
+[[package]]
+name = "sol-top"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "clap",
+ "crossterm",
+ "exitcode",
+ "futures 0.3.31",
+ "futures-util",
+ "glob",
+ "humantime",
+ "indoc",
+ "num-format",
+ "ratatui",
+ "regex",
+ "sol-api-client",
+ "sol-common",
+ "tokio",
+ "tokio-stream",
+ "unit-prefix",
+ "url",
+]
+
+[[package]]
+name = "sol-vrl-category"
+version = "0.1.0"
+dependencies = [
+ "strum 0.27.2",
+]
+
+[[package]]
+name = "sol-vrl-cli"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "sol-vrl-functions",
+ "vrl",
+]
+
+[[package]]
+name = "sol-vrl-functions"
+version = "0.1.0"
+dependencies = [
+ "dnstap-parser",
+ "enrichment",
+ "indoc",
+ "sol-vrl-category",
+ "sol-vrl-metrics",
+ "vrl",
+]
+
+[[package]]
+name = "sol-vrl-metrics"
+version = "0.1.0"
+dependencies = [
+ "arc-swap",
+ "const-str",
+ "sol-common",
+ "sol-core",
+ "sol-vrl-category",
+ "tokio",
+ "tokio-stream",
+ "vrl",
+]
+
+[[package]]
+name = "sol-vrl-tests"
+version = "0.1.0"
+dependencies = [
+ "chrono-tz",
+ "clap",
+ "enrichment",
+ "glob",
+ "serde",
+ "serde_json",
+ "sol-core",
+ "sol-vrl-functions",
+ "sol-vrl-metrics",
+ "tikv-jemallocator",
+ "tracing-subscriber",
+ "vrl",
+]
+
+[[package]]
+name = "sol-vrl-web-playground"
+version = "0.1.0"
+dependencies = [
+ "cargo-lock",
+ "enrichment",
+ "getrandom 0.2.15",
+ "gloo-utils",
+ "serde",
+ "sol-vrl-functions",
+ "vrl",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "spin"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -12513,646 +13153,6 @@ dependencies = [
  "tempfile",
  "toml 0.9.8",
  "toml_edit 0.22.27",
-]
-
-[[package]]
-name = "vector"
-version = "0.54.0"
-dependencies = [
- "apache-avro 0.16.0",
- "approx",
- "arc-swap",
- "arr_macro",
- "arrow",
- "arrow-schema",
- "assert_cmd",
- "async-compression",
- "async-graphql",
- "async-graphql-warp",
- "async-nats",
- "async-stream",
- "async-trait",
- "aws-config",
- "aws-credential-types",
- "aws-runtime",
- "aws-sdk-cloudwatch",
- "aws-sdk-cloudwatchlogs",
- "aws-sdk-elasticsearch",
- "aws-sdk-firehose",
- "aws-sdk-kinesis",
- "aws-sdk-kms",
- "aws-sdk-s3",
- "aws-sdk-secretsmanager",
- "aws-sdk-sns",
- "aws-sdk-sqs",
- "aws-sdk-sts",
- "aws-sigv4",
- "aws-smithy-async",
- "aws-smithy-http",
- "aws-smithy-runtime",
- "aws-smithy-runtime-api",
- "aws-smithy-types",
- "aws-types",
- "axum 0.6.20",
- "azure_core",
- "azure_storage_blob",
- "base64 0.22.1",
- "bloomy",
- "bollard",
- "byteorder",
- "bytes 1.11.1",
- "bytesize",
- "cfg-if",
- "chrono",
- "chrono-tz",
- "clap",
- "clap_complete",
- "colored",
- "console-subscriber",
- "crc32fast",
- "criterion",
- "csv",
- "databend-client",
- "deadpool",
- "derivative",
- "dirs-next",
- "dnsmsg-parser",
- "dnstap-parser",
- "dyn-clone",
- "encoding_rs",
- "enum_dispatch",
- "evmap",
- "evmap-derive",
- "exitcode",
- "fakedata",
- "flate2",
- "futures 0.3.31",
- "futures-util",
- "glob",
- "goauth",
- "governor",
- "greptimedb-ingester",
- "h2 0.4.13",
- "hash_hasher",
- "hashbrown 0.14.5",
- "headers",
- "heim",
- "hex",
- "hickory-proto 0.25.2",
- "hostname 0.4.2",
- "http 0.2.9",
- "http 1.3.1",
- "http-body 0.4.6",
- "http-body 1.0.0",
- "http-body-util",
- "http-serde",
- "humantime",
- "hyper 0.14.32",
- "hyper-openssl 0.9.2",
- "hyper-proxy",
- "indexmap 2.12.0",
- "indoc",
- "inventory",
- "ipnet",
- "itertools 0.14.0",
- "k8s-openapi 0.22.0",
- "kube",
- "lapin",
- "libc",
- "listenfd",
- "loki-logproto",
- "lru 0.16.3",
- "maxminddb",
- "md-5",
- "metrics",
- "metrics-tracing-context",
- "mlua",
- "mock_instant",
- "mongodb",
- "netlink-packet-core",
- "netlink-packet-sock-diag",
- "netlink-packet-utils",
- "netlink-sys",
- "nix 0.26.2",
- "nkeys",
- "nom 8.0.0",
- "notify",
- "opendal",
- "openssl",
- "openssl-probe",
- "openssl-src",
- "opentelemetry-proto",
- "ordered-float 4.6.0",
- "otel-proto-types",
- "paste",
- "percent-encoding",
- "pin-project",
- "postgres-openssl",
- "proptest",
- "proptest-derive",
- "prost 0.13.5",
- "prost-build 0.13.5",
- "prost-reflect",
- "prost-types 0.13.5",
- "pulsar",
- "quick-junit",
- "quickcheck",
- "rand 0.9.2",
- "rand_distr",
- "rdkafka",
- "redis",
- "regex",
- "reqwest 0.11.26",
- "reqwest 0.12.28",
- "rmp-serde",
- "rmpv",
- "roaring",
- "rstest",
- "rumqttc",
- "rust_decimal",
- "seahash",
- "semver",
- "serde",
- "serde-toml-merge",
- "serde_bytes",
- "serde_json",
- "serde_with",
- "serde_yaml",
- "serial_test",
- "similar-asserts",
- "smallvec",
- "smpl_jwt",
- "snafu 0.8.9",
- "snap",
- "socket2 0.5.10",
- "sqlx",
- "stream-cancel",
- "strip-ansi-escapes",
- "sysinfo",
- "syslog",
- "tempfile",
- "test-generator",
- "thread_local",
- "tikv-jemallocator",
- "tokio",
- "tokio-openssl",
- "tokio-postgres",
- "tokio-stream",
- "tokio-test",
- "tokio-tungstenite 0.20.1",
- "tokio-util",
- "toml 0.9.8",
- "tonic 0.12.3",
- "tonic-build 0.12.3",
- "tower 0.5.2",
- "tower-http 0.4.4",
- "tower-test",
- "tracing 0.1.44",
- "tracing-core 0.1.36",
- "tracing-futures 0.2.5",
- "tracing-limit",
- "tracing-subscriber",
- "tracing-tower",
- "typetag",
- "url",
- "uuid",
- "vector-common",
- "vector-config",
- "vector-config-common",
- "vector-config-macros",
- "vector-lib",
- "vector-vrl-functions",
- "vector-vrl-metrics",
- "vrl",
- "warp",
- "windows-service",
- "wiremock",
- "zstd 0.13.2",
-]
-
-[[package]]
-name = "vector-api-client"
-version = "0.1.2"
-dependencies = [
- "anyhow",
- "chrono",
- "clap",
- "futures 0.3.31",
- "graphql_client",
- "reqwest 0.11.26",
- "serde",
- "serde_json",
- "tokio",
- "tokio-stream",
- "tokio-tungstenite 0.20.1",
- "url",
- "uuid",
-]
-
-[[package]]
-name = "vector-buffers"
-version = "0.1.0"
-dependencies = [
- "async-recursion",
- "async-stream",
- "async-trait",
- "bytecheck",
- "bytes 1.11.1",
- "clap",
- "crc32fast",
- "criterion",
- "crossbeam-queue",
- "crossbeam-utils",
- "dashmap",
- "derivative",
- "fslock",
- "futures 0.3.31",
- "hdrhistogram",
- "memmap2",
- "metrics",
- "metrics-tracing-context",
- "metrics-util",
- "num-traits",
- "ordered-float 4.6.0",
- "paste",
- "proptest",
- "quickcheck",
- "rand 0.9.2",
- "rkyv",
- "serde",
- "serde_yaml",
- "snafu 0.8.9",
- "temp-dir",
- "tokio",
- "tokio-test",
- "tokio-util",
- "tracing 0.1.44",
- "tracing-fluent-assertions",
- "tracing-subscriber",
- "vector-common",
- "vector-config",
-]
-
-[[package]]
-name = "vector-common"
-version = "0.1.0"
-dependencies = [
- "async-stream",
- "bytes 1.11.1",
- "chrono",
- "crossbeam-utils",
- "derivative",
- "futures 0.3.31",
- "indexmap 2.12.0",
- "itertools 0.14.0",
- "metrics",
- "paste",
- "pin-project",
- "serde",
- "serde_json",
- "smallvec",
- "stream-cancel",
- "tokio",
- "tracing 0.1.44",
- "vector-common-macros",
- "vector-config",
- "vrl",
-]
-
-[[package]]
-name = "vector-common-macros"
-version = "0.1.0"
-dependencies = [
- "proc-macro2 1.0.106",
- "quote 1.0.44",
- "syn 2.0.115",
-]
-
-[[package]]
-name = "vector-config"
-version = "0.1.0"
-dependencies = [
- "assert-json-diff",
- "chrono",
- "chrono-tz",
- "encoding_rs",
- "http 0.2.9",
- "indexmap 2.12.0",
- "inventory",
- "no-proxy",
- "num-traits",
- "serde",
- "serde_json",
- "serde_with",
- "snafu 0.8.9",
- "toml 0.9.8",
- "tracing 0.1.44",
- "url",
- "vector-config-common",
- "vector-config-macros",
- "vrl",
-]
-
-[[package]]
-name = "vector-config-common"
-version = "0.1.0"
-dependencies = [
- "convert_case 0.8.0",
- "darling 0.20.11",
- "proc-macro2 1.0.106",
- "quote 1.0.44",
- "serde",
- "serde_json",
- "syn 2.0.115",
- "tracing 0.1.44",
-]
-
-[[package]]
-name = "vector-config-macros"
-version = "0.1.0"
-dependencies = [
- "darling 0.20.11",
- "proc-macro2 1.0.106",
- "quote 1.0.44",
- "serde",
- "serde_derive_internals",
- "syn 2.0.115",
- "vector-config",
- "vector-config-common",
-]
-
-[[package]]
-name = "vector-core"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "base64 0.22.1",
- "bitmask-enum",
- "bytes 1.11.1",
- "cfg-if",
- "chrono",
- "chrono-tz",
- "criterion",
- "crossbeam-utils",
- "derivative",
- "dyn-clone",
- "enumflags2",
- "env-test-util",
- "float_eq",
- "futures 0.3.31",
- "futures-util",
- "headers",
- "http 0.2.9",
- "hyper-proxy",
- "indexmap 2.12.0",
- "inventory",
- "ipnet",
- "metrics",
- "metrics-tracing-context",
- "metrics-util",
- "mlua",
- "ndarray",
- "ndarray-stats",
- "no-proxy",
- "noisy_float",
- "openssl",
- "opentelemetry-proto",
- "ordered-float 4.6.0",
- "parking_lot 0.12.5",
- "pin-project",
- "proptest",
- "prost 0.13.5",
- "prost-build 0.13.5",
- "prost-types 0.13.5",
- "quanta",
- "quickcheck",
- "quickcheck_macros",
- "rand 0.9.2",
- "rand_distr",
- "regex",
- "ryu",
- "schannel",
- "security-framework 3.5.1",
- "serde",
- "serde_json",
- "serde_with",
- "serde_yaml",
- "similar-asserts",
- "smallvec",
- "snafu 0.8.9",
- "socket2 0.5.10",
- "tokio",
- "tokio-openssl",
- "tokio-stream",
- "tokio-test",
- "tokio-util",
- "toml 0.9.8",
- "tonic 0.12.3",
- "tracing 0.1.44",
- "tracing-subscriber",
- "url",
- "urlencoding",
- "uuid",
- "vector-buffers",
- "vector-common",
- "vector-config",
- "vector-config-common",
- "vector-lookup",
- "vrl",
-]
-
-[[package]]
-name = "vector-lib"
-version = "0.1.0"
-dependencies = [
- "codecs",
- "enrichment",
- "file-source",
- "file-source-common",
- "prometheus-parser",
- "vector-api-client",
- "vector-buffers",
- "vector-common",
- "vector-config",
- "vector-core",
- "vector-lookup",
- "vector-opentelemetry-proto",
- "vector-stream",
- "vector-tap",
- "vector-top",
- "vrl",
-]
-
-[[package]]
-name = "vector-lookup"
-version = "0.1.0"
-dependencies = [
- "proptest",
- "proptest-derive",
- "serde",
- "vector-config",
- "vector-config-macros",
- "vrl",
-]
-
-[[package]]
-name = "vector-opentelemetry-proto"
-version = "0.1.0"
-dependencies = [
- "bytes 1.11.1",
- "chrono",
- "glob",
- "hex",
- "opentelemetry-proto",
- "ordered-float 4.6.0",
- "prost 0.13.5",
- "prost-build 0.13.5",
- "tonic 0.12.3",
- "tonic-build 0.12.3",
- "vector-buffers",
- "vector-core",
- "vector-lookup",
- "vrl",
-]
-
-[[package]]
-name = "vector-stream"
-version = "0.1.0"
-dependencies = [
- "async-stream",
- "futures 0.3.31",
- "futures-util",
- "pin-project",
- "proptest",
- "rand 0.9.2",
- "rand_distr",
- "tokio",
- "tokio-util",
- "tower 0.5.2",
- "tracing 0.1.44",
- "twox-hash",
- "vector-common",
- "vector-core",
-]
-
-[[package]]
-name = "vector-tap"
-version = "0.1.0"
-dependencies = [
- "async-graphql",
- "colored",
- "futures 0.3.31",
- "glob",
- "serde_yaml",
- "tokio",
- "tokio-stream",
- "tokio-tungstenite 0.20.1",
- "tracing 0.1.44",
- "url",
- "uuid",
- "vector-api-client",
- "vector-buffers",
- "vector-common",
- "vector-core",
-]
-
-[[package]]
-name = "vector-top"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "clap",
- "crossterm",
- "exitcode",
- "futures 0.3.31",
- "futures-util",
- "glob",
- "humantime",
- "indoc",
- "num-format",
- "ratatui",
- "regex",
- "tokio",
- "tokio-stream",
- "unit-prefix",
- "url",
- "vector-api-client",
- "vector-common",
-]
-
-[[package]]
-name = "vector-vrl-category"
-version = "0.1.0"
-dependencies = [
- "strum 0.27.2",
-]
-
-[[package]]
-name = "vector-vrl-cli"
-version = "0.1.0"
-dependencies = [
- "clap",
- "vector-vrl-functions",
- "vrl",
-]
-
-[[package]]
-name = "vector-vrl-functions"
-version = "0.1.0"
-dependencies = [
- "dnstap-parser",
- "enrichment",
- "indoc",
- "vector-vrl-category",
- "vector-vrl-metrics",
- "vrl",
-]
-
-[[package]]
-name = "vector-vrl-metrics"
-version = "0.1.0"
-dependencies = [
- "arc-swap",
- "const-str",
- "tokio",
- "tokio-stream",
- "vector-common",
- "vector-core",
- "vector-vrl-category",
- "vrl",
-]
-
-[[package]]
-name = "vector-vrl-tests"
-version = "0.1.0"
-dependencies = [
- "chrono-tz",
- "clap",
- "enrichment",
- "glob",
- "serde",
- "serde_json",
- "tikv-jemallocator",
- "tracing-subscriber",
- "vector-core",
- "vector-vrl-functions",
- "vector-vrl-metrics",
- "vrl",
-]
-
-[[package]]
-name = "vector-vrl-web-playground"
-version = "0.1.0"
-dependencies = [
- "cargo-lock",
- "enrichment",
- "getrandom 0.2.15",
- "gloo-utils",
- "serde",
- "vector-vrl-functions",
- "vrl",
- "wasm-bindgen",
- "web-sys",
 ]
 
 [[package]]

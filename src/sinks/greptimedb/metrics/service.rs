@@ -5,7 +5,7 @@ use greptimedb_ingester::{
     api::v1::{auth_header::AuthScheme, *},
     channel_manager::*,
 };
-use vector_lib::sensitive_string::SensitiveString;
+use sol_lib::sensitive_string::SensitiveString;
 
 use crate::sinks::{
     greptimedb::metrics::{

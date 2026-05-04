@@ -8,7 +8,7 @@ use tokio_tungstenite::tungstenite::{
     Message, error::Error as TungsteniteError, protocol::CloseFrame,
 };
 use tokio_util::codec::FramedRead;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     event::Event,
     internal_event::{CountByteSize, EventsReceived, InternalEventHandle as _},
@@ -25,7 +25,7 @@ use crate::{
         WebSocketMessageReceived, WebSocketReceiveError, WebSocketSendError,
     },
     sources::websocket::config::WebSocketConfig,
-    vector_lib::codecs::StreamDecodingError,
+    sol_lib::codecs::StreamDecodingError,
 };
 
 macro_rules! fail_with_event {
@@ -437,7 +437,7 @@ mod tests {
         },
     };
     use url::Url;
-    use vector_lib::codecs::decoding::DeserializerConfig;
+    use sol_lib::codecs::decoding::DeserializerConfig;
 
     use crate::{
         common::websocket::WebSocketCommonConfig,

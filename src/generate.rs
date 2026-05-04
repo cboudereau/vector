@@ -10,7 +10,7 @@ use colored::*;
 use indexmap::IndexMap;
 use serde::Serialize;
 use toml::{Value, map::Map};
-use vector_lib::{
+use sol_lib::{
     buffers::BufferConfig,
     config::GlobalOptions,
     configurable::component::{SinkDescription, SourceDescription, TransformDescription},
@@ -458,7 +458,7 @@ mod tests {
 
         assert_eq!(
             generate_example(&opts, TransformInputsStrategy::Auto),
-            Ok(indoc::indoc! {r#"data_dir = "/var/lib/vector/"
+            Ok(indoc::indoc! {r#"data_dir = "/var/lib/sol/"
 
                 [sources.source0]
                 max_length = 102400
@@ -498,7 +498,7 @@ mod tests {
         opts.expression = "stdin|test_basic|console".to_string();
         assert_eq!(
             generate_example(&opts, TransformInputsStrategy::Auto),
-            Ok(indoc::indoc! {r#"data_dir = "/var/lib/vector/"
+            Ok(indoc::indoc! {r#"data_dir = "/var/lib/sol/"
 
                 [sources.source0]
                 max_length = 102400
@@ -538,7 +538,7 @@ mod tests {
         opts.expression = "stdin//console".to_string();
         assert_eq!(
             generate_example(&opts, TransformInputsStrategy::Auto),
-            Ok(indoc::indoc! {r#"data_dir = "/var/lib/vector/"
+            Ok(indoc::indoc! {r#"data_dir = "/var/lib/sol/"
 
                 [sources.source0]
                 max_length = 102400
@@ -572,7 +572,7 @@ mod tests {
         opts.expression = "//console".to_string();
         assert_eq!(
             generate_example(&opts, TransformInputsStrategy::Auto),
-            Ok(indoc::indoc! {r#"data_dir = "/var/lib/vector/"
+            Ok(indoc::indoc! {r#"data_dir = "/var/lib/sol/"
 
                 [sinks.sink0]
                 inputs = ["component-id"]
@@ -599,7 +599,7 @@ mod tests {
         opts.expression = "/test_basic,test_basic,test_basic".to_string();
         assert_eq!(
             generate_example(&opts, TransformInputsStrategy::Auto),
-            Ok(indoc::indoc! {r#"data_dir = "/var/lib/vector/"
+            Ok(indoc::indoc! {r#"data_dir = "/var/lib/sol/"
 
                 [transforms.transform0]
                 inputs = []
@@ -666,7 +666,7 @@ mod tests {
         assert_eq!(
             generate_example(&opts, TransformInputsStrategy::Auto).unwrap(),
             indoc::indoc! {r"
-            data_dir: /var/lib/vector/
+            data_dir: /var/lib/sol/
             sources:
               source0:
                 count: 9223372036854775807
@@ -726,7 +726,7 @@ mod tests {
             generate_example(&opts, TransformInputsStrategy::Auto).unwrap(),
             indoc::indoc! {r#"
             {
-              "data_dir": "/var/lib/vector/",
+              "data_dir": "/var/lib/sol/",
               "sources": {
                 "source0": {
                   "count": 9223372036854775807,

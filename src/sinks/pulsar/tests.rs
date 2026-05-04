@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use vector_lib::{configurable::component::GenerateConfig, lookup::lookup_v2::OptionalTargetPath};
+use sol_lib::{configurable::component::GenerateConfig, lookup::lookup_v2::OptionalTargetPath};
 use vrl::value::{ObjectMap, Value};
 
 use crate::{

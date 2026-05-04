@@ -6,7 +6,7 @@ use dnstap_parser::{
     parser::DnstapParser,
     schema::{DNSTAP_VALUE_PATHS, DnstapEventSchema},
 };
-use vector_lib::{
+use sol_lib::{
     configurable::configurable_component,
     event::{Event, EventMetadata, OtelLog},
     internal_event::{ByteSize, BytesReceived, InternalEventHandle, Protocol, Registered},
@@ -30,7 +30,7 @@ use crate::{
 pub mod tcp;
 #[cfg(unix)]
 pub mod unix;
-use vector_lib::lookup::lookup_v2::OptionalValuePath;
+use sol_lib::lookup::lookup_v2::OptionalValuePath;
 
 /// Configuration for the `dnstap` source.
 #[configurable_component(source("dnstap", "Collect DNS logs from a dnstap-compatible server."))]
@@ -101,10 +101,10 @@ impl DnstapConfig {
         self.raw_data_only.unwrap_or(false)
     }
 
-    pub fn schema_definition(&self) -> vector_lib::schema::Definition {
+    pub fn schema_definition(&self) -> sol_lib::schema::Definition {
         let event_schema = DnstapEventSchema;
 
-        let schema = vector_lib::schema::Definition::empty_definition();
+        let schema = sol_lib::schema::Definition::empty_definition();
 
         if self.raw_data_only() {
             return schema.with_event_field(&owned_value_path!("body"), Kind::bytes(), Some("message"));
@@ -221,7 +221,7 @@ impl FrameHandler for CommonFrameHandler {
         &self,
         received_from: Option<vrl::prelude::Bytes>,
         frame: vrl::prelude::Bytes,
-    ) -> Option<vector_lib::event::Event> {
+    ) -> Option<sol_lib::event::Event> {
         self.bytes_received.emit(ByteSize(frame.len()));
 
         let mut value = Value::Object(ObjectMap::new());
@@ -285,7 +285,7 @@ impl FrameHandler for CommonFrameHandler {
 
 #[cfg(test)]
 mod tests {
-    use vector_lib::event::{Event, OtelLog};
+    use sol_lib::event::{Event, OtelLog};
 
     use super::*;
 
@@ -346,7 +346,7 @@ mod tests {
         // OtelLog stores source_type as an attribute (already present in the
         // JSON fixture) and the timestamp as observed_time_unix_nano (integer),
         // not the legacy "timestamp" (Kind::timestamp) path.
-        let schema = vector_lib::schema::Definition::empty_definition()
+        let schema = sol_lib::schema::Definition::empty_definition()
             .with_event_field(
                 &owned_value_path!("source_type"),
                 Kind::bytes(),
@@ -375,7 +375,7 @@ mod integration_tests {
     use futures::StreamExt;
     use serde_json::json;
     use tokio::time;
-    use vector_lib::{event::Event, lookup::lookup_v2::OptionalValuePath};
+    use sol_lib::{event::Event, lookup::lookup_v2::OptionalValuePath};
 
     use self::unix::UnixConfig;
     use super::*;

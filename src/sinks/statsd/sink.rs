@@ -6,7 +6,7 @@ use futures_util::{
     stream::{self, BoxStream},
 };
 use tower::Service;
-use vector_lib::{
+use sol_lib::{
     event::Event,
     internal_event::Protocol,
     sink::StreamSink,

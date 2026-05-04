@@ -20,12 +20,12 @@ pub struct Opts {
     /// Read configuration from one or more files. Wildcard paths are supported.
     /// File format is detected from the file name.
     /// If zero files are specified, the deprecated default config path
-    /// `/etc/vector/vector.yaml` is targeted.
+    /// `/etc/sol/sol.yaml` is targeted.
     #[arg(
         id = "config",
         short,
         long,
-        env = "VECTOR_CONFIG",
+        env = "SOL_CONFIG",
         value_delimiter(',')
     )]
     paths: Vec<PathBuf>,
@@ -50,7 +50,7 @@ pub struct Opts {
         id = "config-dir",
         short = 'C',
         long,
-        env = "VECTOR_CONFIG_DIR",
+        env = "SOL_CONFIG_DIR",
         value_delimiter(',')
     )]
     pub config_dirs: Vec<PathBuf>,
@@ -58,7 +58,7 @@ pub struct Opts {
     /// Disable interpolation of environment variables in configuration files.
     #[arg(
         long,
-        env = "VECTOR_DISABLE_ENV_VAR_INTERPOLATION",
+        env = "SOL_DISABLE_ENV_VAR_INTERPOLATION",
         default_value = "false"
     )]
     pub disable_env_var_interpolation: bool,
@@ -213,7 +213,7 @@ mod tests {
     };
     use serde_json::json;
     use similar_asserts::assert_eq;
-    use vector_lib::configurable::component::{
+    use sol_lib::configurable::component::{
         SinkDescription, SourceDescription, TransformDescription,
     };
 
@@ -245,8 +245,8 @@ mod tests {
 
     #[test]
     fn include_defaults_does_not_include_env_vars() {
-        let env_var = "VECTOR_CONFIG_INCLUDE_DEFAULTS_TEST";
-        let env_var_in_arr = "VECTOR_CONFIG_INCLUDE_DEFAULTS_TEST_IN_ARR";
+        let env_var = "SOL_CONFIG_INCLUDE_DEFAULTS_TEST";
+        let env_var_in_arr = "SOL_CONFIG_INCLUDE_DEFAULTS_TEST_IN_ARR";
 
         let config_source = format!(
             r#"

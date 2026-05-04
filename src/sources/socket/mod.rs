@@ -3,7 +3,7 @@ pub mod udp;
 #[cfg(unix)]
 mod unix;
 
-use vector_lib::{
+use sol_lib::{
     codecs::decoding::DeserializerConfig,
     configurable::configurable_component,
     lookup::{lookup_v2::OptionalValuePath, owned_value_path},
@@ -293,10 +293,10 @@ mod test {
         time::{Duration, Instant, timeout},
     };
     #[cfg(unix)]
-    use vector_lib::codecs::{
+    use sol_lib::codecs::{
         CharacterDelimitedDecoderConfig, decoding::CharacterDelimitedDecoderOptions,
     };
-    use vector_lib::{
+    use sol_lib::{
         codecs::{GelfDeserializerConfig, NewlineDelimitedDecoderConfig},
         event::EventContainer,
         lookup::{lookup_v2::OptionalValuePath, owned_value_path, path},
@@ -803,7 +803,7 @@ mod test {
             bytes: Bytes,
         }
         impl tokio_util::codec::Encoder<Event> for Serializer {
-            type Error = vector_lib::codecs::encoding::Error;
+            type Error = sol_lib::codecs::encoding::Error;
 
             fn encode(&mut self, _: Event, buffer: &mut BytesMut) -> Result<(), Self::Error> {
                 buffer.put(self.bytes.as_ref());

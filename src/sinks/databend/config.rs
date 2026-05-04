@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, sync::Arc};
 use databend_client::APIClient as DatabendAPIClient;
 use futures::future::FutureExt;
 use tower::ServiceBuilder;
-use vector_lib::{
+use sol_lib::{
     codecs::encoding::{Framer, FramingConfig},
     configurable::{component::GenerateConfig, configurable_component},
 };

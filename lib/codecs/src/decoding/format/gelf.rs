@@ -7,8 +7,8 @@ use lookup::owned_value_path;
 use serde::{Deserialize, Serialize};
 use serde_with::{TimestampSecondsWithFrac, serde_as};
 use smallvec::{SmallVec, smallvec};
-use vector_config::configurable_component;
-use vector_core::{
+use sol_config::configurable_component;
+use sol_core::{
     config::{DataType},
     event::{Event, EventMetadata, OtelLog},
     schema,
@@ -32,7 +32,7 @@ use crate::{VALID_FIELD_REGEX, gelf_fields::*};
 #[derive(Debug, Clone, Default)]
 pub struct GelfDeserializerConfig {
     /// GELF-specific decoding options.
-    #[serde(default, skip_serializing_if = "vector_core::serde::is_default")]
+    #[serde(default, skip_serializing_if = "sol_core::serde::is_default")]
     pub gelf: GelfDeserializerOptions,
 }
 
@@ -104,13 +104,13 @@ pub struct GelfDeserializerOptions {
     /// [U+FFFD]: https://en.wikipedia.org/wiki/Specials_(Unicode_block)#Replacement_character
     #[serde(
         default = "default_lossy",
-        skip_serializing_if = "vector_core::serde::is_default"
+        skip_serializing_if = "sol_core::serde::is_default"
     )]
     #[derivative(Default(value = "default_lossy()"))]
     pub lossy: bool,
 
     /// Configures the decoding validation mode.
-    #[serde(default, skip_serializing_if = "vector_core::serde::is_default")]
+    #[serde(default, skip_serializing_if = "sol_core::serde::is_default")]
     pub validation: ValidationMode,
 }
 
@@ -135,7 +135,7 @@ impl GelfDeserializer {
     /// Builds the full ObjectMap in one pass and converts via
     /// `OtelLog::from_value_map` once to avoid expensive per-insert
     /// round-trips.
-    fn message_to_event(&self, parsed: &GelfMessage) -> vector_common::Result<Event> {
+    fn message_to_event(&self, parsed: &GelfMessage) -> sol_common::Result<Event> {
         // GELF spec defines the version as 1.1 which has not changed since 2013
         if self.validation == ValidationMode::Strict && parsed.version != GELF_VERSION {
             return Err(
@@ -243,7 +243,7 @@ impl Deserializer for GelfDeserializer {
     fn parse(
         &self,
         bytes: Bytes,
-    ) -> vector_common::Result<SmallVec<[Event; 1]>> {
+    ) -> sol_common::Result<SmallVec<[Event; 1]>> {
         let parsed: GelfMessage = match self.lossy {
             true => serde_json::from_str(&String::from_utf8_lossy(&bytes)),
             false => serde_json::from_slice(&bytes),
@@ -262,7 +262,7 @@ mod tests {
     use similar_asserts::assert_eq;
     use smallvec::SmallVec;
     use lookup::{OwnedTargetPath, owned_value_path};
-    use vector_core::event::Event;
+    use sol_core::event::Event;
     use vrl::value::Value;
 
     use super::*;
@@ -270,7 +270,7 @@ mod tests {
     fn deserialize_gelf_input(
         input: &serde_json::Value,
         options: GelfDeserializerOptions,
-    ) -> vector_common::Result<SmallVec<[Event; 1]>> {
+    ) -> sol_common::Result<SmallVec<[Event; 1]>> {
         let config = GelfDeserializerConfig::new(options);
         let deserializer = config.build();
         let buffer = Bytes::from(serde_json::to_vec(&input).unwrap());

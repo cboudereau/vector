@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use bytes::Bytes;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf, configurable::configurable_component, lookup::OwnedValuePath,
 };
 

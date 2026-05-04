@@ -3,7 +3,7 @@ use std::{collections::HashMap, path::PathBuf};
 use futures_util::{FutureExt, StreamExt, TryFutureExt, TryStreamExt, stream};
 use heim::{disk::Partition, units::information::byte};
 use indexmap::IndexMap;
-use vector_lib::{buffers::config::DiskUsage, internal_event::DEFAULT_OUTPUT};
+use sol_lib::{buffers::config::DiskUsage, internal_event::DEFAULT_OUTPUT};
 
 use super::{
     ComponentKey, Config, OutputId, Resource, builder::ConfigBuilder,

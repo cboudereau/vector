@@ -1,6 +1,6 @@
 use std::io;
 
-use vector_lib::{
+use sol_lib::{
     codecs::decoding::{DeserializerConfig, FramingConfig},
     configurable::configurable_component,
     lookup::lookup_v2::OptionalValuePath,
@@ -99,7 +99,7 @@ mod tests {
     use std::io::Cursor;
 
     use futures::StreamExt;
-    use vector_lib::lookup::path;
+    use sol_lib::lookup::path;
     use vrl::value;
 
     use super::*;

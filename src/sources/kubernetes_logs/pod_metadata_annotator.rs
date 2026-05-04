@@ -7,7 +7,7 @@ use k8s_openapi::{
     apimachinery::pkg::apis::meta::v1::ObjectMeta,
 };
 use kube::runtime::reflector::{ObjectRef, store::Store};
-use vector_lib::{
+use sol_lib::{
     config::insert_source_metadata,
     configurable::configurable_component,
     lookup::{
@@ -489,7 +489,7 @@ mod tests {
 
     use k8s_openapi::api::core::v1::PodIP;
     use similar_asserts::assert_eq;
-    use vector_lib::lookup::metadata_path;
+    use sol_lib::lookup::metadata_path;
 
     use super::*;
     #[allow(unused_imports)]

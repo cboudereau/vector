@@ -3,7 +3,7 @@
 use std::borrow::Cow;
 
 use metrics::{counter, gauge};
-use vector_lib::{
+use sol_lib::{
     NamedInternalEvent,
     configurable::configurable_component,
     internal_event::{
@@ -111,7 +111,7 @@ mod source {
 
     use bytes::BytesMut;
     use metrics::counter;
-    use vector_lib::{
+    use sol_lib::{
         NamedInternalEvent, emit,
         file_source_common::internal_events::FileSourceInternalEvents,
         internal_event::{ComponentEventsDropped, INTENTIONAL, error_stage, error_type},

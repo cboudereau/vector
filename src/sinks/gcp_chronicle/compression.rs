@@ -3,7 +3,7 @@ use std::{cell::RefCell, collections::BTreeSet};
 use indexmap::IndexMap;
 use serde::{de, ser};
 use serde_json::Value;
-use vector_lib::configurable::{
+use sol_lib::configurable::{
     Configurable, GenerateError, Metadata, ToValue,
     attributes::CustomAttribute,
     schema::{

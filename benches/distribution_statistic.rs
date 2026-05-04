@@ -3,7 +3,7 @@ use rand::{
     distr::{Distribution, Uniform},
     seq::SliceRandom,
 };
-use vector::{event::metric::Sample, sinks::util::statistic::DistributionStatistic};
+use sol::{event::metric::Sample, sinks::util::statistic::DistributionStatistic};
 
 fn generate_samples(mut size: u32, max_bin_count: u32) -> Vec<Sample> {
     let mut rng = rand::rng();

@@ -13,7 +13,7 @@ use serde_with::serde_as;
 use sysinfo::System;
 use tokio::time;
 use tokio_stream::wrappers::IntervalStream;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     configurable::configurable_component,
     internal_event::{
@@ -21,7 +21,7 @@ use vector_lib::{
     },
 };
 
-use vector_lib::event::otel_metric::{InstrumentationScope, Resource};
+use sol_lib::event::otel_metric::{InstrumentationScope, Resource};
 
 use crate::{
     SourceSender,
@@ -227,7 +227,7 @@ fn default_collectors() -> Option<Vec<Collector>> {
         collectors.push(Collector::TCP);
     }
     #[cfg(not(target_os = "linux"))]
-    if std::env::var("VECTOR_GENERATE_SCHEMA").is_ok() {
+    if std::env::var("SOL_GENERATE_SCHEMA").is_ok() {
         collectors.push(Collector::CGroups);
         collectors.push(Collector::TCP);
     }
@@ -276,7 +276,7 @@ fn example_cgroups() -> FilterList {
 
 fn default_cgroups_config() -> Option<CGroupsConfig> {
     // Check env variable to allow generating docs on non-linux systems.
-    if std::env::var("VECTOR_GENERATE_SCHEMA").is_ok() {
+    if std::env::var("SOL_GENERATE_SCHEMA").is_ok() {
         return Some(CGroupsConfig::default());
     }
 

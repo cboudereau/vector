@@ -1,5 +1,5 @@
 use indexmap::IndexMap;
-use vector_lib::{
+use sol_lib::{
     config::clone_input_definitions, configurable::configurable_component, transform::SyncTransform,
 };
 
@@ -38,7 +38,7 @@ impl Route {
 }
 
 impl SyncTransform for Route {
-    fn transform(&mut self, event: Event, output: &mut vector_lib::transform::TransformOutputsBuf) {
+    fn transform(&mut self, event: Event, output: &mut sol_lib::transform::TransformOutputsBuf) {
         let mut check_failed: usize = 0;
         for (output_name, condition) in &self.conditions {
             let (result, event) = condition.check(event.clone());
@@ -179,7 +179,7 @@ mod test {
     use std::collections::HashMap;
 
     use indoc::indoc;
-    use vector_lib::transform::TransformOutputsBuf;
+    use sol_lib::transform::TransformOutputsBuf;
 
     use super::*;
     use crate::{

@@ -6,7 +6,7 @@ use criterion::{
     measurement::WallTime,
 };
 use tokio_util::codec::Decoder;
-use vector_lib::codecs::{
+use sol_lib::codecs::{
     BytesDeserializer, NewlineDelimitedDecoder,
     decoding::{Deserializer, Framer},
 };

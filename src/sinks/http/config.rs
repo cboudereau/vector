@@ -8,12 +8,12 @@ use aws_config::meta::region::ProvideRegion;
 use aws_types::region::Region;
 use http::{HeaderName, HeaderValue, Method, Request, StatusCode, header::AUTHORIZATION};
 use hyper::Body;
-use vector_lib::codecs::{
+use sol_lib::codecs::{
     CharacterDelimitedEncoder,
     encoding::{Framer, Serializer},
 };
 #[cfg(feature = "aws-core")]
-use vector_lib::config::proxy::ProxyConfig;
+use sol_lib::config::proxy::ProxyConfig;
 
 use super::{
     encoder::HttpEncoder, request_builder::HttpRequestBuilder, service::HttpSinkRequestBuilder,
@@ -377,7 +377,7 @@ impl SinkConfig for HttpSinkConfig {
 
 #[cfg(test)]
 mod tests {
-    use vector_lib::codecs::encoding::format::JsonSerializerOptions;
+    use sol_lib::codecs::encoding::format::JsonSerializerOptions;
 
     use super::*;
     use crate::components::validation::prelude::*;
@@ -386,7 +386,7 @@ mod tests {
         fn validation_configuration() -> ValidationConfiguration {
             use std::str::FromStr;
 
-            use vector_lib::codecs::{JsonSerializerConfig, MetricTagValues};
+            use sol_lib::codecs::{JsonSerializerConfig, MetricTagValues};
 
             let endpoint = "http://127.0.0.1:9000/endpoint";
             let uri = UriSerde::from_str(endpoint).expect("should never fail to parse");

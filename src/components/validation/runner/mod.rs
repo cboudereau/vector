@@ -16,7 +16,7 @@ use tokio::{
     task::JoinHandle,
 };
 use tokio_util::codec::Encoder as _;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf, codecs::encoding,
     config::insert_standard_vector_source_metadata, event::Event,
 };
@@ -199,7 +199,7 @@ impl Runner {
     }
 
     #[allow(clippy::print_stdout)]
-    pub async fn run_validation(self) -> Result<Vec<RunnerResults>, vector_lib::Error> {
+    pub async fn run_validation(self) -> Result<Vec<RunnerResults>, sol_lib::Error> {
         // Initialize our test environment.
         initialize_test_environment();
 
@@ -449,7 +449,7 @@ fn build_external_resource(
     input_task_coordinator: &TaskCoordinator<Configuring>,
     output_task_coordinator: &TaskCoordinator<Configuring>,
     runner_metrics: &Arc<Mutex<RunnerMetrics>>,
-) -> Result<(RunnerInput, RunnerOutput, Option<Encoder<encoding::Framer>>), vector_lib::Error> {
+) -> Result<(RunnerInput, RunnerOutput, Option<Encoder<encoding::Framer>>), sol_lib::Error> {
     let component_type = configuration.component_type();
     let maybe_external_resource = configuration.external_resource(test_case.config_name.as_ref());
 

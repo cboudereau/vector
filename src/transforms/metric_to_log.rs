@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use chrono::Utc;
-use vector_lib::{
+use sol_lib::{
     TimeZone,
     codecs::MetricTagValues,
     configurable::configurable_component,
@@ -234,7 +234,7 @@ mod tests {
     use similar_asserts::assert_eq;
     use tokio::sync::mpsc;
     use tokio_stream::wrappers::ReceiverStream;
-    use vector_lib::{config::ComponentKey, event::EventMetadata, otel_tags};
+    use sol_lib::{config::ComponentKey, event::EventMetadata, otel_tags};
 
     use super::*;
     use crate::{
@@ -385,7 +385,7 @@ mod tests {
 
     #[tokio::test]
     async fn transform_distribution() {
-        let distro = OtelMetric::new_histogram_from_samples("distro", MetricKind::Absolute, &vector_lib::samples![1.0 => 10, 2.0 => 20])
+        let distro = OtelMetric::new_histogram_from_samples("distro", MetricKind::Absolute, &sol_lib::samples![1.0 => 10, 2.0 => 20])
             .with_metadata(event_metadata())
             .with_timestamp(Some(ts()));
         let mut metadata = distro.metadata().clone();
@@ -412,7 +412,7 @@ mod tests {
 
     #[tokio::test]
     async fn transform_histogram() {
-        let histo = OtelMetric::new_histogram("histo", MetricKind::Absolute, &vector_lib::buckets![1.0 => 10, 2.0 => 20], 30, 50.0)
+        let histo = OtelMetric::new_histogram("histo", MetricKind::Absolute, &sol_lib::buckets![1.0 => 10, 2.0 => 20], 30, 50.0)
             .with_metadata(event_metadata())
             .with_timestamp(Some(ts()));
         let mut metadata = histo.metadata().clone();
@@ -448,7 +448,7 @@ mod tests {
 
     #[tokio::test]
     async fn transform_summary() {
-        let summary = OtelMetric::new_summary("summary", &vector_lib::quantiles![50.0 => 10.0, 90.0 => 20.0], 30, 50.0)
+        let summary = OtelMetric::new_summary("summary", &sol_lib::quantiles![50.0 => 10.0, 90.0 => 20.0], 30, 50.0)
             .with_metadata(event_metadata())
             .with_timestamp(Some(ts()));
         let mut metadata = summary.metadata().clone();

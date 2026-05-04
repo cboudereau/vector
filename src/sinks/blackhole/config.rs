@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use futures::{FutureExt, future};
 use serde_with::serde_as;
-use vector_lib::configurable::configurable_component;
+use sol_lib::configurable::configurable_component;
 
 use crate::{
     config::{AcknowledgementsConfig, GenerateConfig, Input, SinkConfig, SinkContext},

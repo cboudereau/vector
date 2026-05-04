@@ -5,7 +5,7 @@ use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use tokio::{io::AsyncWriteExt, process::Command, time};
 use tokio_util::codec;
-use vector_lib::configurable::{component::GenerateConfig, configurable_component};
+use sol_lib::configurable::{component::GenerateConfig, configurable_component};
 use vrl::value::Value;
 
 use crate::{config::SecretBackend, signal};

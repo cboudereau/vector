@@ -40,7 +40,7 @@ use tokio_util::codec::Encoder as _;
 use tracing::Instrument;
 use url::Url;
 use uuid::Uuid;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     event::{Event, EventStatus},
     finalization::Finalizable,
@@ -438,7 +438,7 @@ mod tests {
     use futures_util::stream;
     use tokio::{task::JoinHandle, time};
     use tokio_tungstenite::tungstenite::client::IntoClientRequest;
-    use vector_lib::{
+    use sol_lib::{
         codecs::{
             JsonDeserializerConfig,
             decoding::{DeserializerConfig, JsonDeserializerOptions},
@@ -462,12 +462,12 @@ mod tests {
     };
 
     const METRICS_WITH_EXTRA_TAGS: [&str; 6] = [
-        "connection_established_total",
-        "active_clients",
-        "component_errors_total",
-        "connection_shutdown_total",
-        "websocket_messages_sent_total",
-        "websocket_bytes_sent_total",
+        "sol_connection_established_total",
+        "sol_active_clients",
+        "sol_component_errors_total",
+        "sol_connection_shutdown_total",
+        "sol_websocket_messages_sent_total",
+        "sol_websocket_bytes_sent_total",
     ];
 
     #[tokio::test]

@@ -1,3 +1,5 @@
+> **Sol** — Single Observability Layer. Built on technology originally from the [Vector project](https://github.com/vectordotdev/vector) (MPL-2.0), Copyright Datadog, Inc.
+
 [![Nightly](https://github.com/vectordotdev/vector/actions/workflows/nightly.yml/badge.svg)](https://github.com/vectordotdev/vector/actions/workflows/nightly.yml)
 [![Integration/E2E Test Suite](https://github.com/vectordotdev/vector/actions/workflows/integration.yml/badge.svg)](https://github.com/vectordotdev/vector/actions/workflows/integration.yml/badge.svg?event=merge_group)
 [![Component Features](https://github.com/vectordotdev/vector/actions/workflows/component_features.yml/badge.svg)](https://github.com/vectordotdev/vector/actions/workflows/component_features.yml)

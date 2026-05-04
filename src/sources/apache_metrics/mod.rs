@@ -4,11 +4,11 @@ use chrono::Utc;
 use futures::{FutureExt, StreamExt, TryFutureExt, stream};
 use http::uri::Scheme;
 use hyper::{Body, Request};
-use vector_lib::event::otel_metric::{InstrumentationScope, Resource};
+use sol_lib::event::otel_metric::{InstrumentationScope, Resource};
 use serde_with::serde_as;
 use snafu::ResultExt;
 use tokio_stream::wrappers::IntervalStream;
-use vector_lib::{EstimatedJsonEncodedSizeOf, configurable::configurable_component, otel_tags};
+use sol_lib::{EstimatedJsonEncodedSizeOf, configurable::configurable_component, otel_tags};
 
 use crate::{
     SourceSender,

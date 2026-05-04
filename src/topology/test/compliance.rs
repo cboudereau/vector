@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use tokio::sync::oneshot::{Receiver, channel};
-use vector_lib::{
+use sol_lib::{
     config::{ComponentKey, OutputId},
     event::{Event, EventArray, EventContainer, OtelLog},
 };

@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use derivative::Derivative;
-use vector_lib::conversion;
+use sol_lib::conversion;
 
 use crate::{
     event::{self, Event},

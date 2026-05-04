@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, iter};
 
 use serde::Serialize;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf, config::telemetry, request_metadata::GroupedCountByteSize,
 };
 

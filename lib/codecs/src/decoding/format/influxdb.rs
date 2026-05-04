@@ -5,8 +5,8 @@ use chrono::DateTime;
 use derivative::Derivative;
 use influxdb_line_protocol::{FieldValue, ParsedLine};
 use smallvec::SmallVec;
-use vector_config::configurable_component;
-use vector_core::{
+use sol_config::configurable_component;
+use sol_core::{
     config::{DataType},
     event::{Event, OtelAttributes, OtelMetric},
     schema,
@@ -22,7 +22,7 @@ use crate::decoding::format::default_lossy;
 #[derive(Debug, Clone, Default)]
 pub struct InfluxdbDeserializerConfig {
     /// Influxdb-specific decoding options.
-    #[serde(default, skip_serializing_if = "vector_core::serde::is_default")]
+    #[serde(default, skip_serializing_if = "sol_core::serde::is_default")]
     pub influxdb: InfluxdbDeserializerOptions,
 }
 
@@ -62,7 +62,7 @@ pub struct InfluxdbDeserializerOptions {
     /// [U+FFFD]: https://en.wikipedia.org/wiki/Specials_(Unicode_block)#Replacement_character
     #[serde(
         default = "default_lossy",
-        skip_serializing_if = "vector_core::serde::is_default"
+        skip_serializing_if = "sol_core::serde::is_default"
     )]
     #[derivative(Default(value = "default_lossy()"))]
     pub lossy: bool,
@@ -87,7 +87,7 @@ impl Deserializer for InfluxdbDeserializer {
     fn parse(
         &self,
         bytes: Bytes,
-    ) -> vector_common::Result<SmallVec<[Event; 1]>> {
+    ) -> sol_common::Result<SmallVec<[Event; 1]>> {
         let line: Cow<str> = match self.lossy {
             true => String::from_utf8_lossy(&bytes),
             false => Cow::from(std::str::from_utf8(&bytes)?),
@@ -154,7 +154,7 @@ impl From<&InfluxdbDeserializerConfig> for InfluxdbDeserializer {
 #[cfg(test)]
 mod tests {
     use bytes::Bytes;
-    use vector_core::event::{MetricKind, MetricView};
+    use sol_core::event::{MetricKind, MetricView};
 
     use crate::decoding::format::{Deserializer, InfluxdbDeserializer};
 

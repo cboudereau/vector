@@ -6,20 +6,22 @@ This project is a fork of [Datadog Vector](https://github.com/vectordotdev/vecto
 
 This is a mechanical refactoring: find-and-replace across the codebase, update Cargo.toml manifests, regenerate configs. No functional changes.
 
-### Scope summary (from codebase analysis)
+### Scope summary (from codebase analysis, updated 2026-05-04)
 
-| Category | Count | Notes |
-|----------|-------|-------|
-| Cargo.toml packages with "vector" in name | 21 | Root + 20 workspace member crates |
-| Binary targets | 1 to rename | `vector` → `sol` |
-| `VECTOR_*` environment variable references | ~325 | 55 in .rs, 187 in .yaml, 28 in .sh |
-| `vector_*` internal metrics strings | ~90 | Prometheus metric names |
-| Default config paths (`/etc/vector/`) | ~40 files | Source + regression test configs |
-| Systemd service files | 3 | `vector.service`, `hardened-vector.service`, `vector.default` |
-| Product name strings ("Vector has started", etc.) | ~10 | Internal events, CLI, headers |
-| `use vector::` / `extern crate vector` imports | ~29 | Tests, benches, schema gen |
-| Lines with "vector" in .rs files | ~2,097 | Mix of crate refs, strings, comments |
-| Workspace members total | 28 | 15 have "vector" in path/name |
+| Category | Count | Status | Notes |
+|----------|-------|--------|-------|
+| Cargo.toml packages with "vector" in name | 21 | **TODO** | Root + 20 workspace member crates |
+| Binary targets | 1 to rename | **TODO** | `vector` → `sol` |
+| `VECTOR_*` environment variable references | ~325 | **TODO** | 55 in .rs, 187 in .yaml, 28 in .sh |
+| `vector_*` internal metrics strings | ~90 | **DONE** | Renamed in [22198c3e](../../../) — registry prepends `sol_`, custom metrics stripped of `vector_` prefix |
+| Default config paths (`/etc/vector/`) | ~40 files | **TODO** | Source + regression test configs |
+| Systemd service files | 3 | **TODO** | `vector.service`, `hardened-vector.service`, `vector.default` |
+| Product name strings ("Vector has started", etc.) | ~10 | **TODO** | Internal events, CLI, headers |
+| `use vector::` / `extern crate vector` imports | ~29 | **TODO** | Tests, benches, schema gen |
+| Lines with "vector" in .rs files | ~2,097 | **TODO** | Mix of crate refs, strings, comments |
+| Workspace members total | 28 | **TODO** | 15 have "vector" in path/name |
+| K8s e2e metric names (`vector_started`, function names) | ~20 | **TODO** | `lib/k8s-e2e-tests/src/metrics.rs` — function names + test strings still use `vector_started` |
+| Demo configs | 3 | **DONE** | `demo/otel-vector-grafana-dotnet/sol/` already uses `sol-*` naming |
 
 ## Functional Requirements
 
@@ -59,12 +61,11 @@ All `VECTOR_*` environment variables must be renamed to `SOL_*`:
 - `VECTOR_BUILD_DESC` → `SOL_BUILD_DESC`
 - And all test/CI environment variables following the same pattern
 
-### <a id="fr6"></a>FR6 — Rename internal metrics prefix
+### <a id="fr6"></a>FR6 — Rename internal metrics prefix (**DONE**)
 
-All Prometheus metric names prefixed with `vector_` must use `sol_`:
-- `vector_lb_num_backends` → `sol_lb_num_backends`
-- `vector_tail_sampling_trace_dropped_too_early` → `sol_tail_sampling_trace_dropped_too_early`
-- etc.
+Completed in commit [22198c3e](../../../). The metrics registry in `recorder.rs` now prepends `sol_` to all metric names, and custom metrics in `tail_sampling`, `load_balancing` had their `vector_` prefix stripped (the registry adds `sol_` automatically). See [ADR: metrics-namespace-renaming](../../workspace/sol-telemetry-monitoring/adrs/metrics-namespace-renaming.md).
+
+**Remaining**: `lib/k8s-e2e-tests/src/metrics.rs` still has `vector_started` function names and test strings (`extract_vector_started`, `assert_vector_started`, `wait_for_vector_started`) — these will be renamed as part of [FR4](#fr4) (Rust import/symbol rename).
 
 ### <a id="fr7"></a>FR7 — Rename product name strings
 
@@ -175,4 +176,4 @@ This is a one-time rename. No migration path from "vector" to "sol" is needed fo
 Standard `git revert` of the rename commit(s). No special rollback procedure.
 
 ### Observability
-After rename, all internal metrics will use `sol_*` prefix. Existing dashboards or monitoring configs (if any) would need to be updated.
+Internal metrics already use `sol_*` prefix (done in 22198c3e). A Grafana dashboard for SOL Pipeline monitoring was added in the same commit. No further observability work needed for the rename.

@@ -4,7 +4,7 @@ use futures::{Stream, StreamExt, stream};
 use mlua::{ExternalError, FromLua};
 use ordered_float::NotNan;
 use snafu::{ResultExt, Snafu};
-use vector_lib::configurable::configurable_component;
+use sol_lib::configurable::configurable_component;
 use vrl::path::parse_target_path;
 
 use crate::{

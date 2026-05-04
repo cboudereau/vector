@@ -6,8 +6,8 @@ use std::{
 
 use tokio::sync::OwnedSemaphorePermit;
 use tower::timeout::error::Elapsed;
-use vector_lib::internal_event::{InternalEventHandle as _, Registered};
-use vector_lib::stats::{EwmaVar, Mean, MeanVariance};
+use sol_lib::internal_event::{InternalEventHandle as _, Registered};
+use sol_lib::stats::{EwmaVar, Mean, MeanVariance};
 
 use super::{AdaptiveConcurrencySettings, instant_now, semaphore::ShrinkableSemaphore};
 #[cfg(test)]

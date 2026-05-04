@@ -1,5 +1,5 @@
 use metrics::{counter, gauge};
-use vector_lib::{
+use sol_lib::{
     NamedInternalEvent, configurable::configurable_component, internal_event::InternalEvent,
 };
 

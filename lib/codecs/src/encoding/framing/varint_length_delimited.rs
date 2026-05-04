@@ -2,7 +2,7 @@ use bytes::{BufMut, BytesMut};
 use derivative::Derivative;
 use snafu::Snafu;
 use tokio_util::codec::Encoder;
-use vector_config::configurable_component;
+use sol_config::configurable_component;
 
 use super::{BoxedFramingError, FramingError};
 

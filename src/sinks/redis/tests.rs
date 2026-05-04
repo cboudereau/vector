@@ -1,4 +1,4 @@
-use vector_lib::{
+use sol_lib::{
     codecs::{JsonSerializerConfig, TextSerializerConfig},
     event::{Event, OtelLog, MetricKind, OtelMetric},
     request_metadata::GroupedCountByteSize,

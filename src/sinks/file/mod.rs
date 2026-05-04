@@ -17,7 +17,7 @@ use tokio::{
     io::AsyncWriteExt,
 };
 use tokio_util::{codec::Encoder as _, time::delay_queue::Expired};
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf, TimeZone,
     codecs::{
         TextSerializerConfig,
@@ -529,7 +529,7 @@ mod tests {
     use chrono::{SubsecRound, Utc};
     use futures::{SinkExt, stream};
     use similar_asserts::assert_eq;
-    use vector_lib::{
+    use sol_lib::{
         codecs::JsonSerializerConfig,
         event::{EventMetadata, OtelLog, OtelSpan},
         sink::VectorSink,

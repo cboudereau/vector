@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 use enum_dispatch::enum_dispatch;
-use vector_lib::configurable::{NamedComponent, configurable_component};
+use sol_lib::configurable::{NamedComponent, configurable_component};
 
 use crate::{
     config::{ConfigBuilder, ProviderConfig},

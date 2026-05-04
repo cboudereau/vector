@@ -5,7 +5,7 @@ use heim::memory::os::linux::MemoryExt;
 #[cfg(target_os = "macos")]
 use heim::memory::os::macos::MemoryExt;
 use heim::units::information::byte;
-use vector_lib::event::OtelAttributes;
+use sol_lib::event::OtelAttributes;
 
 use super::HostMetrics;
 use crate::internal_events::HostMetricsScrapeDetailError;

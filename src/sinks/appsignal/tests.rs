@@ -1,6 +1,6 @@
 use futures::{future::ready, stream};
 use serde::Deserialize;
-use vector_lib::{
+use sol_lib::{
     configurable::component::GenerateConfig,
     event::{Event, OtelLog},
 };

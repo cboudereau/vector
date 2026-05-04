@@ -3,7 +3,7 @@ use std::num::NonZeroUsize;
 use bytes::BytesMut;
 use chrono::Utc;
 use tokio_util::codec::Encoder as _;
-use vector_lib::{
+use sol_lib::{
     ByteSizeOf,
     event::{EventFinalizers, Finalizable},
     request_metadata::{MetaDescriptive, RequestMetadata},
@@ -141,7 +141,7 @@ impl ByteSizeOf for CloudwatchRequest {
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
-    use vector_lib::{event::OtelLog, lookup::{OwnedTargetPath, owned_value_path}};
+    use sol_lib::{event::OtelLog, lookup::{OwnedTargetPath, owned_value_path}};
 
     use super::{CloudwatchRequestBuilder, MAX_MESSAGE_SIZE};
 

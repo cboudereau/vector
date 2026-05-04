@@ -1,8 +1,8 @@
 //! Serializer configuration and implementation for encoding structured events as bytes.
 
 use bytes::BytesMut;
-use vector_config::configurable_component;
-use vector_core::{config::DataType, event::Event, schema};
+use sol_config::configurable_component;
+use sol_core::{config::DataType, event::Event, schema};
 
 #[cfg(feature = "arrow")]
 use super::format::{ArrowStreamSerializer, ArrowStreamSerializerConfig};
@@ -393,7 +393,7 @@ impl Serializer {
     ///
     /// Panics if the serializer does not support encoding to JSON. Call `Serializer::supports_json`
     /// if you need to determine the capability to encode to JSON at runtime.
-    pub fn to_json_value(&self, event: Event) -> Result<serde_json::Value, vector_common::Error> {
+    pub fn to_json_value(&self, event: Event) -> Result<serde_json::Value, sol_common::Error> {
         match self {
             Serializer::Gelf(serializer) => serializer.to_json_value(event),
             Serializer::Json(serializer) => serializer.to_json_value(event),
@@ -516,7 +516,7 @@ impl From<SyslogSerializer> for Serializer {
 }
 
 impl tokio_util::codec::Encoder<Event> for Serializer {
-    type Error = vector_common::Error;
+    type Error = sol_common::Error;
 
     fn encode(&mut self, event: Event, buffer: &mut BytesMut) -> Result<(), Self::Error> {
         match self {

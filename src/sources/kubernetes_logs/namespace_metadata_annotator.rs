@@ -4,7 +4,7 @@
 
 use k8s_openapi::{api::core::v1::Namespace, apimachinery::pkg::apis::meta::v1::ObjectMeta};
 use kube::runtime::reflector::{ObjectRef, store::Store};
-use vector_lib::{
+use sol_lib::{
     config::insert_source_metadata,
     configurable::configurable_component,
     lookup::{
@@ -114,7 +114,7 @@ fn annotate_otel_from_metadata(
 #[cfg(test)]
 mod tests {
     use similar_asserts::assert_eq;
-    use vector_lib::lookup::metadata_path;
+    use sol_lib::lookup::metadata_path;
 
     use super::*;
     use crate::event::OtelLog;

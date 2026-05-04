@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use opentelemetry_proto::tonic::common::v1::AnyValue;
-use vector_lib::event::Event;
+use sol_lib::event::Event;
 
 use crate::{
     event::string_value,

@@ -7,7 +7,7 @@ use std::{
 use async_trait::async_trait;
 use dyn_clone::DynClone;
 use serde::Serialize;
-use vector_lib::{
+use sol_lib::{
     config::{GlobalOptions, Input, TransformOutput},
     configurable::{
         Configurable, GenerateError, Metadata, NamedComponent,
@@ -19,7 +19,7 @@ use vector_lib::{
     schema,
     transform::Transform,
 };
-use vector_vrl_metrics::MetricsStorage;
+use sol_vrl_metrics::MetricsStorage;
 
 use super::{ComponentKey, OutputId, dot_graph::GraphConfig, schema::Options as SchemaOptions};
 use crate::extra_context::ExtraContext;
@@ -42,7 +42,7 @@ impl Configurable for BoxedTransform {
     fn generate_schema(
         generator: &RefCell<SchemaGenerator>,
     ) -> Result<SchemaObject, GenerateError> {
-        vector_lib::configurable::component::TransformDescription::generate_schemas(generator)
+        sol_lib::configurable::component::TransformDescription::generate_schemas(generator)
     }
 }
 
@@ -61,7 +61,7 @@ where
     T: Configurable + Serialize + 'static,
 {
     #[configurable(derived)]
-    #[serde(default, skip_serializing_if = "vector_lib::serde::is_default")]
+    #[serde(default, skip_serializing_if = "sol_lib::serde::is_default")]
     pub graph: GraphConfig,
 
     #[configurable(derived)]
@@ -119,7 +119,7 @@ pub struct TransformContext {
 
     pub globals: GlobalOptions,
 
-    pub enrichment_tables: vector_lib::enrichment::TableRegistry,
+    pub enrichment_tables: sol_lib::enrichment::TableRegistry,
 
     pub metrics_storage: MetricsStorage,
 

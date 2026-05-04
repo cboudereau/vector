@@ -13,7 +13,7 @@ use futures::{SinkExt, Stream, StreamExt, stream};
 use futures_util::Future;
 use itertools::Itertools as _;
 use tokio::{pin, select, time::sleep};
-use vector_lib::event_test_util;
+use sol_lib::event_test_util;
 
 use crate::{
     SourceSender,

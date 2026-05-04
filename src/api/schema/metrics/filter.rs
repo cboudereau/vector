@@ -56,7 +56,7 @@ impl MetricsFilter<'_> for Vec<OtelMetric> {
     fn received_bytes_total(&self) -> Option<ReceivedBytesTotal> {
         let sum = sum_metrics(
             self.iter()
-                .filter(|m| m.name() == "component_received_bytes_total"),
+                .filter(|m| m.name() == "sol_component_received_bytes_total"),
         )?;
 
         Some(ReceivedBytesTotal::new(sum))
@@ -65,7 +65,7 @@ impl MetricsFilter<'_> for Vec<OtelMetric> {
     fn received_events_total(&self) -> Option<ReceivedEventsTotal> {
         let sum = sum_metrics(
             self.iter()
-                .filter(|m| m.name() == "component_received_events_total"),
+                .filter(|m| m.name() == "sol_component_received_events_total"),
         )?;
 
         Some(ReceivedEventsTotal::new(sum))
@@ -74,7 +74,7 @@ impl MetricsFilter<'_> for Vec<OtelMetric> {
     fn sent_bytes_total(&self) -> Option<SentBytesTotal> {
         let sum = sum_metrics(
             self.iter()
-                .filter(|m| m.name() == "component_sent_bytes_total"),
+                .filter(|m| m.name() == "sol_component_sent_bytes_total"),
         )?;
 
         Some(SentBytesTotal::new(sum))
@@ -83,7 +83,7 @@ impl MetricsFilter<'_> for Vec<OtelMetric> {
     fn sent_events_total(&self) -> Option<SentEventsTotal> {
         let sum = sum_metrics(
             self.iter()
-                .filter(|m| m.name() == "component_sent_events_total"),
+                .filter(|m| m.name() == "sol_component_sent_events_total"),
         )?;
 
         Some(SentEventsTotal::new(sum))
@@ -94,7 +94,7 @@ impl<'a> MetricsFilter<'a> for Vec<&'a OtelMetric> {
     fn received_bytes_total(&self) -> Option<ReceivedBytesTotal> {
         let sum = sum_metrics(
             self.iter()
-                .filter(|m| m.name() == "component_received_bytes_total")
+                .filter(|m| m.name() == "sol_component_received_bytes_total")
                 .copied(),
         )?;
 
@@ -104,7 +104,7 @@ impl<'a> MetricsFilter<'a> for Vec<&'a OtelMetric> {
     fn received_events_total(&self) -> Option<ReceivedEventsTotal> {
         let sum = sum_metrics(
             self.iter()
-                .filter(|m| m.name() == "component_received_events_total")
+                .filter(|m| m.name() == "sol_component_received_events_total")
                 .copied(),
         )?;
 
@@ -114,7 +114,7 @@ impl<'a> MetricsFilter<'a> for Vec<&'a OtelMetric> {
     fn sent_bytes_total(&self) -> Option<SentBytesTotal> {
         let sum = sum_metrics(
             self.iter()
-                .filter(|m| m.name() == "component_sent_bytes_total")
+                .filter(|m| m.name() == "sol_component_sent_bytes_total")
                 .copied(),
         )?;
 
@@ -124,7 +124,7 @@ impl<'a> MetricsFilter<'a> for Vec<&'a OtelMetric> {
     fn sent_events_total(&self) -> Option<SentEventsTotal> {
         let sum = sum_metrics(
             self.iter()
-                .filter(|m| m.name() == "component_sent_events_total")
+                .filter(|m| m.name() == "sol_component_sent_events_total")
                 .copied(),
         )?;
 
@@ -171,7 +171,7 @@ pub fn by_component_key(component_key: &ComponentKey) -> Vec<OtelMetric> {
 type MetricFilterFn = dyn Fn(&OtelMetric) -> bool + Send + Sync;
 
 /// Returns a stream of `Vec<OtelMetric>`, where `metric_name` matches the name of the metric
-/// (e.g. "component_sent_events_total"), and the value is derived from `MetricView::Sum`. Uses a
+/// (e.g. "sol_component_sent_events_total"), and the value is derived from `MetricView::Sum`. Uses a
 /// local cache to match against the `component_id` of a metric, to return results only when
 /// the value of a current iteration is greater than the previous. This is useful for the client
 /// to be notified as metrics increase without returning 'empty' or identical results.
@@ -199,7 +199,7 @@ pub fn component_counter_metrics(
 }
 
 /// Returns a stream of `Vec<OtelMetric>`, where `metric_name` matches the name of the metric
-/// (e.g. "component_sent_events_total"), and the value is derived from `MetricView::Gauge`. Uses a
+/// (e.g. "sol_component_sent_events_total"), and the value is derived from `MetricView::Gauge`. Uses a
 /// local cache to match against the `component_id` of a metric, to return results only when
 /// the value of a current iteration is greater than the previous. This is useful for the client
 /// to be notified as metrics increase without returning 'empty' or identical results.
@@ -284,7 +284,7 @@ pub fn component_sent_events_totals_metrics_with_outputs(
 ) -> impl Stream<Item = Vec<(OtelMetric, Vec<OtelMetric>)>> {
     let mut cache = BTreeMap::new();
 
-    component_to_filtered_metrics(interval, &|m| m.name() == "component_sent_events_total").map(
+    component_to_filtered_metrics(interval, &|m| m.name() == "sol_component_sent_events_total").map(
         move |map| {
             map.into_iter()
                 .filter_map(|(id, metrics)| {
@@ -333,7 +333,7 @@ pub fn component_sent_events_total_throughputs_with_outputs(
 ) -> impl Stream<Item = Vec<(ComponentKey, i64, Vec<OutputThroughput>)>> {
     let mut cache = BTreeMap::new();
 
-    component_to_filtered_metrics(interval, &|m| m.name() == "component_sent_events_total")
+    component_to_filtered_metrics(interval, &|m| m.name() == "sol_component_sent_events_total")
         .map(move |map| {
             map.into_iter()
                 .filter_map(|(id, metrics)| {

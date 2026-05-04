@@ -2,7 +2,7 @@ use std::{collections::HashMap, num::NonZeroUsize, time::Duration};
 
 use indexmap::IndexMap;
 use serde_with::serde_as;
-use vector_lib::configurable::configurable_component;
+use sol_lib::configurable::configurable_component;
 use vrl::{
     path::{PathPrefix, parse_target_path},
     prelude::{Collection, KeyString, Kind},

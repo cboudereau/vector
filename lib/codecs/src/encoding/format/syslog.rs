@@ -6,8 +6,8 @@ use std::fmt::Write;
 use std::str::FromStr;
 use strum::{EnumString, FromRepr, VariantNames};
 use tokio_util::codec::Encoder;
-use vector_config::configurable_component;
-use vector_core::{
+use sol_config::configurable_component;
+use sol_core::{
     config::DataType,
     event::{Event, OtelLog, Value},
     schema,
@@ -78,7 +78,7 @@ impl SyslogSerializer {
 }
 
 impl Encoder<Event> for SyslogSerializer {
-    type Error = vector_common::Error;
+    type Error = sol_common::Error;
 
     fn encode(&mut self, event: Event, buffer: &mut BytesMut) -> Result<(), Self::Error> {
         let otel_log = match event {
@@ -491,7 +491,7 @@ mod tests {
     use bytes::BytesMut;
     use chrono::NaiveDate;
     use std::sync::Arc;
-    use vector_core::event::{
+    use sol_core::event::{
         Event, MetricKind, OtelMetric,
     };
     use vrl::path::parse_target_path;
@@ -786,7 +786,7 @@ mod tests {
         let metric_event = Event::Metric(OtelMetric::new_histogram_from_samples(
             "metric1",
             MetricKind::Incremental,
-            &vector_core::samples![10.0 => 1],
+            &sol_core::samples![10.0 => 1],
         ));
 
         let mut serializer = SyslogSerializer::new(&config);

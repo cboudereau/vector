@@ -7,7 +7,7 @@ mod fingerprinter;
 pub mod internal_events;
 mod metadata_ext;
 
-use vector_config::configurable_component;
+use sol_config::configurable_component;
 
 pub use self::{
     checkpointer::{CHECKPOINT_FILE_NAME, Checkpointer, CheckpointsView},

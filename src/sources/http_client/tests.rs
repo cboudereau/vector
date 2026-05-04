@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use http::Uri;
 use tokio::time::Duration;
-use vector_lib::{
+use sol_lib::{
     codecs::{
         CharacterDelimitedDecoderConfig,
         decoding::{CharacterDelimitedDecoderOptions, DeserializerConfig, FramingConfig},
@@ -535,7 +535,7 @@ async fn post_with_body() {
         assert_eq!(log.get("key").unwrap().as_str().unwrap(), "value");
         let number = log.get("number").unwrap();
         match number {
-            vector_lib::event::Value::Integer(n) => assert_eq!(n, 42),
+            sol_lib::event::Value::Integer(n) => assert_eq!(n, 42),
             _ => panic!("Expected integer value"),
         }
     }
@@ -640,7 +640,7 @@ async fn post_with_vrl_body() {
         assert_eq!(log.get("msg").unwrap().as_str().unwrap(), "HELLO");
         let value = log.get("value").unwrap();
         match value {
-            vector_lib::event::Value::Integer(n) => assert_eq!(n, 42),
+            sol_lib::event::Value::Integer(n) => assert_eq!(n, 42),
             _ => panic!("Expected integer value"),
         }
     }
@@ -650,7 +650,7 @@ async fn post_with_vrl_body() {
 #[tokio::test]
 async fn query_vrl_compilation_error() {
     use crate::config::SourceConfig;
-    use vector_lib::source_sender::SourceSender;
+    use sol_lib::source_sender::SourceSender;
 
     let config = HttpClientConfig {
         endpoint: "http://localhost:9999/endpoint".to_string(),
@@ -695,7 +695,7 @@ async fn query_vrl_compilation_error() {
 #[tokio::test]
 async fn body_vrl_compilation_error() {
     use crate::config::SourceConfig;
-    use vector_lib::source_sender::SourceSender;
+    use sol_lib::source_sender::SourceSender;
 
     let config = HttpClientConfig {
         endpoint: "http://localhost:9999/endpoint".to_string(),

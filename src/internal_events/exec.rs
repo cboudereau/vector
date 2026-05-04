@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use metrics::{counter, histogram};
 use tokio::time::error::Elapsed;
-use vector_lib::{
+use sol_lib::{
     NamedInternalEvent,
     internal_event::{
         ComponentEventsDropped, InternalEvent, UNINTENTIONAL, error_stage, error_type,

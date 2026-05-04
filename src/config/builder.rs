@@ -1,7 +1,7 @@
 use std::{path::Path, time::Duration};
 
 use indexmap::IndexMap;
-use vector_lib::{config::GlobalOptions, configurable::configurable_component};
+use sol_lib::{config::GlobalOptions, configurable::configurable_component};
 
 #[cfg(feature = "api")]
 use super::api;

@@ -1,6 +1,6 @@
 use futures::{FutureExt, future};
 use tokio::io;
-use vector_lib::{
+use sol_lib::{
     codecs::{
         JsonSerializerConfig,
         encoding::{Framer, FramingConfig},

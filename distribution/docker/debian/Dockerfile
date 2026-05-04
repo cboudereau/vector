@@ -2,10 +2,10 @@ FROM docker.io/debian:trixie-slim AS builder
 
 WORKDIR /vector
 
-COPY vector_*.deb ./
+COPY sol_*.deb ./
 RUN dpkg -i vector_*_"$(dpkg --print-architecture)".deb
 
-RUN mkdir -p /var/lib/vector
+RUN mkdir -p /var/lib/sol
 
 FROM docker.io/debian:trixie-slim
 
@@ -18,13 +18,13 @@ LABEL org.opencontainers.image.documentation="https://vector.dev/docs"
 # hadolint ignore=DL3008
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tzdata systemd && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /usr/bin/vector /usr/bin/vector
+COPY --from=builder /usr/bin/sol /usr/bin/sol
 COPY --from=builder /usr/share/vector /usr/share/vector
 COPY --from=builder /usr/share/doc/vector /usr/share/doc/vector
-COPY --from=builder /etc/vector /etc/vector
-COPY --from=builder /var/lib/vector /var/lib/vector
+COPY --from=builder /etc/sol /etc/sol
+COPY --from=builder /var/lib/sol /var/lib/sol
 
 # Smoke test
 RUN ["vector", "--version"]
 
-ENTRYPOINT ["/usr/bin/vector"]
+ENTRYPOINT ["/usr/bin/sol"]

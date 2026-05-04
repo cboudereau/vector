@@ -1,8 +1,8 @@
 #![allow(missing_docs)]
 use indexmap::map::IndexMap;
 use serde::{Deserialize, Serialize};
-pub use vector_lib::serde::{bool_or_struct, is_default};
-use vector_lib::{
+pub use sol_lib::serde::{bool_or_struct, is_default};
+use sol_lib::{
     codecs::{
         BytesDecoderConfig, BytesDeserializerConfig,
         decoding::{DeserializerConfig, FramingConfig},

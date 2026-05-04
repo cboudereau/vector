@@ -9,7 +9,7 @@ use pulsar::{
     error::AuthenticationError,
     message::proto,
 };
-use vector_lib::{
+use sol_lib::{
     codecs::{TextSerializerConfig, encoding::SerializerConfig},
     config::DataType,
     lookup::lookup_v2::OptionalTargetPath,

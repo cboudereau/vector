@@ -9,7 +9,7 @@ use futures::FutureExt;
 use http::{StatusCode, Uri};
 use snafu::{ResultExt, Snafu};
 use tower::Service;
-use vector_lib::{
+use sol_lib::{
     configurable::configurable_component,
     event::{KeyString, OtelAttributes},
     sensitive_string::SensitiveString,
@@ -386,7 +386,7 @@ pub mod test_util {
     use std::{fs::File, io::Read};
 
     use chrono::{DateTime, SecondsFormat, Timelike, Utc, offset::TimeZone};
-    use vector_lib::otel_tags;
+    use sol_lib::otel_tags;
 
     use super::*;
     use crate::tls;

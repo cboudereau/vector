@@ -5,10 +5,10 @@ use serde::Serialize;
 use serde_json::{Map, Value};
 use snafu::Snafu;
 use tracing::debug;
-use vector_config::schema::parser::query::{
+use sol_config::schema::parser::query::{
     QueryError, QueryableSchema, SchemaQuerier, SchemaType,
 };
-use vector_config_common::constants;
+use sol_config_common::constants;
 
 #[derive(Debug, Snafu)]
 pub enum RenderError {

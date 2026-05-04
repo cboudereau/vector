@@ -1,7 +1,7 @@
 use async_graphql::{Enum, Object};
 use chrono::{DateTime, Utc};
 use serde_json::Value;
-use vector_lib::{encode_logfmt, event, tap::topology::TapOutput};
+use sol_lib::{encode_logfmt, event, tap::topology::TapOutput};
 
 use super::EventEncodingType;
 

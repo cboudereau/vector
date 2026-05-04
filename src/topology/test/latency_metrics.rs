@@ -3,7 +3,7 @@ use tokio::{
     sync::oneshot,
     time::{Duration, timeout},
 };
-use vector_lib::metrics::Controller;
+use sol_lib::metrics::Controller;
 
 use crate::{
     config::Config,
@@ -37,12 +37,12 @@ async fn component_latency_metrics_emitted() {
 
     assert_histogram_count(
         &run.metrics,
-        "component_latency_seconds",
+        "sol_component_latency_seconds",
         has_component_tags,
     );
     assert_gauge_range(
         &run.metrics,
-        "component_latency_mean_seconds",
+        "sol_component_latency_mean_seconds",
         has_component_tags,
         TRANSFORM_DELAY_MS as f64 / 1000.0,
         run.elapsed_time,

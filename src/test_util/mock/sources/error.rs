@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use futures_util::{FutureExt, future::err};
-use vector_lib::{
+use sol_lib::{
     config::{DataType, SourceOutput},
     configurable::configurable_component,
     schema::Definition,

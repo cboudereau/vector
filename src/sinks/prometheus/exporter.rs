@@ -22,7 +22,7 @@ use stream_cancel::{Trigger, Tripwire};
 use tower::ServiceBuilder;
 use tower_http::compression::CompressionLayer;
 use tracing::{Instrument, Span};
-use vector_lib::{
+use sol_lib::{
     ByteSizeOf, EstimatedJsonEncodedSizeOf,
     configurable::configurable_component,
     internal_event::{
@@ -611,7 +611,7 @@ mod tests {
     use indoc::indoc;
     use similar_asserts::assert_eq;
     use tokio::{sync::oneshot::error::TryRecvError, time};
-    use vector_lib::{
+    use sol_lib::{
         event::OtelAttributes,
         finalization::{BatchNotifier, BatchStatus},
         otel_tags, samples,

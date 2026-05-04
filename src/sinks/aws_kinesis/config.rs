@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use vector_lib::{lookup::lookup_v2::ConfigValuePath, stream::BatcherSettings};
+use sol_lib::{lookup::lookup_v2::ConfigValuePath, stream::BatcherSettings};
 
 use super::{
     KinesisResponse, KinesisService,

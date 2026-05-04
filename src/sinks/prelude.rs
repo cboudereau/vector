@@ -4,7 +4,7 @@
 pub use async_trait::async_trait;
 pub use futures::{FutureExt, StreamExt, future, future::BoxFuture, stream::BoxStream};
 pub use tower::{Service, ServiceBuilder};
-pub use vector_lib::{
+pub use sol_lib::{
     ByteSizeOf, EstimatedJsonEncodedSizeOf,
     buffers::EventCount,
     config::{AcknowledgementsConfig, Input, telemetry},

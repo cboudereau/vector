@@ -9,7 +9,7 @@ use indexmap::IndexMap;
 use regex::{Captures, Regex};
 use serde::{Deserialize, Serialize};
 use toml::value::Table;
-use vector_lib::config::ComponentKey;
+use sol_lib::config::ComponentKey;
 
 use crate::{
     config::{

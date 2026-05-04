@@ -1,7 +1,7 @@
 use std::net::{Ipv4Addr, SocketAddr};
 
 use url::Url;
-use vector_lib::configurable::configurable_component;
+use sol_lib::configurable::configurable_component;
 
 /// API options.
 #[configurable_component(api("api"))]

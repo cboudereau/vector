@@ -1,4 +1,4 @@
-use vector_lib::{
+use sol_lib::{
     codecs::JsonSerializerConfig,
     configurable::configurable_component,
     lookup::lookup_v2::{ConfigValuePath, OptionalTargetPath},

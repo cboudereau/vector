@@ -1,8 +1,8 @@
 use std::{borrow::Cow, fmt::Debug, marker::PhantomData};
 
 use rand::random;
-use vector_lib::lookup::lookup_v2::ConfigValuePath;
-use vector_lib::event::OtelLog;
+use sol_lib::lookup::lookup_v2::ConfigValuePath;
+use sol_lib::event::OtelLog;
 use vrl::path::PathPrefix;
 
 use super::{

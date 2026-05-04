@@ -5,12 +5,12 @@ use criterion::{
     BatchSize, BenchmarkGroup, BenchmarkId, Criterion, SamplingMode, Throughput, criterion_group,
     measurement::WallTime,
 };
-use vector::transforms::dedupe::{
+use sol::transforms::dedupe::{
     common::{CacheConfig, FieldMatchConfig, TimedCacheConfig},
     config::DedupeConfig,
     transform::Dedupe,
 };
-use vector_lib::transform::Transform;
+use sol_lib::transform::Transform;
 
 use crate::common::{FixedLogStream, consume};
 

@@ -4,7 +4,7 @@ use bytes::{BufMut, Bytes, BytesMut};
 use chrono::Utc;
 use http::StatusCode;
 use tokio_util::codec::Decoder;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     codecs::StreamDecodingError,
     internal_event::{CountByteSize, InternalEventHandle as _},
@@ -145,7 +145,7 @@ pub(crate) fn decode_log_body(
                 }
                 Ok(None) => break,
                 Err(error) => {
-                    // Error is logged by `vector_lib::codecs::Decoder`, no further
+                    // Error is logged by `sol_lib::codecs::Decoder`, no further
                     // handling is needed here.
                     if !error.can_continue() {
                         break;

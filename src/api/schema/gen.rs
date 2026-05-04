@@ -1,7 +1,7 @@
 use std::fs;
 
 use indoc::indoc;
-use vector::api::build_schema;
+use sol::api::build_schema;
 
 static INTROSPECTION_QUERY: &str = indoc! {r#"
     query IntrospectionQuery {

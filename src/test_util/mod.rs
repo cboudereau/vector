@@ -35,7 +35,7 @@ use tokio_stream::wrappers::TcpListenerStream;
 #[cfg(unix)]
 use tokio_stream::wrappers::UnixListenerStream;
 use tokio_util::codec::{Encoder, FramedRead, FramedWrite, LinesCodec};
-use vector_lib::{
+use sol_lib::{
     buffers::topology::channel::LimitedReceiver,
     event::{
         BatchNotifier, BatchStatusReceiver, Event, EventArray, MetricKind, OtelAttributes,
@@ -126,12 +126,12 @@ pub fn trace_init() {
     #[cfg(not(unix))]
     let color = false;
 
-    let levels = std::env::var("VECTOR_LOG").unwrap_or_else(|_| "error".to_string());
+    let levels = std::env::var("SOL_LOG").unwrap_or_else(|_| "error".to_string());
 
     trace::init(color, false, &levels, 10);
 
     // Initialize metrics as well
-    vector_lib::metrics::init_test();
+    sol_lib::metrics::init_test();
 }
 
 pub async fn send_lines(

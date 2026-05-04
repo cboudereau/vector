@@ -9,7 +9,7 @@ use hyper::Body;
 use itertools::Itertools;
 use serde::Deserialize;
 use url::form_urlencoded;
-use vector_lib::codecs::encoding::format::{ArrowEncodingError, SchemaProvider};
+use sol_lib::codecs::encoding::format::{ArrowEncodingError, SchemaProvider};
 
 use crate::http::{Auth, HttpClient};
 

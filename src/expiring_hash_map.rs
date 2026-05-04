@@ -169,7 +169,7 @@ where
     /// ```rust
     /// # let rt = tokio::runtime::Runtime::new().unwrap();
     /// # rt.block_on(async {
-    /// use vector::expiring_hash_map::ExpiringHashMap;
+    /// use sol::expiring_hash_map::ExpiringHashMap;
     /// use std::time::Duration;
     ///
     /// let mut map: ExpiringHashMap<String, String> = ExpiringHashMap::default();

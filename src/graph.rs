@@ -11,12 +11,12 @@ pub struct Opts {
     /// Read configuration from one or more files. Wildcard paths are supported.
     /// File format is detected from the file name.
     /// If zero files are specified the default config path
-    /// `/etc/vector/vector.yaml` will be targeted.
+    /// `/etc/sol/sol.yaml` will be targeted.
     #[arg(
         id = "config",
         short,
         long,
-        env = "VECTOR_CONFIG",
+        env = "SOL_CONFIG",
         value_delimiter(',')
     )]
     paths: Vec<PathBuf>,
@@ -41,7 +41,7 @@ pub struct Opts {
         id = "config-dir",
         short = 'C',
         long,
-        env = "VECTOR_CONFIG_DIR",
+        env = "SOL_CONFIG_DIR",
         value_delimiter(',')
     )]
     pub config_dirs: Vec<PathBuf>,
@@ -56,7 +56,7 @@ pub struct Opts {
     /// Disable interpolation of environment variables in configuration files.
     #[arg(
         long,
-        env = "VECTOR_DISABLE_ENV_VAR_INTERPOLATION",
+        env = "SOL_DISABLE_ENV_VAR_INTERPOLATION",
         default_value = "false"
     )]
     pub disable_env_var_interpolation: bool,

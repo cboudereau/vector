@@ -13,7 +13,7 @@ pub struct Cli {
     username: String,
 
     /// Vector version, defaults to $`VECTOR_VERSION` if not specified.
-    #[arg(long, env = "VECTOR_VERSION")]
+    #[arg(long, env = "SOL_VERSION")]
     vector_version: String,
 }
 
@@ -29,7 +29,7 @@ impl Cli {
         );
         clone_and_setup_git(&self.username)?;
 
-        let vector_version = env::var("VECTOR_VERSION")?;
+        let vector_version = env::var("SOL_VERSION")?;
         debug!("Updating the vector.rb formula for VECTOR_VERSION={vector_version}.");
         update_formula("Formula/vector.rb", &vector_version)?;
 

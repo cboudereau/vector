@@ -4,7 +4,7 @@ use std::{
 };
 
 use futures::{FutureExt, TryFutureExt};
-use vector_lib::{
+use sol_lib::{
     configurable::configurable_component,
     lookup::{event_path, lookup_v2::ConfigValuePath},
     schema::Requirement,
@@ -228,7 +228,7 @@ fn default_doc_type() -> String {
 }
 
 fn query_examples() -> HashMap<String, String> {
-    HashMap::<_, _>::from_iter([("X-Powered-By".to_owned(), "Vector".to_owned())])
+    HashMap::<_, _>::from_iter([("X-Powered-By".to_owned(), "Sol".to_owned())])
 }
 
 impl Default for ElasticsearchConfig {

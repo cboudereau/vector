@@ -7,7 +7,7 @@ use http::{
 };
 use hyper::Body;
 use snafu::ResultExt;
-use vector_lib::codecs::encoding::Framer;
+use sol_lib::codecs::encoding::Framer;
 
 use crate::{
     Error,

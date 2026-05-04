@@ -5,7 +5,7 @@ use futures::stream;
 use ordered_float::NotNan;
 use serde::{Deserialize, Serialize};
 use sqlx::{Connection, FromRow, PgConnection};
-use vector_lib::event::{
+use sol_lib::event::{
     BatchNotifier, BatchStatus, BatchStatusReceiver, Event, OtelLog, MetricKind,
     OtelMetric,
 };

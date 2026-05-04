@@ -12,7 +12,7 @@ use tokio::{
 };
 use tokio_stream::wrappers::IntervalStream;
 use tokio_util::codec::FramedRead;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     codecs::{
         Decoder, DecodingConfig, StreamDecodingError,
@@ -25,7 +25,7 @@ use vector_lib::{
 use vrl::value::Kind;
 use vrl::value::Value;
 
-use vector_lib::lookup;
+use sol_lib::lookup;
 use crate::{
     SourceSender,
     config::{SourceConfig, SourceContext, SourceOutput},
@@ -697,7 +697,7 @@ fn spawn_reader_thread<R: 'static + AsyncRead + Unpin + std::marker::Send>(
                     }
                 }
                 Err(error) => {
-                    // Error is logged by `vector_lib::codecs::Decoder`, no further
+                    // Error is logged by `sol_lib::codecs::Decoder`, no further
                     // handling is needed here.
                     if !error.can_continue() {
                         break;

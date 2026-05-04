@@ -1,5 +1,5 @@
 use enum_dispatch::enum_dispatch;
-use vector_lib::configurable::NamedComponent;
+use sol_lib::configurable::NamedComponent;
 
 use crate::{providers::BuildResult, signal};
 

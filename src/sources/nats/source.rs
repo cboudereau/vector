@@ -3,7 +3,7 @@ use chrono::Utc;
 use futures::StreamExt;
 use snafu::ResultExt;
 use tokio_util::codec::FramedRead;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     codecs::decoding::StreamDecodingError,
     internal_event::{
@@ -73,7 +73,7 @@ pub async fn process_message(
             }
             Err(error) => {
                 success = false;
-                // Error is logged by `vector_lib::codecs::Decoder`, no further
+                // Error is logged by `sol_lib::codecs::Decoder`, no further
                 // handling is needed here.
                 if !error.can_continue() {
                     break;

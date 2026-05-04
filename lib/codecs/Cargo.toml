@@ -26,10 +26,10 @@ dyn-clone = { version = "1", default-features = false }
 flate2.workspace = true
 futures.workspace = true
 influxdb-line-protocol = { version = "2", default-features = false }
-lookup = { package = "vector-lookup", path = "../vector-lookup", default-features = false, features = ["test"] }
+lookup = { package = "sol-lookup", path = "../sol-lookup", default-features = false, features = ["test"] }
 memchr = { version = "2", default-features = false }
 metrics.workspace = true
-vector-opentelemetry-proto = { path = "../opentelemetry-proto", optional = true }
+sol-opentelemetry-proto = { path = "../opentelemetry-proto", optional = true }
 ordered-float.workspace = true
 prost.workspace = true
 prost-reflect.workspace = true
@@ -48,12 +48,12 @@ tokio-util = { version = "0.7", default-features = false, features = ["codec"] }
 tokio = { workspace = true, features = ["full"] }
 tracing.workspace = true
 vrl.workspace = true
-vector-common = { path = "../vector-common", default-features = false }
-vector-common-macros.workspace = true
-vector-config = { path = "../vector-config", default-features = false }
-vector-config-macros = { path = "../vector-config-macros", default-features = false }
-vector-core = { path = "../vector-core", default-features = false, features = ["vrl"] }
-vector-vrl-functions.workspace = true
+sol-common = { path = "../sol-common", default-features = false }
+sol-common-macros.workspace = true
+sol-config = { path = "../sol-config", default-features = false }
+sol-config-macros = { path = "../sol-config-macros", default-features = false }
+sol-core = { path = "../sol-core", default-features = false, features = ["vrl"] }
+sol-vrl-functions.workspace = true
 toml = { version = "0.9.8", optional = true }
 
 [dev-dependencies]
@@ -63,7 +63,7 @@ toml.workspace = true
 opentelemetry-proto = { version = "0.27", default-features = false, features = ["full", "with-serde"] }
 tokio = { workspace = true, features = ["test-util"] }
 similar-asserts = "1.7.0"
-vector-core = { path = "../vector-core", default-features = false, features = ["vrl", "test"] }
+sol-core = { path = "../sol-core", default-features = false, features = ["vrl", "test"] }
 rstest = "0.26.1"
 tracing-test = "0.2.6"
 uuid.workspace = true
@@ -71,6 +71,6 @@ vrl.workspace = true
 
 [features]
 arrow = ["dep:arrow", "dep:serde_arrow"]
-opentelemetry = ["dep:vector-opentelemetry-proto"]
+opentelemetry = ["dep:sol-opentelemetry-proto"]
 syslog = ["dep:syslog_loose", "dep:strum", "dep:derive_more", "dep:serde-aux", "dep:toml"]
 test = []

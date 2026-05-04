@@ -13,7 +13,7 @@ use pulsar::{
     message::proto::MessageIdData,
 };
 use tokio_util::codec::FramedRead;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     codecs::{
         Decoder, DecodingConfig, StreamDecodingError,
@@ -412,7 +412,7 @@ async fn parse_message(
                     }
                 }
                 Err(error) => {
-                    // Error is logged by `vector_lib::codecs`, no further
+                    // Error is logged by `sol_lib::codecs`, no further
                     // handling is needed here.
                     if !error.can_continue() {
                         break;

@@ -29,7 +29,7 @@ env:
   TEST_APPSIGNAL_PUSH_API_KEY: ${{ secrets.TEST_APPSIGNAL_PUSH_API_KEY }}
   AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
   RUST_BACKTRACE: full
-  VECTOR_LOG: vector=debug
+  SOL_LOG: sol=debug
   VERBOSE: true
   CI: true
   PROFILE: debug

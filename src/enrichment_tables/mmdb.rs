@@ -5,7 +5,7 @@
 use std::{fs, net::IpAddr, path::PathBuf, sync::Arc, time::SystemTime};
 
 use maxminddb::Reader;
-use vector_lib::{
+use sol_lib::{
     configurable::configurable_component,
     enrichment::{Case, Condition, IndexHandle, Table},
 };
@@ -42,7 +42,7 @@ impl EnrichmentTableConfig for MmdbConfig {
 }
 
 #[derive(Clone)]
-/// A struct that implements [vector_lib::enrichment::Table] to handle loading enrichment data from a MaxMind database.
+/// A struct that implements [sol_lib::enrichment::Table] to handle loading enrichment data from a MaxMind database.
 pub struct Mmdb {
     config: MmdbConfig,
     dbreader: Arc<maxminddb::Reader<Vec<u8>>>,

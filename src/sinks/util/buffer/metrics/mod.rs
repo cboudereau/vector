@@ -1,4 +1,4 @@
-use vector_lib::event::OtelMetric;
+use sol_lib::event::OtelMetric;
 
 use crate::sinks::util::{
     Merged, SinkBatchSettings,
@@ -90,7 +90,7 @@ impl Batch for MetricsBuffer {
 #[cfg(test)]
 mod tests {
     use similar_asserts::assert_eq;
-    use vector_lib::{
+    use sol_lib::{
         event::{
             OtelMetric,
             metric::{
@@ -132,7 +132,7 @@ mod tests {
         OtelMetric::new_histogram_from_samples(
             format!("dist-{num}"),
             kind,
-            &vector_lib::samples![num as f64 => rate],
+            &sol_lib::samples![num as f64 => rate],
         )
     }
 
@@ -143,7 +143,7 @@ mod tests {
         cfactor: u64,
         sum: f64,
     ) -> OtelMetric {
-        let buckets = vector_lib::buckets![
+        let buckets = sol_lib::buckets![
             1.0 => cfactor,
             bpower.exp2() => cfactor * 2,
             4.0f64.powf(bpower) => cfactor * 4
@@ -161,7 +161,7 @@ mod tests {
         // OTLP Summary has no aggregation temporality, so `kind` is accepted
         // for call-site compatibility but ignored (matches prior Metric→Otel
         // round-trip behavior, which always returned `Absolute`).
-        let quantiles = vector_lib::quantiles![
+        let quantiles = sol_lib::quantiles![
             0.0 => factor,
             0.5 => factor * 2.0,
             1.0 => factor * 4.0

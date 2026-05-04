@@ -1,7 +1,7 @@
 use std::{fmt, sync::Arc};
 
 use serde::Serialize;
-use vector_lib::event::{MetricView, OtelMetric};
+use sol_lib::event::{MetricView, OtelMetric};
 use vrl::path::OwnedValuePath;
 
 use super::request_builder::HecMetricsRequestBuilder;

@@ -11,7 +11,7 @@ use flate2::read::ZlibDecoder;
 use smallvec::{SmallVec, smallvec};
 use snafu::{ResultExt, Snafu};
 use tokio_util::codec::Decoder;
-use vector_lib::{
+use sol_lib::{
     codecs::{BytesDeserializerConfig, StreamDecodingError},
     configurable::configurable_component,
     ipallowlist::IpAllowlistConfig,
@@ -628,7 +628,7 @@ impl From<LogstashEventFrame> for Event {
             .collect();
         Event::Log(OtelLog::from_value_map(
             Value::Object(map),
-            vector_lib::event::EventMetadata::default(),
+            sol_lib::event::EventMetadata::default(),
         ))
     }
 }

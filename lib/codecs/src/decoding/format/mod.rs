@@ -27,7 +27,7 @@ pub use protobuf::{ProtobufDeserializer, ProtobufDeserializerConfig, ProtobufDes
 use smallvec::SmallVec;
 #[cfg(feature = "syslog")]
 pub use syslog::{SyslogDeserializer, SyslogDeserializerConfig, SyslogDeserializerOptions};
-use vector_core::event::Event;
+use sol_core::event::Event;
 
 pub use self::{
     bytes::{BytesDeserializer, BytesDeserializerConfig},
@@ -47,7 +47,7 @@ pub trait Deserializer: DynClone + Send + Sync {
     fn parse(
         &self,
         bytes: Bytes,
-    ) -> vector_common::Result<SmallVec<[Event; 1]>>;
+    ) -> sol_common::Result<SmallVec<[Event; 1]>>;
 }
 
 dyn_clone::clone_trait_object!(Deserializer);

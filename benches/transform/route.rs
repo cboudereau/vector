@@ -6,14 +6,14 @@ use criterion::{
     BatchSize, BenchmarkGroup, BenchmarkId, Criterion, SamplingMode, Throughput, criterion_group,
     measurement::WallTime,
 };
-use vector::{
+use sol::{
     config::TransformContext,
     transforms::{
         TransformOutputsBuf,
         route::{Route, RouteConfig},
     },
 };
-use vector_lib::{
+use sol_lib::{
     config::{DataType, TransformOutput},
     event::{Event, EventContainer, EventMetadata, OtelLog},
     transform::SyncTransform,

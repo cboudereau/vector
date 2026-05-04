@@ -6,8 +6,8 @@ use std::{
 
 use futures::Stream;
 use indexmap::IndexMap;
-use vector_lib::stream::expiration_map::{Emitter, map_with_expiration};
-use vector_vrl_metrics::MetricsStorage;
+use sol_lib::stream::expiration_map::{Emitter, map_with_expiration};
+use sol_vrl_metrics::MetricsStorage;
 use vrl::{
     path::{OwnedTargetPath, parse_target_path},
     prelude::KeyString,
@@ -176,7 +176,7 @@ fn validate_merge_strategies(strategies: IndexMap<KeyString, MergeStrategy>) -> 
 impl Reduce {
     pub fn new(
         config: &ReduceConfig,
-        enrichment_tables: &vector_lib::enrichment::TableRegistry,
+        enrichment_tables: &sol_lib::enrichment::TableRegistry,
         metrics_storage: &MetricsStorage,
     ) -> crate::Result<Self> {
         if config.ends_when.is_some() && config.starts_when.is_some() {
@@ -362,7 +362,7 @@ mod test {
     use serde_json::json;
     use tokio::sync::mpsc;
     use tokio_stream::wrappers::ReceiverStream;
-    use vector_lib::{enrichment::TableRegistry, lookup::owned_value_path};
+    use sol_lib::{enrichment::TableRegistry, lookup::owned_value_path};
     use vrl::value::Kind;
 
     use super::*;

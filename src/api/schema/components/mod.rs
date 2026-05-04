@@ -11,7 +11,7 @@ use std::{
 
 use async_graphql::{Enum, InputObject, Interface, Object, Subscription};
 use tokio_stream::{Stream, StreamExt, wrappers::BroadcastStream};
-use vector_lib::internal_event::DEFAULT_OUTPUT;
+use sol_lib::internal_event::DEFAULT_OUTPUT;
 
 use crate::{
     api::schema::{

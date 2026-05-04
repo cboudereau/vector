@@ -183,7 +183,7 @@ fn main() {
     let rust_version = tracker
         .get_env_var("CARGO_PKG_RUST_VERSION")
         .expect("Cargo-provided environment variables should always exist!");
-    let build_desc = tracker.get_env_var("VECTOR_BUILD_DESC");
+    let build_desc = tracker.get_env_var("SOL_BUILD_DESC");
 
     // Get the git short hash of the HEAD.
     // Note that if Vector is compiled within a container, proper git permissions must be set for
@@ -240,7 +240,7 @@ fn main() {
     );
     constants.add_required_constant("DEBUG", "Level of debug info for Vector.", debug);
     constants.add_optional_constant(
-        "VECTOR_BUILD_DESC",
+        "SOL_BUILD_DESC",
         "Special build description, related to versioned releases.",
         build_desc,
     );

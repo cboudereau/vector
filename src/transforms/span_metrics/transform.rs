@@ -10,7 +10,7 @@ use opentelemetry_proto::tonic::{
         Metric as OtelMetricProto,
     },
 };
-use vector_lib::transform::TaskTransform;
+use sol_lib::transform::TaskTransform;
 
 use crate::event::{Event, OtelMetric, otel_event::string_value};
 

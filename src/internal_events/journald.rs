@@ -1,5 +1,5 @@
 use metrics::counter;
-use vector_lib::{
+use sol_lib::{
     NamedInternalEvent,
     codecs::decoding::BoxedFramingError,
     internal_event::{InternalEvent, error_stage, error_type},

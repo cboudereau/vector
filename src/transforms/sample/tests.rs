@@ -1,7 +1,7 @@
 use approx::assert_relative_eq;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
-use vector_lib::lookup::lookup_v2::OptionalValuePath;
+use sol_lib::lookup::lookup_v2::OptionalValuePath;
 use vrl::owned_value_path;
 
 use crate::{

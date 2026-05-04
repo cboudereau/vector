@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, fmt::Write as _};
 
 use chrono::Utc;
 use indexmap::map::IndexMap;
-use vector_lib::{
+use sol_lib::{
     event::OtelAttributes,
     prometheus::parser::{METRIC_NAME_LABEL, proto},
 };
@@ -380,7 +380,7 @@ mod tests {
     use chrono::{DateTime, TimeZone, Timelike};
     use indoc::indoc;
     use similar_asserts::assert_eq;
-    use vector_lib::otel_tags;
+    use sol_lib::otel_tags;
 
     use super::*;
     use crate::{
@@ -585,7 +585,7 @@ mod tests {
     }
 
     fn encode_histogram_from_samples<T: MetricCollector>() -> T::Output {
-        let samples = vector_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2];
+        let samples = sol_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2];
         let otel = OtelMetric::new_histogram_from_samples("requests", MetricKind::Absolute, &samples)
             .with_timestamp(Some(timestamp()));
         encode_one::<T>(Some("vector"), &[], &[], otel)
@@ -713,7 +713,7 @@ mod tests {
     }
 
     fn encode_summary<T: MetricCollector>() -> T::Output {
-        let quantiles = vector_lib::quantiles![0.01 => 1.5, 0.5 => 2.0, 0.99 => 3.0];
+        let quantiles = sol_lib::quantiles![0.01 => 1.5, 0.5 => 2.0, 0.99 => 3.0];
         let otel = OtelMetric::new_summary("requests", &quantiles, 6, 12.0)
             .with_tags(Some(tags()))
             .with_timestamp(Some(timestamp()));
@@ -722,7 +722,7 @@ mod tests {
 
     #[test]
     fn encodes_histogram_from_samples_with_tags_text() {
-        let samples = vector_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2];
+        let samples = sol_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2];
         let otel = OtelMetric::new_histogram_from_samples("requests", MetricKind::Absolute, &samples)
             .with_tags(Some(tags()))
             .with_timestamp(Some(timestamp()));
@@ -743,7 +743,7 @@ mod tests {
 
     #[test]
     fn encodes_histogram_from_samples_with_tags_request() {
-        let samples = vector_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2];
+        let samples = sol_lib::samples![1.0 => 3, 2.0 => 3, 3.0 => 2];
         let otel = OtelMetric::new_histogram_from_samples("requests", MetricKind::Absolute, &samples)
             .with_tags(Some(tags()))
             .with_timestamp(Some(timestamp()));

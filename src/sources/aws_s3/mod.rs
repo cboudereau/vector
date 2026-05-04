@@ -5,7 +5,7 @@ use aws_smithy_types::byte_stream::ByteStream;
 use futures::{TryStreamExt, stream, stream::StreamExt};
 use snafu::Snafu;
 use tokio_util::io::StreamReader;
-use vector_lib::{
+use sol_lib::{
     codecs::{
         NewlineDelimitedDecoderConfig,
         decoding::{DeserializerConfig, FramingConfig, NewlineDelimitedDecoderOptions},
@@ -442,7 +442,7 @@ mod integration_tests {
     use aws_sdk_s3::Client as S3Client;
     use aws_sdk_sqs::{Client as SqsClient, types::QueueAttributeName};
     use similar_asserts::assert_eq;
-    use vector_lib::codecs::{JsonDeserializerConfig, decoding::DeserializerConfig};
+    use sol_lib::codecs::{JsonDeserializerConfig, decoding::DeserializerConfig};
     use vrl::value::Value;
 
     use super::*;

@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use indexmap::IndexMap;
-use vector_lib::config::OutputId;
+use sol_lib::config::OutputId;
 
 use super::{ComponentKey, Config, EnrichmentTableOuter};
 

@@ -1,7 +1,7 @@
 use std::net::Ipv4Addr;
 
 use metrics::{counter, histogram};
-use vector_lib::{
+use sol_lib::{
     NamedInternalEvent,
     internal_event::{
         ComponentEventsDropped, InternalEvent, UNINTENTIONAL, error_stage, error_type,

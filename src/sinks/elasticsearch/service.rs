@@ -8,7 +8,7 @@ use futures::future::BoxFuture;
 use http::{Response, Uri};
 use hyper::{Body, Request, service::Service};
 use tower::ServiceExt;
-use vector_lib::{
+use sol_lib::{
     ByteSizeOf,
     json_size::JsonSize,
     request_metadata::{GroupedCountByteSize, MetaDescriptive, RequestMetadata},

@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use futures::stream;
-use vector_lib::event::{Event, OtelLog};
+use sol_lib::event::{Event, OtelLog};
 
 use crate::{
     config::{SinkConfig, SinkContext},

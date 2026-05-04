@@ -2,7 +2,7 @@ use std::convert::Infallible;
 
 use bytes::BytesMut;
 use tokio_util::codec::Encoder;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     config::telemetry,
     event::{EventFinalizers, Finalizable, OtelMetric},

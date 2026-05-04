@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 use opentelemetry_proto::tonic::common::v1::any_value::Value as OtelValueKind;
 use opentelemetry_proto::tonic::common::v1::AnyValue;
 use similar_asserts::assert_eq;
-use vector_lib::event;
+use sol_lib::event;
 
 use crate::{
     event::{Event, OtelLog, string_value},

@@ -2,7 +2,7 @@ use std::{collections::HashMap, num::ParseFloatError, sync::Arc};
 
 use chrono::Utc;
 use indexmap::IndexMap;
-use vector_lib::{
+use sol_lib::{
     configurable::configurable_component,
     event::{
         OtelMetric,
@@ -462,13 +462,13 @@ mod tests {
     use similar_asserts::assert_eq;
     use tokio::sync::mpsc;
     use tokio_stream::wrappers::ReceiverStream;
-    use vector_lib::{
+    use sol_lib::{
         config::ComponentKey,
         event::ObjectMap,
         otel_tags,
     };
 
-    use vector_lib::lookup::{OwnedTargetPath, owned_value_path};
+    use sol_lib::lookup::{OwnedTargetPath, owned_value_path};
 
     use super::*;
     use crate::{

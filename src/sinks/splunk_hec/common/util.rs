@@ -5,7 +5,7 @@ use futures_util::future::BoxFuture;
 use http::{Request, StatusCode, Uri};
 use hyper::Body;
 use snafu::{ResultExt, Snafu};
-use vector_lib::{
+use sol_lib::{
     config::proxy::ProxyConfig,
     event::EventRef,
     lookup::{lookup_v2::{OptionalTargetPath, OptionalValuePath}, owned_value_path},
@@ -145,7 +145,7 @@ pub fn config_host_key() -> OptionalValuePath {
 
 pub fn config_timestamp_key_target_path() -> OptionalTargetPath {
     OptionalTargetPath {
-        path: Some(vector_lib::lookup::OwnedTargetPath::event(owned_value_path!("time_unix_nano"))),
+        path: Some(sol_lib::lookup::OwnedTargetPath::event(owned_value_path!("time_unix_nano"))),
     }
 }
 
@@ -170,7 +170,7 @@ pub fn render_template_string<'a>(
 mod tests {
     use bytes::Bytes;
     use http::{HeaderValue, Uri};
-    use vector_lib::config::proxy::ProxyConfig;
+    use sol_lib::config::proxy::ProxyConfig;
     use wiremock::{
         Mock, MockServer, ResponseTemplate,
         matchers::{header, method, path},
@@ -398,7 +398,7 @@ mod integration_tests {
 
     use http::StatusCode;
     use tokio::time::Duration;
-    use vector_lib::config::proxy::ProxyConfig;
+    use sol_lib::config::proxy::ProxyConfig;
     use warp::Filter;
 
     use super::{

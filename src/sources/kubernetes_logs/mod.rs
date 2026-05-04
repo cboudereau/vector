@@ -21,7 +21,7 @@ use kube::{
 };
 use lifecycle::Lifecycle;
 use serde_with::serde_as;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf, TimeZone,
     codecs::{BytesDeserializer, BytesDeserializerConfig},
     configurable::configurable_component,
@@ -75,7 +75,7 @@ use self::{
 };
 
 /// The `self_node_name` value env var key.
-const SELF_NODE_NAME_ENV_KEY: &str = "VECTOR_SELF_NODE_NAME";
+const SELF_NODE_NAME_ENV_KEY: &str = "SOL_SELF_NODE_NAME";
 
 /// Configuration for the `kubernetes_logs` source.
 #[serde_as]
@@ -1046,7 +1046,7 @@ fn prepare_label_selector(selector: &str) -> String {
 #[cfg(test)]
 mod tests {
     use similar_asserts::assert_eq;
-    use vector_lib::{
+    use sol_lib::{
         lookup::owned_value_path,
         schema::Definition,
     };

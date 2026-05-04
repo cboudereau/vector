@@ -32,7 +32,7 @@ pub(super) struct AmqpSink {
     routing_key: Option<Template>,
     properties: Option<AmqpPropertiesConfig>,
     transformer: Transformer,
-    encoder: vector_lib::codecs::Encoder<()>,
+    encoder: sol_lib::codecs::Encoder<()>,
 }
 
 impl AmqpSink {
@@ -42,7 +42,7 @@ impl AmqpSink {
 
         let transformer = config.encoding.transformer();
         let serializer = config.encoding.build()?;
-        let encoder = vector_lib::codecs::Encoder::<()>::new(serializer);
+        let encoder = sol_lib::codecs::Encoder::<()>::new(serializer);
 
         Ok(AmqpSink {
             channels,

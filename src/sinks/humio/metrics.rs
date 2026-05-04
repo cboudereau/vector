@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use futures::StreamExt;
 use futures_util::stream::BoxStream;
 use indoc::indoc;
-use vector_lib::{
+use sol_lib::{
     codecs::JsonSerializerConfig,
     configurable::configurable_component,
     lookup::lookup_v2::{ConfigValuePath, OptionalTargetPath, OptionalValuePath},
@@ -228,7 +228,7 @@ mod tests {
     use futures::stream;
     use indoc::indoc;
     use similar_asserts::assert_eq;
-    use vector_lib::otel_tags;
+    use sol_lib::otel_tags;
 
     use super::*;
     use crate::{
@@ -301,7 +301,7 @@ mod tests {
                 OtelMetric::new_histogram_from_samples(
                     "metric2",
                     MetricKind::Absolute,
-                    &vector_lib::samples![1.0 => 100, 2.0 => 200, 3.0 => 300],
+                    &sol_lib::samples![1.0 => 100, 2.0 => 200, 3.0 => 300],
                 )
                 .with_tags(Some(otel_tags!("os.host" => "somehost")))
                 .with_timestamp(Some(

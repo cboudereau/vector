@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use futures::{FutureExt, StreamExt, stream::BoxStream};
-use vector_lib::configurable::configurable_component;
+use sol_lib::configurable::configurable_component;
 
 use crate::{
     config::{AcknowledgementsConfig, Input, SinkConfig, SinkContext},

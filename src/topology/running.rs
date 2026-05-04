@@ -14,7 +14,7 @@ use tokio::{
     time::{Duration, Instant, interval, sleep_until},
 };
 use tracing::Instrument;
-use vector_lib::{
+use sol_lib::{
     buffers::topology::channel::BufferSender,
     shutdown::ShutdownSignal,
     tap::topology::{TapOutput, TapResource, WatchRx, WatchTx},

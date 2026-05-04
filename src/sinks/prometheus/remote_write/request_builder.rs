@@ -2,7 +2,7 @@ use std::io;
 
 use bytes::{Bytes, BytesMut};
 use prost::Message;
-use vector_lib::{config::telemetry, event::OtelMetric};
+use sol_lib::{config::telemetry, event::OtelMetric};
 
 use super::{PartitionKey, sink::EventCollection};
 use crate::sinks::{

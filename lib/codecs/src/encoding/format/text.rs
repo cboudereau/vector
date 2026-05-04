@@ -1,7 +1,7 @@
 use bytes::{BufMut, BytesMut};
 use tokio_util::codec::Encoder;
-use vector_config_macros::configurable_component;
-use vector_core::{config::DataType, event::Event, schema};
+use sol_config_macros::configurable_component;
+use sol_core::{config::DataType, event::Event, schema};
 
 use crate::{MetricTagValues, encoding::format::common::get_serializer_schema_requirement};
 
@@ -13,7 +13,7 @@ pub struct TextSerializerConfig {
     ///
     /// When set to `single`, only the last non-bare value of tags are displayed with the
     /// metric.  When set to `full`, all metric tags are exposed as separate assignments.
-    #[serde(default, skip_serializing_if = "vector_core::serde::is_default")]
+    #[serde(default, skip_serializing_if = "sol_core::serde::is_default")]
     pub metric_tag_values: MetricTagValues,
 }
 
@@ -59,7 +59,7 @@ impl TextSerializer {
 }
 
 impl Encoder<Event> for TextSerializer {
-    type Error = vector_common::Error;
+    type Error = sol_common::Error;
 
     fn encode(&mut self, event: Event, buffer: &mut BytesMut) -> Result<(), Self::Error> {
         match event {
@@ -83,7 +83,7 @@ impl Encoder<Event> for TextSerializer {
 #[cfg(test)]
 mod tests {
     use bytes::{Bytes, BytesMut};
-    use vector_core::event::{MetricKind, OtelAttributes, OtelLog, OtelMetric};
+    use sol_core::event::{MetricKind, OtelAttributes, OtelLog, OtelMetric};
 
     use super::*;
 
@@ -142,7 +142,7 @@ mod tests {
     #[test]
     fn serialize_otel_log() {
         use opentelemetry_proto::tonic::common::v1::AnyValue;
-        use vector_core::event::OtelLog;
+        use sol_core::event::OtelLog;
 
         let event = Event::Log(OtelLog::new(
             opentelemetry_proto::tonic::logs::v1::LogRecord {

@@ -6,8 +6,8 @@ use http::{
 };
 use hyper::{Error, body::HttpBody};
 use metrics::{counter, histogram};
-use vector_lib::NamedInternalEvent;
-use vector_lib::internal_event::{InternalEvent, error_stage, error_type};
+use sol_lib::NamedInternalEvent;
+use sol_lib::internal_event::{InternalEvent, error_stage, error_type};
 
 #[derive(Debug, NamedInternalEvent)]
 pub struct AboutToSendHttpRequest<'a, T> {

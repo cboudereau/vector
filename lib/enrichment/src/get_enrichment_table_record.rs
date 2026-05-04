@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, sync::LazyLock};
 
-use vector_vrl_category::Category;
+use sol_vrl_category::Category;
 use vrl::prelude::*;
 
 use crate::{

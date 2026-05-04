@@ -17,7 +17,7 @@ use serde_json::json;
 use snafu::Snafu;
 use tokio_util::codec::Encoder as _;
 use tower::{Service, ServiceBuilder};
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     config::{AcknowledgementsConfig, Input, telemetry},
     configurable::configurable_component,
@@ -239,7 +239,7 @@ pub struct ChronicleUnstructuredConfig {
     pub log_type: Template,
 
     /// The default `log_type` to attach to events if the template in `log_type` cannot be resolved.
-    #[configurable(metadata(docs::examples = "VECTOR_DEV"))]
+    #[configurable(metadata(docs::examples = "SOL_DEV"))]
     pub fallback_log_type: Option<String>,
 
     #[configurable(derived)]
@@ -266,7 +266,7 @@ impl GenerateConfig for ChronicleUnstructuredConfig {
             namespace = "namespace"
             compression = "gzip"
             log_type = "log_type"
-            fallback_log_type = "VECTOR_DEV"
+            fallback_log_type = "SOL_DEV"
             encoding.codec = "text"
         "#})
         .unwrap()
@@ -582,7 +582,7 @@ impl ChronicleRequestBuilder {
         let transformer = config.encoding.transformer();
         let serializer = config.encoding.config().build()?;
         let compression = Compression::from(config.compression);
-        let encoder = vector_lib::codecs::Encoder::<()>::new(serializer);
+        let encoder = sol_lib::codecs::Encoder::<()>::new(serializer);
         let encoder = ChronicleEncoder {
             customer_id: config.customer_id.clone(),
             labels: config.labels.as_ref().map(|labs| {
@@ -673,7 +673,7 @@ impl Service<ChronicleRequest> for ChronicleService {
 mod integration_tests {
     use reqwest::{Client, Method, Response};
     use serde::{Deserialize, Serialize};
-    use vector_lib::event::{BatchNotifier, BatchStatus};
+    use sol_lib::event::{BatchNotifier, BatchStatus};
 
     use super::*;
     use crate::test_util::{

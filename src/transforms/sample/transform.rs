@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt};
 
-use vector_lib::lookup::lookup_v2::OptionalValuePath;
+use sol_lib::lookup::lookup_v2::OptionalValuePath;
 
 use crate::{
     conditions::Condition,

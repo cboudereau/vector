@@ -40,7 +40,7 @@ pub mod trace_to_log;
 #[cfg(feature = "transforms-window")]
 pub mod window;
 
-pub use vector_lib::transform::{
+pub use sol_lib::transform::{
     FunctionTransform, OutputBuffer, SyncTransform, TaskTransform, Transform, TransformOutputs,
     TransformOutputsBuf,
 };
@@ -51,7 +51,7 @@ mod test {
     use futures_util::SinkExt;
     use tokio::sync::mpsc;
     use tokio_util::sync::PollSender;
-    use vector_lib::transform::FunctionTransform;
+    use sol_lib::transform::FunctionTransform;
 
     use crate::{
         config::{

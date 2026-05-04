@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use indoc::indoc;
-use vector_lib::transform::TransformOutputsBuf;
+use sol_lib::transform::TransformOutputsBuf;
 
 use crate::{
     config::{ConfigBuilder, DataType, TransformOutput, build_unit_tests},

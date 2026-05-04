@@ -14,7 +14,7 @@ use futures_util::{Stream, StreamExt, stream::Map};
 use pin_project::pin_project;
 use tower::Service;
 use tracing::Span;
-use vector_lib::{
+use sol_lib::{
     ByteSizeOf,
     event::{Finalizable, OtelMetric},
     partition::Partitioner,

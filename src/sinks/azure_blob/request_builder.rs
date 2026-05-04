@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use chrono::Utc;
 use uuid::Uuid;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf, codecs::encoding::Framer, request_metadata::RequestMetadata,
 };
 

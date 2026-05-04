@@ -13,7 +13,7 @@ use rand::{Rng, rng};
 use rand_distr::Alphanumeric;
 use snafu::Snafu;
 use tower::Service;
-use vector_lib::{
+use sol_lib::{
     finalization::{EventFinalizers, EventStatus, Finalizable},
     request_metadata::{GroupedCountByteSize, MetaDescriptive, RequestMetadata},
     stream::DriverResponse,

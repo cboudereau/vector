@@ -37,7 +37,7 @@ use tokio::{
 };
 use tokio_util::codec::FramedRead;
 use tracing::{Instrument, Span};
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     codecs::{
         StreamDecodingError,
@@ -1281,7 +1281,7 @@ impl ConsumerContext for KafkaSourceContext {
 
 #[cfg(test)]
 mod test {
-    use vector_lib::schema::Definition;
+    use sol_lib::schema::Definition;
 
     use super::*;
 
@@ -1412,7 +1412,7 @@ mod integration_test {
     };
     use stream_cancel::{Trigger, Tripwire};
     use tokio::time::sleep;
-    use vector_lib::event::EventStatus;
+    use sol_lib::event::EventStatus;
     use vrl::event_path;
 
     use super::{test::*, *};

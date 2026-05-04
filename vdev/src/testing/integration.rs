@@ -20,7 +20,7 @@ use crate::{
     utils::environment::{Environment, extract_present, rename_environment_keys},
 };
 
-const NETWORK_ENV_VAR: &str = "VECTOR_NETWORK";
+const NETWORK_ENV_VAR: &str = "SOL_NETWORK";
 const E2E_FEATURE_FLAG: &str = "all-e2e-tests";
 
 /// Check if a Docker image exists locally
@@ -116,7 +116,7 @@ impl ComposeTest {
             compose.is_some().then_some(network_name),
         )?;
 
-        env_config.insert("VECTOR_IMAGE".to_string(), Some(runner.image_name()));
+        env_config.insert("SOL_IMAGE".to_string(), Some(runner.image_name()));
 
         let compose_test = ComposeTest {
             local_config,
@@ -186,7 +186,7 @@ impl ComposeTest {
             env_vars.insert(key, value);
         }
 
-        env_vars.insert("VECTOR_LOG".to_string(), Some("info".into()));
+        env_vars.insert("SOL_LOG".to_string(), Some("info".into()));
         let mut args = self.config.args.clone().unwrap_or_default();
 
         args.push("--features".to_string());

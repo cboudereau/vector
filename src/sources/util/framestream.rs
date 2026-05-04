@@ -33,7 +33,7 @@ use tokio::{
 use tokio_stream::wrappers::UnixListenerStream;
 use tokio_util::codec::{Framed, length_delimited};
 use tracing::{Instrument, Span, field};
-use vector_lib::{
+use sol_lib::{
     lookup::OwnedValuePath,
     tcp::TcpKeepaliveConfig,
     tls::{CertificateMetadata, MaybeTlsIncomingStream, MaybeTlsSettings},
@@ -956,7 +956,7 @@ mod test {
         time::{Duration, Instant},
     };
     use tokio_util::codec::{Framed, length_delimited};
-    use vector_lib::{
+    use sol_lib::{
         config::insert_source_metadata,
         lookup::{OwnedValuePath, owned_value_path, path},
         tcp::TcpKeepaliveConfig,

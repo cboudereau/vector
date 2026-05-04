@@ -1,4 +1,4 @@
-use vector_lib::event::{Event, MetricKind};
+use sol_lib::event::{Event, MetricKind};
 
 use super::{ComponentMetricType, Validator};
 use crate::components::validation::{
@@ -201,17 +201,17 @@ fn filter_events_by_metric_and_component<'a>(
     telemetry_events: &'a [Event],
     metric: &ComponentMetricType,
     component_id: &str,
-) -> Vec<&'a vector_lib::event::OtelMetric> {
+) -> Vec<&'a sol_lib::event::OtelMetric> {
     info!(
         "Filter looking for metric {} {}",
         metric.to_string(),
         component_id
     );
 
-    let metrics: Vec<&vector_lib::event::OtelMetric> = telemetry_events
+    let metrics: Vec<&sol_lib::event::OtelMetric> = telemetry_events
         .iter()
         .filter_map(|e| {
-            if let vector_lib::event::Event::Metric(m) = e {
+            if let sol_lib::event::Event::Metric(m) = e {
                 Some(m)
             } else {
                 None
@@ -235,14 +235,14 @@ fn filter_events_by_metric_and_component<'a>(
 
 fn sum_counters(
     metric_name: &ComponentMetricType,
-    metrics: &[&vector_lib::event::OtelMetric],
+    metrics: &[&sol_lib::event::OtelMetric],
 ) -> Result<u64, Vec<String>> {
     let mut sum: f64 = 0.0;
     let mut errs = Vec::new();
 
     for m in metrics {
         match m.view() {
-            vector_lib::event::MetricView::Sum { value } => {
+            sol_lib::event::MetricView::Sum { value } => {
                 if let MetricKind::Absolute = m.kind() {
                     sum = value;
                 } else {

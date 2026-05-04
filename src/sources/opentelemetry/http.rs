@@ -9,7 +9,7 @@ use snafu::Snafu;
 use tokio::net::TcpStream;
 use tower::ServiceBuilder;
 use tracing::Span;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     event::{BatchNotifier, BatchStatus},
     internal_event::{
@@ -330,7 +330,7 @@ fn build_warp_trace_filter(
 use opentelemetry_proto::tonic as otel;
 
 #[cfg(feature = "sources-opentelemetry")]
-use vector_lib::event::{EventMetadata, OtelLog, OtelMetric, OtelSpan};
+use sol_lib::event::{EventMetadata, OtelLog, OtelMetric, OtelSpan};
 
 #[cfg(feature = "sources-opentelemetry")]
 fn json_decode_logs(body: Bytes) -> Result<Vec<Event>, ErrorMessage> {

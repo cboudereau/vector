@@ -5,7 +5,7 @@ use std::{
 
 use futures::StreamExt;
 use tokio::sync::{mpsc, watch};
-use vector_lib::{
+use sol_lib::{
     config::ComponentKey,
     fanout,
     tap::{

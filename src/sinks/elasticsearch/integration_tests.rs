@@ -6,7 +6,7 @@ use chrono::Utc;
 use futures::{StreamExt, future::ready, stream};
 use http::{Request, StatusCode};
 use serde_json::{Value, json};
-use vector_lib::{
+use sol_lib::{
     config::{Tags, Telemetry, init_telemetry},
     event::{BatchNotifier, BatchStatus, Event, OtelLog},
 };

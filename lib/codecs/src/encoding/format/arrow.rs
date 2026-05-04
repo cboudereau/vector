@@ -16,8 +16,8 @@ use bytes::{BufMut, Bytes, BytesMut};
 use chrono::{DateTime, Utc};
 use snafu::Snafu;
 use std::sync::Arc;
-use vector_config::configurable_component;
-use vector_core::event::{Event, OtelLog, Value};
+use sol_config::configurable_component;
+use sol_core::event::{Event, OtelLog, Value};
 
 /// Provides Arrow schema for encoding.
 ///
@@ -78,13 +78,13 @@ impl ArrowStreamSerializerConfig {
     }
 
     /// The data type of events that are accepted by `ArrowStreamEncoder`.
-    pub fn input_type(&self) -> vector_core::config::DataType {
-        vector_core::config::DataType::Log
+    pub fn input_type(&self) -> sol_core::config::DataType {
+        sol_core::config::DataType::Log
     }
 
     /// The schema required by the serializer.
-    pub fn schema_requirement(&self) -> vector_core::schema::Requirement {
-        vector_core::schema::Requirement::empty()
+    pub fn schema_requirement(&self) -> sol_core::schema::Requirement {
+        sol_core::schema::Requirement::empty()
     }
 }
 
@@ -96,10 +96,10 @@ pub struct ArrowStreamSerializer {
 
 impl ArrowStreamSerializer {
     /// Create a new ArrowStreamSerializer with the given configuration
-    pub fn new(config: ArrowStreamSerializerConfig) -> Result<Self, vector_common::Error> {
+    pub fn new(config: ArrowStreamSerializerConfig) -> Result<Self, sol_common::Error> {
         let schema = config
             .schema
-            .ok_or_else(|| vector_common::Error::from("Arrow serializer requires a schema."))?;
+            .ok_or_else(|| sol_common::Error::from("Arrow serializer requires a schema."))?;
 
         // If allow_nullable_fields is enabled, transform the schema once here
         // instead of on every batch encoding
@@ -109,7 +109,7 @@ impl ArrowStreamSerializer {
                 .iter()
                 .map(|f| make_field_nullable(f))
                 .collect::<Result<Vec<_>, _>>()
-                .map_err(|e| vector_common::Error::from(e.to_string()))?
+                .map_err(|e| sol_common::Error::from(e.to_string()))?
                 .into();
             Schema::new_with_metadata(nullable_fields, schema.metadata().clone())
         } else {

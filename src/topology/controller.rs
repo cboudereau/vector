@@ -8,7 +8,7 @@ use crate::api;
 use crate::{
     config,
     extra_context::ExtraContext,
-    internal_events::{VectorRecoveryError, VectorReloadError, VectorReloaded},
+    internal_events::{SolRecoveryError, SolReloadError, SolReloaded},
     signal::ShutdownError,
     topology::{ReloadError, RunningTopology},
 };
@@ -117,7 +117,7 @@ impl TopologyController {
                     api_server.update_config(self.topology.config());
                 }
 
-                emit!(VectorReloaded {
+                emit!(SolReloaded {
                     config_paths: &self.config_paths
                 });
                 ReloadOutcome::Success
@@ -128,7 +128,7 @@ impl TopologyController {
                     changed_fields = %changed_fields.join(", "),
                     internal_log_rate_limit = false,
                 );
-                emit!(VectorReloadError {
+                emit!(SolReloadError {
                     reason: "global_options_changed",
                 });
                 ReloadOutcome::RolledBack
@@ -139,22 +139,22 @@ impl TopologyController {
                     error = %source,
                     internal_log_rate_limit = false,
                 );
-                emit!(VectorReloadError {
+                emit!(SolReloadError {
                     reason: "global_diff_failed",
                 });
                 ReloadOutcome::RolledBack
             }
             Err(ReloadError::TopologyBuildFailed) => {
-                emit!(VectorReloadError {
+                emit!(SolReloadError {
                     reason: "topology_build_failed",
                 });
                 ReloadOutcome::RolledBack
             }
             Err(ReloadError::FailedToRestore) => {
-                emit!(VectorReloadError {
+                emit!(SolReloadError {
                     reason: "restore_failed",
                 });
-                emit!(VectorRecoveryError);
+                emit!(SolRecoveryError);
                 ReloadOutcome::FatalError(ShutdownError::ReloadFailedToRestore)
             }
         }

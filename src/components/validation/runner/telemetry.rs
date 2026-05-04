@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use tokio::{select, sync::mpsc, task::JoinHandle};
-use vector_lib::event::Event;
+use sol_lib::event::Event;
 
 use super::io::{EventForwardService, spawn_otlp_grpc_server};
 use crate::{

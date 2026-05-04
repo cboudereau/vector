@@ -15,7 +15,7 @@ use openssl::{
     error::ErrorStack,
     ssl::{SslConnector, SslMethod},
 };
-use vector_lib::event::otel_metric::{InstrumentationScope, Resource};
+use sol_lib::event::otel_metric::{InstrumentationScope, Resource};
 use postgres_openssl::MakeTlsConnector;
 use serde_with::serde_as;
 use snafu::{ResultExt, Snafu};
@@ -26,7 +26,7 @@ use tokio_postgres::{
     types::FromSql,
 };
 use tokio_stream::wrappers::IntervalStream;
-use vector_lib::{
+use sol_lib::{
     ByteSizeOf, EstimatedJsonEncodedSizeOf,
     configurable::configurable_component,
     internal_event::{CountByteSize, InternalEventHandle as _, Registered},

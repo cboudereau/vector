@@ -1,0 +1,26 @@
+[package]
+name = "sol-vrl-tests"
+version = "0.1.0"
+authors = ["Vector Contributors <vector@datadoghq.com>"]
+edition = "2024"
+publish = false
+
+[dependencies]
+chrono-tz.workspace = true
+sol-vrl-functions = { workspace = true, features = ["dnstap"] }
+enrichment = { path = "../../enrichment" }
+sol-vrl-metrics = { path = "../../sol-vrl-metrics" }
+sol-core = { path = "../../sol-core", default-features = false, features = ["vrl"] }
+vrl.workspace = true
+
+clap.workspace = true
+glob.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing-subscriber = { workspace = true, features = ["fmt"] }
+
+[target.'cfg(not(target_env = "msvc"))'.dependencies]
+tikv-jemallocator = { version = "0.6.1" }
+
+[features]
+default = []

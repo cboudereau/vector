@@ -1,6 +1,6 @@
 use std::num::NonZeroUsize;
 
-use vector_lib::{
+use sol_lib::{
     ByteSizeOf, EstimatedJsonEncodedSizeOf, config,
     request_metadata::{GetEventCountTags, GroupedCountByteSize, RequestMetadata},
 };

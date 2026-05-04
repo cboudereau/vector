@@ -16,7 +16,7 @@ use ordered_float::NotNan;
 use serde::Deserialize;
 use serde_json::Value;
 use tokio::time::{Duration, timeout};
-use vector_lib::{
+use sol_lib::{
     codecs::encoding::{ArrowStreamSerializerConfig, BatchSerializerConfig},
     event::{BatchNotifier, BatchStatus, BatchStatusReceiver, Event, OtelLog},
     lookup::{PathPrefix, owned_value_path},
@@ -673,207 +673,207 @@ async fn test_complex_types() {
     // Nested arrays
     event1.insert(
         "nested_int_array",
-        vector_lib::event::Value::Array(vec![
-            vector_lib::event::Value::Array(vec![
-                vector_lib::event::Value::Integer(1),
-                vector_lib::event::Value::Integer(2),
+        sol_lib::event::Value::Array(vec![
+            sol_lib::event::Value::Array(vec![
+                sol_lib::event::Value::Integer(1),
+                sol_lib::event::Value::Integer(2),
             ]),
-            vector_lib::event::Value::Array(vec![
-                vector_lib::event::Value::Integer(3),
-                vector_lib::event::Value::Integer(4),
+            sol_lib::event::Value::Array(vec![
+                sol_lib::event::Value::Integer(3),
+                sol_lib::event::Value::Integer(4),
             ]),
         ]),
     );
     event1.insert(
         "nested_string_array",
-        vector_lib::event::Value::Array(vec![vector_lib::event::Value::Array(vec![
-            vector_lib::event::Value::Bytes("a".into()),
-            vector_lib::event::Value::Bytes("b".into()),
+        sol_lib::event::Value::Array(vec![sol_lib::event::Value::Array(vec![
+            sol_lib::event::Value::Bytes("a".into()),
+            sol_lib::event::Value::Bytes("b".into()),
         ])]),
     );
 
     // Maps with arrays
-    let mut array_map = vector_lib::event::ObjectMap::new();
+    let mut array_map = sol_lib::event::ObjectMap::new();
     array_map.insert(
         "fruits".into(),
-        vector_lib::event::Value::Array(vec![
-            vector_lib::event::Value::Bytes("apple".into()),
-            vector_lib::event::Value::Bytes("banana".into()),
+        sol_lib::event::Value::Array(vec![
+            sol_lib::event::Value::Bytes("apple".into()),
+            sol_lib::event::Value::Bytes("banana".into()),
         ]),
     );
-    event1.insert("array_map", vector_lib::event::Value::Object(array_map));
+    event1.insert("array_map", sol_lib::event::Value::Object(array_map));
 
-    let mut int_array_map = vector_lib::event::ObjectMap::new();
+    let mut int_array_map = sol_lib::event::ObjectMap::new();
     int_array_map.insert(
         "scores".into(),
-        vector_lib::event::Value::Array(vec![
-            vector_lib::event::Value::Integer(95),
-            vector_lib::event::Value::Integer(87),
+        sol_lib::event::Value::Array(vec![
+            sol_lib::event::Value::Integer(95),
+            sol_lib::event::Value::Integer(87),
         ]),
     );
     event1.insert(
         "int_array_map",
-        vector_lib::event::Value::Object(int_array_map),
+        sol_lib::event::Value::Object(int_array_map),
     );
 
     // Tuples with complex types
-    let mut tuple_with_array = vector_lib::event::ObjectMap::new();
+    let mut tuple_with_array = sol_lib::event::ObjectMap::new();
     tuple_with_array.insert(
         "f0".into(),
-        vector_lib::event::Value::Bytes("numbers".into()),
+        sol_lib::event::Value::Bytes("numbers".into()),
     );
     tuple_with_array.insert(
         "f1".into(),
-        vector_lib::event::Value::Array(vec![
-            vector_lib::event::Value::Integer(10),
-            vector_lib::event::Value::Integer(20),
+        sol_lib::event::Value::Array(vec![
+            sol_lib::event::Value::Integer(10),
+            sol_lib::event::Value::Integer(20),
         ]),
     );
     event1.insert(
         "tuple_with_array",
-        vector_lib::event::Value::Object(tuple_with_array),
+        sol_lib::event::Value::Object(tuple_with_array),
     );
 
-    let mut inner_map = vector_lib::event::ObjectMap::new();
+    let mut inner_map = sol_lib::event::ObjectMap::new();
     inner_map.insert(
         "temp".into(),
-        vector_lib::event::Value::Float(NotNan::new(22.5).unwrap()),
+        sol_lib::event::Value::Float(NotNan::new(22.5).unwrap()),
     );
-    let mut tuple_with_map = vector_lib::event::ObjectMap::new();
+    let mut tuple_with_map = sol_lib::event::ObjectMap::new();
     tuple_with_map.insert(
         "f0".into(),
-        vector_lib::event::Value::Bytes("metrics".into()),
+        sol_lib::event::Value::Bytes("metrics".into()),
     );
-    tuple_with_map.insert("f1".into(), vector_lib::event::Value::Object(inner_map));
+    tuple_with_map.insert("f1".into(), sol_lib::event::Value::Object(inner_map));
     event1.insert(
         "tuple_with_map",
-        vector_lib::event::Value::Object(tuple_with_map),
+        sol_lib::event::Value::Object(tuple_with_map),
     );
 
-    let mut inner_map2 = vector_lib::event::ObjectMap::new();
+    let mut inner_map2 = sol_lib::event::ObjectMap::new();
     inner_map2.insert(
         "avg".into(),
-        vector_lib::event::Value::Float(NotNan::new(95.5).unwrap()),
+        sol_lib::event::Value::Float(NotNan::new(95.5).unwrap()),
     );
-    let mut tuple_complex = vector_lib::event::ObjectMap::new();
+    let mut tuple_complex = sol_lib::event::ObjectMap::new();
     tuple_complex.insert(
         "f0".into(),
-        vector_lib::event::Value::Bytes("results".into()),
+        sol_lib::event::Value::Bytes("results".into()),
     );
     tuple_complex.insert(
         "f1".into(),
-        vector_lib::event::Value::Array(vec![vector_lib::event::Value::Integer(95)]),
+        sol_lib::event::Value::Array(vec![sol_lib::event::Value::Integer(95)]),
     );
-    tuple_complex.insert("f2".into(), vector_lib::event::Value::Object(inner_map2));
+    tuple_complex.insert("f2".into(), sol_lib::event::Value::Object(inner_map2));
     event1.insert(
         "tuple_with_nested",
-        vector_lib::event::Value::Object(tuple_complex),
+        sol_lib::event::Value::Object(tuple_complex),
     );
 
     // Array of tuples
-    let mut loc1 = vector_lib::event::ObjectMap::new();
+    let mut loc1 = sol_lib::event::ObjectMap::new();
     loc1.insert(
         "f0".into(),
-        vector_lib::event::Value::Bytes("San Francisco".into()),
+        sol_lib::event::Value::Bytes("San Francisco".into()),
     );
     loc1.insert(
         "f1".into(),
-        vector_lib::event::Value::Float(NotNan::new(37.7749).unwrap()),
+        sol_lib::event::Value::Float(NotNan::new(37.7749).unwrap()),
     );
     loc1.insert(
         "f2".into(),
-        vector_lib::event::Value::Float(NotNan::new(-122.4194).unwrap()),
+        sol_lib::event::Value::Float(NotNan::new(-122.4194).unwrap()),
     );
     event1.insert(
         "locations",
-        vector_lib::event::Value::Array(vec![vector_lib::event::Value::Object(loc1)]),
+        sol_lib::event::Value::Array(vec![sol_lib::event::Value::Object(loc1)]),
     );
 
     // Array of maps
-    let mut tags1 = vector_lib::event::ObjectMap::new();
-    tags1.insert("env".into(), vector_lib::event::Value::Bytes("prod".into()));
+    let mut tags1 = sol_lib::event::ObjectMap::new();
+    tags1.insert("env".into(), sol_lib::event::Value::Bytes("prod".into()));
     event1.insert(
         "tags_history",
-        vector_lib::event::Value::Array(vec![vector_lib::event::Value::Object(tags1)]),
+        sol_lib::event::Value::Array(vec![sol_lib::event::Value::Object(tags1)]),
     );
 
-    let mut metrics1 = vector_lib::event::ObjectMap::new();
-    metrics1.insert("cpu".into(), vector_lib::event::Value::Integer(45));
+    let mut metrics1 = sol_lib::event::ObjectMap::new();
+    metrics1.insert("cpu".into(), sol_lib::event::Value::Integer(45));
     event1.insert(
         "metrics_history",
-        vector_lib::event::Value::Array(vec![vector_lib::event::Value::Object(metrics1)]),
+        sol_lib::event::Value::Array(vec![sol_lib::event::Value::Object(metrics1)]),
     );
 
     // Structured log data
-    let mut headers = vector_lib::event::ObjectMap::new();
+    let mut headers = sol_lib::event::ObjectMap::new();
     headers.insert(
         "user-agent".into(),
-        vector_lib::event::Value::Bytes("Mozilla/5.0".into()),
+        sol_lib::event::Value::Bytes("Mozilla/5.0".into()),
     );
-    event1.insert("request_headers", vector_lib::event::Value::Object(headers));
+    event1.insert("request_headers", sol_lib::event::Value::Object(headers));
 
-    let mut metrics = vector_lib::event::ObjectMap::new();
-    metrics.insert("f0".into(), vector_lib::event::Value::Integer(200));
-    metrics.insert("f1".into(), vector_lib::event::Value::Integer(1234));
+    let mut metrics = sol_lib::event::ObjectMap::new();
+    metrics.insert("f0".into(), sol_lib::event::Value::Integer(200));
+    metrics.insert("f1".into(), sol_lib::event::Value::Integer(1234));
     metrics.insert(
         "f2".into(),
-        vector_lib::event::Value::Float(NotNan::new(0.145).unwrap()),
+        sol_lib::event::Value::Float(NotNan::new(0.145).unwrap()),
     );
     event1.insert(
         "response_metrics",
-        vector_lib::event::Value::Object(metrics),
+        sol_lib::event::Value::Object(metrics),
     );
 
     event1.insert(
         "tags",
-        vector_lib::event::Value::Array(vec![
-            vector_lib::event::Value::Bytes("api".into()),
-            vector_lib::event::Value::Bytes("v2".into()),
+        sol_lib::event::Value::Array(vec![
+            sol_lib::event::Value::Bytes("api".into()),
+            sol_lib::event::Value::Bytes("v2".into()),
         ]),
     );
 
-    let mut user_props = vector_lib::event::ObjectMap::new();
+    let mut user_props = sol_lib::event::ObjectMap::new();
     user_props.insert(
         "roles".into(),
-        vector_lib::event::Value::Array(vec![vector_lib::event::Value::Bytes("admin".into())]),
+        sol_lib::event::Value::Array(vec![sol_lib::event::Value::Bytes("admin".into())]),
     );
     event1.insert(
         "user_properties",
-        vector_lib::event::Value::Object(user_props),
+        sol_lib::event::Value::Object(user_props),
     );
 
     // Nullable array
     event1.insert(
         "array_with_nulls",
-        vector_lib::event::Value::Array(vec![
-            vector_lib::event::Value::Integer(100),
-            vector_lib::event::Value::Integer(200),
+        sol_lib::event::Value::Array(vec![
+            sol_lib::event::Value::Integer(100),
+            sol_lib::event::Value::Integer(200),
         ]),
     );
 
     // Named tuple array - tests that named fields work correctly
-    let mut named_tuple1 = vector_lib::event::ObjectMap::new();
+    let mut named_tuple1 = sol_lib::event::ObjectMap::new();
     named_tuple1.insert(
         "category".into(),
-        vector_lib::event::Value::Bytes("priority".into()),
+        sol_lib::event::Value::Bytes("priority".into()),
     );
-    named_tuple1.insert("tag".into(), vector_lib::event::Value::Bytes("high".into()));
+    named_tuple1.insert("tag".into(), sol_lib::event::Value::Bytes("high".into()));
 
-    let mut named_tuple2 = vector_lib::event::ObjectMap::new();
+    let mut named_tuple2 = sol_lib::event::ObjectMap::new();
     named_tuple2.insert(
         "category".into(),
-        vector_lib::event::Value::Bytes("environment".into()),
+        sol_lib::event::Value::Bytes("environment".into()),
     );
     named_tuple2.insert(
         "tag".into(),
-        vector_lib::event::Value::Bytes("production".into()),
+        sol_lib::event::Value::Bytes("production".into()),
     );
 
     event1.insert(
         "array_with_named_tuple",
-        vector_lib::event::Value::Array(vec![
-            vector_lib::event::Value::Object(named_tuple1),
-            vector_lib::event::Value::Object(named_tuple2),
+        sol_lib::event::Value::Array(vec![
+            sol_lib::event::Value::Object(named_tuple1),
+            sol_lib::event::Value::Object(named_tuple2),
         ]),
     );
 
@@ -882,82 +882,82 @@ async fn test_complex_types() {
     // Event 2: Empty and edge cases
     let mut event2 = OtelLog::from("Test empty collections");
     event2.insert("host", "host2.example.com");
-    event2.insert("nested_int_array", vector_lib::event::Value::Array(vec![]));
+    event2.insert("nested_int_array", sol_lib::event::Value::Array(vec![]));
     event2.insert(
         "nested_string_array",
-        vector_lib::event::Value::Array(vec![]),
+        sol_lib::event::Value::Array(vec![]),
     );
 
-    let empty_map = vector_lib::event::ObjectMap::new();
+    let empty_map = sol_lib::event::ObjectMap::new();
     event2.insert(
         "array_map",
-        vector_lib::event::Value::Object(empty_map.clone()),
+        sol_lib::event::Value::Object(empty_map.clone()),
     );
     event2.insert(
         "int_array_map",
-        vector_lib::event::Value::Object(empty_map.clone()),
+        sol_lib::event::Value::Object(empty_map.clone()),
     );
 
-    let mut empty_tuple = vector_lib::event::ObjectMap::new();
-    empty_tuple.insert("f0".into(), vector_lib::event::Value::Bytes("empty".into()));
-    empty_tuple.insert("f1".into(), vector_lib::event::Value::Array(vec![]));
+    let mut empty_tuple = sol_lib::event::ObjectMap::new();
+    empty_tuple.insert("f0".into(), sol_lib::event::Value::Bytes("empty".into()));
+    empty_tuple.insert("f1".into(), sol_lib::event::Value::Array(vec![]));
     event2.insert(
         "tuple_with_array",
-        vector_lib::event::Value::Object(empty_tuple),
+        sol_lib::event::Value::Object(empty_tuple),
     );
 
-    let mut empty_tuple_map = vector_lib::event::ObjectMap::new();
-    empty_tuple_map.insert("f0".into(), vector_lib::event::Value::Bytes("empty".into()));
+    let mut empty_tuple_map = sol_lib::event::ObjectMap::new();
+    empty_tuple_map.insert("f0".into(), sol_lib::event::Value::Bytes("empty".into()));
     empty_tuple_map.insert(
         "f1".into(),
-        vector_lib::event::Value::Object(empty_map.clone()),
+        sol_lib::event::Value::Object(empty_map.clone()),
     );
     event2.insert(
         "tuple_with_map",
-        vector_lib::event::Value::Object(empty_tuple_map),
+        sol_lib::event::Value::Object(empty_tuple_map),
     );
 
-    let mut empty_tuple_complex = vector_lib::event::ObjectMap::new();
-    empty_tuple_complex.insert("f0".into(), vector_lib::event::Value::Bytes("empty".into()));
-    empty_tuple_complex.insert("f1".into(), vector_lib::event::Value::Array(vec![]));
+    let mut empty_tuple_complex = sol_lib::event::ObjectMap::new();
+    empty_tuple_complex.insert("f0".into(), sol_lib::event::Value::Bytes("empty".into()));
+    empty_tuple_complex.insert("f1".into(), sol_lib::event::Value::Array(vec![]));
     empty_tuple_complex.insert(
         "f2".into(),
-        vector_lib::event::Value::Object(empty_map.clone()),
+        sol_lib::event::Value::Object(empty_map.clone()),
     );
     event2.insert(
         "tuple_with_nested",
-        vector_lib::event::Value::Object(empty_tuple_complex),
+        sol_lib::event::Value::Object(empty_tuple_complex),
     );
 
-    event2.insert("locations", vector_lib::event::Value::Array(vec![]));
-    event2.insert("tags_history", vector_lib::event::Value::Array(vec![]));
-    event2.insert("metrics_history", vector_lib::event::Value::Array(vec![]));
+    event2.insert("locations", sol_lib::event::Value::Array(vec![]));
+    event2.insert("tags_history", sol_lib::event::Value::Array(vec![]));
+    event2.insert("metrics_history", sol_lib::event::Value::Array(vec![]));
     event2.insert(
         "request_headers",
-        vector_lib::event::Value::Object(empty_map.clone()),
+        sol_lib::event::Value::Object(empty_map.clone()),
     );
 
-    let mut empty_metrics = vector_lib::event::ObjectMap::new();
-    empty_metrics.insert("f0".into(), vector_lib::event::Value::Integer(0));
-    empty_metrics.insert("f1".into(), vector_lib::event::Value::Integer(0));
+    let mut empty_metrics = sol_lib::event::ObjectMap::new();
+    empty_metrics.insert("f0".into(), sol_lib::event::Value::Integer(0));
+    empty_metrics.insert("f1".into(), sol_lib::event::Value::Integer(0));
     empty_metrics.insert(
         "f2".into(),
-        vector_lib::event::Value::Float(NotNan::new(0.0).unwrap()),
+        sol_lib::event::Value::Float(NotNan::new(0.0).unwrap()),
     );
     event2.insert(
         "response_metrics",
-        vector_lib::event::Value::Object(empty_metrics),
+        sol_lib::event::Value::Object(empty_metrics),
     );
 
-    event2.insert("tags", vector_lib::event::Value::Array(vec![]));
+    event2.insert("tags", sol_lib::event::Value::Array(vec![]));
     event2.insert(
         "user_properties",
-        vector_lib::event::Value::Object(empty_map),
+        sol_lib::event::Value::Object(empty_map),
     );
-    event2.insert("array_with_nulls", vector_lib::event::Value::Array(vec![]));
+    event2.insert("array_with_nulls", sol_lib::event::Value::Array(vec![]));
     event2.insert(
         "array_with_named_tuple",
-        vector_lib::event::Value::Array(vec![]),
+        sol_lib::event::Value::Array(vec![]),
     );
 
     events.push(event2.into());
@@ -968,154 +968,154 @@ async fn test_complex_types() {
 
     event3.insert(
         "nested_int_array",
-        vector_lib::event::Value::Array(vec![
-            vector_lib::event::Value::Array(vec![]),
-            vector_lib::event::Value::Array(vec![vector_lib::event::Value::Integer(99)]),
+        sol_lib::event::Value::Array(vec![
+            sol_lib::event::Value::Array(vec![]),
+            sol_lib::event::Value::Array(vec![sol_lib::event::Value::Integer(99)]),
         ]),
     );
     event3.insert(
         "nested_string_array",
-        vector_lib::event::Value::Array(vec![vector_lib::event::Value::Array(vec![
-            vector_lib::event::Value::Bytes("test".into()),
+        sol_lib::event::Value::Array(vec![sol_lib::event::Value::Array(vec![
+            sol_lib::event::Value::Bytes("test".into()),
         ])]),
     );
 
-    let mut map3 = vector_lib::event::ObjectMap::new();
+    let mut map3 = sol_lib::event::ObjectMap::new();
     map3.insert(
         "colors".into(),
-        vector_lib::event::Value::Array(vec![vector_lib::event::Value::Bytes("red".into())]),
+        sol_lib::event::Value::Array(vec![sol_lib::event::Value::Bytes("red".into())]),
     );
-    event3.insert("array_map", vector_lib::event::Value::Object(map3));
+    event3.insert("array_map", sol_lib::event::Value::Object(map3));
 
-    let mut int_map3 = vector_lib::event::ObjectMap::new();
+    let mut int_map3 = sol_lib::event::ObjectMap::new();
     int_map3.insert(
         "values".into(),
-        vector_lib::event::Value::Array(vec![vector_lib::event::Value::Integer(42)]),
+        sol_lib::event::Value::Array(vec![sol_lib::event::Value::Integer(42)]),
     );
-    event3.insert("int_array_map", vector_lib::event::Value::Object(int_map3));
+    event3.insert("int_array_map", sol_lib::event::Value::Object(int_map3));
 
-    let mut tuple3 = vector_lib::event::ObjectMap::new();
-    tuple3.insert("f0".into(), vector_lib::event::Value::Bytes("data".into()));
+    let mut tuple3 = sol_lib::event::ObjectMap::new();
+    tuple3.insert("f0".into(), sol_lib::event::Value::Bytes("data".into()));
     tuple3.insert(
         "f1".into(),
-        vector_lib::event::Value::Array(vec![vector_lib::event::Value::Integer(5)]),
+        sol_lib::event::Value::Array(vec![sol_lib::event::Value::Integer(5)]),
     );
-    event3.insert("tuple_with_array", vector_lib::event::Value::Object(tuple3));
+    event3.insert("tuple_with_array", sol_lib::event::Value::Object(tuple3));
 
-    let mut map_inner = vector_lib::event::ObjectMap::new();
+    let mut map_inner = sol_lib::event::ObjectMap::new();
     map_inner.insert(
         "val".into(),
-        vector_lib::event::Value::Float(NotNan::new(1.0).unwrap()),
+        sol_lib::event::Value::Float(NotNan::new(1.0).unwrap()),
     );
-    let mut tuple_map3 = vector_lib::event::ObjectMap::new();
-    tuple_map3.insert("f0".into(), vector_lib::event::Value::Bytes("test".into()));
-    tuple_map3.insert("f1".into(), vector_lib::event::Value::Object(map_inner));
+    let mut tuple_map3 = sol_lib::event::ObjectMap::new();
+    tuple_map3.insert("f0".into(), sol_lib::event::Value::Bytes("test".into()));
+    tuple_map3.insert("f1".into(), sol_lib::event::Value::Object(map_inner));
     event3.insert(
         "tuple_with_map",
-        vector_lib::event::Value::Object(tuple_map3),
+        sol_lib::event::Value::Object(tuple_map3),
     );
 
-    let mut map_inner2 = vector_lib::event::ObjectMap::new();
+    let mut map_inner2 = sol_lib::event::ObjectMap::new();
     map_inner2.insert(
         "x".into(),
-        vector_lib::event::Value::Float(NotNan::new(2.0).unwrap()),
+        sol_lib::event::Value::Float(NotNan::new(2.0).unwrap()),
     );
-    let mut tuple_nested3 = vector_lib::event::ObjectMap::new();
-    tuple_nested3.insert("f0".into(), vector_lib::event::Value::Bytes("nest".into()));
+    let mut tuple_nested3 = sol_lib::event::ObjectMap::new();
+    tuple_nested3.insert("f0".into(), sol_lib::event::Value::Bytes("nest".into()));
     tuple_nested3.insert(
         "f1".into(),
-        vector_lib::event::Value::Array(vec![vector_lib::event::Value::Integer(1)]),
+        sol_lib::event::Value::Array(vec![sol_lib::event::Value::Integer(1)]),
     );
-    tuple_nested3.insert("f2".into(), vector_lib::event::Value::Object(map_inner2));
+    tuple_nested3.insert("f2".into(), sol_lib::event::Value::Object(map_inner2));
     event3.insert(
         "tuple_with_nested",
-        vector_lib::event::Value::Object(tuple_nested3),
+        sol_lib::event::Value::Object(tuple_nested3),
     );
 
-    let mut loc3 = vector_lib::event::ObjectMap::new();
-    loc3.insert("f0".into(), vector_lib::event::Value::Bytes("NYC".into()));
+    let mut loc3 = sol_lib::event::ObjectMap::new();
+    loc3.insert("f0".into(), sol_lib::event::Value::Bytes("NYC".into()));
     loc3.insert(
         "f1".into(),
-        vector_lib::event::Value::Float(NotNan::new(40.7128).unwrap()),
+        sol_lib::event::Value::Float(NotNan::new(40.7128).unwrap()),
     );
     loc3.insert(
         "f2".into(),
-        vector_lib::event::Value::Float(NotNan::new(-74.0060).unwrap()),
+        sol_lib::event::Value::Float(NotNan::new(-74.0060).unwrap()),
     );
     event3.insert(
         "locations",
-        vector_lib::event::Value::Array(vec![vector_lib::event::Value::Object(loc3)]),
+        sol_lib::event::Value::Array(vec![sol_lib::event::Value::Object(loc3)]),
     );
 
-    let mut tags3 = vector_lib::event::ObjectMap::new();
-    tags3.insert("env".into(), vector_lib::event::Value::Bytes("dev".into()));
+    let mut tags3 = sol_lib::event::ObjectMap::new();
+    tags3.insert("env".into(), sol_lib::event::Value::Bytes("dev".into()));
     event3.insert(
         "tags_history",
-        vector_lib::event::Value::Array(vec![vector_lib::event::Value::Object(tags3)]),
+        sol_lib::event::Value::Array(vec![sol_lib::event::Value::Object(tags3)]),
     );
 
-    let mut metrics3 = vector_lib::event::ObjectMap::new();
-    metrics3.insert("cpu".into(), vector_lib::event::Value::Integer(60));
+    let mut metrics3 = sol_lib::event::ObjectMap::new();
+    metrics3.insert("cpu".into(), sol_lib::event::Value::Integer(60));
     event3.insert(
         "metrics_history",
-        vector_lib::event::Value::Array(vec![vector_lib::event::Value::Object(metrics3)]),
+        sol_lib::event::Value::Array(vec![sol_lib::event::Value::Object(metrics3)]),
     );
 
-    let mut headers3 = vector_lib::event::ObjectMap::new();
+    let mut headers3 = sol_lib::event::ObjectMap::new();
     headers3.insert(
         "content-type".into(),
-        vector_lib::event::Value::Bytes("application/json".into()),
+        sol_lib::event::Value::Bytes("application/json".into()),
     );
     event3.insert(
         "request_headers",
-        vector_lib::event::Value::Object(headers3),
+        sol_lib::event::Value::Object(headers3),
     );
 
-    let mut metrics3_resp = vector_lib::event::ObjectMap::new();
-    metrics3_resp.insert("f0".into(), vector_lib::event::Value::Integer(404));
-    metrics3_resp.insert("f1".into(), vector_lib::event::Value::Integer(0));
+    let mut metrics3_resp = sol_lib::event::ObjectMap::new();
+    metrics3_resp.insert("f0".into(), sol_lib::event::Value::Integer(404));
+    metrics3_resp.insert("f1".into(), sol_lib::event::Value::Integer(0));
     metrics3_resp.insert(
         "f2".into(),
-        vector_lib::event::Value::Float(NotNan::new(0.001).unwrap()),
+        sol_lib::event::Value::Float(NotNan::new(0.001).unwrap()),
     );
     event3.insert(
         "response_metrics",
-        vector_lib::event::Value::Object(metrics3_resp),
+        sol_lib::event::Value::Object(metrics3_resp),
     );
 
     event3.insert(
         "tags",
-        vector_lib::event::Value::Array(vec![vector_lib::event::Value::Bytes("test".into())]),
+        sol_lib::event::Value::Array(vec![sol_lib::event::Value::Bytes("test".into())]),
     );
 
-    let mut user_props3 = vector_lib::event::ObjectMap::new();
+    let mut user_props3 = sol_lib::event::ObjectMap::new();
     user_props3.insert(
         "permissions".into(),
-        vector_lib::event::Value::Array(vec![vector_lib::event::Value::Bytes("read".into())]),
+        sol_lib::event::Value::Array(vec![sol_lib::event::Value::Bytes("read".into())]),
     );
     event3.insert(
         "user_properties",
-        vector_lib::event::Value::Object(user_props3),
+        sol_lib::event::Value::Object(user_props3),
     );
 
     event3.insert(
         "array_with_nulls",
-        vector_lib::event::Value::Array(vec![vector_lib::event::Value::Integer(42)]),
+        sol_lib::event::Value::Array(vec![sol_lib::event::Value::Integer(42)]),
     );
 
     // Named tuple with single element
-    let mut named_tuple3 = vector_lib::event::ObjectMap::new();
+    let mut named_tuple3 = sol_lib::event::ObjectMap::new();
     named_tuple3.insert(
         "category".into(),
-        vector_lib::event::Value::Bytes("status".into()),
+        sol_lib::event::Value::Bytes("status".into()),
     );
     named_tuple3.insert(
         "tag".into(),
-        vector_lib::event::Value::Bytes("active".into()),
+        sol_lib::event::Value::Bytes("active".into()),
     );
     event3.insert(
         "array_with_named_tuple",
-        vector_lib::event::Value::Array(vec![vector_lib::event::Value::Object(named_tuple3)]),
+        sol_lib::event::Value::Array(vec![sol_lib::event::Value::Object(named_tuple3)]),
     );
 
     events.push(event3.into());

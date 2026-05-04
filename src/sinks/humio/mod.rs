@@ -1,4 +1,4 @@
-use vector_lib::lookup::{lookup_v2::{OptionalTargetPath, OptionalValuePath}, owned_value_path};
+use sol_lib::lookup::{lookup_v2::{OptionalTargetPath, OptionalValuePath}, owned_value_path};
 
 pub mod logs;
 pub mod metrics;

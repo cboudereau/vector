@@ -1,6 +1,6 @@
 use bytes::{BufMut, BytesMut};
 use syslog::{Facility, Formatter3164, LogFormat, Severity};
-use vector_lib::configurable::configurable_component;
+use sol_lib::configurable::configurable_component;
 use vrl::value::Kind;
 
 use crate::{
@@ -131,7 +131,7 @@ struct PapertrailEncoder {
 }
 
 impl tokio_util::codec::Encoder<Event> for PapertrailEncoder {
-    type Error = vector_lib::codecs::encoding::Error;
+    type Error = sol_lib::codecs::encoding::Error;
 
     fn encode(
         &mut self,
@@ -189,7 +189,7 @@ mod tests {
     use futures::{future::ready, stream};
     use serde::Deserialize;
     use tokio_util::codec::Encoder as _;
-    use vector_lib::{
+    use sol_lib::{
         codecs::JsonSerializerConfig,
         event::{Event, OtelLog},
     };

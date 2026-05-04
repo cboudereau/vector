@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use futures_util::FutureExt;
 use tower::ServiceBuilder;
-use vector_lib::{
+use sol_lib::{
     configurable::configurable_component, lookup::lookup_v2::OptionalValuePath,
     sensitive_string::SensitiveString, sink::VectorSink,
 };

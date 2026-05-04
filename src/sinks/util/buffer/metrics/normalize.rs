@@ -6,8 +6,8 @@ use std::{
 use lru::LruCache;
 use serde_with::serde_as;
 use snafu::Snafu;
-use vector_config_macros::configurable_component;
-use vector_lib::{
+use sol_config_macros::configurable_component;
+use sol_lib::{
     ByteSizeOf,
     event::{
         Event, MetricKind, OtelMetric,

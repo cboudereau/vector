@@ -62,7 +62,7 @@ pub enum ParserError {
     RequestNoNameLabel,
 }
 
-vector_common::impl_event_data_eq!(ParserError);
+sol_common::impl_event_data_eq!(ParserError);
 
 /// Defines how the parser should behave when encountering metadata conflicts.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

@@ -2,8 +2,8 @@
 use std::path::PathBuf;
 
 use enum_dispatch::enum_dispatch;
-use vector_lib::configurable::configurable_component;
-pub use vector_lib::enrichment::{Condition, IndexHandle, Table};
+use sol_lib::configurable::configurable_component;
+pub use sol_lib::enrichment::{Condition, IndexHandle, Table};
 
 use crate::config::{
     ComponentKey, EnrichmentTableConfig, GenerateConfig, GlobalOptions, SinkConfig, SourceConfig,

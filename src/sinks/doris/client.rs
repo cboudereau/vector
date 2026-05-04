@@ -455,11 +455,11 @@ impl std::fmt::Display for StreamLoadStatus {
     }
 }
 
-impl From<StreamLoadStatus> for vector_common::finalization::EventStatus {
+impl From<StreamLoadStatus> for sol_common::finalization::EventStatus {
     fn from(status: StreamLoadStatus) -> Self {
         match status {
-            StreamLoadStatus::Successful => vector_common::finalization::EventStatus::Delivered,
-            StreamLoadStatus::Failure => vector_common::finalization::EventStatus::Errored,
+            StreamLoadStatus::Successful => sol_common::finalization::EventStatus::Delivered,
+            StreamLoadStatus::Failure => sol_common::finalization::EventStatus::Errored,
         }
     }
 }

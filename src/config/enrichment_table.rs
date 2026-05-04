@@ -1,6 +1,6 @@
 use enum_dispatch::enum_dispatch;
 use serde::Serialize;
-use vector_lib::{
+use sol_lib::{
     config::GlobalOptions,
     configurable::{Configurable, NamedComponent, ToValue, configurable_component},
     id::{ComponentKey, Inputs},
@@ -19,7 +19,7 @@ where
     #[serde(flatten)]
     pub inner: EnrichmentTables,
     #[configurable(derived)]
-    #[serde(default, skip_serializing_if = "vector_lib::serde::is_default")]
+    #[serde(default, skip_serializing_if = "sol_lib::serde::is_default")]
     pub graph: GraphConfig,
     #[configurable(derived)]
     #[serde(
@@ -124,7 +124,7 @@ pub trait EnrichmentTableConfig: NamedComponent + core::fmt::Debug + Send + Sync
     async fn build(
         &self,
         globals: &GlobalOptions,
-    ) -> crate::Result<Box<dyn vector_lib::enrichment::Table + Send + Sync>>;
+    ) -> crate::Result<Box<dyn sol_lib::enrichment::Table + Send + Sync>>;
 
     fn sink_config(
         &self,

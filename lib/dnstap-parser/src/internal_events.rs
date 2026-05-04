@@ -1,5 +1,5 @@
 use tracing::warn;
-use vector_common::{
+use sol_common::{
     NamedInternalEvent,
     internal_event::{InternalEvent, error_stage, error_type},
 };

@@ -5,8 +5,8 @@ use chrono::SecondsFormat;
 use lookup::lookup_v2::ConfigTargetPath;
 use snafu::Snafu;
 use tokio_util::codec::Encoder;
-use vector_config_macros::configurable_component;
-use vector_core::{
+use sol_config_macros::configurable_component;
+use sol_core::{
     config::DataType,
     event::{Event, OtelLog, Value},
     schema,
@@ -15,7 +15,7 @@ use vector_core::{
 use crate::encoding::BuildError;
 
 const DEFAULT_DEVICE_VENDOR: &str = "Datadog";
-const DEFAULT_DEVICE_PRODUCT: &str = "Vector";
+const DEFAULT_DEVICE_PRODUCT: &str = "Sol";
 // Major version of Vector.
 // TODO: find a way to get the actual vector version.
 //  The version should be the actual vector version, but it's not possible
@@ -287,7 +287,7 @@ impl CefSerializer {
 }
 
 impl Encoder<Event> for CefSerializer {
-    type Error = vector_common::Error;
+    type Error = sol_common::Error;
 
     fn encode(&mut self, event: Event, buffer: &mut BytesMut) -> Result<(), Self::Error> {
         let log = event.into_log();
@@ -389,8 +389,8 @@ mod tests {
     use bytes::BytesMut;
     use chrono::DateTime;
     use ordered_float::NotNan;
-    use vector_common::btreemap;
-    use vector_core::event::{Event, OtelLog, ObjectMap, Value};
+    use sol_common::btreemap;
+    use sol_core::event::{Event, OtelLog, ObjectMap, Value};
 
     use super::*;
 

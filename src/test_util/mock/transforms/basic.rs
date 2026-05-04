@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use vector_lib::{
+use sol_lib::{
     config::{DataType, Input, TransformOutput},
     configurable::configurable_component,
     event::Event,
@@ -68,7 +68,7 @@ impl FunctionTransform for BasicTransform {
     fn transform(&mut self, output: &mut OutputBuffer, mut event: Event) {
         match &mut event {
             Event::Log(otel_log) => {
-                let message_key = vector_lib::lookup::OwnedTargetPath::event(vector_lib::lookup::owned_value_path!("body"));
+                let message_key = sol_lib::lookup::OwnedTargetPath::event(sol_lib::lookup::owned_value_path!("body"));
                 let mut v = otel_log.get(&message_key).unwrap().to_string_lossy().into_owned();
                 v.push_str(&self.suffix);
                 otel_log.insert(&message_key, Value::from(v));
@@ -97,7 +97,7 @@ impl FunctionTransform for BasicTransform {
                 }
             }
             Event::Trace(otel_span) => {
-                let message_key = vector_lib::lookup::OwnedTargetPath::event(vector_lib::lookup::owned_value_path!("body"));
+                let message_key = sol_lib::lookup::OwnedTargetPath::event(sol_lib::lookup::owned_value_path!("body"));
                 let mut v = otel_span
                     .get(&message_key)
                     .unwrap()

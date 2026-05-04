@@ -8,7 +8,7 @@ use futures::{FutureExt, StreamExt, stream::BoxStream};
 use snafu::{ResultExt, Snafu};
 use tokio::{net::UdpSocket, time::sleep};
 use tokio_util::codec::Encoder;
-use vector_lib::{
+use sol_lib::{
     codecs::encoding::Chunker,
     configurable::configurable_component,
     internal_event::{BytesSent, Protocol, Registered},
@@ -79,7 +79,7 @@ impl UdpSinkConfig {
     pub fn build(
         &self,
         transformer: Transformer,
-        encoder: impl Encoder<Event, Error = vector_lib::codecs::encoding::Error>
+        encoder: impl Encoder<Event, Error = sol_lib::codecs::encoding::Error>
         + Clone
         + Send
         + Sync
@@ -163,7 +163,7 @@ impl UdpConnector {
 
 struct UdpSink<E>
 where
-    E: Encoder<Event, Error = vector_lib::codecs::encoding::Error> + Clone + Send + Sync,
+    E: Encoder<Event, Error = sol_lib::codecs::encoding::Error> + Clone + Send + Sync,
 {
     connector: UdpConnector,
     transformer: Transformer,
@@ -174,7 +174,7 @@ where
 
 impl<E> UdpSink<E>
 where
-    E: Encoder<Event, Error = vector_lib::codecs::encoding::Error> + Clone + Send + Sync,
+    E: Encoder<Event, Error = sol_lib::codecs::encoding::Error> + Clone + Send + Sync,
 {
     fn new(
         connector: UdpConnector,
@@ -195,7 +195,7 @@ where
 #[async_trait]
 impl<E> StreamSink<Event> for UdpSink<E>
 where
-    E: Encoder<Event, Error = vector_lib::codecs::encoding::Error> + Clone + Send + Sync,
+    E: Encoder<Event, Error = sol_lib::codecs::encoding::Error> + Clone + Send + Sync,
 {
     async fn run(self: Box<Self>, input: BoxStream<'_, Event>) -> Result<(), ()> {
         let mut input = input.peekable();

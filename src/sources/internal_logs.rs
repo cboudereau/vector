@@ -1,6 +1,6 @@
 use chrono::Utc;
 use futures::{StreamExt, stream};
-use vector_lib::{
+use sol_lib::{
     codecs::BytesDeserializerConfig,
     config::{insert_source_metadata, insert_standard_vector_source_metadata},
     configurable::configurable_component,
@@ -167,7 +167,7 @@ async fn run(
 mod tests {
     use futures::Stream;
     use tokio::time::{Duration, sleep};
-    use vector_lib::event::Value;
+    use sol_lib::event::Value;
     use vrl::value::kind::Collection;
 
     use serial_test::serial;

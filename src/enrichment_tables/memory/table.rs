@@ -19,7 +19,7 @@ use tokio::{
     time::interval,
 };
 use tokio_stream::wrappers::IntervalStream;
-use vector_lib::{
+use sol_lib::{
     ByteSizeOf, EstimatedJsonEncodedSizeOf,
     enrichment::{Case, Condition, IndexHandle, Table},
     event::{Event, EventStatus, Finalizable},
@@ -105,7 +105,7 @@ pub(super) struct MemoryWriter {
     metadata: MemoryMetadata,
 }
 
-/// A struct that implements [vector_lib::enrichment::Table] to handle loading enrichment data from a memory structure.
+/// A struct that implements [sol_lib::enrichment::Table] to handle loading enrichment data from a memory structure.
 pub struct Memory {
     read_handle_factory: evmap::ReadHandleFactory<String, MemoryEntry>,
     read_handle: ThreadLocal<evmap::ReadHandle<String, MemoryEntry>>,
@@ -448,7 +448,7 @@ mod tests {
     use futures_util::stream;
     use tokio::time;
 
-    use vector_lib::{
+    use sol_lib::{
         event::MetricView,
         lookup::lookup_v2::OptionalValuePath,
         metrics::Controller,
@@ -819,7 +819,7 @@ mod tests {
             .iter()
             .find(|m| {
                 matches!(m.view(), MetricView::Sum { .. })
-                    && m.name() == "memory_enrichment_table_insertions_total"
+                    && m.name() == "sol_memory_enrichment_table_insertions_total"
             })
             .expect("Insertions metric is missing!");
         let insertions_count = insertions_counter.first_value_as_f64().unwrap();
@@ -827,7 +827,7 @@ mod tests {
             .iter()
             .find(|m| {
                 matches!(m.view(), MetricView::Sum { .. })
-                    && m.name() == "memory_enrichment_table_flushes_total"
+                    && m.name() == "sol_memory_enrichment_table_flushes_total"
             })
             .expect("Flushes metric is missing!");
         let flushes_count = flushes_counter.first_value_as_f64().unwrap();
@@ -835,7 +835,7 @@ mod tests {
             .iter()
             .find(|m| {
                 matches!(m.view(), MetricView::Gauge { .. })
-                    && m.name() == "memory_enrichment_table_objects_count"
+                    && m.name() == "sol_memory_enrichment_table_objects_count"
             })
             .expect("Object count metric is missing!");
         let object_count = object_count_gauge.first_value_as_f64().unwrap();
@@ -843,7 +843,7 @@ mod tests {
             .iter()
             .find(|m| {
                 matches!(m.view(), MetricView::Gauge { .. })
-                    && m.name() == "memory_enrichment_table_byte_size"
+                    && m.name() == "sol_memory_enrichment_table_byte_size"
             })
             .expect("Byte size metric is missing!");
         assert_eq!(insertions_count, 1.0);
@@ -880,7 +880,7 @@ mod tests {
             .iter()
             .find(|m| {
                 matches!(m.view(), MetricView::Sum { .. })
-                    && m.name() == "memory_enrichment_table_insertions_total"
+                    && m.name() == "sol_memory_enrichment_table_insertions_total"
             })
             .expect("Insertions metric is missing!");
         let insertions_count = insertions_counter.first_value_as_f64().unwrap();
@@ -888,7 +888,7 @@ mod tests {
             .iter()
             .find(|m| {
                 matches!(m.view(), MetricView::Sum { .. })
-                    && m.name() == "memory_enrichment_table_flushes_total"
+                    && m.name() == "sol_memory_enrichment_table_flushes_total"
             })
             .expect("Flushes metric is missing!");
         let flushes_count = flushes_counter.first_value_as_f64().unwrap();
@@ -896,7 +896,7 @@ mod tests {
             .iter()
             .find(|m| {
                 matches!(m.view(), MetricView::Gauge { .. })
-                    && m.name() == "memory_enrichment_table_objects_count"
+                    && m.name() == "sol_memory_enrichment_table_objects_count"
             })
             .expect("Object count metric is missing!");
         let object_count = object_count_gauge.first_value_as_f64().unwrap();
@@ -904,7 +904,7 @@ mod tests {
             .iter()
             .find(|m| {
                 matches!(m.view(), MetricView::Gauge { .. })
-                    && m.name() == "memory_enrichment_table_byte_size"
+                    && m.name() == "sol_memory_enrichment_table_byte_size"
             })
             .expect("Byte size metric is missing!");
 
@@ -940,7 +940,7 @@ mod tests {
             .iter()
             .find(|m| {
                 matches!(m.view(), MetricView::Sum { .. })
-                    && m.name() == "memory_enrichment_table_insertions_total"
+                    && m.name() == "sol_memory_enrichment_table_insertions_total"
             })
             .expect("Insertions metric is missing!");
 
@@ -968,7 +968,7 @@ mod tests {
             .iter()
             .find(|m| {
                 matches!(m.view(), MetricView::Sum { .. })
-                    && m.name() == "memory_enrichment_table_insertions_total"
+                    && m.name() == "sol_memory_enrichment_table_insertions_total"
             })
             .expect("Insertions metric is missing!");
 

@@ -13,7 +13,7 @@ use netlink_sys::{
     AsyncSocket, AsyncSocketExt, SocketAddr, TokioSocket, protocols::NETLINK_SOCK_DIAG,
 };
 use snafu::{ResultExt, Snafu};
-use vector_lib::event::OtelAttributes;
+use sol_lib::event::OtelAttributes;
 
 use super::HostMetrics;
 use crate::sources::host_metrics::HostMetricsScrapeDetailError;

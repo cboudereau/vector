@@ -1,6 +1,6 @@
 use chrono::{DateTime, Duration, Utc};
 use futures::stream;
-use vector_lib::{
+use sol_lib::{
     event::{Event, MetricKind, OtelMetric},
     otel_tags,
 };

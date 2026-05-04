@@ -426,7 +426,7 @@ impl Graph {
 #[cfg(test)]
 mod test {
     use similar_asserts::assert_eq;
-    use vector_lib::schema::Definition;
+    use sol_lib::schema::Definition;
 
     use super::*;
 

@@ -1,7 +1,7 @@
 use std::num::NonZeroUsize;
 
 use greptimedb_ingester::{Error as GreptimeError, api::v1::*};
-use vector_lib::event::OtelMetric;
+use sol_lib::event::OtelMetric;
 
 use crate::sinks::{
     greptimedb::metrics::{

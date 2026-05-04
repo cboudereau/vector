@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use vector_lib::{
+use sol_lib::{
     ByteSizeOf,
     request_metadata::{MetaDescriptive, RequestMetadata},
 };

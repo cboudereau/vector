@@ -1,6 +1,6 @@
 use std::{fmt, hash::Hash};
 
-use vector_lib::{event::Event, partition::Partitioner};
+use sol_lib::{event::Event, partition::Partitioner};
 
 use super::partitioner::S3PartitionKey;
 use crate::sinks::prelude::*;

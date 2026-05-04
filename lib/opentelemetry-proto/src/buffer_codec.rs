@@ -1,7 +1,7 @@
 /// `OtlpCodec` implementation for `EventArray ↔ OtlpBufferBatch`.
 ///
 /// This codec is registered at process startup via
-/// `vector_core::event::register_otlp_codec` so that `vector-core`'s disk-buffer
+/// `sol_core::event::register_otlp_codec` so that `vector-core`'s disk-buffer
 /// layer can encode/decode without a circular crate dependency.
 ///
 /// The encode path uses `otel_logs_to_export`, `otel_metrics_to_export`, and
@@ -9,7 +9,7 @@
 /// arrays.
 use bytes::Bytes;
 use prost::Message as _;
-use vector_core::event::{
+use sol_core::event::{
     EventArray, LogArray, MetricArray, OtelLogArray, OtelMetricArray, OtelSpanArray, OtlpCodec,
     TraceArray,
 };
@@ -63,7 +63,7 @@ struct MetricExtension {
 /// `buffer_format = "otlp"` or `buffer_format = "migrate"`.
 /// Safe to call multiple times (subsequent calls are no-ops).
 pub fn init() {
-    vector_core::event::register_otlp_codec(Box::new(VectorOtlpCodec));
+    sol_core::event::register_otlp_codec(Box::new(VectorOtlpCodec));
 }
 
 pub struct VectorOtlpCodec;
@@ -169,7 +169,7 @@ fn otel_metrics_to_export(otel_metrics: &OtelMetricArray) -> ExportMetricsServic
 }
 
 fn collect_metric_extensions(otel_metrics: &OtelMetricArray) -> Vec<MetricExtension> {
-    use vector_core::event::MetricKind;
+    use sol_core::event::MetricKind;
 
     otel_metrics
         .iter()
@@ -198,7 +198,7 @@ fn collect_metric_extensions(otel_metrics: &OtelMetricArray) -> Vec<MetricExtens
 
 fn apply_metric_extensions(metrics: &mut MetricArray, extensions: Vec<MetricExtension>) {
     use std::collections::BTreeSet;
-    use vector_core::event::MetricKind;
+    use sol_core::event::MetricKind;
 
     for ext in extensions {
         let idx = ext.metric_index as usize;
@@ -352,11 +352,11 @@ pub fn value_to_kv_list(v: &Value) -> Option<Vec<KeyValue>> {
 
 #[cfg(test)]
 mod tests {
-    use vector_core::event::{EventArray, MetricKind, OtelLog, OtelMetric};
+    use sol_core::event::{EventArray, MetricKind, OtelLog, OtelMetric};
     use vrl::value::Value;
 
     use super::{VectorOtlpCodec, init};
-    use vector_core::event::OtlpCodec as _;
+    use sol_core::event::OtlpCodec as _;
 
     fn setup() {
         init();
@@ -469,7 +469,7 @@ mod tests {
 
     #[test]
     fn otlp_buffer_round_trip_via_encodable() {
-        use vector_buffers::encoding::Encodable;
+        use sol_buffers::encoding::Encodable;
 
         setup();
 

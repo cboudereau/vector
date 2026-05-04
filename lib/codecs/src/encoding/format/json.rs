@@ -1,7 +1,7 @@
 use bytes::{BufMut, BytesMut};
 use tokio_util::codec::Encoder;
-use vector_config_macros::configurable_component;
-use vector_core::{config::DataType, event::Event, schema};
+use sol_config_macros::configurable_component;
+use sol_core::{config::DataType, event::Event, schema};
 
 use crate::MetricTagValues;
 
@@ -13,7 +13,7 @@ pub struct JsonSerializerConfig {
     ///
     /// When set to `single`, only the last non-bare value of tags are displayed with the
     /// metric. When set to `full`, all metric tags are exposed as separate assignments.
-    #[serde(default, skip_serializing_if = "vector_core::serde::is_default")]
+    #[serde(default, skip_serializing_if = "sol_core::serde::is_default")]
     pub metric_tag_values: MetricTagValues,
 
     /// Options for the JsonSerializer.
@@ -74,7 +74,7 @@ impl JsonSerializer {
     }
 
     /// Encode event and represent it as JSON value.
-    pub fn to_json_value(&self, event: Event) -> Result<serde_json::Value, vector_common::Error> {
+    pub fn to_json_value(&self, event: Event) -> Result<serde_json::Value, sol_common::Error> {
         match event {
             Event::Log(log) => serde_json::to_value(&log),
             Event::Metric(metric) => serde_json::to_value(&metric),
@@ -85,7 +85,7 @@ impl JsonSerializer {
 }
 
 impl Encoder<Event> for JsonSerializer {
-    type Error = vector_common::Error;
+    type Error = sol_common::Error;
 
     fn encode(&mut self, event: Event, buffer: &mut BytesMut) -> Result<(), Self::Error> {
         let writer = buffer.writer();
@@ -120,8 +120,8 @@ impl Encoder<Event> for JsonSerializer {
 mod tests {
     use bytes::{Bytes, BytesMut};
     use chrono::{TimeZone, Timelike, Utc};
-    use vector_core::event::{MetricKind, ObjectMap, OtelAttributes, OtelLog, OtelMetric, Value};
-    use vector_core::otel_tags;
+    use sol_core::event::{MetricKind, ObjectMap, OtelAttributes, OtelLog, OtelMetric, Value};
+    use sol_core::otel_tags;
     use vrl::btreemap;
 
     use super::*;
@@ -245,8 +245,8 @@ mod tests {
     mod pretty_json {
         use bytes::{Bytes, BytesMut};
         use chrono::{TimeZone, Timelike, Utc};
-        use vector_core::event::{MetricKind, ObjectMap, OtelAttributes, OtelLog, OtelMetric, Value};
-        use vector_core::otel_tags;
+        use sol_core::event::{MetricKind, ObjectMap, OtelAttributes, OtelLog, OtelMetric, Value};
+        use sol_core::otel_tags;
         use vrl::btreemap;
 
         use super::*;

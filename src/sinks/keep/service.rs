@@ -3,7 +3,7 @@
 use bytes::Bytes;
 use http::{Request, Uri};
 use snafu::ResultExt;
-use vector_lib::sensitive_string::SensitiveString;
+use sol_lib::sensitive_string::SensitiveString;
 
 use super::config::HTTP_HEADER_KEEP_API_KEY;
 use crate::sinks::{

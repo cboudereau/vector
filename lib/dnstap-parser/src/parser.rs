@@ -16,8 +16,8 @@ use hickory_proto::{
 };
 use prost::Message;
 use snafu::Snafu;
-use vector_common::{Error, Result, internal_event::emit};
-use vector_core::event::Value;
+use sol_common::{Error, Result, internal_event::emit};
+use sol_core::event::Value;
 use vrl::{owned_value_path, path};
 
 #[allow(warnings, clippy::all, clippy::pedantic, clippy::nursery)]
@@ -36,7 +36,7 @@ use dnstap_proto::{
     Dnstap, Message as DnstapMessage, SocketFamily, SocketProtocol,
     message::Type as DnstapMessageType,
 };
-use vector_lookup::lookup_v2::ValuePath;
+use sol_lookup::lookup_v2::ValuePath;
 
 use crate::{internal_events::DnstapParseWarning, schema::DNSTAP_VALUE_PATHS};
 
@@ -1031,7 +1031,7 @@ mod tests {
     use std::{collections::BTreeMap, vec};
 
     use dnsmsg_parser::dns_message_parser::DnsParserOptions;
-    use vector_core::event::{EventMetadata, OtelLog};
+    use sol_core::event::{EventMetadata, OtelLog};
     use vrl::value::{ObjectMap, Value};
 
     use super::*;

@@ -5,7 +5,7 @@ use std::{
 
 use async_trait::async_trait;
 use futures_util::{FutureExt, Sink, future::ok};
-use vector_lib::{
+use sol_lib::{
     config::{AcknowledgementsConfig, Input},
     configurable::configurable_component,
     event::Event,

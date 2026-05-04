@@ -1,4 +1,4 @@
-use vector_lib::configurable::configurable_component;
+use sol_lib::configurable::configurable_component;
 
 /// Character set encoding.
 #[configurable_component]

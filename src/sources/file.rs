@@ -8,7 +8,7 @@ use serde_with::serde_as;
 use snafu::{ResultExt, Snafu};
 use tokio::sync::oneshot;
 use tracing::{Instrument, Span};
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     codecs::{BytesDeserializer, BytesDeserializerConfig},
     configurable::configurable_component,
@@ -772,7 +772,7 @@ mod tests {
     use similar_asserts::assert_eq;
     use tempfile::tempdir;
     use tokio::time::{Duration, sleep, timeout};
-    use vector_lib::schema::Definition;
+    use sol_lib::schema::Definition;
     use vrl::value::kind::Collection;
     use super::*;
     use crate::{

@@ -108,7 +108,7 @@ pub mod websocket;
 #[cfg(feature = "sinks-websocket-server")]
 pub mod websocket_server;
 
-pub use vector_lib::{config::Input, sink::VectorSink};
+pub use sol_lib::{config::Input, sink::VectorSink};
 
 pub type Healthcheck = BoxFuture<'static, crate::Result<()>>;
 

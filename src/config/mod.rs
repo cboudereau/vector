@@ -11,8 +11,8 @@ use std::{
 
 use indexmap::IndexMap;
 use serde::Serialize;
-use vector_config::configurable_component;
-pub use vector_lib::{
+use sol_config::configurable_component;
+pub use sol_lib::{
     config::{
         AcknowledgementsConfig, DataType, GlobalOptions, Input, SourceAcknowledgementsConfig, SourceOutput, TransformOutput, WildcardMatching,
     },
@@ -67,7 +67,7 @@ pub use transform::{
 pub use unit_test::{UnitTestResult, build_unit_tests, build_unit_tests_main};
 pub use validation::warnings;
 pub use vars::{ENVIRONMENT_VARIABLE_INTERPOLATION_REGEX, interpolate};
-pub use vector_lib::{
+pub use sol_lib::{
     config::{
         ComponentKey, OutputId, init_telemetry, proxy::ProxyConfig, telemetry,
     },
@@ -996,7 +996,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            Some(PathBuf::from("/var/lib/vector")),
+            Some(PathBuf::from("/var/lib/sol")),
             config.global.data_dir
         )
     }

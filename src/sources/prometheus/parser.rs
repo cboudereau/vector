@@ -1,9 +1,9 @@
 #[cfg(feature = "sources-prometheus-remote-write")]
 use super::remote_write::MetadataConflictStrategy;
 use chrono::{DateTime, TimeZone, Utc};
-use vector_lib::prometheus::parser::{GroupKind, MetricGroup, ParserError};
+use sol_lib::prometheus::parser::{GroupKind, MetricGroup, ParserError};
 #[cfg(feature = "sources-prometheus-remote-write")]
-use vector_lib::prometheus::parser::{
+use sol_lib::prometheus::parser::{
     MetadataConflictStrategy as ParserMetadataConflictStrategy, proto,
 };
 
@@ -23,7 +23,7 @@ fn utc_timestamp(timestamp: Option<i64>, default: DateTime<Utc>) -> DateTime<Utc
 
 #[cfg(any(test, feature = "sources-prometheus-scrape"))]
 pub(super) fn parse_text(packet: &str) -> Result<Vec<Event>, ParserError> {
-    vector_lib::prometheus::parser::parse_text(packet)
+    sol_lib::prometheus::parser::parse_text(packet)
         .map(|group| reparse_groups(group, vec![], false, false))
 }
 
@@ -33,13 +33,13 @@ pub(super) fn parse_text_with_overrides(
     tag_overrides: impl IntoIterator<Item = (String, String)> + Clone,
     aggregate_metrics: bool,
 ) -> Result<Vec<Event>, ParserError> {
-    vector_lib::prometheus::parser::parse_text(packet)
+    sol_lib::prometheus::parser::parse_text(packet)
         .map(|group| reparse_groups(group, tag_overrides, aggregate_metrics, false))
 }
 
 #[cfg(test)]
 fn parse_text_with_nan_filtering(packet: &str) -> Result<Vec<Event>, ParserError> {
-    vector_lib::prometheus::parser::parse_text(packet)
+    sol_lib::prometheus::parser::parse_text(packet)
         .map(|group| reparse_groups(group, vec![], false, true))
 }
 
@@ -49,7 +49,7 @@ pub(super) fn parse_request(
     metadata_conflict_strategy: MetadataConflictStrategy,
     skip_nan_values: bool,
 ) -> Result<Vec<Event>, ParserError> {
-    vector_lib::prometheus::parser::parse_request(request, metadata_conflict_strategy.into())
+    sol_lib::prometheus::parser::parse_request(request, metadata_conflict_strategy.into())
         .map(|group| reparse_groups(group, vec![], false, skip_nan_values))
 }
 
@@ -210,7 +210,7 @@ mod test {
     use chrono::{TimeZone, Timelike, Utc};
     use itertools::Itertools;
     use similar_asserts::assert_eq;
-    use vector_lib::{assert_event_data_eq, otel_tags};
+    use sol_lib::{assert_event_data_eq, otel_tags};
 
     use super::*;
     use crate::event::{MetricView, metric::MetricKind};
@@ -642,7 +642,7 @@ mod test {
             events_to_metrics(parse_text(exp)),
             Ok(vec![
                 {
-                    let buckets = vector_lib::buckets![
+                    let buckets = sol_lib::buckets![
                         0.05 => 24054, 0.1 => 9390, 0.2 => 66948, 0.5 => 28997, 1.0 => 4599
                     ];
                     OtelMetric::new_histogram(
@@ -695,7 +695,7 @@ mod test {
             events_to_metrics(parse_text(exp)),
             Ok(vec![
                 {
-                    let buckets = vector_lib::buckets![1.0 => 133988];
+                    let buckets = sol_lib::buckets![1.0 => 133988];
                     OtelMetric::new_histogram(
                         "duration",
                         MetricKind::Absolute,
@@ -725,7 +725,7 @@ mod test {
             events_to_metrics(parse_text(exp)),
             Ok(vec![
                 {
-                    let buckets = vector_lib::buckets![1.0 => 2000, 10.0 => 0];
+                    let buckets = sol_lib::buckets![1.0 => 2000, 10.0 => 0];
                     OtelMetric::new_histogram(
                         "duration",
                         MetricKind::Absolute,
@@ -789,7 +789,7 @@ mod test {
             events_to_metrics(parse_text(exp)),
             Ok(vec![
                 {
-                    let buckets = vector_lib::buckets![
+                    let buckets = sol_lib::buckets![
                         30.0 => 327,
                         60.0 => 147,
                         300.0 => 61,
@@ -812,7 +812,7 @@ mod test {
                     .with_timestamp(Some(*TIMESTAMP))
                 },
                 {
-                    let buckets = vector_lib::buckets![
+                    let buckets = sol_lib::buckets![
                         30.0 => 1,
                         60.0 => 0,
                         300.0 => 0,
@@ -835,7 +835,7 @@ mod test {
                     .with_timestamp(Some(*TIMESTAMP))
                 },
                 {
-                    let buckets = vector_lib::buckets![
+                    let buckets = sol_lib::buckets![
                         30.0 => 285, 60.0 => 880, 300.0 => 1906, 600.0 => 80, 1800.0 => 101, 3600.0 => 3,
                         7200.0 => 0, 10800.0 => 0, 18000.0 => 0, 36000.0 => 0
                     ];
@@ -880,7 +880,7 @@ mod test {
             events_to_metrics(parse_text(exp)),
             Ok(vec![
                 {
-                    let quantiles = vector_lib::quantiles![
+                    let quantiles = sol_lib::quantiles![
                         0.01 => 3102.0,
                         0.05 => 3272.0,
                         0.5 => 4773.0,
@@ -897,7 +897,7 @@ mod test {
                     .with_timestamp(Some(*TIMESTAMP))
                 },
                 {
-                    let quantiles = vector_lib::quantiles![
+                    let quantiles = sol_lib::quantiles![
                         0.0 => 0.009460965,
                         0.25 => 0.009793382,
                         0.5 => 0.009870205,
@@ -1099,7 +1099,7 @@ mod test {
                     .with_tags(Some(otel_tags! { "type" => "a" }))
                     .with_timestamp(Some(*TIMESTAMP)),
                 {
-                    let buckets = vector_lib::buckets![
+                    let buckets = sol_lib::buckets![
                         1.0 => 0, 2.5 => 0, 5.0 => 0, 10.0 => 1
                     ];
                     OtelMetric::new_histogram(
@@ -1113,7 +1113,7 @@ mod test {
                     .with_timestamp(Some(*TIMESTAMP))
                 },
                 {
-                    let quantiles = vector_lib::quantiles![];
+                    let quantiles = sol_lib::quantiles![];
                     OtelMetric::new_summary(
                         "jobs_summary",
                         &quantiles,
@@ -1161,7 +1161,7 @@ mod test {
                     .with_tags(Some(otel_tags! { "type" => "a" }))
                     .with_timestamp(Some(*TIMESTAMP)),
                 {
-                    let buckets = vector_lib::buckets![
+                    let buckets = sol_lib::buckets![
                         1.0 => 0, 2.5 => 0, 5.0 => 0, 10.0 => 1
                     ];
                     OtelMetric::new_histogram(
@@ -1175,7 +1175,7 @@ mod test {
                     .with_timestamp(Some(*TIMESTAMP))
                 },
                 {
-                    let quantiles = vector_lib::quantiles![];
+                    let quantiles = sol_lib::quantiles![];
                     OtelMetric::new_summary(
                         "jobs_summary",
                         &quantiles,

@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use vector_lib::{
+use sol_lib::{
     codecs::{JsonSerializerConfig, NewlineDelimitedEncoderConfig, encoding::Framer},
     partition::Partitioner,
     request_metadata::GroupedCountByteSize,

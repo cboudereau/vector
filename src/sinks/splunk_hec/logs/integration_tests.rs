@@ -4,7 +4,7 @@ use chrono::{TimeZone, Timelike, Utc};
 use futures::{future::ready, stream};
 use serde_json::Value as JsonValue;
 use tokio::time::{Duration, sleep};
-use vector_lib::{
+use sol_lib::{
     codecs::{JsonSerializerConfig, TextSerializerConfig},
     config::{Tags, Telemetry, init_telemetry},
     event::{BatchNotifier, BatchStatus, Event, OtelLog},

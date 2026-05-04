@@ -6,7 +6,7 @@ use http::{StatusCode, Uri};
 use hyper::{Body, Request};
 use indoc::indoc;
 use tower::Service;
-use vector_lib::{
+use sol_lib::{
     ByteSizeOf, EstimatedJsonEncodedSizeOf, configurable::configurable_component,
     sensitive_string::SensitiveString,
 };
@@ -309,7 +309,7 @@ mod tests {
     use chrono::{Timelike, Utc, offset::TimeZone};
     use futures::StreamExt;
     use indoc::indoc;
-    use vector_lib::otel_tags;
+    use sol_lib::otel_tags;
 
     use super::*;
     use crate::{

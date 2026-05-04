@@ -1,6 +1,6 @@
 use opendal::{Operator, layers::LoggingLayer, services::Webhdfs};
 use tower::ServiceBuilder;
-use vector_lib::{
+use sol_lib::{
     codecs::{JsonSerializerConfig, NewlineDelimitedEncoderConfig, encoding::Framer},
     config::{AcknowledgementsConfig, DataType, Input},
     configurable::configurable_component,

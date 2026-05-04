@@ -1,9 +1,9 @@
 #![deny(warnings)]
 
-extern crate vector;
+extern crate sol;
 use std::process::ExitCode;
 
-use vector::{app::Application, extra_context::ExtraContext};
+use sol::{app::Application, extra_context::ExtraContext};
 
 #[cfg(unix)]
 fn main() -> ExitCode {
@@ -11,10 +11,10 @@ fn main() -> ExitCode {
     {
         use std::sync::atomic::Ordering;
 
-        use crate::vector::internal_telemetry::allocations::{
+        use crate::sol::internal_telemetry::allocations::{
             REPORTING_INTERVAL_MS, TRACK_ALLOCATIONS, init_allocation_tracing,
         };
-        let opts = vector::cli::Opts::get_matches()
+        let opts = sol::cli::Opts::get_matches()
             .map_err(|error| {
                 // Printing to stdout/err can itself fail; ignore it.
                 _ = error.print();
@@ -50,7 +50,7 @@ pub fn main() -> ExitCode {
     // to run vector as a service. If we fail, we consider that we are in
     // interactive mode and then fallback to console mode.  See
     // https://docs.microsoft.com/en-us/dotnet/api/system.environment.userinteractive?redirectedfrom=MSDN&view=netcore-3.1#System_Environment_UserInteractive
-    let exit_code = vector::vector_windows::run().unwrap_or_else(|_| {
+    let exit_code = sol::vector_windows::run().unwrap_or_else(|_| {
         Application::run(ExtraContext::default())
             .code()
             .unwrap_or(exitcode::UNAVAILABLE)

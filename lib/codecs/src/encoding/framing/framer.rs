@@ -1,7 +1,7 @@
 //! Configuration types for framing methods.
 
 use bytes::BytesMut;
-use vector_config::configurable_component;
+use sol_config::configurable_component;
 
 use super::{
     BoxedFramer, BoxedFramingError, BytesEncoder, BytesEncoderConfig, CharacterDelimitedEncoder,

@@ -3,7 +3,7 @@
 //! Routes events to multiple backends via consistent hashing on traceID or service name,
 //! following the OTel Collector Contrib `loadbalancingexporter` pattern.
 
-use vector_lib::configurable::configurable_component;
+use sol_lib::configurable::configurable_component;
 
 // ---------------------------------------------------------------------------
 // Configuration types

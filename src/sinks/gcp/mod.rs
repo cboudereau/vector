@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
-use vector_lib::configurable::configurable_component;
+use sol_lib::configurable::configurable_component;
 
 pub mod cloud_storage;
 pub mod pubsub;

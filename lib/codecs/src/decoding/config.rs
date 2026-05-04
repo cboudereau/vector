@@ -35,7 +35,7 @@ impl DecodingConfig {
     }
 
     /// Builds a `Decoder` from the provided configuration.
-    pub fn build(&self) -> vector_common::Result<Decoder> {
+    pub fn build(&self) -> sol_common::Result<Decoder> {
         let framer = self.framing.build();
         let deserializer = self.decoding.build()?;
         Ok(Decoder::new(framer, deserializer))

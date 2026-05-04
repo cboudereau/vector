@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use vector_lib::{
+use sol_lib::{
     codecs::TextSerializerConfig,
     lookup::lookup_v2::{ConfigValuePath, OptionalTargetPath},
     sensitive_string::SensitiveString,
@@ -278,7 +278,7 @@ impl HecLogsSinkConfig {
 
 #[cfg(test)]
 mod tests {
-    use vector_lib::codecs::{
+    use sol_lib::codecs::{
         JsonSerializerConfig, MetricTagValues, encoding::format::JsonSerializerOptions,
     };
 

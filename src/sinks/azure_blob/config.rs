@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use azure_storage_blob::BlobContainerClient;
 use tower::ServiceBuilder;
-use vector_lib::{
+use sol_lib::{
     codecs::{JsonSerializerConfig, NewlineDelimitedEncoderConfig, encoding::Framer},
     configurable::configurable_component,
     sensitive_string::SensitiveString,

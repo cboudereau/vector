@@ -2,7 +2,7 @@ use crate::opentelemetry::{
     assert_service_name_with, parse_line_to_export_type_request, read_file_helper,
 };
 
-use vector_lib::opentelemetry::proto::{
+use sol_lib::opentelemetry::proto::{
     METRICS_REQUEST_MESSAGE_TYPE,
     collector::metrics::v1::ExportMetricsServiceRequest,
     common::v1::{KeyValue, any_value::Value as AnyValueEnum},

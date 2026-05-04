@@ -1,4 +1,4 @@
-use vector_lib::{
+use sol_lib::{
     event::{MetricView, OtelMetric},
     stream::batcher::limiter::ItemBatchSize,
 };

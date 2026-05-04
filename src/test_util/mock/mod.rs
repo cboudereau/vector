@@ -3,7 +3,7 @@ use std::sync::{Arc, atomic::AtomicUsize};
 use futures_util::Stream;
 use stream_cancel::Trigger;
 use tokio::sync::oneshot::Sender;
-use vector_lib::{
+use sol_lib::{
     event::EventArray,
     source_sender::{SourceSender, SourceSenderItem},
 };

@@ -16,7 +16,7 @@ use tokio::{
     time::timeout,
 };
 use tracing::Instrument;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     buffers::{
         BufferType, WhenFull,
@@ -31,7 +31,7 @@ use vector_lib::{
     source_sender::{CHUNK_SIZE, SourceSenderItem},
     transform::update_runtime_schema_definition,
 };
-use vector_vrl_metrics::MetricsStorage;
+use sol_vrl_metrics::MetricsStorage;
 
 use super::{
     BuiltBuffer, ConfigDiff,
@@ -55,8 +55,8 @@ use crate::{
     utilization::{UtilizationComponentSender, UtilizationEmitter, UtilizationRegistry, wrap},
 };
 
-static ENRICHMENT_TABLES: LazyLock<vector_lib::enrichment::TableRegistry> =
-    LazyLock::new(vector_lib::enrichment::TableRegistry::default);
+static ENRICHMENT_TABLES: LazyLock<sol_lib::enrichment::TableRegistry> =
+    LazyLock::new(sol_lib::enrichment::TableRegistry::default);
 static METRICS_STORAGE: LazyLock<MetricsStorage> = LazyLock::new(MetricsStorage::default);
 
 pub(crate) static SOURCE_SENDER_BUFFER_SIZE: LazyLock<usize> =
@@ -170,7 +170,7 @@ impl<'a> Builder<'a> {
 
     /// Loads, or reloads the enrichment tables.
     /// The tables are stored in the `ENRICHMENT_TABLES` global variable.
-    async fn load_enrichment_tables(&mut self) -> &'static vector_lib::enrichment::TableRegistry {
+    async fn load_enrichment_tables(&mut self) -> &'static sol_lib::enrichment::TableRegistry {
         let mut enrichment_tables = HashMap::new();
 
         // Build enrichment tables
@@ -224,7 +224,7 @@ impl<'a> Builder<'a> {
 
     async fn build_sources(
         &mut self,
-        enrichment_tables: &vector_lib::enrichment::TableRegistry,
+        enrichment_tables: &sol_lib::enrichment::TableRegistry,
     ) -> HashMap<ComponentKey, Task> {
         let mut source_tasks = HashMap::new();
 
@@ -416,7 +416,7 @@ impl<'a> Builder<'a> {
 
     async fn build_transforms(
         &mut self,
-        enrichment_tables: &vector_lib::enrichment::TableRegistry,
+        enrichment_tables: &sol_lib::enrichment::TableRegistry,
     ) {
         let mut definition_cache = HashMap::default();
 
@@ -523,7 +523,7 @@ impl<'a> Builder<'a> {
         }
     }
 
-    async fn build_sinks(&mut self, enrichment_tables: &vector_lib::enrichment::TableRegistry) {
+    async fn build_sinks(&mut self, enrichment_tables: &sol_lib::enrichment::TableRegistry) {
         let table_sinks = self
             .config
             .enrichment_tables

@@ -25,7 +25,7 @@ use tokio::{
     time::sleep,
 };
 use tokio_util::codec::FramedRead;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     codecs::{CharacterDelimitedDecoder, decoding::BoxedFramingError},
     configurable::configurable_component,
@@ -159,7 +159,7 @@ pub struct JournaldConfig {
     ///
     /// [global_data_dir]: https://vector.dev/docs/reference/configuration/global-options/#data_dir
     #[serde(default)]
-    #[configurable(metadata(docs::examples = "/var/lib/vector"))]
+    #[configurable(metadata(docs::examples = "/var/lib/sol"))]
     #[configurable(metadata(docs::human_name = "Data Directory"))]
     pub data_dir: Option<PathBuf>,
 

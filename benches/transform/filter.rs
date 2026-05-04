@@ -4,11 +4,11 @@ use criterion::{
     BatchSize, BenchmarkGroup, Criterion, SamplingMode, Throughput, criterion_group,
     measurement::WallTime,
 };
-use vector::{
+use sol::{
     conditions::Condition,
     transforms::{FunctionTransform, OutputBuffer, filter::Filter},
 };
-use vector_lib::event::{Event, OtelLog};
+use sol_lib::event::{Event, OtelLog};
 
 struct Payload {
     filter: Filter,

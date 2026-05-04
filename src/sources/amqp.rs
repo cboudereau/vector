@@ -10,7 +10,7 @@ use futures_util::Stream;
 use lapin::{Channel, acker::Acker, message::Delivery, options::BasicQosOptions};
 use snafu::Snafu;
 use tokio_util::codec::FramedRead;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     codecs::decoding::{DeserializerConfig, FramingConfig},
     config::{SourceAcknowledgementsConfig, insert_source_metadata},
@@ -132,7 +132,7 @@ fn default_offset_key() -> OptionalValuePath {
 impl_generate_config_from_default!(AmqpSourceConfig);
 
 impl AmqpSourceConfig {
-    fn decoder(&self) -> vector_lib::Result<Decoder> {
+    fn decoder(&self) -> sol_lib::Result<Decoder> {
         DecodingConfig::new(self.framing.clone(), self.decoding.clone()).build()
     }
 }
@@ -342,7 +342,7 @@ async fn receive_event(
                     }
                 }
                 Err(error) => {
-                    use vector_lib::codecs::StreamDecodingError as _;
+                    use sol_lib::codecs::StreamDecodingError as _;
 
                     // Error is logged by `codecs::Decoder`, no further handling
                     // is needed here.
@@ -485,7 +485,7 @@ async fn handle_ack(status: BatchStatus, entry: FinalizerEntry) {
 
 #[cfg(test)]
 pub mod test {
-    use vector_lib::{schema::Definition, tls::TlsConfig};
+    use sol_lib::{schema::Definition, tls::TlsConfig};
     use vrl::value::kind::Collection;
 
     use super::*;

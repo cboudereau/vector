@@ -5,12 +5,12 @@ use sqlx::{
 };
 use std::collections::HashMap;
 use tracing::{info, warn};
-use vector_lib::{
+use sol_lib::{
     codecs::{JsonSerializerConfig, MetricTagValues, encoding::FramingConfig},
     event::{BatchNotifier, BatchStatusReceiver, Event, OtelLog, Value},
 };
-// use vector_common::finalization::BatchStatus;
-use vector_common::sensitive_string::SensitiveString;
+// use sol_common::finalization::BatchStatus;
+use sol_common::sensitive_string::SensitiveString;
 
 use super::*;
 use crate::{

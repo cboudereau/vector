@@ -3,7 +3,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use futures_util::StreamExt;
 use serde_json::{Value as JsonValue, json};
-use vector_lib::{
+use sol_lib::{
     ByteSizeOf,
     event::{
         Event, MetricKind, OtelMetric,

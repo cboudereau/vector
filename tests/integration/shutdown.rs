@@ -14,7 +14,7 @@ use nix::{
     unistd::Pid,
 };
 use similar_asserts::assert_eq;
-use vector::test_util::{addr::next_addr, temp_file};
+use sol::test_util::{addr::next_addr, temp_file};
 
 use crate::{create_directory, create_file, overwrite_file};
 
@@ -23,7 +23,7 @@ const SHUTDOWN_TIME: Duration = Duration::from_secs(4);
 const RELOAD_TIME: Duration = Duration::from_secs(5);
 
 const STDIO_CONFIG: &str = r#"
-    data_dir = "${VECTOR_DATA_DIR}"
+    data_dir = "${SOL_DATA_DIR}"
 
     [sources.in_console]
         type = "stdin"
@@ -35,7 +35,7 @@ const STDIO_CONFIG: &str = r#"
 "#;
 
 const PROMETHEUS_SINK_CONFIG: &str = r#"
-    data_dir = "${VECTOR_DATA_DIR}"
+    data_dir = "${SOL_DATA_DIR}"
 
     [sources.in]
         type = "stdin"
@@ -52,13 +52,13 @@ const PROMETHEUS_SINK_CONFIG: &str = r#"
         type = "prometheus_exporter"
         default_namespace = "service"
         inputs = ["log_to_metric"]
-        address = "${VECTOR_TEST_ADDRESS}"
+        address = "${SOL_TEST_ADDRESS}"
 "#;
 
 fn source_config(source: &str) -> String {
     format!(
         r#"
-data_dir = "${{VECTOR_DATA_DIR}}"
+data_dir = "${{SOL_DATA_DIR}}"
 
 [sources.in]
 {source}
@@ -79,13 +79,13 @@ fn vector(config: &str) -> Command {
 }
 
 fn vector_with(config_path: PathBuf, address: SocketAddr, quiet: bool) -> Command {
-    let mut cmd = Command::cargo_bin("vector").unwrap();
+    let mut cmd = Command::cargo_bin("sol").unwrap();
     cmd.arg("-c")
         .arg(config_path)
         .arg(if quiet { "--quiet" } else { "-v" })
-        .env("VECTOR_DATA_DIR", create_directory())
-        .env("VECTOR_TEST_UNIX_PATH", temp_file())
-        .env("VECTOR_TEST_ADDRESS", address.to_string());
+        .env("SOL_DATA_DIR", create_directory())
+        .env("SOL_TEST_UNIX_PATH", temp_file())
+        .env("SOL_TEST_ADDRESS", address.to_string());
 
     cmd
 }
@@ -137,11 +137,11 @@ fn test_timely_shutdown_with_sub(mut cmd: Command, sub: impl FnOnce(&mut Child))
 
 #[test]
 fn auto_shutdown() {
-    let mut cmd = assert_cmd::Command::cargo_bin("vector").unwrap();
+    let mut cmd = assert_cmd::Command::cargo_bin("sol").unwrap();
     cmd.arg("--quiet")
         .arg("-c")
         .arg(create_file(STDIO_CONFIG))
-        .env("VECTOR_DATA_DIR", create_directory());
+        .env("SOL_DATA_DIR", create_directory());
 
     // Once `stdin source` reads whole buffer it will automatically
     // shutdown which will also cause vector process to shutdown
@@ -278,7 +278,7 @@ fn timely_shutdown_http() {
     test_timely_shutdown(source_vector(
         r#"
     type = "http"
-    address = "${VECTOR_TEST_ADDRESS}"
+    address = "${SOL_TEST_ADDRESS}"
     decoding.codec = "bytes""#,
     ));
 }
@@ -288,7 +288,7 @@ fn timely_shutdown_heroku_logs() {
     test_timely_shutdown(source_vector(
         r#"
     type = "heroku_logs"
-    address = "${VECTOR_TEST_ADDRESS}""#,
+    address = "${SOL_TEST_ADDRESS}""#,
     ));
 }
 
@@ -317,7 +317,7 @@ fn timely_shutdown_prometheus() {
                     source_config(
                         r#"
         type = "prometheus_scrape"
-        hosts = ["http://${VECTOR_TEST_ADDRESS}"]"#,
+        hosts = ["http://${SOL_TEST_ADDRESS}"]"#,
                     )
                     .as_str(),
                 ),
@@ -344,7 +344,7 @@ fn timely_shutdown_socket_tcp() {
     test_timely_shutdown(source_vector(
         r#"
         type = "socket"
-        address = "${VECTOR_TEST_ADDRESS}"
+        address = "${SOL_TEST_ADDRESS}"
         mode = "tcp""#,
     ));
 }
@@ -354,7 +354,7 @@ fn timely_shutdown_socket_udp() {
     test_timely_shutdown(source_vector(
         r#"
         type = "socket"
-        address = "${VECTOR_TEST_ADDRESS}"
+        address = "${SOL_TEST_ADDRESS}"
         mode = "udp""#,
     ));
 }
@@ -364,7 +364,7 @@ fn timely_shutdown_socket_unix() {
     test_timely_shutdown(source_vector(
         r#"
         type = "socket"
-        path = "${VECTOR_TEST_UNIX_PATH}"
+        path = "${SOL_TEST_UNIX_PATH}"
         mode = "unix""#,
     ));
 }
@@ -375,7 +375,7 @@ fn timely_shutdown_splunk_hec() {
     test_timely_shutdown(source_vector(
         r#"
     type = "splunk_hec"
-    address = "${VECTOR_TEST_ADDRESS}""#,
+    address = "${SOL_TEST_ADDRESS}""#,
     ));
 }
 
@@ -386,7 +386,7 @@ fn timely_shutdown_statsd() {
         r#"
     type = "statsd"
     mode = "tcp"
-    address = "${VECTOR_TEST_ADDRESS}""#,
+    address = "${SOL_TEST_ADDRESS}""#,
     ));
 }
 
@@ -396,7 +396,7 @@ fn timely_shutdown_syslog_tcp() {
     test_timely_shutdown(source_vector(
         r#"
         type = "syslog"
-        address = "${VECTOR_TEST_ADDRESS}"
+        address = "${SOL_TEST_ADDRESS}"
         mode = "tcp""#,
     ));
 }
@@ -406,7 +406,7 @@ fn timely_shutdown_syslog_udp() {
     test_timely_shutdown(source_vector(
         r#"
         type = "syslog"
-        address = "${VECTOR_TEST_ADDRESS}"
+        address = "${SOL_TEST_ADDRESS}"
         mode = "udp""#,
     ));
 }
@@ -416,7 +416,7 @@ fn timely_shutdown_syslog_unix() {
     test_timely_shutdown(source_vector(
         r#"
         type = "syslog"
-        path = "${VECTOR_TEST_UNIX_PATH}"
+        path = "${SOL_TEST_UNIX_PATH}"
         mode = "unix""#,
     ));
 }
@@ -427,7 +427,7 @@ fn timely_shutdown_vector_v2() {
         r#"
     type = "vector"
     version = "2"
-    address = "${VECTOR_TEST_ADDRESS}""#,
+    address = "${SOL_TEST_ADDRESS}""#,
     ));
 }
 
@@ -487,7 +487,7 @@ fn timely_reload_shutdown() {
         source_config(
             r#"
             type = "socket"
-            address = "${VECTOR_TEST_ADDRESS}"
+            address = "${SOL_TEST_ADDRESS}"
             mode = "tcp""#,
         )
         .as_str(),
@@ -503,7 +503,7 @@ fn timely_reload_shutdown() {
             source_config(
                 r#"
                 type = "socket"
-                address = "${VECTOR_TEST_ADDRESS}"
+                address = "${SOL_TEST_ADDRESS}"
                 mode = "udp""#,
             )
             .as_str(),
@@ -525,7 +525,7 @@ fn timely_reload_shutdown() {
 async fn health_503_during_shutdown() {
     use std::process::Command;
 
-    let mut cmd = Command::cargo_bin("vector").unwrap();
+    let mut cmd = Command::cargo_bin("sol").unwrap();
 
     cmd.arg("--quiet")
         .arg("-c")
@@ -546,7 +546,7 @@ async fn health_503_during_shutdown() {
               rate = 1
             "#,
         ))
-        .env("VECTOR_DATA_DIR", create_directory());
+        .env("SOL_DATA_DIR", create_directory());
 
     let mut vector = cmd
         .stdin(std::process::Stdio::piped())

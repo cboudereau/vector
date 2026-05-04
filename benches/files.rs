@@ -6,11 +6,11 @@ use futures::{SinkExt, StreamExt, stream};
 use tempfile::tempdir;
 use tokio::fs::OpenOptions;
 use tokio_util::codec::{BytesCodec, FramedWrite};
-use vector::{
+use sol::{
     config, sinks, sources,
     test_util::{random_lines, runtime, start_topology},
 };
-use vector_lib::codecs::{TextSerializerConfig, encoding::FramingConfig};
+use sol_lib::codecs::{TextSerializerConfig, encoding::FramingConfig};
 
 fn benchmark_files_no_partitions(c: &mut Criterion) {
     let num_lines: usize = 10_000;

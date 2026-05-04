@@ -2,7 +2,7 @@ use bytes::Bytes;
 use lookup::owned_value_path;
 use serde::{Deserialize, Serialize};
 use smallvec::{SmallVec, smallvec};
-use vector_core::{
+use sol_core::{
     config::DataType,
     event::{Event, OtelLog},
     schema,
@@ -62,7 +62,7 @@ impl Deserializer for BytesDeserializer {
     fn parse(
         &self,
         bytes: Bytes,
-    ) -> vector_common::Result<SmallVec<[Event; 1]>> {
+    ) -> sol_common::Result<SmallVec<[Event; 1]>> {
         let otel_log = self.parse_single(bytes);
         Ok(smallvec![Event::Log(otel_log)])
     }

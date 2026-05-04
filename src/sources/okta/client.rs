@@ -11,7 +11,7 @@ use serde_with::serde_as;
 use tokio::sync::Mutex;
 use tokio_stream::wrappers::IntervalStream;
 use tokio_util::codec::Decoder as _;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     codecs::{
         Decoder, DecodingConfig, JsonDeserializerConfig, StreamDecodingError,
@@ -37,7 +37,7 @@ use crate::{
     sources::util::http_client::{default_interval, default_timeout, warn_if_interval_too_low},
     tls::TlsSettings,
 };
-use vector_lib::codecs::internal_events::DecoderDeserializeError;
+use sol_lib::codecs::internal_events::DecoderDeserializeError;
 
 /// Configuration for the `okta` source.
 #[serde_as]
@@ -391,7 +391,7 @@ fn decode_events(buf: &mut BytesMut, mut decoder: Decoder) -> Vec<Event> {
             }
             Ok(None) => break,
             Err(error) => {
-                // Error is logged by `vector_lib::codecs::Decoder`, no further
+                // Error is logged by `sol_lib::codecs::Decoder`, no further
                 // handling is needed here.
                 if !error.can_continue() {
                     break;

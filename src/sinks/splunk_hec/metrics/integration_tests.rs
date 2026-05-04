@@ -2,7 +2,7 @@ use std::convert::TryFrom;
 
 use futures::{future::ready, stream};
 use serde_json::Value as JsonValue;
-use vector_lib::{
+use sol_lib::{
     config::{Tags, Telemetry, init_telemetry},
     event::{BatchNotifier, BatchStatus, Event},
     lookup::lookup_v2::OptionalValuePath,

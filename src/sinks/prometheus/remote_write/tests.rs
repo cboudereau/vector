@@ -3,7 +3,7 @@ use futures::StreamExt;
 use http::HeaderMap;
 use indoc::indoc;
 use prost::Message;
-use vector_lib::{otel_tags, prometheus::parser::proto};
+use sol_lib::{otel_tags, prometheus::parser::proto};
 
 use super::*;
 use crate::{

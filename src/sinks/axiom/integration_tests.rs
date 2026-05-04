@@ -3,7 +3,7 @@ use std::env;
 use chrono::{DateTime, Duration, Utc};
 use futures::stream;
 use serde::{Deserialize, Serialize};
-use vector_lib::event::{BatchNotifier, BatchStatus, Event, OtelLog};
+use sol_lib::event::{BatchNotifier, BatchStatus, Event, OtelLog};
 
 use super::*;
 use crate::{

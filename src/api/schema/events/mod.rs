@@ -13,7 +13,7 @@ use output::{OutputEventsPayload, from_tap_payload_to_output_events};
 use rand::{Rng, SeedableRng, rngs::SmallRng};
 use tokio::{select, sync::mpsc, time};
 use tokio_stream::wrappers::ReceiverStream;
-use vector_lib::tap::{
+use sol_lib::tap::{
     controller::{TapController, TapPatterns},
     topology::WatchRx,
 };

@@ -4,7 +4,7 @@ use aws_sdk_kinesis::operation::{
 use aws_smithy_runtime_api::client::{orchestrator::HttpResponse, result::SdkError};
 use futures::FutureExt;
 use snafu::Snafu;
-use vector_lib::configurable::{component::GenerateConfig, configurable_component};
+use sol_lib::configurable::{component::GenerateConfig, configurable_component};
 
 use super::{
     KinesisClient, KinesisError, KinesisRecord, KinesisResponse, KinesisSinkBaseConfig, build_sink,

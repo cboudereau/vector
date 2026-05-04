@@ -1,6 +1,6 @@
 use tokio::{pin, select, sync::mpsc};
 use tonic::{Request, Response, Status, codec::CompressionEncoding, service::RoutesBuilder, transport::{Channel, Endpoint}};
-use vector_lib::{
+use sol_lib::{
     event::Event,
     opentelemetry::proto::collector::{
         logs::v1::{

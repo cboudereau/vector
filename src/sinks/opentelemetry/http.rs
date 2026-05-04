@@ -6,7 +6,7 @@ use futures::{StreamExt, future::BoxFuture, stream::BoxStream};
 use http::{header, Method, Request};
 use hyper::Body;
 use tower::{Service, ServiceBuilder};
-use vector_lib::{
+use sol_lib::{
     ByteSizeOf, EstimatedJsonEncodedSizeOf,
     config::telemetry,
     configurable::configurable_component,
@@ -84,7 +84,7 @@ pub struct OtlpHttpConfig {
 
     #[configurable(derived)]
     #[serde(default)]
-    pub tls: Option<vector_lib::tls::TlsConfig>,
+    pub tls: Option<sol_lib::tls::TlsConfig>,
 
     #[configurable(derived)]
     #[serde(
@@ -369,7 +369,7 @@ fn collection_into_http_requests(
     col: EventCollection,
     encoding: OtlpHttpEncoding,
 ) -> Vec<OtlpHttpRequest> {
-    use vector_lib::opentelemetry::proto::{
+    use sol_lib::opentelemetry::proto::{
         collector::{
             logs::v1::ExportLogsServiceRequest,
             metrics::v1::ExportMetricsServiceRequest,

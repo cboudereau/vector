@@ -13,7 +13,7 @@ use rmp_serde::{Deserializer, Serializer, decode};
 use serde::{Deserialize, Serialize};
 use smallvec::{SmallVec, smallvec};
 use tokio_util::codec::Decoder;
-use vector_lib::{
+use sol_lib::{
     codecs::{BytesDeserializerConfig, StreamDecodingError},
     config::insert_source_metadata,
     configurable::configurable_component,
@@ -758,7 +758,7 @@ mod tests {
         time::{Duration, error::Elapsed, timeout},
     };
     use tokio_util::codec::Decoder;
-    use vector_lib::{assert_event_data_eq, lookup::event_path, schema::Definition};
+    use sol_lib::{assert_event_data_eq, lookup::event_path, schema::Definition};
     use vrl::{path, value::{Value, kind::Collection}};
 
     use super::{message::FluentMessageOptions, *};
@@ -1159,7 +1159,7 @@ mod integration_tests {
 
     use futures::Stream;
     use tokio::time::sleep;
-    use vector_lib::event::{Event, EventStatus};
+    use sol_lib::event::{Event, EventStatus};
 
     use vrl::event_path;
 

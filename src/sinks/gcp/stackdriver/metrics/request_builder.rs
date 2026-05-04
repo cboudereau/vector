@@ -2,7 +2,7 @@ use std::io;
 
 use bytes::Bytes;
 use chrono::Utc;
-use vector_lib::event::OtelMetric;
+use sol_lib::event::OtelMetric;
 
 use crate::sinks::{gcp, prelude::*, util::http::HttpRequest};
 

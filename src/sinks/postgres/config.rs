@@ -1,7 +1,7 @@
 use futures::FutureExt;
 use sqlx::{Pool, Postgres, postgres::PgPoolOptions};
 use tower::ServiceBuilder;
-use vector_lib::{
+use sol_lib::{
     config::AcknowledgementsConfig,
     configurable::{component::GenerateConfig, configurable_component},
     sink::VectorSink,

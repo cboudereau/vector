@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use snafu::Snafu;
-use vector_lib::{
+use sol_lib::{
     config::{DataType, Input, TransformOutput},
     configurable::configurable_component,
     schema::Definition,

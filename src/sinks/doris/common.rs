@@ -10,7 +10,7 @@ use crate::{
     tls::TlsSettings,
 };
 use http::Uri;
-use vector_lib::codecs::{Encoder, SinkType, encoding::Framer};
+use sol_lib::codecs::{Encoder, SinkType, encoding::Framer};
 
 #[derive(Debug, Clone)]
 pub struct DorisCommon {

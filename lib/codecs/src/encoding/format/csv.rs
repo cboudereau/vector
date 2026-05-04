@@ -3,8 +3,8 @@ use chrono::SecondsFormat;
 use csv_core::{WriteResult, Writer, WriterBuilder};
 use lookup::lookup_v2::ConfigTargetPath;
 use tokio_util::codec::Encoder;
-use vector_config_macros::configurable_component;
-use vector_core::{
+use sol_config_macros::configurable_component;
+use sol_core::{
     config::DataType,
     event::{Event, Value},
     schema,
@@ -80,8 +80,8 @@ pub struct CsvSerializerOptions {
     #[configurable(metadata(docs::type_override = "ascii_char"))]
     #[serde(
         default = "default_delimiter",
-        with = "vector_core::serde::ascii_char",
-        skip_serializing_if = "vector_core::serde::is_default"
+        with = "sol_core::serde::ascii_char",
+        skip_serializing_if = "sol_core::serde::is_default"
     )]
     pub delimiter: u8,
 
@@ -91,7 +91,7 @@ pub struct CsvSerializerOptions {
     /// field data are escaped instead of doubled.
     #[serde(
         default = "default_double_quote",
-        skip_serializing_if = "vector_core::serde::is_default"
+        skip_serializing_if = "sol_core::serde::is_default"
     )]
     pub double_quote: bool,
 
@@ -104,8 +104,8 @@ pub struct CsvSerializerOptions {
     #[configurable(metadata(docs::type_override = "ascii_char"))]
     #[serde(
         default = "default_escape",
-        with = "vector_core::serde::ascii_char",
-        skip_serializing_if = "vector_core::serde::is_default"
+        with = "sol_core::serde::ascii_char",
+        skip_serializing_if = "sol_core::serde::is_default"
     )]
     pub escape: u8,
 
@@ -113,13 +113,13 @@ pub struct CsvSerializerOptions {
     #[configurable(metadata(docs::type_override = "ascii_char"))]
     #[serde(
         default = "default_escape",
-        with = "vector_core::serde::ascii_char",
-        skip_serializing_if = "vector_core::serde::is_default"
+        with = "sol_core::serde::ascii_char",
+        skip_serializing_if = "sol_core::serde::is_default"
     )]
     quote: u8,
 
     /// The quoting style to use when writing CSV data.
-    #[serde(default, skip_serializing_if = "vector_core::serde::is_default")]
+    #[serde(default, skip_serializing_if = "sol_core::serde::is_default")]
     pub quote_style: QuoteStyle,
 
     /// Sets the capacity (in bytes) of the internal buffer used in the CSV writer.
@@ -217,7 +217,7 @@ impl CsvSerializer {
 }
 
 impl Encoder<Event> for CsvSerializer {
-    type Error = vector_common::Error;
+    type Error = sol_common::Error;
 
     fn encode(&mut self, event: Event, buffer: &mut BytesMut) -> Result<(), Self::Error> {
         let log = event.into_log();
@@ -310,8 +310,8 @@ mod tests {
     use bytes::BytesMut;
     use chrono::DateTime;
     use ordered_float::NotNan;
-    use vector_common::btreemap;
-    use vector_core::event::{OtelLog, ObjectMap, Value};
+    use sol_common::btreemap;
+    use sol_core::event::{OtelLog, ObjectMap, Value};
 
     use super::*;
 

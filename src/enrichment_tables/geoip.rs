@@ -12,7 +12,7 @@ use maxminddb::{
 };
 use ordered_float::NotNan;
 use serde::Deserialize;
-use vector_lib::{
+use sol_lib::{
     configurable::configurable_component,
     enrichment::{Case, Condition, IndexHandle, Table},
 };
@@ -107,7 +107,7 @@ impl EnrichmentTableConfig for GeoipConfig {
 }
 
 #[derive(Clone)]
-/// A struct that implements [vector_lib::enrichment::Table] to handle loading enrichment data from a GeoIP database.
+/// A struct that implements [sol_lib::enrichment::Table] to handle loading enrichment data from a GeoIP database.
 pub struct Geoip {
     config: GeoipConfig,
     dbreader: Arc<maxminddb::Reader<Vec<u8>>>,

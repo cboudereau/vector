@@ -569,7 +569,7 @@ mod tests {
     use std::{collections::HashMap, convert::TryFrom};
 
     use futures::stream::StreamExt;
-    use vector_lib::{
+    use sol_lib::{
         codecs::JsonSerializerConfig,
         event::{Event, OtelLog, ObjectMap, Value},
         lookup::{PathPrefix, owned_value_path},

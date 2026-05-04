@@ -11,7 +11,7 @@ use tokio::{
 use tokio_stream::wrappers::UnixListenerStream;
 use tokio_util::codec::FramedRead;
 use tracing::{Instrument, field};
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     codecs::StreamDecodingError,
     internal_event::{ByteSize, BytesReceived, InternalEventHandle as _, Protocol},

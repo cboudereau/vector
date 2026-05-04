@@ -15,10 +15,10 @@ hickory-proto.workspace = true
 prost.workspace = true
 snafu.workspace = true
 tracing.workspace = true
-vector-config.workspace = true
-vector-common = { path = "../vector-common" }
-vector-lookup = { path = "../vector-lookup", features = ["test"] }
-vector-core = { path = "../vector-core" }
+sol-config.workspace = true
+sol-common = { path = "../sol-common" }
+sol-lookup = { path = "../sol-lookup", features = ["test"] }
+sol-core = { path = "../sol-core" }
 vrl.workspace = true
 paste.workspace = true
 

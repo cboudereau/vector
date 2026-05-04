@@ -9,7 +9,7 @@ use std::{
     time::Duration,
 };
 use tokio::sync::{mpsc::Receiver, oneshot::Sender};
-use vector_lib::{configurable::configurable_component, event::EventStatus};
+use sol_lib::{configurable::configurable_component, event::EventStatus};
 
 use super::service::{HttpRequestBuilder, MetadataFields};
 use crate::{
@@ -299,7 +299,7 @@ mod tests {
 
     use futures_util::{StreamExt, stream::FuturesUnordered};
     use tokio::sync::oneshot::{self, Receiver};
-    use vector_lib::{config::proxy::ProxyConfig, event::EventStatus};
+    use sol_lib::{config::proxy::ProxyConfig, event::EventStatus};
 
     use super::HecAckClient;
     use crate::{

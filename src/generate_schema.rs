@@ -3,7 +3,7 @@
 use std::{fs, path::PathBuf};
 
 use clap::Parser;
-use vector_lib::configurable::schema::generate_root_schema;
+use sol_lib::configurable::schema::generate_root_schema;
 
 use crate::config::ConfigBuilder;
 

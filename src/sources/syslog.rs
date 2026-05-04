@@ -8,7 +8,7 @@ use futures::StreamExt;
 use listenfd::ListenFd;
 use smallvec::SmallVec;
 use tokio_util::udp::UdpFramed;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     codecs::{
         BytesDecoder, OctetCountingDecoder, SyslogDeserializerConfig,
@@ -253,7 +253,7 @@ struct SyslogTcpSource {
 }
 
 impl TcpSource for SyslogTcpSource {
-    type Error = vector_lib::codecs::decoding::Error;
+    type Error = sol_lib::codecs::decoding::Error;
     type Item = SmallVec<[Event; 1]>;
     type Decoder = Decoder;
     type Acker = TcpNullAcker;
@@ -412,7 +412,7 @@ mod test {
     use serde::Deserialize;
     use tokio::time::{Duration, Instant, sleep};
     use tokio_util::codec::BytesCodec;
-    use vector_lib::{
+    use sol_lib::{
         assert_event_data_eq,
         codecs::decoding::format::Deserializer,
         config::{ComponentKey},

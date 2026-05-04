@@ -7,7 +7,7 @@ use serde_json::Value;
 use tracing::trace;
 
 fn fake_intake_vector_address() -> String {
-    std::env::var("FAKE_INTAKE_VECTOR_ENDPOINT")
+    std::env::var("FAKE_INTAKE_SOL_ENDPOINT")
         .unwrap_or_else(|_| "http://127.0.0.1:8082".to_string())
 }
 

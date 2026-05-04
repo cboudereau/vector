@@ -5,7 +5,7 @@ use aws_sdk_kinesis::types::{Record, ShardIteratorType};
 use aws_smithy_types::DateTime;
 use futures::StreamExt;
 use tokio::time::{Duration, sleep};
-use vector_lib::{codecs::TextSerializerConfig, lookup::lookup_v2::ConfigValuePath};
+use sol_lib::{codecs::TextSerializerConfig, lookup::lookup_v2::ConfigValuePath};
 
 use super::{config::KinesisClientBuilder, *};
 use crate::{

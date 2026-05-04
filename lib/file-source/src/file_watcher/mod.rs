@@ -12,7 +12,7 @@ use tokio::{
     time::Instant,
 };
 use tracing::debug;
-use vector_common::constants::GZIP_MAGIC;
+use sol_common::constants::GZIP_MAGIC;
 
 use file_source_common::{
     AsyncFileInfo, FilePosition, PortableFileExt, ReadFrom,

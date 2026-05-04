@@ -1,6 +1,6 @@
 use std::{fmt, sync::Arc};
 
-use vector_lib::{
+use sol_lib::{
     lookup::{OwnedValuePath, PathPrefix, event_path, lookup_v2::OptionalTargetPath},
     schema::meaning,
 };

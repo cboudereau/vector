@@ -51,7 +51,7 @@ concurrency:
 env:
   CONTAINER_TOOL: "docker"
   RUST_BACKTRACE: full
-  VECTOR_LOG: vector=debug
+  SOL_LOG: sol=debug
   VERBOSE: true
   CI: true
   PROFILE: debug

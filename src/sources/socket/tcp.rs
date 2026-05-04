@@ -3,7 +3,7 @@ use std::time::Duration;
 use chrono::Utc;
 use serde_with::serde_as;
 use smallvec::SmallVec;
-use vector_lib::{
+use sol_lib::{
     codecs::decoding::{DeserializerConfig, FramingConfig},
     configurable::configurable_component,
     ipallowlist::IpAllowlistConfig,
@@ -192,7 +192,7 @@ impl RawTcpSource {
 }
 
 impl TcpSource for RawTcpSource {
-    type Error = vector_lib::codecs::decoding::Error;
+    type Error = sol_lib::codecs::decoding::Error;
     type Item = SmallVec<[Event; 1]>;
     type Decoder = Decoder;
     type Acker = TcpNullAcker;

@@ -2,7 +2,7 @@ use std::task::{Context, Poll};
 
 use futures_util::future::BoxFuture;
 use tower::Service;
-use vector_lib::{
+use sol_lib::{
     finalization::{EventFinalizers, EventStatus, Finalizable},
     request_metadata::{GroupedCountByteSize, MetaDescriptive, RequestMetadata},
     stream::DriverResponse,

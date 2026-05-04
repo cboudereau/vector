@@ -1,4 +1,4 @@
-use vector_lib::{config::proxy::ProxyConfig, lookup::{OwnedTargetPath, owned_value_path}};
+use sol_lib::{config::proxy::ProxyConfig, lookup::{OwnedTargetPath, owned_value_path}};
 
 use super::{config::LokiConfig, healthcheck::healthcheck, sink::LokiSink};
 use crate::{

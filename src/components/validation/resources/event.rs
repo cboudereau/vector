@@ -4,7 +4,7 @@ use bytes::BytesMut;
 use serde::Deserialize;
 use serde_json::Value;
 use tokio_util::codec::Encoder as _;
-use vector_lib::{
+use sol_lib::{
     codecs::{
         JsonSerializer, LengthDelimitedEncoder, LogfmtSerializer, MetricTagValues,
         NewlineDelimitedEncoder, encoding, encoding::format::JsonSerializerOptions,
@@ -12,7 +12,7 @@ use vector_lib::{
     event::{Event, EventMetadata, OtelLog},
 };
 
-use vector_lib::codecs::Encoder;
+use sol_lib::codecs::Encoder;
 
 /// A test case event for deserialization from yaml file.
 /// This is an intermediary step to TestEvent.

@@ -1,6 +1,6 @@
 use chrono::Utc;
 use greptimedb_ingester::{api::v1::*, helpers::values::*};
-use vector_lib::event::{
+use sol_lib::event::{
     MetricView, OtelMetric, ValueAtQuantile,
 };
 
@@ -309,7 +309,7 @@ mod tests {
         let otel = OtelMetric::new_histogram_from_samples(
             "cpu_seconds_total",
             MetricKind::Incremental,
-            &vector_lib::samples![1.0 => 2, 2.0 => 4, 3.0 => 2],
+            &sol_lib::samples![1.0 => 2, 2.0 => 4, 3.0 => 2],
         );
         let options = RequestBuilderOptions {
             use_new_naming: false,
@@ -331,7 +331,7 @@ mod tests {
 
     #[test]
     fn test_histogram() {
-        let buckets = vector_lib::buckets![1.0 => 1, 2.0 => 2, 3.0 => 1];
+        let buckets = sol_lib::buckets![1.0 => 1, 2.0 => 2, 3.0 => 1];
         let buckets_len = buckets.len();
         let otel = OtelMetric::new_histogram(
             "cpu_seconds_total",
@@ -360,7 +360,7 @@ mod tests {
 
     #[test]
     fn test_summary() {
-        let quantiles = vector_lib::quantiles![0.01 => 1.5, 0.5 => 2.0, 0.99 => 3.0];
+        let quantiles = sol_lib::quantiles![0.01 => 1.5, 0.5 => 2.0, 0.99 => 3.0];
         let quantiles_len = quantiles.len();
         let otel = OtelMetric::new_summary("cpu_seconds_total", &quantiles, 6, 12.0);
         let options = RequestBuilderOptions {

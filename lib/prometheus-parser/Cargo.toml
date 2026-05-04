@@ -14,7 +14,7 @@ nom.workspace = true
 prost.workspace = true
 prost-types.workspace = true
 snafu.workspace = true
-vector-common = { path = "../vector-common", features = ["btreemap"] }
+sol-common = { path = "../sol-common", features = ["btreemap"] }
 
 [build-dependencies]
 prost-build.workspace = true

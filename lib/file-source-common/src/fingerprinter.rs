@@ -12,7 +12,7 @@ use tokio::{
     fs::{self, File},
     io::{AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncSeekExt, BufReader},
 };
-use vector_common::constants::GZIP_MAGIC;
+use sol_common::constants::GZIP_MAGIC;
 
 use crate::{
     AsyncFileInfo, internal_events::FileSourceInternalEvents, metadata_ext::PortableFileExt,

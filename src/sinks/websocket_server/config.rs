@@ -1,6 +1,6 @@
 use std::{collections::HashMap, net::SocketAddr};
 
-use vector_lib::{codecs::JsonSerializerConfig, configurable::configurable_component};
+use sol_lib::{codecs::JsonSerializerConfig, configurable::configurable_component};
 
 use super::{buffering::MessageBufferingConfig, sink::WebSocketListenerSink};
 use crate::{

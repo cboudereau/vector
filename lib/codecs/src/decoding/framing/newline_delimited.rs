@@ -1,7 +1,7 @@
 use bytes::{Bytes, BytesMut};
 use derivative::Derivative;
 use tokio_util::codec::Decoder;
-use vector_config::configurable_component;
+use sol_config::configurable_component;
 
 use super::{BoxedFramingError, CharacterDelimitedDecoder};
 
@@ -10,7 +10,7 @@ use super::{BoxedFramingError, CharacterDelimitedDecoder};
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct NewlineDelimitedDecoderConfig {
     /// Options for the newline delimited decoder.
-    #[serde(default, skip_serializing_if = "vector_core::serde::is_default")]
+    #[serde(default, skip_serializing_if = "sol_core::serde::is_default")]
     pub newline_delimited: NewlineDelimitedDecoderOptions,
 }
 
@@ -30,7 +30,7 @@ pub struct NewlineDelimitedDecoderOptions {
     /// If there is a risk of processing malformed data, such as logs with user-controlled input,
     /// consider setting the maximum length to a reasonably large value as a safety net. This
     /// ensures that processing is not actually unbounded.
-    #[serde(skip_serializing_if = "vector_core::serde::is_default")]
+    #[serde(skip_serializing_if = "sol_core::serde::is_default")]
     pub max_length: Option<usize>,
 }
 

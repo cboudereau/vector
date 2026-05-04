@@ -1,4 +1,4 @@
-use vector_lib::opentelemetry::proto::{
+use sol_lib::opentelemetry::proto::{
     LOGS_REQUEST_MESSAGE_TYPE, collector::logs::v1::ExportLogsServiceRequest,
     common::v1::any_value::Value as AnyValueEnum,
 };

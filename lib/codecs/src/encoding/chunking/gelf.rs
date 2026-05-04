@@ -25,7 +25,7 @@ pub struct GelfChunker {
 }
 
 impl Chunking for GelfChunker {
-    fn chunk(&self, bytes: Bytes) -> Result<Vec<Bytes>, vector_common::Error> {
+    fn chunk(&self, bytes: Bytes) -> Result<Vec<Bytes>, sol_common::Error> {
         if bytes.len() <= self.max_chunk_size {
             return Ok(vec![bytes]);
         }
@@ -42,7 +42,7 @@ impl Chunking for GelfChunker {
         );
 
         if chunk_count > GELF_MAX_TOTAL_CHUNKS {
-            return Err(vector_common::Error::from(format!(
+            return Err(sol_common::Error::from(format!(
                 "Too many chunks to generate for GELF: {}, max: {}",
                 chunk_count, GELF_MAX_TOTAL_CHUNKS
             )));

@@ -1,8 +1,8 @@
 use std::num::ParseFloatError;
 
 use metrics::counter;
-use vector_lib::NamedInternalEvent;
-use vector_lib::internal_event::{
+use sol_lib::NamedInternalEvent;
+use sol_lib::internal_event::{
     ComponentEventsDropped, InternalEvent, UNINTENTIONAL, error_stage, error_type,
 };
 

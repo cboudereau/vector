@@ -2,7 +2,7 @@ use std::{collections::HashSet, time::Duration};
 
 use config::AmqpPropertiesConfig;
 use futures::StreamExt;
-use vector_lib::event::OtelLog;
+use sol_lib::event::OtelLog;
 
 use super::*;
 use crate::{

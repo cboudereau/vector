@@ -3,7 +3,7 @@ use std::{
     path::PathBuf,
 };
 
-use vector_lib::configurable::{component::GenerateConfig, configurable_component};
+use sol_lib::configurable::{component::GenerateConfig, configurable_component};
 
 use crate::{config::SecretBackend, signal};
 

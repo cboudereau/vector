@@ -6,7 +6,7 @@ use glob::Pattern;
 
 pub use cmd::{cmd, top};
 use url::Url;
-use vector_lib::top::state::{FilterColumn, SortColumn};
+use sol_lib::top::state::{FilterColumn, SortColumn};
 
 use crate::config::api::default_graphql_url;
 

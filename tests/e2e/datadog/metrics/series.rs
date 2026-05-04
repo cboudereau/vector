@@ -10,7 +10,7 @@ use ddmetric_proto::{
     metric_payload::{MetricSeries, MetricType},
 };
 use tracing::info;
-use vector::common::datadog::DatadogSeriesMetric;
+use sol::common::datadog::DatadogSeriesMetric;
 
 use self::ddmetric_proto::metric_payload::{MetricPoint, Resource};
 use super::*;

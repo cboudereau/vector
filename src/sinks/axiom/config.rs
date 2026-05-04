@@ -1,4 +1,4 @@
-use vector_lib::{
+use sol_lib::{
     codecs::{
         MetricTagValues,
         encoding::{FramingConfig, JsonSerializerConfig, JsonSerializerOptions, SerializerConfig},

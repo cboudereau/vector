@@ -1,7 +1,7 @@
 use std::io;
 
 use bytes::Bytes;
-use vector_lib::{
+use sol_lib::{
     codecs::encoding::Framer,
     event::Event,
     finalization::{EventFinalizers, Finalizable},

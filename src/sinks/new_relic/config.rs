@@ -2,7 +2,7 @@ use std::{fmt::Debug, sync::Arc};
 
 use http::Uri;
 use tower::ServiceBuilder;
-use vector_lib::sensitive_string::SensitiveString;
+use sol_lib::sensitive_string::SensitiveString;
 
 use super::{
     NewRelicApiResponse, NewRelicApiService, NewRelicEncoder, NewRelicSink, NewRelicSinkError,

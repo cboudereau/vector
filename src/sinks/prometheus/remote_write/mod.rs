@@ -5,7 +5,7 @@
 //!
 //! [remote_write]: https://prometheus.io/docs/concepts/remote_write_spec/
 
-use vector_lib::event::OtelMetric;
+use sol_lib::event::OtelMetric;
 
 use crate::sinks::{
     prelude::*,

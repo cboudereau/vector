@@ -325,7 +325,7 @@ mod tests {
 
         let delay = Duration::from_secs(3);
         let dir = temp_dir().to_path_buf();
-        let file_path = dir.join("vector.toml");
+        let file_path = dir.join("sol.toml");
         let watcher_conf = WatcherConfig::RecommendedWatcher;
 
         std::fs::create_dir(&dir).unwrap();

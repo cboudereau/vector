@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use bytes::BytesMut;
 use serde::Serialize;
 use tokio_util::codec::Encoder as _;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf, codecs::Transformer, config::telemetry,
     request_metadata::GroupedCountByteSize,
 };
@@ -57,7 +57,7 @@ impl<'a> HecData<'a> {
 #[derive(Debug, Clone)]
 pub struct HecLogsEncoder {
     pub transformer: Transformer,
-    pub encoder: vector_lib::codecs::Encoder<()>,
+    pub encoder: sol_lib::codecs::Encoder<()>,
     pub auto_extract_timestamp: bool,
 }
 

@@ -3,7 +3,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use itertools::Itertools;
 use prost::Message;
 use serde_json::json;
-use vector_lib::opentelemetry::proto::{
+use sol_lib::opentelemetry::proto::{
     collector::{metrics::v1::ExportMetricsServiceRequest, trace::v1::ExportTraceServiceRequest},
     common::v1::{AnyValue, InstrumentationScope, KeyValue, any_value::Value::StringValue},
     metrics::v1::{

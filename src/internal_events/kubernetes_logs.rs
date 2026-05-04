@@ -1,5 +1,5 @@
 use metrics::counter;
-use vector_lib::{
+use sol_lib::{
     NamedInternalEvent,
     internal_event::{
         ComponentEventsDropped, INTENTIONAL, InternalEvent, UNINTENTIONAL, error_stage, error_type,

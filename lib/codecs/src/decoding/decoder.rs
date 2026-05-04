@@ -1,7 +1,7 @@
 use bytes::{Bytes, BytesMut};
 use smallvec::SmallVec;
-use vector_common::internal_event::emit;
-use vector_core::event::Event;
+use sol_common::internal_event::emit;
+use sol_core::event::Event;
 
 use crate::{
     decoding::format::Deserializer as _,

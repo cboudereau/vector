@@ -1,5 +1,5 @@
 use snafu::ResultExt;
-use vector_lib::{codecs::JsonSerializerConfig, configurable::configurable_component};
+use sol_lib::{codecs::JsonSerializerConfig, configurable::configurable_component};
 
 use crate::{
     codecs::EncodingConfig,

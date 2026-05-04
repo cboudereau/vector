@@ -16,7 +16,7 @@ use tokio::{
 };
 use tokio_util::codec::Decoder;
 use tracing::Instrument;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     codecs::{ReadyFrames, StreamDecodingError, internal_events::DecoderFramingError},
     config::SourceAcknowledgementsConfig,
@@ -374,7 +374,7 @@ async fn handle_stream<T>(
                                         ),
                                     );
                                     otel_log.metadata_mut().value_mut().insert(
-                                        vector_lib::lookup::path!(
+                                        sol_lib::lookup::path!(
                                             _source_name, "tls_client_metadata"
                                         ),
                                         vrl::value::Value::Object(tls_map),

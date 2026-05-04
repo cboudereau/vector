@@ -3,11 +3,11 @@ use std::{collections::BTreeMap, env, time::Duration};
 use futures::StreamExt;
 use http_body::Collected;
 use hyper::{Body, Request};
-use vector_lib::event::otel_metric::{InstrumentationScope, Resource};
+use sol_lib::event::otel_metric::{InstrumentationScope, Resource};
 use serde_with::serde_as;
 use tokio::time;
 use tokio_stream::wrappers::IntervalStream;
-use vector_lib::{
+use sol_lib::{
     EstimatedJsonEncodedSizeOf,
     configurable::configurable_component,
     internal_event::{ByteSize, BytesReceived, InternalEventHandle as _, Protocol},

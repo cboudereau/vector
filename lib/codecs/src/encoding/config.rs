@@ -1,4 +1,4 @@
-use vector_config::configurable_component;
+use sol_config::configurable_component;
 
 use super::{Encoder, EncoderKind, Transformer};
 use crate::encoding::{
@@ -42,7 +42,7 @@ impl EncodingConfig {
     }
 
     /// Build the `Serializer` for this config.
-    pub fn build(&self) -> vector_common::Result<Serializer> {
+    pub fn build(&self) -> sol_common::Result<Serializer> {
         self.encoding.build()
     }
 }
@@ -99,7 +99,7 @@ impl EncodingConfigWithFraming {
     }
 
     /// Build the `Framer` and `Serializer` for this config.
-    pub fn build(&self, sink_type: SinkType) -> vector_common::Result<(Framer, Serializer)> {
+    pub fn build(&self, sink_type: SinkType) -> sol_common::Result<(Framer, Serializer)> {
         let framer = self.framing.as_ref().map(|framing| framing.build());
         let serializer = self.encoding.build()?;
 
@@ -143,7 +143,7 @@ impl EncodingConfigWithFraming {
     pub fn build_encoder(
         &self,
         sink_type: SinkType,
-    ) -> vector_common::Result<(Transformer, EncoderKind)> {
+    ) -> sol_common::Result<(Transformer, EncoderKind)> {
         let (framer, serializer) = self.build(sink_type)?;
         let encoder = EncoderKind::Framed(Box::new(Encoder::<Framer>::new(framer, serializer)));
         Ok((self.transformer(), encoder))

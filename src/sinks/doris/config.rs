@@ -122,8 +122,8 @@ impl Default for DorisConfig {
             log_request: false,
             headers: HashMap::new(),
             encoding: (
-                Some(vector_lib::codecs::encoding::FramingConfig::NewlineDelimited),
-                vector_lib::codecs::JsonSerializerConfig::default(),
+                Some(sol_lib::codecs::encoding::FramingConfig::NewlineDelimited),
+                sol_lib::codecs::JsonSerializerConfig::default(),
             )
                 .into(),
             compression: Compression::default(),

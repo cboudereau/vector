@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, sync::Arc};
 use chrono::{TimeZone, Utc};
 use futures_util::StreamExt;
 use serde::{Deserialize, de};
-use vector_lib::{
+use sol_lib::{
     codecs::{JsonSerializerConfig, TextSerializerConfig},
     event::{Event, EventMetadata, OtelLog, Value},
     lookup::lookup_v2::OptionalTargetPath,

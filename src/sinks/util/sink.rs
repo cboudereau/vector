@@ -48,11 +48,11 @@ use tokio::{
 };
 use tower::{Service, ServiceBuilder};
 use tracing::Instrument;
-use vector_lib::internal_event::{
+use sol_lib::internal_event::{
     CallError, CountByteSize, EventsSent, InternalEventHandle as _, Output,
 };
 // === StreamSink<Event> ===
-pub use vector_lib::sink::StreamSink;
+pub use sol_lib::sink::StreamSink;
 
 use super::{
     EncodedEvent,
@@ -579,7 +579,7 @@ mod tests {
     use bytes::Bytes;
     use futures::{SinkExt, StreamExt, future, stream, task::noop_waker_ref};
     use tokio::{task::yield_now, time::Instant};
-    use vector_lib::{
+    use sol_lib::{
         finalization::{BatchNotifier, BatchStatus, EventFinalizer, EventFinalizers},
         json_size::JsonSize,
     };

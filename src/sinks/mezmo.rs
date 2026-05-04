@@ -4,7 +4,7 @@ use bytes::Bytes;
 use futures::{FutureExt, SinkExt};
 use http::{Request, StatusCode, Uri};
 use serde_json::json;
-use vector_lib::{configurable::configurable_component, sensitive_string::SensitiveString};
+use sol_lib::{configurable::configurable_component, sensitive_string::SensitiveString};
 use vrl::{
     event_path,
     value::{Kind, Value},
@@ -397,7 +397,7 @@ mod tests {
     use futures_util::stream;
     use http::{StatusCode, request::Parts};
     use serde_json::json;
-    use vector_lib::event::{BatchNotifier, BatchStatus, Event, OtelLog};
+    use sol_lib::event::{BatchNotifier, BatchStatus, Event, OtelLog};
 
     use super::*;
     use crate::{

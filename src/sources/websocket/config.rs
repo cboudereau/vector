@@ -3,8 +3,8 @@ use std::time::Duration;
 use futures::TryFutureExt;
 use serde_with::serde_as;
 use snafu::ResultExt;
-use vector_config::configurable_component;
-use vector_lib::{
+use sol_config::configurable_component;
+use sol_lib::{
     codecs::decoding::{DeserializerConfig, FramingConfig},
     config::SourceOutput,
 };
@@ -194,7 +194,7 @@ impl SourceConfig for WebSocketConfig {
 
 #[cfg(test)]
 mod test {
-    use vector_lib::schema;
+    use sol_lib::schema;
     use vrl::{
         owned_value_path,
         value::kind::{Collection, Kind},

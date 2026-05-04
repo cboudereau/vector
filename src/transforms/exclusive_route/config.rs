@@ -1,6 +1,6 @@
 use std::hash::{Hash, Hasher};
 
-use vector_lib::config::clone_input_definitions;
+use sol_lib::config::clone_input_definitions;
 
 use crate::{
     conditions::{AnyCondition, ConditionConfig, VrlConfig},

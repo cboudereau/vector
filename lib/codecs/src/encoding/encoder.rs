@@ -1,7 +1,7 @@
 use bytes::BytesMut;
 use tokio_util::codec::Encoder as _;
-use vector_common::internal_event::emit;
-use vector_core::event::Event;
+use sol_common::internal_event::emit;
+use sol_core::event::Event;
 
 #[cfg(feature = "arrow")]
 use crate::encoding::ArrowStreamSerializer;
@@ -270,7 +270,7 @@ mod tests {
     use bytes::BufMut;
     use futures::{SinkExt, StreamExt};
     use tokio_util::codec::FramedWrite;
-    use vector_core::event::OtelLog;
+    use sol_core::event::OtelLog;
 
     use super::*;
     use crate::encoding::BoxedFramingError;

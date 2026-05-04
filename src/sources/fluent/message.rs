@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, convert::TryInto};
 use chrono::{DateTime, TimeZone, Utc, serde::ts_seconds};
 use ordered_float::NotNan;
 use serde::{Deserialize, Serialize};
-use vector_lib::event::{KeyString, ObjectMap, Value};
+use sol_lib::event::{KeyString, ObjectMap, Value};
 
 /// Fluent msgpack messages can be encoded in one of three ways, each with and
 /// without options, all using arrays to encode the top-level fields.

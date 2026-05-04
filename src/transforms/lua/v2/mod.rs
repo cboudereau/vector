@@ -2,8 +2,8 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use serde_with::serde_as;
 use snafu::{ResultExt, Snafu};
-pub use vector_lib::event::lua;
-use vector_lib::{
+pub use sol_lib::event::lua;
+use sol_lib::{
     codecs::MetricTagValues,
     configurable::configurable_component,
     transform::runtime_transform::{RuntimeTransform, Timer},
@@ -67,7 +67,7 @@ pub struct LuaConfig {
     ///
     /// If not specified, the modules are looked up in the configuration directories.
     #[serde(default = "default_config_paths")]
-    #[configurable(metadata(docs::examples = "/etc/vector/lua"))]
+    #[configurable(metadata(docs::examples = "/etc/sol/lua"))]
     #[configurable(metadata(docs::human_name = "Search Directories"))]
     search_dirs: Vec<PathBuf>,
 

@@ -9,8 +9,8 @@ pub use self::source::*;
 mod sink {
     use metrics::{counter, gauge};
     use serde_json::Error;
-    use vector_lib::NamedInternalEvent;
-    use vector_lib::internal_event::{
+    use sol_lib::NamedInternalEvent;
+    use sol_lib::internal_event::{
         ComponentEventsDropped, InternalEvent, UNINTENTIONAL, error_stage, error_type,
     };
 
@@ -18,7 +18,7 @@ mod sink {
 
     #[derive(Debug, NamedInternalEvent)]
     pub struct SplunkEventEncodeError {
-        pub error: vector_lib::Error,
+        pub error: sol_lib::Error,
     }
 
     impl InternalEvent for SplunkEventEncodeError {
@@ -191,8 +191,8 @@ mod sink {
 #[cfg(feature = "sources-splunk_hec")]
 mod source {
     use metrics::counter;
-    use vector_lib::NamedInternalEvent;
-    use vector_lib::internal_event::{InternalEvent, error_stage, error_type};
+    use sol_lib::NamedInternalEvent;
+    use sol_lib::internal_event::{InternalEvent, error_stage, error_type};
 
     use crate::sources::splunk_hec::ApiError;
 

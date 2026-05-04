@@ -16,14 +16,14 @@ services:
     #   timeout: 2s
     #   retries: 10
 
-  # ── Vector (drop-in replacement) ──────────────────────────────
-  vector:
+  # ── Sol (drop-in replacement) ─────────────────────────────────
+  sol:
     build:
       context: ../..
-      dockerfile: demo/Dockerfile.vector
-    command: ["--config", "/etc/vector/vector.yaml"]
+      dockerfile: demo/Dockerfile.sol
+    command: ["--config", "/etc/sol/sol.yaml"]
     volumes:
-      - ./vector/:/etc/vector/:ro
+      - ./sol/:/etc/sol/:ro
     networks:
       - bridge
     ports:
@@ -84,51 +84,51 @@ services:
     networks:
       - bridge
 
-  # ── Curl tests → Vector (OTLP/JSON, direct) ────────────────
-  vector-logs:
+  # ── Curl tests → Sol (OTLP/JSON, direct) ──────────────────
+  sol-logs:
     image: curlimages/curl:8.5.0
     command: >-
       -sS --retry 5 --retry-delay 2 --retry-connrefused
       -X POST -H 'Content-Type: application/json'
       -d @/otlpjson/logs.json
       -w "\n%{http_code}\n"
-      vector:4318/v1/logs
+      sol:4318/v1/logs
     volumes:
       - ./otlpjson/logs.json:/otlpjson/logs.json:ro
     depends_on:
-      vector:
+      sol:
         condition: service_started
     networks:
       - bridge
 
-  vector-metrics:
+  sol-metrics:
     image: curlimages/curl:8.5.0
     command: >-
       -sS --retry 5 --retry-delay 2 --retry-connrefused
       -X POST -H 'Content-Type: application/json'
       -d @/otlpjson/metrics.json
       -w "\n%{http_code}\n"
-      vector:4318/v1/metrics
+      sol:4318/v1/metrics
     volumes:
       - ./otlpjson/metrics.json:/otlpjson/metrics.json:ro
     depends_on:
-      vector:
+      sol:
         condition: service_started
     networks:
       - bridge
 
-  vector-traces:
+  sol-traces:
     image: curlimages/curl:8.5.0
     command: >-
       -sS --retry 5 --retry-delay 2 --retry-connrefused
       -X POST -H 'Content-Type: application/json'
       -d @/otlpjson/trace.json
       -w "\n%{http_code}\n"
-      vector:4318/v1/traces
+      sol:4318/v1/traces
     volumes:
       - ./otlpjson/trace.json:/otlpjson/trace.json:ro
     depends_on:
-      vector:
+      sol:
         condition: service_started
     networks:
       - bridge

@@ -3,7 +3,7 @@ status: accepted
 ---
 # SOL-native dashboards vs reusing OTel Collector dashboards
 
-Addresses: [FR2](../designs/sol-telemetry-monitoring.md#fr2), [NFR1](../designs/sol-telemetry-monitoring.md#nfr1)
+Addresses: [FR2](../designs/20260504_sol-telemetry-monitoring.md#fr2), [NFR1](../designs/20260504_sol-telemetry-monitoring.md#nfr1)
 
 ## Problem
 

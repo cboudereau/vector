@@ -3,7 +3,7 @@ status: accepted
 ---
 # Rename metrics namespace from `vector` to `sol`
 
-Addresses: [NFR1](../designs/sol-telemetry-monitoring.md#nfr1)
+Addresses: [NFR1](../designs/20260504_sol-telemetry-monitoring.md#nfr1)
 
 ## Problem
 

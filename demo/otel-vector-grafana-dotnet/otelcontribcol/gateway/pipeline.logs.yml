@@ -10,4 +10,4 @@ service:
     logs/gateway:
       receivers: [otlp/gateway]
       processors: [resource/loki]
-      exporters: [otlp/vector-forwarder]
+      exporters: [otlp/sol-forwarder]

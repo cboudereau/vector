@@ -10,18 +10,19 @@ This is a mechanical refactoring: find-and-replace across the codebase, update C
 
 | Category | Count | Status | Notes |
 |----------|-------|--------|-------|
-| Cargo.toml packages with "vector" in name | 21 | **TODO** | Root + 20 workspace member crates |
-| Binary targets | 1 to rename | **TODO** | `vector` → `sol` |
-| `VECTOR_*` environment variable references | ~325 | **TODO** | 55 in .rs, 187 in .yaml, 28 in .sh |
+| Cargo.toml packages with "vector" in name | 21 | **DONE** | Renamed in [d1b942da](../../../) |
+| Binary targets | 1 | **DONE** | `vector` → `sol` in [d1b942da](../../../) |
+| `VECTOR_*` environment variable references | ~325 | **DONE** | All renamed to `SOL_*` in [d1b942da](../../../) |
 | `vector_*` internal metrics strings | ~90 | **DONE** | Renamed in [22198c3e](../../../) — registry prepends `sol_`, custom metrics stripped of `vector_` prefix |
-| Default config paths (`/etc/vector/`) | ~40 files | **TODO** | Source + regression test configs |
-| Systemd service files | 3 | **TODO** | `vector.service`, `hardened-vector.service`, `vector.default` |
-| Product name strings ("Vector has started", etc.) | ~10 | **TODO** | Internal events, CLI, headers |
-| `use vector::` / `extern crate vector` imports | ~29 | **TODO** | Tests, benches, schema gen |
-| Lines with "vector" in .rs files | ~2,097 | **TODO** | Mix of crate refs, strings, comments |
-| Workspace members total | 28 | **TODO** | 15 have "vector" in path/name |
-| K8s e2e metric names (`vector_started`, function names) | ~20 | **TODO** | `lib/k8s-e2e-tests/src/metrics.rs` — function names + test strings still use `vector_started` |
+| Default config paths (`/etc/vector/`) | ~40 files | **DONE** | All updated to `/etc/sol/` in [d1b942da](../../../) |
+| Systemd service files | 3 | **DONE** | Renamed and updated in [d1b942da](../../../) |
+| Product name strings ("Vector has started", etc.) | ~10 | **DONE** | All "Sol" in [d1b942da](../../../) |
+| `use vector::` / `extern crate vector` imports | ~29 | **DONE** | All `sol`/`sol_*` in [d1b942da](../../../) |
+| Lines with "vector" in .rs files | ~2,097 | **DONE** | Crate refs, strings, env vars all renamed in [d1b942da](../../../) |
+| Workspace members total | 28 | **DONE** | All paths updated in [d1b942da](../../../) |
+| K8s e2e metric names (`vector_started`, function names) | ~20 | **DONE** | Renamed in [d1b942da](../../../) |
 | Demo configs | 3 | **DONE** | `demo/otel-vector-grafana-dotnet/sol/` already uses `sol-*` naming |
+| Project docs and metadata | 20 files | **DONE** | README, NOTICE, SECURITY, PRIVACY, CONTRIBUTING, templates in [56ea5f85](../../../) |
 
 ## Functional Requirements
 
@@ -176,7 +177,7 @@ This is a mechanical refactoring with no architectural decisions. The approach i
 
 ### Decisions
 
-- [Rename strategy](./adrs/rename-strategy.md)
+- [Rename strategy](../../adrs/0012-rename-strategy.md)
 
 ## Cross-cutting Concerns
 

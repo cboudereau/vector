@@ -1,9 +1,9 @@
 ---
-status: draft
+status: accepted
 ---
 # Rename strategy: atomic single-commit vs incremental
 
-Addresses: [FR1](../DESIGN.md#fr1), [FR3](../DESIGN.md#fr3), [NFR1](../DESIGN.md#nfr1)
+Addresses: [FR1](../designs/rename-vector-to-sol.md#fr1), [FR3](../designs/rename-vector-to-sol.md#fr3), [NFR1](../designs/rename-vector-to-sol.md#nfr1)
 
 ## Problem
 

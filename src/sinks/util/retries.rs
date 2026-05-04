@@ -8,6 +8,7 @@ use std::{
 };
 
 use futures::FutureExt;
+use metrics::{counter, histogram};
 use tokio::time::{Sleep, sleep};
 use tower::{retry::Policy, timeout::error::Elapsed};
 use sol_lib::configurable::configurable_component;
@@ -126,11 +127,15 @@ impl<L: RetryLogic> FibonacciRetryPolicy<L> {
         self.current_jitter_duration = Self::add_full_jitter(next_duration);
     }
 
-    fn build_retry(&mut self) -> RetryPolicyFuture {
+    fn build_retry(&mut self, error_type: &'static str) -> RetryPolicyFuture {
         self.advance();
-        let delay = Box::pin(sleep(self.backoff()));
+        let backoff = self.backoff();
+        let delay = Box::pin(sleep(backoff));
 
-        debug!(message = "Retrying request.", delay_ms = %self.backoff().as_millis());
+        counter!("component_retries_total", "error_type" => error_type).increment(1);
+        histogram!("component_retry_backoff_seconds").record(backoff.as_secs_f64());
+
+        debug!(message = "Retrying request.", delay_ms = %backoff.as_millis());
         RetryPolicyFuture { delay }
     }
 }
@@ -157,7 +162,7 @@ where
                     }
 
                     warn!(message = "Retrying after response.", reason = %reason);
-                    Some(self.build_retry())
+                    Some(self.build_retry("response_failed"))
                 }
                 RetryAction::RetryPartial(modify_request) => {
                     if self.remaining_attempts == 0 {
@@ -169,7 +174,7 @@ where
                     }
                     *req = modify_request(req.clone());
                     warn!("OK/retrying partial after response.");
-                    Some(self.build_retry())
+                    Some(self.build_retry("response_failed"))
                 }
                 RetryAction::DontRetry(reason) => {
                     error!(message = "Not retriable; dropping the request.", ?reason);
@@ -188,7 +193,7 @@ where
                     if self.logic.is_retriable_error(expected) {
                         self.logic.on_retriable_error(expected);
                         warn!(message = "Retrying after error.", error = %expected);
-                        Some(self.build_retry())
+                        Some(self.build_retry("request_failed"))
                     } else {
                         error!(
                             message = "Non-retriable error; dropping the request.",
@@ -200,7 +205,7 @@ where
                     warn!(
                         "Request timed out. If this happens often while the events are actually reaching their destination, try decreasing `batch.max_bytes` and/or using `compression` if applicable. Alternatively `request.timeout_secs` can be increased."
                     );
-                    Some(self.build_retry())
+                    Some(self.build_retry("timeout"))
                 } else {
                     error!(
                         message = "Unexpected error type; dropping the request.",
@@ -248,6 +253,8 @@ impl<Request> RetryAction<Request> {
 mod tests {
     use std::{fmt, time::Duration};
 
+    use metrics_util::debugging::DebuggingRecorder;
+    use metrics_util::MetricKind;
     use tokio::time;
     use tokio_test::{assert_pending, assert_ready_err, assert_ready_ok, task};
     use tower::retry::RetryLayer;
@@ -435,4 +442,125 @@ mod tests {
     }
 
     impl std::error::Error for Error {}
+
+    #[tokio::test]
+    async fn retry_emits_counter_on_error() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+        metrics::with_local_recorder(&recorder, || {
+            let mut policy = FibonacciRetryPolicy::new(
+                5,
+                Duration::from_secs(1),
+                Duration::from_secs(10),
+                SvcRetryLogic,
+                JitterMode::None,
+            );
+            let _ = policy.build_retry("request_failed");
+
+            let snapshot = snapshotter.snapshot().into_vec();
+            let (key, _, _, _) = snapshot
+                .iter()
+                .find(|(key, _, _, _)| {
+                    key.kind() == MetricKind::Counter
+                        && key.key().name() == "component_retries_total"
+                })
+                .expect("component_retries_total counter not found");
+
+            let labels: Vec<_> = key.key().labels().collect();
+            assert!(
+                labels
+                    .iter()
+                    .any(|l| l.key() == "error_type" && l.value() == "request_failed"),
+                "expected error_type=request_failed label"
+            );
+        });
+    }
+
+    #[tokio::test]
+    async fn retry_emits_counter_on_timeout() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+        metrics::with_local_recorder(&recorder, || {
+            let mut policy = FibonacciRetryPolicy::new(
+                5,
+                Duration::from_secs(1),
+                Duration::from_secs(10),
+                SvcRetryLogic,
+                JitterMode::None,
+            );
+            let _ = policy.build_retry("timeout");
+
+            let snapshot = snapshotter.snapshot().into_vec();
+            let (key, _, _, _) = snapshot
+                .iter()
+                .find(|(key, _, _, _)| {
+                    key.kind() == MetricKind::Counter
+                        && key.key().name() == "component_retries_total"
+                })
+                .expect("component_retries_total counter not found");
+
+            let labels: Vec<_> = key.key().labels().collect();
+            assert!(
+                labels
+                    .iter()
+                    .any(|l| l.key() == "error_type" && l.value() == "timeout"),
+                "expected error_type=timeout label"
+            );
+        });
+    }
+
+    #[tokio::test]
+    async fn retry_emits_backoff_histogram() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+        metrics::with_local_recorder(&recorder, || {
+            let mut policy = FibonacciRetryPolicy::new(
+                5,
+                Duration::from_secs(1),
+                Duration::from_secs(10),
+                SvcRetryLogic,
+                JitterMode::None,
+            );
+            let _ = policy.build_retry("request_failed");
+
+            let snapshot = snapshotter.snapshot().into_vec();
+            let (_, _, _, value) = snapshot
+                .iter()
+                .find(|(key, _, _, _)| {
+                    key.kind() == MetricKind::Histogram
+                        && key.key().name() == "component_retry_backoff_seconds"
+                })
+                .expect("component_retry_backoff_seconds histogram not found");
+
+            if let metrics_util::debugging::DebugValue::Histogram(values) = value {
+                assert!(!values.is_empty(), "histogram should have at least one sample");
+            } else {
+                panic!("expected histogram value");
+            }
+        });
+    }
+
+    #[tokio::test]
+    async fn no_metrics_on_success() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+        metrics::with_local_recorder(&recorder, || {
+            let _policy = FibonacciRetryPolicy::new(
+                5,
+                Duration::from_secs(1),
+                Duration::from_secs(10),
+                SvcRetryLogic,
+                JitterMode::None,
+            );
+
+            let snapshot = snapshotter.snapshot().into_vec();
+            assert!(
+                !snapshot.iter().any(|(key, _, _, _)| {
+                    key.key().name() == "component_retries_total"
+                        || key.key().name() == "component_retry_backoff_seconds"
+                }),
+                "no retry metrics should be emitted without retrying"
+            );
+        });
+    }
 }

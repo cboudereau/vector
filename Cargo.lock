@@ -10671,6 +10671,7 @@ dependencies = [
  "md-5",
  "metrics",
  "metrics-tracing-context",
+ "metrics-util",
  "mlua",
  "mock_instant",
  "mongodb",

@@ -739,4 +739,124 @@ mod tests {
         };
         assert_eq!(policy.evaluate(&trace_5xx), Decision::Sample);
     }
+
+    // -- IntValue coercion tests --
+
+    fn make_span_with_int_attr(trace_id: &[u8; 16], key: &str, value: i64, status_code: OtelStatusCode) -> Event {
+        let span = Span {
+            trace_id: trace_id.to_vec(),
+            span_id: vec![0, 0, 0, 0, 0, 0, 0, 1],
+            parent_span_id: vec![],
+            name: "with-int-attr".to_string(),
+            kind: 0,
+            start_time_unix_nano: 0,
+            end_time_unix_nano: 100_000_000,
+            attributes: vec![KeyValue {
+                key: key.to_string(),
+                value: Some(AnyValue {
+                    value: Some(OtelValueKind::IntValue(value)),
+                }),
+            }],
+            status: Some(Status {
+                message: String::new(),
+                code: status_code as i32,
+            }),
+            trace_state: String::new(),
+            dropped_attributes_count: 0,
+            events: vec![],
+            dropped_events_count: 0,
+            links: vec![],
+            dropped_links_count: 0,
+            flags: 0,
+        };
+        Event::Trace(OtelSpan::new(span))
+    }
+
+    #[test]
+    fn string_attribute_matches_int_value() {
+        let policy = PolicyConfig::StringAttribute(StringAttributeConfig {
+            name: "int-match".into(),
+            key: "http.response.status_code".into(),
+            values: vec!["404".into()],
+            enabled_regex_matching: false,
+            invert_match: false,
+        }).build();
+        let id = [40u8; 16];
+        let trace = BufferedTrace {
+            trace_id: id,
+            spans: vec![make_span_with_int_attr(&id, "http.response.status_code", 404, OtelStatusCode::Ok)],
+            first_seen: Instant::now(),
+            total_bytes: 0,
+        };
+        assert_eq!(policy.evaluate(&trace), Decision::Sample);
+    }
+
+    #[test]
+    fn string_attribute_regex_invert_with_int_value() {
+        let policy = PolicyConfig::StringAttribute(StringAttributeConfig {
+            name: "regex-invert-int".into(),
+            key: "http.response.status_code".into(),
+            values: vec!["4..".into()],
+            enabled_regex_matching: true,
+            invert_match: true,
+        }).build();
+        let id = [41u8; 16];
+
+        // IntValue(404) → "404" matches regex "4.." → inverted → Pending
+        let trace_4xx = BufferedTrace {
+            trace_id: id,
+            spans: vec![make_span_with_int_attr(&id, "http.response.status_code", 404, OtelStatusCode::Error)],
+            first_seen: Instant::now(),
+            total_bytes: 0,
+        };
+        assert_eq!(policy.evaluate(&trace_4xx), Decision::Pending);
+
+        // IntValue(500) → "500" does not match regex "4.." → inverted → Sample
+        let trace_5xx = BufferedTrace {
+            trace_id: id,
+            spans: vec![make_span_with_int_attr(&id, "http.response.status_code", 500, OtelStatusCode::Error)],
+            first_seen: Instant::now(),
+            total_bytes: 0,
+        };
+        assert_eq!(policy.evaluate(&trace_5xx), Decision::Sample);
+    }
+
+    #[test]
+    fn and_policy_filters_4xx_errors_with_int_status_code() {
+        let policy = PolicyConfig::And(AndConfig {
+            name: "sampled-error-policy".into(),
+            sub_policies: vec![
+                PolicyConfig::StatusCode(StatusCodeConfig {
+                    name: "status-code-error-policy".into(),
+                    status_codes: vec!["ERROR".into()],
+                }),
+                PolicyConfig::StringAttribute(StringAttributeConfig {
+                    name: "http-status-code-error-policy".into(),
+                    key: "http.response.status_code".into(),
+                    values: vec!["4..".into()],
+                    enabled_regex_matching: true,
+                    invert_match: true,
+                }),
+            ],
+        }).build();
+        let id = [42u8; 16];
+
+        // 404 ERROR → StatusCode=Sample, StringAttribute=Pending (4xx filtered) → AND=Pending
+        let trace_404 = BufferedTrace {
+            trace_id: id,
+            spans: vec![make_span_with_int_attr(&id, "http.response.status_code", 404, OtelStatusCode::Error)],
+            first_seen: Instant::now(),
+            total_bytes: 0,
+        };
+        assert_eq!(policy.evaluate(&trace_404), Decision::Pending);
+
+        // 500 ERROR → StatusCode=Sample, StringAttribute=Sample (5xx kept) → AND=Sample
+        let trace_500 = BufferedTrace {
+            trace_id: id,
+            spans: vec![make_span_with_int_attr(&id, "http.response.status_code", 500, OtelStatusCode::Error)],
+            first_seen: Instant::now(),
+            total_bytes: 0,
+        };
+        assert_eq!(policy.evaluate(&trace_500), Decision::Sample);
+    }
 }

@@ -377,19 +377,27 @@ struct StringAttribute {
 
 impl SamplingPolicy for StringAttribute {
     fn evaluate(&self, trace: &BufferedTrace) -> Decision {
+        use opentelemetry_proto::tonic::common::v1::any_value::Value as OtelValue;
+
         let matched = 'outer: {
             for span_event in &trace.spans {
                 if let crate::event::Event::Trace(otel_span) = span_event {
                     if let Some(v) = otel_span.attribute(&self.key) {
-                        if let Some(opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(s)) = &v.value {
-                            let hit = if let Some(regexes) = &self.compiled_regexes {
-                                regexes.iter().any(|re| re.is_match(s))
-                            } else {
-                                self.values.iter().any(|val| val == s)
-                            };
-                            if hit {
-                                break 'outer true;
-                            }
+                        let s_owned: String;
+                        let s: &str = match &v.value {
+                            Some(OtelValue::StringValue(s)) => s.as_str(),
+                            Some(OtelValue::IntValue(i)) => { s_owned = i.to_string(); &s_owned }
+                            Some(OtelValue::DoubleValue(d)) => { s_owned = d.to_string(); &s_owned }
+                            Some(OtelValue::BoolValue(b)) => { s_owned = b.to_string(); &s_owned }
+                            _ => continue,
+                        };
+                        let hit = if let Some(regexes) = &self.compiled_regexes {
+                            regexes.iter().any(|re| re.is_match(s))
+                        } else {
+                            self.values.iter().any(|val| val.as_str() == s)
+                        };
+                        if hit {
+                            break 'outer true;
                         }
                     }
                 }

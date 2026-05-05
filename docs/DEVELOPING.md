@@ -161,8 +161,6 @@ cargo bench transforms::example
 # Format your code before pushing!
 make fmt
 cargo fmt
-# Build component documentation for the website
-make generate-component-docs
 ```
 
 If you run `make` you'll see a full list of all our tasks. Some of these will start Docker containers, sign commits, or even make releases. These are not common development commands and your mileage may vary.
@@ -182,7 +180,6 @@ If you run `make` you'll see a full list of all our tasks. Some of these will st
 - [`/scripts`](../scripts) - Scripts used to generate docs and maintain the repo.
 - [`/src`](../src) - Vector source.
 - [`/tests`](../tests) - Various high-level test cases.
-- [`/website`](../website) - Vector's website and external documentation for Vector users.
 
 ### Makefile
 

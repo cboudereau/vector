@@ -1,18 +1,91 @@
-name: Nightly
-
-permissions:
-  contents: write
-  packages: write
+name: Upstream Compatibility
 
 on:
-  workflow_dispatch:
   schedule:
-    - cron: "0 5 * * 2-6"  # Runs at 5:00 AM UTC, Tuesday through Saturday
+    - cron: "0 6 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  VERBOSE: true
+  CI: true
+  PROFILE: debug
 
 jobs:
-  Nightly:
-    uses: ./.github/workflows/publish.yml
-    with:
-      git_ref: ${{ github.ref }}
-      channel: nightly
-    secrets: inherit
+  check-otlp-upstream:
+    name: Check OTLP proto compatibility
+    runs-on: ubuntu-24.04-8core
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Fetch upstream OTLP protos
+        run: |
+          TEMP=$(mktemp -d)
+          git clone --depth 1 https://github.com/open-telemetry/opentelemetry-proto.git "$TEMP/otel-proto"
+
+          UPSTREAM="$TEMP/otel-proto/opentelemetry/proto"
+
+          for TARGET_DIR in \
+            lib/opentelemetry-proto/src/proto/opentelemetry-proto/opentelemetry/proto \
+            lib/otel-proto-types/src/proto/opentelemetry-proto/opentelemetry/proto; do
+
+            find "$TARGET_DIR" -name "*.proto" -delete
+
+            for src_file in $(find "$UPSTREAM" -name "*.proto"); do
+              rel="${src_file#$UPSTREAM/}"
+              dest_dir="$TARGET_DIR/$(dirname "$rel")"
+              mkdir -p "$dest_dir"
+              cp "$src_file" "$dest_dir/"
+            done
+          done
+
+          rm -rf "$TEMP"
+
+      - uses: ./.github/actions/setup
+        with:
+          rust: true
+          cargo-nextest: true
+          protoc: true
+          libsasl2: true
+
+      - name: Check compilation
+        run: cargo check --workspace
+
+      - name: Run tests
+        run: make test
+
+  check-vector-upstream:
+    name: Check Vector proto compatibility
+    runs-on: ubuntu-24.04-8core
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Fetch upstream Vector protos
+        run: |
+          TEMP=$(mktemp -d)
+          git clone --depth 1 --sparse https://github.com/vectordotdev/vector.git "$TEMP/vector"
+          cd "$TEMP/vector"
+          git sparse-checkout set proto/vector
+
+          cd "$GITHUB_WORKSPACE"
+          rm -f proto/vector/*.proto
+          cp "$TEMP/vector/proto/vector/"*.proto proto/vector/
+
+          rm -rf "$TEMP"
+
+      - uses: ./.github/actions/setup
+        with:
+          rust: true
+          cargo-nextest: true
+          protoc: true
+          libsasl2: true
+
+      - name: Check compilation
+        run: cargo check --workspace
+
+      - name: Run tests
+        run: make test

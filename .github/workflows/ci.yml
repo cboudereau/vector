@@ -1,0 +1,133 @@
+name: CI
+
+on:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  VERBOSE: true
+  CI: true
+  PROFILE: debug
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    uses: ./.github/workflows/changes.yml
+
+  check-fmt:
+    name: Check format
+    runs-on: ubuntu-24.04
+    if: ${{ needs.changes.outputs.source == 'true' }}
+    needs: changes
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: ./.github/actions/setup
+        with:
+          rust: true
+      - run: make check-fmt
+
+  check-clippy:
+    name: Check clippy
+    runs-on: ubuntu-24.04-8core
+    if: ${{ needs.changes.outputs.source == 'true' }}
+    needs: changes
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: ./.github/actions/setup
+        with:
+          rust: true
+          protoc: true
+          libsasl2: true
+      - run: make check-clippy
+
+  test:
+    name: Unit tests (Linux)
+    runs-on: ubuntu-24.04-8core
+    if: ${{ needs.changes.outputs.source == 'true' }}
+    needs: changes
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: ./.github/actions/setup
+        with:
+          rust: true
+          cargo-nextest: true
+          protoc: true
+          libsasl2: true
+      - name: Unit tests
+        run: make test
+        env:
+          CARGO_BUILD_JOBS: 5
+      - name: Component spec validation
+        run: make test-component-validation
+
+  test-windows:
+    name: Unit tests (Windows)
+    runs-on: windows-2025-8core
+    timeout-minutes: 60
+    if: ${{ needs.changes.outputs.source == 'true' }}
+    needs: changes
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.10"
+      - run: .\scripts\environment\bootstrap-windows-2025.ps1
+      - run: make test
+
+  check-deny:
+    name: Security & license audit
+    runs-on: ubuntu-24.04
+    if: ${{ needs.changes.outputs.dependencies == 'true' }}
+    needs: changes
+    timeout-minutes: 30
+    env:
+      CARGO_INCREMENTAL: 0
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: ./.github/actions/setup
+        with:
+          mold: false
+          cargo-deny: true
+      - run: make check-deny
+
+  check-proto:
+    name: Protobuf compatibility
+    runs-on: ubuntu-24.04
+    if: ${{ needs.changes.outputs.proto == 'true' }}
+    needs: changes
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99 # v1.50.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: bufbuild/buf-breaking-action@c57b3d842a5c3f3b454756ef65305a50a587c5ba # v1.1.4
+        with:
+          against: "https://github.com/${{ github.repository }}.git#branch=main"
+
+  all-checks:
+    name: CI
+    runs-on: ubuntu-24.04
+    if: always()
+    needs:
+      - changes
+      - check-fmt
+      - check-clippy
+      - test
+      - test-windows
+      - check-deny
+      - check-proto
+    steps:
+      - name: Check all jobs status
+        run: |
+          if [[ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            echo "One or more jobs failed or were cancelled"
+            exit 1
+          else
+            echo "All jobs completed successfully"
+          fi

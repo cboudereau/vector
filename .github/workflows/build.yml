@@ -1,0 +1,112 @@
+name: Build & Publish
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  VERBOSE: true
+  CI: true
+  DISABLE_MOLD: true
+  DEBIAN_FRONTEND: noninteractive
+  CARGO_PROFILE_RELEASE_LTO: fat
+  CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 1
+
+jobs:
+  generate-metadata:
+    name: Generate version metadata
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      sol_version: ${{ steps.meta.outputs.sol_version }}
+      sol_build_desc: ${{ steps.meta.outputs.sol_build_desc }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: ./.github/actions/setup
+        with:
+          rust: true
+      - name: Generate publish metadata
+        id: meta
+        run: make ci-generate-publish-metadata
+
+  build-deb:
+    name: Build x86_64 DEB package
+    runs-on: ubuntu-24.04-8core
+    timeout-minutes: 60
+    needs: generate-metadata
+    env:
+      SOL_VERSION: ${{ needs.generate-metadata.outputs.sol_version }}
+      SOL_BUILD_DESC: ${{ needs.generate-metadata.outputs.sol_build_desc }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Bootstrap runner environment
+        run: |
+          sudo -E bash scripts/environment/bootstrap-ubuntu-24.04.sh
+          bash scripts/environment/prepare.sh --modules=rustup
+      - name: Build binary and DEB package
+        run: make package-x86_64-unknown-linux-gnu-all
+      - name: Upload artifacts
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: sol-${{ env.SOL_VERSION }}-x86_64-unknown-linux-gnu
+          path: target/artifacts/sol*
+
+  build-docker:
+    name: Build & push Docker image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    needs:
+      - generate-metadata
+      - build-deb
+    env:
+      SOL_VERSION: ${{ needs.generate-metadata.outputs.sol_version }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Download DEB artifacts
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: sol-${{ env.SOL_VERSION }}-x86_64-unknown-linux-gnu
+          path: distribution/docker/debian/
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Login to container registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ${{ secrets.DOCKER_REGISTRY }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Compute Docker tags
+        id: tags
+        run: |
+          REGISTRY="${{ secrets.DOCKER_REGISTRY }}"
+          SHA="${{ github.sha }}"
+          SHORT_SHA="${SHA:0:7}"
+          TAGS="${REGISTRY}/sol:${SHORT_SHA}"
+
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            VERSION="${{ github.ref_name }}"
+            TAGS="${TAGS},${REGISTRY}/sol:${VERSION}"
+          fi
+
+          if [[ "${{ github.ref_name }}" == "main" ]]; then
+            TAGS="${TAGS},${REGISTRY}/sol:latest"
+          fi
+
+          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1 # v6.16.0
+        with:
+          context: distribution/docker/debian
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          platforms: linux/amd64

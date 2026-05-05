@@ -1,8 +1,6 @@
-# Vector Internal Documentation
+# Sol Internal Documentation
 
-**_This folder contains internal documentation for Vector contributors. If
-you're a Vector user, please visit <https://vector.dev/docs>, which is powered by
-the [website](../website) directory._**
+**_This folder contains internal documentation for Sol contributors._**
 
 ## Getting started
 

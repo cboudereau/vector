@@ -28,9 +28,15 @@ Migrate step by step in the following order:
    - Added `span_metrics` transform for RED metrics → Mimir
    - Sampled traces exported to Tempo via gRPC
 
+4. ~~Service graph~~ DONE
+   - Added `servicegraph` transform to `sol-collector`
+   - Pairs CLIENT/SERVER spans via parent span ID matching (same trace routed to same collector by load balancer)
+   - Emits OTLP metrics: `traces_service_graph_request`, `traces_service_graph_request_failed`, `traces_service_graph_request_server`, `traces_service_graph_request_client`
+   - Mimir converts to Prometheus names (`_total`, `_seconds` suffixes) via `-distributor.otel-metric-suffixes-enabled`
+   - Compatible with otelcontribcol `servicegraphconnector` metric names and dimensions
+   - Edge metrics exported to Mimir alongside span_metrics
+
 ## Known limitations
 
-### Service graph vs span_metrics
-OTel `servicegraph` connector generates inter-service edge metrics (client→server pairs).
-Sol `span_metrics` generates per-service RED metrics (rate, errors, duration histograms).
-They are complementary, not equivalent — the Grafana service graph panel requires the edge metrics.
+### Virtual nodes
+The `servicegraph` transform does not yet synthesize edges for uninstrumented services (virtual nodes via `peer.service`, `db.name`). This is planned for a follow-up.

@@ -31,6 +31,8 @@ pub mod route;
 pub mod tag_cardinality_limit;
 #[cfg(feature = "transforms-throttle")]
 pub mod throttle;
+#[cfg(feature = "transforms-servicegraph")]
+pub mod servicegraph;
 #[cfg(feature = "transforms-span_metrics")]
 pub mod span_metrics;
 #[cfg(feature = "transforms-tail_sampling")]

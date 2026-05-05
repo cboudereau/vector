@@ -54,6 +54,15 @@ transforms:
       - name: db.system
       - name: messaging.system
 
+  servicegraph:
+    type: servicegraph
+    inputs: ["otlp.traces"]
+    metrics_flush_interval_secs: 15
+    dimensions: ["db.system", "messaging.system"]
+    store:
+      ttl_secs: 2
+      max_items: 1000
+
   promote_self_metrics_attrs:
     type: remap
     inputs: ["self_metrics"]
@@ -76,7 +85,7 @@ sinks:
 
   otlp_span_metrics:
     type: opentelemetry
-    inputs: ["span_metrics"]
+    inputs: ["span_metrics", "servicegraph"]
     acknowledgements:
       enabled: true
     protocol:
